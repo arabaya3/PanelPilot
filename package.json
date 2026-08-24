@@ -1,0 +1,17 @@
+{
+  "name": "panelpilot",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/web", "packages/*"],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  },
+  "engines": { "node": ">=20" }
+}

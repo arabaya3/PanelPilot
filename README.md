@@ -1,0 +1,222 @@
+# PanelPilot
+
+An AI diagnostic and design copilot for electrical and control engineers.
+Answers are grounded in crawled manufacturer documentation and standards, with
+calculations performed by deterministic code rather than by the model.
+
+> **Status:** structure only. Modules carry their real signatures and
+> docstrings; the bodies raise `NotImplementedError`.
+
+---
+
+## The two rules worth knowing before you write any code
+
+**1. Cite or refuse.** PanelPilot answers from cited documentation or it
+declines. The decision is made in `app/ai/guardrails/`, in code, before and
+after the model call — never left to the model's own judgement. An answer that
+cannot name its source is a defect, not a degraded result.
+
+**2. Nothing reaches production content without a human.** Ingestion writes to
+a staging index. A reviewer promotes to production through exactly one
+function. There is no second path, and CI enforces it.
+Read [ADR 0001](docs/adr/0001-staging-vs-production-index.md) before touching
+anything under `ingestion/`.
+
+---
+
+## Repository layout
+
+```
+apps/
+  web/            Next.js frontend            → its own deployable
+  api/            FastAPI backend + AI layer  → two runtimes, one package
+packages/
+  shared-types/   API contract types, generated from the backend's OpenAPI schema
+infra/            Deployment and infrastructure config
+docs/adr/         Architecture decision records
+```
+
+### Three deployables, not three services
+
+| Deployable | Entrypoint | Shape |
+| --- | --- | --- |
+| Web frontend | `apps/web` | Next.js, scales on traffic |
+| API runtime | `app.main:create_app` | HTTP request-response, sub-second |
+| Worker runtime | `app.worker.main:main` | Batch, one job per process, minutes |
+
+The API and worker are **the same Python package deployed twice** — same
+config, same domain layer, no network hop and no internal API contract between
+them. They are separate deployables because a multi-minute crawl and a
+sub-second request want opposite scaling policies, not because they are
+separate systems.
+
+`app/ai/` is deliberately **not** a service. Three of its four packages do no
+I/O at all, so a service boundary there would buy network latency to call pure
+functions — and it would turn the promotion write in ADR 0001 into a
+distributed transaction, which is the one thing that system exists to prevent.
+[ADR 0002](docs/adr/0002-one-package-two-runtimes.md) records the reasoning and
+the triggers that would make extraction worth revisiting.
+
+## Where does my code go?
+
+The backend has four layers. Getting this right is the difference between a
+change being a one-file edit and a three-day archaeology exercise.
+
+### `app/core/` — how the process runs
+
+Configuration, database sessions, logging, auth primitives, error types.
+Answers "how does this process talk to the outside world", never "what does
+this business do".
+
+Everything reads config through `get_settings()`. No module anywhere else
+touches `os.environ`.
+
+**Goes here:** a new setting, a new middleware, a new error type.
+**Does not:** anything that would differ between two products built on the same
+stack.
+
+### `app/api/v1/` — the HTTP surface
+
+Route definitions only. A handler parses the request, calls **one** function
+from `app/domain/`, and returns the response. That is the whole job.
+
+A route file must not contain business logic, a database query, an OpenSearch
+call, or a `try/except` that decides what an error means. Domain code raises
+`app.core.errors` exceptions; handlers registered in `app/core/errors.py`
+translate them to status codes.
+
+If a route body is longer than about five lines, the logic belongs in
+`domain/`. Enforced by `app/tests/test_architecture.py`.
+
+**Goes here:** a new endpoint, a URL change, a response-model change.
+**Does not:** how the answer is computed.
+
+### `app/domain/` — what the product does
+
+The service layer, and the only layer that knows the business rules. Owns
+authorization decisions, orchestration, transactions, and the conversion
+between ORM rows and Pydantic schemas.
+
+Framework-agnostic: importing `fastapi` here fails CI. A domain function takes
+plain arguments and a `Session`, and returns a schema. It can be called from a
+test, a CLI, or a background job without an HTTP request existing.
+
+**Goes here:** a rule about who may do what, a new workflow, a change to what
+gets recorded.
+**Does not:** the arithmetic of a calculation, or the mechanics of a search
+query.
+
+### `app/ai/` — model-facing machinery
+
+Everything specific to retrieval-augmented generation, in four parts:
+
+| Directory | Owns | Rule |
+| --- | --- | --- |
+| `retrieval/` | OpenSearch client, hybrid search, chunking | The only place that knows OpenSearch exists |
+| `tools/` | Cable sizing, VFD selection, panel BOM | Pure functions: no I/O, no DB, no settings |
+| `prompts/` | Prompt templates | One file per response type |
+| `guardrails/` | Cite-or-refuse, confidence scoring | Decides in code, not by asking the model |
+
+`ai/` is called by `domain/`, never by a route.
+
+**`tools/` deserves special care.** These functions produce numbers that end up
+on drawings. Each one is pure — same inputs, same outputs, no hidden state — so
+it can be unit-tested against the manufacturer guide it came from without a
+database or a network. Every function's docstring carries a `Source:` section
+naming the guide, standard, and clause behind its formula. CI fails a calc tool
+that lacks one. Quantities are `Decimal`, never `float`, and every field name
+carries its unit (`design_current_a`, `length_m`, `ambient_temp_c`).
+
+### `app/ingestion/` — getting documentation in
+
+Crawler, staging pipeline, verification queue. Writes to staging and to
+Postgres, and to nothing else. It cannot write production content — that is
+`domain/promotion.py`, and only after human review.
+
+### `app/worker/` — the batch runtime
+
+The second composition root. `worker/jobs.py` is thin in exactly the way route
+files are thin: open a session, call one `domain/` function, return an exit
+code. CI enforces it the same way.
+
+One job per process, then exit — retries, concurrency, and timeouts belong to
+the platform's scheduler (cron, ECS task, k8s `Job`), which does them better
+than we would. Jobs run as an explicit system principal that holds the
+ingestion role and **not** the reviewer role, so no scheduled job can approve
+its own content.
+
+**Goes here:** a new scheduled or batch job.
+**Does not:** what the job actually does — that is a `domain/` function.
+
+### `app/models/` — the shapes
+
+`tables/` holds SQLAlchemy models, `schemas/` holds Pydantic models, and they
+are deliberately separate. See [models/README.md](apps/api/app/models/README.md).
+
+Schema changes ship as Alembic migrations. Never edit a live schema by hand.
+
+---
+
+## Tests
+
+`app/tests/` mirrors `app/` exactly:
+
+```
+app/ai/tools/cable_sizing.py  →  app/tests/ai/tools/test_cable_sizing.py
+app/domain/promotion.py       →  app/tests/domain/test_promotion.py
+```
+
+No searching for a module's tests, and a missing test file is visible at a
+glance. `app/tests/test_architecture.py` enforces the mirror, along with the
+layering rules above — it is the reason those rules stay true six months from
+now instead of becoming aspirational prose in this README.
+
+---
+
+## Getting started
+
+```bash
+cp .env.example .env       # fill in local values; .env is gitignored
+
+# Backend
+cd apps/api
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+alembic upgrade head
+uvicorn app.main:create_app --factory --reload   # API runtime
+
+# Worker runtime — one job per invocation, in a second terminal
+python -m app.worker --list
+python -m app.worker crawl abb-drives
+
+# Frontend (from the repo root)
+npm install
+npm run dev --workspace @panelpilot/web
+```
+
+## Checks
+
+CI runs these on every PR and blocks merge on failure. Run them locally first.
+
+```bash
+# apps/api
+ruff check . && black --check . && mypy app && pytest
+
+# repo root
+npm run lint && npm run format:check && npm run typecheck
+```
+
+`mypy` runs in strict mode and `ruff` enforces Google-style docstrings on
+`domain/` and `ai/`. Both are non-negotiable in those directories; route files
+and tests are exempt from argument-level docs because their names carry the
+meaning.
+
+## Conventions
+
+- Keyword-only arguments for domain and AI functions (`*` in the signature).
+  Positional booleans and bare ids at call sites are how the wrong argument
+  gets passed silently.
+- Absolute imports only (`from app.domain import promotion`). Relative imports
+  are banned by ruff — they make moving a module a find-and-replace.
+- Docstrings say *why*, not *what*. The signature already says what.
+- New significant decision → new ADR. See [docs/adr/](docs/adr/).

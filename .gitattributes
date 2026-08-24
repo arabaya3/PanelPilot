@@ -1,0 +1,23 @@
+# Normalise line endings in the repository to LF, regardless of each
+# developer's core.autocrlf setting. CI runs on Linux and prettier/ruff both
+# expect LF, so leaving this to local config is how a Windows checkout produces
+# a format-check failure that no one can reproduce on a Mac.
+* text=auto eol=lf
+
+# Windows-only files that must keep CRLF to be executable there.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary — never touch, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Generated: collapse in review, but still diffable on request.
+packages/shared-types/src/api.generated.ts linguist-generated=true
