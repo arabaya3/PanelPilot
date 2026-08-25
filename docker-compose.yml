@@ -130,12 +130,12 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-    # Not published by default — the API is reachable at http://api:8000 from
-    # inside the network. Uncomment to hit it from the host, which you need for
-    # curl, an OpenAPI client, or a browser calling NEXT_PUBLIC_API_BASE_URL
-    # (see the note in README.md under Local development).
-    # ports:
-    #   - '8000:8000'
+    # Published to the host because NEXT_PUBLIC_API_BASE_URL is inlined into the
+    # browser bundle, and a browser cannot resolve the internal http://api:8000.
+    # Container-to-container traffic still uses the service name; this mapping
+    # exists for the browser, curl, and OpenAPI clients running on the host.
+    ports:
+      - '8000:8000'
     networks: [panelpilot]
 
   # ---------------------------------------------------------------------------
@@ -158,13 +158,24 @@ services:
     volumes:
       - ./apps/web:/repo/apps/web
       - ./packages:/repo/packages
-      # Anonymous volumes keep the container's installed dependencies and build
-      # cache from being shadowed by the host's.
-      - /repo/node_modules
-      - /repo/apps/web/node_modules
+      # /repo itself is not mounted, so the hoisted /repo/node_modules from the
+      # image stays intact. Only .next needs masking: the host has its own build
+      # output from running next build locally, and it must not shadow the
+      # container's.
       - /repo/apps/web/.next
     depends_on:
       api: { condition: service_healthy }
+    healthcheck:
+      # Without this, `docker compose ps` can only ever report web as "running",
+      # so there is no way to tell a served page from a crash loop.
+      # busybox wget, already in node:alpine — nothing extra installed.
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      # next dev compiles the first request on demand, so the first probe can
+      # legitimately be slow on a cold start.
+      start_period: 45s
     ports:
       - '3000:3000'
     networks: [panelpilot]

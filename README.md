@@ -283,6 +283,12 @@ meaning.
 
 ## Conventions
 
+- **Never commit or push directly to `main`.** All work goes on a feature
+  branch and lands through a pull request with at least one approving review
+  and a green `ci` check. `main` is protected on GitHub — force pushes and
+  deletions are blocked, and the rule applies to admins too, so there is no
+  owner bypass. A direct push is rejected with `GH006: Protected branch update
+failed`.
 - Keyword-only arguments for domain and AI functions (`*` in the signature).
   Positional booleans and bare ids at call sites are how the wrong argument
   gets passed silently.

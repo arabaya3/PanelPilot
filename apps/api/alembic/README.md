@@ -5,8 +5,22 @@ The only supported way to change the database schema.
 ```bash
 # after editing a model in app/models/tables/
 alembic revision --autogenerate -m "add promotion audit reviewer index"
+ruff check --fix alembic/versions/ && black alembic/versions/   # see below
 alembic upgrade head
 ```
+
+Against the compose stack, from the repo root:
+
+```bash
+docker compose exec api alembic revision --autogenerate -m "..."
+docker compose exec api alembic upgrade head
+docker compose exec api alembic check      # errors if models have drifted
+```
+
+**Format every generated revision.** Alembic's output is not black-formatted
+and its import block is not sorted, so an unformatted revision fails
+`black --check` and `ruff check` in CI. This is not optional tidying — it is
+the difference between a green build and a red one.
 
 Rules:
 

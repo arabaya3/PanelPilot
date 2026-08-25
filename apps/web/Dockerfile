@@ -38,8 +38,10 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /repo
 
+# npm workspaces hoist every dependency to the root node_modules and symlink
+# each workspace into node_modules/@panelpilot/. There is no
+# apps/web/node_modules to copy — verified against a real npm ci.
 COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 
 # next.config.mjs sets eslint.ignoreDuringBuilds and typescript.ignoreBuildErrors
@@ -57,9 +59,17 @@ FROM node:20-alpine AS dev
 RUN apk add --no-cache libc6-compat
 WORKDIR /repo
 
-COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
-COPY . .
+# npm workspaces hoist every dependency to the root node_modules and symlink
+# each workspace into node_modules/@panelpilot/. There is no
+# apps/web/node_modules to copy — verified against a real npm ci.
+COPY --from=deps --chown=node:node /repo/node_modules ./node_modules
+COPY --chown=node:node . .
+
+# .next must exist and be owned by `node` in the IMAGE. Compose masks this path
+# with an anonymous volume, and Docker initialises that volume from the image
+# path — so if the directory is missing here, the volume is created root-owned
+# and `next dev` dies with EACCES on .next/cache the moment it starts.
+RUN mkdir -p /repo/apps/web/.next && chown node:node /repo/apps/web/.next
 
 ENV NEXT_TELEMETRY_DISABLED=1
 USER node
