@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Any
 
 from opensearchpy import OpenSearch
 
@@ -60,3 +61,61 @@ def resolve_index(target: IndexTarget) -> str:
     if target is IndexTarget.STAGING:
         return settings.opensearch_staging_index
     return settings.opensearch_production_index
+
+
+def ensure_index(target: IndexTarget, *, recreate: bool = False) -> str:
+    """Create the index for a target if it does not already exist.
+
+    Both indices are created from the same mapping, so staging and production
+    can never drift into answering the same query differently.
+
+    Args:
+        target: Staging or production.
+        recreate: Drop and rebuild first. Never pass ``True`` against a live
+            production index — a mapping change is a re-index, not an edit.
+
+    Returns:
+        The concrete index name.
+    """
+    from app.ai.retrieval.hybrid_search import SEARCH_PIPELINE, search_pipeline_body
+    from app.ai.retrieval.mappings import index_mapping
+
+    client = get_client()
+    # The hybrid query is scored by this pipeline; without it the legs are
+    # summed un-normalised and the vector leg contributes almost nothing.
+    client.transport.perform_request(
+        "PUT", f"/_search/pipeline/{SEARCH_PIPELINE}", body=search_pipeline_body()
+    )
+    name = resolve_index(target)
+    if recreate and client.indices.exists(index=name):
+        client.indices.delete(index=name)
+    if not client.indices.exists(index=name):
+        client.indices.create(index=name, body=index_mapping())
+    return name
+
+
+def index_chunk(target: IndexTarget, *, chunk_id: str, document: dict[str, Any]) -> None:
+    """Write one chunk, refusing anything with a null required field.
+
+    The single write path into either index. Enforcing completeness here rather
+    than in the caller is what makes "no schema field left null on ingest" a
+    property of the system instead of a convention: a chunk missing its page or
+    source_url would surface later as an answer that cannot be traced back.
+
+    Args:
+        target: Which index to write to.
+        chunk_id: Stable document id.
+        document: The chunk body, including ``content_vector``.
+
+    Raises:
+        ValueError: If any required field is absent or null.
+    """
+    from app.ai.retrieval.mappings import missing_required_fields
+
+    missing = missing_required_fields(document)
+    if missing:
+        raise ValueError(
+            f"refusing to index {chunk_id!r}: required fields missing or null: "
+            f"{', '.join(missing)}"
+        )
+    get_client().index(index=resolve_index(target), id=chunk_id, body=document)

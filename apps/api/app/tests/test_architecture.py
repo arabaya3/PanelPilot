@@ -150,13 +150,20 @@ def test_only_the_promotion_module_writes_production() -> None:
 
     See docs/adr/0001-staging-vs-production-index.md.
     """
-    allowed = {APP_ROOT / "domain" / "promotion.py", APP_ROOT / "core" / "config.py"}
+    # The invariant is about WRITES. Reading production is what answer
+    # generation does, so the retrieval modules legitimately name the target;
+    # what must stay in promotion.py is the write path. Each exemption is
+    # listed with why it is allowed to say the word.
+    allowed = {
+        APP_ROOT / "domain" / "promotion.py",  # the one write path
+        APP_ROOT / "core" / "config.py",  # declares the index names
+        APP_ROOT / "ai" / "retrieval" / "client.py",  # resolves target -> name
+        APP_ROOT / "ai" / "retrieval" / "hybrid_search.py",  # reads, never writes
+    }
     offenders = [
         p.relative_to(APP_ROOT)
         for p in _source_modules("ingestion", "domain", "ai", "api", "worker")
-        if p not in allowed
-        and "IndexTarget.PRODUCTION" in p.read_text(encoding="utf-8")
-        and p != APP_ROOT / "ai" / "retrieval" / "client.py"
+        if p not in allowed and "IndexTarget.PRODUCTION" in p.read_text(encoding="utf-8")
     ]
     assert not offenders, (
         f"{offenders} reference the production index directly. "

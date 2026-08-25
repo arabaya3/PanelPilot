@@ -54,7 +54,7 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 > A new user can sign up and get a scoped, working session; usage counter correctly blocks further free questions once the limit is hit.
 
-### [ ] BE-003 — OpenSearch index schema & hybrid search
+### [x] BE-003 — OpenSearch index schema & hybrid search
 
 | Field                   | Value                                                  |
 | ----------------------- | ------------------------------------------------------ |
