@@ -16,8 +16,14 @@ class DiagnosticSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Ba
 
     __tablename__ = "diagnostic_sessions"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    # Nullable because an anonymous trial session (BE-002/FE-008) exists
+    # before anyone has signed up. It is never tenant-less -- the trial gets a
+    # provisional tenant immediately -- but it genuinely has no user until the
+    # session is claimed. SET NULL rather than CASCADE for the same reason: a
+    # deleted user must not silently take the conversation with them, since the
+    # tenant may still be entitled to it.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
 
     turns: Mapped[list[DiagnosticTurnRow]] = relationship(

@@ -12,7 +12,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -80,6 +80,11 @@ class Settings(BaseSettings):
 
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
+    # RFC 7518 §3.2: an HMAC key shorter than the hash output weakens the
+    # signature. PyJWT only warns, so a one-character secret would sign real
+    # tokens in production. Enforced below rather than left to a warning
+    # nobody reads in a log.
+    jwt_secret_min_bytes: int = 32
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 3600
     # NoDecode stops pydantic-settings JSON-decoding this before validation,
@@ -93,6 +98,29 @@ class Settings(BaseSettings):
     # --- Ingestion ---------------------------------------------------------
     ingestion_user_agent: str = "PanelPilotBot/0.1"
     ingestion_max_concurrency: int = 4
+
+    @model_validator(mode="after")
+    def _reject_a_weak_signing_key(self) -> Settings:
+        """Refuse to start outside dev with a forgeable JWT secret.
+
+        Returns:
+            The validated settings.
+
+        Raises:
+            ValueError: If the secret is too short for the signing algorithm.
+        """
+        secret = self.jwt_secret.get_secret_value()
+        # Dev keeps short throwaway secrets usable; staging and prod do not.
+        if (
+            self.environment is not Environment.DEV
+            and len(secret.encode()) < self.jwt_secret_min_bytes
+        ):
+            raise ValueError(
+                f"JWT_SECRET is {len(secret.encode())} bytes; {self.environment.value} "
+                f"requires at least {self.jwt_secret_min_bytes}. Generate one with "
+                '`python -c "import secrets; print(secrets.token_urlsafe(32))"`.'
+            )
+        return self
 
     @field_validator("cors_allowed_origins", mode="before")
     @classmethod

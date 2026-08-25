@@ -22,6 +22,11 @@ TENANT_SCOPED = {
     "diagnostic_sessions",
     "calculation_records",
     "escalation_items",
+    # Issued credentials belong to the tenant that owns them.
+    "refresh_tokens",
+    # Scoped from creation: a trial gets a provisional tenant immediately,
+    # because diagnostic_sessions.tenant_id is NOT NULL. See BE-002.
+    "anonymous_sessions",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would

@@ -38,17 +38,22 @@ def test_app_boots_from_test_config_and_serves_liveness(app_client: TestClient) 
 
 
 def test_readiness_reports_each_dependency_separately(app_client: TestClient) -> None:
-    """Readiness must name what is down, not just fail.
+    """Readiness must name each dependency, and its status must follow them.
 
-    Nothing is running in the unit-test environment, so both dependencies are
-    expected down — and the endpoint must say so with a 503 rather than a 200,
-    or a container healthcheck built on it would gate on nothing.
+    Asserted as a relationship rather than a fixed outcome: this suite runs
+    both with and without live services, so pinning 503 made the test pass for
+    an environmental reason rather than a behavioural one. What must hold
+    either way is that every dependency is reported by name and that the
+    overall status is up only when all of them are — otherwise a container
+    healthcheck built on this would gate on nothing.
     """
     response = app_client.get("/api/v1/health/ready")
-    assert response.status_code == 503
     body = response.json()
-    assert body["status"] == "down"
     assert set(body["dependencies"]) == {"database", "opensearch"}
+
+    all_up = all(state == "up" for state in body["dependencies"].values())
+    assert body["status"] == ("up" if all_up else "down")
+    assert response.status_code == (200 if all_up else 503)
 
 
 def test_routes_come_only_from_the_v1_router(app_client: TestClient) -> None:
@@ -87,7 +92,9 @@ def test_startup_fails_loudly_when_a_required_variable_is_absent(
         "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
         "OPENSEARCH_URL": "http://localhost:9200",
         "ANTHROPIC_API_KEY": "k",
-        "JWT_SECRET": "s",
+        # 32+ bytes: staging and prod refuse to start with a forgeable
+        # signing key, which is the point of this boot test.
+        "JWT_SECRET": "x" * 48,
         "REDIS_URL": "redis://localhost:6379/0",
     }
     del values[missing]
@@ -152,7 +159,9 @@ def test_service_boots_in_every_environment_from_env_vars_only(
         "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
         "OPENSEARCH_URL": "http://localhost:9200",
         "ANTHROPIC_API_KEY": "k",
-        "JWT_SECRET": "s",
+        # 32+ bytes: staging and prod refuse to start with a forgeable
+        # signing key, which is the point of this boot test.
+        "JWT_SECRET": "x" * 48,
         "REDIS_URL": "redis://localhost:6379/0",
     }.items():
         monkeypatch.setenv(key, value)

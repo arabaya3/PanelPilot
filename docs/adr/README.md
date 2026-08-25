@@ -43,3 +43,4 @@ What we rejected, and why.
 
 - [0001 — Staging vs production index separation](0001-staging-vs-production-index.md)
 - [0002 — One package, two runtimes; AI is a layer, not a service](0002-one-package-two-runtimes.md)
+- [0003 — Tenant isolation needs one enforcement point](0003-tenant-isolation-needs-one-enforcement-point.md) _(proposed)_

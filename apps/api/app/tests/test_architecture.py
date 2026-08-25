@@ -350,3 +350,32 @@ def test_only_domain_promotion_calls_the_index_write_helper() -> None:
         and "index_chunk(" in p.read_text(encoding="utf-8")
     ]
     assert not offenders, f"{offenders} call index_chunk directly"
+
+
+# --- BE-002: the quota gate must stay the locked one -------------------------
+
+
+def test_check_free_question_allowed_is_never_used_as_the_gate() -> None:
+    """The advisory check must not become the enforcement point.
+
+    ``check_free_question_allowed`` is an unlocked read. Enforcing with it and
+    then consuming separately is exactly the race that served 15 free questions
+    against a limit of 5: every concurrent caller read "allowed" before any of
+    them incremented. ``consume_free_question`` takes the decision under a row
+    lock and raises on its own.
+
+    A docstring saying so is not a guardrail — this is. BE-008 wires the quota
+    into the diagnosis path, and the function whose name reads like a
+    permission check is the one it will reach for first.
+    """
+    callers = [
+        p.relative_to(APP_ROOT)
+        for p in _source_modules("domain", "api", "worker", "ai", "ingestion")
+        if p != APP_ROOT / "domain" / "auth.py"
+        and "check_free_question_allowed" in p.read_text(encoding="utf-8")
+    ]
+    assert not callers, (
+        f"{callers} call check_free_question_allowed. It is advisory only — a "
+        "friendlier pre-flight message, never the gate. Call "
+        "consume_free_question and let it raise."
+    )

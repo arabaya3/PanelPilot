@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -29,6 +29,21 @@ class TenantRow(UUIDPrimaryKey, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(63), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Free-tier usage, counted server-side. A client-reported count is a number
+    # the client can choose, so this is the only figure the quota check reads.
+    # Incremented on a COMPLETED diagnosis, not on request: a failed or refused
+    # answer must not burn a question the engineer never received.
+    free_questions_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    free_question_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+
+    def has_free_questions_remaining(self) -> bool:
+        """Report whether this tenant may ask another free question.
+
+        Returns:
+            ``True`` while usage is below the limit.
+        """
+        return self.free_questions_used < self.free_question_limit
 
 
 class TenantScopedMixin:

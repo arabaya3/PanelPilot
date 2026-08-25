@@ -32,6 +32,9 @@ class User(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(200))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # bcrypt hash. Nullable so a user row can exist before a password is
+    # set, and so an SSO account later needs no schema change.
+    password_hash: Mapped[str | None] = mapped_column(String(128))
 
     roles: Mapped[list[Role]] = relationship(secondary=user_roles, back_populates="users")
 

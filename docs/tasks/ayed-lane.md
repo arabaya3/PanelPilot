@@ -32,7 +32,7 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 > Service boots in all three environments from env vars only, no hardcoded config; module layout matches the agreed structure exactly.
 
-### [ ] BE-002 — Auth, sessions & multi-tenant foundation
+### [x] BE-002 — Auth, sessions & multi-tenant foundation
 
 | Field                   | Value                                                  |
 | ----------------------- | ------------------------------------------------------ |
