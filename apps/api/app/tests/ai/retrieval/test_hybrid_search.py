@@ -251,6 +251,7 @@ def indexed_corpus() -> Iterator[str]:
         body = {k: v for k, v in doc.items() if k != "id"}
         body["verification_status"] = VerificationStatus.VERIFIED
         body["content_vector"] = _fake_embed(body["content"])
+        body["content_hash"] = hashlib.sha256(body["content"].encode()).hexdigest()
         # Guard the "none left null" criterion at write time, not just in docs.
         assert missing_required_fields(body) == [], f"{doc['id']} incomplete"
         client.index(index=name, id=doc["id"], body=body, refresh=True)
@@ -310,6 +311,7 @@ def test_strict_mapping_rejects_an_unknown_field(indexed_corpus: str) -> None:
     body = {k: v for k, v in CORPUS[0].items() if k != "id"}
     body["verification_status"] = VerificationStatus.VERIFIED
     body["content_vector"] = _fake_embed(body["content"])
+    body["content_hash"] = hashlib.sha256(body["content"].encode()).hexdigest()
     body["brnad"] = "typo"
 
     with pytest.raises(RequestError):
@@ -390,6 +392,7 @@ def test_unverified_content_is_never_returned(
     body = {k: v for k, v in CORPUS[0].items() if k != "id"}
     body["verification_status"] = VerificationStatus.UNVERIFIED
     body["content_vector"] = _semantic_embed(body["content"])
+    body["content_hash"] = hashlib.sha256(body["content"].encode()).hexdigest()
     get_client().index(index=indexed_corpus, id="sneaky", body=body, refresh=True)
 
     results = hybrid_search.search("overcurrent F0001", top_k=10, min_score=0.0)
@@ -413,6 +416,7 @@ def staged_corpus() -> Iterator[str]:
         body = {k: v for k, v in doc.items() if k != "id"}
         body["verification_status"] = VerificationStatus.UNVERIFIED
         body["content_vector"] = _semantic_embed(body["content"])
+        body["content_hash"] = hashlib.sha256(body["content"].encode()).hexdigest()
         client.index(index=name, id=doc["id"], body=body, refresh=True)
     try:
         yield name
@@ -452,6 +456,7 @@ def test_production_search_cannot_see_the_staging_corpus(
     body["verification_status"] = VerificationStatus.UNVERIFIED
     body["content"] = "Staging exclusive marker chunk about overcurrent."
     body["content_vector"] = _semantic_embed(body["content"])
+    body["content_hash"] = hashlib.sha256(body["content"].encode()).hexdigest()
     get_client().index(index=staged_corpus, id="staging-only", body=body, refresh=True)
 
     assert "staging-only" not in [
