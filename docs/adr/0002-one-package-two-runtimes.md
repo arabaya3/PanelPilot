@@ -20,12 +20,12 @@ Two facts about the code decide it.
 **`app/ai/` is mostly not I/O.** Of its four packages, three perform none at
 all:
 
-| Package | Does I/O? |
-| --- | --- |
-| `tools/` | No — pure functions, enforced by convention and review |
-| `prompts/` | No — template rendering |
-| `guardrails/` | No — logic over already-fetched schemas |
-| `retrieval/` | Yes — OpenSearch, and only here |
+| Package       | Does I/O?                                              |
+| ------------- | ------------------------------------------------------ |
+| `tools/`      | No — pure functions, enforced by convention and review |
+| `prompts/`    | No — template rendering                                |
+| `guardrails/` | No — logic over already-fetched schemas                |
+| `retrieval/`  | Yes — OpenSearch, and only here                        |
 
 Making this a network service means paying serialisation and a network hop to
 call functions that compute a derating factor in memory. The isolation a
@@ -50,7 +50,7 @@ That is precisely the failure ADR 0001 exists to prevent. It is recoverable
 with an outbox or saga, but that is real, permanent complexity bought to solve
 a problem we do not have.
 
-Meanwhile there *is* a genuine operational split in the system, and it runs
+Meanwhile there _is_ a genuine operational split in the system, and it runs
 along a different axis. `app/ingestion/` is batch work: minutes-long crawls,
 retry semantics, no HTTP surface, and scaling driven by corpus size rather than
 by user traffic. Everything else answers a request in under a second. Running
@@ -75,7 +75,7 @@ never by a route and never by the worker directly. `app/worker/jobs.py` is thin
 in exactly the way route files are thin, and CI enforces both the same way.
 
 **Background jobs act as an explicit system principal** (`jobs.system_actor`)
-that holds the ingestion role and *not* the reviewer role — so no scheduled job
+that holds the ingestion role and _not_ the reviewer role — so no scheduled job
 can approve content, preserving the four-eyes rule from ADR 0001 under
 automation.
 
@@ -96,7 +96,7 @@ automation.
 - Both runtimes ship the same image and the same dependencies, so the worker
   carries FastAPI it never imports. Tens of megabytes; not worth solving.
 - Two deploy targets to configure instead of one.
-- A slow job cannot be scaled independently *within* the worker — the unit of
+- A slow job cannot be scaled independently _within_ the worker — the unit of
   scaling is the job process. Acceptable while jobs are per-source.
 
 ## Extraction triggers

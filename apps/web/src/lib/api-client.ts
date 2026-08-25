@@ -18,14 +18,18 @@ export function getApiBaseUrl(): string {
 /**
  * Issue a typed request against a documented API path.
  *
+ * `paths` is an empty placeholder until `npm run generate` populates
+ * `api.generated.ts` from the backend's OpenAPI schema, so `keyof paths` is
+ * currently `never` and this function cannot yet be called — deliberately.
+ * Once the schema is real, the return type narrows from `unknown` to the
+ * response body declared for that path, and the path parameter becomes a
+ * generic so the two stay tied together.
+ *
  * @param _path - An API path present in the generated schema.
  * @param _init - Standard fetch options; the auth header is added here.
  * @returns The parsed response body.
  * @throws If the response status is not 2xx.
  */
-export async function apiFetch<P extends keyof paths>(
-  _path: P,
-  _init?: RequestInit,
-): Promise<unknown> {
+export function apiFetch(_path: keyof paths, _init?: RequestInit): Promise<unknown> {
   throw new Error('not implemented');
 }

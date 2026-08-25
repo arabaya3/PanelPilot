@@ -73,6 +73,11 @@ ignore = [
     "E501",  # line length is black's job
 ]
 
+# Standards citations quote clause ranges as printed — "Tables B.52.2–B.52.5",
+# "methods A1–G". The en dash is correct typography there, so allow it rather
+# than degrading the citation to match the linter.
+allowed-confusables = ["–"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

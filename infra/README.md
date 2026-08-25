@@ -16,11 +16,11 @@ infra/
 
 Three, from two build artifacts:
 
-| Target | Build | Runs |
-| --- | --- | --- |
-| `web` | `apps/web` | `next start` |
-| `api` | `apps/api` | `uvicorn app.main:create_app --factory` |
-| `worker` | `apps/api` — **same image as `api`** | `panelpilot-worker <job>`, scheduled |
+| Target   | Build                                | Runs                                    |
+| -------- | ------------------------------------ | --------------------------------------- |
+| `web`    | `apps/web`                           | `next start`                            |
+| `api`    | `apps/api`                           | `uvicorn app.main:create_app --factory` |
+| `worker` | `apps/api` — **same image as `api`** | `panelpilot-worker <job>`, scheduled    |
 
 The API and worker share one image on purpose; only the command differs. See
 [ADR 0002](../docs/adr/0002-one-package-two-runtimes.md). Scale them

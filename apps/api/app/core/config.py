@@ -94,4 +94,4 @@ def get_settings() -> Settings:
     Returns:
         The validated settings object for this process.
     """
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

@@ -38,10 +38,10 @@ docs/adr/         Architecture decision records
 
 ### Three deployables, not three services
 
-| Deployable | Entrypoint | Shape |
-| --- | --- | --- |
-| Web frontend | `apps/web` | Next.js, scales on traffic |
-| API runtime | `app.main:create_app` | HTTP request-response, sub-second |
+| Deployable     | Entrypoint             | Shape                               |
+| -------------- | ---------------------- | ----------------------------------- |
+| Web frontend   | `apps/web`             | Next.js, scales on traffic          |
+| API runtime    | `app.main:create_app`  | HTTP request-response, sub-second   |
 | Worker runtime | `app.worker.main:main` | Batch, one job per process, minutes |
 
 The API and worker are **the same Python package deployed twice** — same
@@ -110,12 +110,12 @@ query.
 
 Everything specific to retrieval-augmented generation, in four parts:
 
-| Directory | Owns | Rule |
-| --- | --- | --- |
-| `retrieval/` | OpenSearch client, hybrid search, chunking | The only place that knows OpenSearch exists |
-| `tools/` | Cable sizing, VFD selection, panel BOM | Pure functions: no I/O, no DB, no settings |
-| `prompts/` | Prompt templates | One file per response type |
-| `guardrails/` | Cite-or-refuse, confidence scoring | Decides in code, not by asking the model |
+| Directory     | Owns                                       | Rule                                        |
+| ------------- | ------------------------------------------ | ------------------------------------------- |
+| `retrieval/`  | OpenSearch client, hybrid search, chunking | The only place that knows OpenSearch exists |
+| `tools/`      | Cable sizing, VFD selection, panel BOM     | Pure functions: no I/O, no DB, no settings  |
+| `prompts/`    | Prompt templates                           | One file per response type                  |
+| `guardrails/` | Cite-or-refuse, confidence scoring         | Decides in code, not by asking the model    |
 
 `ai/` is called by `domain/`, never by a route.
 
@@ -218,5 +218,5 @@ meaning.
   gets passed silently.
 - Absolute imports only (`from app.domain import promotion`). Relative imports
   are banned by ruff — they make moving a module a find-and-replace.
-- Docstrings say *why*, not *what*. The signature already says what.
+- Docstrings say _why_, not _what_. The signature already says what.
 - New significant decision → new ADR. See [docs/adr/](docs/adr/).

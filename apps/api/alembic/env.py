@@ -8,15 +8,14 @@ path for editing a live schema by hand.
 
 from __future__ import annotations
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.config import get_settings
-from app.models.tables import base
 
 # Importing the table modules registers them on the metadata Alembic compares
 # against. A new table module must be imported here or autogenerate misses it.
-from app.models.tables import calculations, diagnostics, ingestion, user  # noqa: F401
+from app.models.tables import base, calculations, diagnostics, ingestion, user  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url.get_secret_value())
@@ -43,9 +42,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata, compare_type=True
-        )
+        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
             context.run_migrations()
 

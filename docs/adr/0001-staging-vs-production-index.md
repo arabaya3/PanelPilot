@@ -106,11 +106,11 @@ deploy at 2am.
 You almost certainly do not need a second write path into production. The
 usual real needs are already served:
 
-- *Content needs to go live faster* → shorten the review queue, or add
+- _Content needs to go live faster_ → shorten the review queue, or add
   automated checks that make review quicker. Not a new path.
-- *A bulk correction across many documents* → apply it in staging, re-verify,
+- _A bulk correction across many documents_ → apply it in staging, re-verify,
   promote in a batch through `promote_document`.
-- *An urgent removal* → retraction is a separate, audited operation on
+- _An urgent removal_ → retraction is a separate, audited operation on
   production. Add it there; do not repurpose ingestion.
 
 If you genuinely believe the invariant should change, supersede this ADR with a

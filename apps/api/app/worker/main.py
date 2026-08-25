@@ -33,6 +33,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         A process exit code — ``0`` on success, non-zero on failure.
     """
+    _args = list(sys.argv[1:] if argv is None else argv)
     settings = get_settings()
     configure_logging(log_level=settings.log_level, json_output=not settings.debug)
     raise NotImplementedError

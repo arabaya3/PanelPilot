@@ -6,7 +6,7 @@ Write an ADR when a decision would be expensive to reverse, constrains future
 work, or will look arbitrary to someone who wasn't in the room. Skip it for
 choices a reader can infer from the code.
 
-Record the decision *and the alternatives you rejected* — the rejected options
+Record the decision _and the alternatives you rejected_ — the rejected options
 are what stop the discussion being reopened every six months.
 
 ADRs are immutable once accepted. If a decision changes, add a new ADR that
@@ -23,15 +23,19 @@ Template:
 - **Deciders:**
 
 ## Context
+
 What forces are at play? What makes this hard?
 
 ## Decision
+
 What we are doing, stated so it can be checked.
 
 ## Consequences
+
 What this buys us, and what it costs.
 
 ## Alternatives considered
+
 What we rejected, and why.
 ```
 
