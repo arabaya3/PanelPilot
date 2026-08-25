@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, load_settings_or_exit
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging
 
@@ -25,7 +25,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Returns:
         The configured FastAPI application.
     """
-    settings = settings or get_settings()
+    # Shared with app.worker.main so both composition roots fail identically.
+    settings = settings or load_settings_or_exit()
     configure_logging(log_level=settings.log_level, json_output=not settings.debug)
 
     app = FastAPI(title="PanelPilot API", version="0.1.0", debug=settings.debug)

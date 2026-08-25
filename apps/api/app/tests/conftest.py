@@ -19,7 +19,7 @@ from app.main import create_app
 def settings() -> Settings:
     """Return settings suitable for tests, with no real credentials."""
     return Settings(
-        environment=Environment.LOCAL,
+        environment=Environment.DEV,
         database_url="postgresql+psycopg://test:test@localhost:5432/test",
         opensearch_url="http://localhost:9200",
         anthropic_api_key="test-key",
