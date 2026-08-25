@@ -25,7 +25,7 @@ jobs:
       # Report every failing check in one run, not just the first.
       fail-fast: false
       matrix:
-        check: [lint, format, typecheck, test]
+        check: [lint, format, typecheck, test, coverage]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,13 +53,26 @@ jobs:
         # rules described in the README.
         run: pytest
 
+      # Two separate runs, not one combined total. A single blanket percentage
+      # would let one directory sag while the other carries it, and these are
+      # exactly the paths where that must not happen: calc tools produce numbers
+      # that end up on drawings, and guardrails decide whether the assistant is
+      # allowed to answer at all.
+      - name: Coverage — calc tools (>=95%)
+        if: matrix.check == 'coverage'
+        run: pytest --cov=app.ai.tools --cov-report=term-missing --cov-fail-under=95
+
+      - name: Coverage — cite-or-refuse guardrails (>=95%)
+        if: matrix.check == 'coverage'
+        run: pytest --cov=app.ai.guardrails --cov-report=term-missing --cov-fail-under=95
+
   web:
     name: web (${{ matrix.check }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        check: [lint, format, typecheck]
+        check: [lint, format, typecheck, test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -81,13 +94,217 @@ jobs:
         if: matrix.check == 'typecheck'
         run: npm run typecheck
 
+      - name: Test (vitest)
+        if: matrix.check == 'test'
+        # Deliberately NOT `npm test`. The root script uses --if-present, which
+        # exits 0 when a workspace has no test script — so a missing or deleted
+        # test suite would pass silently. Targeting the workspace directly means
+        # removing the script breaks the build.
+        run: npm run test --workspace @panelpilot/web
+
+  docker-build:
+    name: docker build (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The API has no workspace dependencies, so its context is its own
+          # directory. The web build context must be the repo root: apps/web
+          # depends on the @panelpilot/shared-types workspace and the only
+          # lockfile lives at the root.
+          - image: api
+            context: ./apps/api
+            file: ./apps/api/Dockerfile
+            target: runtime
+          - image: web
+            context: .
+            file: ./apps/web/Dockerfile
+            target: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }} (target=${{ matrix.target }})
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          # Proving the production-shaped image still builds is the whole point;
+          # nothing is pushed or loaded.
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  compose-smoke:
+    name: compose smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # OpenSearch refuses to start below this; the runner default (65530) is
+      # too low. Docker Desktop sets it for you, CI does not.
+      - name: Raise vm.max_map_count for OpenSearch
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Create .env
+        # The committed example is the documented starting point; if it cannot
+        # boot the stack, that is itself a defect worth failing on.
+        run: cp .env.example .env
+
+      - name: Start the stack
+        run: docker compose up --build -d
+
+      - name: Wait for every service to report healthy
+        run: |
+          set -uo pipefail
+          services="postgres opensearch redis api web"
+          deadline=$(( SECONDS + 420 ))
+          while :; do
+            pending=""
+            for s in $services; do
+              cid=$(docker compose ps -q "$s" || true)
+              if [ -z "$cid" ]; then pending="$pending $s(missing)"; continue; fi
+              status=$(docker inspect -f '{{ if .State.Health }}{{ .State.Health.Status }}{{ else }}no-healthcheck{{ end }}' "$cid")
+              if [ "$status" != "healthy" ]; then pending="$pending $s($status)"; fi
+            done
+            if [ -z "$pending" ]; then
+              echo "All services healthy after ${SECONDS}s"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for:$pending"
+              exit 1
+            fi
+            sleep 5
+          done
+          docker compose ps
+
+      - name: Assert /health/ready reports every dependency up
+        run: |
+          set -euo pipefail
+          body=$(curl -fsS http://localhost:8000/api/v1/health/ready)
+          echo "$body"
+          # Assert the dependencies individually. A 200 alone would pass even if
+          # readiness had regressed into a stub that never checks anything.
+          for expected in '"status":"up"' '"database":"up"' '"opensearch":"up"'; do
+            echo "$body" | grep -q "$expected" || {
+              echo "::error::readiness payload missing $expected"
+              exit 1
+            }
+          done
+
+      - name: Assert the web app serves a page
+        run: curl -fsS -o /dev/null -w 'web HTTP %{http_code}\n' http://localhost:3000
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  migration-drift:
+    name: migration drift
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: panelpilot
+          POSTGRES_PASSWORD: panelpilot
+          POSTGRES_DB: panelpilot
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U panelpilot -d panelpilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      # Settings requires these; only DATABASE_URL is actually used here. They
+      # are CI placeholders, not credentials.
+      DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@localhost:5432/panelpilot
+      OPENSEARCH_URL: http://localhost:9200
+      REDIS_URL: redis://localhost:6379/0
+      ANTHROPIC_API_KEY: ci-placeholder
+      JWT_SECRET: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Check for model drift
+        # Catches a model edited without a matching migration — the failure mode
+        # that otherwise only appears when someone deploys.
+        run: |
+          set -uo pipefail
+          # alembic check exits non-zero on drift, so capture before asserting.
+          output=$(alembic check 2>&1 || true)
+          echo "$output"
+          echo "$output" | grep -q "No new upgrade operations detected" || {
+            echo "::error::Models have drifted from migrations. Run: alembic revision --autogenerate -m '...' (then format the result)"
+            exit 1
+          }
+
+  deps-audit:
+    name: deps audit (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    # Its own job on purpose: a newly published advisory against a dependency
+    # should not be tangled up with, or masked by, an unrelated failing check.
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [python, node]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        if: matrix.target == 'python'
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Audit Python dependencies (pip-audit)
+        if: matrix.target == 'python'
+        working-directory: apps/api
+        # --skip-editable: panelpilot-api itself is not on PyPI and cannot be
+        # audited; its dependencies are what matter here.
+        run: |
+          pip install -e ".[dev]"
+          pip-audit --skip-editable
+
+      - uses: actions/setup-node@v4
+        if: matrix.target == 'node'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Audit JS dependencies (npm audit)
+        if: matrix.target == 'node'
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
   # Single required status check to protect main with — it turns green only
-  # when every matrix job above succeeded, so adding a check needs no branch
-  # protection change.
+  # when every job above succeeded, so adding a check needs no branch
+  # protection change. A job missing from `needs` runs but does not block
+  # merging, which would make it decorative.
   ci:
     name: ci
     runs-on: ubuntu-latest
-    needs: [api, web]
+    needs: [api, web, docker-build, compose-smoke, migration-drift, deps-audit]
     if: always()
     steps:
       - name: Verify all checks passed
