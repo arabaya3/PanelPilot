@@ -15,7 +15,15 @@ from app.core.config import get_settings
 
 # Importing the table modules registers them on the metadata Alembic compares
 # against. A new table module must be imported here or autogenerate misses it.
-from app.models.tables import base, calculations, diagnostics, ingestion, user  # noqa: F401
+from app.models.tables import (  # noqa: F401
+    base,
+    calculations,
+    diagnostics,
+    escalation,
+    ingestion,
+    tenant,
+    user,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url.get_secret_value())

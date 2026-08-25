@@ -301,6 +301,79 @@ jobs:
       - name: Apply migrations
         run: alembic upgrade head
 
+      - name: Round-trip the head migration against populated tables
+        # BE-014: an irreversible or broken downgrade must fail here, not when
+        # someone needs to roll back a deploy.
+        #
+        # Order matters. The seed goes in AFTER the downgrade, not before: the
+        # downgrade drops `tenants` and every `tenant_id` column, so anything
+        # seeded first is destroyed and the re-upgrade runs against empty
+        # tables again -- which is exactly the case that always passes.
+        # Seeding post-downgrade means `upgrade head` has to backfill real rows
+        # in every table the migration touches.
+        run: |
+          set -euo pipefail
+          alembic downgrade -1
+          python - <<'SEED'
+          import os
+          import psycopg
+
+          dsn = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+          with psycopg.connect(dsn, autocommit=True) as conn:
+              user_id = conn.execute(
+                  "INSERT INTO users (id, email, is_active, created_at, updated_at) "
+                  "VALUES (gen_random_uuid(), 'ci-seed@example.invalid', true, now(), now()) "
+                  "RETURNING id"
+              ).fetchone()[0]
+              # Every table the migration adds tenant_id to must hold rows, or
+              # its backfill is only ever exercised empty.
+              session_id = conn.execute(
+                  "INSERT INTO diagnostic_sessions (id, user_id, created_at, updated_at) "
+                  "VALUES (gen_random_uuid(), %s, now(), now()) RETURNING id",
+                  (user_id,),
+              ).fetchone()[0]
+              conn.execute(
+                  "INSERT INTO diagnostic_turns (id, session_id, position, question, answer, "
+                  "created_at, updated_at) VALUES (gen_random_uuid(), %s, 1, 'q', 'a', now(), now())",
+                  (session_id,),
+              )
+              conn.execute(
+                  "INSERT INTO calculation_records (id, user_id, kind, created_at, updated_at) "
+                  "VALUES (gen_random_uuid(), %s, 'cable_sizing', now(), now())",
+                  (user_id,),
+              )
+          SEED
+          alembic upgrade head
+
+      - name: Assert the backfill actually populated every scoped table
+        # A migration that adds the column but silently leaves it NULL would
+        # pass `upgrade head`; only checking the data catches that.
+        run: |
+          set -euo pipefail
+          python - <<'CHECK'
+          import os
+          import sys
+          import psycopg
+
+          dsn = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+          failures = []
+          with psycopg.connect(dsn) as conn:
+              for table in ("users", "diagnostic_sessions", "calculation_records"):
+                  total = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                  nulls = conn.execute(
+                      f"SELECT count(*) FROM {table} WHERE tenant_id IS NULL"
+                  ).fetchone()[0]
+                  if total == 0:
+                      failures.append(f"{table}: no rows, backfill never exercised")
+                  if nulls:
+                      failures.append(f"{table}: {nulls} rows left with a null tenant_id")
+          if failures:
+              for line in failures:
+                  print(f"::error::{line}")
+              sys.exit(1)
+          print("every scoped table backfilled with no nulls")
+          CHECK
+
       - name: Check for model drift
         # Catches a model edited without a matching migration — the failure mode
         # that otherwise only appears when someone deploys.

@@ -98,7 +98,7 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 > It is structurally impossible for the chat endpoint to retrieve from staging; promotion only occurs via the verification-clearance path, provable by code review of the retrieval query scope.
 
-### [ ] BE-014 — Database schema & migrations
+### [x] BE-014 — Database schema & migrations
 
 | Field                   | Value                                       |
 | ----------------------- | ------------------------------------------- |

@@ -8,9 +8,10 @@ from sqlalchemy import ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
+from app.models.tables.tenant import TenantScopedMixin
 
 
-class DiagnosticSessionRow(UUIDPrimaryKey, TimestampMixin, Base):
+class DiagnosticSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     """A diagnostic conversation belonging to one user."""
 
     __tablename__ = "diagnostic_sessions"
