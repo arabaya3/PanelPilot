@@ -318,30 +318,88 @@ jobs:
           import os
           import psycopg
 
+          # `alembic downgrade -1` rolls back only the head migration, so which
+          # columns exist here depends on which migration is currently head.
+          # Discover them rather than assuming: hardcoding the shape meant this
+          # seed broke the moment a new migration landed on top.
           dsn = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
           with psycopg.connect(dsn, autocommit=True) as conn:
-              user_id = conn.execute(
-                  "INSERT INTO users (id, email, is_active, created_at, updated_at) "
-                  "VALUES (gen_random_uuid(), 'ci-seed@example.invalid', true, now(), now()) "
-                  "RETURNING id"
-              ).fetchone()[0]
+
+              def columns(table):
+                  rows = conn.execute(
+                      "SELECT column_name FROM information_schema.columns "
+                      "WHERE table_schema = 'public' AND table_name = %s",
+                      (table,),
+                  ).fetchall()
+                  return {r[0] for r in rows}
+
+              user_cols = columns("users")
+              tenant_id = None
+              if "tenant_id" in user_cols:
+                  tenant_id = conn.execute(
+                      "INSERT INTO tenants (id, slug, name, is_active, created_at, updated_at) "
+                      "VALUES (gen_random_uuid(), 'ci-seed', 'CI seed', true, now(), now()) "
+                      "ON CONFLICT (slug) DO NOTHING RETURNING id"
+                  ).fetchone()
+                  if tenant_id is None:
+                      tenant_id = conn.execute(
+                          "SELECT id FROM tenants WHERE slug = 'ci-seed'"
+                      ).fetchone()
+                  tenant_id = tenant_id[0]
+
+              if tenant_id is not None:
+                  user_id = conn.execute(
+                      "INSERT INTO users (id, tenant_id, email, is_active, created_at, "
+                      "updated_at) VALUES (gen_random_uuid(), %s, "
+                      "'ci-seed@example.invalid', true, now(), now()) RETURNING id",
+                      (tenant_id,),
+                  ).fetchone()[0]
+              else:
+                  user_id = conn.execute(
+                      "INSERT INTO users (id, email, is_active, created_at, updated_at) "
+                      "VALUES (gen_random_uuid(), 'ci-seed@example.invalid', true, now(), "
+                      "now()) RETURNING id"
+                  ).fetchone()[0]
+
               # Every table the migration adds tenant_id to must hold rows, or
               # its backfill is only ever exercised empty.
-              session_id = conn.execute(
-                  "INSERT INTO diagnostic_sessions (id, user_id, created_at, updated_at) "
-                  "VALUES (gen_random_uuid(), %s, now(), now()) RETURNING id",
-                  (user_id,),
-              ).fetchone()[0]
+              session_cols = columns("diagnostic_sessions")
+              if "tenant_id" in session_cols:
+                  session_id = conn.execute(
+                      "INSERT INTO diagnostic_sessions (id, tenant_id, user_id, created_at, "
+                      "updated_at) VALUES (gen_random_uuid(), %s, %s, now(), now()) "
+                      "RETURNING id",
+                      (tenant_id, user_id),
+                  ).fetchone()[0]
+              else:
+                  session_id = conn.execute(
+                      "INSERT INTO diagnostic_sessions (id, user_id, created_at, updated_at) "
+                      "VALUES (gen_random_uuid(), %s, now(), now()) RETURNING id",
+                      (user_id,),
+                  ).fetchone()[0]
+
               conn.execute(
                   "INSERT INTO diagnostic_turns (id, session_id, position, question, answer, "
-                  "created_at, updated_at) VALUES (gen_random_uuid(), %s, 1, 'q', 'a', now(), now())",
+                  "created_at, updated_at) VALUES (gen_random_uuid(), %s, 1, 'q', 'a', "
+                  "now(), now())",
                   (session_id,),
               )
-              conn.execute(
-                  "INSERT INTO calculation_records (id, user_id, kind, created_at, updated_at) "
-                  "VALUES (gen_random_uuid(), %s, 'cable_sizing', now(), now())",
-                  (user_id,),
-              )
+
+              calc_cols = columns("calculation_records")
+              if "tenant_id" in calc_cols:
+                  conn.execute(
+                      "INSERT INTO calculation_records (id, tenant_id, user_id, kind, "
+                      "created_at, updated_at) VALUES (gen_random_uuid(), %s, %s, "
+                      "'cable_sizing', now(), now())",
+                      (tenant_id, user_id),
+                  )
+              else:
+                  conn.execute(
+                      "INSERT INTO calculation_records (id, user_id, kind, created_at, "
+                      "updated_at) VALUES (gen_random_uuid(), %s, 'cable_sizing', now(), "
+                      "now())",
+                      (user_id,),
+                  )
           SEED
           alembic upgrade head
 
