@@ -29,7 +29,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ['**/*.{ts,tsx,mts}'],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: rootDir },
     },
