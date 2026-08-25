@@ -6,7 +6,11 @@ deliberately unmerged because a review concern survived two real fix attempts.
 `BLOCKED` means the task could not be attempted for a reason outside this
 repo's control.
 
-| Timestamp (UTC)   | Task   | Outcome | Notes                                                                                                                                                                                                  |
-| ----------------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-08-25T12:34Z | BE-001 | MERGED  | Aligned Environment to dev\|staging\|prod, added fail-loud config exit 78 shared by both composition roots, and the boot/health smoke test. PR #4.                                                     |
-| 2026-08-25T13:01Z | BE-003 | MERGED  | Index mapping plus real hybrid fusion (native hybrid query + normalization-processor); verified-only on production, relaxed for the reviewer path; ingest completeness enforced in index_chunk. PR #6. |
+The **Tokens** column is approximate: adversarial review round(s) plus the
+implementing agent, so burn rate is visible to anyone checking this log
+remotely without reading the full transcript.
+
+| Timestamp (UTC)   | Task   | Outcome | Tokens | Notes                                                                                                                                                                                                                                                                             |
+| ----------------- | ------ | ------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-25T12:34Z | BE-001 | MERGED  | ~185k  | Aligned Environment to dev/staging/prod, added a fail-loud config path exiting 78 shared by both composition roots, and the boot/health smoke test. 2 review rounds. PR #4.                                                                                                       |
+| 2026-08-25T13:01Z | BE-003 | MERGED  | ~330k  | Index mapping plus real hybrid fusion (native hybrid query + normalization-processor). Review proved the first attempt was not actually hybrid — the fixture passed with the kNN leg deleted. Verified-only on production, relaxed for the reviewer path. 3 review rounds. PR #6. |
