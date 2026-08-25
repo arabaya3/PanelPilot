@@ -10,7 +10,7 @@ A box is checked **only** when that task's PR has been merged to `main` with CI 
 
 Selected by Task ID regardless of the Assignee cell — BE-001's assignee is blank/unreliable in the sheet. These are implemented by the unattended run purely because the rest of Ayed's lane cannot start without them; their PRs are prefixed accordingly.
 
-### [ ] BE-001 — FastAPI service scaffold
+### [x] BE-001 — FastAPI service scaffold
 
 | Field                   | Value                                     |
 | ----------------------- | ----------------------------------------- |
