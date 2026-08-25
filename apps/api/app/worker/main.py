@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from app.core.config import get_settings
+from app.core.config import load_settings_or_exit
 from app.core.logging import configure_logging
 
 
@@ -34,7 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         A process exit code — ``0`` on success, non-zero on failure.
     """
     _args = list(sys.argv[1:] if argv is None else argv)
-    settings = get_settings()
+    settings = load_settings_or_exit()
     configure_logging(log_level=settings.log_level, json_output=not settings.debug)
     raise NotImplementedError
 

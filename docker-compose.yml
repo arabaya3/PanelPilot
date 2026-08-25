@@ -101,6 +101,9 @@ services:
       # These three override .env on purpose: .env.example cannot know the
       # compose service names, and a developer should not have to hand-edit
       # their .env to make `docker compose up` work.
+      # Pinned so a pre-existing .env from before the dev|staging|prod rename
+      # cannot fail the stack with an enum error.
+      ENVIRONMENT: dev
       DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot
       OPENSEARCH_URL: http://opensearch:9200
       REDIS_URL: redis://redis:6379/0

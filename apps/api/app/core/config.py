@@ -7,20 +7,27 @@ knob is discoverable in one place and overridable in tests.
 
 from __future__ import annotations
 
+import sys
 from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator
+from pydantic import ValidationError as PydanticValidationError
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Environment(StrEnum):
-    """Deployment environment the process is running in."""
+    """Deployment environment the process is running in.
 
-    LOCAL = "local"
+    Exactly three values, resolved once from the ``ENVIRONMENT`` variable at
+    startup. Code branches on this enum rather than re-reading the environment,
+    so there is one place to look when behaviour differs between deployments.
+    """
+
+    DEV = "dev"
     STAGING = "staging"
-    PRODUCTION = "production"
+    PROD = "prod"
 
 
 class Settings(BaseSettings):
@@ -38,7 +45,7 @@ class Settings(BaseSettings):
     )
 
     # --- Runtime -----------------------------------------------------------
-    environment: Environment = Environment.LOCAL
+    environment: Environment = Environment.DEV
     debug: bool = False
     log_level: str = "INFO"
     api_v1_prefix: str = "/api/v1"
@@ -103,7 +110,42 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Return ``True`` when running against production infrastructure."""
-        return self.environment is Environment.PRODUCTION
+        return self.environment is Environment.PROD
+
+
+# Distinct from 1 so an orchestrator can tell "bad config" from "crashed".
+EXIT_CONFIG_ERROR = 78  # EX_CONFIG, sysexits.h
+
+
+class ConfigurationError(RuntimeError):
+    """Required configuration is missing or invalid.
+
+    Deliberately not a ``PanelPilotError``: this is raised before the
+    application exists, so there is no handler to translate it and no request
+    to fail. It ends the process instead.
+    """
+
+
+def _format_validation_error(error: PydanticValidationError) -> str:
+    """Turn a pydantic error into something readable at 3am.
+
+    Args:
+        error: The validation error raised while building ``Settings``.
+
+    Returns:
+        A multi-line message naming each offending variable and why.
+    """
+    lines = ["Invalid or missing configuration:", ""]
+    for item in error.errors():
+        # loc is the field name; the environment variable is its upper-case form.
+        field = ".".join(str(part) for part in item["loc"]) or "<root>"
+        lines.append(f"  {field.upper()}: {item['msg']}")
+    lines += [
+        "",
+        "Every variable is documented in .env.example. Copy it to .env and fill "
+        "in the values, or set them in the environment.",
+    ]
+    return "\n".join(lines)
 
 
 @lru_cache(maxsize=1)
@@ -115,5 +157,36 @@ def get_settings() -> Settings:
 
     Returns:
         The validated settings object for this process.
+
+    Raises:
+        ConfigurationError: If any required variable is missing or invalid. The
+            process must not start half-configured, so this is fatal rather
+            than something a caller can fall back from.
     """
-    return Settings()
+    try:
+        return Settings()
+    except PydanticValidationError as exc:
+        raise ConfigurationError(_format_validation_error(exc)) from exc
+
+
+def load_settings_or_exit() -> Settings:
+    """Return settings, or print the reason and end the process.
+
+    Shared by both composition roots — ``app.main`` and ``app.worker.main``.
+    Living here rather than in either entrypoint is what stops one of them
+    drifting into a raw traceback while the other exits cleanly.
+
+    Returns:
+        The validated settings.
+
+    Raises:
+        SystemExit: Always, with ``EXIT_CONFIG_ERROR``, when configuration
+            is missing or invalid. Starting half-configured is worse than
+            not starting: the process would pass a liveness probe and then
+            fail every request for a reason nothing in the logs explains.
+    """
+    try:
+        return get_settings()
+    except ConfigurationError as exc:
+        print(f"FATAL: {exc}", file=sys.stderr)
+        raise SystemExit(EXIT_CONFIG_ERROR) from exc
