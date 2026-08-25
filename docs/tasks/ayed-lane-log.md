@@ -7,4 +7,4 @@ deliberately unmerged because a review concern survived two real fix attempts.
 repo's control.
 
 | Timestamp (UTC) | Task | Outcome | Notes |
-| --- | --- | --- | --- |
+| --------------- | ---- | ------- | ----- |
