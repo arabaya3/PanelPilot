@@ -36,6 +36,7 @@ from app.models.tables.ingestion import PromotionAuditRow
 CHUNK_ID = "3f7a1c2e-0b44-4d21-9a51-6c8e5d2f1a90"
 REVIEWER_ID = "9c1d4e6a-2f33-4b78-8e10-5a7b3c9d2e41"
 INGESTER_ID = "1a2b3c4d-5e6f-4708-9a0b-1c2d3e4f5a6b"
+TENANT_ID = "5d6e7f80-9a1b-4c2d-8e3f-4a5b6c7d8e9f"
 
 
 def _staged_chunk(*, content: str = "Fault F0001 OVERCURRENT.", **overrides: Any) -> dict[str, Any]:
@@ -58,7 +59,10 @@ def _staged_chunk(*, content: str = "Fault F0001 OVERCURRENT.", **overrides: Any
 
 def _reviewer(user_id: str = REVIEWER_ID) -> CurrentUser:
     return CurrentUser(
-        id=user_id, email=f"{user_id}@example.invalid", roles=frozenset({Role.REVIEWER})
+        id=user_id,
+        email=f"{user_id}@example.invalid",
+        tenant_id=TENANT_ID,
+        roles=frozenset({Role.REVIEWER}),
     )
 
 
@@ -111,14 +115,23 @@ def db() -> Iterator[Session]:
 
     engine = create_engine(get_settings().database_url.get_secret_value())
     session = sessionmaker(bind=engine)()
+    # users.tenant_id is NOT NULL since BE-014, so the tenant comes first.
+    session.execute(
+        text(
+            "INSERT INTO tenants (id, slug, name, is_active, created_at, updated_at) "
+            "VALUES (:i, :s, 'Promotion test tenant', true, now(), now()) "
+            "ON CONFLICT (id) DO NOTHING"
+        ),
+        {"i": TENANT_ID, "s": f"promo-test-{TENANT_ID[:8]}"},
+    )
     # Satisfy the reviewer/ingester foreign keys; users are BE-002's concern.
     for user_id in (REVIEWER_ID, INGESTER_ID):
         session.execute(
             text(
-                "INSERT INTO users (id, email, is_active, created_at, updated_at) "
-                "VALUES (:i, :e, true, now(), now()) ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO users (id, tenant_id, email, is_active, created_at, updated_at) "
+                "VALUES (:i, :t, :e, true, now(), now()) ON CONFLICT (id) DO NOTHING"
             ),
-            {"i": user_id, "e": f"{user_id}@example.invalid"},
+            {"i": user_id, "t": TENANT_ID, "e": f"{user_id}@example.invalid"},
         )
     session.execute(
         text(
@@ -253,6 +266,7 @@ def test_non_reviewer_cannot_promote(indices: tuple[str, str], db: Session) -> N
     engineer = CurrentUser(
         id="7e8f9a0b-1c2d-4e3f-8a9b-0c1d2e3f4a5b",
         email="eng@example.invalid",
+        tenant_id=TENANT_ID,
         roles=frozenset({Role.ENGINEER}),
     )
 

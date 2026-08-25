@@ -21,6 +21,10 @@ class CurrentUser(BaseModel):
 
     id: str
     email: str
+    # The isolation boundary, carried on every authenticated request. Present
+    # on the caller rather than looked up per query, so a domain function
+    # cannot forget which tenant it is acting for.
+    tenant_id: str
     roles: frozenset[Role]
 
     def has_role(self, role: Role) -> bool:
