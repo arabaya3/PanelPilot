@@ -14,6 +14,7 @@ from sqlalchemy import Boolean, Column, ForeignKey, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
+from app.models.tables.tenant import TenantScopedMixin
 
 user_roles = Table(
     "user_roles",
@@ -23,7 +24,7 @@ user_roles = Table(
 )
 
 
-class User(UUIDPrimaryKey, TimestampMixin, Base):
+class User(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     """A person who signs in to PanelPilot."""
 
     __tablename__ = "users"

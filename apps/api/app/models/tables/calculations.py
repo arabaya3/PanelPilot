@@ -12,9 +12,10 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
+from app.models.tables.tenant import TenantScopedMixin
 
 
-class CalculationRecordRow(UUIDPrimaryKey, TimestampMixin, Base):
+class CalculationRecordRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     """One executed calculation with its inputs, outputs, and sources.
 
     Rows are never updated. A corrected calculation is a new row, so the record
