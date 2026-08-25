@@ -73,7 +73,9 @@ class Settings(BaseSettings):
 
     # --- Retrieval / guardrails --------------------------------------------
     retrieval_top_k: int = 12
-    retrieval_min_score: float = 0.35
+    # Hybrid scores are normalised to [0, 1] by the search pipeline, so this
+    # is a fraction of the top hit rather than a raw BM25 value.
+    retrieval_min_score: float = 0.05
     guardrail_min_confidence: float = 0.6
 
     # --- Security ----------------------------------------------------------
