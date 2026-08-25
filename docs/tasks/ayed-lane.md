@@ -76,6 +76,28 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 > A test query against a known-good chunk returns it in the top 3 results via hybrid search; schema fields are all populated on ingest, none left null.
 
+### [ ] BE-004 — Staging vs production index separation
+
+| Field                   | Value                                                   |
+| ----------------------- | ------------------------------------------------------- |
+| **Task ID**             | BE-004                                                  |
+| **Category**            | Backend                                                 |
+| **Epic / Feature Area** | Ingestion Pipeline                                      |
+| **Dependencies**        | BE-003                                                  |
+| **Work Stream**         | Trust & Delivery Systems (Adan)                         |
+| **Phase Group**         | Ingestion & Verification                                |
+| **Branch Name**         | `feature/be-004-staging-vs-production-index-separation` |
+| **Status (sheet)**      | To Do                                                   |
+| **Assignee (sheet)**    | Adan Alawni                                             |
+
+**Full Technical Details**
+
+> Objective: This is the single load-bearing safety mechanism in the whole ingestion architecture — everything else (crawler, verification queue) exists to feed this boundary correctly. Approach: Two OpenSearch indices with identical mappings (content-staging, content-production). All crawler writes (BE-005) target staging exclusively — the crawler code has no credentials/client configured for production at all, so this is structural, not just policy. A promote_chunk(chunk_id) function, callable only from the verification queue's 'correct' label handler (BE-007), copies a chunk from staging to production and marks it verification_status=verified. Interface: promote_chunk() lives in app/ingestion/promotion.py; nowhere else in the codebase writes to the production index. Edge cases: A chunk already in production that gets re-crawled with changed content goes back through staging + re-verification as a new pending item — it is never silently overwritten in production. Testing: A code-level test asserting the crawler module has no reference to the production index client at all (import-level check), plus an integration test that only a 'correct'-labeled item results in a production-index write.
+
+**Acceptance Criteria**
+
+> It is structurally impossible for the chat endpoint to retrieve from staging; promotion only occurs via the verification-clearance path, provable by code review of the retrieval query scope.
+
 ### [ ] BE-014 — Database schema & migrations
 
 | Field                   | Value                                       |
