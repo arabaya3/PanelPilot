@@ -434,7 +434,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A single request's full lifecycle is traceable via its correlation ID across logs; time-to-first-token is visible as a tracked metric.
 
-### [ ] AI-001 — Chunking & metadata strategy
+### [x] AI-001 — Chunking & metadata strategy
 
 | Field                   | Value                                       |
 | ----------------------- | ------------------------------------------- |
