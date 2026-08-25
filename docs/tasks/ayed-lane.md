@@ -478,7 +478,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Retrieval precision on the eval set's known-answer queries meets an agreed threshold before this is considered done, not just 'looks reasonable'.
 
-### [ ] AI-003 — Cite-or-refuse guardrail logic
+### [x] AI-003 — Cite-or-refuse guardrail logic
 
 | Field                   | Value                                           |
 | ----------------------- | ----------------------------------------------- |

@@ -379,3 +379,54 @@ def test_check_free_question_allowed_is_never_used_as_the_gate() -> None:
         "friendlier pre-flight message, never the gate. Call "
         "consume_free_question and let it raise."
     )
+
+
+# --- AI-003: the guardrail must be the gate, not an available helper ---------
+
+
+def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
+    """Any path that calls a model must first call evaluate_confidence.
+
+    This is the invariant the whole accuracy claim rests on, and it is exactly
+    the kind that decays silently: the first path added without the check looks
+    identical to the paths that have it, and its fabricated answers look
+    identical to real ones.
+
+    Review's finding on AI-003 was that nothing called the guardrail at all.
+    That was correct and correctly scoped to BE-008, which owns the diagnosis
+    path — but "BE-008 will remember" is not a guarantee. This is.
+
+    Currently vacuous: no module invokes a model yet. It starts biting the
+    moment one does, which is the point.
+    """
+    generation_markers = ("anthropic", "messages.create", "client.messages")
+    for module in _source_modules("domain", "ai", "api", "worker"):
+        source = module.read_text(encoding="utf-8")
+        if not any(marker in source for marker in generation_markers):
+            continue
+        assert "evaluate_confidence" in source or "require_evidence" in source, (
+            f"{module.relative_to(APP_ROOT)} invokes generation without consulting "
+            "the cite-or-refuse guardrail. Call evaluate_confidence first and "
+            "short-circuit on anything but ANSWER — see app/ai/guardrails/."
+        )
+
+
+def test_the_guardrail_threshold_is_never_read_directly() -> None:
+    """Reading the threshold outside the guardrail means re-implementing it.
+
+    A second comparison against guardrail_min_confidence is a second gate, and
+    two gates drift. The decision belongs in one place.
+    """
+    allowed = {
+        APP_ROOT / "ai" / "guardrails" / "cite_or_refuse.py",
+        APP_ROOT / "core" / "config.py",
+    }
+    offenders = [
+        p.relative_to(APP_ROOT)
+        for p in _source_modules("domain", "ai", "api", "worker")
+        if p not in allowed and "guardrail_min_confidence" in p.read_text(encoding="utf-8")
+    ]
+    assert not offenders, (
+        f"{offenders} read the guardrail threshold directly. Call "
+        "evaluate_confidence instead of comparing against it yourself."
+    )
