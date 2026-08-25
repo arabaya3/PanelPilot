@@ -50,6 +50,10 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "verification_status",
     "content",
     "content_vector",
+    # Identity of the source text, not the text itself. Promotion compares this
+    # to decide whether live content has changed underneath an existing
+    # citation, so a chunk without it cannot be safely re-promoted. See BE-004.
+    "content_hash",
 )
 
 
@@ -83,6 +87,12 @@ def index_mapping(*, embedding_dimensions: int = EMBEDDING_DIMENSIONS) -> dict[s
                 "source_url": {"type": "keyword"},
                 "verification_status": {"type": "keyword"},
                 "content": {"type": "text", "analyzer": "standard"},
+                # Change detection for re-crawls; never analysed, only compared.
+                "content_hash": {"type": "keyword"},
+                # Who staged this chunk. Promotion refuses to let the same
+                # person clear their own content (four-eyes, ADR 0001).
+                # Optional: content predating the reviewer workflow has none.
+                "ingested_by": {"type": "keyword"},
                 "content_vector": {
                     "type": "knn_vector",
                     "dimension": embedding_dimensions,

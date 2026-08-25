@@ -169,3 +169,184 @@ def test_only_the_promotion_module_writes_production() -> None:
         f"{offenders} reference the production index directly. "
         "Read docs/adr/0001-staging-vs-production-index.md before adding a second write path."
     )
+
+
+# --- BE-004: staging/production separation, proven structurally --------------
+#
+# The acceptance criterion is "provable by code review of the retrieval query
+# scope". These tests are that code review, run on every commit.
+
+
+def test_crawler_has_no_reference_to_the_production_index() -> None:
+    """The crawler must be structurally incapable of reaching production.
+
+    Not policy — capability. It imports no production client, names no
+    production target, and calls no index-write helper that could reach one.
+    A crawler that *could* write production but is trusted not to is a
+    different, weaker guarantee than one that cannot.
+    """
+    forbidden_names = ("IndexTarget.PRODUCTION", "opensearch_production_index")
+    for module in _source_modules("ingestion"):
+        source = module.read_text(encoding="utf-8")
+        hits = [name for name in forbidden_names if name in source]
+        assert not hits, (
+            f"{module.relative_to(APP_ROOT)} references {hits}. "
+            "app/ingestion/ writes to staging only; promotion is "
+            "app/domain/promotion.py. See docs/adr/0001."
+        )
+
+
+def test_ingestion_cannot_reach_the_production_index_at_all() -> None:
+    """Capability check, not a name check.
+
+    An earlier version listed forbidden import names, which review defeated
+    three ways against a green suite: importing the module rather than the name
+    (``from app.ai.retrieval import client as _c``), building the index name
+    with ``getattr``, and selecting the target by enum ordinal
+    (``list(IndexTarget)[1]``). So this asserts the stronger property: nothing
+    under app/ingestion/ may reach ANY symbol that can resolve or write an
+    index, by any spelling.
+    """
+    # Reaching production requires one of these. Denying all of them to
+    # ingestion is what makes the isolation structural rather than trusted.
+    index_capable = {
+        "index_chunk",
+        "ensure_index",
+        "resolve_index",
+        "get_client",
+        "promote_chunk",
+        "promote_document",
+        "IndexTarget",
+    }
+    # Modules whose members could be reached by attribute access after a
+    # module-level import, which no name-based check would catch.
+    index_capable_modules = {
+        "app.ai.retrieval.client",
+        "app.ai.retrieval",
+        "app.domain.promotion",
+        "opensearchpy",
+    }
+
+    for module in _source_modules("ingestion"):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                # `from app.ai.retrieval import client` — the name is a module.
+                for alias in node.names:
+                    full = f"{node.module}.{alias.name}"
+                    assert alias.name not in index_capable, (
+                        f"{module.relative_to(APP_ROOT)} imports {alias.name!r}, "
+                        "which can reach an index. Ingestion stages only."
+                    )
+                    assert full not in index_capable_modules, (
+                        f"{module.relative_to(APP_ROOT)} imports the module "
+                        f"{full!r}; its members can reach production."
+                    )
+                assert node.module not in index_capable_modules, (
+                    f"{module.relative_to(APP_ROOT)} imports from {node.module!r}, "
+                    "which can reach production."
+                )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert alias.name not in index_capable_modules, (
+                        f"{module.relative_to(APP_ROOT)} imports {alias.name!r}, "
+                        "which can reach production."
+                    )
+
+
+def test_ingestion_makes_no_raw_index_write() -> None:
+    """A raw ``client.index(...)`` bypasses every helper-name check.
+
+    Review reached production from ingestion with
+    ``get_client().index(index=getattr(settings, "opensearch_" + "production_index"))``
+    while the whole suite stayed green. Denying the import above is the real
+    fix; this asserts the call shape too, so the failure is named clearly if
+    someone reintroduces a client by another route.
+    """
+    write_methods = {"index", "bulk", "update", "delete_by_query", "reindex"}
+    for module in _source_modules("ingestion"):
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in write_methods
+                # Only flag calls on something that looks like a client, not
+                # e.g. list.index() on a plain sequence.
+                and any(kw.arg == "index" for kw in node.keywords)
+            ):
+                raise AssertionError(
+                    f"{module.relative_to(APP_ROOT)} line {node.lineno}: raw index "
+                    f"write via .{node.func.attr}(). Ingestion writes staging "
+                    "through the staging pipeline only."
+                )
+
+
+def test_the_chat_path_cannot_reach_staging() -> None:
+    """The answer path must be structurally unable to read unverified content.
+
+    Reads the source FILE and walks its AST rather than using
+    ``inspect.getsource`` on the imported module: the import is cached, so a
+    source-level check against the loaded module silently validates a stale
+    copy. Found the hard way — an earlier version of this test passed while
+    ``search()`` was redirected at staging on disk.
+    """
+    module = APP_ROOT / "ai" / "retrieval" / "hybrid_search.py"
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+    for name in ("search", "search_staging", "_search"):
+        assert name in functions, f"hybrid_search.{name} is missing"
+
+    # The public answer path takes no argument that could select an index.
+    answer_args = {
+        a.arg for a in functions["search"].args.args + functions["search"].args.kwonlyargs
+    }
+    for forbidden in ("index", "target", "verified_only"):
+        assert (
+            forbidden not in answer_args
+        ), f"search() accepts {forbidden!r}; the answer path must not be steerable"
+
+    def names_in(node: ast.AST) -> set[str]:
+        return {
+            f"{n.value.id}.{n.attr}"
+            for n in ast.walk(node)
+            if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+        }
+
+    answer_targets = names_in(functions["search"])
+    assert (
+        "IndexTarget.PRODUCTION" in answer_targets
+    ), "search() must name the production target explicitly"
+    assert (
+        "IndexTarget.STAGING" not in answer_targets
+    ), "search() references the staging target; the answer path must never reach it"
+    # The reviewer path is the mirror image.
+    reviewer_targets = names_in(functions["search_staging"])
+    assert "IndexTarget.STAGING" in reviewer_targets
+    assert "IndexTarget.PRODUCTION" not in reviewer_targets
+
+    # And the shared helper must derive verified_only from the target rather
+    # than hardcoding it: True breaks the reviewer path, False lets production
+    # serve unverified content. Both directions have already regressed once.
+    shared = ast.unparse(functions["_search"])
+    assert (
+        "verified_only=target is IndexTarget.PRODUCTION" in shared
+    ), "_search must derive verified_only from the target, not hardcode it"
+
+
+def test_only_domain_promotion_calls_the_index_write_helper() -> None:
+    """``index_chunk`` is the single write helper; keep its call sites countable."""
+    allowed = {APP_ROOT / "domain" / "promotion.py"}
+    offenders = [
+        p.relative_to(APP_ROOT)
+        for p in _source_modules("ingestion", "domain", "ai", "api", "worker")
+        if p not in allowed
+        and p != APP_ROOT / "ai" / "retrieval" / "client.py"  # defines it
+        and "index_chunk(" in p.read_text(encoding="utf-8")
+    ]
+    assert not offenders, f"{offenders} call index_chunk directly"

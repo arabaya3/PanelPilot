@@ -76,7 +76,7 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 > A test query against a known-good chunk returns it in the top 3 results via hybrid search; schema fields are all populated on ingest, none left null.
 
-### [ ] BE-004 — Staging vs production index separation
+### [x] BE-004 — Staging vs production index separation
 
 | Field                   | Value                                                   |
 | ----------------------- | ------------------------------------------------------- |
