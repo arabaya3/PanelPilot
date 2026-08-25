@@ -4,8 +4,11 @@ An AI diagnostic and design copilot for electrical and control engineers.
 Answers are grounded in crawled manufacturer documentation and standards, with
 calculations performed by deterministic code rather than by the model.
 
-> **Status:** structure only. Modules carry their real signatures and
-> docstrings; the bodies raise `NotImplementedError`.
+> **Status:** structure, plus the plumbing needed to actually boot. `core/`
+> (config, logging, database engine, error handling), the OpenSearch client,
+> and the health endpoints are implemented — everything under `domain/`,
+> `ai/tools/`, `ai/guardrails/`, and `ingestion/` still raises
+> `NotImplementedError` behind a real signature and docstring.
 
 ---
 
@@ -173,12 +176,79 @@ now instead of becoming aspirational prose in this README.
 
 ---
 
-## Getting started
+## Local development
+
+The whole stack runs in Docker. This is the shortest path to a working
+environment and the one to use unless you have a reason not to.
+
+```bash
+cp .env.example .env          # .env is gitignored; the defaults work as-is
+docker compose up --build
+```
+
+Compose brings up five services on one internal network:
+
+| Service      | Image / target                        | Host port  | Purpose                        |
+| ------------ | ------------------------------------- | ---------- | ------------------------------ |
+| `web`        | `apps/web`, `dev`                     | **3000**   | `next dev`, hot reload         |
+| `api`        | `apps/api`, `dev`                     | _internal_ | `uvicorn --reload`, hot reload |
+| `postgres`   | `postgres:16-alpine`                  | _internal_ | Primary database               |
+| `opensearch` | `opensearchproject/opensearch:2.17.1` | _internal_ | Retrieval index                |
+| `redis`      | `redis:7-alpine`                      | _internal_ | Rate limiting, cached lookups  |
+
+**Only `web` publishes a port.** Everything else is reachable inside the
+network by service name (`http://api:8000`, `postgres:5432`, and so on). Both
+app services bind-mount their source, so edits on the host reload in place —
+you do not rebuild to change code, only to change dependencies.
+
+Startup is gated on real readiness, not on "the container started": `api` waits
+for Postgres, OpenSearch, and Redis to pass their own healthchecks, and `web`
+waits for `api` to answer `/api/v1/health/ready` — which returns 503 until its
+dependencies actually respond.
+
+```bash
+docker compose ps                       # STATUS column shows healthy vs starting
+docker compose logs -f api
+docker compose down                     # stop; named volumes survive
+docker compose down -v                  # stop and wipe the data volumes
+```
+
+### Migrations against the compose database
+
+```bash
+docker compose exec api alembic upgrade head
+docker compose exec api alembic revision --autogenerate -m "add x"
+```
+
+### Running the checks inside the container
+
+```bash
+docker compose exec api pytest
+docker compose exec api ruff check .
+docker compose exec api mypy app
+```
+
+### Reaching the API from the host
+
+`NEXT_PUBLIC_API_BASE_URL` is inlined into the **browser** bundle, so it has to
+be an address your machine can resolve — not the internal `http://api:8000`. As
+long as nothing in the frontend calls the API this does not matter. When it
+does, either uncomment the `ports` block on the `api` service in
+`docker-compose.yml`, or add a Next rewrite so the browser only ever talks to
+`:3000`. The second keeps the API off the host network; the first is quicker.
+
+> **The compose file is for local development only.** It runs OpenSearch with
+> security disabled and carries placeholder database credentials in plain text.
+> It is not a deployment artefact and must not be used as one. The images that
+> ship are the `runtime` (api) and `runner` (web) targets — non-root, no build
+> or dev tooling, and for web no `node_modules` at all.
+
+## Getting started without Docker
 
 ```bash
 cp .env.example .env       # fill in local values; .env is gitignored
 
-# Backend
+# Backend — needs Postgres, OpenSearch, and Redis reachable at the URLs in .env
 cd apps/api
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"

@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Annotated
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Environment(StrEnum):
@@ -72,11 +73,32 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 3600
-    cors_allowed_origins: list[str] = Field(default_factory=list)
+    # NoDecode stops pydantic-settings JSON-decoding this before validation,
+    # so the comma-separated form documented in .env.example actually works.
+    # Without it, CORS_ALLOWED_ORIGINS=http://localhost:3000 is a startup error.
+    cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    # --- Redis -------------------------------------------------------------
+    redis_url: str = Field(..., description="Redis URL used for rate limiting and cached lookups.")
 
     # --- Ingestion ---------------------------------------------------------
     ingestion_user_agent: str = "PanelPilotBot/0.1"
     ingestion_max_concurrency: int = 4
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value: object) -> object:
+        """Accept a comma-separated string for the origins list.
+
+        Args:
+            value: The raw value from the environment or an explicit argument.
+
+        Returns:
+            A list of origins when given a string, otherwise the value unchanged.
+        """
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     @property
     def is_production(self) -> bool:

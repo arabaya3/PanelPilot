@@ -24,6 +24,7 @@ def settings() -> Settings:
         opensearch_url="http://localhost:9200",
         anthropic_api_key="test-key",
         jwt_secret="test-secret",
+        redis_url="redis://localhost:6379/0",
     )
 
 

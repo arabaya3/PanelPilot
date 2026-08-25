@@ -1,0 +1,179 @@
+# PanelPilot — LOCAL DEVELOPMENT ONLY.
+#
+# This file is not a deployment artefact and must never be used as one. It runs
+# OpenSearch with security disabled and ships placeholder database credentials
+# in plain text; both are acceptable on a laptop and unacceptable anywhere else.
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# Only the web service publishes a port. Everything else is reachable only on
+# the internal network, by service name.
+
+name: panelpilot
+
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres — primary database.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # Dev-only placeholders. Nothing here is a secret and nothing here is
+      # reused anywhere else.
+      POSTGRES_USER: panelpilot
+      POSTGRES_PASSWORD: panelpilot
+      POSTGRES_DB: panelpilot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready, not a port check: the container accepts connections well
+      # before the database is ready to answer them.
+      test: ['CMD-SHELL', 'pg_isready -U panelpilot -d panelpilot']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [panelpilot]
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch — retrieval index.
+  #
+  # DEV ONLY. Security is disabled, so this node has no authentication, no TLS,
+  # and no authorisation. It is a single node with no replicas. Never run this
+  # configuration anywhere reachable by anything but your own machine.
+  # ---------------------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - bootstrap.memory_lock=true
+      # Capped deliberately: OpenSearch defaults to half the host's RAM, which
+      # on a dev machine starves everything else in this file.
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    networks: [panelpilot]
+
+  # ---------------------------------------------------------------------------
+  # Redis — rate limiting and cached lookups.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Persistence on, so a restart does not silently reset rate-limit state
+    # mid-session and make a bug impossible to reproduce.
+    command: ['redis-server', '--save', '60', '1', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [panelpilot]
+
+  # ---------------------------------------------------------------------------
+  # API — FastAPI, hot-reloading against the mounted source.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      # apps/api has no workspace dependencies, so its context is its own
+      # directory and apps/api/.dockerignore applies.
+      context: ./apps/api
+      target: dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # These three override .env on purpose: .env.example cannot know the
+      # compose service names, and a developer should not have to hand-edit
+      # their .env to make `docker compose up` work.
+      DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      # Source mounted for --reload.
+      - ./apps/api:/app
+      # Anonymous volume masks the host virtualenv: those are host-platform
+      # binaries and must never shadow the container's venv at /opt/venv.
+      - /app/.venv
+    depends_on:
+      postgres: { condition: service_healthy }
+      opensearch: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      # Defined here rather than inherited: the dev target is a separate branch
+      # of the Dockerfile and does not carry the runtime stage's HEALTHCHECK.
+      # /health/ready returns 503 until Postgres and OpenSearch both answer, so
+      # this gates on real readiness rather than "the process started".
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000' + os.environ.get('API_V1_PREFIX', '/api/v1') + '/health/ready', timeout=4)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # Not published by default — the API is reachable at http://api:8000 from
+    # inside the network. Uncomment to hit it from the host, which you need for
+    # curl, an OpenAPI client, or a browser calling NEXT_PUBLIC_API_BASE_URL
+    # (see the note in README.md under Local development).
+    # ports:
+    #   - '8000:8000'
+    networks: [panelpilot]
+
+  # ---------------------------------------------------------------------------
+  # Web — next dev with hot reload. The production standalone image is the
+  # `runner` target in apps/web/Dockerfile; it is what ships, not what runs here.
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      # Context is the repo root: apps/web depends on the shared-types
+      # workspace and the lockfile lives at the root.
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    restart: unless-stopped
+    environment:
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Read by the browser, not by this container, so it must be an address
+      # the host can resolve.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./apps/web:/repo/apps/web
+      - ./packages:/repo/packages
+      # Anonymous volumes keep the container's installed dependencies and build
+      # cache from being shadowed by the host's.
+      - /repo/node_modules
+      - /repo/apps/web/node_modules
+      - /repo/apps/web/.next
+    depends_on:
+      api: { condition: service_healthy }
+    ports:
+      - '3000:3000'
+    networks: [panelpilot]
+
+networks:
+  panelpilot:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  opensearch-data:
+  redis-data:

@@ -1,0 +1,47 @@
+# Build context for the API image is apps/api (see docker-compose.yml).
+# Everything here is either a secret, a local artefact, or dead weight in a
+# layer — none of it belongs in the build context or the image.
+
+# Secrets — never in an image layer, even one that is later deleted.
+.env
+.env.*
+!.env.example
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Tool caches and build artefacts
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Tests stay out of the image so the production runtime carries no test code.
+# The dev target still runs them: compose bind-mounts ./apps/api over /app, so
+# `docker compose exec api pytest` sees the tests from the host.
+app/tests/
+
+# Docker's own files
+Dockerfile
+.dockerignore
+
+# VCS and editors
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+.DS_Store

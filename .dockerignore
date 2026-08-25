@@ -1,0 +1,59 @@
+# Build context for the WEB image is the repo root, because apps/web depends on
+# the @panelpilot/shared-types workspace and the only lockfile is here. Docker
+# reads .dockerignore from the context root, so these rules are what apply to
+# that build — a .dockerignore inside apps/web would never be read.
+#
+# The API image builds from apps/api and uses apps/api/.dockerignore instead.
+
+# Secrets — never in an image layer, even one that is later deleted.
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+*.tsbuildinfo
+.npm/
+
+# Python — the API builds from its own context, but keeping these out of the
+# web context avoids shipping a host virtualenv into the build.
+apps/api/.venv/
+**/__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# Build artefacts
+dist/
+build/
+coverage/
+htmlcov/
+.coverage
+
+# Docker and CI files: changing compose or a workflow should not bust the
+# build cache for the application image.
+docker-compose.yml
+docker-compose.*.yml
+**/Dockerfile
+**/.dockerignore
+.github/
+
+# Docs — not needed to build the app
+docs/
+*.md
+
+# VCS and editors
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.swp
+.DS_Store
