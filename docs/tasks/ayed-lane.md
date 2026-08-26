@@ -280,7 +280,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Indicator updates correctly when context changes; subsequent questions in the session use it without the user repeating brand/model.
 
-### [ ] FE-008 — Self-serve trial & landing flow
+### [x] FE-008 — Self-serve trial & landing flow
 
 | Field                   | Value                                          |
 | ----------------------- | ---------------------------------------------- |
