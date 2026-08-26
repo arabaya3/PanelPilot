@@ -4,11 +4,56 @@ An AI diagnostic and design copilot for electrical and control engineers.
 Answers are grounded in crawled manufacturer documentation and standards, with
 calculations performed by deterministic code rather than by the model.
 
-> **Status:** structure, plus the plumbing needed to actually boot. `core/`
-> (config, logging, database engine, error handling), the OpenSearch client,
-> and the health endpoints are implemented — everything under `domain/`,
-> `ai/tools/`, `ai/guardrails/`, and `ingestion/` still raises
-> `NotImplementedError` behind a real signature and docstring.
+> **Status:** the diagnostic path is implemented end to end — retrieval,
+> the cite-or-refuse guardrail, structured generation, the streaming
+> orchestration endpoint, and the web client that renders it in English,
+> Arabic and Hebrew. `docker compose up` boots all five services healthy.
+>
+> Four backend gaps remain, listed below. Each one is a missing _endpoint_
+> rather than missing logic: the code behind it exists and is tested.
+
+---
+
+## Known gaps
+
+These are the four things standing between the current tree and a product an
+engineer can use unattended. All four are backend; the client half of each is
+built, tested, and waiting on the route.
+
+Recorded here rather than only in `docs/tasks/ayed-lane-log.md` because they
+outlive the task log — anyone picking this up needs them before they need the
+history.
+
+**1. AI-008's recogniser is wired to no route.**
+`app/ai/recognition.py` is complete: a verdict, per-field confidence, and an
+off-topic rejection path, with the schema refusing a fault code reported
+alongside a non-fault-display verdict. But `POST /api/v1/images` only stores
+the image and returns `{image_id}`, so nothing calls it. The web client
+(`apps/web/src/lib/recognition.ts`) is written against the real
+`FaultRecognitionResult` shape and reports today's stored-but-unread outcome
+honestly; wiring the route is the only work left.
+
+**2. There is no endpoint to list sessions.**
+`GET /api/v1/diagnostics/{session_id}` fetches one session by id. Nothing
+lists them, so FE-011 (conversation history sidebar) has no paginated
+`GET /sessions?cursor=` to call and was not attempted — building a client for
+an API that does not exist would have been worse than leaving it. This is a
+genuine gap in the original task breakdown, not an oversight in the
+implementation.
+
+**3. BE-012's rate limiter is in-memory and single-worker.**
+The sliding window lives in process memory, so the limit is per-worker rather
+than per-deployment. Correct for one worker and wrong the moment there are
+two. A Redis-backed store is the intended replacement; Redis is already in
+the compose stack.
+
+**4. There is no endpoint to start an anonymous trial.**
+Signup can already _finish_ one — `SignupRequest` takes `claim_session_id`
+and `claim_secret`, the `anonymous_sessions` table exists, and claiming joins
+the new user to the trial's existing tenant rather than copying rows, so
+nothing can half-succeed. But nothing issues an anonymous session, and every
+`/diagnostics` route requires `CurrentUserDep`, so "the first N questions
+work with zero auth" cannot happen over the wire yet.
 
 ---
 
