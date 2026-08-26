@@ -23,7 +23,13 @@ import type { AssistantMessage, Message } from './state';
  * this list has none by construction. The transcript's own writing direction
  * comes from the document, so nothing here sets `dir` itself.
  */
-export function MessageList({ messages }: { messages: Message[] }) {
+export function MessageList({
+  messages,
+  onRetry,
+}: {
+  messages: Message[];
+  onRetry: (id: string) => void;
+}) {
   const t = useTranslations('chat');
   const { direction } = useLocale();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,7 +106,7 @@ export function MessageList({ messages }: { messages: Message[] }) {
               {message.role === 'user' ? (
                 <UserTurn text={message.text} />
               ) : (
-                <AssistantTurn message={message} />
+                <AssistantTurn message={message} onRetry={onRetry} />
               )}
             </div>
           );
@@ -133,7 +139,13 @@ function UserTurn({ text }: { text: string }) {
  * Three visual states, and the distinction between them is load-bearing: a
  * turn that was cut off mid-stream must never look like one that finished.
  */
-function AssistantTurn({ message }: { message: AssistantMessage }) {
+function AssistantTurn({
+  message,
+  onRetry,
+}: {
+  message: AssistantMessage;
+  onRetry: (id: string) => void;
+}) {
   const t = useTranslations('chat');
 
   if (message.status === 'streaming') {
@@ -168,6 +180,18 @@ function AssistantTurn({ message }: { message: AssistantMessage }) {
         <p className="mt-1 text-sm text-text-muted">
           {t(`failed.${message.failure ?? 'connection-lost'}`)}
         </p>
+        {/* The question is kept on the turn precisely so this does not make
+            the engineer retype it — a fault description is long, and having to
+            rewrite it is what makes people stop reporting the details. */}
+        <button
+          type="button"
+          onClick={() => {
+            onRetry(message.id);
+          }}
+          className="mt-3 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-text"
+        >
+          {t('retry')}
+        </button>
       </div>
     );
   }

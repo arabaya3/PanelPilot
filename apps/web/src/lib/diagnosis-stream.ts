@@ -75,7 +75,12 @@ export function parseFrames(buffer: string): { frames: Frame[]; rest: string } {
     for (const line of part.split('\n')) {
       if (line.startsWith(':')) continue; // a comment, and a keep-alive
       if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
-      else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).trim());
+      // Exactly one leading space, per the SSE spec — not `trim()`. Trimming
+      // would silently eat significant whitespace from any payload that is not
+      // compact JSON, and the parser should not depend on how the current
+      // backend happens to serialise.
+      else if (line.startsWith('data:'))
+        dataLines.push(line.slice('data:'.length).replace(/^ /, ''));
     }
     if (dataLines.length > 0) frames.push({ event, data: dataLines.join('\n') });
   }
@@ -180,6 +185,13 @@ export async function* streamDiagnosis(options: StreamOptions): AsyncGenerator<S
     yield { kind: 'interrupted', reason: signal?.aborted ? 'aborted' : 'connection-lost' };
     return;
   } finally {
+    // `cancel()` before `releaseLock()`: releasing only detaches the reader
+    // and leaves the HTTP connection open. That matters beyond tidiness — the
+    // backend charges a free-tier question only once the result frame reaches
+    // the transport, and relies on the client's disconnect to avoid billing
+    // for an answer nobody received. A connection left open can let it resume
+    // and bill anyway.
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 

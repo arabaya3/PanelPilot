@@ -121,6 +121,9 @@ function streamingResponse(chunks: string[], { truncate = false } = {}): Respons
               ? { done: false, value: encoder.encode(chunks[index++]) }
               : { done: true, value: undefined },
           ),
+        // Real readers have this; the client cancels the body rather than
+        // only releasing the lock, so the stub needs it too.
+        cancel: () => Promise.resolve(),
         releaseLock: () => undefined,
       };
     },
@@ -522,5 +525,160 @@ describe('Chat locale', () => {
       expect(sent).not.toBeNull();
     });
     expect((sent as unknown as StreamOptions).request.locale).toBe(locale);
+  });
+});
+
+// --- cancellation -----------------------------------------------------------
+
+describe('stopping a turn', () => {
+  /**
+   * A stream parked at a `yield` rather than inside `read()`.
+   *
+   * This is the routine case, not a contrived one: the backend emits
+   * `retrieving` and `generated` back to back, and any proxy or TCP segment
+   * coalesces them into one chunk — so the generator sits suspended in
+   * userland, where an abort signal cannot reach it.
+   */
+  function parkedStream(): (options: StreamOptions) => AsyncGenerator<StreamEvent> {
+    return () =>
+      (async function* () {
+        yield { kind: 'stage', stage: 'retrieving' };
+        await new Promise(() => undefined);
+      })();
+  }
+
+  it('ends the turn rather than leaving it spinning', async () => {
+    // The defect this covers wedged the whole surface: Stop aborted a signal
+    // nothing was listening to, the turn kept `streaming` forever, `busy`
+    // stayed true because it is derived from that status, and the composer
+    // never offered Send again. Pressing the one control offered for a hung
+    // turn was what hung it.
+    renderApp(<Chat token="t" streamImpl={parkedStream()} />);
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Tripping on start' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-progress')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /stop/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-failure')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('assistant-progress')).toBeNull();
+    expect(screen.getByTestId('assistant-failure').getAttribute('data-failure')).toBe('aborted');
+  });
+
+  it('leaves the composer usable afterwards', async () => {
+    renderApp(<Chat token="t" streamImpl={parkedStream()} />);
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'first' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /stop/i })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /stop/i }));
+
+    // Send is offered again, and a second question actually starts a turn.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /send/i })).toBeTruthy();
+    });
+    fireEvent.change(input, { target: { value: 'second' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('user-turn')).toHaveLength(2);
+    });
+  });
+
+  it('releases the response body when the consumer stops early', async () => {
+    // `releaseLock` only detaches the reader; the connection stays open. The
+    // backend charges a free-tier question once the result reaches the
+    // transport and relies on the client's disconnect to avoid billing for an
+    // answer nobody received.
+    let cancelled = false;
+    const encoder = new TextEncoder();
+    let reads = 0;
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          // Yields a progress frame, then stays open the way a real
+          // connection does between stages.
+          read: () =>
+            reads++ === 0
+              ? Promise.resolve({
+                  done: false,
+                  value: encoder.encode('event: retrieving\ndata: {}\n\n'),
+                })
+              : new Promise<never>(() => undefined),
+          cancel: () => {
+            cancelled = true;
+            return Promise.resolve();
+          },
+          releaseLock: () => undefined,
+        }),
+      },
+    });
+
+    const generator = streamDiagnosis({
+      request: { symptom: 'x', locale: 'en', session_id: null },
+      token: 't',
+      fetchImpl: fetchImpl,
+    });
+
+    // Consume the first event, leaving the generator suspended at a `yield` —
+    // which is where it sits whenever a chunk carries a frame, and the state
+    // an unmounting component abandons it in.
+    await generator.next();
+    await generator.return(undefined);
+
+    expect(cancelled).toBe(true);
+  });
+});
+
+// --- resuming a failed turn -------------------------------------------------
+
+describe('retrying', () => {
+  it('re-asks the original question without the engineer retyping it', async () => {
+    // A fault description is long, and having to rewrite it is what makes
+    // people stop reporting the details. The question is kept on the turn
+    // precisely so this button can exist.
+    const streams: StreamOptions[] = [];
+    const first = controllableStream();
+    const second = controllableStream();
+    let call = 0;
+    const streamImpl = (options: StreamOptions) => {
+      streams.push(options);
+      call += 1;
+      return call === 1 ? first.generator() : second.generator();
+    };
+
+    renderApp(<Chat token="t" streamImpl={streamImpl} />);
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Undervoltage at start' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    first.emit({ kind: 'interrupted', reason: 'connection-lost' });
+    first.end();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-failure')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+    await waitFor(() => {
+      expect(streams).toHaveLength(2);
+    });
+    expect(streams[1]?.request.symptom).toBe('Undervoltage at start');
+    // And the failure is cleared rather than sitting beside the new attempt.
+    await waitFor(() => {
+      expect(screen.queryByTestId('assistant-failure')).toBeNull();
+    });
+    expect(screen.getByTestId('assistant-progress')).toBeTruthy();
   });
 });

@@ -33,6 +33,9 @@ export function Chat({
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const { locale } = useLocale();
   const abortRef = useRef<AbortController | null>(null);
+  // The turn the abort belongs to. `stop()` needs it because aborting alone
+  // is not enough to end a turn — see the comment on `stop`.
+  const liveRef = useRef<string | null>(null);
   const idRef = useRef(0);
 
   // Abort any live turn when the surface goes away, so a stream does not
@@ -47,6 +50,7 @@ export function Chat({
     async (assistantId: string, text: string) => {
       const controller = new AbortController();
       abortRef.current = controller;
+      liveRef.current = assistantId;
 
       const events = streamImpl({
         request: {
@@ -62,10 +66,20 @@ export function Chat({
         signal: controller.signal,
       });
 
-      for await (const event of events) {
-        dispatch({ type: 'stream', id: assistantId, event });
+      try {
+        for await (const event of events) {
+          dispatch({ type: 'stream', id: assistantId, event });
+        }
+      } finally {
+        // `return()` rather than abandoning the iterator: an abandoned async
+        // generator never runs its `finally`, so the response body would
+        // never be cancelled and the connection would leak.
+        await events.return(undefined);
+        if (liveRef.current === assistantId) {
+          abortRef.current = null;
+          liveRef.current = null;
+        }
       }
-      abortRef.current = null;
     },
     [locale, state.sessionId, streamImpl, token],
   );
@@ -82,9 +96,40 @@ export function Chat({
   );
 
   const stop = useCallback(() => {
+    // Aborting is necessary but not sufficient, and assuming otherwise wedged
+    // this surface completely.
+    //
+    // `AbortController.abort()` can only interrupt a generator suspended
+    // *inside* `reader.read()`. Whenever one chunk carries more than one
+    // frame — the routine case, since the backend emits `retrieving` and
+    // `generated` back to back and any proxy or TCP segment coalesces them —
+    // the generator is instead suspended at a `yield` in userland, where an
+    // abort signal cannot reach it. Nothing rejected, nothing resumed, no
+    // terminal event was ever produced: the turn kept its spinner forever,
+    // `busy` stayed true because it is derived from that status, and the
+    // composer kept offering Stop instead of Send. Pressing the one control
+    // offered for a hung turn was what hung it, permanently.
+    //
+    // So the terminal state is dispatched here, where it does not depend on
+    // where the generator happens to be parked.
+    const id = liveRef.current;
     abortRef.current?.abort();
     abortRef.current = null;
+    liveRef.current = null;
+    if (id !== null) {
+      dispatch({ type: 'stream', id, event: { kind: 'interrupted', reason: 'aborted' } });
+    }
   }, []);
+
+  const retry = useCallback(
+    (id: string) => {
+      const message = state.messages.find((m) => m.id === id);
+      if (!message || message.role !== 'assistant') return;
+      dispatch({ type: 'retry', id });
+      void run(id, message.prompt);
+    },
+    [run, state.messages],
+  );
 
   const busy = state.messages.some(
     (message) => message.role === 'assistant' && message.status === 'streaming',
@@ -92,7 +137,7 @@ export function Chat({
 
   return (
     <div className="flex h-full flex-col" data-testid="chat">
-      <MessageList messages={state.messages} />
+      <MessageList messages={state.messages} onRetry={retry} />
       <Composer onSubmit={ask} onStop={stop} busy={busy} />
     </div>
   );

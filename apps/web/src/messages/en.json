@@ -61,6 +61,7 @@
       "aborted": "You stopped this answer.",
       "malformed-frame": "The answer arrived damaged and was discarded rather than shown in part.",
       "server-error": "The server could not start this answer."
-    }
+    },
+    "retry": "Try again"
   }
 }
