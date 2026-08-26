@@ -126,7 +126,7 @@ Selected by Task ID regardless of the Assignee cell — BE-001's assignee is bla
 
 All 21 rows where Assignee = "Ayed Rabaya".
 
-### [ ] FE-001 — Design system & app scaffold
+### [x] FE-001 — Design system & app scaffold
 
 | Field                   | Value                                       |
 | ----------------------- | ------------------------------------------- |
@@ -148,7 +148,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Storybook or equivalent shows all base tokens/components; dark mode toggle works app-wide; no hardcoded hex colors outside the token file.
 
-### [ ] FE-002 — AR/EN/HE i18n infrastructure
+### [x] FE-002 — AR/EN/HE i18n infrastructure
 
 | Field                   | Value                                       |
 | ----------------------- | ------------------------------------------- |
