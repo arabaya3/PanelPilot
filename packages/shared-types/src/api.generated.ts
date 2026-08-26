@@ -469,14 +469,16 @@ export interface components {
          * @description A completed diagnostic turn as returned to the caller.
          *
          *     This is the type the frontend renders, and the schema constraining
-         *     generation is derived from ``StructuredDiagnosis`` below — the same model,
-         *     not a copy of it. That is what makes "the constraint and the rendered type
+         *     generation is derived from the ``StructuredDiagnosis`` embedded here — the
+         *     same model, not a copy of it. That is what makes "the constraint and the rendered type
          *     cannot drift" true rather than aspirational: there is one definition, and
          *     ``packages/shared-types`` regenerates its TypeScript from this schema.
          *
          *     Attributes:
          *         session_id: The conversation this turn belongs to.
-         *         answer: Prose form of the answer, with resolved citations.
+         *         answer: Prose form of the answer, with resolved citations. Absent on a
+         *             refusal — a required-but-empty answer object would be one more
+         *             thing the frontend has to inspect before deciding what to show.
          *         diagnosis: The structured form, when the model produced schema-valid
          *             output. ``None`` on a refusal, which is the only case where the
          *             frontend renders the refusal template instead of the card.
@@ -488,7 +490,7 @@ export interface components {
         DiagnosticResponse: {
             /** Session Id */
             session_id: string;
-            answer: components["schemas"]["VerifiedAnswer"];
+            answer?: components["schemas"]["VerifiedAnswer"] | null;
             diagnosis?: components["schemas"]["StructuredDiagnosis"] | null;
             confidence: components["schemas"]["ConfidenceBreakdown"];
             /** Low Confidence */
@@ -871,6 +873,11 @@ export interface components {
         /**
          * VerifiedAnswer
          * @description An answer whose every citation resolves to supplied evidence.
+         *
+         *     Attributes:
+         *         text: The prose answer. Non-blank for the same reason the structured
+         *             summary is: "   " renders as an empty card.
+         *         citations: Resolved citations backing the text.
          */
         VerifiedAnswer: {
             /** Text */

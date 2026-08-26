@@ -344,6 +344,23 @@ def test_a_well_formed_but_invented_citation_is_refused() -> None:
         )
 
 
+def test_a_correct_citation_is_not_refused_over_stray_whitespace() -> None:
+    """`PassageId` strips the model's ids, so the supplied set must match.
+
+    Comparing a stripped id against an unstripped evidence set sends a
+    correctly grounded diagnosis to the refuse path over nothing but the
+    whitespace in whoever assembled the evidence.
+    """
+    diagnosis = parse_tool_output(_valid_payload(), evidence_ids={" p1 ", "p2\n", "\tp3"})
+    assert diagnosis.summary_citation_ids == ["p1"]
+
+
+def test_normalising_the_evidence_set_does_not_admit_an_invented_citation() -> None:
+    """Stripping must not become a way to match something that is not there."""
+    with pytest.raises(ValueError, match="never supplied"):
+        parse_tool_output(_valid_payload(summary_citation_ids=["p9"]), evidence_ids={" p1 ", "p2"})
+
+
 def test_the_refusal_is_not_filed_as_a_threshold_problem() -> None:
     """The evidence cleared the threshold; the output failed.
 

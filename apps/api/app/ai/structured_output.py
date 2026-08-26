@@ -6,15 +6,18 @@ to it, rather than asking in a prompt for JSON. Prompting leaves the whole
 family of "the model wrote a friendly sentence before the opening brace"
 failures live; constraining the output removes them at the source.
 
-**One definition.** The JSON Schema the model is constrained to is derived from
-``StructuredDiagnosis`` — the same model the API serialises. It is never
-hand-written, so the constraint cannot disagree with the response type.
+**Not yet on a live request path.** ``run_diagnosis`` in ``app/domain`` is still
+a stub — BE-008 owns wiring the endpoint, and it should call
+``generate_diagnosis`` rather than reaching for a client itself. Until it does,
+this module constrains nothing in production. The architecture test enforces
+that whatever eventually calls a model consults the guardrail first.
 
-Note on the frontend: ``packages/shared-types`` regenerates its TypeScript from
-this API's OpenAPI document, so the rendered type derives from this same model
-*once the diagnosis endpoint exists and is mounted* (BE-008). Until then the
-generated file is an empty stub and the frontend has no diagnosis type at all —
-there is nothing yet to drift, but nothing yet proven identical either.
+**One definition.** The JSON Schema the model is constrained to is derived from
+``StructuredDiagnosis`` — the same model ``DiagnosticResponse`` embeds and the
+API serialises. ``packages/shared-types`` generates its TypeScript from that
+OpenAPI document, and the ``shared types drift`` CI job fails if the checked-in
+copy differs, so the constraint and the rendered type are one definition
+mechanically rather than by convention.
 
 **A validation failure is a confidence failure.** Output that fails to validate
 is not repaired, retried into shape, or shown partially. It takes AI-003's
@@ -198,7 +201,11 @@ def parse_tool_output(
 
     cited = {c for step in diagnosis.steps for c in step.citation_ids}
     cited |= set(diagnosis.summary_citation_ids)
-    unknown = sorted(cited - evidence_ids)
+    # `PassageId` strips the model's ids during validation, so the supplied set
+    # must be normalised the same way. Comparing a stripped id against an
+    # unstripped set sends a correctly grounded diagnosis to the refuse path
+    # over nothing but whitespace in whoever assembled the evidence.
+    unknown = sorted(cited - {e.strip() for e in evidence_ids})
     if unknown:
         raise ValueError(f"diagnosis cites passages that were never supplied: {unknown}")
 

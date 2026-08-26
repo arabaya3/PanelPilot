@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
 
-from app.models.schemas.responses import StructuredDiagnosis
+from app.models.schemas.responses import NonBlankText, StructuredDiagnosis
 from app.models.schemas.search import Citation
 
 
@@ -32,9 +32,15 @@ class GeneratedAnswer(BaseModel):
 
 
 class VerifiedAnswer(BaseModel):
-    """An answer whose every citation resolves to supplied evidence."""
+    """An answer whose every citation resolves to supplied evidence.
 
-    text: str
+    Attributes:
+        text: The prose answer. Non-blank for the same reason the structured
+            summary is: "   " renders as an empty card.
+        citations: Resolved citations backing the text.
+    """
+
+    text: NonBlankText
     citations: list[Citation]
 
 
@@ -51,14 +57,16 @@ class DiagnosticResponse(BaseModel):
     """A completed diagnostic turn as returned to the caller.
 
     This is the type the frontend renders, and the schema constraining
-    generation is derived from ``StructuredDiagnosis`` below — the same model,
-    not a copy of it. That is what makes "the constraint and the rendered type
+    generation is derived from the ``StructuredDiagnosis`` embedded here — the
+    same model, not a copy of it. That is what makes "the constraint and the rendered type
     cannot drift" true rather than aspirational: there is one definition, and
     ``packages/shared-types`` regenerates its TypeScript from this schema.
 
     Attributes:
         session_id: The conversation this turn belongs to.
-        answer: Prose form of the answer, with resolved citations.
+        answer: Prose form of the answer, with resolved citations. Absent on a
+            refusal — a required-but-empty answer object would be one more
+            thing the frontend has to inspect before deciding what to show.
         diagnosis: The structured form, when the model produced schema-valid
             output. ``None`` on a refusal, which is the only case where the
             frontend renders the refusal template instead of the card.
@@ -69,7 +77,7 @@ class DiagnosticResponse(BaseModel):
     """
 
     session_id: str
-    answer: VerifiedAnswer
+    answer: VerifiedAnswer | None = None
     diagnosis: StructuredDiagnosis | None = None
     confidence: ConfidenceBreakdown
     low_confidence: bool
@@ -93,6 +101,13 @@ class DiagnosticResponse(BaseModel):
             raise ValueError("a response cannot both diagnose and refuse")
         if self.diagnosis is None and not refusing:
             raise ValueError("a response with no diagnosis must carry a refusal message")
+        # Both forms of the answer travel together or not at all. A diagnosis
+        # with no prose, or prose with no diagnosis, leaves the frontend
+        # deciding which half to render.
+        if self.diagnosis is not None and self.answer is None:
+            raise ValueError("a diagnosing response must carry its prose answer")
+        if self.diagnosis is None and self.answer is not None:
+            raise ValueError("a refusing response must not carry an answer")
         return self
 
 

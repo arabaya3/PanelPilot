@@ -115,11 +115,42 @@ def test_a_blank_refusal_message_does_not_count_as_refusing(blank: str) -> None:
 
 
 def test_a_refusal_response_is_valid() -> None:
+    """A refusal carries neither form of the answer, only the message."""
     response = DiagnosticResponse(
         session_id="s1",
-        answer=_verified(),
         refusal_message="No verified source covers that fault code.",
         confidence=_confidence(),
         low_confidence=True,
     )
     assert response.diagnosis is None
+    assert response.answer is None
+
+
+def test_a_refusal_cannot_smuggle_prose_past_the_missing_diagnosis() -> None:
+    """Otherwise the frontend renders an unvalidated answer under a refusal."""
+    with pytest.raises(ValidationError, match="must not carry an answer"):
+        DiagnosticResponse(
+            session_id="s1",
+            answer=_verified(),
+            refusal_message="No verified source covers that fault code.",
+            confidence=_confidence(),
+            low_confidence=True,
+        )
+
+
+def test_a_diagnosis_must_bring_its_prose_answer() -> None:
+    """Both forms travel together; one without the other is half a response."""
+    with pytest.raises(ValidationError, match="must carry its prose answer"):
+        DiagnosticResponse(
+            session_id="s1",
+            diagnosis=_structured(),
+            confidence=_confidence(),
+            low_confidence=False,
+        )
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_verified_answer_cannot_be_blank_prose(blank: str) -> None:
+    """Same reason the structured summary cannot: it renders as an empty card."""
+    with pytest.raises(ValidationError):
+        VerifiedAnswer(text=blank, citations=[])
