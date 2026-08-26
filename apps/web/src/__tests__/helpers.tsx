@@ -20,14 +20,19 @@ export const MESSAGES: Record<Locale, Record<string, unknown>> = { en, ar, he };
 
 export function renderApp(
   ui: ReactNode,
-  { theme, locale = 'en' }: { theme?: Theme; locale?: Locale } = {},
+  { theme, locale }: { theme?: Theme; locale?: Locale } = {},
 ) {
-  // `theme` is deliberately not defaulted. Passing `initialTheme` pins the
-  // theme and bypasses the stored preference, so a helper that always passed
-  // one would quietly disable the storage-restore tests — they would render,
-  // assert, and pass against a provider that never read storage at all.
+  // Neither `theme` nor `locale` is defaulted, and that is the whole point of
+  // this helper's signature.
+  //
+  // Both providers treat an explicit initial value as "the caller has decided"
+  // and take an early return before reading storage. A helper that quietly
+  // supplied one would therefore disable every storage-restore test — they
+  // would render, assert, and pass green against a provider that never read
+  // storage at all. Passing nothing means a test gets the real startup path,
+  // which is also the only path the running application ever takes.
   return render(
-    <LocaleProvider messages={MESSAGES} initialLocale={locale}>
+    <LocaleProvider messages={MESSAGES} {...(locale ? { initialLocale: locale } : {})}>
       {theme ? (
         <ThemeProvider initialTheme={theme}>{ui}</ThemeProvider>
       ) : (

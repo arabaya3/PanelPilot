@@ -31,6 +31,14 @@ const SKIPPED_DIRECTORIES = new Set(['node_modules', '.next', 'dist', 'coverage'
 const SKIPPED_FILES = new Set(['check-logical-properties.mjs']);
 
 /**
+ * A Tailwind scale value: `4`, `0.5`, `px`, `auto`, `full`, or an arbitrary
+ * `[3px]`. Spelled out once because getting it wrong is quiet — the earlier
+ * `\d+` matched only the `ml-0` of `ml-0.5`, so the rule fired but the error
+ * named a class that did not appear in the file.
+ */
+const SCALE = String.raw`(?:\d+(?:\.\d+)?|px|auto|full|\[[^\]]+\])`;
+
+/**
  * Physical properties and their logical replacements.
  *
  * Class names are matched with a boundary on both sides so `ml-4` is a hit and
@@ -38,16 +46,43 @@ const SKIPPED_FILES = new Set(['check-logical-properties.mjs']);
  * word "left" in prose does not fire.
  */
 const FORBIDDEN = [
-  { pattern: /\b(?:ml|mr)-(?:\d+|px|auto)\b/g, use: 'ms-* / me-*' },
-  { pattern: /\b(?:pl|pr)-(?:\d+|px)\b/g, use: 'ps-* / pe-*' },
+  { pattern: new RegExp(String.raw`\b(?:ml|mr)-${SCALE}`, 'g'), use: 'ms-* / me-*' },
+  { pattern: new RegExp(String.raw`\b(?:pl|pr)-${SCALE}`, 'g'), use: 'ps-* / pe-*' },
+  // Positioning. `left-0` on an RTL layout pins an element to the wrong edge
+  // of the screen — one of the two failures that actually bites in practice.
+  { pattern: new RegExp(String.raw`\b(?:left|right)-${SCALE}`, 'g'), use: 'start-* / end-*' },
   { pattern: /\btext-(?:left|right)\b/g, use: 'text-start / text-end' },
+  // The other one that bites: a floated element flips side with direction.
+  { pattern: /\b(?:float|clear)-(?:left|right)\b/g, use: 'float-start / float-end' },
   { pattern: /\b(?:border|rounded)-[lr]\b/g, use: 'border-s|e / rounded-s|e' },
+  // Corner radii. These matter for the chat bubbles this UI is heading toward:
+  // a bubble with one square corner marks the speaker, and in RTL it marks the
+  // wrong one.
+  { pattern: /\brounded-(?:tl|tr|bl|br)\b/g, use: 'rounded-ss|se|es|ee' },
+  { pattern: /\borigin-(?:top-|bottom-)?(?:left|right)\b/g, use: 'a logical origin' },
   {
     pattern: /(?:^|[;{])\s*(?:margin|padding)-(?:left|right)\s*:/g,
     use: '-inline-start / -inline-end',
   },
   { pattern: /(?:^|[;{])\s*border-(?:left|right)(?:-[a-z]+)?\s*:/g, use: 'border-inline-*' },
+  { pattern: /(?:^|[;{])\s*(?:left|right)\s*:/g, use: 'inset-inline-start / -end' },
+  { pattern: /(?:^|[;{])\s*float\s*:\s*(?:left|right)\b/g, use: 'float: inline-start / end' },
+  {
+    pattern: /(?:^|[;{])\s*border-(?:top|bottom)-(?:left|right)-radius\s*:/g,
+    use: 'border-*-*-radius logical form',
+  },
+  {
+    pattern: /(?:^|[;{])\s*scroll-(?:margin|padding)-(?:left|right)\s*:/g,
+    use: '-inline-start / -inline-end',
+  },
   { pattern: /(?:^|[;{])\s*text-align\s*:\s*(?:left|right)\b/g, use: 'text-align: start / end' },
+  // Inline styles bypass every class-name rule above, and a camelCase
+  // `marginLeft` in a style object is the easiest way to reintroduce exactly
+  // what this script exists to prevent.
+  {
+    pattern: /\b(?:margin|padding|border)(?:Left|Right)[A-Za-z]*\s*:/g,
+    use: 'the Inline-start/end form',
+  },
 ];
 
 /**

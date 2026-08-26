@@ -96,9 +96,24 @@
   /* The three families load via next/font and arrive as these variables.
    * They share a design and an x-height, so switching language changes the
    * words without shifting the page's rhythm — a fallback with different
-   * metrics makes every switch look like a layout bug. */
+   * metrics makes every switch look like a layout bug.
+   *
+   * The script-specific faces come FIRST, and the order is load-bearing.
+   * next/font expands each variable to two families, not one:
+   *
+   *   --font-noto-sans: "Noto Sans", "Noto Sans Fallback"
+   *
+   * where the generated "…Fallback" is `local("Arial")` with metric
+   * overrides — and, unlike the real face, it carries no unicode-range. Arial
+   * has Arabic and Hebrew glyphs. So with Latin first, an Arabic character
+   * never reaches var(--font-noto-arabic): it matches Arial inside the Latin
+   * variable's own expansion and renders there. Arabic in Arial is legible,
+   * which is exactly why this would have shipped unnoticed.
+   *
+   * Leading with the Arabic and Hebrew faces costs Latin text nothing — those
+   * faces' unicode-ranges cover Latin too, from the same Noto design. */
   --font-sans:
-    var(--font-noto-sans), var(--font-noto-arabic), var(--font-noto-hebrew), system-ui,
+    var(--font-noto-arabic), var(--font-noto-hebrew), var(--font-noto-sans), system-ui,
     -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;

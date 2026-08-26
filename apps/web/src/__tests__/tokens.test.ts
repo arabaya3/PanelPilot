@@ -39,7 +39,11 @@ function parseTheme(selector: string): Record<string, string> {
   if (start === -1) throw new Error(`no ${selector} block in tokens.css`);
   const open = tokensSource.indexOf('{', start);
   const close = tokensSource.indexOf('\n}', open);
-  const body = tokensSource.slice(open, close);
+  // Comments are stripped before parsing. A comment that *documents* a token
+  // (`--font-noto-sans: "Noto Sans", …`) otherwise parses as a declaration and
+  // shadows the real one — which is a confusing way for a test to fail, since
+  // the stylesheet is correct and only the reader of it is wrong.
+  const body = tokensSource.slice(open, close).replace(/\/\*[\s\S]*?\*\//g, '');
 
   const found: Record<string, string> = {};
   for (const match of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
@@ -169,6 +173,20 @@ describe('tokens.css', () => {
       expect(layoutSource, `layout.tsx never defines the ${script} face`).toContain(
         `--font-noto-${script}`,
       );
+    }
+
+    // Order, not just presence — this is the part a substring check misses.
+    // next/font expands each variable to `"Noto Sans", "Noto Sans Fallback"`,
+    // and the generated fallback is `local("Arial")` with no unicode-range.
+    // Arial has Arabic and Hebrew glyphs, so a Latin-first stack swallows RTL
+    // text into Arial and never reaches the script face. Legible, and wrong.
+    const latin = stack.indexOf('var(--font-noto-sans)');
+    for (const script of ['arabic', 'hebrew']) {
+      const index = stack.indexOf(`var(--font-noto-${script})`);
+      expect(
+        index,
+        `--font-noto-${script} must precede --font-noto-sans, or Arial wins`,
+      ).toBeLessThan(latin);
     }
   });
 });

@@ -1,7 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { renderApp } from './helpers';
 
 import { DiagnosisSample } from '@/components/diagnosis-sample';
 import { LangSwitcher } from '@/components/lang-switcher';
@@ -158,11 +160,10 @@ describe('message bundles', () => {
     );
   }
 
-  it.each(bundles)('%s defines exactly the same keys as English', (locale, bundle) => {
+  it.each(bundles)('%s defines exactly the same keys as English', (_locale, bundle) => {
     // A missing key renders as the key itself — visible, ugly, and shipped.
     // An extra key is a translation of something that no longer exists.
     expect(keyPaths(bundle).sort()).toEqual(keyPaths(en).sort());
-    expect(locale).toBeTruthy();
   });
 
   it.each(bundles)('%s keeps every placeholder', (locale, bundle) => {
@@ -236,6 +237,36 @@ describe('LangSwitcher', () => {
     }
   });
 
+  it('switches the document direction when a language is chosen', () => {
+    // The gap this closes: every other direction test passes `initialLocale`
+    // straight to the provider, which is the one path the running application
+    // never takes — in the real layout `initialLocale` is undefined. The
+    // switcher's onChange could be gutted to a no-op and the whole suite still
+    // passed. This is the control the entire acceptance criterion is reached
+    // through, so it is exercised end to end: choose Arabic, and the document
+    // must actually flip.
+    renderApp(<LangSwitcher />);
+    expect(document.documentElement.getAttribute('dir')).toBe('ltr');
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ar' } });
+
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+    expect(document.documentElement.getAttribute('lang')).toBe('ar');
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('ar');
+  });
+
+  it('still switches when storage cannot be written', () => {
+    // Losing the choice on reload is a smaller failure than a switcher that
+    // visibly does nothing.
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage full');
+    });
+    renderApp(<LangSwitcher />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'he' } });
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+    vi.restoreAllMocks();
+  });
+
   it('throws when used outside a provider', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
     function Bare() {
@@ -247,38 +278,54 @@ describe('LangSwitcher', () => {
   });
 });
 
-// --- logical properties -----------------------------------------------------
+// --- the stored preference --------------------------------------------------
 
-describe('layout direction', () => {
-  it('uses no physical direction properties in components', () => {
-    // Asserted here as well as in the build script, so the rule survives
-    // someone removing the script from `lint`. A `margin-left` does not flip
-    // under dir="rtl", and the bug surfaces as "the spacing looks odd" long
-    // after whoever wrote it moved on.
-    const sources = ['src/components', 'src/app'].flatMap((directory) =>
-      collectSources(resolve(process.cwd(), directory)),
-    );
-    const offenders: string[] = [];
-    for (const { path, text } of sources) {
-      for (const match of text.matchAll(/\b(?:ml|mr|pl|pr)-(?:\d+|px|auto)\b/g)) {
-        offenders.push(`${path}: ${match[0]}`);
-      }
-    }
-    expect(offenders).toEqual([]);
+describe('restoring a stored locale', () => {
+  // Rendered without `initialLocale` throughout — with it, the provider takes
+  // an early return and never reads storage at all, so a suite that always
+  // passed one would leave every line below untested.
+
+  it('restores a persisted choice', () => {
+    // A preference, not a session detail. Someone who set Arabic once should
+    // not set it again on every visit.
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'ar');
+    renderApp(<DiagnosisSample />);
+    expect(document.documentElement.getAttribute('lang')).toBe('ar');
+    expect(document.documentElement.getAttribute('dir')).toBe('rtl');
+  });
+
+  it('ignores a corrupted stored value', () => {
+    // Storage is shared with everything else on the origin and survives
+    // deploys. A junk value must not render an unreadable page.
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'klingon');
+    renderApp(<DiagnosisSample />);
+    expect(document.documentElement.getAttribute('lang')).toBe(DEFAULT_LOCALE);
+  });
+
+  it('falls back to the default when storage throws', () => {
+    // Private browsing and blocked cookies both land here; neither is a
+    // reason to fail to render.
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    renderApp(<DiagnosisSample />);
+    expect(document.documentElement.getAttribute('lang')).toBe(DEFAULT_LOCALE);
+    vi.restoreAllMocks();
   });
 });
 
-function collectSources(directory: string): { path: string; text: string }[] {
-  const out: { path: string; text: string }[] = [];
-  for (const entry of readdirSync(directory)) {
-    const full = resolve(directory, entry);
-    if (statSync(full).isDirectory()) {
-      out.push(...collectSources(full));
-      continue;
-    }
-    if (entry.endsWith('.tsx') || entry.endsWith('.css')) {
-      out.push({ path: entry, text: readFileSync(full, 'utf8') });
-    }
-  }
-  return out;
-}
+// --- logical properties -----------------------------------------------------
+
+describe('layout direction', () => {
+  it('is enforced by the check script rather than duplicated here', () => {
+    // This used to re-implement the narrowest of the script's seven patterns,
+    // which meant it inherited every gap the script had and caught nothing the
+    // script did not. `npm run lint` runs `check-logical-properties.mjs` over
+    // the whole workspace; asserting it is wired in is the useful check.
+    const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.lint).toContain('check:logical');
+    expect(pkg.scripts['check:logical']).toContain('check-logical-properties.mjs');
+  });
+});
