@@ -1,0 +1,45 @@
+/**
+ * Global styles. Tokens first, then Tailwind, then the few base rules that
+ * are genuinely global rather than component-level.
+ */
+
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Both themes need a defined ground: a transparent body borrows whatever
+     * the browser or an embedding page decides, which in dark mode is white. */
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  /* A visible focus ring on every interactive element, in both themes. An
+   * engineer wearing gloves navigates by keyboard far more than a designer at
+   * a desk assumes, and `outline: none` is how that becomes impossible. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    /* The offset is drawn in its own colour rather than left transparent, so
+     * the ring stays visible on the accent button — see the focus tokens. */
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--color-focus-offset);
+  }
+
+  /* Technical values are transcribed by hand into a keypad. A proportional
+   * font makes 0/O and 1/l ambiguous at exactly the moment that matters. */
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+}

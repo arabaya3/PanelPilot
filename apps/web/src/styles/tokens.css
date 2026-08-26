@@ -1,0 +1,151 @@
+/**
+ * The single source of visual truth.
+ *
+ * Every colour, space and size in the product resolves to a variable declared
+ * here. This is the one file permitted to contain a raw hex value, and CI
+ * fails the build if one appears anywhere else — twenty people cannot hold a
+ * palette in their heads, and "just this once" is how a design system dies.
+ *
+ * Tokens are named for their ROLE, never their appearance. `--color-surface`
+ * survives a redesign; `--color-light-grey` becomes a lie the moment dark mode
+ * ships, and nobody renames it because forty components reference it.
+ *
+ * Dark mode redefines the same variables rather than introducing new ones, so
+ * a component written once works in both themes without knowing which is
+ * active.
+ */
+
+:root {
+  /* --- Surfaces and text ------------------------------------------------ */
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f1f5f9;
+  /* 4.8:1 on surface. A border separating two cards is a UI component
+   * boundary, so 3:1 applies — the first version scored 1.48:1, which is a
+   * suggestion of an edge rather than an edge. */
+  --color-border: #64748b;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+
+  /* --- Severity ---------------------------------------------------------
+   * Three levels, no more. A diagnostic card maps each to exactly one of
+   * these, so an engineer learns the colour once.
+   *
+   * Every pairing in this file is measured rather than eyeballed, and the
+   * numbers are asserted in src/__tests__/tokens.test.ts so a future edit
+   * that breaks one fails the build. A warning nobody can read on a phone in
+   * a plant room is not a warning.
+   */
+  --color-severity-critical: #b91c1c;
+  --color-severity-warning: #b45309;
+  --color-severity-info: #1d4ed8;
+
+  --color-severity-critical-surface: #fef2f2;
+  --color-severity-warning-surface: #fffbeb;
+  --color-severity-info-surface: #eff6ff;
+
+  /* --- Accent ----------------------------------------------------------- */
+  --color-accent: #0f766e;
+  --color-accent-hover: #115e59;
+  --color-accent-contrast: #ffffff;
+
+  /* --- Focus -------------------------------------------------------------
+   * Two tokens, not one, because no single colour works.
+   *
+   * A focus ring has to be visible against the page AND against the element
+   * it surrounds — including the accent-coloured primary button. Nothing
+   * clears 3:1 against both: the first version used a blue that scored
+   * 1.06:1 on accent, which is invisible, on a ring an engineer wearing
+   * gloves depends on.
+   *
+   * So the ring is drawn in --color-focus with a --color-focus-offset gap
+   * between it and the element. Whichever the ring is touching, one of the
+   * two separates it: measured 19.8:1 ring-on-offset, 5.5:1 offset-on-accent
+   * and 18.9:1 ring-on-background in light; 17.9 / 9.6 / 14.6 in dark.
+   */
+  --color-focus: #0c0a09;
+  --color-focus-offset: #ffffff;
+
+  /* --- Spacing, on a 4px base -------------------------------------------
+   * A base rather than arbitrary values, so vertical rhythm survives
+   * components written by different people in different weeks.
+   */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* --- Type scale -------------------------------------------------------- */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.5rem;
+  --font-size-2xl: 2rem;
+
+  /* --- Families ----------------------------------------------------------
+   * The mono stack is not decorative. Fault codes, parameter numbers and
+   * measured values are transcribed by hand into a keypad, and a
+   * proportional font makes 0/O and 1/l ambiguous at exactly the moment
+   * that matters.
+   */
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+    'Noto Sans Arabic', 'Noto Sans Hebrew', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* --- Radii and elevation ----------------------------------------------- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.1);
+}
+
+/**
+ * Dark mode.
+ *
+ * Selected by a `data-theme="dark"` attribute on the root element rather than
+ * by `prefers-color-scheme`, so the choice is the user's and survives a page
+ * load. A plant room at night and a plant room at noon are different places;
+ * the operating system's guess about which one someone is in is often wrong.
+ *
+ * Severity colours are lightened rather than reused: the light-mode reds meet
+ * contrast on white and fail on near-black, and a critical warning that reads
+ * as a smudge is worse than no colour at all.
+ */
+:root[data-theme='dark'] {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-raised: #334155;
+  --color-border: #94a3b8;
+  --color-text: #f1f5f9;
+  /* 9.9:1 on surface and 7.0:1 on surface-raised. The first version cleared
+   * AA on surface and scored 4.04:1 on raised — the contrast claim above was
+   * checked against one surface and not the other. */
+  --color-text-muted: #cbd5e1;
+
+  --color-severity-critical: #fca5a5;
+  --color-severity-warning: #fcd34d;
+  --color-severity-info: #93c5fd;
+
+  --color-severity-critical-surface: #450a0a;
+  --color-severity-warning-surface: #451a03;
+  --color-severity-info-surface: #172554;
+
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-contrast: #042f2e;
+
+  --color-focus: #ffffff;
+  --color-focus-offset: #0f172a;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+}

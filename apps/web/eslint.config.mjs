@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import js from '@eslint/js';
 import nextPlugin from '@next/eslint-plugin-next';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +64,14 @@ export default tseslint.config(
   {
     files: ['**/*.{js,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
+  },
+
+  // Build scripts run under Node, not in a browser. Without this the default
+  // browser globals apply and `process`, `console` and `URL` all read as
+  // undefined — which would be a real error in `src/` and is noise here.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node } },
   },
 
   // Must stay last: turns off stylistic rules Prettier owns.
