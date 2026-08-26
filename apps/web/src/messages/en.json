@@ -41,5 +41,26 @@
     "uncertainNoSources": "There is not enough supporting evidence to give steps for this. Check the equipment documentation before acting.",
     "refusalHeading": "No answer given",
     "refusalFallback": "This question could not be answered from the available documentation."
+  },
+  "chat": {
+    "empty": "Describe the fault you are seeing.",
+    "transcript": "Diagnostic conversation",
+    "youAsked": "You asked:",
+    "inputLabel": "Describe the fault",
+    "placeholder": "e.g. ACS880 tripping on undervoltage at start",
+    "send": "Send",
+    "stop": "Stop",
+    "stage": {
+      "retrieving": "Searching the documentation…",
+      "generated": "Preparing the answer…",
+      "refused": "Checking the sources…"
+    },
+    "failed": {
+      "heading": "This answer did not finish",
+      "connection-lost": "The connection dropped before the answer was complete. Nothing shown is missing — there is no partial answer to read.",
+      "aborted": "You stopped this answer.",
+      "malformed-frame": "The answer arrived damaged and was discarded rather than shown in part.",
+      "server-error": "The server could not start this answer."
+    }
   }
 }
