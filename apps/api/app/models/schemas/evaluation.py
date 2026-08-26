@@ -76,13 +76,24 @@ class EvalEntry(BaseModel):
             makes past results unreadable.
         query: What the engineer asks.
         category: Why this entry exists.
-        expected_answer_summary: The substance the answer must contain,
-            checked as required key phrases rather than as prose equality —
-            see ``required_phrases``.
+        expected_answer_summary: The substance the answer should contain, in
+            prose. **Documentation, not the assertion** — it is what an
+            engineer reads when an entry fails. Prose equality against a
+            generated answer is unscorable, so the checkable assertion lives
+            in ``required_phrases``.
         required_phrases: Phrases that must all appear in the answer. This is
-            the actual assertion; ``expected_answer_summary`` is for the human
-            reading a failure. Empty only for ``OUT_OF_SCOPE`` entries, where
-            the correct behaviour is to produce no answer at all.
+            what actually gets checked.
+
+            The cost of this design is real and worth stating: a human writing
+            an entry must hand-pick these, and a badly chosen phrase is itself
+            a false pass — too generic and it matches any answer, too specific
+            and it fails on harmless rewording. The schema can only reject
+            *zero* phrases and *duplicate* phrases; it cannot tell a good
+            phrase from a weak one. Pick phrases that are load-bearing to the
+            answer being correct, not merely present in it.
+
+            Empty only for ``OUT_OF_SCOPE`` entries, where the correct
+            behaviour is to produce no answer at all.
         expected_citation: The source the answer must cite. ``None`` only for
             ``OUT_OF_SCOPE``.
         brand: Optional manufacturer filter the query should be run with.

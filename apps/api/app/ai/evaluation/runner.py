@@ -7,6 +7,13 @@ it was built to catch ships anyway. So the rules here are deliberately strict
 and deliberately dumb — no fuzzy matching, no partial credit, no "close
 enough". An entry passes when every assertion holds and fails otherwise.
 
+Strict here means more than "not fuzzy". A bare substring test is *generous*:
+it matches inside longer words, across sentence boundaries, and — worst —
+inside negations, so "do not extend the acceleration time" would satisfy a
+requirement for "acceleration time" while saying the opposite. Phrases are
+therefore matched at word boundaries, within one sentence, and only outside a
+negated clause.
+
 **Citation correctness is checked separately from answer correctness**, and a
 right answer resting on the wrong source fails. An engineer who follows a
 correct-sounding procedure to the wrong page of the wrong manual is in exactly
@@ -25,6 +32,7 @@ before it is trusted to gate anything.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 
@@ -45,12 +53,16 @@ Pipeline = Callable[[EvalEntry], PipelineAnswer]
 def _normalise(text: str) -> str:
     """Fold text for phrase comparison.
 
-    Case and surrounding whitespace are not meaningful differences in an
-    answer, and NFKC folding keeps a phrase from missing because the model
-    emitted a non-breaking space or a full-width character. Nothing beyond
-    that: stemming or synonym matching would let "do not de-energise" satisfy
-    a phrase requiring "de-energise", which is the generosity this scorer
-    exists to avoid.
+    Case is not a meaningful difference in an answer, and NFKC folding keeps a
+    phrase from missing because the model emitted a full-width character, a
+    ligature, or a non-breaking space. Runs of spaces and tabs collapse,
+    because line wrapping is not a regression.
+
+    Sentence and paragraph breaks are deliberately **preserved** as a marker
+    rather than flattened to a space. Collapsing them lets a required phrase
+    be satisfied by two fragments that merely abut across a paragraph break —
+    text a human reads as two unrelated statements. Nothing beyond this:
+    stemming or synonym matching would decide for itself what an answer meant.
 
     Args:
         text: Raw text.
@@ -58,21 +70,96 @@ def _normalise(text: str) -> str:
     Returns:
         The folded form used for comparison.
     """
-    return " ".join(unicodedata.normalize("NFKC", text).casefold().split())
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    # A PARAGRAPH break becomes a sentinel no phrase can contain, so a match
+    # cannot silently span two unrelated statements. A single newline is only
+    # line wrapping and collapses like any other space — treating it as a
+    # boundary would fail a correct answer for where the text happened to wrap.
+    folded = re.sub(r"\n[^\S\n]*\n\s*", "\x00", folded)
+    return re.sub(r"[^\S\x00]+", " ", folded).strip()
+
+
+# A phrase must land on word boundaries. Without this, "deceleration" matches
+# inside "decelerationtimer" and "acceleration time" matches inside
+# "acceleration timezone" — a scorer that accepts either is passing answers no
+# engineer would accept.
+def _phrase_pattern(phrase: str) -> re.Pattern[str]:
+    """Build a word-boundary-anchored pattern for one phrase.
+
+    Args:
+        phrase: The normalised required phrase.
+
+    Returns:
+        A compiled pattern matching the phrase only at word boundaries.
+    """
+    escaped = re.escape(phrase)
+    # `\b` only asserts a boundary next to a word character. A phrase starting
+    # or ending in punctuation ("30 A." ) has none there, so the assertion is
+    # applied conditionally at each end rather than unconditionally.
+    prefix = r"\b" if phrase[:1].isalnum() or phrase[:1] == "_" else ""
+    suffix = r"\b" if phrase[-1:].isalnum() or phrase[-1:] == "_" else ""
+    return re.compile(f"{prefix}{escaped}{suffix}")
+
+
+# Words that reverse the meaning of what follows them. A phrase matched inside
+# one of these clauses is the opposite of the expected answer, and counting it
+# as a pass is worse than counting nothing: it certifies a dangerous answer.
+_NEGATIONS = (
+    "do not",
+    "does not",
+    "must not",
+    "never",
+    "no need to",
+    "without",
+    "avoid",
+    "rather than",
+    "instead of",
+)
+
+
+def _is_negated(answer: str, start: int) -> bool:
+    """Report whether a match at ``start`` sits inside a negated clause.
+
+    Args:
+        answer: The normalised answer.
+        start: Index where the phrase matched.
+
+    Returns:
+        ``True`` if a negation appears between the start of the match's clause
+        and the match itself. Scoped to the clause — a negation three sentences
+        earlier does not negate this one, and treating it as though it did
+        would fail correct answers.
+    """
+    clause_start = max(
+        (answer.rfind(marker, 0, start) for marker in ("\x00", ". ", "; ", ", ")),
+        default=-1,
+    )
+    clause = answer[clause_start + 1 : start]
+    return any(marker in clause for marker in _NEGATIONS)
 
 
 def _missing_phrases(answer: str, required: Iterable[str]) -> list[str]:
-    """Find required phrases absent from an answer.
+    """Find required phrases absent from — or negated within — an answer.
+
+    A phrase must appear at word boundaries, within a single sentence, and not
+    inside a negated clause. "Do not extend the acceleration time" does not
+    satisfy a requirement for "acceleration time": it says the opposite, and a
+    scorer that passes it certifies exactly the answer that would hurt someone.
 
     Args:
         answer: The pipeline's answer text.
         required: Phrases that must all appear.
 
     Returns:
-        The phrases that did not appear, in the order they were required.
+        The phrases that did not genuinely appear, in the order required.
     """
     folded = _normalise(answer)
-    return [phrase for phrase in required if _normalise(phrase) not in folded]
+    missing = []
+    for phrase in required:
+        pattern = _phrase_pattern(_normalise(phrase))
+        if not any(not _is_negated(folded, m.start()) for m in pattern.finditer(folded)):
+            missing.append(phrase)
+    return missing
 
 
 def _citation_satisfied(expected: ExpectedCitation, actual: Sequence[ExpectedCitation]) -> bool:
@@ -182,6 +269,8 @@ def run_eval_set(
             without a live corpus — the spec requires the runner itself be
             proven correct before it gates anything.
         corpus_brands: Brands present in the corpus, for coverage reporting.
+            Defaults to empty, which reports no gaps — pass the real list, or
+            the coverage check certifies nothing while looking clean.
 
     Returns:
         The run, including any brands the set does not cover.
@@ -225,12 +314,19 @@ def find_coverage_gaps(entries: Sequence[EvalEntry], corpus_brands: Iterable[str
 
     Args:
         entries: The eval set.
-        corpus_brands: Brands present in the corpus.
+        corpus_brands: Brands present in the corpus. Pass the real list — an
+            empty one reports no gaps, which reads identically to full
+            coverage.
 
     Returns:
         Sorted brands the set does not cover. As brand coverage expands the
         set must expand with it — a brand with zero entries is one where a
         regression ships without anything going red.
+
+        ``brand`` is optional on an entry, so a set whose entries all omit it
+        reports *every* corpus brand as a gap. That is deliberate: an entry
+        that does not say which brand it covers cannot be credited to one, and
+        a loud false alarm is recoverable where a silent gap is not.
     """
     covered = {e.brand.casefold() for e in entries if e.brand}
     return sorted(b for b in corpus_brands if b.casefold() not in covered)

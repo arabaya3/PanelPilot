@@ -188,13 +188,93 @@ def test_phrase_matching_folds_unicode_width_and_spacing() -> None:
 
 
 def test_phrase_matching_does_not_stem_or_infer() -> None:
-    """Deliberately dumb.
-
-    Stemming would let "do not de-energise" satisfy a phrase requiring
-    "de-energise" — a negation the scorer must never paper over.
-    """
-    assert _missing_phrases("Do not de-energise the panel.", ["energise the panel"]) == []
+    """Deliberately dumb: a related word is not the required phrase."""
     assert _missing_phrases("accelerating", ["acceleration time"]) == ["acceleration time"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Do not extend the acceleration time.",
+        "Do NOT extend the acceleration time.",
+        "Never extend the acceleration time.",
+        "Reduce the load rather than extend the acceleration time.",
+        "Fix the coupling instead of the acceleration time.",
+        "The fault clears without the acceleration time change.",
+    ],
+)
+def test_a_negated_phrase_does_not_satisfy_a_requirement(answer: str) -> None:
+    """An answer saying the opposite must not score as correct.
+
+    This is the whole reason the scorer is not a substring test. "Do not
+    extend the acceleration time" contains the required phrase and means the
+    reverse of the expected answer — passing it would certify precisely the
+    advice that gets someone hurt.
+    """
+    assert _missing_phrases(answer, ["acceleration time"]) == ["acceleration time"]
+
+
+def test_a_negation_in_an_earlier_clause_does_not_poison_a_later_one() -> None:
+    """Scoped to the clause, or correct answers would fail.
+
+    "Do not skip step 1. Extend the acceleration time." is a correct answer
+    that happens to contain a negation earlier in the paragraph.
+    """
+    answer = "Do not skip step 1. Extend the acceleration time."
+    assert _missing_phrases(answer, ["acceleration time"]) == []
+
+
+def test_a_negated_mention_does_not_mask_a_genuine_one() -> None:
+    """One real occurrence is enough, even alongside a negated one."""
+    answer = "Do not shorten the acceleration time; extend the acceleration time instead."
+    assert _missing_phrases(answer, ["acceleration time"]) == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "phrase"),
+    [
+        ("The decelerationtimer failed.", "deceleration"),
+        ("Check the acceleration timezone setting.", "acceleration time"),
+        ("Inspect the subcontactor.", "contactor"),
+    ],
+)
+def test_a_phrase_inside_a_longer_word_does_not_count(answer: str, phrase: str) -> None:
+    """Substring matching would accept every one of these.
+
+    "decelerationtimer" is not "deceleration", and an answer about a timezone
+    is not an answer about acceleration time.
+    """
+    assert _missing_phrases(answer, [phrase]) == [phrase]
+
+
+def test_a_phrase_cannot_be_assembled_across_a_paragraph_break() -> None:
+    """Two unrelated statements that happen to abut are not one statement."""
+    answer = "Reduce the load.\n\nInertia is measured separately."
+    assert _missing_phrases(answer, ["load. inertia"]) == ["load. inertia"]
+
+
+def test_a_wrapped_line_still_matches() -> None:
+    """Where the text happened to wrap is not a regression.
+
+    The paragraph rule must not become "any newline blocks a match", which
+    would fail correct answers for their formatting.
+    """
+    assert _missing_phrases("Extend the acceleration\ntime.", ["acceleration time"]) == []
+
+
+def test_a_phrase_ending_in_punctuation_still_matches() -> None:
+    """Word-boundary anchoring must not require a word character at each end."""
+    assert _missing_phrases("Set the limit to 30 A.", ["30 a."]) == []
+
+
+def test_nfkc_folding_is_applied() -> None:
+    """A ligature or full-width character must not read as a missing phrase.
+
+    Whitespace collapsing alone would not catch these — this is the assertion
+    that actually exercises NFKC, which the earlier NBSP case did not.
+    """
+    assert _missing_phrases("The in\ufb01nite bus impedance.", ["infinite"]) == []
+    assert _missing_phrases("Rated \uff13\uff10 A.", ["30 a"]) == []
 
 
 def test_every_required_phrase_must_appear() -> None:
