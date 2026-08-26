@@ -5,10 +5,17 @@ import type { ReactElement } from 'react';
  *
  * This exists because the palette measurably fails on its own. Simulating the
  * three severity colours through the common deficiencies (Brettel/Viénot LMS,
- * CIE76 distance) puts **critical against warning at ΔE 6 under deuteranopia**
- * in the light theme — indistinguishable, for roughly one man in sixteen, in
- * exactly the pair where confusing the two matters most. Under tritanopia the
- * dark theme fares similarly at ΔE 17.
+ * CIE76 distance, Viénot's substitution) puts **critical against warning at
+ * ΔE 11 under deuteranopia** in the light theme, against ΔE 27 for normal
+ * vision — less than half the separation, for roughly one man in sixteen, in
+ * exactly the pair where confusing the two matters most.
+ *
+ * An earlier version of this comment claimed ΔE 6 and a tritanopia figure of
+ * 17. Both were wrong: the simulation used coefficients that set M ≈ L, which
+ * crushes every colour onto one yellow line, and the tritanopia number came
+ * from a script that was never in the test file. The corrected figure is
+ * still low enough that colour should not carry this alone — which is what
+ * these shapes are for — but the number is the real one now.
  *
  * So each state gets a silhouette that reads at a glance and survives being
  * rendered in grey:
@@ -40,8 +47,15 @@ import type { ReactElement } from 'react';
 export type StateShape = 'critical' | 'warning' | 'info' | 'uncertain' | 'error';
 
 const PATHS: Record<StateShape, ReactElement> = {
-  // Octagon.
-  critical: <polygon points="7,1 13,1 19,7 19,13 13,19 7,19 1,13 1,7" fill="currentColor" />,
+  // A thick X. Concave, which nothing else here is — an octagon at the 16px
+  // these actually render is a decent antialiased circle, so critical and
+  // info were near-identical silhouettes.
+  critical: (
+    <polygon
+      points="5,1 10,6 15,1 19,5 14,10 19,15 15,19 10,14 5,19 1,15 6,10 1,5"
+      fill="currentColor"
+    />
+  ),
   // Triangle, point up.
   warning: <polygon points="10,2 19,18 1,18" fill="currentColor" />,
   // Circle.

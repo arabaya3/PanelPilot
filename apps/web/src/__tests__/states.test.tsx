@@ -459,3 +459,52 @@ describe('a step carries its severity as a shape too', () => {
     }
   });
 });
+
+// --- shapes that differ on paper but not to an eye ----------------------------
+
+describe('no silhouette is a near-circle', () => {
+  /**
+   * How close a polygon comes to a circle, as the spread of its vertex radii.
+   *
+   * The earlier test only asked whether shapes *differ* as point sets, and a
+   * regular octagon differs from a circle — while rendering as one at 16px.
+   * A reviewer caught that; the mutant reverting critical to an octagon passed
+   * cleanly. What matters is not that the points differ but that the outline
+   * is visibly not round, and a regular polygon's vertices all sit at the same
+   * radius from the centre, which is exactly what makes it read as a circle
+   * once antialiasing takes the corners off.
+   */
+  function radialSpread(points: string): number {
+    const corners = points
+      .trim()
+      .split(/\s+/)
+      .map((pair) => {
+        const [x, y] = pair.split(',').map(Number);
+        return [x ?? 0, y ?? 0] as const;
+      });
+    const radii = corners.map(([x, y]) => Math.hypot(x - 10, y - 10));
+    return Math.max(...radii) - Math.min(...radii);
+  }
+
+  it('keeps critical visibly non-circular', () => {
+    // A regular octagon scores near zero here — every vertex the same distance
+    // out — which is the definition of "reads as a circle when small". The
+    // cross alternates between far corners and deep inner notches.
+    const { container } = renderApp(<StateIcon shape="critical" />);
+    const polygon = container.querySelector('polygon');
+    expect(polygon).toBeTruthy();
+    expect(
+      radialSpread(polygon?.getAttribute('points') ?? ''),
+      'critical is close to a circle and will not read as distinct from info at 16px',
+    ).toBeGreaterThan(3);
+  });
+
+  it('keeps uncertain from being another four-cornered blob', () => {
+    // The diamond it replaced was a square at 45°: a real cue, and a weak one
+    // when both are a few pixels across and these are the two "something went
+    // wrong" states. A stroked mark is a different kind of thing entirely.
+    const { container } = renderApp(<StateIcon shape="uncertain" />);
+    expect(container.querySelector('path')).toBeTruthy();
+    expect(container.querySelector('polygon')).toBeNull();
+  });
+});

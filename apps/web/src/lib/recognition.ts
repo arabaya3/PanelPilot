@@ -74,14 +74,9 @@ export type UploadFailure =
  * caller reading fields before the verdict would use it — which is why the
  * backend schema refuses that combination outright.
  */
-export function trusted(
-  result: FaultRecognitionResult,
-  field: keyof FaultRecognitionResult,
-): boolean {
+export function trusted(result: FaultRecognitionResult, field: RecognisedKey): boolean {
   if (result.verdict !== 'fault_display') return false;
-  const value = result[field];
-  if (typeof value !== 'object' || value === null) return false;
-  const recognised: RecognisedField = value;
+  const recognised = result[field];
   return recognised.value !== null && recognised.confidence >= MIN_FIELD_CONFIDENCE;
 }
 
