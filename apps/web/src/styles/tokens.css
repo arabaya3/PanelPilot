@@ -93,9 +93,13 @@
    * proportional font makes 0/O and 1/l ambiguous at exactly the moment
    * that matters.
    */
+  /* The three families load via next/font and arrive as these variables.
+   * They share a design and an x-height, so switching language changes the
+   * words without shifting the page's rhythm — a fallback with different
+   * metrics makes every switch look like a layout bug. */
   --font-sans:
-    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
-    'Noto Sans Arabic', 'Noto Sans Hebrew', sans-serif;
+    var(--font-noto-sans), var(--font-noto-arabic), var(--font-noto-hebrew), system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 

@@ -26,6 +26,9 @@ const TAILWIND_PATH = resolve(process.cwd(), 'tailwind.config.ts');
 const tokensSource = readFileSource(TOKENS_PATH);
 const tailwindSource = readFileSource(TAILWIND_PATH);
 
+/** Read so the font assertions can check both halves of the wiring. */
+const layoutSource = readFileSource(resolve(process.cwd(), 'src/app/layout.tsx'));
+
 function readFileSource(path: string): string {
   return readFileSync(path, 'utf8');
 }
@@ -154,8 +157,19 @@ describe('tokens.css', () => {
   it('names fonts covering the three supported scripts', () => {
     // Latin, Arabic and Hebrew all render in this stack. A missing fallback
     // means an Arabic answer renders in whatever the OS picks.
-    expect(token(LIGHT, '--font-sans')).toContain('Arabic');
-    expect(token(LIGHT, '--font-sans')).toContain('Hebrew');
+    //
+    // The faces arrive as `next/font` variables rather than as literal family
+    // names, so the stack is checked by variable — and the layout is checked
+    // for actually defining each one, since a stack naming a variable that
+    // nothing sets falls through to the generic fallback with no visible
+    // error at all.
+    const stack = token(LIGHT, '--font-sans');
+    for (const script of ['arabic', 'hebrew']) {
+      expect(stack, `--font-sans omits the ${script} face`).toContain(`var(--font-noto-${script})`);
+      expect(layoutSource, `layout.tsx never defines the ${script} face`).toContain(
+        `--font-noto-${script}`,
+      );
+    }
   });
 });
 

@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "PanelPilot",
+    "tagline": "Diagnostic and design copilot for electrical and control engineers."
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ar": "العربية",
+    "he": "עברית"
+  },
+  "theme": {
+    "switchTo": "Switch to {theme} mode",
+    "light": "light",
+    "dark": "dark"
+  },
+  "diagnosis": {
+    "faultDetected": "Fault <code>F0001</code> on the <model>ACS880</model> drive.",
+    "checkParameter": "Check parameter <param>21.03</param> against the supply of <volts>400 V</volts>.",
+    "severity": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Information"
+    }
+  },
+  "tokens": {
+    "title": "Design tokens",
+    "intro": "Every value below resolves to a CSS custom property."
+  }
+}

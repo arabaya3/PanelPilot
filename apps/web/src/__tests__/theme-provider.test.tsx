@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderApp } from './helpers';
+
 import {
   DEFAULT_THEME,
   THEME_STORAGE_KEY,
-  ThemeProvider,
   themeInitScript,
   useTheme,
 } from '@/components/theme-provider';
@@ -42,10 +43,11 @@ describe('ThemeProvider', () => {
     // The attribute is what both `tokens.css` and Tailwind's dark variant
     // read, so a provider that tracks state without writing it changes
     // nothing visible.
-    render(
-      <ThemeProvider initialTheme="dark">
+    renderApp(
+      <>
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
+      { theme: 'dark' },
     );
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
@@ -54,10 +56,10 @@ describe('ThemeProvider', () => {
     // A preference, not a session detail: someone who set dark mode on a
     // night shift should not set it again on the next call-out.
     window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
-    render(
-      <ThemeProvider>
+    renderApp(
+      <>
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
     );
     expect(screen.getByTestId('theme').textContent).toBe('dark');
   });
@@ -66,10 +68,10 @@ describe('ThemeProvider', () => {
     // Storage is shared with anything else on the origin and survives
     // deploys. A junk value must not render an unstyled page.
     window.localStorage.setItem(THEME_STORAGE_KEY, 'chartreuse');
-    render(
-      <ThemeProvider>
+    renderApp(
+      <>
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
     );
     expect(screen.getByTestId('theme').textContent).toBe(DEFAULT_THEME);
   });
@@ -80,10 +82,10 @@ describe('ThemeProvider', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage disabled');
     });
-    render(
-      <ThemeProvider>
+    renderApp(
+      <>
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
     );
     expect(screen.getByTestId('theme').textContent).toBe(DEFAULT_THEME);
   });
@@ -94,21 +96,23 @@ describe('ThemeProvider', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('storage full');
     });
-    render(
-      <ThemeProvider initialTheme="light">
+    renderApp(
+      <>
         <ThemeToggle />
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
+      { theme: 'light' },
     );
     fireEvent.click(screen.getByRole('button'));
     expect(screen.getByTestId('theme').textContent).toBe('dark');
   });
 
   it('persists a change', () => {
-    render(
-      <ThemeProvider initialTheme="light">
+    renderApp(
+      <>
         <ThemeToggle />
-      </ThemeProvider>,
+      </>,
+      { theme: 'light' },
     );
     fireEvent.click(screen.getByRole('button'));
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
@@ -145,29 +149,32 @@ describe('ThemeToggle', () => {
   it('names the theme it will switch to', () => {
     // "Dark mode" on an already-dark button reads as a status, and people
     // click it expecting nothing to happen.
-    render(
-      <ThemeProvider initialTheme="light">
+    renderApp(
+      <>
         <ThemeToggle />
-      </ThemeProvider>,
+      </>,
+      { theme: 'light' },
     );
     expect(screen.getByRole('button').textContent).toContain('dark');
   });
 
   it('reports its state to assistive technology', () => {
-    render(
-      <ThemeProvider initialTheme="dark">
+    renderApp(
+      <>
         <ThemeToggle />
-      </ThemeProvider>,
+      </>,
+      { theme: 'dark' },
     );
     expect(screen.getByRole('button').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('round-trips', () => {
-    render(
-      <ThemeProvider initialTheme="light">
+    renderApp(
+      <>
         <ThemeToggle />
         <ThemeReadout />
-      </ThemeProvider>,
+      </>,
+      { theme: 'light' },
     );
     const button = screen.getByRole('button');
     fireEvent.click(button);
