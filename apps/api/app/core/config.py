@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 4096
 
     # --- Retrieval / guardrails --------------------------------------------
+    # These seed RetrievalConfig, which is what the query path actually reads.
+    # They stay here because they are documented environment variables an
+    # operator may already have set; `retrieval_config_from_settings` is the
+    # one place that turns them into a config, so there is still a single
+    # value in play rather than two that can drift apart.
     retrieval_top_k: int = 12
     # Hybrid scores are normalised to [0, 1] by the search pipeline, so this
     # is a fraction of the top hit rather than a raw BM25 value.

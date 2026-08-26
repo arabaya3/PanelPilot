@@ -32,6 +32,8 @@ from app.ai.retrieval.mappings import (
     VerificationStatus,
     missing_required_fields,
 )
+from app.ai.retrieval.query_classifier import classify_query
+from app.models.schemas.retrieval_config import BlendWeights, QueryType, RetrievalConfig
 from app.models.schemas.search import SearchFilters
 
 # --- a deterministic stand-in for a real embedding model --------------------
@@ -91,10 +93,102 @@ def test_query_runs_both_legs_as_optional_clauses() -> None:
     assert body["size"] == 5
 
 
-def test_weights_favour_the_lexical_leg() -> None:
-    """Engineers search with part numbers and fault codes, which BM25 handles."""
-    assert hybrid_search.BM25_WEIGHT > hybrid_search.VECTOR_WEIGHT
-    assert pytest.approx(1.0) == hybrid_search.BM25_WEIGHT + hybrid_search.VECTOR_WEIGHT
+def test_the_default_pipeline_blend_is_a_real_blend() -> None:
+    """The named pipeline is the fallback for a search issued without a config.
+
+    It must still fuse both legs: a fallback that silently became single-leg
+    would degrade retrieval for exactly the callers who did not think about
+    tuning.
+    """
+    weights = hybrid_search.search_pipeline_body()["phase_results_processors"][0][
+        "normalization-processor"
+    ]["combination"]["parameters"]["weights"]
+    assert len(weights) == 2
+    assert all(w > 0 for w in weights)
+    assert pytest.approx(1.0) == sum(weights)
+
+
+def test_the_blend_is_conditional_on_the_query() -> None:
+    """AI-002's central change: one global weight underserves one query type.
+
+    A fault code is a literal token BM25 finds; a described symptom is not in
+    the manual's words at all and only the vector leg reaches it.
+    """
+    config = RetrievalConfig()
+    code = config.weights_for(classify_query("F0001 on the ACS880"))
+    symptom = config.weights_for(
+        classify_query("the drive trips when the conveyor starts under load")
+    )
+    assert code.bm25 > code.vector
+    assert symptom.vector > symptom.bm25
+
+
+def test_each_query_type_has_its_own_named_pipeline() -> None:
+    """Named, not inline.
+
+    Whether OpenSearch honours a body-level `search_pipeline` is
+    version-dependent and was not verifiable here; if it were ignored, every
+    query would run with no normalisation at all — the legs summed
+    un-normalised, the vector leg contributing almost nothing — while every
+    test still passed.
+    """
+    names = {hybrid_search.pipeline_name_for(t) for t in QueryType}
+    assert len(names) == len(QueryType), "each query type needs its own pipeline"
+    assert all(name.startswith(hybrid_search.SEARCH_PIPELINE) for name in names)
+
+
+def test_a_pipeline_body_carries_its_blend() -> None:
+    body = hybrid_search.blend_pipeline_body(BlendWeights(bm25=0.85, vector=0.15))
+    parameters = body["phase_results_processors"][0]["normalization-processor"]["combination"][
+        "parameters"
+    ]
+    assert parameters["weights"] == [0.85, 0.15]
+
+
+def test_every_pipeline_a_query_can_name_is_registered() -> None:
+    """Register every name a query can emit.
+
+    A query naming a pipeline that does not exist is an error, not a silent
+    fallback.
+    """
+    config = RetrievalConfig()
+    registered = set(hybrid_search.blend_pipelines(config))
+    for query_type in QueryType:
+        assert hybrid_search.pipeline_name_for(query_type) in registered
+    assert hybrid_search.SEARCH_PIPELINE in registered
+
+
+def test_the_registered_pipelines_carry_the_configured_weights() -> None:
+    """Otherwise re-tuning would change the config and not the cluster."""
+    tuned = RetrievalConfig(
+        weights={
+            QueryType.FAULT_CODE: BlendWeights(bm25=0.95, vector=0.05),
+            QueryType.PARAMETER_LOOKUP: BlendWeights(bm25=0.6, vector=0.4),
+            QueryType.SYMPTOM_DESCRIPTION: BlendWeights(bm25=0.2, vector=0.8),
+        }
+    )
+    pipelines = hybrid_search.blend_pipelines(tuned)
+    body = pipelines[hybrid_search.pipeline_name_for(QueryType.FAULT_CODE)]
+    parameters = body["phase_results_processors"][0]["normalization-processor"]["combination"][
+        "parameters"
+    ]
+    assert parameters["weights"] == [0.95, 0.05]
+
+
+def test_the_weight_order_matches_the_leg_order() -> None:
+    """If these disagree each weight lands on the wrong leg.
+
+    That reads as a tuning problem and is not one — no amount of re-tuning
+    fixes weights applied to the wrong signal.
+    """
+    body = hybrid_search._build_query(
+        query="q", vector=[0.0] * EMBEDDING_DIMENSIONS, filters=None, top_k=3
+    )
+    legs = body["query"]["hybrid"]["queries"]
+    # Leg 0 is lexical, leg 1 is vector; as_pipeline_weights emits [bm25, vector].
+    assert "match" in legs[0]["bool"]["must"][0]
+    assert "knn" in legs[1]
+    assert BlendWeights(bm25=0.7, vector=0.3).as_pipeline_weights() == [0.7, 0.3]
 
 
 def test_filters_do_not_contribute_to_score() -> None:
@@ -126,6 +220,150 @@ def test_passages_below_min_score_are_dropped() -> None:
     }
     passages = hybrid_search._to_passages(response, min_score=0.5)
     assert [p.id for p in passages] == ["a"]
+
+
+# --- unit: the conditional blend reaches the actual request -----------------
+
+
+class _RecordingClient:
+    """Captures the search request instead of issuing it."""
+
+    def __init__(self) -> None:
+        self.body: dict[str, Any] | None = None
+        self.kwargs: dict[str, Any] | None = None
+
+    def search(self, **kwargs: Any) -> dict[str, Any]:
+        self.kwargs = kwargs
+        self.body = kwargs["body"]
+        return {"hits": {"hits": []}}
+
+
+def _capture_request(monkeypatch: pytest.MonkeyPatch, query: str, **kwargs: Any) -> dict[str, Any]:
+    """Run a production search against a fake client and return its arguments.
+
+    ``top_k`` and ``min_score`` are passed explicitly so this needs no real
+    settings — the request body is what is under test, not configuration
+    loading.
+    """
+    client = _RecordingClient()
+    monkeypatch.setattr(hybrid_search, "get_client", lambda: client)
+    monkeypatch.setattr(hybrid_search, "embed_query", lambda _q: [0.0] * EMBEDDING_DIMENSIONS)
+    monkeypatch.setattr(hybrid_search, "resolve_index", lambda _t: "test-index")
+    # The default path seeds from settings, which need no real values here.
+    monkeypatch.setattr(hybrid_search, "retrieval_config_from_settings", RetrievalConfig)
+    kwargs.setdefault("top_k", 5)
+    kwargs.setdefault("min_score", 0.0)
+    hybrid_search.search(query, **kwargs)
+    assert client.kwargs is not None
+    return client.kwargs
+
+
+def _pipeline_named_by(kwargs: dict[str, Any]) -> str:
+    """Return the search pipeline a captured request referenced.
+
+    Args:
+        kwargs: The captured ``client.search`` keyword arguments.
+
+    Returns:
+        The pipeline name.
+    """
+    return str(kwargs["params"]["search_pipeline"])
+
+
+def _blend_of(kwargs: dict[str, Any], config: RetrievalConfig) -> list[float]:
+    """Return the blend the request's named pipeline would apply.
+
+    Args:
+        kwargs: The captured ``client.search`` keyword arguments.
+        config: The configuration whose pipelines were registered.
+
+    Returns:
+        The ``[bm25, vector]`` weights that pipeline carries.
+    """
+    body = hybrid_search.blend_pipelines(config)[_pipeline_named_by(kwargs)]
+    processor = body["phase_results_processors"][0]
+    weights = processor["normalization-processor"]["combination"]["parameters"]["weights"]
+    return [float(w) for w in weights]
+
+
+def test_the_request_names_the_pipeline_for_this_query_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AI-002 is only real if the weights reach the actual request.
+
+    A config object nothing sends is a tuning knob wired to nothing — which is
+    indistinguishable, from the outside, from tuning that does not work.
+    """
+    captured = _capture_request(monkeypatch, "F0001")
+    expected = RetrievalConfig().weights_for(QueryType.FAULT_CODE)
+    assert _blend_of(captured, RetrievalConfig()) == expected.as_pipeline_weights()
+
+
+def test_two_query_types_produce_different_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The conditioning must be observable at the request, not just in config.
+
+    If both queries named the same pipeline, every other test could pass while
+    retrieval behaved identically for a fault code and a described symptom.
+    """
+
+    def blend_for(query: str) -> list[float]:
+        return _blend_of(_capture_request(monkeypatch, query), RetrievalConfig())
+
+    code = blend_for("F0001")
+    symptom = blend_for("the drive trips when the conveyor starts under load")
+    assert code != symptom
+    assert code[0] > code[1], "a fault code should lean lexical"
+    assert symptom[1] > symptom[0], "a described symptom should lean semantic"
+
+
+def test_a_retuned_config_changes_the_registered_pipelines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-tuning must be a config change, not a code change."""
+    tuned = RetrievalConfig(
+        weights={
+            QueryType.FAULT_CODE: BlendWeights(bm25=0.95, vector=0.05),
+            QueryType.PARAMETER_LOOKUP: BlendWeights(bm25=0.6, vector=0.4),
+            QueryType.SYMPTOM_DESCRIPTION: BlendWeights(bm25=0.2, vector=0.8),
+        }
+    )
+    captured = _capture_request(monkeypatch, "F0001", config=tuned)
+    assert _blend_of(captured, tuned) == [0.95, 0.05]
+
+
+def test_only_one_pipeline_applies_to_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exactly one pipeline reference per request.
+
+    Sending both a `search_pipeline` query parameter and a body-level
+    definition leaves which applies to precedence rules that were not
+    verifiable here. Worse, if a body-level pipeline is ignored by this
+    OpenSearch version, the query runs with no normalisation at all — the legs
+    summed un-normalised, the vector leg contributing almost nothing — while
+    every test still passes.
+    """
+    captured = _capture_request(monkeypatch, "F0001")
+    assert "search_pipeline" not in captured["body"]
+    assert _pipeline_named_by(captured) == hybrid_search.pipeline_name_for(QueryType.FAULT_CODE)
+
+
+def test_the_environment_still_configures_top_k(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RETRIEVAL_TOP_K is a documented variable and must still take effect.
+
+    RetrievalConfig is the single source the query path reads, so this bridge
+    is the one place the two meet — if it stopped honouring settings, an
+    operator's configuration would be silently ignored.
+    """
+
+    class _Settings:
+        retrieval_top_k = 3
+        retrieval_min_score = 0.42
+
+    monkeypatch.setattr(hybrid_search, "get_settings", _Settings)
+    config = hybrid_search.retrieval_config_from_settings()
+    assert config.top_k == 3
+    assert config.min_score == 0.42
 
 
 # --- unit: the staging isolation ADR 0001 requires --------------------------

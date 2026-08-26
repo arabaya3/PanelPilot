@@ -16,20 +16,22 @@ from typing import Any
 
 from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
 from app.ai.retrieval.mappings import VerificationStatus
+from app.ai.retrieval.query_classifier import classify_query
 from app.core.config import get_settings
+from app.models.schemas.retrieval_config import BlendWeights, QueryType, RetrievalConfig
 from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
 
-# Relative weight of the lexical and semantic legs. BM25 carries slightly more
-# because engineers search with exact part numbers and fault codes, which
-# lexical matching handles better than embeddings. AI-002 re-tunes these
-# against this domain's real query patterns.
+# The fallback blend, carried by the named server-side pipeline. Every query
+# issued through this module overrides it with the weights for that query's
+# type (see RetrievalConfig); this pair only applies to a search that somehow
+# reaches the cluster without one, so it is deliberately middle-of-the-road
+# rather than tuned for any particular query type.
 #
-# These weights are only meaningful because the legs are min-max normalised to
+# Any weights are only meaningful because the legs are min-max normalised to
 # [0, 1] BEFORE they are combined. Summing raw scores would be meaningless:
 # cosine similarity is bounded at 1.0 while BM25 is unbounded, so a "0.4"
 # vector weight would in practice contribute a few percent.
-BM25_WEIGHT = 0.6
-VECTOR_WEIGHT = 0.4
+_DEFAULT_BLEND = BlendWeights(bm25=0.6, vector=0.4)
 
 # Search pipeline performing that normalisation. Registered once per cluster by
 # ``ensure_search_pipeline`` and referenced by name on every query.
@@ -37,26 +39,102 @@ SEARCH_PIPELINE = "panelpilot-hybrid"
 
 
 def search_pipeline_body() -> dict[str, Any]:
-    """Return the search-pipeline definition that normalises then blends.
+    """Return the fallback search-pipeline definition.
+
+    Returns:
+        A body for ``PUT /_search/pipeline/<name>``, carrying the default
+        blend. Per-query-type pipelines come from ``blend_pipelines``.
+    """
+    return blend_pipeline_body(_DEFAULT_BLEND)
+
+
+def retrieval_config_from_settings() -> RetrievalConfig:
+    """Build a retrieval config seeded from the environment.
+
+    ``RETRIEVAL_TOP_K`` and ``RETRIEVAL_MIN_SCORE`` are documented environment
+    variables, so they must still take effect — but the query path reads only
+    the config. This is the single place the two meet, so there is one value
+    in play rather than two that can silently disagree.
+
+    Returns:
+        A config carrying the configured top_k and score floor, with the
+        default per-query-type blend weights.
+    """
+    settings = get_settings()
+    return RetrievalConfig(
+        top_k=settings.retrieval_top_k,
+        min_score=settings.retrieval_min_score,
+    )
+
+
+def pipeline_name_for(query_type: QueryType) -> str:
+    """Return the search pipeline carrying one query type's blend weights.
+
+    A pipeline per query type, referenced by name on the request.
+
+    The alternative — a pipeline definition inline in the request body — would
+    avoid registering anything, but whether OpenSearch honours a body-level
+    ``search_pipeline`` is version-dependent and was not verifiable here. If it
+    were ignored, every query would silently run with no normalisation at all:
+    the legs would be summed un-normalised and the vector leg would contribute
+    almost nothing, while every test still passed. The named-pipeline form is
+    documented and its effect is observable, so it is the one used.
+
+    Args:
+        query_type: The classified query type.
+
+    Returns:
+        The pipeline name.
+    """
+    return f"{SEARCH_PIPELINE}-{query_type.value}"
+
+
+def blend_pipeline_body(weights: BlendWeights) -> dict[str, Any]:
+    """Return a pipeline definition applying one blend.
+
+    Args:
+        weights: The blend weights.
 
     Returns:
         A body for ``PUT /_search/pipeline/<name>``.
     """
     return {
-        "description": "Min-max normalise each hybrid leg, then weighted arithmetic mean.",
+        "description": f"Min-max normalise each hybrid leg, then blend {weights.as_pipeline_weights()}.",
         "phase_results_processors": [
             {
                 "normalization-processor": {
                     "normalization": {"technique": "min_max"},
                     "combination": {
                         "technique": "arithmetic_mean",
-                        # Order matches the `queries` list in _build_query.
-                        "parameters": {"weights": [BM25_WEIGHT, VECTOR_WEIGHT]},
+                        # Order matches the `queries` list in _build_query. If
+                        # these disagree each weight lands on the wrong leg,
+                        # which reads as a tuning problem and is not one.
+                        "parameters": {"weights": weights.as_pipeline_weights()},
                     },
                 }
             }
         ],
     }
+
+
+def blend_pipelines(config: RetrievalConfig) -> dict[str, dict[str, Any]]:
+    """Return every pipeline a config needs, keyed by name.
+
+    Args:
+        config: The retrieval configuration.
+
+    Returns:
+        One pipeline per query type, plus the default fallback. Registered
+        together at index setup so a query never references a pipeline that
+        does not exist — which OpenSearch answers with an error, not with a
+        silent fallback.
+    """
+    pipelines = {
+        pipeline_name_for(query_type): blend_pipeline_body(config.weights_for(query_type))
+        for query_type in QueryType
+    }
+    pipelines[SEARCH_PIPELINE] = blend_pipeline_body(_DEFAULT_BLEND)
+    return pipelines
 
 
 def _build_query(
@@ -69,10 +147,10 @@ def _build_query(
 ) -> dict[str, Any]:
     """Build the hybrid request body.
 
-    Both legs run in one request and are fused by weighted score combination:
-    the BM25 leg is boosted by ``BM25_WEIGHT`` and the kNN leg by
-    ``VECTOR_WEIGHT``, so a passage strong on either signal surfaces while one
-    strong on both outranks it.
+    Both legs run in one request. This function does not weight them — the
+    blend is applied by the search pipeline, whose weights depend on the query
+    type (see ``RetrievalConfig``). A passage strong on either signal surfaces,
+    and one strong on both outranks it.
 
     Args:
         query: Natural-language query text.
@@ -180,6 +258,7 @@ def _search(
     filters: SearchFilters | None,
     top_k: int | None,
     min_score: float | None,
+    config: RetrievalConfig | None = None,
 ) -> list[RetrievedPassage]:
     """Run a hybrid search against one index.
 
@@ -194,13 +273,21 @@ def _search(
         filters: Optional additional restrictions.
         top_k: Passages to return; defaults to the configured value.
         min_score: Score floor; defaults to the configured value.
+        config: Retrieval tuning. Defaults to the tuned configuration.
 
     Returns:
         Ranked passages, each carrying its citation.
     """
-    settings = get_settings()
-    resolved_top_k = top_k if top_k is not None else settings.retrieval_top_k
-    resolved_min_score = min_score if min_score is not None else settings.retrieval_min_score
+    # RetrievalConfig is the single source of tuning values. The settings
+    # fallback that used to live here is gone: two places holding top_k meant
+    # a re-tune could change one and leave the other, and nothing would say so.
+    resolved = config or retrieval_config_from_settings()
+    resolved_top_k = top_k if top_k is not None else resolved.top_k
+    resolved_min_score = min_score if min_score is not None else resolved.min_score
+    # The blend depends on what is being asked: a fault code wants the lexical
+    # leg, a described symptom wants the semantic one. One global weight serves
+    # whichever is more common and underserves the other.
+    query_type = classify_query(query)
 
     merged = filters or SearchFilters()
     if brand and brand not in merged.manufacturers:
@@ -227,8 +314,13 @@ def _search(
             )
             target_filter.append({"term": {"model": model}})
 
+    # Exactly one pipeline reference, by name, as a query parameter. Both a
+    # parameter and a body-level definition would leave which applies to
+    # precedence rules nobody here verified.
     response = get_client().search(
-        index=resolve_index(target), body=body, params={"search_pipeline": SEARCH_PIPELINE}
+        index=resolve_index(target),
+        body=body,
+        params={"search_pipeline": pipeline_name_for(query_type)},
     )
     return _to_passages(response, min_score=resolved_min_score)
 
@@ -241,6 +333,7 @@ def search(
     filters: SearchFilters | None = None,
     top_k: int | None = None,
     min_score: float | None = None,
+    config: RetrievalConfig | None = None,
 ) -> list[RetrievedPassage]:
     """Search the production corpus.
 
@@ -254,6 +347,8 @@ def search(
         filters: Optional additional restrictions.
         top_k: Passages to return; defaults to the configured value.
         min_score: Fused-score floor; defaults to the configured value.
+        config: Retrieval tuning, including the per-query-type blend weights.
+            Defaults to the tuned configuration.
 
     Returns:
         Passages in descending relevance order, each carrying its source
@@ -267,6 +362,7 @@ def search(
         filters=filters,
         top_k=top_k,
         min_score=min_score,
+        config=config,
     )
 
 

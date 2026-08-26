@@ -77,15 +77,19 @@ def ensure_index(target: IndexTarget, *, recreate: bool = False) -> str:
     Returns:
         The concrete index name.
     """
-    from app.ai.retrieval.hybrid_search import SEARCH_PIPELINE, search_pipeline_body
+    from app.ai.retrieval.hybrid_search import blend_pipelines, retrieval_config_from_settings
     from app.ai.retrieval.mappings import index_mapping
 
     client = get_client()
-    # The hybrid query is scored by this pipeline; without it the legs are
-    # summed un-normalised and the vector leg contributes almost nothing.
-    client.transport.perform_request(
-        "PUT", f"/_search/pipeline/{SEARCH_PIPELINE}", body=search_pipeline_body()
-    )
+    # One pipeline per query type, plus the fallback. The hybrid query is
+    # scored by whichever it names; without a pipeline the legs are summed
+    # un-normalised and the vector leg contributes almost nothing.
+    #
+    # Registered together so a query can never name a pipeline that does not
+    # exist. Re-registering is idempotent, so a re-tune is a redeploy rather
+    # than a migration.
+    for name, definition in blend_pipelines(retrieval_config_from_settings()).items():
+        client.transport.perform_request("PUT", f"/_search/pipeline/{name}", body=definition)
     name = resolve_index(target)
     if recreate and client.indices.exists(index=name):
         client.indices.delete(index=name)
