@@ -79,13 +79,25 @@ export function ContextChip({
   const [manufacturer, setManufacturer] = useState(context?.manufacturer ?? '');
   const [model, setModel] = useState(context?.model ?? '');
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  // Distinguishes "the editor just closed" from the first render, so the chip
+  // does not steal focus when the page loads.
+  const wasEditing = useRef(false);
   const manufacturerId = useId();
   const modelId = useId();
 
-  // Opening the editor should put the caret where the typing goes, so the
-  // control is usable without a mouse in a plant room.
+  // Opening the editor should put the caret where the typing goes, and
+  // closing it should hand focus back to the chip — otherwise a keyboard user
+  // is dropped to the top of the document and has to tab back to where they
+  // were. The whole control is meant to be usable without a mouse in a plant
+  // room, so losing focus on close undoes the point of focusing on open.
   useEffect(() => {
-    if (editing) firstFieldRef.current?.focus();
+    if (editing) {
+      firstFieldRef.current?.focus();
+    } else if (wasEditing.current) {
+      chipRef.current?.focus();
+    }
+    wasEditing.current = editing;
   }, [editing]);
 
   function open() {
@@ -115,7 +127,19 @@ export function ContextChip({
     return (
       <form
         data-testid="context-editor"
+        // Named and grouped, so replacing the chip with this form is
+        // announced rather than being a silent DOM swap.
+        role="group"
+        aria-label={t('editLabel')}
         className="flex flex-wrap items-end gap-2 p-2"
+        onKeyDown={(event) => {
+          // Escape abandons the edit. Expected of any inline editor, and this
+          // one is deliberately keyboard-first.
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            setEditing(false);
+          }
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           save();
@@ -171,8 +195,11 @@ export function ContextChip({
 
   return (
     <button
+      ref={chipRef}
       type="button"
       onClick={open}
+      // It reveals the editor, so it is a disclosure control.
+      aria-expanded={editing}
       data-testid="context-chip"
       data-known={known ? 'true' : 'false'}
       className={
@@ -181,7 +208,9 @@ export function ContextChip({
           : 'inline-flex items-center gap-2 rounded-full border border-dashed border-border bg-surface px-3 py-1 text-sm text-text-muted'
       }
     >
-      <span className="sr-only">{t('editLabel')}</span>
+      {/* Trailing space, so the hint does not run into the equipment text
+          and get announced as one word. */}
+      <span className="sr-only">{t('editLabel')} </span>
       {known ? (
         <>
           {context.manufacturer ? (

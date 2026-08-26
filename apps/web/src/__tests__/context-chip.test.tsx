@@ -335,3 +335,114 @@ describe('the chip, driven by hand', () => {
     }
   });
 });
+
+// --- editing an existing context ---------------------------------------------
+
+describe('reopening the editor', () => {
+  it('prefills both fields, so changing one does not destroy the other', async () => {
+    // The feature's central workflow: same brand, different unit. A mutation
+    // that dropped the manufacturer prefill passed all 177 tests, because
+    // every editor test that touched Manufacturer opened from the neutral
+    // state where the correct prefill is '' anyway — so the bug and the fix
+    // were indistinguishable. What it did to an engineer was silent: the
+    // manufacturer vanished from the chip and from every later request, with
+    // no error and nothing to notice at the moment of the edit.
+    const streams = [controllableStream()];
+    const { sent } = renderChat(streams);
+
+    fireEvent.click(screen.getByTestId('context-chip'));
+    fireEvent.change(screen.getByLabelText('Manufacturer'), { target: { value: 'Siemens' } });
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'G120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('context-chip').textContent).toContain('G120');
+    });
+
+    // Reopen and change only the model.
+    fireEvent.click(screen.getByTestId('context-chip'));
+    const manufacturer = screen.getByLabelText('Manufacturer');
+    expect(manufacturer).toBeInstanceOf(HTMLInputElement);
+    expect((manufacturer as HTMLInputElement).value).toBe('Siemens');
+
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'G150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('context-chip').textContent).toContain('G150');
+    });
+    // The brand survived, on screen and on the wire.
+    expect(screen.getByTestId('context-chip').textContent).toContain('Siemens');
+
+    ask('Why is it tripping?');
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]?.request.equipment).toMatchObject({
+      manufacturer: 'Siemens',
+      model: 'G150',
+    });
+  });
+});
+
+// --- keyboard and assistive technology ---------------------------------------
+
+describe('the editor without a mouse', () => {
+  it('cancels on Escape', () => {
+    // Expected of any inline editor, and this one is deliberately
+    // keyboard-first — an engineer in a plant room may have gloves on.
+    renderChat([]);
+    fireEvent.click(screen.getByTestId('context-chip'));
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'G120' } });
+
+    fireEvent.keyDown(screen.getByTestId('context-editor'), { key: 'Escape' });
+
+    expect(screen.queryByTestId('context-editor')).toBeNull();
+    expect(screen.getByTestId('context-chip').getAttribute('data-known')).toBe('false');
+  });
+
+  it('puts the caret in the first field when it opens', () => {
+    renderChat([]);
+    fireEvent.click(screen.getByTestId('context-chip'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Manufacturer'));
+  });
+
+  it('hands focus back to the chip when it closes', () => {
+    // Otherwise the keyboard user is dropped to the top of the document and
+    // has to tab back to where they were — which undoes the point of
+    // focusing the field on open.
+    renderChat([]);
+    fireEvent.click(screen.getByTestId('context-chip'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.activeElement).toBe(screen.getByTestId('context-chip'));
+  });
+
+  it('does not steal focus on first render', () => {
+    // The close path fires an effect; without a guard it would run on mount
+    // and pull focus to the chip before anyone has touched it.
+    renderChat([]);
+    expect(document.activeElement).not.toBe(screen.getByTestId('context-chip'));
+  });
+
+  it('says whether the editor is open', () => {
+    renderChat([]);
+    const chip = screen.getByTestId('context-chip');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chip);
+    expect(screen.getByTestId('context-editor').getAttribute('role')).toBe('group');
+  });
+
+  it('does not run the hint into the equipment name', async () => {
+    // Without a separator the accessible name reads as one run:
+    // "Set the equipment for this sessionSiemensG120".
+    const streams = [controllableStream()];
+    renderChat(streams);
+    fireEvent.click(screen.getByTestId('context-chip'));
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'G120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('context-chip').textContent).toContain('G120');
+    });
+    expect(screen.getByTestId('context-chip').textContent).not.toContain('sessionG120');
+  });
+});
