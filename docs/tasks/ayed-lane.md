@@ -214,7 +214,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > All five zones render correctly from the API's structured payload; the uncertain-state variant is visually distinct at a glance, not just a text difference.
 
-### [ ] FE-005 — Fault-code image capture
+### [x] FE-005 — Fault-code image capture
 
 | Field                   | Value                                     |
 | ----------------------- | ----------------------------------------- |
