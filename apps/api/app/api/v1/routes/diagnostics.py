@@ -6,10 +6,13 @@ a diagnosis is produced belongs in ``app.domain.diagnostics``.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
+
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.core.observability import StreamTimer
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.diagnostics import (
     DiagnosticRequest,
@@ -61,12 +64,44 @@ def stream_diagnosis(
     """
     events = diagnostics_domain.stream_diagnosis(session=session, user=user, request=payload)
     return StreamingResponse(
-        (event.render() for event in events),
+        _timed_frames(events),
         media_type="text/event-stream",
         # Proxies buffer by default, which defeats the point: the client would
         # receive every event at once, at the end.
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _timed_frames(events: Iterable[DiagnosisEvent]) -> Iterator[str]:
+    """Render events to the wire, measuring time-to-first-token.
+
+    Args:
+        events: The turn's events.
+
+    Yields:
+        SSE frames.
+
+        Timed here rather than in the domain because this is where a frame
+        actually reaches the transport — the number that matters is when the
+        engineer stops looking at nothing, and measuring it one layer up would
+        record when we decided to send rather than when we sent.
+
+        A stream abandoned part-way still records: a client that disconnected
+        after four seconds of nothing is the most interesting latency sample
+        there is, and a timer that only fires on success loses exactly those.
+    """
+    timer = StreamTimer("diagnosis")
+    failed = False
+    try:
+        for event in events:
+            frame = event.render()
+            timer.mark_event()
+            yield frame
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        timer.finish(failed=failed)
 
 
 @router.get("/{session_id}", response_model=DiagnosticSession)

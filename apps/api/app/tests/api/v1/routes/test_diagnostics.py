@@ -12,10 +12,11 @@ layer.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 import pytest
+import structlog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -182,3 +183,48 @@ def test_the_stream_endpoint_is_documented_as_event_stream(settings: Settings) -
     schema = create_app(settings).openapi()
     operation = schema["paths"]["/api/v1/diagnostics/stream"]["post"]
     assert "text/event-stream" in operation["responses"]["200"]["content"]
+
+
+# --- time to first token, at the wire ---------------------------------------
+
+
+def test_the_stream_records_time_to_first_token(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The acceptance criterion: it is visible as its own metric.
+
+    Measured where the frame reaches the transport, not where the domain
+    decided to send it — the number that matters is when the engineer stops
+    looking at nothing.
+    """
+    entries: list[dict[str, Any]] = []
+
+    def _capture(
+        _logger: Any, _name: str, event_dict: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any]:
+        entries.append(dict(event_dict))
+        raise structlog.DropEvent
+
+    original = structlog.get_config()
+    structlog.configure(
+        processors=[structlog.contextvars.merge_contextvars, _capture],
+        wrapper_class=structlog.make_filtering_bound_logger(0),
+        cache_logger_on_first_use=False,
+    )
+    try:
+        monkeypatch.setattr(
+            diagnostics_domain,
+            "stream_diagnosis",
+            lambda **_kw: iter(_events("retrieving", "generated", "result")),
+        )
+        client.post("/diagnostics/stream", json={"symptom": "F0001"})
+    finally:
+        structlog.configure(**original)
+
+    metrics = [e for e in entries if e.get("event") == "stream_latency"]
+    assert metrics, "the stream emitted no latency metric"
+    metric = metrics[-1]
+    assert metric["first_token_ms"] is not None
+    assert metric["events"] == 3
+    # Separate numbers, not one total: perceived speed is the first.
+    assert "total_ms" in metric

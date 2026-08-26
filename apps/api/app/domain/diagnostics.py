@@ -42,6 +42,7 @@ from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
 from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
+from app.core.observability import record_latency, timed
 from app.domain.auth import consume_free_question
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.diagnostics import (
@@ -108,11 +109,14 @@ def run_diagnosis(
 
     # Production only. `search` exposes no index argument, so this cannot be
     # pointed at unverified staging content by passing an argument.
-    passages = search(
-        request.symptom,
-        brand=request.equipment.manufacturer if request.equipment else None,
-        model=request.equipment.model if request.equipment else None,
-    )
+    with timed("retrieval"):
+        passages = search(
+            request.symptom,
+            brand=request.equipment.manufacturer if request.equipment else None,
+            model=request.equipment.model if request.equipment else None,
+        )
+    # Counts and lengths, never the question or the passages themselves.
+    record_latency("retrieval_result", 0.0, passages=len(passages))
 
     decision = evaluate_confidence(passages)
     if not decision.may_generate:
@@ -126,17 +130,18 @@ def run_diagnosis(
             response=_refusal_response(conversation.id, decision, passages),
         )
 
-    diagnosis, decision = generate_localised_diagnosis(
-        _anthropic_client(),
-        model=get_settings().llm_model,
-        system=SYSTEM_PROMPT,
-        question=build_diagnostic_prompt(request=request, evidence=passages),
-        evidence_ids={passage.id for passage in passages},
-        decision=decision,
-        # From the request, never a server-side default: the engineer's
-        # language is theirs to state.
-        locale=request.locale,
-    )
+    with timed("generation", locale=request.locale.value):
+        diagnosis, decision = generate_localised_diagnosis(
+            _anthropic_client(),
+            model=get_settings().llm_model,
+            system=SYSTEM_PROMPT,
+            question=build_diagnostic_prompt(request=request, evidence=passages),
+            evidence_ids={passage.id for passage in passages},
+            decision=decision,
+            # From the request, never a server-side default: the engineer's
+            # language is theirs to state.
+            locale=request.locale,
+        )
     if diagnosis is None:
         # Schema-invalid output takes the same refuse path as weak evidence.
         # A response the system could not parse is one it cannot vouch for.
