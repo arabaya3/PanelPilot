@@ -456,7 +456,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Chunking a sample manual produces chunks that each resolve to one verifiable page/section reference, with no metadata field left empty.
 
-### [ ] AI-002 — Hybrid retrieval tuning
+### [x] AI-002 — Hybrid retrieval tuning
 
 | Field                   | Value                                    |
 | ----------------------- | ---------------------------------------- |
