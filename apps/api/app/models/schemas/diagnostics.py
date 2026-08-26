@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
 
+from app.models.schemas.locale import Locale
 from app.models.schemas.responses import NonBlankText, StructuredDiagnosis
 from app.models.schemas.search import Citation
 
@@ -17,11 +18,22 @@ class EquipmentContext(BaseModel):
 
 
 class DiagnosticRequest(BaseModel):
-    """A single diagnostic question."""
+    """A single diagnostic question.
+
+    Attributes:
+        session_id: The conversation to append to, or ``None`` to start one.
+        symptom: What the engineer is describing.
+        equipment: Optional context about the unit.
+        locale: The language to answer in. Explicit on every request rather
+            than defaulted server-side: a default means a caller that forgot
+            to send one gets English, which for an Arabic-speaking engineer
+            looks like working software until someone reads the answer.
+    """
 
     session_id: str | None = None
     symptom: str
     equipment: EquipmentContext | None = None
+    locale: Locale = Locale.ENGLISH
 
 
 class GeneratedAnswer(BaseModel):

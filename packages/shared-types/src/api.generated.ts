@@ -509,6 +509,15 @@ export interface components {
     /**
      * DiagnosticRequest
      * @description A single diagnostic question.
+     *
+     *     Attributes:
+     *         session_id: The conversation to append to, or ``None`` to start one.
+     *         symptom: What the engineer is describing.
+     *         equipment: Optional context about the unit.
+     *         locale: The language to answer in. Explicit on every request rather
+     *             than defaulted server-side: a default means a caller that forgot
+     *             to send one gets English, which for an Arabic-speaking engineer
+     *             looks like working software until someone reads the answer.
      */
     DiagnosticRequest: {
       /** Session Id */
@@ -516,6 +525,8 @@ export interface components {
       /** Symptom */
       symptom: string;
       equipment?: components['schemas']['EquipmentContext'] | null;
+      /** @default en */
+      locale: components['schemas']['Locale'];
     };
     /**
      * DiagnosticResponse
@@ -671,6 +682,16 @@ export interface components {
       /** Dissipation W */
       dissipation_w?: number | string | null;
     };
+    /**
+     * Locale
+     * @description A language a response may be generated in.
+     *
+     *     Deliberately a closed set. An open string would let a caller pass anything
+     *     and get whatever the model felt like, which for a language the corpus does
+     *     not support is worse than refusing.
+     * @enum {string}
+     */
+    Locale: 'en' | 'ar' | 'he';
     /**
      * LoginRequest
      * @description Exchange credentials for a token pair.

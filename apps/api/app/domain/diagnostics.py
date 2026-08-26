@@ -37,9 +37,9 @@ from sqlalchemy.orm import Session
 from app.ai.guardrails.cite_or_refuse import evaluate_confidence, verify_citations
 from app.ai.guardrails.confidence import score_confidence
 from app.ai.guardrails.refusal_text import render_refusal
+from app.ai.localisation import generate_localised_diagnosis
 from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
 from app.ai.retrieval.hybrid_search import search
-from app.ai.structured_output import generate_diagnosis
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.domain.auth import consume_free_question
@@ -126,13 +126,16 @@ def run_diagnosis(
             response=_refusal_response(conversation.id, decision, passages),
         )
 
-    diagnosis, decision = generate_diagnosis(
+    diagnosis, decision = generate_localised_diagnosis(
         _anthropic_client(),
         model=get_settings().llm_model,
         system=SYSTEM_PROMPT,
         question=build_diagnostic_prompt(request=request, evidence=passages),
         evidence_ids={passage.id for passage in passages},
         decision=decision,
+        # From the request, never a server-side default: the engineer's
+        # language is theirs to state.
+        locale=request.locale,
     )
     if diagnosis is None:
         # Schema-invalid output takes the same refuse path as weak evidence.
