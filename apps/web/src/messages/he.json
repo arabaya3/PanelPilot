@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "PanelPilot",
+    "tagline": "עוזר אבחון ותכנון למהנדסי חשמל ובקרה."
+  },
+  "language": {
+    "label": "שפה",
+    "en": "English",
+    "ar": "العربية",
+    "he": "עברית"
+  },
+  "theme": {
+    "switchTo": "מעבר למצב {theme}",
+    "light": "בהיר",
+    "dark": "כהה"
+  },
+  "diagnosis": {
+    "faultDetected": "תקלה <code>F0001</code> ביחידת <model>ACS880</model>.",
+    "checkParameter": "בדוק את פרמטר <param>21.03</param> מול אספקה של <volts>400 V</volts>.",
+    "severity": {
+      "critical": "קריטי",
+      "warning": "אזהרה",
+      "info": "מידע"
+    }
+  },
+  "tokens": {
+    "title": "אסימוני עיצוב",
+    "intro": "כל ערך להלן מפנה למאפיין CSS מותאם."
+  }
+}

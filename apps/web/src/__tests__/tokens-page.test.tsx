@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { renderApp } from './helpers';
+
 import TokensPage from '@/app/tokens/page';
-import { ThemeProvider } from '@/components/theme-provider';
 
 /**
  * Tests for the token gallery.
@@ -18,10 +19,11 @@ import { ThemeProvider } from '@/components/theme-provider';
  */
 
 function renderGallery(theme: 'light' | 'dark' = 'light') {
-  return render(
-    <ThemeProvider initialTheme={theme}>
+  return renderApp(
+    <>
       <TokensPage />
-    </ThemeProvider>,
+    </>,
+    { theme },
   );
 }
 

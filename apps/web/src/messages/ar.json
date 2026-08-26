@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "PanelPilot",
+    "tagline": "مساعد التشخيص والتصميم لمهندسي الكهرباء والتحكم."
+  },
+  "language": {
+    "label": "اللغة",
+    "en": "English",
+    "ar": "العربية",
+    "he": "עברית"
+  },
+  "theme": {
+    "switchTo": "التبديل إلى الوضع {theme}",
+    "light": "الفاتح",
+    "dark": "الداكن"
+  },
+  "diagnosis": {
+    "faultDetected": "العطل <code>F0001</code> في وحدة <model>ACS880</model>.",
+    "checkParameter": "افحص المعامل <param>21.03</param> مقابل تغذية <volts>400 V</volts>.",
+    "severity": {
+      "critical": "حرج",
+      "warning": "تحذير",
+      "info": "معلومة"
+    }
+  },
+  "tokens": {
+    "title": "رموز التصميم",
+    "intro": "كل قيمة أدناه تشير إلى خاصية CSS مخصصة."
+  }
+}

@@ -6,14 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . && npm run check:tokens",
+    "lint": "eslint . && npm run check:tokens && npm run check:logical",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check:tokens": "node scripts/check-tokens.mjs"
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "check:logical": "node scripts/check-logical-properties.mjs"
   },
   "dependencies": {
     "@panelpilot/shared-types": "*",
     "next": "^15.0.0",
+    "next-intl": "^4.13.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -26,6 +26,9 @@ const TAILWIND_PATH = resolve(process.cwd(), 'tailwind.config.ts');
 const tokensSource = readFileSource(TOKENS_PATH);
 const tailwindSource = readFileSource(TAILWIND_PATH);
 
+/** Read so the font assertions can check both halves of the wiring. */
+const layoutSource = readFileSource(resolve(process.cwd(), 'src/app/layout.tsx'));
+
 function readFileSource(path: string): string {
   return readFileSync(path, 'utf8');
 }
@@ -36,7 +39,11 @@ function parseTheme(selector: string): Record<string, string> {
   if (start === -1) throw new Error(`no ${selector} block in tokens.css`);
   const open = tokensSource.indexOf('{', start);
   const close = tokensSource.indexOf('\n}', open);
-  const body = tokensSource.slice(open, close);
+  // Comments are stripped before parsing. A comment that *documents* a token
+  // (`--font-noto-sans: "Noto Sans", …`) otherwise parses as a declaration and
+  // shadows the real one — which is a confusing way for a test to fail, since
+  // the stylesheet is correct and only the reader of it is wrong.
+  const body = tokensSource.slice(open, close).replace(/\/\*[\s\S]*?\*\//g, '');
 
   const found: Record<string, string> = {};
   for (const match of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
@@ -154,8 +161,33 @@ describe('tokens.css', () => {
   it('names fonts covering the three supported scripts', () => {
     // Latin, Arabic and Hebrew all render in this stack. A missing fallback
     // means an Arabic answer renders in whatever the OS picks.
-    expect(token(LIGHT, '--font-sans')).toContain('Arabic');
-    expect(token(LIGHT, '--font-sans')).toContain('Hebrew');
+    //
+    // The faces arrive as `next/font` variables rather than as literal family
+    // names, so the stack is checked by variable — and the layout is checked
+    // for actually defining each one, since a stack naming a variable that
+    // nothing sets falls through to the generic fallback with no visible
+    // error at all.
+    const stack = token(LIGHT, '--font-sans');
+    for (const script of ['arabic', 'hebrew']) {
+      expect(stack, `--font-sans omits the ${script} face`).toContain(`var(--font-noto-${script})`);
+      expect(layoutSource, `layout.tsx never defines the ${script} face`).toContain(
+        `--font-noto-${script}`,
+      );
+    }
+
+    // Order, not just presence — this is the part a substring check misses.
+    // next/font expands each variable to `"Noto Sans", "Noto Sans Fallback"`,
+    // and the generated fallback is `local("Arial")` with no unicode-range.
+    // Arial has Arabic and Hebrew glyphs, so a Latin-first stack swallows RTL
+    // text into Arial and never reaches the script face. Legible, and wrong.
+    const latin = stack.indexOf('var(--font-noto-sans)');
+    for (const script of ['arabic', 'hebrew']) {
+      const index = stack.indexOf(`var(--font-noto-${script})`);
+      expect(
+        index,
+        `--font-noto-${script} must precede --font-noto-sans, or Arial wins`,
+      ).toBeLessThan(latin);
+    }
   });
 });
 
