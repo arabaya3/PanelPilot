@@ -1,14 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import type { components } from '@panelpilot/shared-types';
+
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 
 import { ChecklistProvider, useChecklist } from './checklist-provider';
+import { ContextChip, contextFromResponse } from './context-chip';
 import { Composer } from './composer';
 import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
+
+type EquipmentContext = components['schemas']['EquipmentContext'];
 
 /**
  * The chat surface.
@@ -51,6 +56,20 @@ function ChatSurface({
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
+  const [context, setContext] = useState<EquipmentContext | null>(null);
+  // Mirrored into a ref so `run` can read the current value without taking it
+  // as a dependency — the value that matters is the one current when the
+  // request is actually sent, not when the callback was built.
+  //
+  // Assigned here on every render and nowhere else. Two mutation tests proved
+  // the point: removing the assignment in the adopt path, and removing it in
+  // the editor's `onChange`, both left every test green *and* left the
+  // behaviour correct, because this line had already repaired the ref by the
+  // time anything read it. They were equivalent mutants, not gaps in coverage
+  // — and a hand-maintained copy that is never actually needed is worse than
+  // none, since the next reader has to work out whether it is load-bearing.
+  const contextRef = useRef<EquipmentContext | null>(null);
+  contextRef.current = context;
   const { locale } = useLocale();
   const abortRef = useRef<AbortController | null>(null);
   // The turn the abort belongs to. `stop()` needs it because aborting alone
@@ -76,6 +95,9 @@ function ChatSurface({
         request: {
           session_id: state.sessionId,
           symptom: text,
+          // The whole point of the chip: the engineer states the equipment
+          // once and every later question carries it.
+          equipment: contextRef.current,
           // Explicit on every request. The backend refuses to default it,
           // because a default means a caller that forgot one gets English —
           // which for an Arabic-speaking engineer looks like working software
@@ -89,6 +111,12 @@ function ChatSurface({
       try {
         for await (const event of events) {
           dispatch({ type: 'stream', id: assistantId, event });
+          if (event.kind === 'result') {
+            // Adopt a model the assistant named, but only when the engineer
+            // has not set one — see `contextFromResponse`.
+            const adopted = contextFromResponse(contextRef.current, event.response);
+            if (adopted) setContext(adopted);
+          }
         }
       } finally {
         // `return()` rather than abandoning the iterator: an abandoned async
@@ -164,6 +192,9 @@ function ChatSurface({
 
   return (
     <div className="flex h-full flex-col" data-testid="chat">
+      <header className="flex items-center gap-2 border-b border-border p-2">
+        <ContextChip context={context} onChange={setContext} />
+      </header>
       <MessageList messages={state.messages} onRetry={retry} />
       <Composer onSubmit={ask} onStop={stop} busy={busy} />
     </div>

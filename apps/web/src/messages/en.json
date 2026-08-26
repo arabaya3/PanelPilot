@@ -65,5 +65,13 @@
       "server-error": "The server could not start this answer."
     },
     "retry": "Try again"
+  },
+  "context": {
+    "none": "No equipment set",
+    "editLabel": "Set the equipment for this session",
+    "manufacturer": "Manufacturer",
+    "model": "Model",
+    "save": "Save",
+    "cancel": "Cancel"
   }
 }
