@@ -192,7 +192,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A response begins rendering within \~1s of submission and streams smoothly; chat scrolls correctly with RTL content.
 
-### [ ] FE-004 — Structured diagnostic response card
+### [x] FE-004 — Structured diagnostic response card
 
 | Field                   | Value                                                |
 | ----------------------- | ---------------------------------------------------- |
