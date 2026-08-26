@@ -18,7 +18,7 @@ from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
 from app.ai.retrieval.mappings import VerificationStatus
 from app.ai.retrieval.query_classifier import classify_query
 from app.core.config import get_settings
-from app.models.schemas.retrieval_config import BlendWeights, RetrievalConfig
+from app.models.schemas.retrieval_config import BlendWeights, QueryType, RetrievalConfig
 from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
 
 # The fallback blend, carried by the named server-side pipeline. Every query
@@ -39,26 +39,13 @@ SEARCH_PIPELINE = "panelpilot-hybrid"
 
 
 def search_pipeline_body() -> dict[str, Any]:
-    """Return the search-pipeline definition that normalises then blends.
+    """Return the fallback search-pipeline definition.
 
     Returns:
-        A body for ``PUT /_search/pipeline/<name>``.
+        A body for ``PUT /_search/pipeline/<name>``, carrying the default
+        blend. Per-query-type pipelines come from ``blend_pipelines``.
     """
-    return {
-        "description": "Min-max normalise each hybrid leg, then weighted arithmetic mean.",
-        "phase_results_processors": [
-            {
-                "normalization-processor": {
-                    "normalization": {"technique": "min_max"},
-                    "combination": {
-                        "technique": "arithmetic_mean",
-                        # Order matches the `queries` list in _build_query.
-                        "parameters": {"weights": _DEFAULT_BLEND.as_pipeline_weights()},
-                    },
-                }
-            }
-        ],
-    }
+    return blend_pipeline_body(_DEFAULT_BLEND)
 
 
 def retrieval_config_from_settings() -> RetrievalConfig:
@@ -80,21 +67,39 @@ def retrieval_config_from_settings() -> RetrievalConfig:
     )
 
 
-def inline_pipeline(weights: BlendWeights) -> dict[str, Any]:
-    """Return a request-scoped pipeline applying one query's blend weights.
+def pipeline_name_for(query_type: QueryType) -> str:
+    """Return the search pipeline carrying one query type's blend weights.
 
-    OpenSearch resolves a ``search_pipeline`` given in the request body ahead
-    of the named one, so a query type's weights travel with the query rather
-    than requiring a different named pipeline per type — which would mean a
-    cluster-state write on every re-tune.
+    A pipeline per query type, referenced by name on the request.
+
+    The alternative — a pipeline definition inline in the request body — would
+    avoid registering anything, but whether OpenSearch honours a body-level
+    ``search_pipeline`` is version-dependent and was not verifiable here. If it
+    were ignored, every query would silently run with no normalisation at all:
+    the legs would be summed un-normalised and the vector leg would contribute
+    almost nothing, while every test still passed. The named-pipeline form is
+    documented and its effect is observable, so it is the one used.
 
     Args:
-        weights: The blend weights for this query.
+        query_type: The classified query type.
 
     Returns:
-        A pipeline definition for the request body.
+        The pipeline name.
+    """
+    return f"{SEARCH_PIPELINE}-{query_type.value}"
+
+
+def blend_pipeline_body(weights: BlendWeights) -> dict[str, Any]:
+    """Return a pipeline definition applying one blend.
+
+    Args:
+        weights: The blend weights.
+
+    Returns:
+        A body for ``PUT /_search/pipeline/<name>``.
     """
     return {
+        "description": f"Min-max normalise each hybrid leg, then blend {weights.as_pipeline_weights()}.",
         "phase_results_processors": [
             {
                 "normalization-processor": {
@@ -108,8 +113,28 @@ def inline_pipeline(weights: BlendWeights) -> dict[str, Any]:
                     },
                 }
             }
-        ]
+        ],
     }
+
+
+def blend_pipelines(config: RetrievalConfig) -> dict[str, dict[str, Any]]:
+    """Return every pipeline a config needs, keyed by name.
+
+    Args:
+        config: The retrieval configuration.
+
+    Returns:
+        One pipeline per query type, plus the default fallback. Registered
+        together at index setup so a query never references a pipeline that
+        does not exist — which OpenSearch answers with an error, not with a
+        silent fallback.
+    """
+    pipelines = {
+        pipeline_name_for(query_type): blend_pipeline_body(config.weights_for(query_type))
+        for query_type in QueryType
+    }
+    pipelines[SEARCH_PIPELINE] = blend_pipeline_body(_DEFAULT_BLEND)
+    return pipelines
 
 
 def _build_query(
@@ -262,7 +287,7 @@ def _search(
     # The blend depends on what is being asked: a fault code wants the lexical
     # leg, a described symptom wants the semantic one. One global weight serves
     # whichever is more common and underserves the other.
-    blend = resolved.weights_for(classify_query(query))
+    query_type = classify_query(query)
 
     merged = filters or SearchFilters()
     if brand and brand not in merged.manufacturers:
@@ -289,18 +314,14 @@ def _search(
             )
             target_filter.append({"term": {"model": model}})
 
-    # The inline pipeline carries this query's weights.
-    #
-    # The named pipeline is deliberately NOT also referenced here. Sending both
-    # a `search_pipeline` query parameter and a body-level definition leaves
-    # which one applies to documented precedence rules — and if the named one
-    # won, every query would silently run under the fixed fallback blend while
-    # every test still passed. One pipeline per request, chosen here, removes
-    # the question. The named pipeline remains registered for any caller that
-    # issues a search without going through this function.
-    body["search_pipeline"] = inline_pipeline(blend)
-
-    response = get_client().search(index=resolve_index(target), body=body)
+    # Exactly one pipeline reference, by name, as a query parameter. Both a
+    # parameter and a body-level definition would leave which applies to
+    # precedence rules nobody here verified.
+    response = get_client().search(
+        index=resolve_index(target),
+        body=body,
+        params={"search_pipeline": pipeline_name_for(query_type)},
+    )
     return _to_passages(response, min_score=resolved_min_score)
 
 
