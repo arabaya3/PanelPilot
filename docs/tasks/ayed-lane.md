@@ -324,7 +324,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Selecting a past session restores its context indicator and message history correctly.
 
-### [ ] FE-014 — Uncertainty & error states UI pass
+### [x] FE-014 — Uncertainty & error states UI pass
 
 | Field                   | Value                                             |
 | ----------------------- | ------------------------------------------------- |
