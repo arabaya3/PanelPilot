@@ -236,7 +236,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A photo can be captured/dropped, previewed, and sent; recognized fault code and brand/model are shown to the user for confirmation before the diagnosis proceeds.
 
-### [ ] FE-006 — Interactive solution checklist
+### [x] FE-006 — Interactive solution checklist
 
 | Field                   | Value                                           |
 | ----------------------- | ----------------------------------------------- |
