@@ -93,7 +93,14 @@ function citationsById(citations: Citation[]): Map<string, Citation> {
   const ambiguous = new Set<string>();
 
   for (const citation of citations) {
-    const id: unknown = citation?.document_id;
+    // Read through `unknown` rather than the declared type. The declaration
+    // says this is a `Citation` with a `string` id; the runtime value is
+    // whatever the server sent, and the entire point of the guard below is
+    // that those two disagree. A `?.` here would say the same thing, but the
+    // type says the object is non-nullable, so lint reads it as dead code.
+    const entry: unknown = citation;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const id: unknown = (entry as { document_id?: unknown }).document_id;
     if (!isUsableId(id)) continue;
     if (index.has(id)) {
       ambiguous.add(id);
