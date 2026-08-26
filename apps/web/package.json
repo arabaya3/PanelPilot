@@ -6,9 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run check:tokens",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@panelpilot/shared-types": "*",
@@ -24,9 +25,13 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.0",
+    "autoprefixer": "^10.5.4",
     "eslint": "^9.13.0",
     "eslint-config-prettier": "^9.1.0",
+    "globals": "^17.11.0",
     "jsdom": "^29.1.1",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.11.0",
     "vitest": "^4.1.11"

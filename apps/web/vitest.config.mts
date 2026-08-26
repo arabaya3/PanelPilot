@@ -15,5 +15,9 @@ export default defineConfig({
     // Tests live outside src/app so the Next App Router never treats them as
     // routes, and so `next build` does not compile them into the bundle.
     include: ['src/__tests__/**/*.test.{ts,tsx}'],
+    // Registers Testing Library's cleanup. Without `globals: true` its own
+    // auto-cleanup never installs, and rendered DOM from one test is still
+    // mounted during the next.
+    setupFiles: ['src/__tests__/setup.ts'],
   },
 });
