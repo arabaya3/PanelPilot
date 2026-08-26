@@ -396,18 +396,36 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     That was correct and correctly scoped to BE-008, which owns the diagnosis
     path — but "BE-008 will remember" is not a guarantee. This is.
 
-    Currently vacuous: no module invokes a model yet. It starts biting the
-    moment one does, which is the point.
+    A module satisfies the rule either by calling the gate itself, or by
+    taking an already-decided ``ConfidenceDecision`` and refusing to proceed
+    unless it permits generation. The second form is what a module called by
+    an endpoint does: the gate runs once, at the top of the request, and the
+    verdict is carried down rather than re-derived at every layer.
+
+    What it still rejects is the case that matters — a module that reaches a
+    model without either consulting the gate or being handed its verdict.
     """
     generation_markers = ("anthropic", "messages.create", "client.messages")
+    # Either the module runs the gate itself...
+    runs_the_gate = ("evaluate_confidence", "require_evidence")
+    # ...or it is handed the verdict and honours it. Both halves are required:
+    # accepting a bare `ConfidenceDecision` parameter would let a module import
+    # the type and then ignore it.
+    honours_a_verdict = "ConfidenceDecision"
+    obeys_a_verdict = ("may_generate", "DecisionOutcome.ANSWER")
+
     for module in _source_modules("domain", "ai", "api", "worker"):
         source = module.read_text(encoding="utf-8")
         if not any(marker in source for marker in generation_markers):
             continue
-        assert "evaluate_confidence" in source or "require_evidence" in source, (
+        consulted = any(marker in source for marker in runs_the_gate) or (
+            honours_a_verdict in source and any(marker in source for marker in obeys_a_verdict)
+        )
+        assert consulted, (
             f"{module.relative_to(APP_ROOT)} invokes generation without consulting "
-            "the cite-or-refuse guardrail. Call evaluate_confidence first and "
-            "short-circuit on anything but ANSWER — see app/ai/guardrails/."
+            "the cite-or-refuse guardrail. Either call evaluate_confidence first, "
+            "or take a ConfidenceDecision and return early unless it permits "
+            "generation — see app/ai/guardrails/."
         )
 
 
