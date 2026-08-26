@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 
 import { useChecklist } from '@/components/chat/checklist-provider';
+import { StateIcon } from '@/components/state-icon';
 import { TechnicalToken } from '@/components/technical-token';
 
 import { decideVariant, type CardVariant, type ResolvedStep } from './citations';
@@ -42,21 +43,27 @@ type DiagnosticResponse = components['schemas']['DiagnosticResponse'];
  * token colours, never an arbitrary colour" true — there is nowhere here to
  * put an arbitrary colour.
  */
-const SEVERITY_CLASSES: Record<Severity, { border: string; badge: string; surface: string }> = {
+const SEVERITY_CLASSES: Record<
+  Severity,
+  { border: string; badge: string; surface: string; text: string }
+> = {
   critical: {
     border: 'border-severity-critical',
     badge: 'bg-severity-critical text-severity-critical-surface',
     surface: 'bg-severity-critical-surface',
+    text: 'text-severity-critical',
   },
   warning: {
     border: 'border-severity-warning',
     badge: 'bg-severity-warning text-severity-warning-surface',
     surface: 'bg-severity-warning-surface',
+    text: 'text-severity-warning',
   },
   info: {
     border: 'border-severity-info',
     badge: 'bg-severity-info text-severity-info-surface',
     surface: 'bg-severity-info-surface',
+    text: 'text-severity-info',
   },
 };
 
@@ -136,7 +143,7 @@ function Step({
   const instructionId = useId();
 
   return (
-    <li className={`rounded-md border-s-4 ${classes.border} bg-surface-raised p-3`}>
+    <li className={`relative rounded-md border-s-4 ${classes.border} bg-surface-raised p-3`}>
       <div className="flex items-baseline gap-2">
         {trackable ? (
           <input
@@ -177,9 +184,11 @@ function Step({
           </span>
         ) : null}
       </div>
-      {/* The severity in words as well as in the border colour. Colour alone
-          fails WCAG 1.4.1, and the audience reads these on a sunlit screen in
-          a plant room as often as at a desk. */}
+      {/* The severity as a shape and in words, not only in the border colour.
+          The sr-only label covers screen readers; the icon covers a sighted
+          colourblind engineer, who otherwise gets nothing here — these are the
+          same three colours this pass measured as ambiguous. */}
+      <StateIcon shape={step.severity} className={`${classes.text} absolute end-3 top-3`} />
       <span className="sr-only">{severityLabel(step.severity)}</span>
       <p className="mt-1 text-sm text-text-muted">{step.rationale}</p>
       <Citations citations={step.citations} label={t('stepSources')} level="h5" />
@@ -215,7 +224,10 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
       className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+        >
+          <StateIcon shape="uncertain" />
           {t('uncertainBadge')}
         </span>
       </div>
@@ -241,8 +253,14 @@ function RefusalCard({ message }: { message: string }) {
       data-testid="diagnostic-card"
       data-variant="refusal"
       aria-labelledby={headingId}
-      className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
+      className={`rounded-lg border border-s-8 ${classes.border} bg-surface p-4`}
     >
+      <div className="mb-2 flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5 text-xs font-semibold uppercase text-text-muted">
+          <StateIcon shape="error" />
+          {t('refusalBadge')}
+        </span>
+      </div>
       <h3 id={headingId} className="text-lg font-semibold text-text">
         {t('refusalHeading')}
       </h3>
@@ -280,7 +298,15 @@ function DiagnosisCard({
       className={`rounded-lg border ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+        >
+          {/* Shape as well as colour. Simulated through the common colour
+              deficiencies, critical and warning sit at ΔE 6 under
+              deuteranopia in the light theme — the pair where confusing the
+              two matters most, indistinguishable for about one man in
+              sixteen. An octagon is not a triangle in any light. */}
+          <StateIcon shape={diagnosis.severity} />
           {severityLabel(diagnosis.severity)}
         </span>
         {diagnosis.equipment_model ? (

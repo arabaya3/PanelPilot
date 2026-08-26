@@ -42,7 +42,8 @@
     "refusalHeading": "لم تُقدَّم إجابة",
     "refusalFallback": "تعذّر الإجابة عن هذا السؤال استناداً إلى الوثائق المتاحة.",
     "markDone": "وضع علامة على إتمام الخطوة {step}",
-    "progress": "تم إنجاز {done} من {total} خطوات"
+    "progress": "تم إنجاز {done} من {total} خطوات",
+    "refusalBadge": "بلا إجابة"
   },
   "chat": {
     "empty": "صف العطل الذي تراه.",
