@@ -283,6 +283,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/images': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Upload Image
+     * @description Accept a photo of an equipment display.
+     *
+     *     The declared content type is deliberately not passed on: the domain
+     *     sniffs the bytes, and forwarding a client-supplied type would invite a
+     *     future reader to trust it.
+     */
+    post: operations['upload_image_api_v1_images_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -297,6 +321,11 @@ export interface components {
       /** Value */
       value: string;
       source: components['schemas']['Citation'];
+    };
+    /** Body_upload_image_api_v1_images_post */
+    Body_upload_image_api_v1_images_post: {
+      /** File */
+      file: string;
     };
     /**
      * BomLine
@@ -608,6 +637,17 @@ export interface components {
       dependencies: {
         [key: string]: components['schemas']['DependencyState'];
       };
+    };
+    /**
+     * ImageUploadResponse
+     * @description What an upload returns.
+     *
+     *     Attributes:
+     *         image_id: The handle to pass to the chat endpoint.
+     */
+    ImageUploadResponse: {
+      /** Image Id */
+      image_id: string;
     };
     /**
      * InstallationMethod
@@ -1448,6 +1488,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PromotionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  upload_image_api_v1_images_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_upload_image_api_v1_images_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImageUploadResponse'];
         };
       };
       /** @description Validation Error */

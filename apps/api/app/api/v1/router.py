@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     calculations,
     diagnostics,
     health,
+    images,
     ingestion,
     search,
 )
@@ -23,3 +24,4 @@ api_router.include_router(diagnostics.router, prefix="/diagnostics", tags=["diag
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
+api_router.include_router(images.router, prefix="/images", tags=["images"])
