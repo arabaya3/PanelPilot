@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     retrieval_min_score: float = 0.05
     guardrail_min_confidence: float = 0.6
 
+    # --- Object storage ----------------------------------------------------
+    # Where uploaded equipment photos are written. A local directory today;
+    # the domain talks to an ObjectStore port, so pointing this at S3 is an
+    # adapter swap at the composition root rather than a domain change.
+    image_storage_root: str = "./var/images"
+
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
     # RFC 7518 §3.2: an HMAC key shorter than the hash output weakens the

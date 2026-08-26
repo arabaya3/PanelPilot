@@ -6,18 +6,34 @@ business logic — that belongs in ``app.domain``.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.domain import auth as auth_domain
+from app.domain.storage import FilesystemObjectStore, ObjectStore
 from app.models.schemas.auth import CurrentUser
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def get_object_store() -> ObjectStore:
+    """Return the store uploaded images are written to.
+
+    Returns:
+        The configured store. A dependency rather than a module-level
+        singleton so a test can substitute one without touching the disk.
+    """
+    return FilesystemObjectStore(Path(get_settings().image_storage_root))
+
+
+ObjectStoreDep = Annotated[ObjectStore, Depends(get_object_store)]
 
 # auto_error=False so a missing header raises our AuthenticationError, which
 # the installed handler renders consistently, rather than Starlette's own 403.

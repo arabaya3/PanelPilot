@@ -5,6 +5,8 @@ description = "PanelPilot API — AI diagnostic and design copilot for electrica
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
+    # Multipart form parsing, required by FastAPI for file uploads (BE-009).
+    "python-multipart>=0.0.20",
     "uvicorn[standard]>=0.32",
     "pydantic[email]>=2.9",
     "bcrypt>=4.2",
