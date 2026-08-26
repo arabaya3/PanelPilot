@@ -500,7 +500,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A query with no matching verified content in the index reliably returns the uncertain-state response, never a fabricated answer, across repeated tests.
 
-### [ ] AI-004 — Structured response formatting
+### [x] AI-004 — Structured response formatting
 
 | Field                   | Value                                           |
 | ----------------------- | ----------------------------------------------- |
