@@ -70,6 +70,49 @@ function response(overrides: Partial<DiagnosticResponse> = {}): DiagnosticRespon
   };
 }
 
+/**
+ * One icon's outline, as a canonical point set.
+ *
+ * A `<rect>` and a `<polygon>` tracing the same square are the same shape to
+ * an eye and different strings to a string compare, so the comparison has to
+ * happen on points.
+ */
+function normalise(svg: SVGElement | null): string {
+  const shape = svg?.firstElementChild;
+  if (!shape) return '';
+
+  if (shape.tagName === 'circle') {
+    const [cx, cy, r] = ['cx', 'cy', 'r'].map((a) => Number(shape.getAttribute(a) ?? 0));
+    return `circle:${String(cx)},${String(cy)},${String(r)}`;
+  }
+  if (shape.tagName === 'rect') {
+    const read = (name: string) => Number(shape.getAttribute(name) ?? 0);
+    const [x, y, w, h] = [read('x'), read('y'), read('width'), read('height')];
+    // Expanded to its corners, so it compares directly against a polygon
+    // drawing the same box.
+    return points([
+      [x, y],
+      [x + w, y],
+      [x + w, y + h],
+      [x, y + h],
+    ]);
+  }
+  return points(
+    (shape.getAttribute('points') ?? '')
+      .trim()
+      .split(/\s+/)
+      .map((pair) => pair.split(',').map(Number) as [number, number]),
+  );
+}
+
+/** Corners, sorted, so winding order and start point do not matter. */
+function points(corners: [number, number][]): string {
+  return corners
+    .map(([x, y]) => `${String(x)},${String(y)}`)
+    .sort()
+    .join(' ');
+}
+
 /** Every shape rendered inside one card. */
 function shapesIn(card: HTMLElement): string[] {
   return [...card.querySelectorAll('[data-shape]')].map(
@@ -88,14 +131,16 @@ describe('StateIcon', () => {
   });
 
   it('gives every state a different silhouette', () => {
-    // Corner count is the distinction that survives being rendered in grey,
-    // which is the whole point: octagon, triangle, circle, diamond, square.
+    // Compared as geometry rather than as markup. The first version of this
+    // test compared `innerHTML` strings, and a mutation that drew the diamond
+    // as a polygon tracing the *exact* square of the error icon passed it —
+    // two states that must not be confused rendering pixel-identical, with
+    // the suite silent, because the strings differed.
     const drawn = SHAPES.map((shape) => {
       const { container, unmount } = renderApp(<StateIcon shape={shape} />);
-      const svg = container.querySelector('svg');
-      const geometry = svg?.innerHTML ?? '';
+      const outline = normalise(container.querySelector('svg'));
       unmount();
-      return geometry;
+      return outline;
     });
     expect(new Set(drawn).size).toBe(SHAPES.length);
   });
@@ -154,10 +199,13 @@ describe('the three states are distinguishable without text', () => {
     const refusal = render(response({ diagnosis: null, refusal_message: 'No.' }));
 
     expect(uncertain.className).not.toBe(refusal.className);
-    // The refusal is the only dashed card in the product, which is what makes
-    // "the assistant declined" legible before a word is read.
-    expect(refusal.className).toContain('border-dashed');
-    expect(uncertain.className).not.toContain('border-dashed');
+    // A heavy leading rule marks the two states where nothing arrived. The
+    // first version used a dashed border for this and claimed it was unique;
+    // it was not — the file dropzone in the same chat surface already uses
+    // `border-2 border-dashed`, so the signal was taken before it was
+    // invented. Dashed still means 'empty, waiting to be filled' there.
+    expect(refusal.className).toContain('border-s-8');
+    expect(uncertain.className).not.toContain('border-s-8');
   });
 
   it('does not let an uncertain card borrow a confident card’s chrome', () => {
@@ -214,11 +262,23 @@ describe('colour alone is not enough', () => {
     ].map((c) => Math.max(0, Math.min(255, Math.round(gam(Math.max(0, c)) * 255))));
   }
 
-  // `m` is deliberately discarded: deuteranopia is the absence of the M cone,
-  // so its response is reconstructed from L and S rather than read.
+  /**
+   * Viénot's deuteranope substitution: M' = 0.494207·L + 1.24827·S.
+   *
+   * `m` is deliberately discarded — deuteranopia is the absence of the M cone,
+   * so its response is reconstructed from L and S rather than read.
+   *
+   * The coefficients are the part to get right, and the first version of this
+   * file got them wrong: it used 0.9513092 / 0.04866992, which sets M ≈ L and
+   * is not the deuteranope row at all. The output gave that away — every
+   * colour came back with R exactly equal to G and blue clamped to zero (it
+   * went negative before clamping), which is a degenerate collapse onto a
+   * single yellow line rather than a percept. Any two reds land near each
+   * other under that, so the ΔE it produced was measuring the bug.
+   */
   const deuteranopia = ([l, _m, s]: number[]) => [
     l ?? 0,
-    0.9513092 * (l ?? 0) + 0.04866992 * (s ?? 0),
+    0.494207 * (l ?? 0) + 1.24827 * (s ?? 0),
     s ?? 0,
   ];
 
@@ -245,15 +305,38 @@ describe('colour alone is not enough', () => {
     return match[1];
   }
 
-  it('confirms critical and warning are ambiguous under deuteranopia', () => {
-    // ΔE ≈ 6 — below any usable threshold, for roughly one man in sixteen,
-    // in the pair where confusing the two matters most. This is the finding
-    // that justifies the shapes, so it is asserted rather than described: if
-    // the palette is ever changed enough to make colour sufficient, this
-    // fails and someone gets to reconsider.
+  it('sanity-checks the simulation before trusting a number out of it', () => {
+    // The guard that would have caught the original error. A correct
+    // round trip through LMS and back must return the colour unchanged — and
+    // a *simulated* colour must not come back with R exactly equal to G and
+    // blue at zero, which is what a degenerate transform produces and what a
+    // real percept never does.
+    const critical = hex(token('--color-severity-critical'));
+    expect(fromLms(toLms(critical))).toEqual(critical);
+
+    const simulated = simulate(token('--color-severity-critical'));
+    const [r, g, b] = simulated;
+    expect(r === g && b === 0, 'the simulation has collapsed to a single line').toBe(false);
+  });
+
+  it('confirms critical and warning stay close under deuteranopia', () => {
+    // ΔE ≈ 11 against ≈ 27 for normal vision: less than half the separation,
+    // for roughly one man in sixteen, in the pair where confusing the two
+    // matters most. Low enough that colour should not be carrying this alone,
+    // which is what the shapes are for.
+    //
+    // Bounded on both sides. The upper bound is the finding; the lower bound
+    // is there because the first version of this file reported 6 from a
+    // broken transform, and a number that drifts *down* is now as loud as one
+    // that drifts up.
     const critical = simulate(token('--color-severity-critical'));
     const warning = simulate(token('--color-severity-warning'));
-    expect(distance(critical, warning)).toBeLessThan(15);
+    const separation = distance(critical, warning);
+
+    expect(separation).toBeLessThan(15);
+    expect(separation, 'suspiciously low — check the simulation, not the palette').toBeGreaterThan(
+      8,
+    );
   });
 
   function simulate(colour: string): number[] {
@@ -333,11 +416,46 @@ describe('a failed turn does not look like an answer', () => {
     expect(shapes).toContain('error');
   });
 
-  it('is dashed, like the refusal and unlike any answer', async () => {
-    // Dashed means "nothing arrived" — a refusal or a failure. Solid means an
-    // answer is present, whatever its confidence. That is one bit, readable
-    // across a room.
+  it('carries the same leading rule as the refusal', async () => {
+    // A heavy leading rule means nothing arrived — a refusal or a failure.
+    // Without it, an answer is present, whatever its confidence. One bit,
+    // readable down a transcript at a glance.
     const failure = await failedTurn();
-    expect(failure.className).toContain('border-dashed');
+    expect(failure.className).toContain('border-s-8');
+  });
+});
+
+// --- the steps, not only the badge --------------------------------------------
+
+describe('a step carries its severity as a shape too', () => {
+  it('gives every step an icon, not just the card header', () => {
+    // The pass's own argument, applied where it was first left out. A step's
+    // urgency lived in a 4px border colour — the same three colours this file
+    // measures as ambiguous — with an sr-only label for screen readers and
+    // nothing at all for a sighted colourblind engineer.
+    const payload = response();
+    if (payload.diagnosis) {
+      const [first] = payload.diagnosis.steps;
+      if (!first) throw new Error('fixture has no step');
+      payload.diagnosis.steps = [
+        { ...first, order: 1, severity: 'critical' },
+        { ...first, order: 2, severity: 'warning' },
+      ];
+    }
+    renderApp(<DiagnosticCard response={payload} />);
+
+    // Scoped to the ordered step list: the citation blocks inside each step
+    // are list items too.
+    const list = screen.getByTestId('diagnostic-card').querySelector('ol');
+    const steps = [...(list?.children ?? [])];
+    expect(steps).toHaveLength(2);
+    for (const [index, step] of steps.entries()) {
+      const shapes = [...step.querySelectorAll('[data-shape]')].map((node) =>
+        node.getAttribute('data-shape'),
+      );
+      expect(shapes, `step ${String(index + 1)} has no severity shape`).toContain(
+        index === 0 ? 'critical' : 'warning',
+      );
+    }
   });
 });

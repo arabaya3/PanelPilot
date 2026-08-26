@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { StateIcon } from '@/components/state-icon';
 import { TechnicalToken } from '@/components/technical-token';
 import {
   CaptureFailure,
@@ -143,8 +144,19 @@ export function ImageCapture({
 
   if (stage.kind === 'error') {
     return (
-      <div role="alert" data-testid="capture-error" className="p-3 text-sm text-text">
-        <p>{stage.message}</p>
+      <div
+        role="alert"
+        data-testid="capture-error"
+        // The same chrome as any other hard error. This was plain text with
+        // no border, no colour and no shape — a failure styled more weakly
+        // than the success beside it, and indistinguishable from the
+        // off-topic rejection.
+        className="rounded-lg border border-s-8 border-severity-critical bg-surface p-3 text-sm text-text"
+      >
+        <p className="flex items-center gap-2 font-medium">
+          <StateIcon shape="error" className="text-severity-critical" />
+          {stage.message}
+        </p>
         <button
           type="button"
           onClick={() => {
@@ -216,7 +228,10 @@ export function ImageCapture({
   if (stage.kind === 'stored') {
     return (
       <div className="p-3 text-sm" data-testid="capture-stored">
-        <p className="text-text">{t('storedNoReading')}</p>
+        <p className="flex items-center gap-2 text-text">
+          <StateIcon shape="info" className="text-accent" />
+          {t('storedNoReading')}
+        </p>
         <button
           type="button"
           onClick={() => {
@@ -320,9 +335,16 @@ function Confirmation({
   // what it saw so the engineer is told what to do instead of just "no".
   if (result.verdict !== 'fault_display') {
     return (
-      <div className="p-3 text-sm" data-testid="capture-rejected" data-verdict={result.verdict}>
+      <div
+        className="rounded-lg border border-s-8 border-severity-info bg-surface p-3 text-sm"
+        data-testid="capture-rejected"
+        data-verdict={result.verdict}
+      >
         <img src={previewUrl} alt={t('previewAlt')} className="mb-2 max-h-40 rounded-md" />
-        <p className="text-text">{result.note ?? t(`verdict.${result.verdict}`)}</p>
+        <p className="flex items-center gap-2 text-text">
+          <StateIcon shape="uncertain" className="text-severity-info" />
+          {result.note ?? t(`verdict.${result.verdict}`)}
+        </p>
         <button
           type="button"
           onClick={onDiscard}
