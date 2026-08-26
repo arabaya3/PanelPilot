@@ -16,7 +16,9 @@ from typing import Any
 
 from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
 from app.ai.retrieval.mappings import VerificationStatus
+from app.ai.retrieval.query_classifier import classify_query
 from app.core.config import get_settings
+from app.models.schemas.retrieval_config import BlendWeights, RetrievalConfig
 from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
 
 # Relative weight of the lexical and semantic legs. BM25 carries slightly more
@@ -28,8 +30,10 @@ from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
 # [0, 1] BEFORE they are combined. Summing raw scores would be meaningless:
 # cosine similarity is bounded at 1.0 while BM25 is unbounded, so a "0.4"
 # vector weight would in practice contribute a few percent.
-BM25_WEIGHT = 0.6
-VECTOR_WEIGHT = 0.4
+# The default blend, used by the named server-side pipeline. Per-query
+# weights come from RetrievalConfig and are applied inline at search time; this
+# pair is the fallback for anything that runs without one.
+_DEFAULT_BLEND = BlendWeights(bm25=0.6, vector=0.4)
 
 # Search pipeline performing that normalisation. Registered once per cluster by
 # ``ensure_search_pipeline`` and referenced by name on every query.
@@ -51,11 +55,62 @@ def search_pipeline_body() -> dict[str, Any]:
                     "combination": {
                         "technique": "arithmetic_mean",
                         # Order matches the `queries` list in _build_query.
-                        "parameters": {"weights": [BM25_WEIGHT, VECTOR_WEIGHT]},
+                        "parameters": {"weights": _DEFAULT_BLEND.as_pipeline_weights()},
                     },
                 }
             }
         ],
+    }
+
+
+def retrieval_config_from_settings() -> RetrievalConfig:
+    """Build a retrieval config seeded from the environment.
+
+    ``RETRIEVAL_TOP_K`` and ``RETRIEVAL_MIN_SCORE`` are documented environment
+    variables, so they must still take effect — but the query path reads only
+    the config. This is the single place the two meet, so there is one value
+    in play rather than two that can silently disagree.
+
+    Returns:
+        A config carrying the configured top_k and score floor, with the
+        default per-query-type blend weights.
+    """
+    settings = get_settings()
+    return RetrievalConfig(
+        top_k=settings.retrieval_top_k,
+        min_score=settings.retrieval_min_score,
+    )
+
+
+def inline_pipeline(weights: BlendWeights) -> dict[str, Any]:
+    """Return a request-scoped pipeline applying one query's blend weights.
+
+    OpenSearch resolves a ``search_pipeline`` given in the request body ahead
+    of the named one, so a query type's weights travel with the query rather
+    than requiring a different named pipeline per type — which would mean a
+    cluster-state write on every re-tune.
+
+    Args:
+        weights: The blend weights for this query.
+
+    Returns:
+        A pipeline definition for the request body.
+    """
+    return {
+        "phase_results_processors": [
+            {
+                "normalization-processor": {
+                    "normalization": {"technique": "min_max"},
+                    "combination": {
+                        "technique": "arithmetic_mean",
+                        # Order matches the `queries` list in _build_query. If
+                        # these disagree each weight lands on the wrong leg,
+                        # which reads as a tuning problem and is not one.
+                        "parameters": {"weights": weights.as_pipeline_weights()},
+                    },
+                }
+            }
+        ]
     }
 
 
@@ -180,6 +235,7 @@ def _search(
     filters: SearchFilters | None,
     top_k: int | None,
     min_score: float | None,
+    config: RetrievalConfig | None = None,
 ) -> list[RetrievedPassage]:
     """Run a hybrid search against one index.
 
@@ -194,13 +250,21 @@ def _search(
         filters: Optional additional restrictions.
         top_k: Passages to return; defaults to the configured value.
         min_score: Score floor; defaults to the configured value.
+        config: Retrieval tuning. Defaults to the tuned configuration.
 
     Returns:
         Ranked passages, each carrying its citation.
     """
-    settings = get_settings()
-    resolved_top_k = top_k if top_k is not None else settings.retrieval_top_k
-    resolved_min_score = min_score if min_score is not None else settings.retrieval_min_score
+    # RetrievalConfig is the single source of tuning values. The settings
+    # fallback that used to live here is gone: two places holding top_k meant
+    # a re-tune could change one and leave the other, and nothing would say so.
+    resolved = config or retrieval_config_from_settings()
+    resolved_top_k = top_k if top_k is not None else resolved.top_k
+    resolved_min_score = min_score if min_score is not None else resolved.min_score
+    # The blend depends on what is being asked: a fault code wants the lexical
+    # leg, a described symptom wants the semantic one. One global weight serves
+    # whichever is more common and underserves the other.
+    blend = resolved.weights_for(classify_query(query))
 
     merged = filters or SearchFilters()
     if brand and brand not in merged.manufacturers:
@@ -227,6 +291,11 @@ def _search(
             )
             target_filter.append({"term": {"model": model}})
 
+    # The inline pipeline carries this query's weights and takes precedence
+    # over the named one, which stays as the fallback for anything issuing a
+    # search without a config.
+    body["search_pipeline"] = inline_pipeline(blend)
+
     response = get_client().search(
         index=resolve_index(target), body=body, params={"search_pipeline": SEARCH_PIPELINE}
     )
@@ -241,6 +310,7 @@ def search(
     filters: SearchFilters | None = None,
     top_k: int | None = None,
     min_score: float | None = None,
+    config: RetrievalConfig | None = None,
 ) -> list[RetrievedPassage]:
     """Search the production corpus.
 
@@ -254,6 +324,8 @@ def search(
         filters: Optional additional restrictions.
         top_k: Passages to return; defaults to the configured value.
         min_score: Fused-score floor; defaults to the configured value.
+        config: Retrieval tuning, including the per-query-type blend weights.
+            Defaults to the tuned configuration.
 
     Returns:
         Passages in descending relevance order, each carrying its source
@@ -267,6 +339,7 @@ def search(
         filters=filters,
         top_k=top_k,
         min_score=min_score,
+        config=config,
     )
 
 
