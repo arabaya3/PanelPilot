@@ -30,13 +30,16 @@ from app.models.schemas.retrieval_config import QueryType
 _FAULT_CODE = re.compile(
     r"""
     (?:
-      # F0001, E-024 — the letters must be attached or hyphenated. A space
-      # would match "is 24" in "is 24 volts correct", routing a measurement
-      # question to weights that all but disable the semantic leg.
-        \b[a-z]{1,3}-?\d{2,5}\b
+      # F0001, E-024, ALM-12. Restricted to prefixes manufacturers actually
+      # use for faults. An unrestricted `[a-z]{1,3}\d{2,5}` swallows the whole
+      # hardware-identifier vocabulary of this domain — IP54, M12, R12, RS485,
+      # ACS880 — and routes each to weights that all but disable the semantic
+      # leg, which is exactly where an engineer's phrasing differs most from
+      # the manual's.
+        \b(?:f|e|al|alm|err|flt|fc|ec)-?\d{2,5}\b
       # "AL 5091" — a space is only allowed after a known code prefix, so the
       # separator is not a general licence to join any word to any number.
-      | \b(?:al|f|e|err|flt)\s\d{2,5}\b
+      | \b(?:al|alm|f|e|err|flt)\s\d{2,5}\b
       | \b(?:fault|alarm|error|trip|code)\s+(?:code\s+)?[a-z]?[\s-]?\d{1,5}\b
     )
     """,

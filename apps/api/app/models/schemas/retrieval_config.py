@@ -114,6 +114,18 @@ class RetrievalConfig(BaseModel):
     weights: dict[QueryType, BlendWeights] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
     top_k: int = Field(default=12, ge=1, le=100)
     min_score: float = Field(default=0.05, ge=0.0, le=1.0)
+    # The bar retrieval must clear, per category, before a change ships.
+    #
+    # This is deliberately a config field and not a constant: it is a product
+    # decision about how much wrong-passage risk is acceptable, and the number
+    # below is a *starting proposal* awaiting agreement, not a measured result.
+    # `assert_meets_threshold` enforces whatever it is set to, so the argument
+    # is about the value rather than about whether anything checks it.
+    #
+    # It applies per category, never to an average: an aggregate that clears
+    # the bar while fault-code lookups sit at 0.2 is the exact failure the
+    # per-category reporting exists to surface.
+    min_precision: float = Field(default=0.7, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _every_query_type_is_tuned(self) -> RetrievalConfig:

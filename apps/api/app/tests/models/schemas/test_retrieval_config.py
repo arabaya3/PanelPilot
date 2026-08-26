@@ -140,3 +140,22 @@ def test_the_default_weights_are_not_shared_between_configs() -> None:
     first.weights[QueryType.FAULT_CODE] = BlendWeights(bm25=0.5, vector=0.5)
     later = RetrievalConfig()
     assert later.weights_for(QueryType.FAULT_CODE).bm25 != 0.5
+
+
+def test_the_precision_floor_is_a_real_bar() -> None:
+    """A floor of 0 accepts anything, which is the criterion not being met.
+
+    The value is a product decision awaiting agreement, but a default that
+    gates nothing would let the acceptance criterion pass vacuously.
+    """
+    assert RetrievalConfig().min_precision > 0.5
+
+
+def test_the_precision_floor_is_configurable() -> None:
+    """It is the number under discussion; only the enforcement is fixed."""
+    assert RetrievalConfig(min_precision=0.9).min_precision == 0.9
+
+
+def test_the_precision_floor_stays_in_the_unit_interval() -> None:
+    with pytest.raises(ValidationError):
+        RetrievalConfig(min_precision=1.5)

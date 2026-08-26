@@ -21,18 +21,16 @@ from app.core.config import get_settings
 from app.models.schemas.retrieval_config import BlendWeights, RetrievalConfig
 from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
 
-# Relative weight of the lexical and semantic legs. BM25 carries slightly more
-# because engineers search with exact part numbers and fault codes, which
-# lexical matching handles better than embeddings. AI-002 re-tunes these
-# against this domain's real query patterns.
+# The fallback blend, carried by the named server-side pipeline. Every query
+# issued through this module overrides it with the weights for that query's
+# type (see RetrievalConfig); this pair only applies to a search that somehow
+# reaches the cluster without one, so it is deliberately middle-of-the-road
+# rather than tuned for any particular query type.
 #
-# These weights are only meaningful because the legs are min-max normalised to
+# Any weights are only meaningful because the legs are min-max normalised to
 # [0, 1] BEFORE they are combined. Summing raw scores would be meaningless:
 # cosine similarity is bounded at 1.0 while BM25 is unbounded, so a "0.4"
 # vector weight would in practice contribute a few percent.
-# The default blend, used by the named server-side pipeline. Per-query
-# weights come from RetrievalConfig and are applied inline at search time; this
-# pair is the fallback for anything that runs without one.
 _DEFAULT_BLEND = BlendWeights(bm25=0.6, vector=0.4)
 
 # Search pipeline performing that normalisation. Registered once per cluster by
@@ -124,10 +122,10 @@ def _build_query(
 ) -> dict[str, Any]:
     """Build the hybrid request body.
 
-    Both legs run in one request and are fused by weighted score combination:
-    the BM25 leg is boosted by ``BM25_WEIGHT`` and the kNN leg by
-    ``VECTOR_WEIGHT``, so a passage strong on either signal surfaces while one
-    strong on both outranks it.
+    Both legs run in one request. This function does not weight them — the
+    blend is applied by the search pipeline, whose weights depend on the query
+    type (see ``RetrievalConfig``). A passage strong on either signal surfaces,
+    and one strong on both outranks it.
 
     Args:
         query: Natural-language query text.
@@ -291,14 +289,18 @@ def _search(
             )
             target_filter.append({"term": {"model": model}})
 
-    # The inline pipeline carries this query's weights and takes precedence
-    # over the named one, which stays as the fallback for anything issuing a
-    # search without a config.
+    # The inline pipeline carries this query's weights.
+    #
+    # The named pipeline is deliberately NOT also referenced here. Sending both
+    # a `search_pipeline` query parameter and a body-level definition leaves
+    # which one applies to documented precedence rules — and if the named one
+    # won, every query would silently run under the fixed fallback blend while
+    # every test still passed. One pipeline per request, chosen here, removes
+    # the question. The named pipeline remains registered for any caller that
+    # issues a search without going through this function.
     body["search_pipeline"] = inline_pipeline(blend)
 
-    response = get_client().search(
-        index=resolve_index(target), body=body, params={"search_pipeline": SEARCH_PIPELINE}
-    )
+    response = get_client().search(index=resolve_index(target), body=body)
     return _to_passages(response, min_score=resolved_min_score)
 
 

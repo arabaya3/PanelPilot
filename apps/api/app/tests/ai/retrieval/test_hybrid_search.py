@@ -192,8 +192,10 @@ class _RecordingClient:
 
     def __init__(self) -> None:
         self.body: dict[str, Any] | None = None
+        self.kwargs: dict[str, Any] | None = None
 
     def search(self, **kwargs: Any) -> dict[str, Any]:
+        self.kwargs = kwargs
         self.body = kwargs["body"]
         return {"hits": {"hits": []}}
 
@@ -283,6 +285,46 @@ def test_an_explicit_config_overrides_the_default(
         "combination"
     ]["parameters"]["weights"]
     assert weights == [0.95, 0.05]
+
+
+def test_only_one_pipeline_applies_to_a_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never both a named pipeline and an inline one.
+
+    Sending a `search_pipeline` query parameter alongside a body-level
+    definition leaves which applies to precedence rules. If the named one won,
+    every query would silently run under the fixed fallback blend while every
+    test still passed — the shape of a defect a previous review found in this
+    same file.
+    """
+    client = _RecordingClient()
+    monkeypatch.setattr(hybrid_search, "get_client", lambda: client)
+    monkeypatch.setattr(hybrid_search, "embed_query", lambda _q: [0.0] * EMBEDDING_DIMENSIONS)
+    monkeypatch.setattr(hybrid_search, "resolve_index", lambda _t: "test-index")
+    monkeypatch.setattr(hybrid_search, "retrieval_config_from_settings", RetrievalConfig)
+
+    hybrid_search.search("F0001", top_k=5, min_score=0.0)
+
+    assert client.kwargs is not None
+    assert "search_pipeline" in client.kwargs["body"]
+    assert "params" not in client.kwargs, "a query-param pipeline would compete with the inline one"
+
+
+def test_the_environment_still_configures_top_k(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RETRIEVAL_TOP_K is a documented variable and must still take effect.
+
+    RetrievalConfig is the single source the query path reads, so this bridge
+    is the one place the two meet — if it stopped honouring settings, an
+    operator's configuration would be silently ignored.
+    """
+
+    class _Settings:
+        retrieval_top_k = 3
+        retrieval_min_score = 0.42
+
+    monkeypatch.setattr(hybrid_search, "get_settings", _Settings)
+    config = hybrid_search.retrieval_config_from_settings()
+    assert config.top_k == 3
+    assert config.min_score == 0.42
 
 
 # --- unit: the staging isolation ADR 0001 requires --------------------------

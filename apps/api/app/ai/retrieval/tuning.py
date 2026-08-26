@@ -162,8 +162,12 @@ def _holdout_bucket(entry_id: str) -> int:
         tuning results measured against different holdouts are not comparable,
         and "it improved" becomes unfalsifiable.
     """
+    # Eight bytes, not one: `digest[0] % 100` over a 0-255 byte gives buckets
+    # 0-55 three values each and 56-99 only two, so a nominal 25% holdout is
+    # really 29%. The bias is harmless to correctness and confusing to anyone
+    # who trusts the parameter.
     digest = hashlib.sha256(entry_id.encode("utf-8")).digest()
-    return digest[0] % 100
+    return int.from_bytes(digest[:8], "big") % 100
 
 
 def split_eval_set(entries: Sequence[EvalEntry], *, holdout_percent: int = 25) -> TuningSplit:
@@ -233,7 +237,11 @@ def measure(
                 # An out-of-scope entry asserts nothing should be found, so it
                 # has no expected document and cannot contribute to precision.
                 continue
-            retrieved = list(retriever(entry, config))
+            # Deduplicated: a passage-level retriever legitimately returns
+            # several chunks of one document, and counting each as a separate
+            # relevant result would score near-perfect precision no matter how
+            # much noise sat alongside them.
+            retrieved = list(dict.fromkeys(retriever(entry, config)))
             retrieved_total += len(retrieved)
             relevant = sum(1 for doc_id in retrieved if doc_id == expected.document_id)
             relevant_total += relevant
@@ -293,7 +301,16 @@ def tune(
         if not bucket:
             continue
 
-        best_score = -1.0
+        # A tuple, so the tie-break actually compares recall. Holding only
+        # the precision here made the comparison's right-hand side
+        # `(best_precision, -1.0)`, which every equal-precision candidate beat
+        # — so ties were decided by list position, not by recall.
+        #
+        # The sentinel's second element is unreachable (precision and recall
+        # are both >= 0, so any real score wins on the first element alone);
+        # it is there to keep the tuple shapes matching, and no test can
+        # distinguish its value.
+        best_score = (-1.0, -1.0)
         for bm25 in candidate_weights:
             trial_weights = BlendWeights(bm25=bm25, vector=round(1.0 - bm25, 10))
             trial = config.model_copy(update={"weights": {**chosen, query_type: trial_weights}})
@@ -303,11 +320,82 @@ def tune(
             # passage reaching generation is worse than a missed one, because
             # the miss refuses safely and the irrelevant one gets cited.
             score = (measured.precision, measured.recall)
-            if score > (best_score, -1.0):
-                best_score = measured.precision
+            # Strict `>`, so the first candidate reaching a given
+            # (precision, recall) keeps it. `>=` would pick a later one, but
+            # the two are indistinguishable on every measure taken here, so
+            # this is a stability preference rather than a quality decision.
+            if score > best_score:
+                best_score = score
                 chosen[query_type] = trial_weights
 
     return config.model_copy(update={"weights": chosen})
+
+
+class PrecisionShortfallError(Exception):
+    """Raised when a category's precision is below the configured floor."""
+
+
+def assert_meets_threshold(report: TuningReport) -> None:
+    """Fail unless every measured category clears the precision floor.
+
+    The acceptance criterion is "meets an agreed threshold before this is
+    considered done, not just 'looks reasonable'". A report that only prints
+    numbers is "looks reasonable" in machine-readable form, so this is the
+    part that actually refuses.
+
+    Args:
+        report: A completed run. Pass the **holdout** report: a tuning-split
+            report describes data the parameters were allowed to fit, and
+            gating on it would certify memorisation.
+
+    Raises:
+        PrecisionShortfallError: If any measured category is below
+            ``config.min_precision``, or if no category was measured at all.
+            The second case matters as much as the first — a run over an empty
+            or unclassifiable eval set would otherwise pass the gate by
+            checking nothing.
+    """
+    floor = report.config.min_precision
+    measured = [m for m in report.by_category if m.queries]
+
+    if not measured:
+        raise PrecisionShortfallError(
+            "no category had any eval entries, so the precision floor checked nothing"
+        )
+
+    below = [m for m in measured if m.precision < floor]
+    if below:
+        detail = ", ".join(
+            f"{m.query_type.value}={m.precision:.2f}"
+            for m in sorted(below, key=lambda m: m.precision)
+        )
+        raise PrecisionShortfallError(
+            f"retrieval precision is below the {floor:.2f} floor for: {detail}"
+        )
+
+
+def production_retriever(entry: EvalEntry, config: RetrievalConfig) -> list[str]:
+    """Retrieve against the live production corpus for one eval entry.
+
+    The bridge between this module and the real system. Without it the tuning
+    loop can only ever run against test fakes, which measures the fakes.
+
+    Args:
+        entry: The eval entry supplying the query and any brand filter.
+        config: The configuration to retrieve under.
+
+    Returns:
+        The document ids of the retrieved passages, in rank order. Duplicates
+        are preserved here and deduplicated by ``measure`` — this function's
+        job is to report what retrieval returned, not to judge it.
+    """
+    # Imported here rather than at module scope: hybrid_search reaches a live
+    # OpenSearch client, and importing it eagerly would make this module
+    # unimportable in an environment that has none.
+    from app.ai.retrieval.hybrid_search import search
+
+    passages = search(entry.query, brand=entry.brand, config=config)
+    return [passage.citation.document_id for passage in passages]
 
 
 def format_tuning_report(report: TuningReport) -> str:
@@ -322,13 +410,15 @@ def format_tuning_report(report: TuningReport) -> str:
         across query types is exactly what hides one category being broken.
     """
     scope = "HOLDOUT" if report.holdout else "tuning split"
-    lines = [f"Retrieval quality ({scope})"]
+    floor = report.config.min_precision
+    lines = [f"Retrieval quality ({scope}), precision floor {floor:.2f}"]
 
     tested = sorted((m for m in report.by_category if m.queries), key=lambda m: m.precision)
     for metric in tested:
         weights = report.config.weights_for(metric.query_type)
+        verdict = "FAIL" if metric.precision < floor else "ok  "
         lines.append(
-            f"  {metric.query_type.value:20} "
+            f"  {verdict} {metric.query_type.value:20} "
             f"precision={metric.precision:.2f} recall={metric.recall:.2f} "
             f"({metric.hits}/{metric.queries} found)  "
             f"bm25={weights.bm25:.2f}/vector={weights.vector:.2f}"

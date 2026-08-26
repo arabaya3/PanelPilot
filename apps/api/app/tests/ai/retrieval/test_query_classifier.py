@@ -118,6 +118,28 @@ def test_a_number_after_an_ordinary_word_is_not_a_code(query: str) -> None:
     assert classify_query(query) is QueryType.SYMPTOM_DESCRIPTION
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "IP54 rating",
+        "IP20 enclosure",
+        "M12 connector",
+        "check R12 resistor",
+        "RS485 wiring",
+        "ACS880 manual",
+    ],
+)
+def test_a_hardware_identifier_is_not_a_fault_code(query: str) -> None:
+    r"""An unrestricted letters-then-digits pattern swallows this whole domain.
+
+    IP ratings, connector sizes, component designators, bus standards and
+    model numbers all match `[a-z]{1,3}\d{2,5}`. Routing them to fault-code
+    weights all but disables the semantic leg — and these are exactly the
+    queries where an engineer's phrasing differs most from the manual's.
+    """
+    assert classify_query(query) is not QueryType.FAULT_CODE
+
+
 def test_an_empty_query_does_not_raise() -> None:
     """Rejecting it belongs to the caller's validation, not here."""
     assert classify_query("") is QueryType.SYMPTOM_DESCRIPTION

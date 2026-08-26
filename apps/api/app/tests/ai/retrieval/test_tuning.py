@@ -14,8 +14,10 @@ from pydantic import ValidationError
 
 from app.ai.retrieval.tuning import (
     CategoryMetrics,
+    PrecisionShortfallError,
     TuningReport,
     TuningSplit,
+    assert_meets_threshold,
     format_tuning_report,
     measure,
     split_eval_set,
@@ -353,3 +355,175 @@ def test_the_report_shows_the_weights_each_category_was_measured_under() -> None
 def test_a_report_carries_its_config() -> None:
     report = TuningReport(config=RetrievalConfig(), by_category=[])
     assert report.config.weights_for(QueryType.FAULT_CODE) == BlendWeights(bm25=0.85, vector=0.15)
+
+
+# --- the tie-break actually breaks ties ------------------------------------
+
+
+def test_recall_breaks_a_precision_tie() -> None:
+    """The bug this replaced chose by list position, not by recall.
+
+    Holding only the precision in `best_score` made the comparison's
+    right-hand side `(best_precision, -1.0)`, which every equal-precision
+    candidate beat — so tuning silently preferred the last candidate tried,
+    which for symptom descriptions is the most lexical blend. That inverts
+    the premise of the whole task.
+    """
+
+    def tie(entry: EvalEntry, config: RetrievalConfig) -> list[str]:
+        assert entry.expected_citation is not None
+        weights = config.weights_for(QueryType.FAULT_CODE)
+        # Every blend is perfectly precise; only recall separates them.
+        found = {0.5: 2, 0.85: 1, 0.15: 1}[round(weights.bm25, 2)]
+        index = int(entry.id[1:])
+        return [entry.expected_citation.document_id] if index < found else []
+
+    entries = [_entry("c0", "F0001"), _entry("c1", "F0002")]
+    # The best-recall candidate sits in the MIDDLE of the list, so neither
+    # "first wins" nor "last wins" can pass by accident — only a comparison
+    # that genuinely compares recall picks it.
+    tuned = tune(entries, tie, candidate_weights=(0.85, 0.5, 0.15))
+    assert tuned.weights_for(QueryType.FAULT_CODE).bm25 == 0.5
+
+
+def test_higher_precision_beats_higher_recall() -> None:
+    """Precision still decides; recall only breaks a tie.
+
+    An irrelevant passage reaching generation is worse than a missed one,
+    because the miss refuses safely and the irrelevant one gets cited.
+    """
+
+    def trade_off(entry: EvalEntry, config: RetrievalConfig) -> list[str]:
+        assert entry.expected_citation is not None
+        doc = entry.expected_citation.document_id
+        if config.weights_for(QueryType.FAULT_CODE).bm25 <= 0.2:
+            # Full recall, poor precision.
+            return [doc] + [f"junk-{n}" for n in range(9)]
+        # Perfect precision on one of the two.
+        return [doc] if entry.id == "c0" else []
+
+    entries = [_entry("c0", "F0001"), _entry("c1", "F0002")]
+    tuned = tune(entries, trade_off, candidate_weights=(0.15, 0.85))
+    assert tuned.weights_for(QueryType.FAULT_CODE).bm25 == 0.85
+
+
+# --- duplicates do not inflate precision ------------------------------------
+
+
+def test_repeated_passages_from_one_document_count_once() -> None:
+    """A passage-level retriever legitimately returns several chunks per doc.
+
+    Counting each as a separate relevant result would score near-perfect
+    precision no matter how much noise sat alongside them.
+    """
+
+    def chunky(entry: EvalEntry, config: RetrievalConfig) -> list[str]:
+        assert entry.expected_citation is not None
+        return [entry.expected_citation.document_id] * 5 + ["junk-a", "junk-b"]
+
+    report = measure([_entry("code", "F0001")], RetrievalConfig(), chunky)
+    metric = next(m for m in report.by_category if m.query_type is QueryType.FAULT_CODE)
+    # One relevant document out of three distinct ones, not five out of seven.
+    assert metric.precision == pytest.approx(1 / 3)
+
+
+# --- the holdout split is not biased ----------------------------------------
+
+
+def test_the_holdout_is_close_to_the_requested_size() -> None:
+    """`digest[0] % 100` over a 0-255 byte skews buckets 0-55 by 50%.
+
+    A nominal 25% holdout was really 29%, which makes the parameter mean
+    something other than what it says.
+    """
+    entries = [_entry(f"e{n}", "the drive trips when starting") for n in range(2000)]
+    split = split_eval_set(entries, holdout_percent=25)
+    fraction = len(split.holdout) / len(entries)
+    assert 0.22 < fraction < 0.28
+
+
+# --- the acceptance gate ----------------------------------------------------
+
+
+def _report_at(precision: float, *, floor: float = 0.7) -> TuningReport:
+    return TuningReport(
+        config=RetrievalConfig(min_precision=floor),
+        by_category=[
+            CategoryMetrics(
+                query_type=QueryType.FAULT_CODE,
+                queries=4,
+                hits=4,
+                precision=precision,
+                recall=1.0,
+            )
+        ],
+        holdout=True,
+    )
+
+
+def test_a_category_below_the_floor_fails_the_gate() -> None:
+    """The acceptance criterion is a refusal, not a printed number."""
+    with pytest.raises(PrecisionShortfallError, match=r"below the 0\.70 floor"):
+        assert_meets_threshold(_report_at(0.5))
+
+
+def test_a_category_at_the_floor_passes() -> None:
+    """The bar is met, not merely approached — `>=`, not `>`."""
+    assert_meets_threshold(_report_at(0.7))
+
+
+def test_the_gate_checks_every_category_not_an_average() -> None:
+    """Check every category, never an average.
+
+    An aggregate clearing the bar while one category sits at 0.2 is the exact
+    failure per-category reporting exists to surface.
+    """
+    report = TuningReport(
+        config=RetrievalConfig(min_precision=0.7),
+        by_category=[
+            CategoryMetrics(
+                query_type=QueryType.FAULT_CODE, queries=8, hits=8, precision=1.0, recall=1.0
+            ),
+            CategoryMetrics(
+                query_type=QueryType.SYMPTOM_DESCRIPTION,
+                queries=2,
+                hits=1,
+                precision=0.2,
+                recall=0.5,
+            ),
+        ],
+        holdout=True,
+    )
+    # The mean of 1.0 and 0.2 weighted by query count is 0.84 — comfortably
+    # above the floor, and completely wrong to accept.
+    with pytest.raises(PrecisionShortfallError, match="symptom_description"):
+        assert_meets_threshold(report)
+
+
+def test_a_run_that_measured_nothing_fails_the_gate() -> None:
+    """Otherwise an empty eval set passes by checking nothing."""
+    report = TuningReport(
+        config=RetrievalConfig(),
+        by_category=[
+            CategoryMetrics(
+                query_type=QueryType.FAULT_CODE, queries=0, hits=0, precision=0.0, recall=0.0
+            )
+        ],
+        holdout=True,
+    )
+    with pytest.raises(PrecisionShortfallError, match="checked nothing"):
+        assert_meets_threshold(report)
+
+
+def test_the_floor_is_configurable() -> None:
+    """It is a product decision about acceptable wrong-passage risk."""
+    assert_meets_threshold(_report_at(0.5, floor=0.4))
+    with pytest.raises(PrecisionShortfallError):
+        assert_meets_threshold(_report_at(0.5, floor=0.6))
+
+
+def test_the_report_marks_failing_categories() -> None:
+    """So a number can be read against the bar without doing the comparison."""
+    rendered = format_tuning_report(_report_at(0.2))
+    assert "FAIL" in rendered
+    assert "precision floor 0.70" in rendered
