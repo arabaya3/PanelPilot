@@ -94,6 +94,12 @@ class EvalEntry(BaseModel):
 
             Empty only for ``OUT_OF_SCOPE`` entries, where the correct
             behaviour is to produce no answer at all.
+        forbidden_phrases: Phrases that must **not** appear. The scorer's
+            negation check is a heuristic over a fixed list of auxiliaries and
+            cannot parse English; when an entry needs a guarantee that an
+            answer does not say something — the wrong torque figure, the
+            superseded procedure, the competitor's part number — state it here
+            and it is checked exactly.
         expected_citation: The source the answer must cite. ``None`` only for
             ``OUT_OF_SCOPE``.
         brand: Optional manufacturer filter the query should be run with.
@@ -107,6 +113,7 @@ class EvalEntry(BaseModel):
     category: EvalCategory
     expected_answer_summary: NonBlankText
     required_phrases: list[NonBlankText] = Field(default_factory=list)
+    forbidden_phrases: list[NonBlankText] = Field(default_factory=list)
     expected_citation: ExpectedCitation | None = None
     brand: str | None = None
     model: str | None = None
@@ -135,6 +142,9 @@ class EvalEntry(BaseModel):
                 raise ValueError(
                     f"{self.id}: an out-of-scope entry must not require answer phrases"
                 )
+            # `forbidden_phrases` is allowed here: the entry asserts a refusal,
+            # and a refusal template that leaked a fabricated part number would
+            # still be wrong.
             return self
 
         if self.expected_citation is None:
@@ -146,6 +156,14 @@ class EvalEntry(BaseModel):
             )
         if len(set(self.required_phrases)) != len(self.required_phrases):
             raise ValueError(f"{self.id}: duplicate required phrases")
+        if len(set(self.forbidden_phrases)) != len(self.forbidden_phrases):
+            raise ValueError(f"{self.id}: duplicate forbidden phrases")
+        overlap = sorted(set(self.required_phrases) & set(self.forbidden_phrases))
+        if overlap:
+            raise ValueError(
+                f"{self.id}: {overlap} is both required and forbidden, so the entry "
+                "can never pass"
+            )
         return self
 
 

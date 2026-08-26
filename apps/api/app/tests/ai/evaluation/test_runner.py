@@ -197,10 +197,15 @@ def test_phrase_matching_does_not_stem_or_infer() -> None:
     [
         "Do not extend the acceleration time.",
         "Do NOT extend the acceleration time.",
+        "Don't extend the acceleration time.",
         "Never extend the acceleration time.",
-        "Reduce the load rather than extend the acceleration time.",
-        "Fix the coupling instead of the acceleration time.",
-        "The fault clears without the acceleration time change.",
+        "You must not extend the acceleration time.",
+        "You should not extend the acceleration time.",
+        "The drive cannot extend the acceleration time.",
+        # The interrupted form. A comma is deliberately not a scope boundary:
+        # if it were, this would score as a pass.
+        "Do not, under any circumstances, extend the acceleration time.",
+        "Never, under load, extend the acceleration time.",
     ],
 )
 def test_a_negated_phrase_does_not_satisfy_a_requirement(answer: str) -> None:
@@ -212,6 +217,85 @@ def test_a_negated_phrase_does_not_satisfy_a_requirement(answer: str) -> None:
     advice that gets someone hurt.
     """
     assert _missing_phrases(answer, ["acceleration time"]) == ["acceleration time"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Without changing the torque limit, extend the acceleration time.",
+        "To avoid an overcurrent trip, extend the acceleration time.",
+        "Rather than replacing the drive, extend the acceleration time.",
+        "Instead of lowering the torque limit, extend the acceleration time.",
+    ],
+)
+def test_a_contrastive_marker_does_not_reject_a_correct_answer(answer: str) -> None:
+    """Contrastive markers are not negations.
+
+    They are contrastive: what they negate is the clause *before* the phrase,
+    and the phrase they precede is usually the recommended action. Treating
+    them as negations rejects correct answers — which is not the safe side of
+    this trade, because an eval run that goes red on correct answers is one
+    people stop reading.
+    """
+    assert _missing_phrases(answer, ["acceleration time"]) == []
+
+
+def test_a_comma_does_not_break_negation_scope() -> None:
+    """Pins the clause-marker set.
+
+    Removing the comma from the sentence-break list would let every
+    interrupted negation through, which is how the substring hole came back
+    the first time it was fixed.
+    """
+    answer = "Do not, for any reason, extend the acceleration time."
+    assert _missing_phrases(answer, ["acceleration time"]) == ["acceleration time"]
+
+
+def test_a_negation_does_not_carry_across_a_paragraph_break() -> None:
+    """The paragraph sentinel is a scope boundary as well as a match boundary."""
+    answer = "Do not shorten the ramp.\n\nExtend the acceleration time."
+    assert _missing_phrases(answer, ["acceleration time"]) == []
+
+
+# --- forbidden phrases: the exact assertion the heuristic cannot give ------
+
+
+def test_a_forbidden_phrase_fails_the_entry() -> None:
+    """Where an entry needs a guarantee rather than an inference."""
+    entry = _entry(forbidden_phrases=["60 nm"])
+    result = score_entry(entry, _GOOD_ANSWER + " Torque to 60 Nm.", [_CITATION])
+    assert not result.passed
+    assert result.failure is FailureMode.WRONG_ANSWER
+    assert result.detail is not None
+    assert "forbidden" in result.detail
+
+
+def test_a_forbidden_phrase_is_not_negation_aware() -> None:
+    """Deliberately exact.
+
+    "Do not torque to 60 Nm" still contains the figure. An entry that forbids
+    a number is asserting the number must not appear at all — inferring that
+    a negated mention is acceptable would put the guessing back in.
+    """
+    entry = _entry(forbidden_phrases=["60 nm"])
+    result = score_entry(entry, _GOOD_ANSWER + " Do not torque to 60 Nm.", [_CITATION])
+    assert not result.passed
+
+
+def test_an_answer_without_the_forbidden_phrase_passes() -> None:
+    entry = _entry(forbidden_phrases=["60 nm"])
+    assert score_entry(entry, _GOOD_ANSWER, [_CITATION]).passed
+
+
+def test_forbidden_phrases_respect_word_boundaries() -> None:
+    """Same anchoring as required phrases.
+
+    Otherwise forbidding "amp" would fire on "example", and an entry author
+    could not forbid a short token without it matching everywhere.
+    """
+    entry = _entry(forbidden_phrases=["amp"])
+    assert score_entry(entry, _GOOD_ANSWER + " See the example.", [_CITATION]).passed
+    assert not score_entry(entry, _GOOD_ANSWER + " Rated 5 amp.", [_CITATION]).passed
 
 
 def test_a_negation_in_an_earlier_clause_does_not_poison_a_later_one() -> None:

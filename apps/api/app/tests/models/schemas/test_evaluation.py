@@ -88,6 +88,27 @@ def test_required_phrases_are_stripped() -> None:
     ]
 
 
+def test_duplicate_forbidden_phrases_are_refused() -> None:
+    """Same reason as duplicate required phrases: it overstates the check."""
+    with pytest.raises(ValidationError, match="duplicate forbidden phrases"):
+        _entry(forbidden_phrases=["60 nm", "60 nm"])
+
+
+def test_a_phrase_cannot_be_both_required_and_forbidden() -> None:
+    """Such an entry can never pass, and would read as a real regression.
+
+    An entry that is impossible to satisfy fails on every run forever, which
+    is indistinguishable from a genuine failure until somebody reads it.
+    """
+    with pytest.raises(ValidationError, match="both required and forbidden"):
+        _entry(required_phrases=["ramp"], forbidden_phrases=["ramp"])
+
+
+def test_an_entry_may_forbid_a_phrase_it_does_not_require() -> None:
+    entry = _entry(required_phrases=["ramp"], forbidden_phrases=["60 nm"])
+    assert entry.forbidden_phrases == ["60 nm"]
+
+
 # --- out-of-scope entries are the mirror image -----------------------------
 
 
@@ -100,6 +121,16 @@ def _out_of_scope(**overrides: object) -> EvalEntry:
     }
     payload.update(overrides)
     return EvalEntry.model_validate(payload)
+
+
+def test_an_out_of_scope_entry_may_still_forbid_a_phrase() -> None:
+    """A refusal can still be wrong.
+
+    An out-of-scope entry asserts the pipeline refuses; a refusal
+    template that leaked a fabricated figure would still be wrong.
+    """
+    entry = _out_of_scope(forbidden_phrases=["60 nm"])
+    assert entry.forbidden_phrases == ["60 nm"]
 
 
 def test_an_out_of_scope_entry_needs_neither_citation_nor_phrases() -> None:

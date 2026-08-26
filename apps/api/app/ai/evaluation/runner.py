@@ -76,7 +76,9 @@ def _normalise(text: str) -> str:
     # line wrapping and collapses like any other space — treating it as a
     # boundary would fail a correct answer for where the text happened to wrap.
     folded = re.sub(r"\n[^\S\n]*\n\s*", "\x00", folded)
-    return re.sub(r"[^\S\x00]+", " ", folded).strip()
+    # `\x00` is not a regex whitespace character, so the sentinel survives
+    # this collapse without needing to be excluded from the class.
+    return re.sub(r"\s+", " ", folded).strip()
 
 
 # A phrase must land on word boundaries. Without this, "deceleration" matches
@@ -101,50 +103,76 @@ def _phrase_pattern(phrase: str) -> re.Pattern[str]:
     return re.compile(f"{prefix}{escaped}{suffix}")
 
 
-# Words that reverse the meaning of what follows them. A phrase matched inside
-# one of these clauses is the opposite of the expected answer, and counting it
-# as a pass is worse than counting nothing: it certifies a dangerous answer.
+# Auxiliary negations, which reverse the verb that follows them. Only these:
+# every other candidate scopes unreliably. "without", "avoid", "rather than"
+# and "instead of" are *contrastive* — the thing they negate is usually the
+# clause before the phrase, not the phrase itself, so "rather than replace the
+# drive, extend the acceleration time" is a correct answer that treating them
+# as negations would reject. Rejecting correct answers is not the safe side of
+# this trade: it trains people to ignore a red eval run.
 _NEGATIONS = (
     "do not",
+    "don't",
     "does not",
+    "doesn't",
     "must not",
+    "mustn't",
+    "should not",
+    "shouldn't",
     "never",
-    "no need to",
-    "without",
-    "avoid",
-    "rather than",
-    "instead of",
+    "cannot",
+    "can't",
 )
 
 
+# Sentence terminators. A comma is deliberately *not* one: an interrupting
+# clause ("do not, under any circumstances, extend the ramp") would otherwise
+# put the negation out of scope and pass the answer that says the opposite.
+_SENTENCE_BREAKS = ("\x00", ". ", "; ", "! ", "? ")
+
+
 def _is_negated(answer: str, start: int) -> bool:
-    """Report whether a match at ``start`` sits inside a negated clause.
+    """Report whether a match at ``start`` sits in a negated sentence.
 
     Args:
         answer: The normalised answer.
         start: Index where the phrase matched.
 
     Returns:
-        ``True`` if a negation appears between the start of the match's clause
-        and the match itself. Scoped to the clause — a negation three sentences
-        earlier does not negate this one, and treating it as though it did
-        would fail correct answers.
+        ``True`` if an auxiliary negation appears between the start of the
+        match's sentence and the match itself. Scoped to the sentence — a
+        negation two sentences earlier does not negate this one, and treating
+        it as though it did would fail correct answers.
+
+        This is a heuristic and is documented as one on ``_missing_phrases``.
+        It catches the blunt "do not X" form that a substring test would pass;
+        it cannot parse English, and an entry that needs a guarantee should use
+        ``forbidden_phrases`` instead.
     """
-    clause_start = max(
-        (answer.rfind(marker, 0, start) for marker in ("\x00", ". ", "; ", ", ")),
+    sentence_start = max(
+        (answer.rfind(marker, 0, start) for marker in _SENTENCE_BREAKS),
         default=-1,
     )
-    clause = answer[clause_start + 1 : start]
-    return any(marker in clause for marker in _NEGATIONS)
+    sentence = answer[sentence_start + 1 : start]
+    return any(marker in sentence for marker in _NEGATIONS)
 
 
 def _missing_phrases(answer: str, required: Iterable[str]) -> list[str]:
     """Find required phrases absent from — or negated within — an answer.
 
-    A phrase must appear at word boundaries, within a single sentence, and not
-    inside a negated clause. "Do not extend the acceleration time" does not
-    satisfy a requirement for "acceleration time": it says the opposite, and a
-    scorer that passes it certifies exactly the answer that would hurt someone.
+    A phrase must appear at word boundaries, within one sentence, and not
+    after an auxiliary negation in that sentence. "Do not extend the
+    acceleration time" does not satisfy a requirement for "acceleration time":
+    it says the opposite, and a scorer that passes it certifies exactly the
+    answer that would hurt someone.
+
+    **The negation check is a heuristic, not a guarantee.** It matches a fixed
+    list of auxiliary negations; it does not parse English, and it will miss
+    forms that express negation some other way ("the acceleration time is
+    irrelevant here"). It is worth having because it catches the blunt form a
+    bare substring test would pass, but an entry that must assert an answer
+    does *not* say something should say so explicitly with
+    ``EvalEntry.forbidden_phrases``, which is exact rather than inferred.
 
     Args:
         answer: The pipeline's answer text.
@@ -160,6 +188,29 @@ def _missing_phrases(answer: str, required: Iterable[str]) -> list[str]:
         if not any(not _is_negated(folded, m.start()) for m in pattern.finditer(folded)):
             missing.append(phrase)
     return missing
+
+
+def _present_phrases(answer: str, forbidden: Iterable[str]) -> list[str]:
+    """Find forbidden phrases that appear in an answer.
+
+    Deliberately *not* negation-aware, unlike :func:`_missing_phrases`. A
+    forbidden phrase is an exact assertion — "this answer must not contain the
+    string" — and inferring that a negated mention is acceptable would put the
+    guessing back into the one check that exists to avoid it.
+
+    Args:
+        answer: The pipeline's answer text.
+        forbidden: Phrases that must not appear.
+
+    Returns:
+        The phrases that did appear, in the order they were listed.
+    """
+    folded = _normalise(answer)
+    return [
+        phrase
+        for phrase in forbidden
+        if _phrase_pattern(_normalise(phrase)).search(folded) is not None
+    ]
 
 
 def _citation_satisfied(expected: ExpectedCitation, actual: Sequence[ExpectedCitation]) -> bool:
@@ -237,6 +288,16 @@ def score_entry(
             passed=False,
             failure=FailureMode.WRONG_CITATION,
             detail=f"expected {want}, got {actual_ids or 'no citations'}",
+            actual_citations=actual_ids,
+        )
+
+    forbidden = _present_phrases(answer, entry.forbidden_phrases)
+    if forbidden:
+        return EvalResult(
+            entry_id=entry.id,
+            passed=False,
+            failure=FailureMode.WRONG_ANSWER,
+            detail=f"answer contained forbidden phrase(s): {forbidden}",
             actual_citations=actual_ids,
         )
 
