@@ -170,7 +170,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Switching language flips full-page direction correctly; technical tokens (fault codes, parameter names, units) stay LTR embedded inside RTL prose in all three locales; no layout breakage at the direction boundary.
 
-### [ ] FE-003 — Core chat interface
+### [x] FE-003 — Core chat interface
 
 | Field                   | Value                                |
 | ----------------------- | ------------------------------------ |
