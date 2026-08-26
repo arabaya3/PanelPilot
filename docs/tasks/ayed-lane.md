@@ -346,7 +346,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A design/QA review confirms the three states are distinguishable without reading the text.
 
-### [ ] BE-008 — Chat / diagnosis orchestration endpoint
+### [x] BE-008 — Chat / diagnosis orchestration endpoint
 
 | Field                   | Value                                                  |
 | ----------------------- | ------------------------------------------------------ |
