@@ -29,7 +29,7 @@ Framework-agnostic — nothing here imports FastAPI.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -75,6 +75,7 @@ def run_diagnosis(
     session: Session,
     user: CurrentUser,
     request: DiagnosticRequest,
+    charge: bool = True,
 ) -> DiagnosticResponse:
     """Produce one grounded diagnostic answer for a user's symptom description.
 
@@ -85,12 +86,19 @@ def run_diagnosis(
         session: Open database session for persisting the conversation turn.
         user: The authenticated caller.
         request: Symptom description, equipment context, and session id.
+        charge: Whether to consume a free question here. ``False`` only for the
+            streaming caller, which charges after the result has left for the
+            client — a disconnect part-way through must not bill for an answer
+            nobody received.
 
     Returns:
         The diagnosis with its supporting citations and confidence score.
 
     Raises:
-        QuotaExceededError: If the tenant has no free questions left.
+        ValidationError: If the tenant has no free questions left.
+            Raised by ``consume_free_question``; it maps to a 400, not a
+            payment-specific status, because the free tier is a usage
+            limit rather than a billing state.
         NotFoundError: If ``request.session_id`` refers to an unknown session.
     """
     # The quota is NOT charged here. See step 5 in the module docstring: only
@@ -140,7 +148,8 @@ def run_diagnosis(
     # burns a question, per the policy recorded on ``TenantRow``. Atomic —
     # `consume_free_question` locks the row and raises rather than reporting,
     # so concurrent requests cannot each see "allowed" and all proceed.
-    consume_free_question(session=session, tenant_id=user.tenant_id)
+    if charge:
+        consume_free_question(session=session, tenant_id=user.tenant_id)
 
     answer = verify_citations(
         GeneratedAnswer(
@@ -212,7 +221,7 @@ def stream_diagnosis(
     session: Session,
     user: CurrentUser,
     request: DiagnosticRequest,
-) -> Iterator[DiagnosisEvent]:
+) -> Generator[DiagnosisEvent, None, None]:
     """Produce one diagnostic turn as a sequence of progress events.
 
     Yields the same result ``run_diagnosis`` returns, preceded by the stages
@@ -236,16 +245,35 @@ def stream_diagnosis(
         Progress events, then exactly one ``result`` event.
 
     Raises:
-        QuotaExceededError: If the tenant has no free questions left.
+        ValidationError: If the tenant has no free questions left.
+            Raised by ``consume_free_question``; it maps to a 400, not a
+            payment-specific status, because the free tier is a usage
+            limit rather than a billing state.
         NotFoundError: If the session id is unknown or belongs elsewhere.
     """
     yield DiagnosisEvent(event="retrieving", data={})
-    response = run_diagnosis(session=session, user=user, request=request)
+
+    response = run_diagnosis(session=session, user=user, request=request, charge=False)
+
     if response.diagnosis is None:
         yield DiagnosisEvent(event="refused", data={"reason": response.refusal_message})
     else:
         yield DiagnosisEvent(event="generated", data={})
+
     yield DiagnosisEvent(event="result", data=response.model_dump(mode="json"))
+
+    # Charged only once the result has actually left for the client. A
+    # disconnect part-way through a stream would otherwise bill for an answer
+    # nobody received — the precise thing ``TenantRow`` says must not happen,
+    # and streaming makes long-lived connections the normal case rather than
+    # the exception.
+    #
+    # `yield` above returns here only when the consumer asked for the next
+    # item, which for a `StreamingResponse` means the previous frame was
+    # handed to the transport. A client that vanished mid-stream never
+    # resumes this generator, so the charge simply never happens.
+    if response.diagnosis is not None:
+        consume_free_question(session=session, tenant_id=user.tenant_id)
 
 
 def _tenant_uuid(user: CurrentUser) -> uuid.UUID:

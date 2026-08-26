@@ -983,3 +983,74 @@ def test_every_event_renders_as_a_valid_frame(
         assert frame.endswith("\n\n")
         body = frame.split("data: ", 1)[1].rsplit("\n\n", 1)[0]
         json.loads(body)
+
+
+def test_an_abandoned_stream_is_not_charged(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """A client that disconnects mid-stream must not be billed.
+
+    The charge sits after the final yield, so it only runs once the consumer
+    has asked for the item beyond the result — which for a StreamingResponse
+    means the result frame reached the transport. A generator abandoned part
+    way is never resumed, so the charge never happens.
+
+    This is the interaction a round-2 review found: moving the charge to
+    "only on a delivered answer" and adding streaming were each correct, and
+    together reintroduced the exact billing violation the first fix removed.
+    """
+    charged: list[str] = []
+    monkeypatch.setattr(
+        diagnostics_domain, "consume_free_question", lambda **_kw: charged.append("x")
+    )
+    _retrieving(monkeypatch, [_passage()])
+
+    stream = diagnostics_domain.stream_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+    # Consume up to and including the result frame, then walk away — the state
+    # a client is in when it disconnects after the answer was generated but
+    # before the response finished. This is the case that mattered: the work
+    # is done and paid for upstream, and the question is whether we bill.
+    seen = []
+    for event in stream:
+        seen.append(event.event)
+        if event.event == "generated":
+            break
+    stream.close()
+
+    assert seen == ["retrieving", "generated"], "the stream did not reach generation"
+    assert charged == [], "an abandoned stream burned a question after generating"
+
+
+def test_a_completed_stream_is_charged(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The other half: a delivered answer must still be billed."""
+    charged: list[str] = []
+    monkeypatch.setattr(
+        diagnostics_domain, "consume_free_question", lambda **_kw: charged.append("x")
+    )
+    _retrieving(monkeypatch, [_passage()])
+    list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+    assert charged == ["x"]
+
+
+def test_a_streamed_refusal_is_not_charged(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    charged: list[str] = []
+    monkeypatch.setattr(
+        diagnostics_domain, "consume_free_question", lambda **_kw: charged.append("x")
+    )
+    _retrieving(monkeypatch, [])
+    list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+    assert charged == []

@@ -123,6 +123,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/diagnostics/stream': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stream Diagnosis
+     * @description Stream one diagnostic turn as server-sent events.
+     *
+     *     The final ``result`` event carries the complete response; the events
+     *     before it report progress only. See ``app.models.schemas.streaming`` for
+     *     why no partial answer is ever streamed.
+     */
+    post: operations['stream_diagnosis_api_v1_diagnostics_stream_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/diagnostics/{session_id}': {
     parameters: {
       query?: never;
@@ -1120,6 +1144,49 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['DiagnosticResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  stream_diagnosis_api_v1_diagnostics_stream_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DiagnosticRequest'];
+      };
+    };
+    responses: {
+      /** @description A stream of server-sent events. Progress events report the stage; the final `result` event carries the complete DiagnosticResponse. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'text/event-stream': {
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: 'retrieving' | 'generated' | 'refused' | 'result';
+            /** Data */
+            data?: {
+              [key: string]: unknown;
+            };
+          };
         };
       };
       /** @description Validation Error */

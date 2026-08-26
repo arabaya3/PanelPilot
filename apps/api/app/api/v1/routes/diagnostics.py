@@ -16,6 +16,7 @@ from app.models.schemas.diagnostics import (
     DiagnosticResponse,
     DiagnosticSession,
 )
+from app.models.schemas.streaming import DiagnosisEvent
 
 router = APIRouter()
 
@@ -29,7 +30,24 @@ def create_diagnosis(
     return diagnostics_domain.run_diagnosis(session=session, user=user, request=payload)
 
 
-@router.post("/stream")
+@router.post(
+    "/stream",
+    # Documented explicitly: without this OpenAPI records an empty JSON schema
+    # for an endpoint that emits `text/event-stream`, so the generated
+    # frontend type for the payload this whole feature delivers would be
+    # `unknown`. `DiagnosisEvent` is named so it reaches components.schemas.
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": (
+                "A stream of server-sent events. Progress events report the "
+                "stage; the final `result` event carries the complete "
+                "DiagnosticResponse."
+            ),
+            "content": {"text/event-stream": {"schema": DiagnosisEvent.model_json_schema()}},
+        }
+    },
+)
 def stream_diagnosis(
     payload: DiagnosticRequest,
     session: SessionDep,
