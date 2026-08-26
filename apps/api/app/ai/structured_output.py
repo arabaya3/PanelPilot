@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.models.schemas.guardrail import ConfidenceDecision, DecisionOutcome, RefusalReason
 from app.models.schemas.responses import StructuredDiagnosis
@@ -125,23 +125,35 @@ def _close_objects(node: Any) -> Any:
     return closed
 
 
-def diagnosis_input_schema() -> dict[str, Any]:
-    """Return the JSON Schema constraining the model's output.
+def input_schema_for(model: type[BaseModel]) -> dict[str, Any]:
+    """Return a JSON Schema constraining a model's output to one pydantic type.
 
-    Derived from ``StructuredDiagnosis`` rather than hand-written, then
-    normalised into the form the Claude API consumes best: refs inlined,
-    objects closed, human docstrings removed.
+    Derived from the model rather than hand-written, then normalised into the
+    form the Claude API consumes best: refs inlined, objects closed, human
+    docstrings removed.
+
+    Args:
+        model: The pydantic model the output must match.
 
     Returns:
         A self-contained JSON Schema object with no ``$defs`` or ``$ref``.
     """
-    schema = StructuredDiagnosis.model_json_schema()
+    schema = model.model_json_schema()
     defs = schema.pop("$defs", {})
     normalised = _close_objects(_strip_prose(_inline_refs(schema, defs)))
     # The helpers are recursive over arbitrary fragments, so they are typed
     # `Any`. The top level of a model schema is always an object.
     assert isinstance(normalised, dict)
     return normalised
+
+
+def diagnosis_input_schema() -> dict[str, Any]:
+    """Return the JSON Schema constraining a diagnosis.
+
+    Returns:
+        A self-contained JSON Schema object with no ``$defs`` or ``$ref``.
+    """
+    return input_schema_for(StructuredDiagnosis)
 
 
 def diagnosis_tool_definition() -> dict[str, Any]:
@@ -157,6 +169,26 @@ def diagnosis_tool_definition() -> dict[str, Any]:
     }
 
 
+def extract_named_tool_payload(message: Any, tool_name: str) -> dict[str, Any] | None:
+    """Pull one named tool call out of an API response.
+
+    Args:
+        message: The message returned by the Claude API.
+        tool_name: Which tool call to look for.
+
+    Returns:
+        The tool call's ``input``, or ``None`` if the model emitted no call to
+        that tool — which is a refusal, not an answer, and never a reason to
+        fall back to reading its prose.
+    """
+    for block in getattr(message, "content", None) or []:
+        is_call = getattr(block, "type", None) == "tool_use"
+        if is_call and getattr(block, "name", None) == tool_name:
+            payload = getattr(block, "input", None)
+            return payload if isinstance(payload, dict) else None
+    return None
+
+
 def extract_tool_payload(message: Any) -> dict[str, Any] | None:
     """Pull the diagnosis tool call out of an API response.
 
@@ -164,16 +196,9 @@ def extract_tool_payload(message: Any) -> dict[str, Any] | None:
         message: The message returned by the Claude API.
 
     Returns:
-        The tool call's ``input``, or ``None`` if the model emitted no call to
-        the diagnosis tool — which is a refusal, not an answer, and never a
-        reason to fall back to reading its prose.
+        The tool call's ``input``, or ``None`` if there was no diagnosis call.
     """
-    for block in getattr(message, "content", None) or []:
-        is_call = getattr(block, "type", None) == "tool_use"
-        if is_call and getattr(block, "name", None) == DIAGNOSIS_TOOL_NAME:
-            payload = getattr(block, "input", None)
-            return payload if isinstance(payload, dict) else None
-    return None
+    return extract_named_tool_payload(message, DIAGNOSIS_TOOL_NAME)
 
 
 def parse_tool_output(
