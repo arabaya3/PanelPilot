@@ -368,7 +368,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > End-to-end request for a known verified fault code returns the correct structured card with a valid citation, streamed.
 
-### [ ] BE-009 — Image handling service
+### [x] BE-009 — Image handling service
 
 | Field                   | Value                                   |
 | ----------------------- | --------------------------------------- |
@@ -390,7 +390,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Upload, storage, and retrieval work correctly with access restricted to the uploading tenant; oversized/invalid files are rejected with a clear error.
 
-### [ ] BE-012 — Rate limiting & free-tier abuse protection
+### [x] BE-012 — Rate limiting & free-tier abuse protection
 
 | Field                   | Value                                                     |
 | ----------------------- | --------------------------------------------------------- |
@@ -412,7 +412,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Automated burst requests from one source are throttled; a normal user's trial flow is unaffected.
 
-### [ ] BE-013 — Logging, tracing & latency metrics
+### [x] BE-013 — Logging, tracing & latency metrics
 
 | Field                   | Value                                            |
 | ----------------------- | ------------------------------------------------ |
@@ -522,7 +522,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > 100 varied test queries all return schema-valid structured output with no parsing failures on the frontend.
 
-### [ ] AI-008 — Multimodal fault-code image recognition
+### [x] AI-008 — Multimodal fault-code image recognition
 
 | Field                   | Value                                                    |
 | ----------------------- | -------------------------------------------------------- |
@@ -544,7 +544,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Correctly reads fault code + brand/model from at least 20 real test photos across lighting/angle variation; low-confidence cases correctly trigger the confirm-back flow instead of a guess.
 
-### [ ] AI-010 — Multi-language response generation
+### [x] AI-010 — Multi-language response generation
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
