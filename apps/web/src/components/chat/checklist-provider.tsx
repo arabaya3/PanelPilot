@@ -26,47 +26,70 @@ interface ChecklistValue {
   toggle: (messageId: string, stepIndex: number) => void;
   /** How many steps are ticked on one card, for the progress summary. */
   countChecked: (messageId: string) => number;
+  /**
+   * Forget everything ticked on one turn.
+   *
+   * Needed because a retry re-asks the same question under the *same* message
+   * id and can come back with a different set of steps. Ticks are positional,
+   * so without this they rebind to whatever arrives next: step 2 of advice the
+   * engineer has never read renders pre-ticked and struck through, which reads
+   * as "I already did this" and invites skipping it. Skipping a step in an
+   * electrical repair is a safety consequence, not a cosmetic one.
+   */
+  clear: (messageId: string) => void;
 }
 
 const ChecklistContext = createContext<ChecklistValue | null>(null);
 
-/** `messageId` and index composed into one key. */
-function keyOf(messageId: string, stepIndex: number): string {
-  return `${messageId}:${String(stepIndex)}`;
-}
+/**
+ * Ticked step indices, per message.
+ *
+ * Nested rather than one flat `messageId:index` string key. The flat form was
+ * only unambiguous because ids are minted locally as `a1`, `a2` and happen to
+ * contain no colon — nothing enforced that, and a server-supplied id (a
+ * resumed session, a shared transcript) would have made two different steps
+ * collide silently. This shape cannot, and it makes the per-message clear that
+ * a retry needs a single delete.
+ */
+type Checked = ReadonlyMap<string, ReadonlySet<number>>;
 
 export function ChecklistProvider({ children }: { children: ReactNode }) {
-  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  const [checked, setChecked] = useState<Checked>(() => new Map());
 
   const toggle = useCallback((messageId: string, stepIndex: number) => {
     setChecked((current) => {
-      const next = new Set(current);
-      const key = keyOf(messageId, stepIndex);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const next = new Map(current);
+      const steps = new Set(current.get(messageId) ?? []);
+      if (steps.has(stepIndex)) steps.delete(stepIndex);
+      else steps.add(stepIndex);
+      if (steps.size === 0) next.delete(messageId);
+      else next.set(messageId, steps);
+      return next;
+    });
+  }, []);
+
+  const clear = useCallback((messageId: string) => {
+    setChecked((current) => {
+      if (!current.has(messageId)) return current;
+      const next = new Map(current);
+      next.delete(messageId);
       return next;
     });
   }, []);
 
   const isChecked = useCallback(
-    (messageId: string, stepIndex: number) => checked.has(keyOf(messageId, stepIndex)),
+    (messageId: string, stepIndex: number) => checked.get(messageId)?.has(stepIndex) ?? false,
     [checked],
   );
 
   const countChecked = useCallback(
-    (messageId: string) => {
-      let total = 0;
-      for (const key of checked) {
-        if (key.startsWith(`${messageId}:`)) total += 1;
-      }
-      return total;
-    },
+    (messageId: string) => checked.get(messageId)?.size ?? 0,
     [checked],
   );
 
   const value = useMemo(
-    () => ({ isChecked, toggle, countChecked }),
-    [isChecked, toggle, countChecked],
+    () => ({ isChecked, toggle, countChecked, clear }),
+    [isChecked, toggle, countChecked, clear],
   );
 
   return <ChecklistContext.Provider value={value}>{children}</ChecklistContext.Provider>;

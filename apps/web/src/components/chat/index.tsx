@@ -5,7 +5,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 
-import { ChecklistProvider } from './checklist-provider';
+import { ChecklistProvider, useChecklist } from './checklist-provider';
 import { Composer } from './composer';
 import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
@@ -23,15 +23,34 @@ import { chatReducer, INITIAL_STATE } from './state';
  * plant, and leaving it in `localStorage` on a shared workshop terminal is a
  * disclosure nobody asked for.
  */
-export function Chat({
-  token,
-  streamImpl = streamDiagnosis,
-}: {
+export function Chat(props: {
   token: string;
   /** Injected in tests so a slow stream can be driven without a server. */
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
 }) {
+  return (
+    <ChecklistProvider>
+      <ChatSurface {...props} />
+    </ChecklistProvider>
+  );
+}
+
+/**
+ * The surface itself, inside the checklist provider.
+ *
+ * Split from `Chat` only so it can *read* the checklist it is wrapped in —
+ * retrying a turn has to forget that turn's ticks, and a component cannot
+ * consume a context it renders.
+ */
+function ChatSurface({
+  token,
+  streamImpl = streamDiagnosis,
+}: {
+  token: string;
+  streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
+}) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
+  const checklist = useChecklist();
   const { locale } = useLocale();
   const abortRef = useRef<AbortController | null>(null);
   // The turn the abort belongs to. `stop()` needs it because aborting alone
@@ -126,10 +145,17 @@ export function Chat({
     (id: string) => {
       const message = state.messages.find((m) => m.id === id);
       if (!message || message.role !== 'assistant') return;
+      // Forget this turn's ticks before re-asking. A retry reuses the same
+      // message id and can return a different set of steps, and ticks are
+      // positional — so without this, step 2 of advice the engineer has never
+      // read comes back pre-ticked and struck through. That reads as "I
+      // already did this", and a skipped step in an electrical repair is a
+      // safety consequence rather than a cosmetic one.
+      checklist?.clear(id);
       dispatch({ type: 'retry', id });
       void run(id, message.prompt);
     },
-    [run, state.messages],
+    [checklist, run, state.messages],
   );
 
   const busy = state.messages.some(
@@ -137,11 +163,9 @@ export function Chat({
   );
 
   return (
-    <ChecklistProvider>
-      <div className="flex h-full flex-col" data-testid="chat">
-        <MessageList messages={state.messages} onRetry={retry} />
-        <Composer onSubmit={ask} onStop={stop} busy={busy} />
-      </div>
-    </ChecklistProvider>
+    <div className="flex h-full flex-col" data-testid="chat">
+      <MessageList messages={state.messages} onRetry={retry} />
+      <Composer onSubmit={ask} onStop={stop} busy={busy} />
+    </div>
   );
 }

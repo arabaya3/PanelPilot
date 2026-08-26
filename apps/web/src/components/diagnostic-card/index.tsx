@@ -133,6 +133,7 @@ function Step({
   const checklist = useChecklist();
   const trackable = checklist !== null && messageId !== undefined && index !== undefined;
   const checked = trackable && checklist.isChecked(messageId, index);
+  const instructionId = useId();
 
   return (
     <li className={`rounded-md border-s-4 ${classes.border} bg-surface-raised p-3`}>
@@ -145,19 +146,24 @@ function Step({
               checklist.toggle(messageId, index);
             }}
             data-testid="step-checkbox"
+            // Labelled by the instruction itself as well as by the action, so
+            // tabbing the list announces what each step *is*. An `aria-label`
+            // alone overrides the content, and produced "Mark step 1 done,
+            // Mark step 2 done…" with no indication of what any of them were.
+            aria-labelledby={`${instructionId} ${instructionId}-action`}
             // A to-do, not a verdict. The label says "done", never "verified"
             // or "correct" — an engineer ticking off work they have carried
             // out is recording what they did, not endorsing the advice, and
             // the two must not be confusable if a verification indicator is
             // added elsewhere. A plain square checkbox stays deliberately
             // unlike any badge or tick used for provenance.
-            aria-label={t('markDone', { step: step.order })}
             className="mt-1 h-4 w-4 shrink-0 accent-accent"
           />
         ) : (
           <TechnicalToken className="text-sm font-semibold">{step.order}</TechnicalToken>
         )}
         <p
+          id={instructionId}
           className={checked ? 'font-medium text-text-muted line-through' : 'font-medium text-text'}
         >
           {trackable ? (
@@ -165,6 +171,11 @@ function Step({
           ) : null}
           {step.instruction}
         </p>
+        {trackable ? (
+          <span id={`${instructionId}-action`} className="sr-only">
+            {t('markDone', { step: step.order })}
+          </span>
+        ) : null}
       </div>
       {/* The severity in words as well as in the border colour. Colour alone
           fails WCAG 1.4.1, and the audience reads these on a sunlit screen in
@@ -294,7 +305,16 @@ function DiagnosisCard({
             phone mid-repair wants to know where they were without re-reading
             the whole card. */}
         {trackable ? (
-          <p className="text-xs text-text-muted" data-testid="checklist-progress">
+          <p
+            // `role="status"` so ticking a step announces the rollup. The
+            // transcript's `role="log"` around this announces *appended*
+            // content, not text mutated in place, so without it a screen
+            // reader user hears the checkbox flip and never the "2 of 3" —
+            // which is the one thing this feature exists to say.
+            role="status"
+            className="text-xs text-text-muted"
+            data-testid="checklist-progress"
+          >
             {t('progress', { done, total: steps.length })}
           </p>
         ) : null}
