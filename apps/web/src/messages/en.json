@@ -108,5 +108,25 @@
       "timeout": "The upload took too long and was stopped.",
       "aborted": "The upload was cancelled."
     }
+  },
+  "trial": {
+    "heading": "Keep going",
+    "keepsConversation": "Your conversation carries over — nothing is lost.",
+    "startsFresh": "Create an account to continue.",
+    "email": "Email",
+    "password": "Password",
+    "create": "Create account",
+    "creating": "Creating…",
+    "later": "Not now",
+    "error": {
+      "email-taken": "That email already has an account. Sign in instead.",
+      "trial-gone": "This trial has expired, so the conversation cannot be carried over. The account can still be created.",
+      "failed": "The account could not be created. Check the connection and try again."
+    },
+    "landing": {
+      "headline": "Diagnose a fault without signing up",
+      "subhead": "Ask a question now. No access request, no waiting.",
+      "unavailable": "The free trial is not available right now. Sign in to continue."
+    }
   }
 }

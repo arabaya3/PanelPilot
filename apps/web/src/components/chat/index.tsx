@@ -7,11 +7,13 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 import type { uploadImage } from '@/lib/recognition';
+import type { TrialSession } from '@/lib/trial';
 
 import { ChecklistProvider, useChecklist } from './checklist-provider';
 import { ContextChip, contextFromResponse } from './context-chip';
 import { Composer } from './composer';
 import { ImageCapture } from './image-capture';
+import { TrialLimitModal } from './trial-limit-modal';
 import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
 
@@ -36,6 +38,11 @@ export function Chat(props: {
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
   /** Injected the same way, so the capture path can be driven end to end. */
   uploadImpl?: typeof uploadImage;
+  /** The anonymous trial this browser holds, if any. */
+  trial?: TrialSession | null;
+  /** How many free questions are left; `null` when the caller does not know. */
+  questionsRemaining?: number | null;
+  onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
 }) {
   return (
     <ChecklistProvider>
@@ -55,14 +62,21 @@ function ChatSurface({
   token,
   streamImpl = streamDiagnosis,
   uploadImpl,
+  trial = null,
+  questionsRemaining = null,
+  onSignedUp,
 }: {
   token: string;
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
   uploadImpl?: typeof uploadImage;
+  trial?: TrialSession | null;
+  questionsRemaining?: number | null;
+  onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
   const [context, setContext] = useState<EquipmentContext | null>(null);
+  const [dismissedLimit, setDismissedLimit] = useState(false);
   // Mirrored into a ref so `run` can read the current value without taking it
   // as a dependency — the value that matters is the one current when the
   // request is actually sent, not when the callback was built.
@@ -196,6 +210,15 @@ function ChatSurface({
     (message) => message.role === 'assistant' && message.status === 'streaming',
   );
 
+  // The limit modal appears only once the free questions are gone *and* no
+  // turn is in flight. The spec is explicit that it must never interrupt an
+  // answer, and the reason is easy to underrate: cutting off a diagnosis to
+  // ask for an email is a worse version of the funnel this flow exists to
+  // avoid. `busy` already means "a turn has not finished", so gating on it
+  // makes the rule structural rather than a timing hope.
+  const outOfQuestions = questionsRemaining !== null && questionsRemaining <= 0;
+  const showLimit = outOfQuestions && !busy && !dismissedLimit;
+
   return (
     <div className="flex h-full flex-col" data-testid="chat">
       <header className="flex items-center gap-2 border-b border-border p-2">
@@ -204,6 +227,18 @@ function ChatSurface({
       <MessageList messages={state.messages} onRetry={retry} />
       <ImageCapture token={token} onConfirm={ask} {...(uploadImpl ? { uploadImpl } : {})} />
       <Composer onSubmit={ask} onStop={stop} busy={busy} />
+      {showLimit ? (
+        <TrialLimitModal
+          trial={trial}
+          onSignedUp={(tokens) => {
+            setDismissedLimit(true);
+            onSignedUp?.(tokens);
+          }}
+          onDismiss={() => {
+            setDismissedLimit(true);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
