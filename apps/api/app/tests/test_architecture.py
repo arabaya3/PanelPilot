@@ -404,6 +404,14 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
 
     What it still rejects is the case that matters — a module that reaches a
     model without either consulting the gate or being handed its verdict.
+
+    **One exemption, named rather than implied.** ``app/ai/recognition.py``
+    transcribes a photograph. It answers nothing, cites nothing, and has no
+    retrieved evidence to be judged against — cite-or-refuse has no opinion on
+    reading characters off a screen. Its equivalent guard is its own
+    per-field confidence gate, which is tested separately. The exemption is a
+    single named module rather than a pattern, so adding a second one is a
+    deliberate edit here and not an accident of matching a rule too loosely.
     """
     generation_markers = ("anthropic", "messages.create", "client.messages")
     # Either the module runs the gate itself...
@@ -414,7 +422,12 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     honours_a_verdict = "ConfidenceDecision"
     obeys_a_verdict = ("may_generate", "DecisionOutcome.ANSWER")
 
+    # Transcription, not answering. See the docstring.
+    exempt = {APP_ROOT / "ai" / "recognition.py"}
+
     for module in _source_modules("domain", "ai", "api", "worker"):
+        if module in exempt:
+            continue
         source = module.read_text(encoding="utf-8")
         if not any(marker in source for marker in generation_markers):
             continue
@@ -426,6 +439,23 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
             "the cite-or-refuse guardrail. Either call evaluate_confidence first, "
             "or take a ConfidenceDecision and return early unless it permits "
             "generation — see app/ai/guardrails/."
+        )
+
+
+def test_the_recognition_exemption_stays_narrow() -> None:
+    """The exempt module must not grow into an answering path.
+
+    It is exempt because it transcribes rather than answers. If it ever
+    retrieves evidence or produces a diagnosis, the reason for the exemption
+    is gone and the rule above must apply to it again — but the exemption
+    would still be sitting there, silently.
+    """
+    source = (APP_ROOT / "ai" / "recognition.py").read_text(encoding="utf-8")
+    for forbidden in ("hybrid_search", "search(", "StructuredDiagnosis", "DiagnosticResponse"):
+        assert forbidden not in source, (
+            f"app/ai/recognition.py now references {forbidden!r}. It is exempt from "
+            "the cite-or-refuse rule only because it transcribes a photograph and "
+            "answers nothing — if that changed, remove the exemption."
         )
 
 
