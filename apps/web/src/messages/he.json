@@ -26,5 +26,25 @@
   "tokens": {
     "title": "אסימוני עיצוב",
     "intro": "כל ערך להלן מפנה למאפיין CSS מותאם."
+  },
+  "diagnosticCard": {
+    "heading": "אבחון",
+    "steps": "הפעולות הנדרשות",
+    "summarySources": "מקורות",
+    "stepSources": "מקורות",
+    "checkInstead": "בדוק את אלה במקום",
+    "section": "סעיף {section}",
+    "page": "עמוד {page}",
+    "severity": {
+      "critical": "קריטי",
+      "warning": "אזהרה",
+      "info": "מידע"
+    },
+    "uncertainBadge": "לא ודאי",
+    "uncertainHeading": "אין ודאות מספקת למתן הנחיות",
+    "uncertainWithSources": "אין מספיק ראיות תומכות כדי לתת שלבים למקרה זה. עיין בתיעוד שלהלן לפני ביצוע פעולה.",
+    "uncertainNoSources": "אין מספיק ראיות תומכות כדי לתת שלבים למקרה זה. עיין בתיעוד הציוד לפני ביצוע פעולה.",
+    "refusalHeading": "לא ניתנה תשובה",
+    "refusalFallback": "לא ניתן היה לענות על שאלה זו על סמך התיעוד הזמין."
   }
 }
