@@ -28,7 +28,10 @@
    * a desk assumes, and `outline: none` is how that becomes impossible. */
   :focus-visible {
     outline: 2px solid var(--color-focus);
+    /* The offset is drawn in its own colour rather than left transparent, so
+     * the ring stays visible on the accent button — see the focus tokens. */
     outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--color-focus-offset);
   }
 
   /* Technical values are transcribed by hand into a keypad. A proportional

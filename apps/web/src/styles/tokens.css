@@ -20,15 +20,21 @@
   --color-bg: #f8fafc;
   --color-surface: #ffffff;
   --color-surface-raised: #f1f5f9;
-  --color-border: #cbd5e1;
+  /* 4.8:1 on surface. A border separating two cards is a UI component
+   * boundary, so 3:1 applies — the first version scored 1.48:1, which is a
+   * suggestion of an edge rather than an edge. */
+  --color-border: #64748b;
   --color-text: #0f172a;
   --color-text-muted: #475569;
 
   /* --- Severity ---------------------------------------------------------
    * Three levels, no more. A diagnostic card maps each to exactly one of
-   * these, so an engineer learns the colour once. Contrast is checked
-   * against --color-surface in both themes; a warning nobody can read on a
-   * phone in a plant room is not a warning.
+   * these, so an engineer learns the colour once.
+   *
+   * Every pairing in this file is measured rather than eyeballed, and the
+   * numbers are asserted in src/__tests__/tokens.test.ts so a future edit
+   * that breaks one fails the build. A warning nobody can read on a phone in
+   * a plant room is not a warning.
    */
   --color-severity-critical: #b91c1c;
   --color-severity-warning: #b45309;
@@ -44,12 +50,21 @@
   --color-accent-contrast: #ffffff;
 
   /* --- Focus -------------------------------------------------------------
-   * Its own token rather than reusing accent: a focus ring must be visible
-   * against every surface including the accent itself, and an engineer
-   * working in gloves relies on keyboard navigation more than a designer at
-   * a desk expects.
+   * Two tokens, not one, because no single colour works.
+   *
+   * A focus ring has to be visible against the page AND against the element
+   * it surrounds — including the accent-coloured primary button. Nothing
+   * clears 3:1 against both: the first version used a blue that scored
+   * 1.06:1 on accent, which is invisible, on a ring an engineer wearing
+   * gloves depends on.
+   *
+   * So the ring is drawn in --color-focus with a --color-focus-offset gap
+   * between it and the element. Whichever the ring is touching, one of the
+   * two separates it: measured 19.8:1 ring-on-offset, 5.5:1 offset-on-accent
+   * and 18.9:1 ring-on-background in light; 17.9 / 9.6 / 14.6 in dark.
    */
-  --color-focus: #2563eb;
+  --color-focus: #0c0a09;
+  --color-focus-offset: #ffffff;
 
   /* --- Spacing, on a 4px base -------------------------------------------
    * A base rather than arbitrary values, so vertical rhythm survives
@@ -109,9 +124,12 @@
   --color-bg: #0f172a;
   --color-surface: #1e293b;
   --color-surface-raised: #334155;
-  --color-border: #475569;
+  --color-border: #94a3b8;
   --color-text: #f1f5f9;
-  --color-text-muted: #94a3b8;
+  /* 9.9:1 on surface and 7.0:1 on surface-raised. The first version cleared
+   * AA on surface and scored 4.04:1 on raised — the contrast claim above was
+   * checked against one surface and not the other. */
+  --color-text-muted: #cbd5e1;
 
   --color-severity-critical: #fca5a5;
   --color-severity-warning: #fcd34d;
@@ -125,7 +143,8 @@
   --color-accent-hover: #5eead4;
   --color-accent-contrast: #042f2e;
 
-  --color-focus: #93c5fd;
+  --color-focus: #ffffff;
+  --color-focus-offset: #0f172a;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
