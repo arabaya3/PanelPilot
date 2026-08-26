@@ -258,7 +258,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > Checking a step persists on scroll/re-render within the session; state resets cleanly on a new question.
 
-### [ ] FE-007 — Session context indicator
+### [x] FE-007 — Session context indicator
 
 | Field                   | Value                                      |
 | ----------------------- | ------------------------------------------ |
