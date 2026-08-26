@@ -164,3 +164,34 @@ def test_confidence_breakdown_keeps_its_components() -> None:
     assert breakdown.retrieval_score > 0
     assert breakdown.passage_agreement > 0
     assert breakdown.citation_density > 0
+
+
+def test_the_signals_combine_in_the_documented_proportions() -> None:
+    """Ordering tests alone let any positive weights pass.
+
+    The weights are a judgement about which signal to trust most, and a
+    silent change to them changes every confidence score the product shows.
+    Pinned as an exact value so the judgement has to be made deliberately.
+    """
+    answer = VerifiedAnswer(
+        text="An answer.",
+        citations=[Citation(document_id="doc-0", document_title="Guide", manufacturer="Schneider")],
+    )
+    # One passage, cited: retrieval 0.8, agreement 1.0, density 1/4.
+    breakdown = confidence.score_confidence(answer, evidence=[_passage("doc-0", 0.8)])
+    expected = 0.5 * 0.8 + 0.3 * 1.0 + 0.2 * 0.25
+    assert breakdown.overall == pytest.approx(expected)
+
+
+def test_retrieval_is_weighted_most_heavily() -> None:
+    """It is the only signal measured before the model spoke.
+
+    Agreement and density describe an answer that already exists; an answer
+    can be densely cited and still rest on passages that barely matched.
+    """
+    from app.ai.guardrails import confidence as module
+
+    assert module._RETRIEVAL_WEIGHT > module._AGREEMENT_WEIGHT
+    assert module._AGREEMENT_WEIGHT > module._DENSITY_WEIGHT
+    total = module._RETRIEVAL_WEIGHT + module._AGREEMENT_WEIGHT + module._DENSITY_WEIGHT
+    assert total == pytest.approx(1.0), "weights that do not sum to 1 rescale every score"

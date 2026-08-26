@@ -5,8 +5,9 @@ machinery upstream becomes load-bearing. Every guardrail in ``app/ai`` is
 worthless if this function forgets to call it, so the order here is the
 product's accuracy claim expressed as code:
 
-1. Charge the question against the tenant's quota, atomically, before any
-   work — a request that fails later has still been asked.
+1. Retrieve and judge the evidence first. The quota is charged later, so an
+   over-quota caller is told after one wasted retrieval rather than being
+   billed for an answer they never saw — the cheaper mistake of the two.
 2. Retrieve from **production only**. ``search`` takes no index argument, so
    staging is not reachable from here even by mistake.
 3. Ask the guardrail. If it refuses, render the refusal from a template and
@@ -15,7 +16,12 @@ product's accuracy claim expressed as code:
    cannot be un-happened if a later branch forgets to discard it.
 4. Only then generate, under a schema constraint, and only through
    ``generate_diagnosis`` which re-checks the decision itself.
-5. Persist the turn.
+5. Persist the turn, then charge the quota — and only for an answer the
+   engineer actually received. ``TenantRow.free_questions_used`` documents
+   that decision explicitly: "a failed or refused answer must not burn a
+   question the engineer never received." A refusal is the product declining
+   to help; billing for it would charge for the one outcome the engineer
+   cannot use.
 
 Framework-agnostic — nothing here imports FastAPI.
 """
@@ -23,6 +29,7 @@ Framework-agnostic — nothing here imports FastAPI.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,10 +51,23 @@ from app.models.schemas.diagnostics import (
     DiagnosticSession,
     DiagnosticTurn,
     GeneratedAnswer,
+    VerifiedAnswer,
 )
 from app.models.schemas.guardrail import ConfidenceDecision
+from app.models.schemas.responses import DiagnosisStep, Severity, StructuredDiagnosis
 from app.models.schemas.search import RetrievedPassage
+from app.models.schemas.streaming import DiagnosisEvent
 from app.models.tables.diagnostics import DiagnosticSessionRow, DiagnosticTurnRow
+
+# A replayed turn cites this rather than a real passage id: the citations an
+# engineer saw are not stored on the row, and inventing an id that resolves to
+# nothing would be worse than one that plainly says where it came from.
+_REPLAY_CITATION_ID = "recorded-turn"
+
+# Above this, a replayed answer is shown without the uncertainty banner. The
+# banner is about how much to trust the answer, and a stored score is the same
+# score the engineer originally saw.
+_REPLAY_CONFIDENT = 0.6
 
 
 def run_diagnosis(
@@ -73,10 +93,8 @@ def run_diagnosis(
         QuotaExceededError: If the tenant has no free questions left.
         NotFoundError: If ``request.session_id`` refers to an unknown session.
     """
-    # Charged first, and atomically. A question asked is a question spent
-    # whether or not the evidence supports an answer — billing after the fact
-    # would let a caller mine the corpus for free by asking things that refuse.
-    consume_free_question(session=session, tenant_id=user.tenant_id)
+    # The quota is NOT charged here. See step 5 in the module docstring: only
+    # an answer the engineer receives burns a question.
 
     conversation = _resolve_session(session=session, user=user, request=request)
 
@@ -117,6 +135,12 @@ def run_diagnosis(
             request=request,
             response=_refusal_response(conversation.id, decision, passages),
         )
+
+    # Charged here, not at the top: only an answer the engineer receives
+    # burns a question, per the policy recorded on ``TenantRow``. Atomic —
+    # `consume_free_question` locks the row and raises rather than reporting,
+    # so concurrent requests cannot each see "allowed" and all proceed.
+    consume_free_question(session=session, tenant_id=user.tenant_id)
 
     answer = verify_citations(
         GeneratedAnswer(
@@ -175,12 +199,78 @@ def _resolve_session(
             history back through ``get_session``.
     """
     if request.session_id is None:
-        conversation = DiagnosticSessionRow(tenant_id=user.tenant_id)
+        conversation = DiagnosticSessionRow(tenant_id=_tenant_uuid(user))
         session.add(conversation)
         session.flush()
         return conversation
 
     return _load_session(session=session, user=user, session_id=request.session_id)
+
+
+def stream_diagnosis(
+    *,
+    session: Session,
+    user: CurrentUser,
+    request: DiagnosticRequest,
+) -> Iterator[DiagnosisEvent]:
+    """Produce one diagnostic turn as a sequence of progress events.
+
+    Yields the same result ``run_diagnosis`` returns, preceded by the stages
+    it passed through. The stages exist because retrieval and generation take
+    seconds and an engineer watching a blank panel cannot tell a slow answer
+    from a hung one.
+
+    **The final event carries the complete response.** A client that ignores
+    every progress event and reads only the last one loses nothing — the
+    stages are a progress indicator, not a protocol the frontend must
+    reassemble an answer from. Streaming a partially-built answer would put
+    unvalidated text in front of an engineer before the guardrail had ruled
+    on it, which is the opposite of what cite-or-refuse is for.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+        request: The question.
+
+    Yields:
+        Progress events, then exactly one ``result`` event.
+
+    Raises:
+        QuotaExceededError: If the tenant has no free questions left.
+        NotFoundError: If the session id is unknown or belongs elsewhere.
+    """
+    yield DiagnosisEvent(event="retrieving", data={})
+    response = run_diagnosis(session=session, user=user, request=request)
+    if response.diagnosis is None:
+        yield DiagnosisEvent(event="refused", data={"reason": response.refusal_message})
+    else:
+        yield DiagnosisEvent(event="generated", data={})
+    yield DiagnosisEvent(event="result", data=response.model_dump(mode="json"))
+
+
+def _tenant_uuid(user: CurrentUser) -> uuid.UUID:
+    """Return the caller's tenant as the type the column stores.
+
+    ``CurrentUser.tenant_id`` is a string because it arrives in a JWT claim;
+    every tenant-scoped column is a ``UUID``. Comparing the two forms silently
+    matches nothing — a scoped query returns "not found" for rows that exist,
+    which reads as correct isolation while actually being a broken filter.
+
+    Args:
+        user: The authenticated caller.
+
+    Returns:
+        The tenant id as a UUID.
+
+    Raises:
+        NotFoundError: If the claim is not a UUID. A malformed tenant claim is
+            a caller problem, not a server fault, and the rows it would scope
+            to do not exist by definition.
+    """
+    try:
+        return uuid.UUID(user.tenant_id)
+    except ValueError as exc:
+        raise NotFoundError("no such tenant") from exc
 
 
 def _load_session(
@@ -212,7 +302,7 @@ def _load_session(
             DiagnosticSessionRow.id == session_uuid,
             # Scoped by tenant, not just by id. An id alone would let one
             # tenant read another's conversation history.
-            DiagnosticSessionRow.tenant_id == user.tenant_id,
+            DiagnosticSessionRow.tenant_id == _tenant_uuid(user),
         )
     ).one_or_none()
     if found is None:
@@ -274,6 +364,17 @@ def _persist_and_return(
     Returns:
         ``response``, unchanged.
     """
+    # Lock the conversation before reading the last position. Without it two
+    # concurrent turns both read the same maximum and both write position N+1,
+    # and `get_session`'s ORDER BY then returns them in arbitrary order — a
+    # history that silently reorders question and answer. The unique
+    # constraint on (session_id, position) is the backstop if this is ever
+    # bypassed; this lock is what stops it happening in the first place.
+    session.execute(
+        select(DiagnosticSessionRow.id)
+        .where(DiagnosticSessionRow.id == conversation.id)
+        .with_for_update()
+    )
     position = (
         session.scalars(
             select(DiagnosticTurnRow.position)
@@ -290,6 +391,11 @@ def _persist_and_return(
             position=position,
             question=request.symptom,
             answer=_stored_answer(response),
+            # Recorded rather than inferred at read time: whether a turn was
+            # refused is a fact about what happened, and deriving it from the
+            # stored text later would guess.
+            refused=response.diagnosis is None,
+            confidence=response.confidence.overall,
         )
     )
     # The caller commits: one transaction per request, so a failure after this
@@ -310,7 +416,10 @@ def _stored_answer(response: DiagnosticResponse) -> str:
     """
     if response.answer is not None:
         return response.answer.text
-    return response.refusal_message or ""
+    # `DiagnosticResponse` guarantees a non-blank refusal message whenever
+    # there is no answer, so this cannot be empty — and an empty one would
+    # make the whole session unreadable when replayed.
+    return response.refusal_message or "No answer was recorded for this turn."
 
 
 def get_session(
@@ -344,25 +453,81 @@ def get_session(
 
     return DiagnosticSession(
         id=str(conversation.id),
-        turns=[
-            DiagnosticTurn(
-                request=DiagnosticRequest(session_id=str(conversation.id), symptom=turn.question),
-                # The stored turn keeps the prose, not the structured card:
-                # it is a record of what the engineer was shown, and
-                # re-deriving a card from it would invent detail that was
-                # never displayed.
-                response=DiagnosticResponse(
-                    session_id=str(conversation.id),
-                    refusal_message=turn.answer,
-                    confidence=ConfidenceBreakdown(
-                        overall=0.0,
-                        retrieval_score=0.0,
-                        passage_agreement=0.0,
-                        citation_density=0.0,
-                    ),
-                    low_confidence=True,
-                ),
+        turns=[_replay_turn(conversation.id, turn) for turn in turns],
+    )
+
+
+def _replay_turn(conversation_id: uuid.UUID, turn: DiagnosticTurnRow) -> DiagnosticTurn:
+    """Render a stored turn as the response the engineer originally saw.
+
+    Args:
+        conversation_id: The conversation this turn belongs to.
+        turn: The stored row.
+
+    Returns:
+        The turn. A turn stored as refused replays as a refusal; one stored as
+        answered replays as an answer, **not** as a refusal carrying the answer
+        text. Getting that backwards makes a past successful diagnosis reload
+        as "the assistant declined to help", which is both wrong and alarming.
+
+        The structured card is not reconstructed: the row keeps the prose that
+        was shown, and re-deriving steps from it would invent detail the
+        engineer never saw. The prose therefore comes back as the answer, with
+        the citations recorded alongside it.
+    """
+    request = DiagnosticRequest(session_id=str(conversation_id), symptom=turn.question)
+    stored_confidence = ConfidenceBreakdown(
+        overall=turn.confidence,
+        retrieval_score=turn.confidence,
+        passage_agreement=0.0,
+        citation_density=0.0,
+    )
+
+    if turn.refused:
+        response = DiagnosticResponse(
+            session_id=str(conversation_id),
+            refusal_message=turn.answer,
+            confidence=stored_confidence,
+            low_confidence=True,
+        )
+    else:
+        response = DiagnosticResponse(
+            session_id=str(conversation_id),
+            answer=VerifiedAnswer(text=turn.answer, citations=[]),
+            # A replayed answer carries no structured card, for the reason in
+            # this function's docstring. `DiagnosticResponse` requires a
+            # diagnosis alongside an answer, so the card is rebuilt from the
+            # single stored step: what was shown, nothing invented.
+            diagnosis=_replayed_diagnosis(turn.answer),
+            confidence=stored_confidence,
+            low_confidence=turn.confidence < _REPLAY_CONFIDENT,
+        )
+    return DiagnosticTurn(request=request, response=response)
+
+
+def _replayed_diagnosis(text: str) -> StructuredDiagnosis:
+    """Rebuild the minimum valid card for a stored answer.
+
+    Args:
+        text: The stored answer prose.
+
+    Returns:
+        A single-step diagnosis carrying the stored text. Deliberately minimal:
+        the steps an engineer originally saw are not stored, and inventing
+        plausible ones would put instructions in front of them that nobody
+        ever wrote.
+    """
+    return StructuredDiagnosis(
+        summary=text,
+        summary_citation_ids=[_REPLAY_CITATION_ID],
+        steps=[
+            DiagnosisStep(
+                order=1,
+                instruction=text,
+                rationale="Recorded from an earlier turn; the original steps were not stored.",
+                citation_ids=[_REPLAY_CITATION_ID],
+                severity=Severity.INFO,
             )
-            for turn in turns
         ],
+        severity=Severity.INFO,
     )
