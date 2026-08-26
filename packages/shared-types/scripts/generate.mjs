@@ -51,25 +51,53 @@ const schema = execFileSync(python, ['-c', DUMP], {
 const schemaFile = join(mkdtempSync(join(tmpdir(), 'panelpilot-openapi-')), 'openapi.json');
 writeFileSync(schemaFile, schema, 'utf8');
 
-// Run the CLI's JS entrypoint under node rather than the `.bin` shim.
-//
-// Two Windows traps this avoids. `shell: true` re-splits arguments on spaces,
-// and this repo can live under a path containing one — which silently wrote
-// the output to a truncated filename instead of failing, leaving a stale file
-// that looked freshly generated. Without a shell, spawning the `.cmd` shim
-// fails outright with EINVAL. Invoking `bin/cli.js` sidesteps both.
-// Resolved from the package's own manifest rather than hardcoded, so an
-// upgrade that moves the entrypoint fails loudly here instead of silently.
-const pkgDir = resolve(
-  fileURLToPath(import.meta.resolve('openapi-typescript/package.json')),
-  '..',
-);
-const cli = resolve(
-  pkgDir,
-  JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')).bin['openapi-typescript'],
-);
+/**
+ * Resolve a package's CLI entrypoint to an absolute path.
+ *
+ * Read from the package's own manifest rather than hardcoded, so an upgrade
+ * that moves the entrypoint fails loudly here instead of silently running the
+ * wrong thing. `bin` is a string for single-command packages and an object
+ * keyed by command name for the rest; both shapes occur in this repo's own
+ * dependencies.
+ *
+ * @param {string} name Package name.
+ * @returns {string} Absolute path to the CLI's JS entrypoint.
+ */
+function resolveCli(name) {
+  const dir = resolve(fileURLToPath(import.meta.resolve(`${name}/package.json`)), '..');
+  const { bin } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  const entry = typeof bin === 'string' ? bin : bin[name];
+  if (!entry) {
+    throw new Error(`${name} declares no CLI entrypoint for '${name}'`);
+  }
+  return resolve(dir, entry);
+}
 
-execFileSync(process.execPath, [cli, schemaFile, '-o', outFile], {
-  stdio: 'inherit',
-  shell: false,
-});
+/**
+ * Run a CLI under this node process.
+ *
+ * Two Windows traps this avoids. `shell: true` re-splits arguments on spaces,
+ * and this repo can live under a path containing one — which silently wrote
+ * the output to a truncated filename instead of failing, leaving a stale file
+ * that looked freshly generated. Without a shell, spawning the `.cmd` shim
+ * fails outright with EINVAL. Invoking the JS entrypoint sidesteps both.
+ *
+ * @param {string} name Package name.
+ * @param {string[]} argv Arguments to pass.
+ */
+function runCli(name, argv) {
+  execFileSync(process.execPath, [resolveCli(name), ...argv], {
+    stdio: 'inherit',
+    shell: false,
+  });
+}
+
+runCli('openapi-typescript', [schemaFile, '-o', outFile]);
+
+// Format the result, for the same reason the rest of the repo is formatted:
+// the checked-in file is read and diffed by people. Doing it here rather than
+// anywhere else keeps the two CI jobs from contradicting each other —
+// `web (format)` rejects an unformatted generated file, while
+// `shared types drift` would reject a formatted one if the generator emitted
+// it raw.
+runCli('prettier', ['--write', outFile]);
