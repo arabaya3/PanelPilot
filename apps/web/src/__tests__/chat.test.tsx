@@ -682,3 +682,128 @@ describe('retrying', () => {
     expect(screen.getByTestId('assistant-progress')).toBeTruthy();
   });
 });
+
+/** The step checkboxes, narrowed so `.checked` is readable. */
+function stepBoxes(): HTMLInputElement[] {
+  return screen.getAllByTestId('step-checkbox').map((element) => {
+    if (!(element instanceof HTMLInputElement)) throw new Error('not an input');
+    return element;
+  });
+}
+
+// --- retry and the checklist ------------------------------------------------
+
+describe('retrying clears the ticks', () => {
+  /** A response with a given number of steps, all citable. */
+  function withSteps(count: number): DiagnosticResponse {
+    return {
+      ...RESPONSE,
+      diagnosis: {
+        summary: 'Summary.',
+        summary_citation_ids: ['doc-1'],
+        severity: 'critical',
+        equipment_model: 'ACS880',
+        steps: Array.from({ length: count }, (_, i) => ({
+          order: i + 1,
+          instruction: `Step ${String(i + 1)} of ${String(count)}`,
+          rationale: 'r',
+          citation_ids: ['doc-1'],
+          severity: 'info' as const,
+        })),
+      },
+    };
+  }
+
+  it('does not carry ticks from a failed attempt onto new advice', async () => {
+    // Driven through the actual Try again button rather than by calling
+    // `clear()` directly. Removing the call from `retry` left every
+    // provider-level test green, because none of them went through the
+    // component that has to make it — the same shape of gap that let the
+    // stale-tick defect ship in the first place.
+    const streams = [controllableStream(), controllableStream(), controllableStream()];
+    let call = 0;
+    const streamImpl = () => (streams[call++] ?? controllableStream()).generator();
+
+    renderApp(<Chat token="t" streamImpl={streamImpl} />);
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Tripping' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    // A three-step answer arrives and the engineer ticks step 2.
+    streams[0]?.emit({ kind: 'result', response: withSteps(3) });
+    streams[0]?.end();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('step-checkbox')).toHaveLength(3);
+    });
+    fireEvent.click(stepBoxes()[1] as HTMLInputElement);
+    expect(stepBoxes()[1]?.checked).toBe(true);
+
+    // A second question, which fails — so the *first* turn is the ticked one
+    // and the second is the one carrying the Try again button. Retrying the
+    // second must not disturb the first.
+    fireEvent.change(input, { target: { value: 'And now?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    streams[1]?.emit({ kind: 'interrupted', reason: 'connection-lost' });
+    streams[1]?.end();
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-failure')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    streams[2]?.emit({ kind: 'result', response: withSteps(2) });
+    streams[2]?.end();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('step-checkbox')).toHaveLength(5);
+    });
+
+    const after = stepBoxes();
+    expect(after.slice(0, 3).map((b) => b.checked)).toEqual([false, true, false]);
+    expect(after.slice(3).map((b) => b.checked)).toEqual([false, false]);
+  });
+
+  it('drops ticks belonging to the turn being retried', () => {
+    // The case that actually bites, and the one the provider-level tests
+    // could not reach: the *ticked* turn is the one retried. Its id is reused
+    // and the new advice has a different number of steps, so a positional
+    // tick rebinds — step 2 of something never read comes back struck
+    // through, reading as "I already did this".
+    const streams = [controllableStream(), controllableStream()];
+    let call = 0;
+    const streamImpl = () => (streams[call++] ?? controllableStream()).generator();
+
+    renderApp(<Chat token="t" streamImpl={streamImpl} />);
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Tripping' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    // Three steps arrive, step 2 is ticked, and then the same turn fails.
+    streams[0]?.emit({ kind: 'result', response: withSteps(3) });
+    return waitFor(() => {
+      expect(screen.getAllByTestId('step-checkbox')).toHaveLength(3);
+    })
+      .then(() => {
+        fireEvent.click(stepBoxes()[1] as HTMLInputElement);
+        expect(stepBoxes()[1]?.checked).toBe(true);
+
+        // The turn is then cut off and retried under the same id.
+        streams[0]?.emit({ kind: 'interrupted', reason: 'connection-lost' });
+        streams[0]?.end();
+        return waitFor(() => {
+          expect(screen.getByTestId('assistant-failure')).toBeTruthy();
+        });
+      })
+      .then(() => {
+        fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+        streams[1]?.emit({ kind: 'result', response: withSteps(2) });
+        streams[1]?.end();
+        return waitFor(() => {
+          expect(screen.getAllByTestId('step-checkbox')).toHaveLength(2);
+        });
+      })
+      .then(() => {
+        const boxes = stepBoxes();
+        expect(boxes.map((b) => b.checked)).toEqual([false, false]);
+        expect(screen.getByTestId('checklist-progress').textContent).toContain('0');
+      });
+  });
+});

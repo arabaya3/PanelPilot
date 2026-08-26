@@ -4,6 +4,7 @@ import type { components } from '@panelpilot/shared-types';
 import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 
+import { useChecklist } from '@/components/chat/checklist-provider';
 import { TechnicalToken } from '@/components/technical-token';
 
 import { decideVariant, type CardVariant, type ResolvedStep } from './citations';
@@ -110,7 +111,18 @@ function Citations({
 }
 
 /** One numbered action, with the reasoning and sources behind it. */
-function Step({ step }: { step: ResolvedStep }) {
+function Step({
+  step,
+  messageId,
+  index,
+}: {
+  step: ResolvedStep;
+  // Explicitly `| undefined`: with `exactOptionalPropertyTypes`, an optional
+  // prop is not the same as one that may be passed undefined, and these are
+  // forwarded from a parent that may not have them.
+  messageId?: string | undefined;
+  index?: number | undefined;
+}) {
   const t = useTranslations('diagnosticCard');
   // Severity labels live under `diagnosis`, which already defined all three
   // before this card existed. A second copy under `diagnosticCard` had
@@ -118,11 +130,52 @@ function Step({ step }: { step: ResolvedStep }) {
   const severityLabel = useTranslations('diagnosis.severity');
   const classes = SEVERITY_CLASSES[step.severity];
 
+  const checklist = useChecklist();
+  const trackable = checklist !== null && messageId !== undefined && index !== undefined;
+  const checked = trackable && checklist.isChecked(messageId, index);
+  const instructionId = useId();
+
   return (
     <li className={`rounded-md border-s-4 ${classes.border} bg-surface-raised p-3`}>
       <div className="flex items-baseline gap-2">
-        <TechnicalToken className="text-sm font-semibold">{step.order}</TechnicalToken>
-        <p className="font-medium text-text">{step.instruction}</p>
+        {trackable ? (
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => {
+              checklist.toggle(messageId, index);
+            }}
+            data-testid="step-checkbox"
+            // Labelled by the instruction itself as well as by the action, so
+            // tabbing the list announces what each step *is*. An `aria-label`
+            // alone overrides the content, and produced "Mark step 1 done,
+            // Mark step 2 done…" with no indication of what any of them were.
+            aria-labelledby={`${instructionId} ${instructionId}-action`}
+            // A to-do, not a verdict. The label says "done", never "verified"
+            // or "correct" — an engineer ticking off work they have carried
+            // out is recording what they did, not endorsing the advice, and
+            // the two must not be confusable if a verification indicator is
+            // added elsewhere. A plain square checkbox stays deliberately
+            // unlike any badge or tick used for provenance.
+            className="mt-1 h-4 w-4 shrink-0 accent-accent"
+          />
+        ) : (
+          <TechnicalToken className="text-sm font-semibold">{step.order}</TechnicalToken>
+        )}
+        <p
+          id={instructionId}
+          className={checked ? 'font-medium text-text-muted line-through' : 'font-medium text-text'}
+        >
+          {trackable ? (
+            <TechnicalToken className="me-2 text-sm font-semibold">{step.order}</TechnicalToken>
+          ) : null}
+          {step.instruction}
+        </p>
+        {trackable ? (
+          <span id={`${instructionId}-action`} className="sr-only">
+            {t('markDone', { step: step.order })}
+          </span>
+        ) : null}
       </div>
       {/* The severity in words as well as in the border colour. Colour alone
           fails WCAG 1.4.1, and the audience reads these on a sunlit screen in
@@ -201,12 +254,22 @@ function RefusalCard({ message }: { message: string }) {
 }
 
 /** The confident variant: summary, severity, ordered steps, and sources. */
-function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'diagnosis' }> }) {
+function DiagnosisCard({
+  variant,
+  messageId,
+}: {
+  variant: Extract<CardVariant, { kind: 'diagnosis' }>;
+  messageId?: string | undefined;
+}) {
   const t = useTranslations('diagnosticCard');
   const headingId = useId();
   const severityLabel = useTranslations('diagnosis.severity');
   const { diagnosis, steps, summaryCitations } = variant;
   const classes = SEVERITY_CLASSES[diagnosis.severity];
+
+  const checklist = useChecklist();
+  const trackable = checklist !== null && messageId !== undefined;
+  const done = trackable ? checklist.countChecked(messageId) : 0;
 
   return (
     <section
@@ -236,10 +299,29 @@ function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'dia
       <p className="text-text">{diagnosis.summary}</p>
       <Citations citations={summaryCitations} label={t('summarySources')} />
 
-      <h4 className="mb-2 mt-4 text-sm font-semibold text-text">{t('steps')}</h4>
+      <div className="mb-2 mt-4 flex items-baseline justify-between gap-2">
+        <h4 className="text-sm font-semibold text-text">{t('steps')}</h4>
+        {/* The reason the checklist exists: an engineer glancing back at a
+            phone mid-repair wants to know where they were without re-reading
+            the whole card. */}
+        {trackable ? (
+          <p
+            // `role="status"` so ticking a step announces the rollup. The
+            // transcript's `role="log"` around this announces *appended*
+            // content, not text mutated in place, so without it a screen
+            // reader user hears the checkbox flip and never the "2 of 3" —
+            // which is the one thing this feature exists to say.
+            role="status"
+            className="text-xs text-text-muted"
+            data-testid="checklist-progress"
+          >
+            {t('progress', { done, total: steps.length })}
+          </p>
+        ) : null}
+      </div>
       <ol className="space-y-2">
-        {steps.map((step) => (
-          <Step key={step.order} step={step} />
+        {steps.map((step, index) => (
+          <Step key={step.order} step={step} messageId={messageId} index={index} />
         ))}
       </ol>
     </section>
@@ -254,7 +336,19 @@ function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'dia
  * silently rendering the wrong thing — the `shared types drift` CI job keeps
  * the generated file honest.
  */
-export function DiagnosticCard({ response }: { response: DiagnosticResponse }) {
+export function DiagnosticCard({
+  response,
+  messageId,
+}: {
+  response: DiagnosticResponse;
+  /**
+   * Which turn this card is. Checklist state is keyed by it, so a new
+   * question starts unticked without disturbing the cards already on screen.
+   * Absent when the card is rendered outside a transcript, in which case the
+   * steps are plain text.
+   */
+  messageId?: string;
+}) {
   const variant = decideVariant(response);
 
   switch (variant.kind) {
@@ -263,6 +357,6 @@ export function DiagnosticCard({ response }: { response: DiagnosticResponse }) {
     case 'uncertain':
       return <UncertainCard variant={variant} />;
     case 'diagnosis':
-      return <DiagnosisCard variant={variant} />;
+      return <DiagnosisCard variant={variant} messageId={messageId} />;
   }
 }

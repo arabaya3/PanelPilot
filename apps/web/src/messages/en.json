@@ -40,7 +40,9 @@
     "uncertainWithSources": "There is not enough supporting evidence to give steps for this. Check the documentation below before acting.",
     "uncertainNoSources": "There is not enough supporting evidence to give steps for this. Check the equipment documentation before acting.",
     "refusalHeading": "No answer given",
-    "refusalFallback": "This question could not be answered from the available documentation."
+    "refusalFallback": "This question could not be answered from the available documentation.",
+    "markDone": "Mark step {step} done",
+    "progress": "{done} of {total} steps done"
   },
   "chat": {
     "empty": "Describe the fault you are seeing.",
