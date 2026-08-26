@@ -198,6 +198,75 @@ describe('decideVariant', () => {
     expect(variant.kind === 'uncertain' && variant.reason).toBe('no-steps');
   });
 
+  // --- ids that are not ids -------------------------------------------------
+  //
+  // These types are TypeScript's and are erased at runtime; what arrives is
+  // JSON from a server. A review found that every fixture above used a
+  // well-formed string id, so nothing pinned what an id must *be* — and a
+  // mutation that fabricated a placeholder citation for a nullish id survived
+  // the entire suite. Each case below renders, before the fix, a confident
+  // critical instruction sourced to a document that does not exist.
+
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['undefined', undefined],
+  ])('refuses to resolve a citation id that is %s', (_label, id) => {
+    const { payload, diagnosis } = withDiagnosis();
+    const ghost = {
+      document_id: id,
+      document_title: 'Ghost Manual',
+      manufacturer: 'ABB',
+      page: null,
+      section: null,
+    } as unknown as Citation;
+    payload.answer = { text: 'x', citations: [ghost] };
+    diagnosis.summary_citation_ids = [id as unknown as string];
+    diagnosis.steps = [{ ...step(diagnosis, 0), citation_ids: [id as unknown as string] }];
+
+    const variant = decideVariant(payload);
+    expect(variant.kind).toBe('uncertain');
+    expect(variant.kind === 'uncertain' && variant.reason).toBe('unresolved-citation');
+  });
+
+  it('refuses an id that is ambiguous between two documents', () => {
+    // Last-write-wins would resolve this to whichever document arrived
+    // second, so the card would cite a real document that does not support
+    // the claim — worse than an obviously missing one, because it survives
+    // being checked. Ambiguous provenance is not provenance.
+    const { payload, diagnosis } = withDiagnosis();
+    payload.answer = {
+      text: 'x',
+      citations: [
+        { ...MANUAL, document_id: 'doc-1', document_title: 'The Real Manual' },
+        { ...MANUAL, document_id: 'doc-1', document_title: 'A Different Document' },
+      ],
+    };
+    diagnosis.steps = [step(diagnosis, 0)];
+
+    expect(decideVariant(payload).kind).toBe('uncertain');
+  });
+
+  it.each(['__proto__', 'constructor', 'toString'])(
+    'does not resolve %s against the prototype chain',
+    (id) => {
+      // A plain object index would resolve these to inherited members and
+      // render the step as cited. The Map is load-bearing.
+      const { payload, diagnosis } = withDiagnosis();
+      payload.answer = { text: 'x', citations: [] };
+      diagnosis.summary_citation_ids = [id];
+
+      expect(decideVariant(payload).kind).toBe('uncertain');
+    },
+  );
+
+  it('does not match an id by case or surrounding whitespace', () => {
+    const { payload, diagnosis } = withDiagnosis();
+    diagnosis.summary_citation_ids = [' DOC-1 '];
+
+    expect(decideVariant(payload).kind).toBe('uncertain');
+  });
+
   it('renders the refusal variant when the backend declined', () => {
     const variant = decideVariant(
       response({ diagnosis: null, refusal_message: 'No supporting passage was found.' }),
@@ -358,5 +427,71 @@ describe('severity colours', () => {
     // fail on the explanation of why it exists.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(code).not.toMatch(/severity-\$\{/);
+  });
+});
+
+// --- accessibility -----------------------------------------------------------
+
+describe('accessibility', () => {
+  it('gives each card in a transcript its own heading id', () => {
+    // The real use case is a chat transcript of many responses.
+    // `aria-labelledby` resolves to the FIRST matching id in the document, so
+    // one hardcoded id means every card is announced with the first card's
+    // name — and an uncertain card would be announced as a confident
+    // diagnosis, which inverts the entire point of the variant.
+    renderApp(
+      <>
+        <DiagnosticCard response={response()} />
+        <DiagnosticCard response={response({ low_confidence: true })} />
+        <DiagnosticCard response={response({ diagnosis: null, refusal_message: 'No.' })} />
+      </>,
+    );
+
+    const cards = screen.getAllByTestId('diagnostic-card');
+    expect(cards).toHaveLength(3);
+
+    const ids = cards.map((card) => card.getAttribute('aria-labelledby'));
+    expect(new Set(ids).size, 'cards share a heading id').toBe(3);
+
+    // And each label must resolve to that card's own heading, not another's.
+    for (const card of cards) {
+      const id = card.getAttribute('aria-labelledby');
+      expect(id).toBeTruthy();
+      // By attribute rather than by `#id`: React's `useId` emits colons, which
+      // are not valid in a bare CSS id selector, and `CSS.escape` is absent
+      // from jsdom's globals.
+      expect(
+        card.querySelector(`[id="${id ?? ''}"]`),
+        'heading is not inside its own card',
+      ).toBeTruthy();
+    }
+  });
+
+  it('states each step severity in words, not only in colour', () => {
+    // WCAG 1.4.1. A step's severity rendered solely as a border colour is
+    // unavailable to a colour-blind engineer, and to anyone reading a sunlit
+    // screen in a plant room.
+    renderApp(<DiagnosticCard response={response()} />);
+    const card = screen.getByTestId('diagnostic-card');
+
+    // The fixture's two steps are critical and warning; both words must be
+    // present somewhere in the card's text.
+    expect(card.textContent).toContain('Critical');
+    expect(card.textContent).toContain('Warning');
+  });
+
+  it('defines each severity label exactly once across the bundles', () => {
+    // Two label blocks for one concept had already drifted in Arabic inside a
+    // single file — `معلومة` in one and `معلومات` in the other.
+    for (const locale of LOCALES) {
+      const bundle = JSON.parse(
+        readFileSync(resolve(process.cwd(), `src/messages/${locale}.json`), 'utf8'),
+      ) as Record<string, Record<string, unknown>>;
+      expect(
+        bundle.diagnosticCard,
+        `${locale} still defines a second severity block`,
+      ).not.toHaveProperty('severity');
+      expect(bundle.diagnosis).toHaveProperty('severity');
+    }
   });
 });

@@ -2,6 +2,7 @@
 
 import type { components } from '@panelpilot/shared-types';
 import { useTranslations } from 'next-intl';
+import { useId } from 'react';
 
 import { TechnicalToken } from '@/components/technical-token';
 
@@ -71,14 +72,23 @@ function CitationLine({ citation }: { citation: Citation }) {
   return (
     <li className="text-sm text-text-muted">
       <TechnicalToken>{citation.manufacturer}</TechnicalToken>{' '}
-      <span>{citation.document_title}</span>
+      <TechnicalToken className="font-sans">{citation.document_title}</TechnicalToken>
       {locator.length > 0 ? <span> — {locator.join(', ')}</span> : null}
     </li>
   );
 }
 
 /** The citation list, which never renders as an empty shell. */
-function Citations({ citations, label }: { citations: Citation[]; label: string }) {
+function Citations({
+  citations,
+  label,
+  level: Heading = 'h4',
+}: {
+  citations: Citation[];
+  label: string;
+  /** A step's sources sit inside the step, not beside the step list. */
+  level?: 'h4' | 'h5';
+}) {
   // An empty citation list would be a heading over nothing, which reads as "no
   // source needed" rather than "no source found". Every path that could get
   // here with an empty list has already been diverted to the uncertain
@@ -87,9 +97,9 @@ function Citations({ citations, label }: { citations: Citation[]; label: string 
 
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      <Heading className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
         {label}
-      </h4>
+      </Heading>
       <ul className="space-y-1">
         {citations.map((citation) => (
           <CitationLine key={citation.document_id} citation={citation} />
@@ -102,6 +112,10 @@ function Citations({ citations, label }: { citations: Citation[]; label: string 
 /** One numbered action, with the reasoning and sources behind it. */
 function Step({ step }: { step: ResolvedStep }) {
   const t = useTranslations('diagnosticCard');
+  // Severity labels live under `diagnosis`, which already defined all three
+  // before this card existed. A second copy under `diagnosticCard` had
+  // already drifted from it in one language, inside one file.
+  const severityLabel = useTranslations('diagnosis.severity');
   const classes = SEVERITY_CLASSES[step.severity];
 
   return (
@@ -110,8 +124,12 @@ function Step({ step }: { step: ResolvedStep }) {
         <TechnicalToken className="text-sm font-semibold">{step.order}</TechnicalToken>
         <p className="font-medium text-text">{step.instruction}</p>
       </div>
+      {/* The severity in words as well as in the border colour. Colour alone
+          fails WCAG 1.4.1, and the audience reads these on a sunlit screen in
+          a plant room as often as at a desk. */}
+      <span className="sr-only">{severityLabel(step.severity)}</span>
       <p className="mt-1 text-sm text-text-muted">{step.rationale}</p>
-      <Citations citations={step.citations} label={t('stepSources')} />
+      <Citations citations={step.citations} label={t('stepSources')} level="h5" />
     </li>
   );
 }
@@ -127,6 +145,12 @@ function Step({ step }: { step: ResolvedStep }) {
  */
 function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'uncertain' }> }) {
   const t = useTranslations('diagnosticCard');
+  // Per instance: a transcript renders many cards, and `aria-labelledby`
+  // resolves to the first matching id in the document. With one hardcoded id
+  // every card is announced as the first card's heading — so an uncertain card
+  // would be announced as a confident diagnosis, inverting the whole point of
+  // the variant.
+  const headingId = useId();
   const classes = SEVERITY_CLASSES.info;
 
   return (
@@ -134,7 +158,7 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
       data-testid="diagnostic-card"
       data-variant="uncertain"
       data-reason={variant.reason}
-      aria-labelledby="diagnostic-card-heading"
+      aria-labelledby={headingId}
       className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
@@ -142,7 +166,7 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
           {t('uncertainBadge')}
         </span>
       </div>
-      <h3 id="diagnostic-card-heading" className="text-lg font-semibold text-text">
+      <h3 id={headingId} className="text-lg font-semibold text-text">
         {t('uncertainHeading')}
       </h3>
       <p className="mt-1 text-text-muted">
@@ -156,16 +180,17 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
 /** The refusal variant: the backend declined, and this states that plainly. */
 function RefusalCard({ message }: { message: string }) {
   const t = useTranslations('diagnosticCard');
+  const headingId = useId();
   const classes = SEVERITY_CLASSES.info;
 
   return (
     <section
       data-testid="diagnostic-card"
       data-variant="refusal"
-      aria-labelledby="diagnostic-card-heading"
+      aria-labelledby={headingId}
       className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
     >
-      <h3 id="diagnostic-card-heading" className="text-lg font-semibold text-text">
+      <h3 id={headingId} className="text-lg font-semibold text-text">
         {t('refusalHeading')}
       </h3>
       {/* The backend's own wording, not a paraphrase. It is written to explain
@@ -178,6 +203,8 @@ function RefusalCard({ message }: { message: string }) {
 /** The confident variant: summary, severity, ordered steps, and sources. */
 function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'diagnosis' }> }) {
   const t = useTranslations('diagnosticCard');
+  const headingId = useId();
+  const severityLabel = useTranslations('diagnosis.severity');
   const { diagnosis, steps, summaryCitations } = variant;
   const classes = SEVERITY_CLASSES[diagnosis.severity];
 
@@ -186,12 +213,12 @@ function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'dia
       data-testid="diagnostic-card"
       data-variant="diagnosis"
       data-severity={diagnosis.severity}
-      aria-labelledby="diagnostic-card-heading"
+      aria-labelledby={headingId}
       className={`rounded-lg border ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}>
-          {t(`severity.${diagnosis.severity}`)}
+          {severityLabel(diagnosis.severity)}
         </span>
         {diagnosis.equipment_model ? (
           // Echoed back so an engineer can see which unit was understood —
@@ -203,7 +230,7 @@ function DiagnosisCard({ variant }: { variant: Extract<CardVariant, { kind: 'dia
         ) : null}
       </div>
 
-      <h3 id="diagnostic-card-heading" className="sr-only">
+      <h3 id={headingId} className="sr-only">
         {t('heading')}
       </h3>
       <p className="text-text">{diagnosis.summary}</p>

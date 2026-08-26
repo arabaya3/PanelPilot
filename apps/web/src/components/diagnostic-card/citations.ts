@@ -54,9 +54,56 @@ export type CardVariant =
 export type UncertainReason =
   'low-confidence' | 'no-citations' | 'unresolved-citation' | 'no-steps';
 
-/** Index citations by id for the join. */
+/**
+ * Is this a value that could identify a document?
+ *
+ * The types here are TypeScript's and are erased at runtime; what actually
+ * arrives is JSON from a server. `null` is valid JSON, an absent key
+ * deserialises to `undefined`, and `""` is a string. All three are usable as
+ * `Map` keys, so without this check a citation carrying no real id indexes
+ * successfully and a step citing that non-id resolves against it — producing a
+ * confident, authoritative-looking instruction sourced to nothing. An id that
+ * is not an id cites nothing.
+ */
+function isUsableId(value: unknown): value is string {
+  return typeof value === 'string' && value !== '';
+}
+
+/**
+ * Index citations by id for the join.
+ *
+ * Two rules, both of them refusals:
+ *
+ * A citation with no usable id is not indexed. It cannot be cited, because
+ * there is nothing to cite it *by*.
+ *
+ * A duplicated id is not indexed at all — neither entry wins. Building the map
+ * from pairs keeps the last write, which silently resolves a step to whichever
+ * document happened to arrive second: the citation line then points at a real
+ * document that does not support the claim, which is worse than an obviously
+ * missing one because it survives being checked. Ambiguous provenance is not
+ * provenance, so the step degrades instead.
+ *
+ * A `Map` rather than a plain object, deliberately: an id of `__proto__` or
+ * `constructor` would otherwise resolve against `Object.prototype` and render
+ * as cited.
+ */
 function citationsById(citations: Citation[]): Map<string, Citation> {
-  return new Map(citations.map((citation) => [citation.document_id, citation]));
+  const index = new Map<string, Citation>();
+  const ambiguous = new Set<string>();
+
+  for (const citation of citations) {
+    const id: unknown = citation?.document_id;
+    if (!isUsableId(id)) continue;
+    if (index.has(id)) {
+      ambiguous.add(id);
+      continue;
+    }
+    index.set(id, citation);
+  }
+
+  for (const id of ambiguous) index.delete(id);
+  return index;
 }
 
 /**
@@ -70,6 +117,11 @@ function citationsById(citations: Citation[]): Map<string, Citation> {
 function resolveAll(ids: string[], index: Map<string, Citation>): Citation[] | null {
   const resolved: Citation[] = [];
   for (const id of ids) {
+    // Checked on the way in as well as on the way out: the index cannot
+    // contain an unusable id any more, but a step citing `null` must fail
+    // here rather than merely missing the lookup, so the two halves of the
+    // rule cannot drift apart.
+    if (!isUsableId(id)) return null;
     const citation = index.get(id);
     if (!citation) return null;
     resolved.push(citation);

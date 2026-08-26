@@ -35,11 +35,6 @@
     "checkInstead": "Check these instead",
     "section": "section {section}",
     "page": "page {page}",
-    "severity": {
-      "critical": "Critical",
-      "warning": "Warning",
-      "info": "Information"
-    },
     "uncertainBadge": "Not certain",
     "uncertainHeading": "Not certain enough to advise",
     "uncertainWithSources": "There is not enough supporting evidence to give steps for this. Check the documentation below before acting.",
