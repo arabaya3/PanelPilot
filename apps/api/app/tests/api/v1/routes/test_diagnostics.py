@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import diagnostics as diagnostics_route
+from app.core.config import Settings
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.diagnostics import DiagnosticRequest
@@ -165,15 +166,19 @@ def test_a_malformed_request_is_rejected_before_the_domain(
     assert called == []
 
 
-def test_the_stream_endpoint_is_documented_as_event_stream() -> None:
+def test_the_stream_endpoint_is_documented_as_event_stream(settings: Settings) -> None:
     """The generated frontend type comes from this schema.
 
     Left undeclared, OpenAPI records an empty JSON schema for an endpoint that
     emits `text/event-stream`, and the type for the payload this whole feature
     delivers generates as `unknown`.
+
+    Settings are injected rather than read from the environment: the `api
+    (test)` CI job runs without any, and a test that needs real configuration
+    to check a static schema would fail there for an unrelated reason.
     """
     from app.main import create_app
 
-    schema = create_app().openapi()
+    schema = create_app(settings).openapi()
     operation = schema["paths"]["/api/v1/diagnostics/stream"]["post"]
     assert "text/event-stream" in operation["responses"]["200"]["content"]

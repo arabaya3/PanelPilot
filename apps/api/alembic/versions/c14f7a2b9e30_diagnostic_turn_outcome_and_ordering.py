@@ -17,6 +17,7 @@ Create Date: 2026-08-26
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "c14f7a2b9e30"
@@ -45,8 +46,7 @@ def upgrade() -> None:
     # already raced. Renumbers duplicates rather than deleting a turn: a
     # conversation missing an exchange is worse than one whose numbering
     # shifted.
-    op.execute(
-        """
+    op.execute("""
         WITH renumbered AS (
             SELECT id,
                    ROW_NUMBER() OVER (
@@ -58,8 +58,7 @@ def upgrade() -> None:
         SET position = r.corrected
         FROM renumbered AS r
         WHERE t.id = r.id AND t.position <> r.corrected
-        """
-    )
+        """)
     op.create_unique_constraint(
         "uq_diagnostic_turns_session_position", "diagnostic_turns", ["session_id", "position"]
     )
@@ -67,8 +66,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop the constraint and the outcome columns."""
-    op.drop_constraint(
-        "uq_diagnostic_turns_session_position", "diagnostic_turns", type_="unique"
-    )
+    op.drop_constraint("uq_diagnostic_turns_session_position", "diagnostic_turns", type_="unique")
     op.drop_column("diagnostic_turns", "confidence")
     op.drop_column("diagnostic_turns", "refused")
