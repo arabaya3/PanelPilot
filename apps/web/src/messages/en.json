@@ -73,5 +73,40 @@
     "model": "Model",
     "save": "Save",
     "cancel": "Cancel"
+  },
+  "capture": {
+    "choose": "Photograph the display",
+    "orDrop": "or drop a photo here",
+    "preparing": "Preparing the photo…",
+    "uploading": "Uploading…",
+    "stillUploading": "Still uploading — this connection is slow, not stuck.",
+    "previewAlt": "The photo you captured",
+    "send": "Send photo",
+    "discard": "Discard",
+    "tryAnother": "Try another photo",
+    "describeInstead": "Describe the fault instead",
+    "storedNoReading": "The photo was uploaded, but nothing read it. Describe the fault code and it will be diagnosed as usual.",
+    "readAs": "Read from the display:",
+    "pleaseConfirm": "Please confirm what this shows before it is diagnosed:",
+    "confirmSend": "Confirm and send",
+    "confirmAnyway": "Send as shown",
+    "message": "Fault {code} on {equipment}",
+    "messageNoCode": "A fault is shown on the display",
+    "verdict": {
+      "not_a_fault_display": "This does not look like a fault display.",
+      "unreadable": "The display could not be read from this photo."
+    },
+    "error": {
+      "not-an-image": "That file is not an image.",
+      "too-large-after-compression": "The photo is too large to upload even after compression.",
+      "decode-failed": "The photo could not be opened. Try taking it again.",
+      "encode-failed": "The photo could not be processed on this device.",
+      "too-large": "The server rejected the photo as too large.",
+      "rejected": "The server rejected the photo.",
+      "network": "The photo could not be uploaded. Check the connection and try again.",
+      "unavailable": "Photo upload is not available right now.",
+      "timeout": "The upload took too long and was stopped.",
+      "aborted": "The upload was cancelled."
+    }
   }
 }

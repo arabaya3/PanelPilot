@@ -6,10 +6,12 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
+import type { uploadImage } from '@/lib/recognition';
 
 import { ChecklistProvider, useChecklist } from './checklist-provider';
 import { ContextChip, contextFromResponse } from './context-chip';
 import { Composer } from './composer';
+import { ImageCapture } from './image-capture';
 import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
 
@@ -32,6 +34,8 @@ export function Chat(props: {
   token: string;
   /** Injected in tests so a slow stream can be driven without a server. */
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
+  /** Injected the same way, so the capture path can be driven end to end. */
+  uploadImpl?: typeof uploadImage;
 }) {
   return (
     <ChecklistProvider>
@@ -50,9 +54,11 @@ export function Chat(props: {
 function ChatSurface({
   token,
   streamImpl = streamDiagnosis,
+  uploadImpl,
 }: {
   token: string;
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
+  uploadImpl?: typeof uploadImage;
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
@@ -196,6 +202,7 @@ function ChatSurface({
         <ContextChip context={context} onChange={setContext} />
       </header>
       <MessageList messages={state.messages} onRetry={retry} />
+      <ImageCapture token={token} onConfirm={ask} {...(uploadImpl ? { uploadImpl } : {})} />
       <Composer onSubmit={ask} onStop={stop} busy={busy} />
     </div>
   );
