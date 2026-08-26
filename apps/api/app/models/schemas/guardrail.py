@@ -42,6 +42,12 @@ class RefusalReason(StrEnum):
     # Retrieval returned a score that is not a real number in [0, 1].
     # Refusing beats guessing which passage to trust.
     UNUSABLE_SCORE = "unusable_score"
+    # The evidence cleared the threshold but the generated response did not
+    # match the schema, or cited a passage that was never supplied. Distinct
+    # from BELOW_THRESHOLD because the retrieval was fine: filing these as a
+    # threshold problem would send anyone tuning the threshold after a signal
+    # that has nothing to do with it.
+    UNVALIDATABLE_OUTPUT = "unvalidatable_output"
 
 
 class ConfidenceDecision(BaseModel):

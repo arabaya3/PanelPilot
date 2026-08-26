@@ -15,11 +15,13 @@ import json
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from app.ai.structured_output import (
     DIAGNOSIS_TOOL_NAME,
+    diagnosis_input_schema,
     diagnosis_tool_definition,
+    extract_tool_payload,
+    generate_diagnosis,
     parse_tool_output,
     structured_or_refuse,
 )
@@ -29,7 +31,6 @@ from app.models.schemas.guardrail import (
     RefusalReason,
 )
 from app.models.schemas.responses import (
-    DiagnosisEnvelope,
     DiagnosisStep,
     Severity,
     StructuredDiagnosis,
@@ -86,17 +87,70 @@ def _valid_payload(**overrides: Any) -> dict[str, Any]:
 # --- the constraint is generated, not hand-written --------------------------
 
 
-def test_the_tool_schema_is_derived_from_the_response_model() -> None:
-    """One definition. A hand-written constraint would drift from the type."""
+def test_the_tool_schema_tracks_the_response_model() -> None:
+    """One definition, so the constraint cannot drift from the type.
+
+    Asserted against the model's own field names rather than against
+    ``model_json_schema()`` — comparing the schema to itself would pass no
+    matter what the normalisation did to it.
+    """
     definition = diagnosis_tool_definition()
     assert definition["name"] == DIAGNOSIS_TOOL_NAME
-    assert definition["input_schema"] == StructuredDiagnosis.model_json_schema()
+    assert set(definition["input_schema"]["properties"]) == set(StructuredDiagnosis.model_fields)
 
 
 def test_the_schema_marks_every_rendered_field_required() -> None:
-    """An optional field is one the frontend must defensively handle."""
-    schema = StructuredDiagnosis.model_json_schema()
-    assert set(schema["required"]) >= {"summary", "summary_citation_ids", "steps"}
+    """An optional field is one the frontend must defensively handle.
+
+    ``severity`` included: a model that omits it under uncertainty would
+    otherwise have that read as the least alarming value.
+    """
+    required = set(diagnosis_input_schema()["required"])
+    assert required == {"summary", "summary_citation_ids", "steps", "severity"}
+
+
+def test_the_schema_carries_no_refs_the_api_might_mishandle() -> None:
+    """Pydantic emits `$ref` as a sibling of `default` — the ambiguous form.
+
+    Inlined here rather than betting on how the API resolves it.
+    """
+    rendered = json.dumps(diagnosis_input_schema())
+    assert "$ref" not in rendered
+    assert "$defs" not in rendered
+
+
+def test_every_object_in_the_schema_is_closed() -> None:
+    """Otherwise the model may emit keys the frontend does not know."""
+
+    def check(node: object) -> None:
+        if isinstance(node, list):
+            for item in node:
+                check(item)
+        elif isinstance(node, dict):
+            if node.get("type") == "object":
+                assert node.get("additionalProperties") is False
+            for value in node.values():
+                check(value)
+
+    check(diagnosis_input_schema())
+
+
+def test_the_schema_does_not_ship_python_docstrings_to_the_model() -> None:
+    """Keep human prose out of the constraint.
+
+    Docstrings are written for engineers reading the file, and cost tokens on
+    every single request.
+    """
+    rendered = json.dumps(diagnosis_input_schema())
+    assert "Attributes:" not in rendered
+    assert "cite-or-refuse" not in rendered
+
+
+def test_the_schema_still_describes_the_nested_step_fields() -> None:
+    """Guard against the normalisation flattening the schema into nothing."""
+    step = diagnosis_input_schema()["properties"]["steps"]["items"]
+    assert set(step["properties"]) == set(DiagnosisStep.model_fields)
+    assert set(step["required"]) == set(DiagnosisStep.model_fields)
 
 
 def test_the_schema_is_serialisable_for_the_api() -> None:
@@ -117,9 +171,14 @@ def _vary(index: int) -> dict[str, Any]:
         "steps": [
             {
                 "order": n + 1,
-                "instruction": f"Step {n + 1} for finding {index}.",
-                "rationale": f"Because condition {n} applies.",
-                "citation_ids": [sorted(EVIDENCE_IDS)[(index + n) % 3]],
+                "instruction": f"Step {n + 1} for finding {index}: r\u00e9gler le variateur.",
+                "rationale": f"Because condition {n} applies \u2014 see \u00a7{n}.",
+                "citation_ids": (
+                    # Some steps rest on two passages, some on one.
+                    sorted(EVIDENCE_IDS)[:2]
+                    if (index + n) % 3 == 0
+                    else [sorted(EVIDENCE_IDS)[(index + n) % 3]]
+                ),
                 "severity": severities[(index + n) % 3],
             }
             for n in range(step_count)
@@ -150,6 +209,11 @@ def test_the_hundred_payloads_are_actually_varied() -> None:
     assert len({p["severity"] for p in payloads}) == 3
     assert len({len(p["steps"]) for p in payloads}) == 4
     assert len({json.dumps(p, sort_keys=True) for p in payloads}) == 100
+    # Multi-citation and single-citation steps both occur.
+    counts = {len(step["citation_ids"]) for p in payloads for step in p["steps"]}
+    assert counts == {1, 2}
+    # Non-ASCII prose is present, since real manuals are not ASCII.
+    assert any("\u00e9" in p["steps"][0]["instruction"] for p in payloads)
 
 
 # --- every malformation becomes a refusal, never broken output --------------
@@ -164,6 +228,9 @@ def test_the_hundred_payloads_are_actually_varied() -> None:
         ("wrong type for steps", _valid_payload(steps="two steps")),
         ("missing required key", {"summary": "x"}),
         ("unknown severity", _valid_payload(severity="catastrophic")),
+        ("missing severity", {k: v for k, v in _valid_payload().items() if k != "severity"}),
+        ("whitespace-only summary", _valid_payload(summary="   ")),
+        ("duplicate summary citations", _valid_payload(summary_citation_ids=["p1", "p1"])),
         (
             "step numbering gap",
             _valid_payload(
@@ -173,12 +240,14 @@ def test_the_hundred_payloads_are_actually_varied() -> None:
                         "instruction": "First.",
                         "rationale": "Because.",
                         "citation_ids": ["p1"],
+                        "severity": "info",
                     },
                     {
                         "order": 3,
                         "instruction": "Third.",
                         "rationale": "Because.",
                         "citation_ids": ["p1"],
+                        "severity": "info",
                     },
                 ]
             ),
@@ -192,6 +261,7 @@ def test_the_hundred_payloads_are_actually_varied() -> None:
                         "instruction": "Do it.",
                         "rationale": "Because.",
                         "citation_ids": [],
+                        "severity": "info",
                     }
                 ]
             ),
@@ -205,6 +275,35 @@ def test_the_hundred_payloads_are_actually_varied() -> None:
                         "instruction": "Do it.",
                         "rationale": "Because.",
                         "citation_ids": ["   "],
+                        "severity": "info",
+                    }
+                ]
+            ),
+        ),
+        (
+            "duplicate step citations",
+            _valid_payload(
+                steps=[
+                    {
+                        "order": 1,
+                        "instruction": "Do it.",
+                        "rationale": "Because.",
+                        "citation_ids": ["p1", "p1"],
+                        "severity": "info",
+                    }
+                ]
+            ),
+        ),
+        (
+            "whitespace-only instruction",
+            _valid_payload(
+                steps=[
+                    {
+                        "order": 1,
+                        "instruction": "   ",
+                        "rationale": "Because.",
+                        "citation_ids": ["p1"],
+                        "severity": "info",
                     }
                 ]
             ),
@@ -245,6 +344,37 @@ def test_a_well_formed_but_invented_citation_is_refused() -> None:
         )
 
 
+def test_the_refusal_is_not_filed_as_a_threshold_problem() -> None:
+    """The evidence cleared the threshold; the output failed.
+
+    Filing it as BELOW_THRESHOLD would send anyone tuning the threshold off
+    the escalation rows after a signal that has nothing to do with it.
+    """
+    _, decision = structured_or_refuse(
+        {"broken": True}, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision()
+    )
+    assert decision.reason is not RefusalReason.BELOW_THRESHOLD
+
+
+def test_a_refusal_survives_a_decision_with_no_citations() -> None:
+    """Build a refusal from a decision that cites nothing.
+
+    `_to_refusal` slices citations, so the refusal must still be
+    constructible when there was nothing to slice.
+    """
+    bare = ConfidenceDecision(
+        outcome=DecisionOutcome.UNCERTAIN,
+        score=0.4,
+        threshold=0.6,
+        reason=RefusalReason.BELOW_THRESHOLD,
+    )
+    diagnosis, decision = structured_or_refuse(
+        {"broken": True}, evidence_ids=EVIDENCE_IDS, decision=bare
+    )
+    assert diagnosis is None
+    assert decision.citations == []
+
+
 def test_the_refusal_preserves_the_original_confidence() -> None:
     """The turn must stay explainable: good evidence, unusable output."""
     original = _permitting_decision()
@@ -253,7 +383,7 @@ def test_the_refusal_preserves_the_original_confidence() -> None:
     )
     assert decision.score == original.score
     assert decision.threshold == original.threshold
-    assert decision.reason is RefusalReason.BELOW_THRESHOLD
+    assert decision.reason is RefusalReason.UNVALIDATABLE_OUTPUT
 
 
 def test_valid_output_passes_the_decision_through_unchanged() -> None:
@@ -265,42 +395,6 @@ def test_valid_output_passes_the_decision_through_unchanged() -> None:
     assert decision is original
 
 
-# --- the envelope cannot express a state the frontend cannot render ---------
-
-
-def test_an_answered_envelope_must_carry_a_diagnosis() -> None:
-    with pytest.raises(ValidationError, match="carries no diagnosis"):
-        DiagnosisEnvelope(answered=True, confidence=0.9)
-
-
-def test_an_unanswered_envelope_must_explain_itself() -> None:
-    with pytest.raises(ValidationError, match="must explain itself"):
-        DiagnosisEnvelope(answered=False, confidence=0.2)
-
-
-def test_an_envelope_cannot_be_both() -> None:
-    """Otherwise the frontend has to decide which half to believe."""
-    diagnosis = StructuredDiagnosis.model_validate(_valid_payload())
-    with pytest.raises(ValidationError, match="must not carry a refusal message"):
-        DiagnosisEnvelope(
-            answered=True,
-            diagnosis=diagnosis,
-            refusal_message="also refused",
-            confidence=0.9,
-        )
-
-
-def test_an_unanswered_envelope_cannot_smuggle_a_diagnosis() -> None:
-    diagnosis = StructuredDiagnosis.model_validate(_valid_payload())
-    with pytest.raises(ValidationError, match="must not carry a diagnosis"):
-        DiagnosisEnvelope(
-            answered=False,
-            diagnosis=diagnosis,
-            refusal_message="refused",
-            confidence=0.2,
-        )
-
-
 def test_severity_is_a_closed_set() -> None:
     """The frontend renders each with its own token; free text arrives unstyled."""
     assert {s.value for s in Severity} == {"critical", "warning", "info"}
@@ -308,5 +402,141 @@ def test_severity_is_a_closed_set() -> None:
 
 def test_step_order_is_explicit_rather_than_positional() -> None:
     """So a serialisation layer cannot silently reorder a procedure."""
-    step = DiagnosisStep(order=1, instruction="Do it.", rationale="Because.", citation_ids=["p1"])
+    step = DiagnosisStep(
+        order=1,
+        instruction="Do it.",
+        rationale="Because.",
+        citation_ids=["p1"],
+        severity=Severity.INFO,
+    )
     assert step.order == 1
+
+
+# --- generation is constrained, not requested ------------------------------
+
+
+class _Block:
+    """One content block of a fake API response."""
+
+    def __init__(self, kind: str, name: str | None = None, payload: Any = None) -> None:
+        # Attribute names mirror the API's block shape; the parameter names do
+        # not have to, and `type`/`input` would shadow builtins.
+        self.type = kind
+        self.name = name
+        self.input = payload
+
+
+class _Message:
+    """A fake API response."""
+
+    def __init__(self, *blocks: _Block) -> None:
+        self.content = list(blocks)
+
+
+class _FakeClient:
+    """Records the request instead of issuing it."""
+
+    def __init__(self, message: _Message) -> None:
+        self._message = message
+        self.calls: list[dict[str, Any]] = []
+        self.messages = self
+
+    def create(self, **kwargs: Any) -> _Message:
+        self.calls.append(kwargs)
+        return self._message
+
+
+def _client_returning(payload: Any) -> _FakeClient:
+    return _FakeClient(_Message(_Block(kind="tool_use", name=DIAGNOSIS_TOOL_NAME, payload=payload)))
+
+
+def _generate(client: _FakeClient, decision: ConfidenceDecision | None = None) -> Any:
+    return generate_diagnosis(
+        client,
+        model="claude-sonnet-5",
+        system="evidence here",
+        question="Why does the drive trip?",
+        evidence_ids=EVIDENCE_IDS,
+        decision=decision or _permitting_decision(),
+    )
+
+
+def test_generation_forces_the_tool_rather_than_asking_for_json() -> None:
+    """The whole point of AI-004: the model cannot answer in prose."""
+    client = _client_returning(_valid_payload())
+    _generate(client)
+    request = client.calls[0]
+    assert request["tool_choice"] == {"type": "tool", "name": DIAGNOSIS_TOOL_NAME}
+    assert [t["name"] for t in request["tools"]] == [DIAGNOSIS_TOOL_NAME]
+
+
+def test_generation_sends_the_derived_schema() -> None:
+    """Not a hand-written one that could disagree with the response type."""
+    client = _client_returning(_valid_payload())
+    _generate(client)
+    assert client.calls[0]["tools"][0]["input_schema"] == diagnosis_input_schema()
+
+
+def test_generation_returns_the_validated_diagnosis() -> None:
+    client = _client_returning(_valid_payload())
+    diagnosis, decision = _generate(client)
+    assert diagnosis is not None
+    assert decision.may_generate
+
+
+def test_generation_refuses_without_calling_the_model() -> None:
+    """A refusal produced by asking a model to refuse is another generation."""
+    refused = ConfidenceDecision(
+        outcome=DecisionOutcome.NO_VERIFIED_SOURCE,
+        score=0.0,
+        threshold=0.6,
+        reason=RefusalReason.NO_EVIDENCE,
+    )
+    client = _client_returning(_valid_payload())
+    diagnosis, decision = _generate(client, refused)
+    assert diagnosis is None
+    assert client.calls == [], "the guardrail was consulted but not obeyed"
+    assert decision is refused
+
+
+def test_malformed_generation_becomes_a_refusal_end_to_end() -> None:
+    client = _client_returning({"summary": "no steps"})
+    diagnosis, decision = _generate(client)
+    assert diagnosis is None
+    assert decision.reason is RefusalReason.UNVALIDATABLE_OUTPUT
+
+
+def test_prose_alongside_the_tool_call_is_ignored() -> None:
+    """The structured payload is the answer; the chatter is not."""
+    client = _FakeClient(
+        _Message(
+            _Block(kind="text"),
+            _Block(kind="tool_use", name=DIAGNOSIS_TOOL_NAME, payload=_valid_payload()),
+        )
+    )
+    diagnosis, _ = _generate(client)
+    assert diagnosis is not None
+
+
+def test_a_prose_only_reply_is_a_refusal_not_an_answer() -> None:
+    """Never fall back to reading the model's sentences."""
+    client = _FakeClient(_Message(_Block(kind="text")))
+    diagnosis, decision = _generate(client)
+    assert diagnosis is None
+    assert not decision.may_generate
+
+
+def test_a_call_to_some_other_tool_is_not_a_diagnosis() -> None:
+    client = _FakeClient(
+        _Message(_Block(kind="tool_use", name="something_else", payload=_valid_payload()))
+    )
+    assert (
+        extract_tool_payload(_Message(_Block(kind="tool_use", name="something_else", payload={})))
+        is None
+    )
+    diagnosis, _ = _generate(client)
+    assert diagnosis is None
+
+
+def test_an_empty_response_extracts_nothing() -> None:
+    assert extract_tool_payload(_Message()) is None

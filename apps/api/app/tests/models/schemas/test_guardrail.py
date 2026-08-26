@@ -88,6 +88,10 @@ def test_the_refusal_vocabulary_covers_retrieval_and_calc_tools() -> None:
         "out_of_validated_range",
         # Retrieval returned a score that is not a real number in [0, 1].
         "unusable_score",
+        # Evidence cleared the threshold but the generated response did not
+        # match the schema. Distinct from below_threshold so escalation rows
+        # do not read a generation fault as a retrieval fault.
+        "unvalidatable_output",
     }
 
 

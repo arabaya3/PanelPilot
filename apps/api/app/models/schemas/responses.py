@@ -4,6 +4,8 @@ This is the single definition. The JSON Schema constraining generation, the
 OpenAPI document, and the frontend's TypeScript types all derive from these
 models — so "the schema the model must satisfy" and "the shape the frontend
 renders" are the same object rather than two things somebody keeps in sync.
+``DiagnosticResponse`` embeds ``StructuredDiagnosis`` directly for that reason;
+a parallel response envelope would reintroduce exactly the drift this removes.
 
 Every field the frontend renders is required. An optional field is one the
 frontend has to defensively handle, which is the parsing-by-hand this contract
@@ -13,10 +15,24 @@ exists to remove.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-from app.models.schemas.search import Citation
+# Prose the frontend renders. `min_length` alone accepts "   ", which renders
+# as a blank card — the exact failure this contract exists to remove — so the
+# constraint strips first. The ceiling is not a business rule; it bounds what a
+# runaway generation can push into a browser.
+NonBlankText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=4000),
+]
+
+# Passage ids are short opaque tokens, not prose.
+PassageId = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+]
 
 
 class Severity(StrEnum):
@@ -40,31 +56,34 @@ class DiagnosisStep(BaseModel):
         instruction: What to do, in one imperative sentence.
         rationale: Why this step, so the engineer can judge whether it applies
             to their situation rather than following blindly.
-        citation_ids: Passage ids supporting this step. **Required and
-            non-empty** — a step with no source is exactly what cite-or-refuse
-            exists to prevent, and making it optional would let one through.
-        severity: Urgency of this step.
+        citation_ids: Passage ids supporting this step. Required, non-empty,
+            and deduplicated — a step with no source is exactly what
+            cite-or-refuse exists to prevent, and the same id repeated would
+            overstate how much evidence there is.
+        severity: Urgency of this step. Required rather than defaulted: a
+            missing severity defaulting to ``INFO`` would render an arc-flash
+            warning in the same colour as a note.
     """
 
     order: int = Field(ge=1)
-    instruction: str = Field(min_length=1)
-    rationale: str = Field(min_length=1)
-    citation_ids: list[str] = Field(min_length=1)
-    severity: Severity = Severity.INFO
+    instruction: NonBlankText
+    rationale: NonBlankText
+    citation_ids: list[PassageId] = Field(min_length=1)
+    severity: Severity
 
     @model_validator(mode="after")
-    def _reject_blank_citation_ids(self) -> DiagnosisStep:
-        """Refuse whitespace-only citation ids.
+    def _citations_are_distinct(self) -> DiagnosisStep:
+        """Refuse a repeated citation id.
 
         Returns:
             The validated step.
 
         Raises:
-            ValueError: If any citation id is blank. ``min_length=1`` on the
-                list catches an empty list, not an empty string inside it.
+            ValueError: If an id appears twice. Presenting one passage three
+                times reads to an engineer as three corroborating sources.
         """
-        if any(not cid.strip() for cid in self.citation_ids):
-            raise ValueError(f"step {self.order} carries a blank citation id")
+        if len(set(self.citation_ids)) != len(self.citation_ids):
+            raise ValueError(f"step {self.order} cites the same passage more than once")
         return self
 
 
@@ -78,16 +97,30 @@ class StructuredDiagnosis(BaseModel):
         steps: Ordered actions. Non-empty: a diagnosis with no action is not a
             diagnosis, and the refuse path exists for when there is nothing to
             say.
-        severity: Overall urgency, for the card header.
+        severity: Overall urgency, for the card header. Required, as a step's is.
         equipment_model: The model this diagnosis applies to, echoed back so an
             engineer can see the assistant understood which unit they meant.
     """
 
-    summary: str = Field(min_length=1)
-    summary_citation_ids: list[str] = Field(min_length=1)
-    steps: list[DiagnosisStep] = Field(min_length=1)
-    severity: Severity = Severity.INFO
-    equipment_model: str | None = None
+    summary: NonBlankText
+    summary_citation_ids: list[PassageId] = Field(min_length=1)
+    steps: list[DiagnosisStep] = Field(min_length=1, max_length=50)
+    severity: Severity
+    equipment_model: PassageId | None = None
+
+    @model_validator(mode="after")
+    def _summary_citations_are_distinct(self) -> StructuredDiagnosis:
+        """Refuse a repeated summary citation id.
+
+        Returns:
+            The validated diagnosis.
+
+        Raises:
+            ValueError: If an id appears twice, for the same reason as a step's.
+        """
+        if len(set(self.summary_citation_ids)) != len(self.summary_citation_ids):
+            raise ValueError("the summary cites the same passage more than once")
+        return self
 
     @model_validator(mode="after")
     def _steps_are_sequential(self) -> StructuredDiagnosis:
@@ -105,48 +138,4 @@ class StructuredDiagnosis(BaseModel):
         orders = [step.order for step in self.steps]
         if orders != list(range(1, len(orders) + 1)):
             raise ValueError(f"steps must be numbered 1..{len(orders)}, got {orders}")
-        return self
-
-
-class DiagnosisEnvelope(BaseModel):
-    """What the API returns: either a diagnosis or a refusal, never both.
-
-    Attributes:
-        answered: Whether a diagnosis is present. The frontend branches on this
-            single boolean rather than probing which fields are populated.
-        diagnosis: The structured answer, when answered.
-        refusal_message: The rendered uncertain-state text, when not.
-        citations: Resolved citations for whichever branch applies.
-        confidence: The retrieval-derived score behind the decision.
-    """
-
-    answered: bool
-    diagnosis: StructuredDiagnosis | None = None
-    refusal_message: str | None = None
-    citations: list[Citation] = Field(default_factory=list)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-    @model_validator(mode="after")
-    def _exactly_one_branch(self) -> DiagnosisEnvelope:
-        """Keep the envelope from representing a state the frontend cannot render.
-
-        Returns:
-            The validated envelope.
-
-        Raises:
-            ValueError: If it claims to be answered without a diagnosis, or
-                unanswered without a message. Either would leave the frontend
-                rendering an empty card, which is the failure mode a contract
-                is supposed to eliminate.
-        """
-        if self.answered:
-            if self.diagnosis is None:
-                raise ValueError("answered envelope carries no diagnosis")
-            if self.refusal_message is not None:
-                raise ValueError("answered envelope must not carry a refusal message")
-        else:
-            if self.diagnosis is not None:
-                raise ValueError("unanswered envelope must not carry a diagnosis")
-            if not (self.refusal_message or "").strip():
-                raise ValueError("unanswered envelope must explain itself")
         return self

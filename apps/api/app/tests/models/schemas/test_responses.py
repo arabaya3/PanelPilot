@@ -10,9 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.schemas.responses import (
-    DiagnosisEnvelope,
     DiagnosisStep,
-    Severity,
     StructuredDiagnosis,
 )
 
@@ -28,6 +26,7 @@ def _step(**overrides: object) -> DiagnosisStep:
         "instruction": "Isolate the drive.",
         "rationale": "A live DC link is fatal.",
         "citation_ids": ["p1"],
+        "severity": "info",
     }
     payload.update(overrides)
     return DiagnosisStep.model_validate(payload)
@@ -36,9 +35,17 @@ def _step(**overrides: object) -> DiagnosisStep:
 # --- DiagnosisStep ----------------------------------------------------------
 
 
-def test_a_step_defaults_to_the_least_alarming_severity() -> None:
-    """An unspecified severity must not silently read as critical."""
-    assert _step().severity is Severity.INFO
+def test_a_step_must_state_its_severity() -> None:
+    """Require an explicit severity rather than defaulting one.
+
+    An omitted severity defaulting to INFO would render an arc-flash warning
+    in the same colour as a note, and omission is exactly what a model does
+    when it is unsure.
+    """
+    with pytest.raises(ValidationError):
+        DiagnosisStep.model_validate(
+            {"order": 1, "instruction": "x", "rationale": "y", "citation_ids": ["p1"]}
+        )
 
 
 def test_a_step_cannot_be_uncited() -> None:
@@ -49,15 +56,26 @@ def test_a_step_cannot_be_uncited() -> None:
 
 @pytest.mark.parametrize("blank", ["", " ", "\t", "\n  "])
 def test_a_step_cannot_carry_a_blank_citation_id(blank: str) -> None:
-    """`min_length=1` on the list catches an empty list, not an empty string."""
-    with pytest.raises(ValidationError, match="blank citation id"):
+    """`min_length=1` alone accepts "   "; the constraint strips first."""
+    with pytest.raises(ValidationError):
         _step(citation_ids=[blank])
 
 
 def test_a_step_rejects_a_blank_id_alongside_a_real_one() -> None:
     """The check is over every id, not just the first."""
-    with pytest.raises(ValidationError, match="blank citation id"):
+    with pytest.raises(ValidationError):
         _step(citation_ids=["p1", "  "])
+
+
+def test_a_step_cannot_cite_the_same_passage_twice() -> None:
+    """One passage shown three times reads as three corroborating sources."""
+    with pytest.raises(ValidationError, match="more than once"):
+        _step(citation_ids=["p1", "p1"])
+
+
+def test_citation_ids_are_stripped_rather_than_trusted_as_given() -> None:
+    """So " p1" and "p1" cannot both be present as if they were two sources."""
+    assert _step(citation_ids=[" p1 "]).citation_ids == ["p1"]
 
 
 def test_step_order_is_one_indexed() -> None:
@@ -66,9 +84,22 @@ def test_step_order_is_one_indexed() -> None:
 
 
 @pytest.mark.parametrize("field", ["instruction", "rationale"])
-def test_a_step_cannot_be_empty_text(field: str) -> None:
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_a_step_cannot_be_blank_text(field: str, blank: str) -> None:
+    """Reject whitespace-only prose, not merely empty prose.
+
+    Whitespace-only prose renders as a blank card, which is the failure
+    mode this contract exists to remove — so it must not merely be non-empty.
+    """
     with pytest.raises(ValidationError):
-        _step(**{field: ""})
+        _step(**{field: blank})
+
+
+@pytest.mark.parametrize("field", ["instruction", "rationale"])
+def test_step_prose_is_bounded(field: str) -> None:
+    """A runaway generation must not push megabytes into a browser."""
+    with pytest.raises(ValidationError):
+        _step(**{field: "x" * 4001})
 
 
 # --- StructuredDiagnosis ----------------------------------------------------
@@ -78,6 +109,7 @@ def _diagnosis(**overrides: object) -> StructuredDiagnosis:
     payload: dict[str, object] = {
         "summary": "Overcurrent on acceleration.",
         "summary_citation_ids": ["p1"],
+        "severity": "info",
         "steps": [_step(), _step(order=2)],
     }
     payload.update(overrides)
@@ -93,6 +125,40 @@ def test_a_diagnosis_needs_at_least_one_step() -> None:
 def test_a_diagnosis_summary_must_be_cited() -> None:
     with pytest.raises(ValidationError):
         _diagnosis(summary_citation_ids=[])
+
+
+def test_a_summary_cannot_cite_the_same_passage_twice() -> None:
+    with pytest.raises(ValidationError, match="more than once"):
+        _diagnosis(summary_citation_ids=["p1", "p1"])
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+def test_a_diagnosis_summary_cannot_be_blank(blank: str) -> None:
+    with pytest.raises(ValidationError):
+        _diagnosis(summary=blank)
+
+
+def test_a_diagnosis_must_state_its_severity() -> None:
+    with pytest.raises(ValidationError):
+        StructuredDiagnosis.model_validate(
+            {"summary": "x", "summary_citation_ids": ["p1"], "steps": [_step()]}
+        )
+
+
+def test_the_step_count_is_bounded() -> None:
+    """A 10,000-step procedure is a runaway generation, not a diagnosis."""
+    steps = [
+        {
+            "order": n + 1,
+            "instruction": "x",
+            "rationale": "y",
+            "citation_ids": ["p1"],
+            "severity": "info",
+        }
+        for n in range(51)
+    ]
+    with pytest.raises(ValidationError):
+        _diagnosis(steps=steps)
 
 
 @pytest.mark.parametrize(
@@ -111,7 +177,14 @@ def test_step_numbering_must_be_a_clean_sequence(orders: list[int]) -> None:
     For an isolation procedure that is a safety problem, not a cosmetic one.
     """
     steps = [
-        {"order": o, "instruction": "x", "rationale": "y", "citation_ids": ["p1"]} for o in orders
+        {
+            "order": o,
+            "instruction": "x",
+            "rationale": "y",
+            "citation_ids": ["p1"],
+            "severity": "info",
+        }
+        for o in orders
     ]
     with pytest.raises(ValidationError):
         _diagnosis(steps=steps)
@@ -125,38 +198,3 @@ def test_a_single_step_diagnosis_is_valid() -> None:
 def test_equipment_model_is_the_one_optional_field() -> None:
     """Optional because a general question legitimately names no unit."""
     assert _diagnosis().equipment_model is None
-
-
-# --- DiagnosisEnvelope ------------------------------------------------------
-
-
-def test_a_valid_answered_envelope_round_trips() -> None:
-    envelope = DiagnosisEnvelope(answered=True, diagnosis=_diagnosis(), confidence=0.9)
-    assert DiagnosisEnvelope.model_validate(envelope.model_dump()).answered
-
-
-def test_a_valid_refusal_envelope_round_trips() -> None:
-    envelope = DiagnosisEnvelope(
-        answered=False, refusal_message="No verified source.", confidence=0.1
-    )
-    assert not DiagnosisEnvelope.model_validate(envelope.model_dump()).answered
-
-
-@pytest.mark.parametrize("blank", ["", "   "])
-def test_a_refusal_message_cannot_be_blank(blank: str) -> None:
-    """A blank message renders as an empty card — the failure mode to remove."""
-    with pytest.raises(ValidationError, match="must explain itself"):
-        DiagnosisEnvelope(answered=False, refusal_message=blank, confidence=0.1)
-
-
-@pytest.mark.parametrize("confidence", [-0.01, 1.01])
-def test_confidence_stays_in_the_unit_interval(confidence: float) -> None:
-    """The frontend renders it as a percentage."""
-    with pytest.raises(ValidationError):
-        DiagnosisEnvelope(answered=False, refusal_message="no", confidence=confidence)
-
-
-def test_citations_default_to_empty_rather_than_none() -> None:
-    """So the frontend can iterate unconditionally."""
-    envelope = DiagnosisEnvelope(answered=False, refusal_message="no", confidence=0.1)
-    assert envelope.citations == []
