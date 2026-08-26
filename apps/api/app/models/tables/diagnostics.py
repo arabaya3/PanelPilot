@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, Text
+from sqlalchemy import (
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -47,5 +55,20 @@ class DiagnosticTurnRow(UUIDPrimaryKey, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # Whether this turn was a refusal, recorded rather than inferred later:
+    # replaying a stored answer as a refusal tells an engineer the assistant
+    # declined when it did not, and the text alone cannot distinguish them.
+    refused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # The score the engineer was shown, so history reports what they saw
+    # rather than a zero that reads as no confidence at all.
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
 
     session: Mapped[DiagnosticSessionRow] = relationship(back_populates="turns")
+
+    __table_args__ = (
+        # Two concurrent turns must not land on the same position: the history
+        # would then order them arbitrarily, interleaving question and answer.
+        # The domain takes a row lock to avoid the race; this is the backstop
+        # if a future caller forgets.
+        UniqueConstraint("session_id", "position", name="uq_diagnostic_turns_session_position"),
+    )

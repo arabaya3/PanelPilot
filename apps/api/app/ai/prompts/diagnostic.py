@@ -39,4 +39,42 @@ def build_diagnostic_prompt(
         ValueError: If ``evidence`` is empty; refusal is decided by the
             guardrail before a prompt is built, not by the model.
     """
-    raise NotImplementedError
+    if not evidence:
+        raise ValueError(
+            "no evidence to build a prompt from — the guardrail decides refusals, "
+            "and asking the model to answer without passages invites it to invent one"
+        )
+
+    lines = [f"Question: {request.symptom}"]
+
+    equipment = request.equipment
+    if equipment:
+        described = [
+            f"{label}: {value}"
+            for label, value in (
+                ("Manufacturer", equipment.manufacturer),
+                ("Model", equipment.model),
+                ("Fault codes", ", ".join(equipment.fault_codes) or None),
+            )
+            if value
+        ]
+        if described:
+            lines.append("")
+            lines.append("Equipment: " + "; ".join(described))
+
+    lines.append("")
+    lines.append("Evidence passages:")
+    for passage in evidence:
+        citation = passage.citation
+        # The id is what the model must cite, so it leads. Everything after it
+        # is context for judging relevance, not for citing.
+        location = f"{citation.document_title}"
+        if citation.section:
+            location += f", {citation.section}"
+        if citation.page is not None:
+            location += f", p{citation.page}"
+        lines.append("")
+        lines.append(f"[{passage.id}] {location}")
+        lines.append(passage.text)
+
+    return "\n".join(lines)
