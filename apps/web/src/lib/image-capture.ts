@@ -69,36 +69,42 @@ export function targetSize(
   };
 }
 
-/** Decode a file into something drawable. */
+/**
+ * Decode a file into something drawable, respecting EXIF orientation.
+ *
+ * `imageOrientation: 'from-image'` is not optional here, and getting it wrong
+ * defeats the whole feature. A phone almost always stores a portrait photo as
+ * landscape pixels plus an EXIF rotation flag; drawing those pixels to a
+ * canvas discards the flag, so the upload is sideways. The vision model then
+ * has to read seven-segment glyphs rotated ninety degrees, fails, and
+ * correctly reports `unreadable` — on a photo that was perfectly good.
+ *
+ * The failure is silent in the worst way: an `<img>` *does* apply EXIF, so the
+ * preview the engineer approves looks upright while the bytes leaving the
+ * device are not. The preview would be lying about what was sent.
+ *
+ * The browser default has been `'from-image'` for some time, but it was
+ * `'none'` historically and iOS Safari — the likeliest camera here — has not
+ * been consistent. Stating it costs nothing.
+ */
 async function decode(
   file: File,
 ): Promise<{ width: number; height: number; source: CanvasImageSource }> {
-  // `createImageBitmap` where available: it decodes off the main thread, which
-  // matters on the mid-range phones this is used from.
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bitmap = await createImageBitmap(file);
-      return { width: bitmap.width, height: bitmap.height, source: bitmap };
-    } catch {
-      throw new CaptureFailure('decode-failed');
-    }
+  if (typeof createImageBitmap !== 'function') {
+    // The old fallback read `naturalWidth`/`naturalHeight`, which are the
+    // *pre*-orientation dimensions, and drew unrotated pixels — producing
+    // exactly the sideways upload described above. Rather than reimplement an
+    // EXIF parser, this reports a decode failure: a browser without
+    // `createImageBitmap` is old enough that an honest error beats a photo the
+    // recogniser will silently reject.
+    throw new CaptureFailure('decode-failed');
   }
 
-  const url = URL.createObjectURL(file);
   try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => {
-        resolve(element);
-      };
-      element.onerror = () => {
-        reject(new CaptureFailure('decode-failed'));
-      };
-      element.src = url;
-    });
-    return { width: image.naturalWidth, height: image.naturalHeight, source: image };
-  } finally {
-    URL.revokeObjectURL(url);
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    return { width: bitmap.width, height: bitmap.height, source: bitmap };
+  } catch {
+    throw new CaptureFailure('decode-failed');
   }
 }
 
@@ -118,16 +124,26 @@ export async function prepareImage(file: File, maxEdge: number = MAX_EDGE_PX): P
   const { width, height, source } = await decode(file);
   const target = targetSize(width, height, maxEdge);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = target.width;
-  canvas.height = target.height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new CaptureFailure('encode-failed');
-  context.drawImage(source, 0, 0, target.width, target.height);
+  let blob: Blob | null;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new CaptureFailure('encode-failed');
+    context.drawImage(source, 0, 0, target.width, target.height);
 
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, OUTPUT_TYPE, OUTPUT_QUALITY);
-  });
+    blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, OUTPUT_TYPE, OUTPUT_QUALITY);
+    });
+  } finally {
+    // An `ImageBitmap` for a 12MP photo holds tens of megabytes outside the JS
+    // heap, and the GC is driven by heap size — which the small wrapper barely
+    // moves. An engineer retaking three or four shots on a mid-range phone can
+    // otherwise accumulate enough to have the tab killed, which looks like the
+    // app vanishing mid-job.
+    if ('close' in source && typeof source.close === 'function') source.close();
+  }
   if (!blob) throw new CaptureFailure('encode-failed');
 
   // Compression is not guaranteed to shrink anything — an already-small JPEG

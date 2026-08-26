@@ -45,11 +45,15 @@ beforeEach(() => {
   drawnTo = null;
   encodeReturnsNull = false;
 
-  vi.stubGlobal('createImageBitmap', (file: File) =>
-    Promise.resolve({
-      width: Number(file.name.split('x')[0] ?? 4000),
-      height: Number(file.name.split('x')[1]?.split('.')[0] ?? 3000),
-    }),
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn((file: File) =>
+      Promise.resolve({
+        width: Number(file.name.split('x')[0] ?? 4000),
+        height: Number(file.name.split('x')[1]?.split('.')[0] ?? 3000),
+        close: () => undefined,
+      }),
+    ),
   );
 
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
@@ -71,9 +75,34 @@ beforeEach(() => {
     );
   };
 
-  URL.createObjectURL = vi.fn(() => 'blob:preview');
+  // Distinct per call: with one constant URL, 'revoked the old one but not
+  // the one being shown' is not expressible, and the whole lifecycle went
+  // untested behind stubs nothing asserted on.
+  let nextUrl = 0;
+  URL.createObjectURL = vi.fn(() => `blob:${String(++nextUrl)}`);
   URL.revokeObjectURL = vi.fn();
 });
+
+/**
+ * The `revokeObjectURL` spy, for asserting on.
+ *
+ * `URL.revokeObjectURL` is a static that never reads `this`, and here it is a
+ * `vi.fn()` anyway — so the unbound-method rule is warning about a hazard that
+ * cannot occur, and reaching it through a wrapper would only hide the fact
+ * that this is the global under test.
+ */
+function revoked(): ReturnType<typeof vi.fn> {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  return URL.revokeObjectURL as unknown as ReturnType<typeof vi.fn>;
+}
+
+/** The most recent object URL handed out by the stub. */
+function lastObjectUrl(): string {
+  const results = (URL.createObjectURL as unknown as ReturnType<typeof vi.fn>).mock.results;
+  const last = results[results.length - 1];
+  if (typeof last?.value !== 'string') throw new Error('no object URL was created');
+  return last.value;
+}
 
 /** A file whose name encodes the dimensions the stub decoder reports. */
 function photo(width: number, height: number, bytes = 4_000_000): File {
@@ -569,5 +598,147 @@ describe('a confirmed photo reaches the conversation', () => {
     expect(sent[0]?.request.symptom).toContain('ACS880');
     // The capture panel steps back once the question is asked.
     expect(screen.queryByTestId('capture-confirm')).toBeNull();
+  });
+});
+
+// --- the preview's lifetime ---------------------------------------------------
+
+describe('object URLs', () => {
+  function uploadReturning(outcome: UploadOutcome) {
+    return vi.fn().mockResolvedValue(outcome) as unknown as typeof uploadImage;
+  }
+
+  it('releases the preview when the component goes away', async () => {
+    // Every photo pins its decoded blob for the lifetime of the document
+    // until this runs. An engineer working through a panel takes ten or
+    // fifteen shots, and this is exactly the mid-range hardware where that
+    // gets the tab killed. Deleting the cleanup passed all 218 tests.
+    const { unmount } = renderApp(
+      <ImageCapture
+        token="t"
+        onConfirm={vi.fn()}
+        uploadImpl={uploadReturning({ kind: 'stored', imageId: 'i' })}
+      />,
+    );
+    chooseFile(photo(4000, 3000));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-preview')).toBeTruthy();
+    });
+
+    const created = lastObjectUrl();
+    unmount();
+    expect(revoked()).toHaveBeenCalledWith(created);
+  });
+
+  it('releases the old photo when a second one replaces it', async () => {
+    renderApp(
+      <ImageCapture
+        token="t"
+        onConfirm={vi.fn()}
+        uploadImpl={uploadReturning({ kind: 'stored', imageId: 'i' })}
+      />,
+    );
+    chooseFile(photo(4000, 3000));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-preview')).toBeTruthy();
+    });
+    const first = lastObjectUrl();
+
+    // Discard first: the capture input only exists in the idle stage, which
+    // is also the path an engineer takes to retake a shot.
+    fireEvent.click(screen.getByRole('button', { name: /discard/i }));
+    chooseFile(photo(3000, 4000));
+    await waitFor(() => {
+      expect(lastObjectUrl()).not.toBe(first);
+    });
+    // The effect that releases the old URL runs after the new stage commits.
+    await waitFor(() => {
+      expect(revoked()).toHaveBeenCalledWith(first);
+    });
+
+    const second = lastObjectUrl();
+    // The one on screen is not released.
+    expect(revoked()).not.toHaveBeenCalledWith(second);
+  });
+
+  it('abandons an upload whose component has gone away', async () => {
+    // The capture panel unmounts while a photo is in flight. Without an
+    // abort the upload keeps consuming the factory-floor connection it was
+    // competing for, and its result then lands on a dead component holding a
+    // preview URL that has already been released.
+    const release: { fn: ((outcome: UploadOutcome) => void) | null } = { fn: null };
+    let seenSignal: AbortSignal | undefined;
+    const uploadImpl = vi.fn((options: { signal?: AbortSignal }) => {
+      seenSignal = options.signal;
+      return new Promise<UploadOutcome>((resolve) => {
+        release.fn = resolve;
+      });
+    }) as unknown as typeof uploadImage;
+
+    const { unmount } = renderApp(
+      <ImageCapture token="t" onConfirm={vi.fn()} uploadImpl={uploadImpl} />,
+    );
+    chooseFile(photo(4000, 3000));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-preview')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send photo/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-uploading')).toBeTruthy();
+    });
+
+    // The upload is given a signal to honour…
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
+    expect(seenSignal?.aborted).toBe(false);
+
+    unmount();
+
+    // …which is aborted when the component goes, and the late result is
+    // discarded rather than rendered into nothing.
+    expect(seenSignal?.aborted).toBe(true);
+    release.fn?.({ kind: 'recognised', imageId: 'i', result: recognition() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByTestId('capture-confirm')).toBeNull();
+  });
+});
+
+// --- orientation ---------------------------------------------------------------
+
+describe('EXIF orientation', () => {
+  it('asks the decoder to apply the stored rotation', async () => {
+    // A phone stores a portrait photo as landscape pixels plus a rotation
+    // flag. Drawing those pixels to a canvas discards the flag, so the upload
+    // is sideways — and the `<img>` preview *does* apply EXIF, so the
+    // engineer approves an upright image and sideways bytes leave the device.
+    // The recogniser then correctly reports `unreadable` on a good photo.
+    await prepareImage(photo(4000, 3000));
+
+    const decoder = createImageBitmap as unknown as ReturnType<typeof vi.fn>;
+    expect(decoder).toHaveBeenCalled();
+    expect(decoder.mock.calls[0]?.[1]).toMatchObject({ imageOrientation: 'from-image' });
+  });
+
+  it('fails honestly on a browser that cannot orient the photo', async () => {
+    // The old fallback read pre-orientation dimensions and drew unrotated
+    // pixels, producing exactly the sideways upload above. An error beats a
+    // photo the recogniser will silently reject.
+    // Deleted rather than set to undefined: the guard tests `typeof`, and a
+    // global explicitly set to undefined is still a declared binding.
+    const original = globalThis.createImageBitmap;
+    // @ts-expect-error — removing a global for the duration of one test.
+    delete globalThis.createImageBitmap;
+    await expect(prepareImage(photo(4000, 3000))).rejects.toMatchObject({
+      reason: 'decode-failed',
+    });
+    globalThis.createImageBitmap = original;
+  });
+
+  it('releases the decoded bitmap', async () => {
+    // Tens of megabytes outside the JS heap per 12MP photo, and the GC is
+    // driven by heap size — which the small wrapper barely moves.
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', () => Promise.resolve({ width: 4000, height: 3000, close }));
+    await prepareImage(photo(4000, 3000));
+    expect(close).toHaveBeenCalled();
   });
 });

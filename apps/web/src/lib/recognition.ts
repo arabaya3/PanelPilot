@@ -29,6 +29,17 @@ export interface RecognisedField {
   confidence: number;
 }
 
+/**
+ * The fields that carry a value and a confidence.
+ *
+ * Narrower than `keyof FaultRecognitionResult`, which would also admit
+ * `verdict` and `note` — asking whether a `note` is "trusted" is meaningless,
+ * and a runtime guard answering `false` is indistinguishable from "read but
+ * scored too low". The backend has this by construction: `trusted_at` is a
+ * method on the field itself, not addressable by arbitrary key.
+ */
+export type RecognisedKey = 'fault_code' | 'brand' | 'model';
+
 /** Mirrors `FaultRecognitionResult`. */
 export interface FaultRecognitionResult {
   verdict: DisplayVerdict;

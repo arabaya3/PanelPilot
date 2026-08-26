@@ -55,13 +55,32 @@ export function ImageCapture({
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
   const [dragging, setDragging] = useState(false);
   const inputId = useId();
-  const previewRef = useRef<string | null>(null);
+  const aborter = useRef<AbortController | null>(null);
 
-  // Object URLs are a leak if nobody revokes them, and this component can
-  // churn through several photos in one session.
+  // The URL currently on screen, whichever stage is showing it.
+  const shown =
+    stage.kind === 'ready' || stage.kind === 'uploading' || stage.kind === 'stored'
+      ? stage.prepared.previewUrl
+      : stage.kind === 'confirm'
+        ? stage.prepared.previewUrl
+        : null;
+
+  // Revoked when this URL stops being the one displayed, and on unmount.
+  // Keyed on the URL rather than held in a ref, so replacing one photo with
+  // another releases exactly the one that went away — never the one now on
+  // screen, and never nothing at all.
+  useEffect(() => {
+    if (!shown) return;
+    return () => {
+      URL.revokeObjectURL(shown);
+    };
+  }, [shown]);
+
+  // A stream left running for a component nobody is looking at still consumes
+  // the factory-floor connection it was competing for.
   useEffect(() => {
     return () => {
-      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+      aborter.current?.abort();
     };
   }, []);
 
@@ -70,7 +89,9 @@ export function ImageCapture({
   }
 
   async function accept(file: File) {
-    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    // Anything already in flight is abandoned: its result would arrive holding
+    // a `prepared` whose preview has since been replaced.
+    aborter.current?.abort();
     setStage({ kind: 'preparing' });
 
     let prepared: Prepared;
@@ -80,16 +101,18 @@ export function ImageCapture({
       fail(error instanceof CaptureFailure ? error.reason : 'decode-failed');
       return;
     }
-    previewRef.current = prepared.previewUrl;
     setStage({ kind: 'ready', prepared });
   }
 
   async function send(prepared: Prepared) {
+    const controller = new AbortController();
+    aborter.current = controller;
     setStage({ kind: 'uploading', prepared, slow: false });
 
     const outcome: UploadOutcome = await uploadImpl({
       file: prepared.file,
       token,
+      signal: controller.signal,
       // Says "this is taking a while" rather than leaving a spinner that an
       // engineer cannot distinguish from a hung request.
       onSlow: () => {
@@ -98,6 +121,11 @@ export function ImageCapture({
         );
       },
     });
+
+    // A result for an upload that has been superseded or unmounted is
+    // discarded rather than rendered: it would show a card built around a
+    // preview that no longer exists.
+    if (controller.signal.aborted) return;
 
     if (outcome.kind === 'failed') {
       fail(outcome.reason);
