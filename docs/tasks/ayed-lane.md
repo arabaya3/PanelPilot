@@ -566,7 +566,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > The same underlying diagnosis produces correctly-translated prose in all three languages with identical technical tokens preserved unchanged in each.
 
-### [ ] AI-011 — Eval set construction
+### [x] AI-011 — Eval set construction
 
 | Field                   | Value                                  |
 | ----------------------- | -------------------------------------- |
