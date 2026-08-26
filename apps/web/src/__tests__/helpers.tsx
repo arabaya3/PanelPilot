@@ -31,13 +31,26 @@ export function renderApp(
   // would render, assert, and pass green against a provider that never read
   // storage at all. Passing nothing means a test gets the real startup path,
   // which is also the only path the running application ever takes.
-  return render(
+  const wrap = (children: ReactNode) => (
     <LocaleProvider messages={MESSAGES} {...(locale ? { initialLocale: locale } : {})}>
       {theme ? (
-        <ThemeProvider initialTheme={theme}>{ui}</ThemeProvider>
+        <ThemeProvider initialTheme={theme}>{children}</ThemeProvider>
       ) : (
-        <ThemeProvider>{ui}</ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
       )}
-    </LocaleProvider>,
+    </LocaleProvider>
   );
+
+  const result = render(wrap(ui));
+
+  return {
+    ...result,
+    // RTL's own `rerender` replaces the tree *inside* the providers, which
+    // drops the locale and theme context and fails with an error about a
+    // missing NextIntlClientProvider. This one re-wraps, so a test that
+    // unmounts and restores a component still exercises the real stack.
+    rerender: (next: ReactNode) => {
+      result.rerender(wrap(next));
+    },
+  };
 }

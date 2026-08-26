@@ -5,6 +5,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 
+import { ChecklistProvider } from './checklist-provider';
 import { Composer } from './composer';
 import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
@@ -136,9 +137,11 @@ export function Chat({
   );
 
   return (
-    <div className="flex h-full flex-col" data-testid="chat">
-      <MessageList messages={state.messages} onRetry={retry} />
-      <Composer onSubmit={ask} onStop={stop} busy={busy} />
-    </div>
+    <ChecklistProvider>
+      <div className="flex h-full flex-col" data-testid="chat">
+        <MessageList messages={state.messages} onRetry={retry} />
+        <Composer onSubmit={ask} onStop={stop} busy={busy} />
+      </div>
+    </ChecklistProvider>
   );
 }

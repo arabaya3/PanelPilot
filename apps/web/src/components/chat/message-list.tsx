@@ -197,5 +197,5 @@ function AssistantTurn({
   }
 
   if (!message.response) return null;
-  return <DiagnosticCard response={message.response} />;
+  return <DiagnosticCard response={message.response} messageId={message.id} />;
 }
