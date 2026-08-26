@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef } from 'react';
 
 import { DiagnosticCard } from '@/components/diagnostic-card';
+import { StateIcon } from '@/components/state-icon';
 import { useLocale } from '@/components/locale-provider';
 
 import type { AssistantMessage, Message } from './state';
@@ -170,11 +171,17 @@ function AssistantTurn({
     return (
       <div
         role="alert"
-        className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4"
+        // Dashed and neutral rather than amber. The amber it used to wear is
+        // what a confident warning-severity diagnosis wears, so a turn that
+        // *failed* looked exactly like an answer that *arrived*.
+        className="rounded-lg border-2 border-dashed border-severity-critical bg-surface p-4"
         data-testid="assistant-failure"
         data-failure={message.failure}
       >
-        <p className="font-medium text-text">{t('failed.heading')}</p>
+        <p className="flex items-center gap-2 font-medium text-text">
+          <StateIcon shape="error" className="text-severity-critical" />
+          {t('failed.heading')}
+        </p>
         {/* Says what happened, because "try again" is useless advice if the
             answer was actually delivered and only the connection dropped. */}
         <p className="mt-1 text-sm text-text-muted">

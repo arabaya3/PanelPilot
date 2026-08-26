@@ -42,7 +42,8 @@
     "refusalHeading": "לא ניתנה תשובה",
     "refusalFallback": "לא ניתן היה לענות על שאלה זו על סמך התיעוד הזמין.",
     "markDone": "סימון שלב {step} כבוצע",
-    "progress": "בוצעו {done} מתוך {total} שלבים"
+    "progress": "בוצעו {done} מתוך {total} שלבים",
+    "refusalBadge": "אין תשובה"
   },
   "chat": {
     "empty": "תאר את התקלה שאתה רואה.",

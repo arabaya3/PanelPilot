@@ -42,7 +42,8 @@
     "refusalHeading": "No answer given",
     "refusalFallback": "This question could not be answered from the available documentation.",
     "markDone": "Mark step {step} done",
-    "progress": "{done} of {total} steps done"
+    "progress": "{done} of {total} steps done",
+    "refusalBadge": "No answer"
   },
   "chat": {
     "empty": "Describe the fault you are seeing.",

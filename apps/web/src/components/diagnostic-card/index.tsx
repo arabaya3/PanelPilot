@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 
 import { useChecklist } from '@/components/chat/checklist-provider';
+import { StateIcon } from '@/components/state-icon';
 import { TechnicalToken } from '@/components/technical-token';
 
 import { decideVariant, type CardVariant, type ResolvedStep } from './citations';
@@ -215,7 +216,10 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
       className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+        >
+          <StateIcon shape="uncertain" />
           {t('uncertainBadge')}
         </span>
       </div>
@@ -241,8 +245,14 @@ function RefusalCard({ message }: { message: string }) {
       data-testid="diagnostic-card"
       data-variant="refusal"
       aria-labelledby={headingId}
-      className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
+      className={`rounded-lg border-2 border-dashed ${classes.border} bg-surface p-4`}
     >
+      <div className="mb-2 flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5 text-xs font-semibold uppercase text-text-muted">
+          <StateIcon shape="error" />
+          {t('refusalBadge')}
+        </span>
+      </div>
       <h3 id={headingId} className="text-lg font-semibold text-text">
         {t('refusalHeading')}
       </h3>
@@ -280,7 +290,15 @@ function DiagnosisCard({
       className={`rounded-lg border ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+        >
+          {/* Shape as well as colour. Simulated through the common colour
+              deficiencies, critical and warning sit at ΔE 6 under
+              deuteranopia in the light theme — the pair where confusing the
+              two matters most, indistinguishable for about one man in
+              sixteen. An octagon is not a triangle in any light. */}
+          <StateIcon shape={diagnosis.severity} />
           {severityLabel(diagnosis.severity)}
         </span>
         {diagnosis.equipment_model ? (
