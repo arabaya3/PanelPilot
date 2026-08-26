@@ -26,5 +26,20 @@
   "tokens": {
     "title": "Design tokens",
     "intro": "Every value below resolves to a CSS custom property."
+  },
+  "diagnosticCard": {
+    "heading": "Diagnosis",
+    "steps": "What to do",
+    "summarySources": "Sources",
+    "stepSources": "Sources",
+    "checkInstead": "Check these instead",
+    "section": "section {section}",
+    "page": "page {page}",
+    "uncertainBadge": "Not certain",
+    "uncertainHeading": "Not certain enough to advise",
+    "uncertainWithSources": "There is not enough supporting evidence to give steps for this. Check the documentation below before acting.",
+    "uncertainNoSources": "There is not enough supporting evidence to give steps for this. Check the equipment documentation before acting.",
+    "refusalHeading": "No answer given",
+    "refusalFallback": "This question could not be answered from the available documentation."
   }
 }
