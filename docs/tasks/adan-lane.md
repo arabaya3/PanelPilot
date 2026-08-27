@@ -130,7 +130,7 @@ recorded rather than decided.
 
 > Deliberately breaking one crawler job triggers an alert within one missed cycle; a healthy-but-unchanged source produces no alert.
 
-### [ ] BE-007 — Verification queue API
+### [x] BE-007 — Verification queue API
 
 | Field                   | Value                                   |
 | ----------------------- | --------------------------------------- |
@@ -192,7 +192,7 @@ recorded rather than decided.
 
 > A test document dropped into a source is chunked and appears in the verification queue without any manual trigger.
 
-### [ ] AI-012 — Verification labeling schema & escalation logic
+### [x] AI-012 — Verification labeling schema & escalation logic
 
 | Field                   | Value                                                    |
 | ----------------------- | -------------------------------------------------------- |
