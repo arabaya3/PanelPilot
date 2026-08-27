@@ -99,7 +99,7 @@ recorded rather than decided.
 
 > A manually-changed test document is detected and queued within one scheduled run; an unchanged document produces zero new staging entries on a repeat run.
 
-### [ ] BE-006 — Source health monitoring
+### [x] BE-006 — Source health monitoring
 
 | Field                   | Value                                     |
 | ----------------------- | ----------------------------------------- |
