@@ -25,7 +25,7 @@ recorded rather than decided.
 
 ## Ingestion & Verification
 
-### [ ] BE-005 — Per-brand documentation crawler jobs
+### [x] BE-005 — Per-brand documentation crawler jobs
 
 > **Scope note — this task grew to include a PDF structure extractor.**
 >
