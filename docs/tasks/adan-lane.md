@@ -161,7 +161,7 @@ recorded rather than decided.
 
 > Every staging item is assigned to exactly one queue at a time (no duplicate assignment); an escalated item is visible in the lead-review view within one polling cycle.
 
-### [ ] AI-013 — Ingestion-to-verification pipeline wiring
+### [x] AI-013 — Ingestion-to-verification pipeline wiring
 
 | Field                   | Value                                                     |
 | ----------------------- | --------------------------------------------------------- |
@@ -223,7 +223,7 @@ recorded rather than decided.
 
 > Two different verifying engineers given the same test item independently apply the same label per the documented schema.
 
-### [ ] AI-014 — Post-launch user feedback loop
+### [x] AI-014 — Post-launch user feedback loop
 
 | Field                   | Value                                           |
 | ----------------------- | ----------------------------------------------- |
@@ -524,7 +524,7 @@ recorded rather than decided.
 
 ## PLC Programming
 
-### [ ] AI-009 — PLC code generation + validation layer
+### [x] AI-009 — PLC code generation + validation layer
 
 | Field                   | Value                                                   |
 | ----------------------- | ------------------------------------------------------- |
