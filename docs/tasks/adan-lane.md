@@ -27,6 +27,39 @@ recorded rather than decided.
 
 ### [ ] BE-005 — Per-brand documentation crawler jobs
 
+> **Scope note — this task grew to include a PDF structure extractor.**
+>
+> Not in the original description, which treats text extraction as already
+> solved: "documents are downloaded, text-extracted, and handed to chunking
+> (AI-001)". Nothing in the repository produced the `StructureMap` that
+> `chunk_document` requires — only tests constructed them by hand — and no PDF
+> library was declared as a dependency.
+>
+> The alternative was inferring structure from the extracted text. That is the
+> one thing the design explicitly forbids: `app/models/schemas/structure.py`
+> states the map "comes from the PDF parser (layout and heading extraction)"
+> and that chunking "never re-derives structure from the text itself — guessing
+> where a table starts by counting pipes is exactly the failure this design
+> avoids". A mis-detected table boundary yields half a parameter table
+> presented as a whole one, which is precisely what AI-001's atomic-block rule
+> was written to prevent.
+>
+> So `app/ingestion/structure.py` was added, and treated as deep-tier for the
+> same reason AI-001 was: it serves the citation-precision property directly.
+>
+> **Library chosen on investigation, not by default.** PyMuPDF is
+> AGPL-3.0-or-commercial and was ruled out for a proprietary product.
+> pdfplumber (MIT) was probed against real-shaped pages and surfaces the two
+> signals this needs — per-character font size, so headings come from
+> typography rather than wording, and table detection from **ruling lines**, so
+> an atomic block is recognised from geometry rather than delimiters.
+>
+> The probes also set what it refuses to do: borderless tables are not
+> detected (pdfplumber's text-alignment fallback swept a heading into one and
+> emitted empty rows — a half-right table is worse than none), and
+> column-layout pages are reported rather than read, because reading them
+> line-by-line merges two columns into sentences the manual never contained.
+
 | Field                   | Value                                                 |
 | ----------------------- | ----------------------------------------------------- |
 | **Task ID**             | BE-005                                                |

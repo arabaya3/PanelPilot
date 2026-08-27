@@ -19,6 +19,11 @@ dependencies = [
     "structlog>=24.4",
     "anthropic>=0.40",
     "httpx>=0.27",
+    # PDF layout extraction for the ingestion pipeline (BE-005). MIT, and
+    # chosen over PyMuPDF because that is AGPL-or-commercial. Surfaces font
+    # size and table ruling lines, which is what makes heading levels and
+    # atomic blocks detectable rather than guessed.
+    "pdfplumber>=0.11",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +32,10 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
+    # Builds fixture PDFs for the structure-extractor tests. A real PDF is
+    # the only honest fixture here: the whole point of the extractor is that
+    # it reads layout, and a hand-built StructureMap would test nothing.
+    "reportlab>=4.2",
     "ruff>=0.7",
     "black>=24.10",
     "mypy>=1.13",
@@ -109,7 +118,7 @@ plugins = ["pydantic.mypy"]
 exclude = "^alembic/"
 
 [[tool.mypy.overrides]]
-module = ["opensearchpy.*"]
+module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
