@@ -8,8 +8,12 @@ Grouped by phase rather than by task id, so the dependency order is visible: the
 
 ## Status at a glance
 
-**11 of 17 in scope for this run**, in dependency order: BE-005, BE-006,
-BE-007, AI-013, AI-012, AI-014, AI-009, BE-010, FE-009, FE-012, FE-013.
+**11 of 17 complete.** All of the in-scope work is merged: BE-005, BE-006,
+BE-007, AI-012, AI-013, AI-014, AI-009, BE-010, FE-009, FE-012, FE-013.
+
+AI-012 was built before BE-007 despite the order above, because BE-007 encodes
+its label vocabulary and building it second would have meant designing that
+vocabulary twice.
 
 **5 blocked on unavailable source documents** — AI-005, AI-006, AI-007 (the
 calc tools) and BE-011, FE-010 (which consume them). Each names a specific
@@ -652,7 +656,7 @@ recorded rather than decided.
 
 ## Polish & Hardening
 
-### [ ] FE-013 — Responsive/mobile-web layout pass
+### [x] FE-013 — Responsive/mobile-web layout pass
 
 | Field                   | Value                                             |
 | ----------------------- | ------------------------------------------------- |
