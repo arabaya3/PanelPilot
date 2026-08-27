@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import io
 import itertools
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -70,6 +71,14 @@ HEADING_SIZE_RATIO = 1.15
 #: for A4 and Letter alike.
 COLUMN_GAP_RATIO = 0.12
 
+#: A section number: ``3``, ``3.2``, ``3.2.1``, optionally followed by the
+#: heading text. Manuals number their sections and never their sentences, so
+#: this is the single most reliable signal available here.
+_NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?(\s+\S|$)")
+
+#: A continuation banner: "Table 3 (continued)", "cont.", and so on.
+_CONTINUED = re.compile(r"\bcont(inued)?\b", re.IGNORECASE)
+
 #: Below this, a page is treated as having no usable text layer.
 MIN_CHARS_PER_PAGE = 2
 
@@ -78,12 +87,16 @@ MIN_CHARS_PER_PAGE = 2
 #: outweigh the body text and capture the size estimate — from promoting whole
 #: sentences into section paths.
 #:
-#: Measured rather than guessed: real section headings in the fixtures run 14
-#: to 22 characters ("1 Introduction", "3.2 Overcurrent faults"), while the
-#: prose that was wrongly promoted ran 42 to 48. 32 sits in that gap with room
-#: on both sides. A longer heading is possible but rare, and losing one costs
-#: a section path; promoting a sentence costs every citation beneath it.
-MAX_HEADING_CHARS = 32
+#: A backstop, not the discriminator. At 32 it silently demoted real
+#: subsection headings; the numbering and sentence-termination checks in
+#: ``_is_heading`` do the actual separating, so this only has to exclude
+#: something no manual would set as a heading.
+MAX_HEADING_CHARS = 120
+
+#: An unnumbered heading carries no section number to identify it, so it has
+#: to be recognised by shape alone: a few words, no sentence terminator. A
+#: numbered heading may be far longer.
+MAX_UNNUMBERED_HEADING_CHARS = 32
 
 #: A column boundary is a vertical whitespace corridor that persists down the
 #: page, not one wide gap on one line. A footer with a document code on the
@@ -96,9 +109,10 @@ MIN_COLUMN_LINES = 4
 #: fell below the count floor and was silently interleaved.
 COLUMN_LINE_SHARE = 0.5
 
-#: A gap wider than this is a gutter to a right-aligned element — a contents
-#: page number, a footer — rather than a boundary between two columns of text.
-MAX_COLUMN_GAP_RATIO = 0.45
+#: Each side of a real column gutter carries at least this much text. A
+#: contents page's gap has a page number on the right — one or two characters
+#: — which is what separates it from a column boundary regardless of width.
+MIN_COLUMN_SIDE_CHARS = 6
 
 
 class UnreadableDocumentError(Exception):
@@ -125,6 +139,8 @@ class _Line:
             spot column interleaving.
         gap_start: Where that widest gap begins, so a corridor can be
             recognised by several lines sharing one horizontal position.
+        split_at_gap: The text either side of that gap, for telling a column
+            gutter from the run-up to a right-aligned page number.
     """
 
     text: str
@@ -134,6 +150,7 @@ class _Line:
     bold: bool
     max_gap: float
     gap_start: float
+    split_at_gap: tuple[str, str]
 
 
 def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Line]:
@@ -166,11 +183,13 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
 
         gap = 0.0
         gap_start = 0.0
-        for previous, current in itertools.pairwise(row):
+        gap_index = 0
+        for index, (previous, current) in enumerate(itertools.pairwise(row)):
             width = float(current["x0"]) - float(previous["x1"])
             if width > gap:
                 gap = width
                 gap_start = float(previous["x1"])
+                gap_index = index + 1
 
         fonts = [str(c.get("fontname", "")) for c in row]
         lines.append(
@@ -182,6 +201,10 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
                 bold=sum("bold" in f.lower() for f in fonts) > len(fonts) / 2,
                 max_gap=gap,
                 gap_start=gap_start,
+                split_at_gap=(
+                    "".join(str(c["text"]) for c in row[:gap_index]),
+                    "".join(str(c["text"]) for c in row[gap_index:]),
+                ),
             )
         )
     return lines
@@ -243,6 +266,33 @@ def _heading_level(size: float, body: float) -> int:
     return 4
 
 
+def _text_on_both_sides(line: _Line) -> bool:
+    """Report whether a line's widest gap has real text on either side.
+
+    Args:
+        line: The line under test.
+
+    Returns:
+        ``True`` when both sides carry more than a page number's worth.
+
+    What distinguishes a column gutter from the gap before a right-aligned
+    page number: the number is one or two characters, a column carries a
+    clause.
+
+    Belt and braces, and honestly labelled as such. Mutation testing showed
+    the corridor check alone already spares a contents page — varying title
+    lengths mean those gaps do not share one vertical band — so removing this
+    changes no observed behaviour and no test can pin it. It stays because it
+    is the *reason* the two cases differ, and the corridor check happens to
+    agree; a contents page with uniform title lengths would produce a corridor
+    and need this. It should not be mistaken for a tested guarantee.
+    """
+    before, after = line.split_at_gap
+    return (
+        len(before.strip()) >= MIN_COLUMN_SIDE_CHARS and len(after.strip()) >= MIN_COLUMN_SIDE_CHARS
+    )
+
+
 def _looks_columnar(lines: Sequence[_Line], *, page_width: float) -> bool:
     """Report whether a page is laid out in columns.
 
@@ -261,14 +311,16 @@ def _looks_columnar(lines: Sequence[_Line], *, page_width: float) -> bool:
     on any of those discards a readable manual entirely, which is a worse
     outcome than the interleaving the check exists to prevent.
     """
-    # Bounded above as well as below. A contents page right-aligns its page
-    # numbers, leaving a gap spanning ~64% of the page — a gutter to a lone
-    # number, not a column of text. Real column gaps measured 17-33%. Without
-    # the ceiling, adding a proportion floor for short pages made a three-line
-    # contents page refuse.
+    # A gutter between two columns has substantial text on BOTH sides. A
+    # contents page's wide gap has a page number on the right — one or two
+    # characters. That is the property that separates them, and it holds
+    # whatever the gap measures.
+    #
+    # An upper bound on gap width was the earlier attempt, and it let a real
+    # two-column page through: narrow columns with a wide margin exceeded the
+    # ceiling and were interleaved into sentences the manual never contained.
     threshold = page_width * COLUMN_GAP_RATIO
-    ceiling = page_width * MAX_COLUMN_GAP_RATIO
-    wide = [line for line in lines if threshold < line.max_gap <= ceiling]
+    wide = [line for line in lines if line.max_gap > threshold and _text_on_both_sides(line)]
     if not wide:
         return False
 
@@ -314,41 +366,49 @@ def _is_heading(line: _Line, *, body: float) -> bool:
     Returns:
         ``True`` when the line reads as a heading rather than as prose.
 
-    Size alone is not enough, and three attempts to fix this by improving the
-    body-size estimate all failed on the same page: fourteen lines of 6pt
-    disclaimer carry 1218 characters against 90 of body text, so *no*
-    weight-based vote picks 10pt there. Every one of those attempts left two
-    ordinary sentences promoted to level-1 headings, producing section paths
-    like "replacing the relay module in the cubicle." — a citation nobody can
-    resolve against a contents page.
+    Three rounds of review pushed this through four one-dimensional rules —
+    size ratio, then bold required, then an absolute length cap — and each one
+    failed on the other side. A 32-character cap silently demoted
+    ``3.2.1 Overcurrent protection settings`` to a paragraph and filed its
+    body under the parent section: not a missing path, a confidently wrong
+    one. Requiring bold produced zero headings on a size-only manual; not
+    considering bold produced zero on a same-size-bold manual. Both are common
+    layouts.
 
-    A heading is bigger than body text **and short**. Manuals do not set
-    running prose as headings, and length is the property that separates the
-    two regardless of what the size estimate got wrong. Bold is accepted as an
-    alternative to being larger, since many manuals set same-size bold
-    headings, but never on its own for a long line.
+    The signals below actually separate headings from prose, and were already
+    in the data:
+
+    * A **numbering prefix** (``3``, ``3.2``, ``3.2.1``) is near-decisive.
+      Manuals number their sections and do not number their sentences.
+    * **Sentence termination.** The boilerplate that motivated the length cap
+      ends in a full stop; headings do not. That one check separates
+      ``replacing the relay module in the cubicle.`` from
+      ``3.2.1 Overcurrent protection settings`` with no cap at all.
+    * **Bold or larger**, as corroboration rather than as the decision.
+
+    A bold same-size safety callout — ``WARNING: Do not touch the
+    terminals.`` — is still rejected: it ends in a full stop and carries no
+    number.
     """
-    if len(line.text) > MAX_HEADING_CHARS:
+    text = line.text.strip()
+    if not text or len(text) > MAX_HEADING_CHARS:
         return False
 
-    # Larger than body text is a heading on its own, bold or not. Requiring
-    # bold unconditionally was worse than the bug it replaced: a manual with
-    # 18pt regular headings over 10pt body — unambiguous by size — produced
-    # *zero* headings, every block landing under "Front matter", silently and
-    # for every page of the document. The original bug produced some wrong
-    # section paths on one pathological page; this produced none at all across
-    # a whole document class.
-    # At body size, nothing qualifies. `WARNING: Do not touch the terminals.`
-    # is bold, short and 10pt in a 10pt document, and treating same-size bold
-    # as structure made it a level-4 heading that captured the section path
-    # for everything after it. Safety callouts and bold lead-ins are
-    # ubiquitous in manuals; same-size bold is emphasis, not structure.
-    #
-    # Being larger than body text is therefore the whole test, bold or not.
-    # Requiring bold was worse than the bug it replaced: an 18pt-regular over
-    # 10pt-body manual produced *zero* headings, every block under "Front
-    # matter", silently and for every page.
-    return line.size >= body * HEADING_SIZE_RATIO
+    prominent = line.size >= body * HEADING_SIZE_RATIO or (line.bold and line.size >= body)
+    if not prominent:
+        return False
+
+    if _NUMBERED_HEADING.match(text):
+        return True
+
+    # Unnumbered headings exist ("Contents", "Safety", "Fault tracing"), and
+    # they are both short and unterminated. Termination alone is not enough:
+    # a wrapped prose line — "Check the trip circuit supervision output
+    # before" — carries no full stop either, because the sentence continues on
+    # the next line. Real unnumbered headings are a few words.
+    return len(text) <= MAX_UNNUMBERED_HEADING_CHARS and not text.endswith(
+        (".", ":", ";", "!", "?", ",")
+    )
 
 
 def _section_path(stack: Sequence[str]) -> str:
@@ -391,25 +451,39 @@ def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
     Returns:
         ``True`` when the two are one table split by a page break.
 
-    A **positive** signal is required, not the absence of a negative one. The
-    first version accepted "carries no header-like row" as evidence of
-    continuation, and `_looks_like_header` reports exactly that for an
-    all-text table — parameter names and descriptions, which manuals are full
-    of. So an unrelated two-column parameter table opening page 2 was fused
-    onto page 1's fault-code table: twelve rows in one block, page 1, section
-    "1 Fault codes", with three parameter rows presented as fault codes on a
-    page they never appeared on.
+    Requires a positive signal. An earlier version demanded the header repeat
+    *exactly at row zero*, which missed a continuation behind a
+    ``Table 3 (continued)`` banner — the header is repeated, one row lower —
+    leaving a fragment presenting itself as a complete table, which is the
+    failure this whole mechanism exists to prevent.
 
-    A continuation must therefore repeat the header, which is what manuals
-    actually do, or be visually contiguous — a table starting at the very top
-    of the page, where a break would land. Absence of evidence is not
-    evidence.
+    **A continuation carrying no header at all is not stitched**, and that is
+    a deliberate limit rather than an oversight. Geometry looked like the
+    remaining evidence — a table beginning at the top of a page is where a
+    break lands — but measurement killed it: an unrelated table opening the
+    next page starts at exactly the same position, so the signal does not
+    separate the two cases. Requiring the continuation to carry no header of
+    its own does not rescue it either, because recognising a header in an
+    all-text table is the same undecidable problem.
+
+    So that layout stays two blocks. It is the wrong answer for one real
+    case, and it is the safe direction: two fragments of one table are
+    visibly two blocks, whereas fusing two different tables presents rows
+    under a heading they never appeared under.
+
+    The column count must match in every case: a different shape is a
+    different table.
     """
     if not previous or not following:
         return False
     if len(previous[0]) != len(following[0]):
         return False
-    return following[0] == previous[0]
+
+    header = previous[0]
+    # Repeated at the top, or one row down behind a banner.
+    if following[0] == header or (len(following) > 1 and following[1] == header):
+        return True
+    return any(_CONTINUED.search(cell) for cell in following[0])
 
 
 def _looks_like_header(row: list[str], body: list[list[str]]) -> bool:
@@ -579,6 +653,9 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     body = _body_size(all_lines)
     blocks: list[StructuralBlock] = []
     stack: list[str] = []
+    # Font size of each open heading, so a same-size heading is recognised as
+    # a sibling rather than nested beneath its equal.
+    sizes: list[float] = []
     # Index of a block in `blocks` -> the last page its content came from.
     last_page: dict[int, int] = {}
 
@@ -639,7 +716,25 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             is_heading = _is_heading(line, body=body)
             if is_heading:
                 level = _heading_level(line.size, body)
+                # Clamped so a heading can never descend more than one level
+                # below the stack that is actually open. `_heading_level` maps
+                # size ratios onto absolute depths, so a document going H1 to
+                # H3 — common, since the buckets are coarse — left the stack
+                # too shallow to truncate, and a *sibling* H3 appended instead
+                # of replacing: "3 Protection > 3.1 Overcurrent > 3.2 Earth
+                # fault", asserting a containment the manual does not have.
+                level = min(level, len(stack) + 1)
+                # Two headings of the same size are siblings, whatever the
+                # coarse level buckets say. Clamping to the open depth alone
+                # still let one descend below the other, producing
+                # "3 Protection > 3.1 Overcurrent > 3.2 Earth fault" — a
+                # containment the manual does not have, inherited by every
+                # chunk beneath it.
+                if sizes and abs(sizes[-1] - line.size) < 0.1:
+                    level = len(sizes)
                 del stack[level - 1 :]
+                del sizes[level - 1 :]
+                sizes.append(line.size)
                 stack.append(line.text)
                 blocks.append(
                     StructuralBlock(

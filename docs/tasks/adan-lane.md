@@ -47,6 +47,16 @@ recorded rather than decided.
 > So `app/ingestion/structure.py` was added, and treated as deep-tier for the
 > same reason AI-001 was: it serves the citation-precision property directly.
 >
+> **Known limitation, after three review rounds.** A table continued onto the
+> next page _without_ a repeated header and without a "(continued)" banner
+> stays two blocks rather than one. Geometry looked like the remaining signal
+> — a table starting at the top of a page is where a break lands — but
+> measurement showed an unrelated table opening the next page starts at
+> exactly the same position, so it does not separate the two cases. Two
+> fragments of one table are visibly two blocks; fusing two different tables
+> presents rows under a heading they never appeared under, so this is the safe
+> direction.
+>
 > **Library chosen on investigation, not by default.** PyMuPDF is
 > AGPL-3.0-or-commercial and was ruled out for a proprietary product.
 > pdfplumber (MIT) was probed against real-shaped pages and surfaces the two

@@ -605,3 +605,184 @@ def test_a_table_does_not_stitch_across_an_intervening_page() -> None:
 
     assert len(tables) == 2, "tables on non-adjacent pages were stitched together"
     assert "Row 10" not in tables[0].text
+
+
+# --- round three: the fixes were one-dimensional thresholds -------------------
+#
+# Rounds 1 and 2 each fixed a report by tightening one scalar, and every
+# tightening opened a symmetric failure on the other side. These use the
+# signals the data actually carries — a numbering prefix, sentence
+# termination, text on both sides of a gap — rather than another threshold.
+
+
+def test_a_long_numbered_subsection_heading_is_not_demoted() -> None:
+    # "3.2.1 Overcurrent protection settings" is 37 characters, and a 32-char
+    # cap silently made it a paragraph — so the subsection vanished *and* its
+    # body was filed under the parent. Not a missing path: a confidently wrong
+    # one, which retrieval surfaces as general protection text.
+    def numbered(page: Page) -> None:
+        page.heading("3 Protection", 18)
+        page.heading("3.2.1 Overcurrent protection settings", 14)
+        page.body("Set the start value to 1.5 times rated current.")
+
+    blocks = extract_structure(build(numbered)).blocks
+    headings = [b.text for b in blocks if b.kind is BlockKind.HEADING]
+
+    assert "3.2.1 Overcurrent protection settings" in headings
+    body = next(b for b in blocks if b.text.startswith("Set the start"))
+    assert body.section.endswith("3.2.1 Overcurrent protection settings")
+
+
+def test_a_same_size_bold_heading_is_recognised() -> None:
+    # A 10pt-bold-heading over 10pt-body manual is common, and produced zero
+    # headings when size ratio alone decided. The numbering prefix carries it.
+    def same_size(page: Page) -> None:
+        page.pdf.setFont("Helvetica-Bold", 10)
+        page.pdf.drawString(60, HEIGHT - 70, "2 Mounting")
+        page.pdf.setFont("Helvetica", 10)
+        page.pdf.drawString(60, HEIGHT - 95, "Fit the unit to a DIN rail vertically.")
+
+    blocks = extract_structure(build(same_size)).blocks
+
+    assert any(b.kind is BlockKind.HEADING and b.text == "2 Mounting" for b in blocks)
+
+
+def test_a_continuation_behind_a_continued_banner_is_stitched() -> None:
+    # The header *is* repeated here, one row lower, behind "Table 3
+    # (continued)" — so demanding an exact match at row zero left a fragment
+    # presenting itself as a complete table.
+    def part(page: Page, rows: list[list[str]]) -> None:
+        page.ruled_table(rows)
+
+    data = build(
+        lambda p: part(p, [["Ambient", "Rating"], ["Row 0", "40 A"], ["Row 1", "41 A"]]),
+        lambda p: part(
+            p,
+            [
+                ["Table 3 (continued)", ""],
+                ["Ambient", "Rating"],
+                ["Row 2", "42 A"],
+            ],
+        ),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+    assert "Row 2" in tables[0].text
+
+
+def test_narrow_columns_with_a_wide_gutter_are_refused() -> None:
+    # An upper bound on gap width was meant to spare contents pages and let a
+    # real two-column page through instead: narrow columns with a wide margin
+    # exceeded the ceiling and were interleaved into "Set motor data.Tune the
+    # loop." — sentences the manual never contained. A gutter has substantial
+    # text on both sides; a contents page's gap has a page number.
+    def wide_gutter(page: Page) -> None:
+        page.pdf.setFont("Helvetica", 10)
+        for i, text in enumerate(["Set motor data.", "Run the ID run.", "Check rotation."]):
+            page.pdf.drawString(45, HEIGHT - 100 - i * 14, text)
+        for i, text in enumerate(["Tune the loop.", "Record the date.", "Hand over docs."]):
+            page.pdf.drawString(400, HEIGHT - 100 - i * 14, text)
+
+    with pytest.raises(UnreadableDocumentError, match="columns"):
+        extract_structure(build(wide_gutter))
+
+
+def test_sibling_subsections_do_not_nest_under_each_other() -> None:
+    # `_heading_level` maps size ratios onto absolute depths, so a document
+    # going H1 to H3 left the stack too shallow to truncate and a *sibling*
+    # appended instead of replacing: "3 Protection > 3.1 Overcurrent > 3.2
+    # Earth fault", a containment the manual does not have, inherited by every
+    # chunk beneath it.
+    def siblings(page: Page) -> None:
+        page.heading("3 Protection", 20)
+        page.heading("3.1 Overcurrent", 12)
+        page.body("Stage one trips on instantaneous current.")
+        page.heading("3.2 Earth fault", 12)
+        page.body("Residual current is measured across all phases.")
+
+    blocks = extract_structure(build(siblings)).blocks
+    earth = next(b for b in blocks if b.text.startswith("Residual"))
+
+    assert earth.section == "3 Protection > 3.2 Earth fault"
+    assert "3.1 Overcurrent" not in earth.section
+
+
+def test_a_banner_row_alone_marks_a_continuation() -> None:
+    # Isolates the banner signal. The existing banner test also repeats the
+    # header one row down, so it passes on either branch — remove the banner
+    # check and it still goes green. Here the header is NOT repeated, so only
+    # "(continued)" can carry it.
+    data = build(
+        lambda p: p.ruled_table([["Ambient", "Rating"], ["Row 0", "40 A"]]),
+        lambda p: p.ruled_table([["Table 3 continued", ""], ["Row 1", "41 A"]]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+    assert "Row 1" in tables[0].text
+
+
+def test_a_header_repeated_one_row_down_marks_a_continuation() -> None:
+    # The mirror of the above: a banner that does not say "continued" — a
+    # table caption — with the header beneath it.
+    data = build(
+        lambda p: p.ruled_table([["Ambient", "Rating"], ["Row 0", "40 A"]]),
+        lambda p: p.ruled_table(
+            [["Derating by temperature", ""], ["Ambient", "Rating"], ["Row 1", "41 A"]]
+        ),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+    assert "Row 1" in tables[0].text
+
+
+def test_a_columnar_block_among_full_width_prose_is_refused() -> None:
+    # Both earlier column fixtures are *pure* column pages, where the wide
+    # lines are essentially all the content — so both floors pass trivially and
+    # neither is pinned. A real manual page is a columnar block surrounded by
+    # full-width prose, which is what makes the line-count floor load-bearing.
+    def mixed(page: Page) -> None:
+        page.heading("5 Commissioning", 14)
+        page.pdf.setFont("Helvetica", 10)
+        for i in range(6):
+            page.pdf.drawString(
+                60, HEIGHT - 110 - i * 14, "This paragraph runs the full width of the page here."
+            )
+        left = ["Set the motor data.", "Run the ID run.", "Check the rotation.", "Save the set."]
+        right = ["Tune the loop.", "Record the date.", "Hand over the docs.", "Close the door."]
+        for i, text in enumerate(left):
+            page.pdf.drawString(60, HEIGHT - 220 - i * 14, text)
+        for i, text in enumerate(right):
+            page.pdf.drawString(330, HEIGHT - 220 - i * 14, text)
+
+    with pytest.raises(UnreadableDocumentError, match="columns"):
+        extract_structure(build(mixed))
+
+
+def test_a_contents_page_among_prose_is_still_not_refused() -> None:
+    # The other side of that floor. Right-aligned page numbers produce wide
+    # gaps too, and dropping the both-sides-text check would refuse this — a
+    # readable page discarded, which is how one heuristic took out whole
+    # manuals in an earlier round.
+    def contents(page: Page) -> None:
+        page.heading("Contents", 16)
+        page.pdf.setFont("Helvetica", 10)
+        # Titles of varying length, which is what a real contents page has —
+        # and what makes the gaps overlap into a corridor. With uniform-length
+        # titles the corridor check alone happens to save the page, so the
+        # both-sides-text check is never the thing being tested.
+        entries = [
+            ("1 Introduction", "7"),
+            ("2 Protection and control functions in detail", "23"),
+            ("3 Fault tracing", "88"),
+            ("4 Maintenance and periodic inspection tasks", "104"),
+            ("5 Commissioning", "131"),
+        ]
+        for i, (title, number) in enumerate(entries):
+            page.pdf.drawString(60, HEIGHT - 140 - i * 16, title)
+            page.pdf.drawString(500, HEIGHT - 140 - i * 16, number)
+
+    blocks = extract_structure(build(contents)).blocks
+    assert any("Introduction" in b.text for b in blocks)
