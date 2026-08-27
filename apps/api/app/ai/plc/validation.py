@@ -36,9 +36,9 @@ import structlog
 from lark import Lark, Token, Tree, UnexpectedInput
 
 from app.models.schemas.plc import (
+    FindingSeverity,
     PlcDialect,
     PlcValidationResult,
-    Severity,
     ValidationFinding,
     ValidationStatus,
 )
@@ -199,14 +199,14 @@ def validate_plc_code(
                 ValidationFinding(
                     code="syntax-error",
                     message=f"could not parse: {exc.__class__.__name__}",
-                    severity=Severity.ERROR,
+                    severity=FindingSeverity.ERROR,
                     line=getattr(exc, "line", None),
                 )
             ],
         )
 
     findings = _analyse(tree)
-    has_error = any(finding.severity is Severity.ERROR for finding in findings)
+    has_error = any(finding.severity is FindingSeverity.ERROR for finding in findings)
 
     return PlcValidationResult(
         status=ValidationStatus.INVALID if has_error else ValidationStatus.VALID,
@@ -234,7 +234,7 @@ def _incomplete(dialect: PlcDialect, message: str) -> PlcValidationResult:
             ValidationFinding(
                 code="validation-incomplete",
                 message=message,
-                severity=Severity.WARNING,
+                severity=FindingSeverity.WARNING,
             )
         ],
     )
@@ -381,7 +381,7 @@ def _undeclared_findings(declared: dict[str, str], used: set[str]) -> list[Valid
         ValidationFinding(
             code="undeclared-tag",
             message=f"{name!r} is used but never declared",
-            severity=Severity.ERROR,
+            severity=FindingSeverity.ERROR,
         )
         for name in unknown
     ]
@@ -411,7 +411,7 @@ def _unreferenced_findings(
         ValidationFinding(
             code="unreferenced-tag",
             message=f"{name!r} is declared but never used",
-            severity=Severity.WARNING,
+            severity=FindingSeverity.WARNING,
         )
         for name in sorted(declared)
         if name not in used
@@ -454,7 +454,7 @@ def _type_findings(tree: Tree[Token], declared: dict[str, str]) -> list[Validati
                 ValidationFinding(
                     code="type-mismatch",
                     message=f"{str(target)!r} is {declared_type}, assigned a BOOL literal",
-                    severity=Severity.ERROR,
+                    severity=FindingSeverity.ERROR,
                     line=getattr(target, "line", None),
                 )
             )
@@ -463,7 +463,7 @@ def _type_findings(tree: Tree[Token], declared: dict[str, str]) -> list[Validati
                 ValidationFinding(
                     code="type-mismatch",
                     message=f"{str(target)!r} is BOOL, assigned a numeric literal",
-                    severity=Severity.ERROR,
+                    severity=FindingSeverity.ERROR,
                     line=getattr(target, "line", None),
                 )
             )
@@ -507,7 +507,7 @@ def _unreachable_findings(tree: Tree[Token]) -> list[ValidationFinding]:
                 ValidationFinding(
                     code="unreachable-branch",
                     message="IF condition is always FALSE; the branch can never run",
-                    severity=Severity.WARNING,
+                    severity=FindingSeverity.WARNING,
                 )
             )
         for clause in statement.find_data("elsif_clause"):
@@ -516,7 +516,7 @@ def _unreachable_findings(tree: Tree[Token]) -> list[ValidationFinding]:
                     ValidationFinding(
                         code="unreachable-branch",
                         message="ELSIF condition is always FALSE; the branch can never run",
-                        severity=Severity.WARNING,
+                        severity=FindingSeverity.WARNING,
                     )
                 )
 
@@ -526,7 +526,7 @@ def _unreachable_findings(tree: Tree[Token]) -> list[ValidationFinding]:
                 ValidationFinding(
                     code="unreachable-branch",
                     message="WHILE condition is always FALSE; the loop body can never run",
-                    severity=Severity.WARNING,
+                    severity=FindingSeverity.WARNING,
                 )
             )
     return findings
