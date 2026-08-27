@@ -129,5 +129,22 @@
       "subhead": "Ask a question now. No access request, no waiting.",
       "unavailable": "The free trial is not available right now. Sign in to continue."
     }
+  },
+  "verification": {
+    "heading": "Verification queue",
+    "empty": "Nothing left to review.",
+    "itemCount": "{count} remaining",
+    "proposed": "Proposed content",
+    "source": "Source document",
+    "sourceMissing": "No source available for this item.",
+    "correct": "Correct",
+    "incorrect": "Incorrect",
+    "uncertain": "Uncertain",
+    "notePlaceholder": "Say what is wrong, and where.",
+    "noteRequired": "A note is required",
+    "submit": "Submit",
+    "submitting": "Submitting…",
+    "claimedBy": "Already claimed by {name}",
+    "submitFailed": "Could not submit. Try again."
   }
 }
