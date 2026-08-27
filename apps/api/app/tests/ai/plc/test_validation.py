@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 from app.ai.plc.validation import CHECKER, validate_plc_code
-from app.models.schemas.plc import PlcDialect, Severity, ValidationStatus
+from app.models.schemas.plc import FindingSeverity, PlcDialect, ValidationStatus
 
 # --- valid reference code -----------------------------------------------------
 
@@ -255,7 +255,7 @@ def test_valid_code_is_not_false_flagged(source: str) -> None:
     result = validate_plc_code(source)
 
     assert result.status is ValidationStatus.VALID, [f.message for f in result.findings]
-    assert not [f for f in result.findings if f.severity is Severity.ERROR]
+    assert not [f for f in result.findings if f.severity is FindingSeverity.ERROR]
     assert result.ready
 
 
@@ -332,7 +332,7 @@ def test_suspicious_but_legal_code_warns_rather_than_fails(source: str) -> None:
     result = validate_plc_code(source)
 
     assert result.findings
-    assert all(f.severity is Severity.WARNING for f in result.findings)
+    assert all(f.severity is FindingSeverity.WARNING for f in result.findings)
 
 
 def test_a_syntax_error_reports_where_it_is() -> None:
@@ -397,7 +397,7 @@ def test_incomplete_is_reported_as_a_warning_not_an_error() -> None:
     # defect that has not been found.
     result = validate_plc_code(UNCHECKABLE_PROGRAMS["function block"])
 
-    assert all(f.severity is Severity.WARNING for f in result.findings)
+    assert all(f.severity is FindingSeverity.WARNING for f in result.findings)
 
 
 # --- the verdict names its source ---------------------------------------------

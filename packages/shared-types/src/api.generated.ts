@@ -379,6 +379,49 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/plc/generate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Generate
+     * @description Generate PLC code for a description, with its validation verdict.
+     *
+     *     Raises:
+     *         HTTPException: 422 if the request cannot be generated as asked.
+     */
+    post: operations['generate_api_v1_plc_generate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/plc/review': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Review
+     * @description Validate code the caller already has.
+     */
+    post: operations['review_api_v1_plc_review_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/images': {
     parameters: {
       query?: never;
@@ -735,6 +778,12 @@ export interface components {
       items: components['schemas']['QueueItem'][];
     };
     /**
+     * FindingSeverity
+     * @description How much a finding matters.
+     * @enum {string}
+     */
+    FindingSeverity: 'error' | 'warning';
+    /**
      * FlagRequest
      * @description A user reporting an answer as wrong.
      *
@@ -830,6 +879,36 @@ export interface components {
       label: string | null;
     };
     /**
+     * LadderContact
+     * @description One contact or coil on a rung.
+     *
+     *     Attributes:
+     *         tag: The symbol it reads or writes.
+     *         kind: ``no`` (normally open), ``nc`` (normally closed), or ``coil``.
+     */
+    LadderContact: {
+      /** Tag */
+      tag: string;
+      /** Kind */
+      kind: string;
+    };
+    /**
+     * LadderRung
+     * @description One rung, as FE-009 draws it.
+     *
+     *     Attributes:
+     *         comment: What the rung is for.
+     *         inputs: Contacts in series, left to right.
+     *         output: The coil the rung drives.
+     */
+    LadderRung: {
+      /** Comment */
+      comment: string;
+      /** Inputs */
+      inputs: components['schemas']['LadderContact'][];
+      output: components['schemas']['LadderContact'];
+    };
+    /**
      * LoadScheduleItem
      * @description One load on a panel's schedule.
      */
@@ -895,6 +974,90 @@ export interface components {
       lines: components['schemas']['BomLine'][];
       /** Heat Load W */
       heat_load_w: string;
+    };
+    /**
+     * PlcDialect
+     * @description Which vendor's flavour a request targets.
+     *
+     *     Vendor matters because the dialects genuinely differ — Siemens SCL is not
+     *     Rockwell's ST, and code valid in one is not always valid in the other. A
+     *     validator that ignored the distinction would be reporting on a language
+     *     nobody actually runs.
+     * @enum {string}
+     */
+    PlcDialect: 'iec-61131-3' | 'siemens-scl' | 'rockwell-st' | 'codesys-st';
+    /**
+     * PlcGenerationRequest
+     * @description A request to generate PLC code.
+     */
+    PlcGenerationRequest: {
+      /** Description */
+      description: string;
+      /** @default iec-61131-3 */
+      dialect: components['schemas']['PlcDialect'];
+      /** @default structured-text */
+      language: components['schemas']['PlcLanguage'];
+    };
+    /**
+     * PlcGenerationResult
+     * @description Generated code, with the verdict on it.
+     *
+     *     Attributes:
+     *         language: What was produced.
+     *         dialect: What it targets.
+     *         source: Structured Text, when that is what was asked for.
+     *         rungs: Ladder rungs, when that is what was asked for.
+     *         validation: The validation pass over the generated code. Always
+     *             present — generation that skipped validation would be exactly the
+     *             plausible-looking unchecked output this task exists to prevent.
+     */
+    PlcGenerationResult: {
+      language: components['schemas']['PlcLanguage'];
+      dialect: components['schemas']['PlcDialect'];
+      /** Source */
+      source?: string | null;
+      /** Rungs */
+      rungs?: components['schemas']['LadderRung'][];
+      validation: components['schemas']['PlcValidationResult'];
+    };
+    /**
+     * PlcLanguage
+     * @description What form the output takes.
+     * @enum {string}
+     */
+    PlcLanguage: 'structured-text' | 'ladder';
+    /**
+     * PlcValidationRequest
+     * @description A request to validate code the caller already has.
+     *
+     *     Separate from generation because BE-010's review endpoint validates code
+     *     an engineer wrote, where no generation happens at all.
+     */
+    PlcValidationRequest: {
+      /** Source */
+      source: string;
+      /** @default iec-61131-3 */
+      dialect: components['schemas']['PlcDialect'];
+    };
+    /**
+     * PlcValidationResult
+     * @description The outcome of validating one piece of code.
+     *
+     *     Attributes:
+     *         status: Valid, invalid, or unverifiable.
+     *         findings: What was found. May be non-empty on a ``VALID`` result when
+     *             every finding is a warning.
+     *         dialect: What it was checked as.
+     *         checked_by: What did the checking, named so a reader can judge how
+     *             much the result is worth.
+     */
+    PlcValidationResult: {
+      status: components['schemas']['ValidationStatus'];
+      /** Findings */
+      findings?: components['schemas']['ValidationFinding'][];
+      dialect: components['schemas']['PlcDialect'];
+      /** Checked By */
+      checked_by: string;
     };
     /**
      * PromotionRequest
@@ -1102,6 +1265,38 @@ export interface components {
       /** Context */
       ctx?: Record<string, never>;
     };
+    /**
+     * ValidationFinding
+     * @description One problem found in a piece of code.
+     *
+     *     Attributes:
+     *         code: Stable machine-readable identifier, so a UI can group findings
+     *             without matching on prose.
+     *         message: What is wrong, in the terms an engineer would use.
+     *         severity: Whether this blocks a ``ready`` status.
+     *         line: Where, when known. Absent for whole-program findings.
+     */
+    ValidationFinding: {
+      /** Code */
+      code: string;
+      /** Message */
+      message: string;
+      severity: components['schemas']['FindingSeverity'];
+      /** Line */
+      line?: number | null;
+    };
+    /**
+     * ValidationStatus
+     * @description The outcome of a validation pass.
+     *
+     *     ``INCOMPLETE`` is the load-bearing member and the reason this is not a
+     *     boolean. AI-009 is explicit: tooling that cannot fully parse a dialect
+     *     must say so rather than pass. An unverifiable result and a verified-correct
+     *     one are different things, and collapsing them is how unchecked code
+     *     acquires a tick.
+     * @enum {string}
+     */
+    ValidationStatus: 'valid' | 'invalid' | 'incomplete';
     /**
      * VerificationDecision
      * @description A reviewer's decision on a staged document.
@@ -1816,6 +2011,72 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['FlagResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  generate_api_v1_plc_generate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcGenerationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcGenerationResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  review_api_v1_plc_review_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcValidationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcValidationResult'];
         };
       };
       /** @description Validation Error */

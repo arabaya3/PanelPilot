@@ -12,9 +12,9 @@ from __future__ import annotations
 import pytest
 
 from app.models.schemas.plc import (
+    FindingSeverity,
     PlcDialect,
     PlcValidationResult,
-    Severity,
     ValidationFinding,
     ValidationStatus,
 )
@@ -38,7 +38,7 @@ def _result(status: ValidationStatus, *findings: ValidationFinding) -> PlcValida
     )
 
 
-def _finding(severity: Severity) -> ValidationFinding:
+def _finding(severity: FindingSeverity) -> ValidationFinding:
     """Build a finding.
 
     Args:
@@ -57,18 +57,18 @@ def test_clean_valid_code_is_ready() -> None:
 def test_valid_code_with_warnings_is_still_ready() -> None:
     # A warning is a note, not a blocker. Requiring a clean sheet would mean an
     # unused spare tag stops correct code from being usable.
-    assert _result(ValidationStatus.VALID, _finding(Severity.WARNING)).ready
+    assert _result(ValidationStatus.VALID, _finding(FindingSeverity.WARNING)).ready
 
 
 def test_an_error_blocks_ready_even_on_a_valid_status() -> None:
     # Defensive: the two should not disagree, but if they ever do, the error is
     # the one to believe. Presenting code as ready while holding an error
     # against it is the exact failure this task exists to prevent.
-    assert not _result(ValidationStatus.VALID, _finding(Severity.ERROR)).ready
+    assert not _result(ValidationStatus.VALID, _finding(FindingSeverity.ERROR)).ready
 
 
 def test_invalid_code_is_never_ready() -> None:
-    assert not _result(ValidationStatus.INVALID, _finding(Severity.ERROR)).ready
+    assert not _result(ValidationStatus.INVALID, _finding(FindingSeverity.ERROR)).ready
 
 
 @pytest.mark.parametrize("status", list(ValidationStatus))
@@ -102,4 +102,4 @@ def test_the_three_statuses_are_distinct() -> None:
 def test_a_finding_may_omit_its_line() -> None:
     # Whole-program findings — an unreferenced tag, an unverifiable dialect —
     # have no single line to point at.
-    assert _finding(Severity.WARNING).line is None
+    assert _finding(FindingSeverity.WARNING).line is None

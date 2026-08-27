@@ -54,7 +54,7 @@ class ValidationStatus(StrEnum):
     INCOMPLETE = "incomplete"
 
 
-class Severity(StrEnum):
+class FindingSeverity(StrEnum):
     """How much a finding matters."""
 
     #: The code will not compile, or will not do what it says.
@@ -77,7 +77,7 @@ class ValidationFinding(BaseModel):
 
     code: str
     message: str
-    severity: Severity
+    severity: FindingSeverity
     line: int | None = None
 
 
@@ -109,7 +109,7 @@ class PlcValidationResult(BaseModel):
         is that it is not a pass.
         """
         return self.status is ValidationStatus.VALID and not any(
-            finding.severity is Severity.ERROR for finding in self.findings
+            finding.severity is FindingSeverity.ERROR for finding in self.findings
         )
 
 
