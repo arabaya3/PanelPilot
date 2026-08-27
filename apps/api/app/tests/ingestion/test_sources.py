@@ -189,3 +189,47 @@ def test_the_client_follows_redirects() -> None:
     # register every document as unreachable.
     with http_client(user_agent="PanelPilotBot") as client:
         assert client.follow_redirects is True
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "evil-abb.com",
+        "abb.com.attacker.net",
+        "notabb.com",
+        "abb.com.evil.co",
+    ],
+)
+def test_a_lookalike_host_is_not_mistaken_for_the_source(host: str) -> None:
+    # A bare `endswith` is not a domain check, and every earlier off-host test
+    # used an obviously-foreign domain (`cdn.example.net`) that shares no
+    # substring — so nothing constrained the *shape* of the check. A review
+    # weakened it to a substring match and all 77 tests still passed.
+    #
+    # These hosts would then be fetched under a robots.txt policy fetched for
+    # a different domain, with redirects followed.
+    found = AbbCrawler().extract_documents(
+        listing_url="https://library.abb.com/manuals", html=page(f"https://{host}/a.pdf")
+    )
+
+    assert found == []
+
+
+def test_a_short_suffix_does_not_swallow_unrelated_domains() -> None:
+    # `se.com` is short enough that a substring or bare-suffix check admits
+    # real, entirely unrelated domains.
+    found = SchneiderCrawler().extract_documents(
+        listing_url="https://www.se.com/manuals", html=page("https://parse.com/a.pdf")
+    )
+
+    assert found == []
+
+
+@pytest.mark.parametrize("host", ["abb.com", "library.abb.com", "new.library.abb.com"])
+def test_the_domain_and_its_subdomains_are_admitted(host: str) -> None:
+    # The check must not be so strict it drops the source's own CDN subdomain.
+    found = AbbCrawler().extract_documents(
+        listing_url="https://library.abb.com/manuals", html=page(f"https://{host}/a.pdf")
+    )
+
+    assert [d.url for d in found] == [f"https://{host}/a.pdf"]

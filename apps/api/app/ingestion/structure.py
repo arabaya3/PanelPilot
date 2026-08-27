@@ -73,6 +73,18 @@ COLUMN_GAP_RATIO = 0.12
 #: Below this, a page is treated as having no usable text layer.
 MIN_CHARS_PER_PAGE = 2
 
+#: A heading is short. Manuals do not set running prose as headings, and this
+#: is what stops a page of small-print boilerplate — which can legitimately
+#: outweigh the body text and capture the size estimate — from promoting whole
+#: sentences into section paths.
+MAX_HEADING_CHARS = 80
+
+#: A column boundary is a vertical whitespace corridor that persists down the
+#: page, not one wide gap on one line. A footer with a document code on the
+#: left and a page number on the right has exactly one such gap, and refusing
+#: the document over it discards an entire manual.
+MIN_COLUMN_LINES = 4
+
 
 class UnreadableDocumentError(Exception):
     """The PDF cannot be read into structure with any confidence.
@@ -96,6 +108,8 @@ class _Line:
         bold: Whether the dominant font is bold.
         max_gap: Widest horizontal gap between adjacent characters, used to
             spot column interleaving.
+        gap_start: Where that widest gap begins, so a corridor can be
+            recognised by several lines sharing one horizontal position.
     """
 
     text: str
@@ -104,6 +118,7 @@ class _Line:
     size: float
     bold: bool
     max_gap: float
+    gap_start: float
 
 
 def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Line]:
@@ -118,6 +133,12 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
     """
     buckets: dict[int, list[dict[str, Any]]] = {}
     for char in chars:
+        # Rotated text is dropped rather than read. Bucketing by `top` alone,
+        # a 90-degree axis label becomes one block per character in reverse
+        # order — forty uncitable chunks from one figure label. pdfplumber
+        # reports orientation, so this is a check rather than a guess.
+        if not char.get("upright", True):
+            continue
         key = int(float(char["top"]) / LINE_TOLERANCE_PT)
         buckets.setdefault(key, []).append(char)
 
@@ -129,8 +150,12 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
             continue
 
         gap = 0.0
+        gap_start = 0.0
         for previous, current in itertools.pairwise(row):
-            gap = max(gap, float(current["x0"]) - float(previous["x1"]))
+            width = float(current["x0"]) - float(previous["x1"])
+            if width > gap:
+                gap = width
+                gap_start = float(previous["x1"])
 
         fonts = [str(c.get("fontname", "")) for c in row]
         lines.append(
@@ -141,6 +166,7 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
                 size=max(float(c.get("size", 0.0)) for c in row),
                 bold=sum("bold" in f.lower() for f in fonts) > len(fonts) / 2,
                 max_gap=gap,
+                gap_start=gap_start,
             )
         )
     return lines
@@ -172,10 +198,11 @@ def _body_size(lines: Sequence[_Line]) -> float:
         weights[size] = weights.get(size, 0) + len(line.text)
     if not weights:
         return 0.0
-    # Ties broken toward the smaller size: body text is never the largest
-    # thing on a page, so when two sizes carry equal weight the smaller is the
-    # safer guess.
-    return min(weights, key=lambda size: (-weights[size], size))
+
+    # Ties break toward the larger size. The alternative to body text is
+    # mostly *smaller* — captions, footnotes, table cells — so on a 10pt/8pt
+    # tie, picking 8 would make body text 1.25x "body" and promote all of it.
+    return max(weights, key=lambda size: (weights[size], size))
 
 
 def _heading_level(size: float, body: float) -> int:
@@ -201,6 +228,78 @@ def _heading_level(size: float, body: float) -> int:
     return 4
 
 
+def _looks_columnar(lines: Sequence[_Line], *, page_width: float) -> bool:
+    """Report whether a page is laid out in columns.
+
+    Args:
+        lines: The page's lines.
+        page_width: Page width, so the threshold holds for A4 and Letter.
+
+    Returns:
+        ``True`` when several lines share a wide gap at a consistent
+        horizontal position — a vertical whitespace corridor.
+
+    Requiring a *corridor* rather than a single wide gap is what separates a
+    two-column page from ordinary furniture. A footer with a document code on
+    the left and a page number on the right has one wide gap; a justified
+    paragraph and a contents page with dot leaders each have one too. Refusing
+    on any of those discards a readable manual entirely, which is a worse
+    outcome than the interleaving the check exists to prevent.
+    """
+    threshold = page_width * COLUMN_GAP_RATIO
+    wide = [line for line in lines if line.max_gap > threshold]
+    if len(wide) < MIN_COLUMN_LINES:
+        return False
+
+    # A corridor is where the gaps OVERLAP, not where they start. Column text
+    # is ragged-right, so the gap on each line begins wherever that line
+    # happened to end — anchoring on the start point put five genuinely
+    # columnar lines 41pt apart and found no corridor at all. What they share
+    # is the vertical band every one of them spans.
+    spans = [(line.gap_start, line.gap_start + line.max_gap) for line in wide]
+    best = 1
+    for start, end in spans:
+        overlapping = sum(1 for s2, e2 in spans if s2 < end and start < e2)
+        best = max(best, overlapping)
+    return best >= MIN_COLUMN_LINES
+
+
+def _is_heading(line: _Line, *, body: float) -> bool:
+    """Decide whether a line is a heading.
+
+    Args:
+        line: The line under test.
+        body: The document's estimated body size.
+
+    Returns:
+        ``True`` when the line reads as a heading rather than as prose.
+
+    Size alone is not enough, and three attempts to fix this by improving the
+    body-size estimate all failed on the same page: fourteen lines of 6pt
+    disclaimer carry 1218 characters against 90 of body text, so *no*
+    weight-based vote picks 10pt there. Every one of those attempts left two
+    ordinary sentences promoted to level-1 headings, producing section paths
+    like "replacing the relay module in the cubicle." — a citation nobody can
+    resolve against a contents page.
+
+    A heading is bigger than body text **and short**. Manuals do not set
+    running prose as headings, and length is the property that separates the
+    two regardless of what the size estimate got wrong. Bold is accepted as an
+    alternative to being larger, since many manuals set same-size bold
+    headings, but never on its own for a long line.
+    """
+    if len(line.text) > MAX_HEADING_CHARS:
+        return False
+    # Bold is required, not merely sufficient. Size alone cannot carry this:
+    # on the disclaimer page the body estimate lands at 6pt, so two ordinary
+    # 10pt sentences sit at 1.67x it and pass any ratio test — while the real
+    # heading is the only bold line on the page. Manuals set headings in bold
+    # essentially without exception, and prose essentially never.
+    if not line.bold:
+        return False
+    return line.size >= body * HEADING_SIZE_RATIO or line.size >= body
+
+
 def _section_path(stack: Sequence[str]) -> str:
     """Render the current heading stack as a section path.
 
@@ -214,6 +313,92 @@ def _section_path(stack: Sequence[str]) -> str:
     return " > ".join(stack) if stack else FRONT_MATTER
 
 
+def _rows_of(table: Any) -> list[list[str]]:
+    """Return a table's non-empty rows as trimmed cell lists.
+
+    Args:
+        table: A pdfplumber table.
+
+    Returns:
+        One list of cells per row that carries any content.
+    """
+    rows: list[list[str]] = []
+    for row in table.extract():
+        cells = [(cell or "").replace("\n", " ").strip() for cell in row]
+        if any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
+    """Report whether one page's table continues onto the next.
+
+    Args:
+        previous: Rows of the table ending the earlier page.
+        following: Rows of the table opening the later page.
+
+    Returns:
+        ``True`` when the two are one table split by a page break.
+
+    Two signals, and both are required. The column count must match — a
+    different shape is a different table. And the later fragment must either
+    repeat the earlier one's header row, which is how manuals continue a
+    table, or carry no header-like row at all, which is how they continue one
+    without repeating it. Requiring both keeps two genuinely separate tables
+    that happen to share a width from being fused into one.
+    """
+    if not previous or not following:
+        return False
+    if len(previous[0]) != len(following[0]):
+        return False
+    return following[0] == previous[0] or not _looks_like_header(following[0], following[1:])
+
+
+def _looks_like_header(row: list[str], body: list[list[str]]) -> bool:
+    """Guess whether a row is a header rather than data.
+
+    Args:
+        row: The candidate row.
+        body: The rows beneath it.
+
+    Returns:
+        ``True`` when the row is non-numeric and the rows below it are not —
+        the shape a header has. Used only to decide whether a continuation
+        repeated its header, never to drop content.
+    """
+    if not body:
+        return False
+
+    def numeric(cells: list[str]) -> int:
+        return sum(1 for cell in cells if cell and cell.replace(".", "", 1).strip("%A V").isdigit())
+
+    return numeric(row) == 0 and any(numeric(r) for r in body)
+
+
+def _split_rows(text: str) -> list[list[str]]:
+    """Read a rendered table back into rows, for continuation checks.
+
+    Args:
+        text: A table block's text.
+
+    Returns:
+        Its rows as cell lists.
+    """
+    return [line.split("\t") for line in text.split("\n") if line]
+
+
+def _join_rows(rows: list[list[str]]) -> str:
+    """Render rows as a table block's text.
+
+    Args:
+        rows: Cell lists.
+
+    Returns:
+        One line per row, cells tab-separated.
+    """
+    return "\n".join("\t".join(cells) for cells in rows)
+
+
 def _table_rows(table: Any) -> str:
     """Render a detected table as text.
 
@@ -225,12 +410,7 @@ def _table_rows(table: Any) -> str:
         becomes an atomic block, and the point of that is that a reader gets
         the entire table or none of it.
     """
-    rendered: list[str] = []
-    for row in table.extract():
-        cells = [(cell or "").replace("\n", " ").strip() for cell in row]
-        if any(cells):
-            rendered.append("\t".join(cells))
-    return "\n".join(rendered)
+    return "\n".join("\t".join(cells) for cells in _rows_of(table))
 
 
 def _flush_tables_above(
@@ -259,13 +439,33 @@ def _flush_tables_above(
     """
     while pending and pending[0][0] <= limit:
         _, table = pending.pop(0)
-        text = _table_rows(table)
-        if not text:
+        rows = _rows_of(table)
+        if not rows:
             continue
+
+        # A table opening a page may be the previous page's table continuing.
+        # Merged rather than emitted separately: each fragment would otherwise
+        # be its own atomic block presenting itself as a whole table, which is
+        # the failure the atomic-block rule exists to prevent — and the
+        # fragments are more credible than a bad guess, because each carries a
+        # real page number and section.
+        previous = into[-1] if into else None
+        if (
+            previous is not None
+            and previous.kind is BlockKind.TABLE
+            and previous.page == page - 1
+            and _continues(_split_rows(previous.text), rows)
+        ):
+            carried = rows[1:] if rows[0] == _split_rows(previous.text)[0] else rows
+            into[-1] = previous.model_copy(
+                update={"text": previous.text + "\n" + _join_rows(carried)}
+            )
+            continue
+
         into.append(
             StructuralBlock(
                 kind=BlockKind.TABLE,
-                text=text,
+                text=_join_rows(rows),
                 page=page,
                 section=_section_path(stack),
             )
@@ -327,6 +527,28 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
         table_bands = [(float(t.bbox[1]), float(t.bbox[3])) for t in page_tables]
         pending = sorted(((float(t.bbox[1]), t) for t in page_tables), key=lambda pair: pair[0])
 
+        # Lines inside a detected table are excluded: a wide two-column table
+        # has a gap at the same x on every row, which is a corridor by any
+        # measure — but it is a table, already read as one, and refusing the
+        # page over it would reject exactly the documents this exists to
+        # capture.
+        outside_tables = [
+            line
+            for line in page_lines
+            if not any(top <= line.top <= bottom for top, bottom in table_bands)
+        ]
+        if _looks_columnar(outside_tables, page_width=page_width):
+            # Reported per page rather than per line, and only when a gap band
+            # persists. The earlier check refused on a single wide gap, which
+            # a standard manual footer (document code left, page number right)
+            # produces on every page — so one footer discarded the whole
+            # manual, and `prepare_documents` recorded it as a parse failure
+            # with no hint that the cause was a heuristic.
+            raise UnreadableDocumentError(
+                f"page {page_number} appears to be laid out in columns; "
+                "reading order cannot be determined"
+            )
+
         for line in page_lines:
             # Any table starting above this line belongs to the section that
             # was open when the line above it was read.
@@ -338,16 +560,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             if any(top <= line.top <= bottom for top, bottom in table_bands):
                 continue
 
-            if line.max_gap > page_width * COLUMN_GAP_RATIO:
-                # Two columns read as one line. Reported rather than guessed
-                # at: the merged sentence would be indexed as something the
-                # manual never said.
-                raise UnreadableDocumentError(
-                    f"page {page_number} appears to be laid out in columns; "
-                    "reading order cannot be determined"
-                )
-
-            is_heading = line.size >= body * HEADING_SIZE_RATIO or (line.bold and line.size > body)
+            is_heading = _is_heading(line, body=body)
             if is_heading:
                 level = _heading_level(line.size, body)
                 del stack[level - 1 :]

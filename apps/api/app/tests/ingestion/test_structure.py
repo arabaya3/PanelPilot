@@ -217,8 +217,20 @@ def test_a_two_column_page_is_refused_rather_than_interleaved() -> None:
     # number, which is precisely what the citation rules exist to prevent.
     data = build(
         lambda p: p.heading("5 Commissioning", 16).columns(
-            ["Set the motor data first.", "Then run the ID run."],
-            ["Verify the encoder.", "Tune the speed loop."],
+            [
+                "Set the motor data first.",
+                "Then run the ID run.",
+                "Check the direction of rotation.",
+                "Confirm the encoder feedback.",
+                "Save the parameter set.",
+            ],
+            [
+                "Verify the encoder wiring.",
+                "Tune the speed controller.",
+                "Record the commissioning date.",
+                "Hand over the documentation.",
+                "Close the cubicle door.",
+            ],
         )
     )
 
@@ -339,3 +351,123 @@ def test_a_table_is_filed_under_the_heading_above_it_not_the_one_below() -> None
     table = next(b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE)
 
     assert table.section == "3.2 Overcurrent"
+
+
+# --- the cases idealised fixtures missed --------------------------------------
+#
+# Every fixture above is a clean page: one column, no running header, no footer
+# page number, no page-spanning table, no small print. A review built realistic
+# pages instead and found three failures in that blind spot, two of them
+# violating the property this module exists to protect.
+
+
+def test_a_table_spanning_a_page_break_is_one_table() -> None:
+    # The critical one. Each page's fragment was emitted as its own atomic
+    # block, so an 80-row derating table became three blocks, each presenting
+    # itself as complete — verbatim the "half a parameter table presented as a
+    # whole one" the design forbids. Worse than counting pipes, because each
+    # fragment carries a real page number and section and is therefore
+    # maximally credible.
+    def half(page: Page, first_row: int) -> None:
+        rows = [["Ambient", "Rating"]] + [
+            [f"Row {first_row + i}", f"{40 + first_row + i} A"] for i in range(8)
+        ]
+        page.ruled_table(rows)
+
+    data = build(lambda p: half(p, 0), lambda p: half(p, 8))
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1, "a table split by a page break must not become two atomic blocks"
+    for i in range(16):
+        assert f"Row {i}" in tables[0].text, f"row {i} was lost in stitching"
+
+
+def test_two_separate_tables_on_consecutive_pages_stay_separate() -> None:
+    # The other side of stitching: fusing two genuinely different tables would
+    # be its own fabrication. Different column counts, so they cannot continue.
+    data = build(
+        lambda p: p.ruled_table([["Code", "Action"], ["F0001", "Check cable"]]),
+        lambda p: p.ruled_table([["A", "B", "C"], ["1", "2", "3"]]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2
+
+
+def test_a_standard_manual_footer_does_not_discard_the_document() -> None:
+    # A document code on the left and a page number on the right is the
+    # standard ABB/Siemens footer. The first column check refused on any single
+    # wide gap, so this discarded the entire manual — and `prepare_documents`
+    # recorded it as a parse failure with no hint the cause was a heuristic.
+    def page_with_footer(page: Page) -> None:
+        page.heading("1 Introduction", 16)
+        page.body("The relay measures phase currents continuously.")
+        page.pdf.setFont("Helvetica", 8)
+        page.pdf.drawString(60, 40, "1MRS756378 C")
+        page.pdf.drawString(520, 40, "88")
+
+    blocks = extract_structure(build(page_with_footer)).blocks
+
+    assert any(b.kind is BlockKind.HEADING and b.text == "1 Introduction" for b in blocks)
+
+
+def test_a_contents_page_with_page_numbers_is_not_refused() -> None:
+    # Right-aligned page numbers produce one wide gap per line, at a different
+    # place on each — furniture, not a column corridor.
+    def contents(page: Page) -> None:
+        page.heading("Contents", 16)
+        page.pdf.setFont("Helvetica", 10)
+        for i, (title, number) in enumerate(
+            [("1 Introduction", "7"), ("2 Protection", "23"), ("3 Fault tracing", "88")]
+        ):
+            page.pdf.drawString(60, HEIGHT - 140 - i * 16, title)
+            page.pdf.drawString(500, HEIGHT - 140 - i * 16, number)
+
+    blocks = extract_structure(build(contents)).blocks
+    assert blocks
+
+
+def test_small_print_does_not_promote_body_text_to_headings() -> None:
+    # Fourteen lines of 6pt disclaimer carry 1218 characters against 90 of
+    # body text, so no weight-based body-size estimate picks 10pt. Three
+    # attempts to fix this by improving the estimate all failed here; the
+    # answer was that size alone cannot decide, and a heading is bold.
+    #
+    # Left unfixed, two ordinary sentences became level-1 headings and every
+    # chunk below inherited a section path like "replacing the relay module in
+    # the cubicle." — a citation nobody can resolve against a contents page.
+    def page_with_boilerplate(page: Page) -> None:
+        page.heading("5 Commissioning", 14)
+        page.body("Check the trip circuit supervision output before")
+        page.body("replacing the relay module in the cubicle.")
+        page.pdf.setFont("Helvetica", 6)
+        for i in range(14):
+            page.pdf.drawString(
+                60,
+                HEIGHT - 200 - i * 9,
+                "Disclaimer: this document is provided without warranty of any kind,",
+            )
+
+    blocks = extract_structure(build(page_with_boilerplate)).blocks
+    headings = [b.text for b in blocks if b.kind is BlockKind.HEADING]
+
+    assert headings == ["5 Commissioning"]
+    assert all(b.section == "5 Commissioning" for b in blocks if b.kind is not BlockKind.HEADING)
+
+
+def test_rotated_text_does_not_become_one_block_per_character() -> None:
+    # Bucketing by vertical position alone, a 90-degree axis label becomes
+    # forty uncitable single-character chunks in reverse order. pdfplumber
+    # reports orientation, so this is a check rather than a guess.
+    def rotated(page: Page) -> None:
+        page.heading("6 Curves", 16)
+        page.body("The derating curve is shown below.")
+        page.pdf.saveState()
+        page.pdf.rotate(90)
+        page.pdf.setFont("Helvetica", 9)
+        page.pdf.drawString(200, -300, "Output current in amperes")
+        page.pdf.restoreState()
+
+    blocks = extract_structure(build(rotated)).blocks
+
+    assert all(len(b.text) > 1 for b in blocks), "rotated text shattered into character blocks"

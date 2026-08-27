@@ -104,6 +104,27 @@ def _links(html: str) -> list[tuple[str, str]]:
     return found
 
 
+def _on_host(netloc: str, suffix: str) -> bool:
+    """Report whether a host is the named domain or a subdomain of it.
+
+    A bare ``endswith`` is not a domain check, and the difference is
+    exploitable rather than pedantic: it admitted ``evil-abb.com`` against
+    ``abb.com`` and — because the suffix is short — ``parse.com`` against
+    ``se.com``. Both were then fetched under a robots.txt policy that was
+    never fetched for them, with redirects followed.
+
+    Args:
+        netloc: Host from the discovered URL, possibly with a port.
+        suffix: The source's own domain.
+
+    Returns:
+        ``True`` only for the domain itself or a dot-separated subdomain.
+    """
+    host = netloc.rsplit(":", 1)[0].lower().rstrip(".")
+    suffix = suffix.lower()
+    return host == suffix or host.endswith(f".{suffix}")
+
+
 def _documents_from_links(
     *,
     listing_url: str,
@@ -130,7 +151,7 @@ def _documents_from_links(
         path = urlparse(absolute).path.lower()
         if not path.endswith(DOCUMENT_SUFFIXES):
             continue
-        if host_suffix and not urlparse(absolute).netloc.endswith(host_suffix):
+        if host_suffix and not _on_host(urlparse(absolute).netloc, host_suffix):
             # Deliberately dropped rather than followed. Every politeness
             # check we made was against *this* host's robots.txt.
             continue
