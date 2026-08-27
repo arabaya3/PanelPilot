@@ -19,6 +19,8 @@ from app.ai.plc.generation import (
     render_rungs_as_st,
 )
 from app.models.schemas.plc import (
+    LadderBlock,
+    LadderBranch,
     LadderContact,
     LadderRung,
     PlcDialect,
@@ -74,7 +76,7 @@ def _rungs() -> list[LadderRung]:
     return [
         LadderRung(
             comment="Run while start is held and stop is clear",
-            inputs=[
+            elements=[
                 LadderContact(tag="StartButton", kind="no"),
                 LadderContact(tag="StopButton", kind="nc"),
             ],
@@ -82,7 +84,7 @@ def _rungs() -> list[LadderRung]:
         ),
         LadderRung(
             comment="Lamp follows the motor",
-            inputs=[LadderContact(tag="MotorRun", kind="no")],
+            elements=[LadderContact(tag="MotorRun", kind="no")],
             output=LadderContact(tag="RunLamp", kind="coil"),
         ),
     ]
@@ -231,7 +233,7 @@ def test_a_rung_output_that_is_not_a_coil_is_refused() -> None:
     rungs = [
         LadderRung(
             comment="malformed",
-            inputs=[LadderContact(tag="A", kind="no")],
+            elements=[LadderContact(tag="A", kind="no")],
             output=LadderContact(tag="B", kind="no"),
         )
     ]
@@ -244,7 +246,7 @@ def test_an_unknown_contact_kind_is_refused() -> None:
     rungs = [
         LadderRung(
             comment="malformed",
-            inputs=[LadderContact(tag="A", kind="sometimes")],
+            elements=[LadderContact(tag="A", kind="sometimes")],
             output=LadderContact(tag="B", kind="coil"),
         )
     ]
@@ -260,7 +262,7 @@ def test_a_rung_with_no_inputs_drives_its_coil_unconditionally() -> None:
     rungs = [
         LadderRung(
             comment="always on",
-            inputs=[],
+            elements=[],
             output=LadderContact(tag="Enable", kind="coil"),
         )
     ]
@@ -268,3 +270,120 @@ def test_a_rung_with_no_inputs_drives_its_coil_unconditionally() -> None:
     source = render_rungs_as_st(rungs, program_name="Test")
 
     assert "Enable := TRUE;" in source
+
+
+# --- branches and blocks ------------------------------------------------------
+
+
+def _seal_in() -> list[LadderRung]:
+    """Build the most common rung in the trade: a start/stop seal-in.
+
+    Returns:
+        One rung.
+    """
+    return [
+        LadderRung(
+            comment="Seal in around the start button",
+            elements=[
+                LadderBranch(
+                    paths=[
+                        [LadderContact(tag="StartButton", kind="no")],
+                        [LadderContact(tag="MotorRun", kind="no")],
+                    ]
+                ),
+                LadderContact(tag="StopButton", kind="nc"),
+            ],
+            output=LadderContact(tag="MotorRun", kind="coil"),
+        )
+    ]
+
+
+def test_a_parallel_branch_becomes_a_disjunction() -> None:
+    # Series is AND, parallel is OR. A renderer that flattened a branch into a
+    # series would turn a seal-in — the circuit that latches a motor on — into
+    # one that only runs while the button is held.
+    source = render_rungs_as_st(_seal_in(), program_name="Seal")
+
+    assert "(StartButton OR MotorRun)" in source
+
+
+def test_a_branch_is_parenthesised_against_the_series_that_follows() -> None:
+    # Without the parentheses this reads `StartButton OR (MotorRun AND NOT
+    # StopButton)`, which latches on and never stops — the exact failure the
+    # stop button exists to prevent.
+    source = render_rungs_as_st(_seal_in(), program_name="Seal")
+
+    assert "(StartButton OR MotorRun) AND NOT StopButton" in source
+
+
+def test_a_seal_in_rung_validates() -> None:
+    # End to end: the most common real rung renders to ST that the parser
+    # accepts. A branch that produced unparseable output would report the
+    # ladder as invalid when the fault was in the renderer.
+    from app.ai.plc.validation import validate_plc_code
+
+    result = validate_plc_code(render_rungs_as_st(_seal_in(), program_name="Seal"))
+
+    assert result.status is ValidationStatus.VALID
+
+
+def test_a_function_block_is_read_as_its_output_tag() -> None:
+    # A timer is state over time and no expression captures it. What the rung
+    # downstream actually does is read the block's output, which is what this
+    # renders — and the docstring says plainly that the block's own correctness
+    # is not checked, rather than implying it is.
+    rungs = [
+        LadderRung(
+            comment="Confirm at speed after a delay",
+            elements=[
+                LadderContact(tag="MotorRun", kind="no"),
+                LadderBlock(kind="TON", tag="StartDelay", parameters={"PT": "T#5s"}),
+            ],
+            output=LadderContact(tag="AtSpeed", kind="coil"),
+        )
+    ]
+
+    source = render_rungs_as_st(rungs, program_name="Delay")
+
+    assert "AtSpeed := MotorRun AND StartDelay;" in source
+    assert "StartDelay : BOOL;" in source
+
+
+def test_tags_inside_a_branch_are_declared() -> None:
+    # The walk has to descend into branches. Missing them would leave the tags
+    # undeclared and the ST would fail validation for a defect in this
+    # renderer rather than in the ladder.
+    source = render_rungs_as_st(_seal_in(), program_name="Seal")
+
+    for tag in ("StartButton", "MotorRun", "StopButton"):
+        assert f"{tag} : BOOL;" in source
+
+
+def test_a_nested_branch_still_renders() -> None:
+    # Branches within branches are legal and do occur — two alternative
+    # permissives, one of which is itself a pair of alternatives.
+    rungs = [
+        LadderRung(
+            comment="nested",
+            elements=[
+                LadderBranch(
+                    paths=[
+                        [
+                            LadderBranch(
+                                paths=[
+                                    [LadderContact(tag="A", kind="no")],
+                                    [LadderContact(tag="B", kind="no")],
+                                ]
+                            )
+                        ],
+                        [LadderContact(tag="C", kind="no")],
+                    ]
+                )
+            ],
+            output=LadderContact(tag="Out", kind="coil"),
+        )
+    ]
+
+    source = render_rungs_as_st(rungs, program_name="Nested")
+
+    assert "((A OR B) OR C)" in source

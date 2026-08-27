@@ -879,6 +879,48 @@ export interface components {
       label: string | null;
     };
     /**
+     * LadderBlock
+     * @description A function block on a rung — a timer, a counter, a comparison.
+     *
+     *     Attributes:
+     *         kind: The block type as the vendor names it (``TON``, ``CTU``, ...).
+     *         tag: The block's instance name.
+     *         parameters: Its settings, as label/value pairs. Rendered as text
+     *             inside the block rather than interpreted, because a timer preset
+     *             means nothing to a renderer and everything to the engineer
+     *             reading it.
+     */
+    LadderBlock: {
+      /** Kind */
+      kind: string;
+      /** Tag */
+      tag: string;
+      /** Parameters */
+      parameters?: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * LadderBranch
+     * @description Parallel paths across one part of a rung.
+     *
+     *     Attributes:
+     *         paths: Each path's elements in series. Any of them conducting makes
+     *             the branch conduct — this is an OR.
+     *
+     *     The construct that makes ladder ladder. A start/stop seal-in circuit is a
+     *     branch, and a renderer that only draws series contacts cannot draw the
+     *     single most common rung in the trade.
+     */
+    LadderBranch: {
+      /** Paths */
+      paths: (
+        | components['schemas']['LadderContact']
+        | components['schemas']['LadderBlock']
+        | components['schemas']['LadderBranch']
+      )[][];
+    };
+    /**
      * LadderContact
      * @description One contact or coil on a rung.
      *
@@ -898,14 +940,19 @@ export interface components {
      *
      *     Attributes:
      *         comment: What the rung is for.
-     *         inputs: Contacts in series, left to right.
+     *         elements: What sits on the rung, left to right. Contacts, function
+     *             blocks, and parallel branches.
      *         output: The coil the rung drives.
      */
     LadderRung: {
       /** Comment */
       comment: string;
-      /** Inputs */
-      inputs: components['schemas']['LadderContact'][];
+      /** Elements */
+      elements?: (
+        | components['schemas']['LadderContact']
+        | components['schemas']['LadderBlock']
+        | components['schemas']['LadderBranch']
+      )[];
       output: components['schemas']['LadderContact'];
     };
     /**
