@@ -129,5 +129,22 @@
       "subhead": "אפשר לשאול עכשיו. בלי בקשת גישה ובלי המתנה.",
       "unavailable": "ההתנסות החינמית אינה זמינה כרגע. יש להתחבר כדי להמשיך."
     }
+  },
+  "verification": {
+    "heading": "תור האימות",
+    "empty": "אין מה לבדוק.",
+    "itemCount": "{count} נותרו",
+    "proposed": "התוכן המוצע",
+    "source": "מסמך המקור",
+    "sourceMissing": "אין מקור זמין לפריט הזה.",
+    "correct": "נכון",
+    "incorrect": "שגוי",
+    "uncertain": "לא בטוח",
+    "notePlaceholder": "ציין מה שגוי והיכן.",
+    "noteRequired": "נדרשת הערה",
+    "submit": "שליחה",
+    "submitting": "שולח…",
+    "claimedBy": "כבר נתפס על ידי {name}",
+    "submitFailed": "השליחה נכשלה. נסה שוב."
   }
 }
