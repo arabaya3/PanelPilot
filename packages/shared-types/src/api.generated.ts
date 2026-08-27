@@ -283,6 +283,78 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/verification/queue/me': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Queue
+     * @description Return the caller's outstanding batch.
+     */
+    get: operations['my_queue_api_v1_verification_queue_me_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/items/{item_id}/label': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Label Item
+     * @description Record the caller's label for one item.
+     *
+     *     Raises:
+     *         HTTPException: 404 if the item does not exist, 403 if it belongs to
+     *             another verifier, 422 if an escalating label carries no note.
+     */
+    post: operations['label_item_api_v1_verification_items__item_id__label_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/escalations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Escalations
+     * @description Return every item awaiting lead review.
+     *
+     *     Raises:
+     *         HTTPException: 403 unless the caller holds the reviewer role.
+     *
+     *     Gated because an escalation names content a verifier believed wrong, and
+     *     the queue spans every verifier's work. AI-012's rule is that these are
+     *     resolved by a lead rather than by whoever raised them, which only holds if
+     *     the view is restricted to leads.
+     */
+    get: operations['list_escalations_api_v1_verification_escalations_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/images': {
     parameters: {
       query?: never;
@@ -630,6 +702,14 @@ export interface components {
        */
       fault_codes: string[];
     };
+    /**
+     * EscalationPage
+     * @description Items awaiting lead-engineer review.
+     */
+    EscalationPage: {
+      /** Items */
+      items: components['schemas']['QueueItem'][];
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -666,6 +746,33 @@ export interface components {
      * @enum {string}
      */
     InstallationMethod: 'A1' | 'A2' | 'B1' | 'B2' | 'C' | 'D1' | 'D2' | 'E' | 'F' | 'G';
+    /**
+     * LabelRequest
+     * @description A verifier's judgement on one item.
+     */
+    LabelRequest: {
+      label: components['schemas']['VerificationLabel'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
+     * LabelResponse
+     * @description The outcome of recording a label.
+     */
+    LabelResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Status */
+      status: string;
+      /** Label */
+      label: string | null;
+    };
     /**
      * LoadScheduleItem
      * @description One load on a panel's schedule.
@@ -757,6 +864,31 @@ export interface components {
       revision: number;
       /** Audit Id */
       audit_id: string;
+    };
+    /**
+     * QueueItem
+     * @description One chunk in a verifier's queue.
+     */
+    QueueItem: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Chunk Id */
+      chunk_id: string | null;
+      /** Status */
+      status: string;
+      /** Assigned At */
+      assigned_at: string | null;
+    };
+    /**
+     * QueuePage
+     * @description A verifier's outstanding batch.
+     */
+    QueuePage: {
+      /** Items */
+      items: components['schemas']['QueueItem'][];
     };
     /**
      * QuotaStatus
@@ -933,6 +1065,17 @@ export interface components {
       claimed_by?: string | null;
       verdict?: components['schemas']['VerificationVerdict'] | null;
     };
+    /**
+     * VerificationLabel
+     * @description A verifier's judgement on one chunk.
+     *
+     *     Deliberately three values, not a numeric confidence. A scale invites
+     *     averaging, and there is no meaningful average of "the source says 63 A"
+     *     and "the source does not mention this" — the second is a citation failure
+     *     whatever the first says.
+     * @enum {string}
+     */
+    VerificationLabel: 'correct' | 'incorrect' | 'uncertain';
     /**
      * VerificationQueuePage
      * @description A page of the verification queue.
@@ -1518,6 +1661,81 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  my_queue_api_v1_verification_queue_me_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QueuePage'];
+        };
+      };
+    };
+  };
+  label_item_api_v1_verification_items__item_id__label_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LabelRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LabelResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_escalations_api_v1_verification_escalations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EscalationPage'];
         };
       };
     };
