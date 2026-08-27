@@ -40,7 +40,26 @@ export interface TrialSession {
 }
 
 export type TrialStart =
-  { kind: 'started'; trial: TrialSession } | { kind: 'unavailable' } | { kind: 'failed' };
+  | {
+      kind: 'started';
+      trial: TrialSession;
+      /**
+       * The access token the trial may ask questions with.
+       *
+       * Carried in the start response rather than fetched separately: every
+       * diagnostics route authenticates, so a trial without one is a landing
+       * page that collects a question and does nothing with it.
+       *
+       * Deliberately NOT persisted alongside the trial. The claim pair has to
+       * survive a reload; a bearer token does not, and leaving one in storage
+       * on a shared workshop terminal is a disclosure nobody asked for.
+       */
+      accessToken: string;
+      /** Free questions left on this trial, as the server counts them. */
+      questionsRemaining: number;
+    }
+  | { kind: 'unavailable' }
+  | { kind: 'failed' };
 
 /**
  * Read the trial this browser started, if any.
@@ -132,16 +151,30 @@ export async function startTrial(options: StartOptions = {}): Promise<TrialStart
     return { kind: 'failed' };
   }
 
-  const trial = readStartPayload(payload);
-  return trial ? { kind: 'started', trial } : { kind: 'failed' };
+  const started = readStartPayload(payload);
+  return started ?? { kind: 'failed' };
 }
 
-function readStartPayload(payload: unknown): TrialSession | null {
+function readStartPayload(payload: unknown): Extract<TrialStart, { kind: 'started' }> | null {
   if (typeof payload !== 'object' || payload === null) return null;
-  const { session_id: sessionId, claim_secret: claimSecret } = payload as Record<string, unknown>;
+  const {
+    session_id: sessionId,
+    claim_secret: claimSecret,
+    access_token: accessToken,
+    questions_remaining: questionsRemaining,
+  } = payload as Record<string, unknown>;
   if (typeof sessionId !== 'string' || sessionId === '') return null;
   if (typeof claimSecret !== 'string' || claimSecret === '') return null;
-  return { sessionId, claimSecret };
+  // Narrowed rather than defaulted: a start without a usable token is a
+  // failure, and treating it as success would render an input that 401s on
+  // the first question.
+  if (typeof accessToken !== 'string' || accessToken === '') return null;
+  return {
+    kind: 'started',
+    trial: { sessionId, claimSecret },
+    accessToken,
+    questionsRemaining: typeof questionsRemaining === 'number' ? questionsRemaining : 0,
+  };
 }
 
 export interface SignupOptions {

@@ -66,11 +66,12 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked],
   },
 
-  // Build scripts run under Node, not in a browser. Without this the default
-  // browser globals apply and `process`, `console` and `URL` all read as
-  // undefined — which would be a real error in `src/` and is noise here.
+  // Build scripts and the Next config run under Node, not in a browser.
+  // Without this the default browser globals apply and `process`, `console`
+  // and `URL` all read as undefined — which would be a real error in `src/`
+  // and is noise here.
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'next.config.mjs'],
     languageOptions: { globals: { ...globals.node } },
   },
 

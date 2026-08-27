@@ -177,6 +177,12 @@ services:
       # Read by the browser, not by this container, so it must be an address
       # the host can resolve.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # Where the Next server forwards /api/* to. A container hostname, not
+      # localhost: the rewrite runs server-side, so it resolves on the compose
+      # network rather than in the browser. The browser only ever talks to
+      # this origin, which is what keeps the requests same-origin and out of
+      # CORS entirely.
+      API_PROXY_TARGET: http://api:8000
     volumes:
       - ./apps/web:/repo/apps/web
       - ./packages:/repo/packages

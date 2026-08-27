@@ -146,5 +146,11 @@
     "submitting": "Submitting…",
     "claimedBy": "Already claimed by {name}",
     "submitFailed": "Could not submit. Try again."
+  },
+  "landing": {
+    "starting": "Starting your trial…",
+    "unavailable": "Trials are unavailable right now. Please try again shortly.",
+    "failed": "Could not start a trial.",
+    "retry": "Try again"
   }
 }
