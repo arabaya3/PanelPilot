@@ -302,6 +302,26 @@ def test_a_failing_source_is_reported_as_failing_not_stale(session: Session) -> 
     assert alerts[0].reason == "failing"
 
 
+def test_a_flapping_source_is_caught_by_staleness(session: Session) -> None:
+    # The case neither rule catches alone, and the reason both exist. A source
+    # alternating failure and success never accumulates two consecutive
+    # failures, so the threshold never fires; but if none of those successes
+    # is recent the staleness rule still catches it. Without the second rule
+    # this source would degrade indefinitely in silence.
+    moment = NOW
+    for _ in range(6):
+        record_health(session=session, source_id="abb", success=False, error="503", now=moment)
+        moment += timedelta(hours=6)
+
+    # A lone success partway through, resetting the failure count.
+    record_health(session=session, source_id="abb", success=True, now=NOW + timedelta(hours=6))
+
+    later = NOW + STALE_AFTER + timedelta(days=1)
+    alerts = check_sources(session=session, now=later)
+
+    assert [a.reason for a in alerts] == ["stale"]
+
+
 # --- reporting ---------------------------------------------------------------
 
 
