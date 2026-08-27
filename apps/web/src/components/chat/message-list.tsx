@@ -124,7 +124,12 @@ function UserTurn({ text }: { text: string }) {
       <p
         // `ms-auto` and the logical padding flip with the document, so the
         // engineer's own turns sit on the trailing edge in every locale.
-        className="ms-auto max-w-[80%] rounded-lg bg-accent px-3 py-2 text-accent-contrast"
+        //
+        // `break-words` because an engineer pastes order codes and URLs, and
+        // one unbroken string is one word to CSS — the 80% cap bounds the
+        // bubble, not the text inside it, so without this the content runs
+        // past the viewport on a phone.
+        className="ms-auto max-w-[80%] break-words rounded-lg bg-accent px-3 py-2 text-accent-contrast"
         data-testid="user-turn"
       >
         <span className="sr-only">{t('youAsked')}</span>

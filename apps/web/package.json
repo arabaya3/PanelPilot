@@ -6,11 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . && npm run check:tokens && npm run check:logical",
+    "lint": "eslint . && npm run check:tokens && npm run check:logical && npm run check:responsive",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:tokens": "node scripts/check-tokens.mjs",
-    "check:logical": "node scripts/check-logical-properties.mjs"
+    "check:logical": "node scripts/check-logical-properties.mjs",
+    "check:responsive": "node scripts/check-responsive.mjs"
   },
   "dependencies": {
     "@panelpilot/shared-types": "*",
