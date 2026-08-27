@@ -210,13 +210,13 @@ jobs:
             exit 1
           fi
       - name: Concurrency tests (real Postgres)
-        run: alembic upgrade head && pytest app/tests/domain/test_verification_queue.py -q
+        run: alembic upgrade head && pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py -q
       - name: Fail if the concurrency tests silently skipped
         # Same reasoning as above, and it matters more here: these tests are
         # the only evidence that two verifiers cannot be handed the same item.
         run: |
           set -euo pipefail
-          pytest app/tests/domain/test_verification_queue.py -q -rs 2>&1 | tee /tmp/pg.txt
+          pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py -q -rs 2>&1 | tee /tmp/pg.txt
           if grep -q "needs Postgres" /tmp/pg.txt; then
             echo "::error::concurrency tests skipped -- Postgres was not reachable"
             exit 1
