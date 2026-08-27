@@ -45,6 +45,18 @@ from app.domain.verification_queue import (
     record_label,
 )
 from app.models.schemas.verification import VerificationLabel
+
+# Imported for their side effect on `Base.metadata`, not for direct use.
+# `create_all` resolves every foreign key across the whole collection, so a
+# table referencing `users` fails unless that model has been imported —
+# whatever this module itself touches. Without these the file passes only when
+# some earlier test happens to have imported them first, which is a test that
+# depends on collection order.
+from app.models.tables import diagnostics as _diagnostics  # noqa: F401
+from app.models.tables import escalation as _escalation  # noqa: F401
+from app.models.tables import session as _session_tables  # noqa: F401
+from app.models.tables import tenant as _tenant  # noqa: F401
+from app.models.tables import user as _user  # noqa: F401
 from app.models.tables.base import Base
 from app.models.tables.ingestion import VerificationItemRow
 from app.models.tables.tenant import TenantRow
