@@ -16,13 +16,14 @@ calculations performed by deterministic code rather than by the model.
 
 ## Known gaps
 
-These are the four things standing between the current tree and a product an
-engineer can use unattended. All four are backend; the client half of each is
-built, tested, and waiting on the route.
+Recorded here rather than only in the task logs because they outlive them —
+anyone picking this up needs these before they need the history.
 
-Recorded here rather than only in `docs/tasks/ayed-lane-log.md` because they
-outlive the task log — anyone picking this up needs them before they need the
-history.
+### Backend routes the client is already waiting on
+
+Four things standing between the current tree and a product an engineer can
+use unattended. All four are backend; the client half of each is built,
+tested, and waiting on the route.
 
 **1. AI-008's recogniser is wired to no route.**
 `app/ai/recognition.py` is complete: a verdict, per-field confidence, and an
@@ -54,6 +55,44 @@ the new user to the trial's existing tenant rather than copying rows, so
 nothing can half-succeed. But nothing issues an anonymous session, and every
 `/diagnostics` route requires `CurrentUserDep`, so "the first N questions
 work with zero auth" cannot happen over the wire yet.
+
+### Blocked on source documents that are not in this repository
+
+**AI-005, AI-006, AI-007 — the three calculation tools.** Cable sizing, VFD
+selection, and panel load sizing each name a specific manufacturer
+engineering guide as the source for their tables and coefficients. None is
+present here. They were not attempted, and deliberately so: the numbers these
+produce end up on drawings, with cable and fire safety downstream of them, and
+a table written from general knowledge would be confident and uncitable — the
+exact failure the cite-or-refuse rule exists to prevent. Supplying the named
+guides unblocks all three.
+
+**BE-011 and FE-010 — the panel BOM.** Both consume the calc tools above, so
+both are blocked behind them. The responsive check
+(`apps/web/scripts/check-responsive.mjs`) already refuses a table with neither
+a scrollable container nor a stacked fallback, so the BOM table cannot merge
+later without the mobile fallback FE-013 requires.
+
+### Deliberate incompletenesses in merged work
+
+**PLC generation is not wired to a model.** `POST /api/v1/plc/generate`
+refuses with an explicit message; `POST /api/v1/plc/review` is fully working
+and validates code an engineer supplies. Refusing rather than stubbing was the
+point: a plausible stub would make the endpoint look finished and hand a
+caller a program no model wrote, wearing whatever verdict the validator gave
+it.
+
+**The PDF structure extractor cannot stitch a headerless table continuation.**
+A table continued across a page break with neither a repeated header nor a
+"(continued)" banner stays two blocks rather than one. Geometry was measured
+as a candidate signal and rejected — it does not separate the two cases. The
+consequence is a table fragment presented as a complete table, which is why it
+is recorded rather than left to be discovered.
+
+**BE-015 is partially satisfied.** Required checks, `enforce_admins`, and
+no-force-push are live and correct on `main`. The required-approval count and
+a staging branch are the two remaining gaps, left for a deliberate decision
+rather than settled unilaterally.
 
 ---
 
