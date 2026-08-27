@@ -471,3 +471,137 @@ def test_rotated_text_does_not_become_one_block_per_character() -> None:
     blocks = extract_structure(build(rotated)).blocks
 
     assert all(len(b.text) > 1 for b in blocks), "rotated text shattered into character blocks"
+
+
+# --- what the first round of fixes broke --------------------------------------
+#
+# A second review found that two of those three fixes traded one fabrication
+# for another. These pin the corrected behaviour in both directions: the
+# original bug must stay fixed, and the fix must not have created a new one.
+
+
+def test_an_unrelated_all_text_table_is_not_fused_onto_the_previous_page() -> None:
+    # Continuation used to accept the *absence* of a header row as evidence,
+    # and an all-text table — parameter names and descriptions, which manuals
+    # are full of — reports exactly that. So an unrelated parameters table
+    # opening page 2 was fused onto page 1's fault codes: twelve rows in one
+    # block, presenting parameter rows as fault codes on a page they never
+    # appeared on. A continuation must now repeat the header.
+    data = build(
+        lambda p: p.heading("1 Fault codes", 14).ruled_table(
+            [["Code", "Meaning"], ["F0001", "10 A"], ["F0002", "11 A"]]
+        ),
+        lambda p: p.ruled_table([["Stop mode", "Coast to stop"], ["Start mode", "Ramp up"]]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2, "two unrelated tables were fused into one"
+    assert "Stop mode" not in tables[0].text
+
+
+def test_a_table_spanning_three_pages_is_still_one_table() -> None:
+    # Adjacency was tested against the merged block's page, which stays at the
+    # first. Pages 1 and 2 merged, then page 3 compared 1 == 2 and started a
+    # new block — the original bug relocated from every page boundary to every
+    # boundary after the first.
+    def part(page: Page, first: int) -> None:
+        page.ruled_table(
+            [["Ambient", "Rating"]]
+            + [[f"Row {first + i}", f"{40 + first + i} A"] for i in range(5)]
+        )
+
+    data = build(
+        lambda p: part(p, 0),
+        lambda p: part(p, 5),
+        lambda p: part(p, 10),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+    for i in range(15):
+        assert f"Row {i}" in tables[0].text, f"row {i} lost across a three-page span"
+
+
+def test_a_manual_with_size_only_headings_still_gets_headings() -> None:
+    # Requiring bold unconditionally was worse than the bug it replaced: an
+    # 18pt-regular-over-10pt-body manual produced zero headings, every block
+    # under "Front matter", silently, for every page. Larger than body text is
+    # a heading whether or not it is bold.
+    def size_only(page: Page) -> None:
+        page.pdf.setFont("Helvetica", 18)
+        page.pdf.drawString(60, HEIGHT - 70, "3 Fault tracing")
+        page.pdf.setFont("Helvetica", 10)
+        page.pdf.drawString(60, HEIGHT - 110, "The drive trips when the current limit is exceeded.")
+
+    blocks = extract_structure(build(size_only)).blocks
+
+    assert any(b.kind is BlockKind.HEADING and b.text == "3 Fault tracing" for b in blocks)
+    assert all(b.section == "3 Fault tracing" for b in blocks if b.kind is BlockKind.PARAGRAPH)
+
+
+def test_a_bold_safety_callout_does_not_become_a_section() -> None:
+    # `WARNING: Do not touch the terminals.` is bold, short and body-sized.
+    # It became a level-4 heading and captured the section path for everything
+    # after it — the same unresolvable-path symptom, reached another way.
+    # Safety callouts and bold lead-ins are ubiquitous; same-size bold is
+    # emphasis, not structure.
+    def callout(page: Page) -> None:
+        page.heading("1 Operation", 14)
+        page.body("Close the main disconnect before starting the drive.")
+        page.pdf.setFont("Helvetica-Bold", 10)
+        page.pdf.drawString(60, HEIGHT - 140, "WARNING: Do not touch the terminals.")
+        page.pdf.setFont("Helvetica", 10)
+        page.pdf.drawString(60, HEIGHT - 165, "Wait five minutes for the bus to discharge.")
+
+    blocks = extract_structure(build(callout)).blocks
+    headings = [b.text for b in blocks if b.kind is BlockKind.HEADING]
+
+    assert headings == ["1 Operation"]
+    assert all(b.section == "1 Operation" for b in blocks)
+
+
+def test_a_short_two_column_block_is_refused_not_interleaved() -> None:
+    # Three lines per column sat below the line-count floor and was
+    # interleaved into "outgoing cables.phases." — text the manual never
+    # contained, emitted as an ordinary paragraph with a real page number. A
+    # page whose wide-gap lines are most of its content is columnar however
+    # few they are.
+    data = build(
+        lambda p: p.heading("7 Isolation", 14).columns(
+            [
+                "The circuit breaker must be racked out",
+                "before any work begins on the",
+                "outgoing cables.",
+            ],
+            ["Verify absence of voltage using an", "approved tester on all three", "phases."],
+        )
+    )
+
+    with pytest.raises(UnreadableDocumentError, match="columns"):
+        extract_structure(data)
+
+
+def test_a_table_does_not_stitch_across_an_intervening_page() -> None:
+    # `<=` instead of `==` in the adjacency test passed every existing test,
+    # because a genuine three-page span is consecutive either way. What
+    # separates them is a gap: two tables with the same header on pages 1 and
+    # 3, with unrelated prose on page 2. Those are two tables in a manual, and
+    # merging them would attribute page 3's rows to page 1.
+    def rated(page: Page, first: int) -> None:
+        page.ruled_table(
+            [["Ambient", "Rating"]]
+            + [[f"Row {first + i}", f"{40 + first + i} A"] for i in range(4)]
+        )
+
+    # The intervening page carries a scanned figure and no text layer, so it
+    # contributes no block at all. That is what isolates the adjacency test:
+    # with prose in between, `previous.kind is TABLE` already rejects the
+    # merge and adjacency is never consulted.
+    def scanned(page: Page) -> None:
+        page.pdf.rect(60, HEIGHT - 300, 400, 200, stroke=1, fill=0)
+
+    data = build(lambda p: rated(p, 0), scanned, lambda p: rated(p, 10))
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2, "tables on non-adjacent pages were stitched together"
+    assert "Row 10" not in tables[0].text

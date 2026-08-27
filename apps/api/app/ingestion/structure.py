@@ -77,13 +77,28 @@ MIN_CHARS_PER_PAGE = 2
 #: is what stops a page of small-print boilerplate — which can legitimately
 #: outweigh the body text and capture the size estimate — from promoting whole
 #: sentences into section paths.
-MAX_HEADING_CHARS = 80
+#:
+#: Measured rather than guessed: real section headings in the fixtures run 14
+#: to 22 characters ("1 Introduction", "3.2 Overcurrent faults"), while the
+#: prose that was wrongly promoted ran 42 to 48. 32 sits in that gap with room
+#: on both sides. A longer heading is possible but rare, and losing one costs
+#: a section path; promoting a sentence costs every citation beneath it.
+MAX_HEADING_CHARS = 32
 
 #: A column boundary is a vertical whitespace corridor that persists down the
 #: page, not one wide gap on one line. A footer with a document code on the
 #: left and a page number on the right has exactly one such gap, and refusing
 #: the document over it discards an entire manual.
 MIN_COLUMN_LINES = 4
+
+#: A page whose wide-gap lines are at least this share of its lines is
+#: columnar however few there are. Without it, a three-line two-column block
+#: fell below the count floor and was silently interleaved.
+COLUMN_LINE_SHARE = 0.5
+
+#: A gap wider than this is a gutter to a right-aligned element — a contents
+#: page number, a footer — rather than a boundary between two columns of text.
+MAX_COLUMN_GAP_RATIO = 0.45
 
 
 class UnreadableDocumentError(Exception):
@@ -246,9 +261,28 @@ def _looks_columnar(lines: Sequence[_Line], *, page_width: float) -> bool:
     on any of those discards a readable manual entirely, which is a worse
     outcome than the interleaving the check exists to prevent.
     """
+    # Bounded above as well as below. A contents page right-aligns its page
+    # numbers, leaving a gap spanning ~64% of the page — a gutter to a lone
+    # number, not a column of text. Real column gaps measured 17-33%. Without
+    # the ceiling, adding a proportion floor for short pages made a three-line
+    # contents page refuse.
     threshold = page_width * COLUMN_GAP_RATIO
-    wide = [line for line in lines if line.max_gap > threshold]
-    if len(wide) < MIN_COLUMN_LINES:
+    ceiling = page_width * MAX_COLUMN_GAP_RATIO
+    wide = [line for line in lines if threshold < line.max_gap <= ceiling]
+    if not wide:
+        return False
+
+    # Two floors, either of which is enough. The line count catches a full
+    # two-column page; the proportion catches a short one — three lines per
+    # column sat below the count and was interleaved into
+    # "outgoing cables.phases.", text the manual never contained, emitted as
+    # an ordinary paragraph with a real page number.
+    #
+    # A page whose wide-gap lines are most of its content is columnar however
+    # few they are; a footer or a contents line is a small fraction of a page.
+    enough_lines = len(wide) >= MIN_COLUMN_LINES
+    dominates = len(wide) >= 2 and len(wide) >= len(lines) * COLUMN_LINE_SHARE
+    if not (enough_lines or dominates):
         return False
 
     # A corridor is where the gaps OVERLAP, not where they start. Column text
@@ -261,7 +295,13 @@ def _looks_columnar(lines: Sequence[_Line], *, page_width: float) -> bool:
     for start, end in spans:
         overlapping = sum(1 for s2, e2 in spans if s2 < end and start < e2)
         best = max(best, overlapping)
-    return best >= MIN_COLUMN_LINES
+    # The corridor must be shared by as many lines as admitted the page. A
+    # page carried in on the proportion floor has fewer than MIN_COLUMN_LINES
+    # wide lines by definition, so demanding that many overlaps here would
+    # discard it again — which is what left a three-line two-column block
+    # interleaved after the floor was added.
+    required = MIN_COLUMN_LINES if enough_lines else 2
+    return best >= required
 
 
 def _is_heading(line: _Line, *, body: float) -> bool:
@@ -290,14 +330,25 @@ def _is_heading(line: _Line, *, body: float) -> bool:
     """
     if len(line.text) > MAX_HEADING_CHARS:
         return False
-    # Bold is required, not merely sufficient. Size alone cannot carry this:
-    # on the disclaimer page the body estimate lands at 6pt, so two ordinary
-    # 10pt sentences sit at 1.67x it and pass any ratio test — while the real
-    # heading is the only bold line on the page. Manuals set headings in bold
-    # essentially without exception, and prose essentially never.
-    if not line.bold:
-        return False
-    return line.size >= body * HEADING_SIZE_RATIO or line.size >= body
+
+    # Larger than body text is a heading on its own, bold or not. Requiring
+    # bold unconditionally was worse than the bug it replaced: a manual with
+    # 18pt regular headings over 10pt body — unambiguous by size — produced
+    # *zero* headings, every block landing under "Front matter", silently and
+    # for every page of the document. The original bug produced some wrong
+    # section paths on one pathological page; this produced none at all across
+    # a whole document class.
+    # At body size, nothing qualifies. `WARNING: Do not touch the terminals.`
+    # is bold, short and 10pt in a 10pt document, and treating same-size bold
+    # as structure made it a level-4 heading that captured the section path
+    # for everything after it. Safety callouts and bold lead-ins are
+    # ubiquitous in manuals; same-size bold is emphasis, not structure.
+    #
+    # Being larger than body text is therefore the whole test, bold or not.
+    # Requiring bold was worse than the bug it replaced: an 18pt-regular over
+    # 10pt-body manual produced *zero* headings, every block under "Front
+    # matter", silently and for every page.
+    return line.size >= body * HEADING_SIZE_RATIO
 
 
 def _section_path(stack: Sequence[str]) -> str:
@@ -340,18 +391,25 @@ def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
     Returns:
         ``True`` when the two are one table split by a page break.
 
-    Two signals, and both are required. The column count must match — a
-    different shape is a different table. And the later fragment must either
-    repeat the earlier one's header row, which is how manuals continue a
-    table, or carry no header-like row at all, which is how they continue one
-    without repeating it. Requiring both keeps two genuinely separate tables
-    that happen to share a width from being fused into one.
+    A **positive** signal is required, not the absence of a negative one. The
+    first version accepted "carries no header-like row" as evidence of
+    continuation, and `_looks_like_header` reports exactly that for an
+    all-text table — parameter names and descriptions, which manuals are full
+    of. So an unrelated two-column parameter table opening page 2 was fused
+    onto page 1's fault-code table: twelve rows in one block, page 1, section
+    "1 Fault codes", with three parameter rows presented as fault codes on a
+    page they never appeared on.
+
+    A continuation must therefore repeat the header, which is what manuals
+    actually do, or be visually contiguous — a table starting at the very top
+    of the page, where a break would land. Absence of evidence is not
+    evidence.
     """
     if not previous or not following:
         return False
     if len(previous[0]) != len(following[0]):
         return False
-    return following[0] == previous[0] or not _looks_like_header(following[0], following[1:])
+    return following[0] == previous[0]
 
 
 def _looks_like_header(row: list[str], body: list[list[str]]) -> bool:
@@ -420,6 +478,7 @@ def _flush_tables_above(
     page: int,
     stack: Sequence[str],
     into: list[StructuralBlock],
+    last_page: dict[int, int],
 ) -> None:
     """Emit any pending table that starts above a point on the page.
 
@@ -436,6 +495,12 @@ def _flush_tables_above(
         page: 1-indexed page number.
         stack: The heading stack as it stands at this point in the page.
         into: Block list to append to.
+        last_page: Maps a block's index to the last page its content came
+            from. A merged table keeps its *first* page as its citation — that
+            is where a reader turns — so adjacency cannot be tested against
+            it. Comparing against `previous.page` meant a three-page table
+            merged pages 1 and 2 and then compared `1 == 2` for page 3,
+            leaving an 11-row fragment presenting itself as a whole table.
     """
     while pending and pending[0][0] <= limit:
         _, table = pending.pop(0)
@@ -453,13 +518,14 @@ def _flush_tables_above(
         if (
             previous is not None
             and previous.kind is BlockKind.TABLE
-            and previous.page == page - 1
+            and last_page.get(len(into) - 1, previous.page) == page - 1
             and _continues(_split_rows(previous.text), rows)
         ):
             carried = rows[1:] if rows[0] == _split_rows(previous.text)[0] else rows
             into[-1] = previous.model_copy(
                 update={"text": previous.text + "\n" + _join_rows(carried)}
             )
+            last_page[len(into) - 1] = page
             continue
 
         into.append(
@@ -470,6 +536,7 @@ def _flush_tables_above(
                 section=_section_path(stack),
             )
         )
+        last_page[len(into) - 1] = page
 
 
 def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
@@ -512,6 +579,8 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     body = _body_size(all_lines)
     blocks: list[StructuralBlock] = []
     stack: list[str] = []
+    # Index of a block in `blocks` -> the last page its content came from.
+    last_page: dict[int, int] = {}
 
     for page_number in sorted({line.page for line in all_lines}):
         page_lines = [line for line in all_lines if line.page == page_number]
@@ -552,7 +621,14 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
         for line in page_lines:
             # Any table starting above this line belongs to the section that
             # was open when the line above it was read.
-            _flush_tables_above(pending, limit=line.top, page=page_number, stack=stack, into=blocks)
+            _flush_tables_above(
+                pending,
+                limit=line.top,
+                page=page_number,
+                stack=stack,
+                into=blocks,
+                last_page=last_page,
+            )
 
             # Lines inside a detected table were already emitted as part of it;
             # repeating them as paragraphs would duplicate the content and give
@@ -586,7 +662,14 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             )
 
         # A table below every line on the page, which the loop never reached.
-        _flush_tables_above(pending, limit=float("inf"), page=page_number, stack=stack, into=blocks)
+        _flush_tables_above(
+            pending,
+            limit=float("inf"),
+            page=page_number,
+            stack=stack,
+            into=blocks,
+            last_page=last_page,
+        )
 
     logger.info(
         "structure.extracted",
