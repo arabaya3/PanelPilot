@@ -16,7 +16,11 @@ not tell", and those need different people looking at them.
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class VerificationLabel(StrEnum):
@@ -69,3 +73,41 @@ def escalates(label: VerificationLabel) -> bool:
     the verifier who applied it.
     """
     return label in ESCALATING_LABELS
+
+
+class QueueItem(BaseModel):
+    """One chunk in a verifier's queue."""
+
+    id: UUID
+    chunk_id: str | None
+    status: str
+    assigned_at: datetime | None
+
+
+class QueuePage(BaseModel):
+    """A verifier's outstanding batch."""
+
+    items: list[QueueItem]
+
+
+class LabelRequest(BaseModel):
+    """A verifier's judgement on one item."""
+
+    label: VerificationLabel
+    # Required in practice for anything that escalates; the domain refuses an
+    # empty note rather than the schema, so the message names the rule.
+    note: str = ""
+
+
+class LabelResponse(BaseModel):
+    """The outcome of recording a label."""
+
+    id: UUID
+    status: str
+    label: str | None
+
+
+class EscalationPage(BaseModel):
+    """Items awaiting lead-engineer review."""
+
+    items: list[QueueItem]

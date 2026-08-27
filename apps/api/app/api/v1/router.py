@@ -16,6 +16,7 @@ from app.api.v1.routes import (
     images,
     ingestion,
     search,
+    verification,
 )
 
 api_router = APIRouter()
@@ -35,6 +36,7 @@ api_router.include_router(
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
+api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
 api_router.include_router(
     images.router,
     prefix="/images",
