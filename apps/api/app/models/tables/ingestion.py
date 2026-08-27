@@ -68,7 +68,9 @@ class VerificationItemRow(UUIDPrimaryKey, TimestampMixin, Base):
         # with neither would be accepted — an item in the queue referring to
         # nothing, which no code would produce but no code would catch either.
         CheckConstraint(
-            "chunk_id IS NOT NULL OR staged_document_id IS NOT NULL",
+            "chunk_id IS NOT NULL "
+            "OR staged_document_id IS NOT NULL "
+            "OR flagged_answer_id IS NOT NULL",
             name="target_present",
         ),
     )
@@ -94,6 +96,17 @@ class VerificationItemRow(UUIDPrimaryKey, TimestampMixin, Base):
     # pending -> labeled -> escalated. Indexed because the queue view and the
     # lead-review view are both filters on it.
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    # Where this item came from: `crawl` for content the pipeline ingested,
+    # `user-flag` for an answer a user reported. Indexed and separate rather
+    # than inferred from which foreign key is set, because AI-014 needs
+    # post-launch accuracy tracked as its own trend — a rising flag rate means
+    # something different from a large crawl, and averaging them together
+    # hides both.
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="crawl", index=True)
+    # The flagged answer this item reviews, when it came from a user report.
+    flagged_answer_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("flagged_answers.id", ondelete="CASCADE"), index=True
+    )
     # The verifier's judgement, from `VerificationLabel`. Distinct from
     # `decision`, which is the document-level approve/reject vocabulary.
     label: Mapped[str | None] = mapped_column(String(20), index=True)

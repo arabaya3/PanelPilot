@@ -355,6 +355,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/feedback/flag': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Flag Answer
+     * @description Record a flagged answer and queue it for verification.
+     *
+     *     Raises:
+     *         HTTPException: 404 if the turn does not exist or belongs to another
+     *             tenant.
+     */
+    post: operations['flag_answer_api_v1_feedback_flag_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/images': {
     parameters: {
       query?: never;
@@ -709,6 +733,38 @@ export interface components {
     EscalationPage: {
       /** Items */
       items: components['schemas']['QueueItem'][];
+    };
+    /**
+     * FlagRequest
+     * @description A user reporting an answer as wrong.
+     *
+     *     The retrieved passages come from the client because they are what the user
+     *     was actually shown. Re-running retrieval server-side would return whatever
+     *     the index holds now, which is the one thing AI-014 says must not happen.
+     */
+    FlagRequest: {
+      /**
+       * Message Id
+       * Format: uuid
+       */
+      message_id: string;
+      /** Reason */
+      reason?: string | null;
+      /** Retrieved */
+      retrieved?: components['schemas']['RetrievedPassage'][];
+    };
+    /**
+     * FlagResponse
+     * @description Confirmation that a flag was recorded and queued.
+     */
+    FlagResponse: {
+      /**
+       * Flag Id
+       * Format: uuid
+       */
+      flag_id: string;
+      /** Queued */
+      queued: boolean;
     };
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -1736,6 +1792,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EscalationPage'];
+        };
+      };
+    };
+  };
+  flag_answer_api_v1_feedback_flag_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FlagRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['FlagResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

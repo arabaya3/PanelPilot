@@ -27,6 +27,9 @@ TENANT_SCOPED = {
     # Scoped from creation: a trial gets a provisional tenant immediately,
     # because diagnostic_sessions.tenant_id is NOT NULL. See BE-002.
     "anonymous_sessions",
+    # A flagged answer carries the customer's question and the content they
+    # were shown, which is as confidential as any other turn. See AI-014.
+    "flagged_answers",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would

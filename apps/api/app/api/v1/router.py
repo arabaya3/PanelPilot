@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     auth,
     calculations,
     diagnostics,
+    feedback,
     health,
     images,
     ingestion,
@@ -37,6 +38,7 @@ api_router.include_router(calculations.router, prefix="/calculations", tags=["ca
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
 api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
+api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(
     images.router,
     prefix="/images",
