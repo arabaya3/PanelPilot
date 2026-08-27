@@ -555,7 +555,7 @@ recorded rather than decided.
 
 > Deliberately broken test code is correctly flagged by the validation layer in 100% of a test batch; valid code is not false-flagged.
 
-### [ ] BE-010 — PLC code generation/review endpoint
+### [x] BE-010 — PLC code generation/review endpoint
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
