@@ -586,7 +586,7 @@ recorded rather than decided.
 
 > A request for known-invalid code returns validation failures with location info, not a false pass.
 
-### [ ] FE-009 — PLC code display & review component
+### [x] FE-009 — PLC code display & review component
 
 | Field                   | Value                                              |
 | ----------------------- | -------------------------------------------------- |
@@ -619,7 +619,7 @@ recorded rather than decided.
 
 ## Internal Tools
 
-### [ ] FE-012 — Verification dashboard (for the 10-engineer queue)
+### [x] FE-012 — Verification dashboard (for the 10-engineer queue)
 
 | Field                   | Value                                                     |
 | ----------------------- | --------------------------------------------------------- |
