@@ -15,13 +15,16 @@ a coil, so the same parser answers both.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 import structlog
 
 from app.ai.plc.validation import validate_plc_code
 from app.models.schemas.plc import (
+    LadderBlock,
+    LadderBranch,
     LadderContact,
+    LadderElement,
     LadderRung,
     PlcDialect,
     PlcGenerationRequest,
@@ -129,17 +132,22 @@ def render_rungs_as_st(rungs: list[LadderRung], *, program_name: str) -> str:
         Structured Text.
 
     Raises:
-        GenerationError: If a rung uses a contact kind that has no meaning.
+        GenerationError: If a rung uses an element that has no ST equivalent.
 
     Exists so ladder gets the same parser-backed check as ST rather than a
-    weaker one. Every tag becomes a BOOL, which is what contacts and coils
-    are; a normally-closed contact becomes ``NOT tag``, which is what it does.
+    weaker one. Series is AND, a parallel branch is OR, and a normally-closed
+    contact is NOT — which is what each of them means on a rung.
+
+    Function blocks are the exception: a timer is state over time, and no
+    expression captures it. The block's output tag is read as a plain BOOL,
+    which is exactly what the rung downstream of it does. The block's own
+    correctness is not checked here, and this does not pretend otherwise.
     """
     tags: list[str] = []
     for rung in rungs:
-        for contact in [*rung.inputs, rung.output]:
-            if contact.tag not in tags:
-                tags.append(contact.tag)
+        for tag in _tags_in(rung):
+            if tag not in tags:
+                tags.append(tag)
 
     lines = [f"PROGRAM {program_name}", "VAR"]
     lines.extend(f"    {tag} : BOOL;" for tag in tags)
@@ -149,11 +157,81 @@ def render_rungs_as_st(rungs: list[LadderRung], *, program_name: str) -> str:
         if rung.output.kind != "coil":
             raise GenerationError(f"rung output {rung.output.tag!r} is not a coil")
         lines.append(f"    (* {rung.comment} *)")
-        condition = " AND ".join(_contact_expression(contact) for contact in rung.inputs)
-        lines.append(f"    {rung.output.tag} := {condition or 'TRUE'};")
+        condition = _series_expression(rung.elements)
+        lines.append(f"    {rung.output.tag} := {condition};")
 
     lines.append("END_PROGRAM")
     return "\n".join(lines)
+
+
+def _tags_in(rung: LadderRung) -> list[str]:
+    """Collect every tag a rung names, in order.
+
+    Args:
+        rung: The rung to walk.
+
+    Returns:
+        Its tags, including those inside branches and blocks.
+    """
+    found: list[str] = []
+
+    def walk(elements: Sequence[LadderElement]) -> None:
+        """Collect tags from one series of elements.
+
+        Args:
+            elements: The elements to walk.
+        """
+        for element in elements:
+            if isinstance(element, LadderBranch):
+                for path in element.paths:
+                    walk(path)
+            else:
+                found.append(element.tag)
+
+    walk(rung.elements)
+    found.append(rung.output.tag)
+    return found
+
+
+def _series_expression(elements: Sequence[LadderElement]) -> str:
+    """Render elements in series as a conjunction.
+
+    Args:
+        elements: The elements, left to right.
+
+    Returns:
+        Their combined expression, or ``TRUE`` when there are none.
+
+    An empty series is an always-on coil, which is legal ladder — an enable
+    bit, a permanently energised lamp — so it renders as something that
+    parses rather than as an empty condition.
+    """
+    parts = [_element_expression(element) for element in elements]
+    return " AND ".join(parts) if parts else "TRUE"
+
+
+def _element_expression(element: LadderElement) -> str:
+    """Render one rung element as a boolean expression.
+
+    Args:
+        element: The element.
+
+    Returns:
+        Its expression.
+
+    Raises:
+        GenerationError: If a contact kind has no meaning.
+    """
+    if isinstance(element, LadderBranch):
+        # Parallel paths are an OR, parenthesised so a following series
+        # element does not bind tighter than the branch it follows.
+        paths = [_series_expression(path) for path in element.paths]
+        return "(" + " OR ".join(paths) + ")" if paths else "TRUE"
+    if isinstance(element, LadderBlock):
+        # Read the block's output. See `render_rungs_as_st` on why its
+        # internals are not modelled.
+        return element.tag
+    return _contact_expression(element)
 
 
 def _contact_expression(contact: LadderContact) -> str:

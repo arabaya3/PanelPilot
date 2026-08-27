@@ -8,6 +8,7 @@ diagram that can silently disagree with what the generator meant.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -125,17 +126,61 @@ class LadderContact(BaseModel):
     kind: str
 
 
+class LadderBlock(BaseModel):
+    """A function block on a rung — a timer, a counter, a comparison.
+
+    Attributes:
+        kind: The block type as the vendor names it (``TON``, ``CTU``, ...).
+        tag: The block's instance name.
+        parameters: Its settings, as label/value pairs. Rendered as text
+            inside the block rather than interpreted, because a timer preset
+            means nothing to a renderer and everything to the engineer
+            reading it.
+    """
+
+    kind: str
+    tag: str
+    parameters: dict[str, str] = Field(default_factory=dict)
+
+
+class LadderBranch(BaseModel):
+    """Parallel paths across one part of a rung.
+
+    Attributes:
+        paths: Each path's elements in series. Any of them conducting makes
+            the branch conduct — this is an OR.
+
+    The construct that makes ladder ladder. A start/stop seal-in circuit is a
+    branch, and a renderer that only draws series contacts cannot draw the
+    single most common rung in the trade.
+    """
+
+    paths: list[list[LadderElement]]
+
+
+#: One element in a rung's left-to-right sequence.
+#:
+#: A union rather than three parallel lists, so order is expressed by position.
+#: Three lists would need an index to say which came first, and an index that
+#: disagreed with itself would draw a rung the generator never described.
+LadderElement = Annotated[
+    LadderContact | LadderBlock | LadderBranch,
+    Field(union_mode="left_to_right"),
+]
+
+
 class LadderRung(BaseModel):
     """One rung, as FE-009 draws it.
 
     Attributes:
         comment: What the rung is for.
-        inputs: Contacts in series, left to right.
+        elements: What sits on the rung, left to right. Contacts, function
+            blocks, and parallel branches.
         output: The coil the rung drives.
     """
 
     comment: str
-    inputs: list[LadderContact]
+    elements: list[LadderElement] = Field(default_factory=list)
     output: LadderContact
 
 
