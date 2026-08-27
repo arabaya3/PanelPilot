@@ -34,7 +34,8 @@ from app.core.security import (
     verify_password,
 )
 from app.models.schemas.auth import CurrentUser, Role
-from app.models.schemas.auth_flows import QuotaStatus, TokenPair
+from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
+from app.models.tables.diagnostics import DiagnosticSessionRow
 from app.models.tables.session import AnonymousSessionRow, RefreshTokenRow
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
@@ -42,6 +43,11 @@ from app.models.tables.user import User
 # How long a refresh token stays usable. Longer than an access token by design:
 # it is the thing that saves the user from logging in every hour.
 REFRESH_TOKEN_TTL = timedelta(days=30)
+
+# How long an unclaimed trial stays claimable. Long enough that someone can
+# come back after a night shift; short enough that an abandoned session's
+# tenant is not claimable indefinitely by whoever finds the secret.
+TRIAL_TTL = timedelta(days=7)
 
 
 def _slugify_email(email: str) -> str:
@@ -415,7 +421,107 @@ def _load_tenant(*, session: Session, tenant_id: str, for_update: bool = False) 
     return tenant
 
 
-def resolve_caller(*, session: Session, caller: CurrentUser) -> User:
+def start_trial(
+    *,
+    session: Session,
+    now: datetime | None = None,
+    access_token_ttl_seconds: int | None = None,
+) -> TrialStart:
+    """Begin an anonymous trial, returning credentials that can actually ask.
+
+    Args:
+        session: Open database session. The caller commits.
+        now: Injected for tests.
+        access_token_ttl_seconds: Token lifetime. Read from settings when not
+            given, so a caller that has no configured environment — a unit
+            test, most usefully — can still exercise this.
+
+    Returns:
+        The session id, its one-time claim secret, and an access token scoped
+        to the provisional tenant.
+
+    Three rows, in one transaction, because a trial is only useful if all three
+    exist together:
+
+    1. A **provisional tenant**, carrying the free-question quota. Signup later
+       joins the new account to *this* tenant rather than making another, which
+       is what lets the conversation survive the claim without copying a row.
+    2. A **placeholder user**, because every diagnostics route resolves its
+       caller to a live account and refuses a token whose subject is not one.
+       Marked with a non-routable ``.invalid`` address so it cannot collide
+       with a real signup and cannot be mistaken for a contactable person.
+    3. The **anonymous session** itself, holding only the *hash* of the claim
+       secret — the plaintext is returned here once and never stored.
+
+    The trial user is deliberately NOT the account the visitor ends up with.
+    Signup creates their real user in the same tenant and marks this session
+    claimed; the placeholder stays as the author of the trial's turns, so the
+    history reads correctly rather than retroactively appearing to be written
+    by an account that did not exist at the time.
+    """
+    moment = now or datetime.now(UTC)
+
+    tenant = TenantRow(
+        slug=f"trial-{uuid.uuid4().hex[:12]}",
+        name="Trial",
+    )
+    session.add(tenant)
+    session.flush()
+
+    # No user row, deliberately. `_load_claimable_session` refuses to claim a
+    # trial whose tenant already has one — "a provisional trial tenant has no
+    # users. If it has any, this is not a trial being claimed, it is an attempt
+    # to join somebody's existing account." A placeholder here would satisfy
+    # authentication and make every trial permanently unclaimable, which is the
+    # one thing the whole pair exists to allow.
+    #
+    # `diagnostic_sessions.user_id` is nullable for exactly this case.
+    diagnostic = DiagnosticSessionRow(tenant_id=tenant.id, user_id=None)
+    session.add(diagnostic)
+    session.flush()
+
+    # Generated here and returned once. Only the hash is persisted.
+    claim_secret = secrets.token_urlsafe(32)
+    anonymous = AnonymousSessionRow(
+        tenant_id=tenant.id,
+        diagnostic_session_id=diagnostic.id,
+        claim_secret_hash=hash_claim_secret(claim_secret),
+        expires_at=moment + TRIAL_TTL,
+    )
+    session.add(anonymous)
+    session.flush()
+
+    if access_token_ttl_seconds is None:
+        from app.core.config import get_settings
+
+        access_token_ttl_seconds = get_settings().access_token_ttl_seconds
+
+    # The subject is the anonymous session itself. There is no user to name,
+    # and `resolve_caller` validates a trial subject against this row instead —
+    # the same liveness question, asked of the thing that actually exists.
+    token = create_access_token(
+        subject=str(anonymous.id),
+        tenant_id=str(tenant.id),
+        roles=frozenset({Role.ENGINEER}),
+        ttl_seconds=access_token_ttl_seconds,
+    )
+
+    return TrialStart(
+        # The ANONYMOUS session's id, not the diagnostic session's. This value
+        # comes back as `claim_session_id` at signup, and `_load_claimable_session`
+        # looks it up by `AnonymousSessionRow.id`. Returning the diagnostic id
+        # here would produce a trial that starts cleanly and then cannot be
+        # claimed — a failure that only surfaces at the moment someone commits
+        # to signing up.
+        session_id=str(anonymous.id),
+        claim_secret=claim_secret,
+        access_token=token,
+        expires_in=access_token_ttl_seconds,
+        questions_remaining=tenant.free_question_limit - tenant.free_questions_used,
+    )
+
+
+def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
     """Load the user a token identifies, confirming they still exist.
 
     A token stays valid until it expires, so a user deactivated mid-session
@@ -426,21 +532,72 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User:
         caller: The caller decoded from the access token.
 
     Returns:
-        The live user row.
+        The live user row, or ``None`` when the caller is an anonymous trial —
+        which has no user by design, so the tenant stays claimable.
 
     Raises:
         AuthenticationError: If the user is gone, inactive, or no longer in the
-            tenant their token claims.
+            tenant their token claims; or, for a trial, if the session is
+            missing, expired, already claimed, or in another tenant.
     """
     try:
-        user = session.get(User, uuid.UUID(caller.id))
+        subject = uuid.UUID(caller.id)
     except ValueError as exc:
         raise AuthenticationError("token subject is not a user id") from exc
 
-    if user is None or not user.is_active:
+    user = session.get(User, subject)
+    if user is None:
+        # A trial names its anonymous session rather than a user, because the
+        # tenant must stay user-less to remain claimable. The liveness question
+        # is the same one, asked of the row that does exist.
+        _resolve_trial_caller(session=session, subject=subject, caller=caller)
+        return None
+
+    if not user.is_active:
         raise AuthenticationError("account is not active")
     # A token whose tenant no longer matches the user's is stale or forged;
     # trusting it would let a moved user act on their old tenant's data.
     if str(user.tenant_id) != caller.tenant_id:
         raise AuthenticationError("token tenant does not match the account")
     return user
+
+
+def _resolve_trial_caller(*, session: Session, subject: uuid.UUID, caller: CurrentUser) -> None:
+    """Validate a token whose subject is an anonymous trial session.
+
+    Args:
+        session: Open database session.
+        subject: The token subject.
+        caller: The decoded caller.
+
+    Raises:
+        AuthenticationError: If no such trial exists, it has expired, it has
+            already been claimed, or its tenant does not match the token.
+
+    Every check here has a counterpart in the user path, and skipping any one
+    of them would make a trial token strictly more powerful than a real
+    account's:
+
+    * **Expiry** is enforced against the row, not just the JWT. A token could
+      outlive its trial otherwise, and the trial's expiry is the only thing
+      bounding how long an abandoned conversation stays reachable.
+    * **Already claimed** matters because the claim moves the tenant to a real
+      user. Continuing to honour the trial token afterwards would leave a
+      second, unrevocable credential on somebody's actual account.
+    * **Tenant match** is the isolation boundary, exactly as above.
+    """
+    row = session.get(AnonymousSessionRow, subject)
+    if row is None:
+        raise AuthenticationError("account is not active")
+
+    if str(row.tenant_id) != caller.tenant_id:
+        raise AuthenticationError("token tenant does not match the account")
+
+    expires_at = row.expires_at
+    if expires_at.tzinfo is None:  # pragma: no cover - Postgres returns aware
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at <= datetime.now(UTC):
+        raise AuthenticationError("that trial session has expired")
+
+    if row.claimed_by_user_id is not None:
+        raise AuthenticationError("that trial session has been claimed")
