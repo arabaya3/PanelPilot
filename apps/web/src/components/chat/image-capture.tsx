@@ -340,7 +340,11 @@ function Confirmation({
         data-testid="capture-rejected"
         data-verdict={result.verdict}
       >
-        <img src={previewUrl} alt={t('previewAlt')} className="mb-2 max-h-40 max-w-full rounded-md object-contain" />
+        <img
+          src={previewUrl}
+          alt={t('previewAlt')}
+          className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+        />
         <p className="flex items-center gap-2 text-text">
           <StateIcon shape="uncertain" className="text-severity-info" />
           {result.note ?? t(`verdict.${result.verdict}`)}
@@ -373,7 +377,11 @@ function Confirmation({
       data-testid="capture-confirm"
       data-confident={confident ? 'true' : 'false'}
     >
-      <img src={previewUrl} alt={t('previewAlt')} className="mb-2 max-h-40 max-w-full rounded-md object-contain" />
+      <img
+        src={previewUrl}
+        alt={t('previewAlt')}
+        className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+      />
       <p className="text-text">{confident ? t('readAs') : t('pleaseConfirm')}</p>
       <p className="mt-1">
         {code ? <TechnicalToken className="text-base font-semibold">{code}</TechnicalToken> : null}
