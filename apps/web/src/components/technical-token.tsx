@@ -33,7 +33,12 @@ export function TechnicalToken({
       // Mono, for the same reason the token file defines a mono stack: these
       // are transcribed by hand, and a proportional font makes 0/O and 1/l
       // ambiguous at exactly the moment that matters.
-      className={className ? `font-mono ${className}` : 'font-mono'}
+      //
+      // `break-words` because a part number is one unbroken word to CSS, and
+      // an order code like 3RV2011-1JA10-0BA0 inside prose on a 360px phone
+      // pushes the line past the viewport rather than wrapping. It breaks only
+      // when the token genuinely cannot fit, so ordinary codes stay intact.
+      className={className ? `font-mono break-words ${className}` : 'font-mono break-words'}
     >
       {children}
     </bdi>
