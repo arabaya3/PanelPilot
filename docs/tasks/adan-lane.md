@@ -313,21 +313,66 @@ recorded rather than decided.
 
 ### [ ] AI-005 — Cable sizing calculation function
 
-> **BLOCKED — do not attempt on general knowledge.**
+> **SOURCE RE-POINTED — Schneider EIG, and it is obtainable.**
 >
-> This task's constants must come from a named source document that is not
-> available in this repository or to this run: Prysmian Wire & Cable Engineering Handbook, 5th ed. §4.2 (reproducing IEC 60364-5-52:2009 Annex B, Tables B.52.2–B.52.5). The acceptance
-> criterion requires exact agreement with worked examples published in that
-> document.
+> The previously named handbook is out entirely. This task is now sourced from Schneider Electric's
+> _Electrical Installation Guide_ 2010, Chapter G ("Sizing and protection of
+> conductors"), which is published openly and was retrieved and read: Fig. G21a
+> (ampacity, reproducing IEC 60364-5-52 table B.52-1), Fig. G12 (ambient
+> correction), Fig. G16 (grouping reduction) and Fig. G28 (voltage drop in
+> V/A/km).
 >
-> Ampacity, derating and rating tables can be written from general engineering
-> knowledge. They would look correct, carry citations to a document nobody
-> read, and pass tests invented alongside them. The spec is explicit that
-> "close enough is not an acceptable test result, given real cable/fire safety
-> is downstream of this number" — which is exactly why plausible-but-unsourced
-> values are the worst possible output here, not an acceptable interim one.
+> That satisfies the spec's licensing constraint precisely — "a named
+> manufacturer engineering guide (not IEC standard text)" — because the EIG
+> republishes the IEC tables under Schneider's own publication.
 >
-> Unblocking needs the document, not more effort.
+> **Worked examples actually available in the guide**, all read from the
+> source rather than assumed:
+>
+> - §3 Example 1 — 35 mm² Cu, 3-phase, 50 m, 100 A at cos φ 0.8 → 5 V; and
+>   500 A at cos φ 0.35 during start-up → 13 V.
+> - §3 Example 2 — 70 mm² Cu 3-phase line, 150 A, 50 m → 4.125 V; and a
+>   2.5 mm² single-phase lighting circuit, 20 A, 20 m → 7.2 V.
+> - §8 Fig. G68 — three further voltage-drop cases (2×240 mm² at 866 A over
+>   5 m → 0.45 V; 2×95 mm² at 509 A over 20 m → 2.1 V; 1×95 mm² at 255 A over
+>   5 m → 0.53 V), these printed rounded rather than exact.
+> - §8 sizing — 433 A per conductor, method F, PVC, 3 loaded conductors →
+>   240 mm²; and 254.5 A → 95 mm², both via Fig. G21a.
+>
+> **The honest limit.** That is nine cases, but they are not evenly spread:
+> seven exercise `voltage_drop`, two exercise `size_conductor`, and **none is
+> a published worked example for `derating_factor`** — the guide tabulates k1
+> and k2 but does not print a worked combined-derating result to check against.
+> The acceptance criterion asks for ten worked examples matched exactly, and a
+> straight reading of it is not met by this document for all three functions.
+>
+> Implementing `voltage_drop` against seven real cases is defensible.
+> Implementing `derating_factor` would mean inventing the check alongside the
+> code, which is the specific failure this task's spec calls out. Left for the
+> same reason it was blocked before: not for want of effort, but because
+> asserting a safety number against a test I wrote myself is worse than an
+> unimplemented function that says so.
+>
+> **Delivered:** `voltage_drop` is implemented against Fig. G28 and checked
+> against the four §3 examples for exact equality, plus the three Fig. G68
+> cases within 2%. Five mutants killed, including a swapped lighting/motor
+> column and a single wrong table digit. 100% coverage on `app.ai.tools`.
+>
+> **Not delivered:** `size_conductor` and `derating_factor` remain stubs with
+> their tripwire tests intact.
+>
+> **Downstream, checked rather than assumed:**
+>
+> - **AI-007** declares AI-005 as a dependency, but its constants come from
+>   Rittal Handbook 36 §2/§5 and EIG **§H** — a different chapter from the
+>   Chapter G obtained here — and its code has no import of `cable_sizing`.
+>   Still blocked, on its own sources, unchanged by this.
+> - **BE-011** depends on BE-001 and AI-007, not AI-005. Unaffected.
+> - **FE-010** depends on FE-001, BE-011 and AI-007, not AI-005. Unaffected.
+> - **PD-005 / PD-006** do not exist in this repository — no task, tracker row
+>   or code references either. Nothing to check.
+> - Nothing in `app/` outside the module imports `cable_sizing`, so no
+>   production caller changed behaviour.
 
 | Field                   | Value                                              |
 | ----------------------- | -------------------------------------------------- |
