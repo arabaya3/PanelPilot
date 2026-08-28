@@ -73,14 +73,17 @@ def _voyage_embedder(api_key: str, model: str) -> Embedder:
     from app.core.config import ConfigurationError
 
     try:
-        import voyageai
+        # From the defining module, not the package root: voyageai ships
+        # type information but no __all__, so strict mypy does not treat the
+        # root-level re-export as public API.
+        from voyageai.client import Client
     except ImportError as exc:  # pragma: no cover - import guard
         raise ConfigurationError(
             "EMBEDDING_PROVIDER is 'voyage' but the voyageai package is not "
             "installed; add it to the api dependencies"
         ) from exc
 
-    client = voyageai.Client(api_key=api_key)
+    client = Client(api_key=api_key)
 
     def embed(texts: Sequence[str], input_type: InputType) -> list[list[float]]:
         """Embed a batch through Voyage.
