@@ -119,11 +119,20 @@ services:
     # remembers to run it by hand. `exec` so uvicorn keeps PID 1 and still
     # receives signals; `&&` so a failed migration stops the container instead
     # of serving traffic against a schema that does not match the code.
+    #
+    # The OpenSearch bootstrap is here for exactly the same reasons, and is the
+    # same DEV-ONLY arrangement. A fresh cluster has no indices and none of the
+    # per-query-type search pipelines the hybrid query names, so every
+    # diagnosis failed with `Pipeline panelpilot-hybrid-... is not defined` —
+    # after the SSE headers had already gone out, which is why it surfaced as a
+    # stream that stopped rather than an error. `opensearch: service_healthy`
+    # above means the cluster is up before this runs.
     command:
       - /bin/sh
       - -c
       - >-
         alembic upgrade head &&
+        python -m app.ai.retrieval.bootstrap &&
         exec uvicorn app.main:create_app --factory
         --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
     volumes:
