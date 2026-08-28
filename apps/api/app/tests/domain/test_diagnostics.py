@@ -12,25 +12,28 @@ can be forgotten, and a forgotten discard is an unsourced answer.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
 from sqlalchemy import create_engine, select, text
+from sqlalchemy import event as sa_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.diagnostics import DiagnosticRequest, EquipmentContext
 from app.models.schemas.search import Citation, RetrievedPassage
 from app.models.tables import calculations, escalation, ingestion  # noqa: F401
-from app.models.tables.diagnostics import DiagnosticTurnRow
+from app.models.tables.diagnostics import DiagnosticSessionRow, DiagnosticTurnRow
 from app.models.tables.tenant import TenantRow
 
 _REPLAY_CONFIDENT_FLOOR = diagnostics_domain._REPLAY_CONFIDENT
@@ -1259,3 +1262,664 @@ def test_a_successful_turn_is_unaffected(
 
     assert [event.event for event in events] == ["retrieving", "generated", "result"]
     assert events[-1].data["diagnosis"] is not None
+
+
+# --- the conversation history list (FE-011 / GET /sessions) ------------------
+#
+# This reads one tenant's rows out of a shared table, which puts it in the same
+# class as every other tenant-scoped read: the failure that matters is not a
+# wrong sort order but one tenant seeing another's conversations. Most of what
+# follows is about isolation and about the page boundary, because a keyset
+# cursor that is subtly wrong silently drops rows in the middle of a list
+# rather than erroring.
+
+
+def _seed_session(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    questions: list[str],
+    started: datetime | None = None,
+    spacing: timedelta = timedelta(minutes=1),
+    equipment_models: list[str | None] | None = None,
+) -> uuid.UUID:
+    """Create a conversation with turns at controlled timestamps.
+
+    Args:
+        db: Open database session.
+        tenant_id: Owning tenant.
+        questions: One question per turn, in conversation order.
+        started: When the first turn happened; defaults to a fixed past time.
+        spacing: Gap between consecutive turns.
+        equipment_models: Per-turn recorded equipment, positionally matched to
+            ``questions``; ``None`` throughout when omitted.
+
+    Returns:
+        The new session id.
+
+    Timestamps are set explicitly rather than left to `server_default`, because
+    ordering is the property under test and rows created in the same
+    transaction otherwise share a timestamp to the microsecond.
+    """
+    base = started or datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    conversation = DiagnosticSessionRow(tenant_id=tenant_id, created_at=base, updated_at=base)
+    db.add(conversation)
+    db.flush()
+
+    for index, question in enumerate(questions):
+        stamp = base + spacing * index
+        db.add(
+            DiagnosticTurnRow(
+                session_id=conversation.id,
+                position=index + 1,
+                question=question,
+                answer=f"answer to {question}",
+                refused=False,
+                confidence=0.8,
+                equipment_model=(equipment_models[index] if equipment_models is not None else None),
+                created_at=stamp,
+                updated_at=stamp,
+            )
+        )
+    db.flush()
+    return conversation.id
+
+
+def _other_tenant(db: Session) -> uuid.UUID:
+    """Create a second tenant, to prove rows do not leak across the boundary."""
+    tenant = TenantRow(name="Other", slug=f"{_DB_SLUG_PREFIX}{uuid.uuid4().hex[:8]}")
+    db.add(tenant)
+    db.flush()
+    return tenant.id
+
+
+# --- tenant isolation, which is the security property ------------------------
+
+
+@requires_db
+def test_another_tenants_sessions_are_never_listed(db: Session, db_user: CurrentUser) -> None:
+    """The failure this endpoint must not have.
+
+    One tenant reading another's conversation list would expose the equipment
+    they run and the faults they are having, which is commercially sensitive
+    on its own even before anyone opens a session.
+    """
+    mine = _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["my question"])
+    _seed_session(db, tenant_id=_other_tenant(db), questions=["their secret question"])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert [row.id for row in page.sessions] == [str(mine)]
+
+
+@requires_db
+def test_another_tenants_titles_do_not_leak(db: Session, db_user: CurrentUser) -> None:
+    """Not even as a title.
+
+    The title is the engineer's own words about their fault; leaking it is a
+    disclosure whether or not the session id comes with it.
+    """
+    _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["mine"])
+    _seed_session(db, tenant_id=_other_tenant(db), questions=["their secret question"])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert all("secret" not in row.title for row in page.sessions)
+
+
+@requires_db
+def test_a_cursor_cannot_be_used_to_page_into_another_tenant(
+    db: Session, db_user: CurrentUser
+) -> None:
+    """A cursor carries no authority of its own.
+
+    A cursor is client-supplied input, so it is worth proving it carries no
+    authority of its own: replaying one against a different caller must still
+    only ever return that caller's rows.
+    """
+    other_tenant = _other_tenant(db)
+    for index in range(3):
+        _seed_session(
+            db,
+            tenant_id=other_tenant,
+            questions=[f"their question {index}"],
+            started=datetime(2026, 1, 1, 12, 0, tzinfo=UTC) + timedelta(hours=index),
+        )
+    _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["mine"])
+
+    other_user = CurrentUser(
+        id=str(uuid.uuid4()),
+        email="other@example.com",
+        tenant_id=str(other_tenant),
+        roles=frozenset({Role.ENGINEER}),
+    )
+    their_page = diagnostics_domain.list_sessions(session=db, user=other_user, limit=1)
+    assert their_page.next_cursor is not None
+
+    # The other tenant's own cursor, replayed by our caller.
+    mine = diagnostics_domain.list_sessions(session=db, user=db_user, cursor=their_page.next_cursor)
+
+    assert all("their" not in row.title for row in mine.sessions)
+
+
+# --- ordering ----------------------------------------------------------------
+
+
+@requires_db
+def test_sessions_are_ordered_by_most_recent_activity(db: Session, db_user: CurrentUser) -> None:
+    """Most recent first, which is what the spec asks for."""
+    tenant = uuid.UUID(db_user.tenant_id)
+    old = _seed_session(
+        db, tenant_id=tenant, questions=["old"], started=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    new = _seed_session(
+        db, tenant_id=tenant, questions=["new"], started=datetime(2026, 3, 1, tzinfo=UTC)
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert [row.id for row in page.sessions] == [str(new), str(old)]
+
+
+@requires_db
+def test_a_session_sorts_by_its_newest_turn_not_its_creation(
+    db: Session, db_user: CurrentUser
+) -> None:
+    """The bug this ordering exists to avoid.
+
+    Appending a turn does not write to `diagnostic_sessions`, so that row's
+    `updated_at` still holds the moment the conversation was opened. Sorting by
+    it would push a session worked on all afternoon below one opened yesterday
+    and abandoned — exactly the session the engineer is looking for.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    # Opened first, but still being worked on.
+    busy = _seed_session(
+        db,
+        tenant_id=tenant,
+        questions=["q1", "q2", "q3"],
+        started=datetime(2026, 1, 1, tzinfo=UTC),
+        spacing=timedelta(days=30),
+    )
+    # Opened later, then abandoned.
+    abandoned = _seed_session(
+        db, tenant_id=tenant, questions=["only"], started=datetime(2026, 1, 15, tzinfo=UTC)
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert [row.id for row in page.sessions] == [str(busy), str(abandoned)]
+
+
+@requires_db
+def test_last_activity_is_reported_as_updated_at(db: Session, db_user: CurrentUser) -> None:
+    """So the sidebar can show when the conversation was last worked on."""
+    _seed_session(
+        db,
+        tenant_id=uuid.UUID(db_user.tenant_id),
+        questions=["a", "b"],
+        started=datetime(2026, 5, 1, 9, 0, tzinfo=UTC),
+        spacing=timedelta(hours=3),
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].updated_at == datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+
+
+# --- what each row carries ---------------------------------------------------
+
+
+@requires_db
+def test_the_title_is_the_first_question(db: Session, db_user: CurrentUser) -> None:
+    """By conversation position, not by whichever row came back first.
+
+    The first question is what makes a session recognisable a day later; the
+    last one is often a follow-up that means nothing out of context.
+    """
+    _seed_session(
+        db,
+        tenant_id=uuid.UUID(db_user.tenant_id),
+        questions=["ACS880 undervoltage trip", "and what about the fan?"],
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].title == "ACS880 undervoltage trip"
+
+
+@requires_db
+def test_a_long_question_is_truncated(db: Session, db_user: CurrentUser) -> None:
+    """A pasted fault log is a legitimate question and an illegitimate list row."""
+    _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["x" * 5000])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert len(page.sessions[0].title) < 200
+    assert page.sessions[0].title.endswith("\u2026")
+
+
+@requires_db
+def test_a_session_with_no_turns_still_appears(db: Session, db_user: CurrentUser) -> None:
+    """A conversation exists from the moment a question starts.
+
+    Dropping it would make the sidebar lose the session the engineer is looking
+    at while the first answer is still streaming.
+    """
+    empty = _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=[])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert [row.id for row in page.sessions] == [str(empty)]
+    assert page.sessions[0].turn_count == 0
+    assert page.sessions[0].title
+
+
+@requires_db
+def test_the_turn_count_is_reported(db: Session, db_user: CurrentUser) -> None:
+    _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["a", "b", "c"])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].turn_count == 3
+
+
+@requires_db
+def test_the_turn_count_is_not_multiplied_by_the_join(db: Session, db_user: CurrentUser) -> None:
+    """The classic aggregate-over-join bug.
+
+    Counting the joined rows rather than the turns would report a plausible
+    but wrong number, and nothing else in the response would look odd.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    _seed_session(db, tenant_id=tenant, questions=["a", "b", "c", "d"])
+    _seed_session(db, tenant_id=tenant, questions=["e"])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert sorted(row.turn_count for row in page.sessions) == [1, 4]
+
+
+# --- pagination --------------------------------------------------------------
+
+
+@requires_db
+def test_a_page_is_limited(db: Session, db_user: CurrentUser) -> None:
+    tenant = uuid.UUID(db_user.tenant_id)
+    for index in range(5):
+        _seed_session(
+            db,
+            tenant_id=tenant,
+            questions=[f"q{index}"],
+            started=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=index),
+        )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user, limit=2)
+
+    assert len(page.sessions) == 2
+    assert page.next_cursor is not None
+
+
+@requires_db
+def test_paging_visits_every_session_exactly_once(db: Session, db_user: CurrentUser) -> None:
+    """The property that makes a cursor correct.
+
+    A keyset cursor that is subtly wrong does not raise — it silently repeats
+    or skips rows at the page boundary, which a sidebar renders as a history
+    that is missing yesterday's session or shows it twice.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    expected = {
+        str(
+            _seed_session(
+                db,
+                tenant_id=tenant,
+                questions=[f"q{index}"],
+                started=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=index),
+            )
+        )
+        for index in range(7)
+    }
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(10):  # bounded, so a cursor that never advances fails here
+        page = diagnostics_domain.list_sessions(session=db, user=db_user, limit=2, cursor=cursor)
+        seen.extend(row.id for row in page.sessions)
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+
+    assert cursor is None, "pagination did not terminate"
+    assert len(seen) == len(set(seen)), "a session was returned on two pages"
+    assert set(seen) == expected
+
+
+@requires_db
+def test_sessions_sharing_a_timestamp_are_not_lost_across_pages(
+    db: Session, db_user: CurrentUser
+) -> None:
+    """Why the cursor carries the id as well as the timestamp.
+
+    Two sessions can share a last-activity timestamp to the microsecond. A
+    cursor comparing the timestamp alone either re-serves the whole tied group
+    forever or steps past it, dropping rows in the middle of the list.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    tied = datetime(2026, 2, 2, 10, 0, tzinfo=UTC)
+    expected = {
+        str(_seed_session(db, tenant_id=tenant, questions=[f"tied {i}"], started=tied))
+        for i in range(4)
+    }
+
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(8):
+        page = diagnostics_domain.list_sessions(session=db, user=db_user, limit=2, cursor=cursor)
+        seen.extend(row.id for row in page.sessions)
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+
+    assert cursor is None, "pagination did not terminate over tied timestamps"
+    assert set(seen) == expected
+    assert len(seen) == len(set(seen))
+
+
+@requires_db
+def test_the_last_page_offers_no_cursor(db: Session, db_user: CurrentUser) -> None:
+    """The final page offers no cursor.
+
+    A cursor on the final page would hand the sidebar a fetch that returns
+    nothing, which reads as a loading row that never resolves.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    for index in range(2):
+        _seed_session(
+            db,
+            tenant_id=tenant,
+            questions=[f"q{index}"],
+            started=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=index),
+        )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user, limit=2)
+
+    assert len(page.sessions) == 2
+    assert page.next_cursor is None
+
+
+@requires_db
+def test_an_empty_history_is_an_empty_page(db: Session, db_user: CurrentUser) -> None:
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions == []
+    assert page.next_cursor is None
+
+
+@requires_db
+def test_the_limit_is_capped(db: Session, db_user: CurrentUser) -> None:
+    """The page size is capped server-side.
+
+    An unbounded limit lets one request read an entire tenant's history into
+    memory, which is the usual shape of an accidental denial of service.
+
+    Asserted on the SQL rather than by seeding 101 conversations: a row-count
+    assertion over a handful of rows holds whether or not the cap exists, and a
+    mutation removing `min(...)` survived exactly that test. This reads the
+    LIMIT the query actually carries.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    _seed_session(db, tenant_id=tenant, questions=["a"])
+
+    executed: list[tuple[str, Any]] = []
+
+    @sa_event.listens_for(db.get_bind(), "before_cursor_execute")
+    def record(
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        del conn, cursor, context, executemany
+        executed.append((statement, parameters))
+
+    try:
+        diagnostics_domain.list_sessions(session=db, user=db_user, limit=10_000)
+    finally:
+        sa_event.remove(db.get_bind(), "before_cursor_execute", record)
+
+    # The LIMIT is a bound parameter, so it lives in the parameters rather than
+    # in the SQL text.
+    listing = [
+        parameters
+        for statement, parameters in executed
+        if "diagnostic_sessions" in statement and "LIMIT" in statement
+    ]
+    assert listing, "no listing query was issued"
+    first = listing[0]
+    bound = list(first.values()) if isinstance(first, dict) else list(first)
+    # `_SESSIONS_PAGE_MAX + 1`: one extra row is fetched to detect a next page,
+    # so the cap reaches SQL as 101 rather than 100.
+    assert 10_000 not in bound
+    assert 101 in bound
+
+
+@requires_db
+def test_a_non_positive_limit_is_refused(db: Session, db_user: CurrentUser) -> None:
+    with pytest.raises(ValidationError):
+        diagnostics_domain.list_sessions(session=db, user=db_user, limit=0)
+
+
+# --- cursor validation, since it is client-supplied input --------------------
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    ["not-base64!!", "", "abc", base64.urlsafe_b64encode(b"no-separator").decode()],
+    ids=["not-base64", "empty", "short", "no-separator"],
+)
+def test_a_malformed_cursor_is_refused(cursor: str) -> None:
+    """A malformed cursor is refused.
+
+    It is decoded straight into a SQL comparison, so it is validated like
+    any other external input rather than trusted because we issued one once.
+    """
+    with pytest.raises(ValidationError, match="cursor"):
+        diagnostics_domain._decode_session_cursor(cursor)
+
+
+def test_a_cursor_round_trips() -> None:
+    stamp = datetime(2026, 4, 4, 16, 30, tzinfo=UTC)
+    identifier = uuid.uuid4()
+
+    decoded = diagnostics_domain._decode_session_cursor(
+        diagnostics_domain._session_cursor(stamp, identifier)
+    )
+
+    assert decoded == (stamp, identifier)
+
+
+def test_a_cursor_with_a_bad_uuid_is_refused() -> None:
+    cursor = base64.urlsafe_b64encode(b"2026-01-01T00:00:00+00:00|not-a-uuid").decode()
+
+    with pytest.raises(ValidationError):
+        diagnostics_domain._decode_session_cursor(cursor)
+
+
+def test_a_cursor_with_a_bad_timestamp_is_refused() -> None:
+    cursor = base64.urlsafe_b64encode(f"never|{uuid.uuid4()}".encode()).decode()
+
+    with pytest.raises(ValidationError):
+        diagnostics_domain._decode_session_cursor(cursor)
+
+
+# --- the recorded equipment context ------------------------------------------
+#
+# FE-011's acceptance criterion is that selecting a past session restores "its
+# context indicator and message history correctly" -- the indicator, not just
+# the messages. That indicator is driven by `StructuredDiagnosis.equipment_model`,
+# which used to live only on the live response, so a replayed turn came back
+# with it unset and the chip reloaded blank. These pin the record-and-replay
+# path, because the alternative -- re-deriving a model number from stored prose
+# -- is the guess the indicator exists to prevent.
+
+
+@requires_db
+def test_the_equipment_model_is_recorded_on_the_turn(
+    db: Session, db_user: CurrentUser, monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """What was shown is written down, rather than recomputed later."""
+    _retrieving(monkeypatch, [_passage()])
+    created = diagnostics_domain.run_diagnosis(session=db, user=db_user, request=_request())
+
+    stored = db.scalars(
+        select(DiagnosticTurnRow).where(
+            DiagnosticTurnRow.session_id == uuid.UUID(created.session_id)
+        )
+    ).all()
+
+    assert stored[0].equipment_model == "ACS880"
+
+
+@requires_db
+def test_a_replayed_turn_restores_the_context_indicator(
+    db: Session, db_user: CurrentUser, monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The acceptance criterion itself.
+
+    `contextFromResponse` in the web client reads exactly this field. With it
+    unset the chip comes back empty, and the engineer has to restate the
+    equipment they already told it about -- which is the friction the chip was
+    built to remove.
+    """
+    _retrieving(monkeypatch, [_passage()])
+    created = diagnostics_domain.run_diagnosis(session=db, user=db_user, request=_request())
+
+    history = diagnostics_domain.get_session(
+        session=db, user=db_user, session_id=created.session_id
+    )
+    replayed = history.turns[0].response
+
+    assert replayed.diagnosis is not None
+    assert replayed.diagnosis.equipment_model == "ACS880"
+
+
+@requires_db
+def test_a_turn_with_no_equipment_replays_without_one(db: Session, db_user: CurrentUser) -> None:
+    """No guess, and no crash.
+
+    Turns written before the column existed carry NULL, and a conversation that
+    never identified a unit is a normal thing. Either way the sidebar shows no
+    context rather than inventing one.
+    """
+    session_id = _seed_session(
+        db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["something vague"]
+    )
+
+    history = diagnostics_domain.get_session(session=db, user=db_user, session_id=str(session_id))
+    replayed = history.turns[0].response
+
+    assert replayed.diagnosis is not None
+    assert replayed.diagnosis.equipment_model is None
+
+
+@requires_db
+def test_the_summary_reports_the_conversations_equipment(db: Session, db_user: CurrentUser) -> None:
+    """So the sidebar can show brand/model per entry, as the spec asks."""
+    session_id = _seed_session(
+        db,
+        tenant_id=uuid.UUID(db_user.tenant_id),
+        questions=["undervoltage trip"],
+        equipment_models=["ACS880"],
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].id == str(session_id)
+    assert page.sessions[0].equipment_model == "ACS880"
+
+
+@requires_db
+def test_the_summary_reports_the_most_recent_equipment(db: Session, db_user: CurrentUser) -> None:
+    """The most recently identified equipment wins.
+
+    An engineer who moved to another unit mid-session is looking for the unit
+    they moved to.
+
+    Pinned because `MAX` over a text column would pass a single-value test and
+    then return whichever model sorts highest alphabetically -- here `VLT`
+    happens to sort after `ACS880`, so only a reversed case catches it.
+    """
+    _seed_session(
+        db,
+        tenant_id=uuid.UUID(db_user.tenant_id),
+        questions=["first", "second"],
+        equipment_models=["VLT2800", "ACS880"],
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].equipment_model == "ACS880"
+
+
+@requires_db
+def test_a_later_turn_without_equipment_does_not_erase_it(
+    db: Session, db_user: CurrentUser
+) -> None:
+    """A later turn without equipment does not erase it.
+
+    A follow-up like "and the fan?" identifies no unit, and must not blank
+    the chip for a conversation that had already established one.
+    """
+    _seed_session(
+        db,
+        tenant_id=uuid.UUID(db_user.tenant_id),
+        questions=["ACS880 trips", "and the fan?"],
+        equipment_models=["ACS880", None],
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].equipment_model == "ACS880"
+
+
+@requires_db
+def test_a_session_that_never_identified_equipment_reports_none(
+    db: Session, db_user: CurrentUser
+) -> None:
+    _seed_session(db, tenant_id=uuid.UUID(db_user.tenant_id), questions=["vague"])
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    assert page.sessions[0].equipment_model is None
+
+
+@requires_db
+def test_equipment_does_not_leak_between_sessions(db: Session, db_user: CurrentUser) -> None:
+    """The correlated subquery must be correlated.
+
+    An uncorrelated one would return the same model for every row, putting one
+    conversation's equipment on all of them.
+    """
+    tenant = uuid.UUID(db_user.tenant_id)
+    _seed_session(
+        db,
+        tenant_id=tenant,
+        questions=["a"],
+        equipment_models=["ACS880"],
+        started=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    _seed_session(
+        db,
+        tenant_id=tenant,
+        questions=["b"],
+        equipment_models=[None],
+        started=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+
+    page = diagnostics_domain.list_sessions(session=db, user=db_user)
+
+    by_title = {row.title: row.equipment_model for row in page.sessions}
+    assert by_title == {"a": "ACS880", "b": None}

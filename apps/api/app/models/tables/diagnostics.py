@@ -62,6 +62,12 @@ class DiagnosticTurnRow(UUIDPrimaryKey, TimestampMixin, Base):
     # The score the engineer was shown, so history reports what they saw
     # rather than a zero that reads as no confidence at all.
     confidence: Mapped[float] = mapped_column(Float, nullable=False, server_default=text("0"))
+    # The equipment the answer was about, as shown to the engineer at the time.
+    # Recorded rather than re-derived: the history sidebar has to restore the
+    # context indicator, and inferring a model number from the stored prose
+    # later would guess -- which is the one thing the indicator must never do.
+    # Nullable because plenty of turns never identify a specific unit.
+    equipment_model: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     session: Mapped[DiagnosticSessionRow] = relationship(back_populates="turns")
 

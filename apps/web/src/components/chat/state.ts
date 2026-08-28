@@ -3,6 +3,7 @@ import type { components } from '@panelpilot/shared-types';
 import type { InterruptionReason, StreamEvent } from '@/lib/diagnosis-stream';
 
 type DiagnosticResponse = components['schemas']['DiagnosticResponse'];
+type DiagnosticTurn = components['schemas']['DiagnosticTurn'];
 
 /**
  * The chat transcript, as a reducer.
@@ -55,7 +56,8 @@ export type ChatAction =
   | { type: 'ask'; userId: string; assistantId: string; text: string }
   | { type: 'stream'; id: string; event: StreamEvent }
   | { type: 'retry'; id: string }
-  | { type: 'session'; sessionId: string };
+  | { type: 'session'; sessionId: string }
+  | { type: 'hydrate'; sessionId: string; turns: DiagnosticTurn[] };
 
 export const INITIAL_STATE: ChatState = { sessionId: null, messages: [] };
 
@@ -127,6 +129,31 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           failure: event.reason,
         })),
       };
+    }
+
+    case 'hydrate': {
+      // Replaces the transcript outright rather than appending: opening a past
+      // conversation must not leave the previous one's messages above it, which
+      // would read as one conversation that changed subject.
+      const messages: Message[] = [];
+      for (const [index, turn] of action.turns.entries()) {
+        messages.push({
+          id: `${action.sessionId}-u${String(index)}`,
+          role: 'user',
+          text: turn.request.symptom,
+        });
+        messages.push({
+          id: `${action.sessionId}-a${String(index)}`,
+          role: 'assistant',
+          // `complete`, because a stored turn is one that finished. Marking a
+          // replayed turn `streaming` would leave a spinner that never
+          // resolves, since no stream is running to end it.
+          status: 'complete',
+          prompt: turn.request.symptom,
+          response: turn.response,
+        });
+      }
+      return { sessionId: action.sessionId, messages };
     }
 
     case 'retry':

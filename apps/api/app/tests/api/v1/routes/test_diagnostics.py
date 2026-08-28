@@ -13,6 +13,7 @@ layer.
 from __future__ import annotations
 
 from collections.abc import Iterator, MutableMapping
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -24,7 +25,11 @@ from app.api.v1.routes import diagnostics as diagnostics_route
 from app.core.config import Settings
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
-from app.models.schemas.diagnostics import DiagnosticRequest
+from app.models.schemas.diagnostics import (
+    DiagnosticRequest,
+    DiagnosticSessionPage,
+    DiagnosticSessionSummary,
+)
 from app.models.schemas.streaming import DiagnosisEvent
 
 _TENANT_ID = "55555555-5555-5555-5555-555555555555"
@@ -228,3 +233,155 @@ def test_the_stream_records_time_to_first_token(
     assert metric["events"] == 3
     # Separate numbers, not one total: perceived speed is the first.
     assert "total_ms" in metric
+
+
+# --- GET /sessions -----------------------------------------------------------
+#
+# The HTTP contract only. Ordering, tenant scoping and cursor correctness are
+# the domain's job and are tested against a real database there; what matters
+# here is that the query string is parsed, bounds are enforced as a 422 rather
+# than silently clamped, and the domain is called for the authenticated caller.
+
+
+@pytest.fixture
+def sessions_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    """A client bound to the sessions router alone."""
+    from app.api import deps
+    from app.core.db import get_session
+
+    app = FastAPI()
+    app.include_router(diagnostics_route.sessions_router, prefix="/sessions")
+    app.dependency_overrides[deps.get_current_user] = _user
+    app.dependency_overrides[get_session] = lambda: None
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _empty_page() -> DiagnosticSessionPage:
+    return DiagnosticSessionPage(sessions=[], next_cursor=None)
+
+
+def test_the_session_list_is_served_as_json(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", lambda **_kw: _empty_page())
+
+    response = sessions_client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json() == {"sessions": [], "next_cursor": None}
+
+
+def test_the_cursor_is_passed_through(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cursor reaches the domain.
+
+    A cursor that never reaches the domain silently re-serves page one,
+    which a scrolling sidebar renders as a list that loops forever.
+    """
+    seen: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> DiagnosticSessionPage:
+        seen.update(kwargs)
+        return _empty_page()
+
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", capture)
+    sessions_client.get("/sessions", params={"cursor": "abc123"})
+
+    assert seen["cursor"] == "abc123"
+
+
+def test_the_limit_is_passed_through(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> DiagnosticSessionPage:
+        seen.update(kwargs)
+        return _empty_page()
+
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", capture)
+    sessions_client.get("/sessions", params={"limit": 5})
+
+    assert seen["limit"] == 5
+
+
+def test_no_cursor_means_the_first_page(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> DiagnosticSessionPage:
+        seen.update(kwargs)
+        return _empty_page()
+
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", capture)
+    sessions_client.get("/sessions")
+
+    assert seen["cursor"] is None
+
+
+def test_the_route_acts_for_the_authenticated_caller_only(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The caller comes from the dependency, never from the query string.
+
+    A route that let a caller name a tenant would make the whole tenant check
+    in the domain decorative.
+    """
+    seen: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> DiagnosticSessionPage:
+        seen.update(kwargs)
+        return _empty_page()
+
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", capture)
+    sessions_client.get("/sessions", params={"tenant_id": "11111111-1111-1111-1111-111111111111"})
+
+    user = seen["user"]
+    assert isinstance(user, CurrentUser)
+    assert user.tenant_id == _TENANT_ID
+
+
+@pytest.mark.parametrize("limit", [0, -1, 101, 10_000], ids=["zero", "negative", "over", "huge"])
+def test_an_out_of_range_limit_is_rejected(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch, limit: int
+) -> None:
+    """An out-of-range limit is rejected.
+
+    422 naming the field, rather than a silent clamp to a number the caller
+    did not ask for.
+    """
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", lambda **_kw: _empty_page())
+
+    response = sessions_client.get("/sessions", params={"limit": limit})
+
+    assert response.status_code == 422
+
+
+def test_a_page_renders_its_rows(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fields the sidebar draws must survive serialisation."""
+    page = DiagnosticSessionPage(
+        sessions=[
+            DiagnosticSessionSummary(
+                id="11111111-1111-1111-1111-111111111111",
+                title="ACS880 undervoltage",
+                equipment_model=None,
+                turn_count=3,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ],
+        next_cursor="next",
+    )
+    monkeypatch.setattr(diagnostics_domain, "list_sessions", lambda **_kw: page)
+
+    body = sessions_client.get("/sessions").json()
+
+    assert body["next_cursor"] == "next"
+    assert body["sessions"][0]["title"] == "ACS880 undervoltage"
+    assert body["sessions"][0]["turn_count"] == 3

@@ -28,12 +28,16 @@ Framework-agnostic — nothing here imports FastAPI.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import uuid
 from collections.abc import Generator
+from datetime import datetime
+from typing import Any
 
 import structlog
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, tuple_
+from sqlalchemy.orm import Session, aliased
 
 from app.ai.guardrails.cite_or_refuse import evaluate_confidence, verify_citations
 from app.ai.guardrails.confidence import score_confidence
@@ -42,7 +46,7 @@ from app.ai.localisation import generate_localised_diagnosis
 from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
 from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.core.observability import record_latency, timed
 from app.domain.auth import consume_free_question
 from app.models.schemas.auth import CurrentUser
@@ -51,6 +55,8 @@ from app.models.schemas.diagnostics import (
     DiagnosticRequest,
     DiagnosticResponse,
     DiagnosticSession,
+    DiagnosticSessionPage,
+    DiagnosticSessionSummary,
     DiagnosticTurn,
     GeneratedAnswer,
     VerifiedAnswer,
@@ -498,6 +504,11 @@ def _persist_and_return(
             # stored text later would guess.
             refused=response.diagnosis is None,
             confidence=response.confidence.overall,
+            # What the engineer was shown, so the history sidebar can restore
+            # the context indicator instead of guessing it back from the prose.
+            equipment_model=(
+                response.diagnosis.equipment_model if response.diagnosis is not None else None
+            ),
         )
     )
     # The caller commits: one transaction per request, so a failure after this
@@ -522,6 +533,229 @@ def _stored_answer(response: DiagnosticResponse) -> str:
     # there is no answer, so this cannot be empty — and an empty one would
     # make the whole session unreadable when replayed.
     return response.refusal_message or "No answer was recorded for this turn."
+
+
+#: How many sessions one page carries when the caller does not choose.
+_SESSIONS_PAGE_DEFAULT = 20
+
+#: The most a caller may request in one page. A sidebar renders a screenful;
+#: an unbounded `limit` would let one request read a tenant's entire history
+#: into memory and is the usual shape of an accidental denial of service.
+_SESSIONS_PAGE_MAX = 100
+
+#: How much of the first question identifies a conversation in the sidebar.
+#: Truncated server-side as well as in CSS: a multi-kilobyte symptom would
+#: otherwise be sent in full to render two lines of text.
+_SESSION_TITLE_MAX = 120
+
+
+def _session_cursor(last_activity: datetime, session_id: uuid.UUID) -> str:
+    """Encode the position of the last row on a page.
+
+    Args:
+        last_activity: That row's last-activity timestamp.
+        session_id: That row's id.
+
+    Returns:
+        An opaque cursor string.
+
+    The id is part of the cursor, not decoration. Ordering by timestamp alone
+    is not a total order -- two sessions can share a timestamp, and a keyset
+    cursor over a non-unique key either repeats or skips rows at the page
+    boundary. Pairing it with the primary key makes the order total.
+    """
+    raw = f"{last_activity.isoformat()}|{session_id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _decode_session_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """Decode a cursor produced by ``_session_cursor``.
+
+    Args:
+        cursor: The opaque string handed back by a previous page.
+
+    Returns:
+        The timestamp and session id the next page continues from.
+
+    Raises:
+        ValidationError: If the cursor is not one this service issued.
+            Validated rather than trusted: a cursor arrives from the client
+            like any other input, and this one is decoded straight into a SQL
+            comparison. Rejecting it also keeps a corrupted cursor from
+            silently returning the first page again, which would look to a
+            scrolling sidebar like the list had looped.
+    """
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        timestamp, separator, identifier = raw.partition("|")
+        if not separator:
+            raise ValueError("cursor is missing its separator")
+        return datetime.fromisoformat(timestamp), uuid.UUID(identifier)
+    except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+        raise ValidationError("invalid pagination cursor") from exc
+
+
+def list_sessions(
+    *,
+    session: Session,
+    user: CurrentUser,
+    limit: int = _SESSIONS_PAGE_DEFAULT,
+    cursor: str | None = None,
+) -> DiagnosticSessionPage:
+    """List the caller's conversations, most recently active first.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+        limit: Maximum rows to return; clamped to a server-side maximum.
+        cursor: Opaque cursor from a previous page, or ``None`` for the first.
+
+    Returns:
+        One page of session summaries, newest activity first.
+
+    Raises:
+        ValidationError: If ``limit`` is not positive, or the cursor is not one
+            this service issued.
+
+    **Scoped by tenant, not by user id.** A trial session is created before
+    anyone has signed up, so ``user_id`` is null on exactly the conversations a
+    new engineer most wants to find again; filtering on it would hide their own
+    history from them. Tenant is the isolation boundary the rest of this module
+    uses, and it is never null.
+
+    **Ordered by last activity, which is the newest turn rather than the
+    session row's ``updated_at``.** Appending a turn inserts into
+    ``diagnostic_turns`` and does not write to ``diagnostic_sessions``, so that
+    column still holds the moment the conversation was *opened*. Ordering by it
+    would push a session an engineer worked on all afternoon below one they
+    opened yesterday and abandoned.
+    """
+    if limit < 1:
+        raise ValidationError("limit must be at least 1")
+    limit = min(limit, _SESSIONS_PAGE_MAX)
+
+    # Derived rather than stored, so no column has to be kept in step by every
+    # future write path. COALESCE because a session with no turns yet is a real
+    # row -- created the moment a question starts -- and must not vanish from
+    # the list or sort as though it had no date at all.
+    last_activity = func.coalesce(
+        func.max(DiagnosticTurnRow.created_at), DiagnosticSessionRow.created_at
+    ).label("last_activity")
+
+    query = (
+        select(
+            DiagnosticSessionRow.id,
+            DiagnosticSessionRow.created_at,
+            last_activity,
+            func.count(DiagnosticTurnRow.id).label("turn_count"),
+            # The most recently identified equipment in the conversation. MAX
+            # over a text column is arbitrary among distinct values, so this is
+            # a correlated scalar instead: the latest turn that named one wins,
+            # because an engineer who moved to a different unit mid-session is
+            # looking for the unit they moved to.
+            _latest_equipment_model().label("equipment_model"),
+        )
+        .join(
+            DiagnosticTurnRow,
+            DiagnosticTurnRow.session_id == DiagnosticSessionRow.id,
+            # Outer: a session whose first question is still in flight has no
+            # turns, and an inner join would drop it from the engineer's own
+            # sidebar at exactly the moment they are looking at it.
+            isouter=True,
+        )
+        .where(DiagnosticSessionRow.tenant_id == _tenant_uuid(user))
+        .group_by(DiagnosticSessionRow.id, DiagnosticSessionRow.created_at)
+        .order_by(last_activity.desc(), DiagnosticSessionRow.id.desc())
+        # One extra row, to learn whether another page exists without a second
+        # count query -- and without claiming there is a next page when the
+        # last page happens to be exactly `limit` long, which would hand the
+        # sidebar a cursor that returns nothing.
+        .limit(limit + 1)
+    )
+
+    if cursor is not None:
+        after_activity, after_id = _decode_session_cursor(cursor)
+        # A keyset condition matching the two-column sort exactly. Comparing
+        # only the timestamp would re-serve or skip rows that share one. It is
+        # a HAVING rather than a WHERE because `last_activity` is an aggregate.
+        query = query.having(
+            tuple_(last_activity, DiagnosticSessionRow.id) < (after_activity, after_id)
+        )
+
+    rows = session.execute(query).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    summaries = [
+        DiagnosticSessionSummary(
+            id=str(row.id),
+            title=_session_title(session=session, session_id=row.id),
+            equipment_model=row.equipment_model,
+            turn_count=row.turn_count,
+            created_at=row.created_at,
+            updated_at=row.last_activity,
+        )
+        for row in rows
+    ]
+
+    next_cursor = (
+        _session_cursor(rows[-1].last_activity, rows[-1].id) if has_more and rows else None
+    )
+    return DiagnosticSessionPage(sessions=summaries, next_cursor=next_cursor)
+
+
+def _latest_equipment_model() -> Any:
+    """Return a scalar subquery for a conversation's most recent equipment.
+
+    Returns:
+        A correlated scalar selecting the newest non-null ``equipment_model``
+        among the session's turns.
+
+    Correlated rather than aggregated because the column is text: ``MAX`` over
+    it would return whichever model sorts highest alphabetically, which is not
+    the same question and would show ``ACS880`` on a session that has since
+    moved on to a ``VLT`` drive.
+    """
+    inner = aliased(DiagnosticTurnRow)
+    return (
+        select(inner.equipment_model)
+        .where(
+            inner.session_id == DiagnosticSessionRow.id,
+            inner.equipment_model.is_not(None),
+        )
+        .order_by(inner.position.desc())
+        .limit(1)
+        .correlate(DiagnosticSessionRow)
+        .scalar_subquery()
+    )
+
+
+def _session_title(*, session: Session, session_id: uuid.UUID) -> str:
+    """Return the first question of a conversation, truncated for display.
+
+    Args:
+        session: Open database session.
+        session_id: The conversation.
+
+    Returns:
+        The first question, or a placeholder when the session has no turns yet.
+
+    Ordered by ``position`` rather than by id or insertion order: position is
+    the column that defines a turn's place in the conversation, and an id sorts
+    by creation only by accident of how ids happen to be generated.
+    """
+    question = session.scalars(
+        select(DiagnosticTurnRow.question)
+        .where(DiagnosticTurnRow.session_id == session_id)
+        .order_by(DiagnosticTurnRow.position)
+        .limit(1)
+    ).first()
+
+    if question is None:
+        return "New conversation"
+    if len(question) <= _SESSION_TITLE_MAX:
+        return question
+    return question[: _SESSION_TITLE_MAX - 1].rstrip() + "…"
 
 
 def get_session(
@@ -600,18 +834,23 @@ def _replay_turn(conversation_id: uuid.UUID, turn: DiagnosticTurnRow) -> Diagnos
             # this function's docstring. `DiagnosticResponse` requires a
             # diagnosis alongside an answer, so the card is rebuilt from the
             # single stored step: what was shown, nothing invented.
-            diagnosis=_replayed_diagnosis(turn.answer),
+            diagnosis=_replayed_diagnosis(turn.answer, turn.equipment_model),
             confidence=stored_confidence,
             low_confidence=turn.confidence < _REPLAY_CONFIDENT,
         )
     return DiagnosticTurn(request=request, response=response)
 
 
-def _replayed_diagnosis(text: str) -> StructuredDiagnosis:
+def _replayed_diagnosis(text: str, equipment_model: str | None = None) -> StructuredDiagnosis:
     """Rebuild the minimum valid card for a stored answer.
 
     Args:
         text: The stored answer prose.
+        equipment_model: The equipment recorded on the turn, when one was.
+            Carried back rather than re-derived so the context indicator
+            restores to what was actually shown; ``None`` for turns written
+            before it was recorded, which the sidebar renders as no context
+            rather than as a guess.
 
     Returns:
         A single-step diagnosis carrying the stored text. Deliberately minimal:
@@ -622,6 +861,7 @@ def _replayed_diagnosis(text: str) -> StructuredDiagnosis:
     return StructuredDiagnosis(
         summary=text,
         summary_citation_ids=[_REPLAY_CITATION_ID],
+        equipment_model=equipment_model,
         steps=[
             DiagnosisStep(
                 order=1,
