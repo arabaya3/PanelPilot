@@ -123,3 +123,23 @@ def missing_required_fields(document: dict[str, Any]) -> list[str]:
         The offending field names, in mapping order. Empty when complete.
     """
     return [f for f in REQUIRED_FIELDS if document.get(f) is None]
+
+
+def indexed_fields() -> frozenset[str]:
+    """Return every field the index mapping declares.
+
+    Returns:
+        The declared field names.
+
+    Derived from ``index_mapping`` rather than listed separately, so the two
+    cannot drift. The mapping is ``dynamic: strict``: a body carrying anything
+    undeclared is rejected outright rather than stored and ignored, so a caller
+    assembling a chunk from pipeline output needs to know what is allowed
+    through. Hand-maintaining that list is how it goes stale.
+    """
+    properties = index_mapping()["mappings"]["properties"]
+    return frozenset(properties)
+
+
+#: Every field the index accepts. See ``indexed_fields``.
+INDEXED_FIELDS: frozenset[str] = indexed_fields()

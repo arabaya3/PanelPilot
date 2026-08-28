@@ -9,9 +9,15 @@ from typing import Any
 
 import pytest
 
+from app.ai.retrieval import client as client_module
 from app.ai.retrieval.client import IndexTarget, ensure_index, index_chunk
 from app.ai.retrieval.mappings import REQUIRED_FIELDS
 from app.core.config import Settings
+
+
+def _complete_document() -> dict[str, Any]:
+    """A chunk body with every required field populated."""
+    return dict.fromkeys(REQUIRED_FIELDS, "x")
 
 
 def test_index_chunk_refuses_a_document_with_a_null_required_field() -> None:
@@ -98,3 +104,70 @@ def test_setup_registers_every_pipeline_a_query_can_name(
 
     for query_type in QueryType:
         assert pipeline_name_for(query_type) in registered
+
+
+# --- stage_chunk must be unable to publish -----------------------------------
+#
+# These exist because a mutation survived without them. `test_architecture.py`
+# exempts this module from the "only promotion.py names PRODUCTION" rule --- it
+# has to, since `resolve_index` maps both targets --- so a `stage_chunk` that
+# quietly wrote to production passed every structural check in the suite. The
+# guard has to be behavioural here: assert the index actually written.
+
+
+def test_stage_chunk_writes_to_staging(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole reason this helper exists separately from `index_chunk`."""
+    written: dict[str, object] = {}
+
+    class _Client:
+        def index(self, *, index: str, id: str, body: dict[str, object]) -> None:  # noqa: A002 - the OpenSearch client's own keyword
+            del body
+            written["index"] = index
+            written["id"] = id
+
+    monkeypatch.setattr(client_module, "get_client", lambda: _Client())
+    monkeypatch.setattr(
+        client_module,
+        "resolve_index",
+        lambda target: f"resolved-{target.value}",
+    )
+
+    client_module.stage_chunk(chunk_id="c1", document=_complete_document())
+
+    assert written["index"] == "resolved-staging"
+
+
+def test_stage_chunk_never_writes_to_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stated as its own assertion rather than implied by the one above.
+
+    A regression here is the single worst failure this codebase can have:
+    unreviewed crawled content becoming live and citable, with no human in the
+    loop and nothing in the audit trail. ADR 0001 exists for exactly this.
+    """
+    targets: list[str] = []
+
+    class _Client:
+        def index(self, *, index: str, id: str, body: dict[str, object]) -> None:  # noqa: A002 - the OpenSearch client's own keyword
+            del id, body
+            targets.append(index)
+
+    monkeypatch.setattr(client_module, "get_client", lambda: _Client())
+    monkeypatch.setattr(client_module, "resolve_index", lambda target: target.value)
+
+    client_module.stage_chunk(chunk_id="c1", document=_complete_document())
+
+    assert targets == ["staging"]
+    assert "production" not in targets
+
+
+def test_stage_chunk_refuses_an_incomplete_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same completeness bar as promotion.
+
+    A chunk missing its page or source_url is unusable as a citation whether it
+    is staged or live, and catching it here means a reviewer is never shown an
+    item that could not have been promoted anyway.
+    """
+    monkeypatch.setattr(client_module, "get_client", lambda: None)
+
+    with pytest.raises(ValueError, match="required fields"):
+        client_module.stage_chunk(chunk_id="c1", document={"text": "no citation fields"})
