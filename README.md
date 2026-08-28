@@ -9,7 +9,7 @@ calculations performed by deterministic code rather than by the model.
 > orchestration endpoint, and the web client that renders it in English,
 > Arabic and Hebrew. `docker compose up` boots all five services healthy.
 >
-> Four backend gaps remain, listed below. Each one is a missing _endpoint_
+> Three backend gaps remain, listed below. Each one is a missing _endpoint_
 > rather than missing logic: the code behind it exists and is tested.
 
 ---
@@ -31,10 +31,11 @@ serves a live chat input on an anonymous trial — no signup, no form.
 
 **What will not work yet, and why:**
 
-- **Asking a diagnostic question.** It fails at retrieval — see known gap 4.
-  The stream opens, emits `retrieving`, and closes; the UI reports an
-  interrupted turn. This is a missing embedding provider, not a bug in the
-  chat surface.
+- **Asking a diagnostic question.** It answers with a refusal — see known
+  gap 3. The stream runs to completion (`retrieving` → `refused` → `result`)
+  and the UI renders the refusal, which is correct: the corpus is empty, so
+  cite-or-refuse has nothing to cite. This is a rate-limited embedding
+  account and an unpopulated index, not a bug in the chat surface.
 - **Anything corpus-backed.** The production index is empty — nothing has been
   crawled, chunked, verified, or promoted. Even with embeddings working, every
   answer would be a refusal until the corpus is populated and verified. That
@@ -47,14 +48,25 @@ anyone picking this up needs these before they need the history.
 
 ### Backend work between here and a usable product
 
-Four things. The first three are routes whose client half is already built and
-tested; the fourth is a vendor decision, and is the one that actually blocks
+Three things. The first two are routes whose client half is already built and
+tested; the third is a vendor decision, and is the one that actually blocks
 the product being usable at all.
 
 _Previously listed here and now resolved: the anonymous-trial endpoint.
 `POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
 and an access token, so the landing page works with zero auth and signup
 carries the conversation into the new account._
+
+_Also resolved: the sessions list. `GET /api/v1/sessions?cursor=` returns a
+tenant-scoped page of conversations ordered by last activity, and FE-011's
+sidebar is wired to it — selecting an entry hydrates the chat view through the
+same session-fetch route the page already uses, restoring the context
+indicator as well as the messages. That last part needed one schema change:
+the equipment a turn was answered about is now recorded on the turn, because
+it previously lived only on the live response and a replayed turn came back
+with the chip blank. Re-deriving it from the stored prose would have meant
+guessing a model number out of an answer, which is what the chip's neutral
+state exists to prevent._
 
 **1. AI-008's recogniser is wired to no route.**
 `app/ai/recognition.py` is complete: a verdict, per-field confidence, and an
@@ -65,21 +77,13 @@ the image and returns `{image_id}`, so nothing calls it. The web client
 `FaultRecognitionResult` shape and reports today's stored-but-unread outcome
 honestly; wiring the route is the only work left.
 
-**2. There is no endpoint to list sessions.**
-`GET /api/v1/diagnostics/{session_id}` fetches one session by id. Nothing
-lists them, so FE-011 (conversation history sidebar) has no paginated
-`GET /sessions?cursor=` to call and was not attempted — building a client for
-an API that does not exist would have been worse than leaving it. This is a
-genuine gap in the original task breakdown, not an oversight in the
-implementation.
-
-**3. BE-012's rate limiter is in-memory and single-worker.**
+**2. BE-012's rate limiter is in-memory and single-worker.**
 The sliding window lives in process memory, so the limit is per-worker rather
 than per-deployment. Correct for one worker and wrong the moment there are
 two. A Redis-backed store is the intended replacement; Redis is already in
 the compose stack.
 
-**4. Retrieval is wired end to end, and rate-limited on the free tier.**
+**3. Retrieval is wired end to end, and rate-limited on the free tier.**
 Voyage is implemented, keyed and verified live: `embed_query` and
 `embed_documents` both return 1024-dimension vectors from `voyage-3.5`, which
 is exactly what `mappings.EMBEDDING_DIMENSIONS` pins — so no re-index was

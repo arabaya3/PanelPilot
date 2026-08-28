@@ -302,7 +302,7 @@ All 21 rows where Assignee = "Ayed Rabaya".
 
 > A new visitor can ask a real question and get a real answer with zero manual steps; trial-limit and signup-prompt states are clear, not abrupt.
 
-### [ ] FE-011 — Conversation history sidebar
+### [x] FE-011 — Conversation history sidebar
 
 | Field                   | Value                                         |
 | ----------------------- | --------------------------------------------- |
