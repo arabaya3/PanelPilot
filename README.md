@@ -25,6 +25,11 @@ Four things standing between the current tree and a product an engineer can
 use unattended. All four are backend; the client half of each is built,
 tested, and waiting on the route.
 
+_Previously listed here and now resolved: the anonymous-trial endpoint.
+`POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
+and an access token, so the landing page works with zero auth and signup
+carries the conversation into the new account._
+
 **1. AI-008's recogniser is wired to no route.**
 `app/ai/recognition.py` is complete: a verdict, per-field confidence, and an
 off-topic rejection path, with the schema refusing a fault code reported
@@ -48,13 +53,17 @@ than per-deployment. Correct for one worker and wrong the moment there are
 two. A Redis-backed store is the intended replacement; Redis is already in
 the compose stack.
 
-**4. There is no endpoint to start an anonymous trial.**
-Signup can already _finish_ one — `SignupRequest` takes `claim_session_id`
-and `claim_secret`, the `anonymous_sessions` table exists, and claiming joins
-the new user to the trial's existing tenant rather than copying rows, so
-nothing can half-succeed. But nothing issues an anonymous session, and every
-`/diagnostics` route requires `CurrentUserDep`, so "the first N questions
-work with zero auth" cannot happen over the wire yet.
+**4. Retrieval cannot embed a query, so no diagnosis completes.**
+`app/ai/retrieval/hybrid_search.py:embed_query` raises `NotImplementedError`.
+Every diagnosis therefore fails at the retrieval stage — `POST /diagnostics`
+returns a 500, and `POST /diagnostics/stream` emits `retrieving` and then
+closes without a terminal frame. The client handles that honestly (the stream
+surfaces `interrupted`, and FE-014's error states render it), but the result
+is that **no question can currently be answered or properly refused**, whoever
+asks it and however the corpus is populated.
+
+This is upstream of the empty index and separate from it: filling the corpus
+would not help until a query can be embedded.
 
 ### Blocked on source documents that are not in this repository
 
@@ -72,6 +81,25 @@ both are blocked behind them. The responsive check
 (`apps/web/scripts/check-responsive.mjs`) already refuses a table with neither
 a scrollable container nor a stacked fallback, so the BOM table cannot merge
 later without the mobile fallback FE-013 requires.
+
+### Local development notes
+
+**Migrations run automatically under `docker compose`, and only there.** The
+`api` service overrides its command to `alembic upgrade head && exec uvicorn`.
+This is deliberately not in the Dockerfile's `CMD`: the runtime stage is the
+production image, and a container that migrates its own database on boot can
+rewrite schema during a rolling deploy from however many replicas start at
+once. Production runs the upgrade as a separate, ordered step. Without the
+override a fresh volume starts at the initial revision and every auth route
+500s on a missing column.
+
+**The web container proxies `/api/*` to the API.** A Next rewrite, targeted by
+`API_PROXY_TARGET` (`http://api:8000` under compose). The browser cannot
+resolve a container hostname, and the client modules post to relative paths —
+without the rewrite every request lands on the Next server as a 404, and the
+landing page reports the trial endpoint missing when it is running fine.
+Same-origin also means no CORS entry and no API address baked into the browser
+bundle at build time.
 
 ### Deliberate incompletenesses in merged work
 

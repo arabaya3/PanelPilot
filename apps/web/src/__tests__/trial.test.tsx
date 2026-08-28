@@ -119,14 +119,38 @@ describe('startTrial', () => {
     expect(outcome).toEqual({ kind: 'unavailable' });
   });
 
-  it('reads the session and its secret when one is issued', async () => {
+  it('reads the session, its secret, and the token it may ask with', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: () =>
+        Promise.resolve({
+          session_id: 'sess-1',
+          claim_secret: 'secret-1',
+          access_token: 'tok-1',
+          questions_remaining: 10,
+        }),
+    });
+    const outcome = await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(outcome).toEqual({
+      kind: 'started',
+      trial: TRIAL,
+      accessToken: 'tok-1',
+      questionsRemaining: 10,
+    });
+  });
+
+  it('refuses a response carrying no usable token', async () => {
+    // Every diagnostics route authenticates. A start without a token would
+    // render a chat input that 401s on the first question, which is worse
+    // than saying the trial could not start.
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
       json: () => Promise.resolve({ session_id: 'sess-1', claim_secret: 'secret-1' }),
     });
     const outcome = await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(outcome).toEqual({ kind: 'started', trial: TRIAL });
+    expect(outcome).toEqual({ kind: 'failed' });
   });
 
   it('refuses a response carrying an id but no secret', async () => {

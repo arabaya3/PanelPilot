@@ -17,6 +17,7 @@ from app.models.schemas.auth_flows import (
     RefreshRequest,
     SignupRequest,
     TokenPair,
+    TrialStart,
 )
 
 router = APIRouter()
@@ -34,6 +35,18 @@ def signup(payload: SignupRequest, session: SessionDep) -> TokenPair:
     )
     session.commit()
     return tokens
+
+
+@router.post("/trial", response_model=TrialStart, status_code=status.HTTP_201_CREATED)
+def start_trial(session: SessionDep) -> TrialStart:
+    """Begin an anonymous trial.
+
+    Takes no body and no credentials — requiring either would put a form in
+    front of the product, which is the funnel this deliberately does not have.
+    """
+    trial = auth_domain.start_trial(session=session)
+    session.commit()
+    return trial
 
 
 @router.post("/login", response_model=TokenPair)

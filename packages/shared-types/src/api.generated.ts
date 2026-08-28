@@ -55,6 +55,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/auth/trial': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start Trial
+     * @description Begin an anonymous trial.
+     *
+     *     Takes no body and no credentials — requiring either would put a form in
+     *     front of the product, which is the funnel this deliberately does not have.
+     */
+    post: operations['start_trial_api_v1_auth_trial_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/auth/login': {
     parameters: {
       query?: never;
@@ -1299,6 +1322,41 @@ export interface components {
       /** Expires In */
       expires_in: number;
     };
+    /**
+     * TrialStart
+     * @description A newly started anonymous trial.
+     *
+     *     ``session_id`` and ``claim_secret`` are the pair FE-008's client already
+     *     expects; the field names are snake_case because that client reads them by
+     *     those exact names.
+     *
+     *     ``access_token`` is carried alongside them because a trial has to be able
+     *     to *ask something* — every diagnostics route authenticates, and a trial
+     *     that cannot call one is a landing page that collects a question and does
+     *     nothing with it. The token is scoped to the provisional tenant the trial
+     *     created, so it can do no more than the trial itself may.
+     *
+     *     The secret is returned exactly once, here. Only its hash is stored, so it
+     *     cannot be re-read or recovered later — losing it means starting a new
+     *     trial, which is the safe direction.
+     */
+    TrialStart: {
+      /** Session Id */
+      session_id: string;
+      /** Claim Secret */
+      claim_secret: string;
+      /** Access Token */
+      access_token: string;
+      /**
+       * Token Type
+       * @default bearer
+       */
+      token_type: string;
+      /** Expires In */
+      expires_in: number;
+      /** Questions Remaining */
+      questions_remaining: number;
+    };
     /** ValidationError */
     ValidationError: {
       /** Location */
@@ -1536,6 +1594,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_trial_api_v1_auth_trial_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TrialStart'];
         };
       };
     };

@@ -21,6 +21,32 @@ class SignupRequest(BaseModel):
     claim_secret: str | None = None
 
 
+class TrialStart(BaseModel):
+    """A newly started anonymous trial.
+
+    ``session_id`` and ``claim_secret`` are the pair FE-008's client already
+    expects; the field names are snake_case because that client reads them by
+    those exact names.
+
+    ``access_token`` is carried alongside them because a trial has to be able
+    to *ask something* — every diagnostics route authenticates, and a trial
+    that cannot call one is a landing page that collects a question and does
+    nothing with it. The token is scoped to the provisional tenant the trial
+    created, so it can do no more than the trial itself may.
+
+    The secret is returned exactly once, here. Only its hash is stored, so it
+    cannot be re-read or recovered later — losing it means starting a new
+    trial, which is the safe direction.
+    """
+
+    session_id: str
+    claim_secret: str
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    questions_remaining: int
+
+
 class LoginRequest(BaseModel):
     """Exchange credentials for a token pair."""
 

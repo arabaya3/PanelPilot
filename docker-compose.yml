@@ -107,6 +107,25 @@ services:
       DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot
       OPENSEARCH_URL: http://opensearch:9200
       REDIS_URL: redis://redis:6379/0
+    # DEV ONLY. Migrations run here, in the compose override, and deliberately
+    # NOT in the Dockerfile's CMD — the runtime stage is the production image,
+    # and a container that migrates its own database on boot is a container
+    # that can rewrite schema during a rolling deploy, from however many
+    # replicas happen to start at once. Production runs `alembic upgrade head`
+    # as a separate, ordered step before any new code serves traffic.
+    #
+    # Here it removes a real footgun: a fresh volume starts at the initial
+    # revision, and every auth route 500s on a missing column until someone
+    # remembers to run it by hand. `exec` so uvicorn keeps PID 1 and still
+    # receives signals; `&&` so a failed migration stops the container instead
+    # of serving traffic against a schema that does not match the code.
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn app.main:create_app --factory
+        --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
     volumes:
       # Source mounted for --reload.
       - ./apps/api:/app
@@ -158,6 +177,12 @@ services:
       # Read by the browser, not by this container, so it must be an address
       # the host can resolve.
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # Where the Next server forwards /api/* to. A container hostname, not
+      # localhost: the rewrite runs server-side, so it resolves on the compose
+      # network rather than in the browser. The browser only ever talks to
+      # this origin, which is what keeps the requests same-origin and out of
+      # CORS entirely.
+      API_PROXY_TARGET: http://api:8000
     volumes:
       - ./apps/web:/repo/apps/web
       - ./packages:/repo/packages
