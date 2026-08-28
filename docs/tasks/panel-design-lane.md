@@ -1,16 +1,31 @@
-# Panel Design lane — PD-001 to PD-008
+# Panel Design lane — PD-001 to PD-009
 
-The eight Panel Design tasks, transcribed from the project spreadsheet (`PanelPilot`, Tasks sheet). **Full Technical Details** and **Acceptance Criteria** are reproduced verbatim — they are the contract, and paraphrasing them would quietly move the goalposts.
-
-These existed only in the sheet until now, which is why an earlier pass of this project reported PD-005 and PD-006 as "not in this repository" when checking AI-005's downstream dependants. That was accurate about the repo and misleading about the project; this file closes that gap.
+The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPilot`, Tasks sheet). **Full Technical Details** and **Acceptance Criteria** are reproduced verbatim — they are the contract, and paraphrasing them would quietly move the goalposts.
 
 ## Status at a glance
 
-**All eight are `To Do` and assigned to Ayed Rabaya.** None has been started in this repository — there is no PD branch, no PD code, and no PD row in either lane tracker.
+**All nine are `To Do` and assigned to Ayed Rabaya.** None has been started in this repository.
 
-**PD-006 is a decision, not a coding task.** The sheet's own overview flags it: _"PD-006 needs Ayed directly (EPLAN license/access is a decision, not a coding task)."_ PD-007 depends on it and PD-008 depends on PD-007, so three of the eight sit behind one access question.
+### Re-synced from the sheet
 
-**PD-005 depends on AI-005.** `voltage_drop` is implemented and sourced; `size_conductor` and `derating_factor` are not. See `adan-lane.md` for what that leaves outstanding.
+**PD-006, PD-007 and PD-008 changed scope entirely** after the first transcription. They were an EPLAN integration path — access assessment, export schema, integration implementation. They are now a **native schematic renderer**: a symbol library, a schematic data schema, and an SVG single-line renderer built inside the product, with no external CAD tool involved.
+
+**PD-009 is new**, and is a deferral rather than work: the to-scale physical layout views are explicitly out of scope for this phase.
+
+PD-001 through PD-005 are unchanged from the previous transcription.
+
+**One stale cross-reference, left as published.** PD-001's Approach still reads "check EPLAN Data Portal access (PD-006) as a potentially richer, already-structured alternative source". That pointer no longer resolves — PD-006 is the symbol library now, and no PD task covers EPLAN access. The text is reproduced verbatim because this file is a transcription, not an edit of the sheet; the suggestion itself (EPLAN Data Portal as a catalogue source for PD-001) may still be worth pursuing on its own merits, but nothing in this lane assesses access to it any more.
+
+### Dependency shape
+
+The renderer chain is now internal, so nothing in it waits on a third-party licence:
+
+- **PD-006** (symbol library) — no dependencies. The entry point.
+- **PD-007** (schematic schema) — needs PD-003, PD-004, PD-005 and PD-006.
+- **PD-008** (renderer) — needs PD-006 and PD-007.
+- **PD-009** — deferred; nothing depends on it.
+
+PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstanding: `voltage_drop` is sourced and implemented, `size_conductor` and `derating_factor` are not. See `adan-lane.md`.
 
 ---
 
@@ -164,92 +179,122 @@ These existed only in the sheet until now, which is why an earlier pass of this 
 
 > Output matches hand-calculated reference wiring lists for representative panel scenarios; an unspecified connection topology is flagged, not guessed.
 
-## [ ] PD-006 — EPLAN access & capability assessment
+## [ ] PD-006 — Schematic symbol library & rendering conventions
 
-| Field                   | Value                                               |
-| ----------------------- | --------------------------------------------------- |
-| **Task ID**             | PD-006                                              |
-| **Category**            | Backend                                             |
-| **Epic / Feature Area** | Panel Design                                        |
-| **Dependencies**        | _none_                                              |
-| **Work Stream**         | Trust & Delivery Systems (Adan)                     |
-| **Phase Group**         | Calc Tools & Panel Design                           |
-| **Branch Name**         | `feature/pd-006-eplan-access-capability-assessment` |
-| **Status (sheet)**      | To Do                                               |
-| **Assignee (sheet)**    | Ayed Rabaya                                         |
-
-**Full Technical Details**
-
-> Objective: Determines what integration with the team's actual EPLAN license and setup is realistically possible — this is a licensing/access decision, not a coding task, and the entire output/integration layer (PD-007, PD-008) depends on its answer.
->
-> Approach: Confirm exactly which EPLAN modules/license the team holds (Electric P8, Pro Panel, eBUILD), whether EPLAN Data Portal access exists, and what the documented EPLAN API actually permits at that license tier — this requires someone with the team's actual EPLAN credentials/account, not something derivable from public documentation alone.
->
-> Interface: A findings document, not code: license tier, available modules, Data Portal access status, API access status.
->
-> Edge cases: If no programmatic API access exists at all, PD-007/PD-008's scope changes significantly (a structured export file for manual/semi-automated import, rather than live API automation) — this must be reported plainly rather than assumed either way.
->
-> Testing: n/a — this is an access/decision task.
-
-**Acceptance Criteria**
-
-> A clear, specific answer exists for: EPLAN license tier held, whether Data Portal access exists, and whether API automation is possible at the current license level.
-
-## [ ] PD-007 — Structured export schema design
-
-| Field                   | Value                                            |
-| ----------------------- | ------------------------------------------------ |
-| **Task ID**             | PD-007                                           |
-| **Category**            | Backend                                          |
-| **Epic / Feature Area** | Panel Design                                     |
-| **Dependencies**        | PD-006                                           |
-| **Work Stream**         | Trust & Delivery Systems (Adan)                  |
-| **Phase Group**         | Calc Tools & Panel Design                        |
-| **Branch Name**         | `feature/pd-007-structured-export-schema-design` |
-| **Status (sheet)**      | To Do                                            |
-| **Assignee (sheet)**    | Ayed Rabaya                                      |
+| Field                   | Value                                                     |
+| ----------------------- | --------------------------------------------------------- |
+| **Task ID**             | PD-006                                                    |
+| **Category**            | Backend                                                   |
+| **Epic / Feature Area** | Panel Design                                              |
+| **Dependencies**        | _none_                                                    |
+| **Work Stream**         | Trust & Delivery Systems (Adan)                           |
+| **Phase Group**         | Calc Tools & Panel Design                                 |
+| **Branch Name**         | `feature/pd-006-schematic-symbol-library-rendering-conve` |
+| **Status (sheet)**      | To Do                                                     |
+| **Assignee (sheet)**    | Ayed Rabaya                                               |
 
 **Full Technical Details**
 
-> Objective: Defines exactly what data PD-003/PD-004/PD-005 need to hand off, in a shape the team's actual EPLAN setup (per PD-006's findings) can actually consume.
+> Objective: Establishes the visual language the schematic renderer will use — a small, reusable set of standard symbols is what keeps every generated diagram consistent, instead of each render inventing its own look.
 >
-> Approach: Design the schema based on PD-006's confirmed access level: either a rich API-consumable format if programmatic access exists, or a structured file format suited to manual/semi-automated import if it doesn't.
+> Approach: Define standard IEC 60617-style electrical symbols (breaker, contactor, terminal block, relay coil, etc.) as reusable, parameterized SVG components — the same structured-data-to-SVG pattern FE-009 already proved for ladder-logic rendering, applied to panel schematic symbols instead of PLC rungs. Each symbol takes a reference designator and rating label as props rather than being drawn per-instance.
 >
-> Interface: A documented schema covering: component list, row/position layout, matched Rittal SKUs, and the wiring specification list.
+> Interface: A symbol library module exporting one component/template per component type, keyed the same way PD-002's DIN-module lookup is keyed.
 >
-> Edge cases: The schema must not assume API access it hasn't confirmed exists — designed to degrade gracefully to a file-based handoff if PD-006 found no API access.
+> Edge cases: An unrecognized component type must render a clearly-marked generic placeholder symbol with a visible warning, never silently omit it or invent a plausible-looking symbol for something it doesn't actually have a definition for.
 >
-> Testing: Validate the schema by running a representative full panel design (from PD-003/004/005) through it end to end.
+> Testing: Visual snapshot tests for each symbol type checked against IEC 60617 reference conventions.
 
 **Acceptance Criteria**
 
-> The schema produces a complete, correctly-structured handoff for a representative full panel design, validated against PD-006's actual confirmed access level.
+> Every component type PD-001/PD-002 can produce has a corresponding correct symbol; an unrecognized type renders a visible placeholder, never a silent gap or a guessed symbol.
 
-## [ ] PD-008 — EPLAN integration implementation
+## [ ] PD-007 — Schematic data schema
 
-| Field                   | Value                                             |
-| ----------------------- | ------------------------------------------------- |
-| **Task ID**             | PD-008                                            |
-| **Category**            | Backend                                           |
-| **Epic / Feature Area** | Panel Design                                      |
-| **Dependencies**        | PD-003,PD-004,PD-005,PD-007                       |
-| **Work Stream**         | Trust & Delivery Systems (Adan)                   |
-| **Phase Group**         | Calc Tools & Panel Design                         |
-| **Branch Name**         | `feature/pd-008-eplan-integration-implementation` |
-| **Status (sheet)**      | To Do                                             |
-| **Assignee (sheet)**    | Ayed Rabaya                                       |
+| Field                   | Value                                  |
+| ----------------------- | -------------------------------------- |
+| **Task ID**             | PD-007                                 |
+| **Category**            | Backend                                |
+| **Epic / Feature Area** | Panel Design                           |
+| **Dependencies**        | PD-003,PD-004,PD-005,PD-006            |
+| **Work Stream**         | Trust & Delivery Systems (Adan)        |
+| **Phase Group**         | Calc Tools & Panel Design              |
+| **Branch Name**         | `feature/pd-007-schematic-data-schema` |
+| **Status (sheet)**      | To Do                                  |
+| **Assignee (sheet)**    | Ayed Rabaya                            |
 
 **Full Technical Details**
 
-> Objective: Delivers the actual automated handoff from this system's calculations to the team's EPLAN environment — closing the loop from 'the system selects the right parts and layout' to 'the engineer gets a real, usable drawing start.'
+> Objective: Defines the structured contract between the calc-tools layer (PD-003/004/005) and the renderer (PD-008) — the shape of 'what to draw', kept separate from 'how to draw it' so either side can change independently.
 >
-> Approach: Implemented per PD-007's schema and PD-006's confirmed access mechanism: API calls if available, eBUILD rule configuration if that's the confirmed path, or structured file export for manual import otherwise.
+> Approach: A schema covering: the component list (mapped to PD-006 symbol types), the electrical connection/topology list (from PD-005), and layout hints (row/grouping assignment from PD-003) — everything the renderer needs and nothing it has to infer.
 >
-> Interface: An export/integration endpoint or job producing the PD-007 schema in its final, EPLAN-consumable form.
+> Interface: A documented, typed schema, e.g. SchematicSpec.
 >
-> Edge cases: Any integration failure must surface clearly to the user — never silently produce an incomplete or partial handoff that looks complete.
+> Edge cases: The schema must represent an out-of-range or refused calc-tool result explicitly (not just omit it), so the renderer can show 'not calculated' rather than silently leaving a gap that looks like an oversight.
 >
-> Testing: End-to-end validation producing a real, importable result against the team's actual EPLAN setup — not just a schema-shaped file that was never actually tried against EPLAN itself.
+> Testing: Validate the schema by running a representative full panel design's actual PD-003/004/005 output through it end to end.
 
 **Acceptance Criteria**
 
-> A representative full panel design (components + layout + wiring) successfully hands off into the team's actual EPLAN environment end to end.
+> The schema produces a complete, correctly structured representation of a representative full panel design, including how it represents any refused/out-of-range calc-tool result.
+
+## [ ] PD-008 — Single-line schematic renderer
+
+| Field                   | Value                                           |
+| ----------------------- | ----------------------------------------------- |
+| **Task ID**             | PD-008                                          |
+| **Category**            | Backend                                         |
+| **Epic / Feature Area** | Panel Design                                    |
+| **Dependencies**        | PD-006,PD-007                                   |
+| **Work Stream**         | Trust & Delivery Systems (Adan)                 |
+| **Phase Group**         | Calc Tools & Panel Design                       |
+| **Branch Name**         | `feature/pd-008-single-line-schematic-renderer` |
+| **Status (sheet)**      | To Do                                           |
+| **Assignee (sheet)**    | Ayed Rabaya                                     |
+
+**Full Technical Details**
+
+> Objective: Delivers the actual rendered schematic diagram — extending the same structured-data-to-SVG pattern already proven and tested in FE-009's ladder-logic display, now producing a real single-line power-distribution diagram natively within the product, no external CAD tool involved.
+>
+> Approach: Consumes PD-007's schema, composes PD-006's symbol library into a full single-line diagram in the same layout convention as the reference example (power distribution shown top-to-bottom, branch circuits fanning out per row/group).
+>
+> Interface: A rendering function/component producing SVG output, plus a PDF/PNG export path for the resulting diagram.
+>
+> Edge cases: A panel design too large for one reasonable page must paginate sensibly (matching how the reference example itself splits across multiple numbered pages), never shrink until illegible.
+>
+> Testing: Render a representative full panel design and visually verify it against the same worked examples PD-003/004/005 already validated — the diagram must show the same components/ratings the calc tools actually computed, not a plausible-looking approximation.
+
+**Acceptance Criteria**
+
+> A representative full panel design renders as a correct, legible single-line schematic matching the underlying calc-tool output exactly; an oversized design paginates rather than shrinking illegibly.
+
+## [ ] PD-009 — Physical panel layout views (deferred)
+
+| Field                   | Value                                                 |
+| ----------------------- | ----------------------------------------------------- |
+| **Task ID**             | PD-009                                                |
+| **Category**            | Backend                                               |
+| **Epic / Feature Area** | Panel Design                                          |
+| **Dependencies**        | _none_                                                |
+| **Work Stream**         | Trust & Delivery Systems (Adan)                       |
+| **Phase Group**         | Calc Tools & Panel Design                             |
+| **Branch Name**         | `feature/pd-009-physical-panel-layout-views-deferred` |
+| **Status (sheet)**      | To Do                                                 |
+| **Assignee (sheet)**    | Ayed Rabaya                                           |
+
+**Full Technical Details**
+
+> Objective: The to-scale physical views (front/side/top/dead-front, matching where each component actually sits inside the enclosure) shown in the reference example — deliberately not built in this phase.
+>
+> Approach: Not attempted yet: this needs real per-component footprint/geometry data (not just DIN-module width) and a genuine 2D layout engine, a substantially larger undertaking than the schematic renderer (PD-008), closer to building CAD-engine functionality than a calc tool or a symbol-based diagram.
+>
+> Interface: n/a — explicitly out of scope for this phase.
+>
+> Edge cases: This is not a regression: the feature's mandatory-review design (BE-011 never returns a 'final' flag) already assumes a human finishes the design — for now, that includes turning the verified component list, layout summary, and schematic into the physical drawing, same as they would today without any tool at all.
+>
+> Testing: n/a.
+
+**Acceptance Criteria**
+
+> Explicitly deferred — not a task to complete, a documented boundary of what this phase delivers.
