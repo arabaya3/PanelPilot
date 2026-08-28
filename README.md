@@ -14,16 +14,42 @@ calculations performed by deterministic code rather than by the model.
 
 ---
 
+## What works if you boot it today
+
+`docker compose up --build -d` brings up five healthy services. The web root
+serves a live chat input on an anonymous trial — no signup, no form.
+
+**What you can actually exercise end to end:**
+
+- **PLC code review** — `POST /api/v1/plc/review`, or the PLC view in the UI.
+  A real IEC 61131-3 parser: valid code passes, a typo'd tag or a missing
+  `END_IF` is flagged with a line number, and an unsupported dialect construct
+  reports `incomplete` rather than a false pass. No auth, no corpus, no model
+  call. This is the best thing to try first.
+- **Signup, login, and the trial claim** — including carrying an anonymous
+  conversation into a new account.
+
+**What will not work yet, and why:**
+
+- **Asking a diagnostic question.** It fails at retrieval — see known gap 4.
+  The stream opens, emits `retrieving`, and closes; the UI reports an
+  interrupted turn. This is a missing embedding provider, not a bug in the
+  chat surface.
+- **Anything corpus-backed.** The production index is empty — nothing has been
+  crawled, chunked, verified, or promoted. Even with embeddings working, every
+  answer would be a refusal until the corpus is populated and verified. That
+  is cite-or-refuse behaving correctly, not a defect.
+
 ## Known gaps
 
 Recorded here rather than only in the task logs because they outlive them —
 anyone picking this up needs these before they need the history.
 
-### Backend routes the client is already waiting on
+### Backend work between here and a usable product
 
-Four things standing between the current tree and a product an engineer can
-use unattended. All four are backend; the client half of each is built,
-tested, and waiting on the route.
+Four things. The first three are routes whose client half is already built and
+tested; the fourth is a vendor decision, and is the one that actually blocks
+the product being usable at all.
 
 _Previously listed here and now resolved: the anonymous-trial endpoint.
 `POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
@@ -53,17 +79,48 @@ than per-deployment. Correct for one worker and wrong the moment there are
 two. A Redis-backed store is the intended replacement; Redis is already in
 the compose stack.
 
-**4. Retrieval cannot embed a query, so no diagnosis completes.**
+**4. There is no embedding provider, so no diagnosis completes.**
 `app/ai/retrieval/hybrid_search.py:embed_query` raises `NotImplementedError`.
-Every diagnosis therefore fails at the retrieval stage — `POST /diagnostics`
-returns a 500, and `POST /diagnostics/stream` emits `retrieving` and then
-closes without a terminal frame. The client handles that honestly (the stream
-surfaces `interrupted`, and FE-014's error states render it), but the result
-is that **no question can currently be answered or properly refused**, whoever
-asks it and however the corpus is populated.
+`POST /diagnostics` returns a 500; `POST /diagnostics/stream` emits
+`retrieving` and then closes without a terminal frame. The client handles that
+honestly — the stream surfaces `interrupted` and FE-014's error states render
+it — but **no question can currently be answered or properly refused**,
+whoever asks it and however the corpus is populated.
 
-This is upstream of the empty index and separate from it: filling the corpus
-would not help until a query can be embedded.
+This is upstream of the empty index and larger than a missing function body.
+What is actually absent:
+
+- **No provider is chosen or configured.** Nothing in `Settings`, `.env`, or
+  `.env.example` names an embedding model, endpoint, or key, and no embedding
+  client is in `pyproject.toml`.
+- **Anthropic does not offer an embeddings API**, so the one AI key already
+  configured cannot serve this. It needs a second vendor (Voyage, Cohere,
+  OpenAI) with its own key, cost line and data-processing agreement, or a
+  self-hosted model.
+- **Self-hosting is an explicit deployment-shape decision**, not an
+  implementation detail. ADR-0002 names it as extraction trigger 2 — "the most
+  likely trigger" for splitting the AI layer into its own runtime, because it
+  makes GPU-class nodes a requirement — and notes that acting on it also forces
+  resolving ADR-0001's transaction problem.
+- **The write side is missing too.** `chunk_body` in
+  `app/ingestion/staging_pipeline.py` emits no `content_vector`, so ingestion
+  would index chunks the kNN leg cannot match even once queries embed. Both
+  halves need the same model.
+- **`EMBEDDING_DIMENSIONS = 1024` is already pinned** in
+  `app/ai/retrieval/mappings.py` and baked into the index mapping. It happens
+  to match Voyage and Cohere's 1024-dimension models; a provider with a
+  different width means editing that constant, which is a full re-index rather
+  than a config change.
+
+Everything downstream is built and tested: the hybrid query assembles both
+legs, blends them 0.6/0.4, and filters by verification status. The retrieval
+tests monkeypatch `embed_query` and say so in their own docstring — *
+"Embeddings are supplied by the test rather than by `embed_query`"* — which is
+why a green suite never exercised this.
+
+So it is a **provider decision plus a day or so of wiring**, not a small
+function to fill in. There is no BM25-only fallback: `embed_query` is called
+unconditionally, so adding one would itself be a change to the search path.
 
 ### Blocked on source documents that are not in this repository
 
