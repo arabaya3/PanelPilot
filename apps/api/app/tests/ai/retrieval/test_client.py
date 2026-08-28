@@ -120,10 +120,11 @@ def test_stage_chunk_writes_to_staging(monkeypatch: pytest.MonkeyPatch) -> None:
     written: dict[str, object] = {}
 
     class _Client:
-        def index(self, *, index: str, id: str, body: dict[str, object]) -> None:  # noqa: A002 - the OpenSearch client's own keyword
-            del body
-            written["index"] = index
-            written["id"] = id
+        def index(self, **kwargs: object) -> None:
+            # `**kwargs` rather than the real signature: the client is called
+            # with `id=`, and naming that parameter here shadows a builtin for
+            # no benefit -- the assertions only read the index it wrote to.
+            written.update(kwargs)
 
     monkeypatch.setattr(client_module, "get_client", lambda: _Client())
     monkeypatch.setattr(
@@ -147,9 +148,8 @@ def test_stage_chunk_never_writes_to_production(monkeypatch: pytest.MonkeyPatch)
     targets: list[str] = []
 
     class _Client:
-        def index(self, *, index: str, id: str, body: dict[str, object]) -> None:  # noqa: A002 - the OpenSearch client's own keyword
-            del id, body
-            targets.append(index)
+        def index(self, **kwargs: object) -> None:
+            targets.append(str(kwargs["index"]))
 
     monkeypatch.setattr(client_module, "get_client", lambda: _Client())
     monkeypatch.setattr(client_module, "resolve_index", lambda target: target.value)
