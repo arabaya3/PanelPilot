@@ -79,48 +79,36 @@ than per-deployment. Correct for one worker and wrong the moment there are
 two. A Redis-backed store is the intended replacement; Redis is already in
 the compose stack.
 
-**4. There is no embedding provider, so no diagnosis completes.**
-`app/ai/retrieval/hybrid_search.py:embed_query` raises `NotImplementedError`.
-`POST /diagnostics` returns a 500; `POST /diagnostics/stream` emits
-`retrieving` and then closes without a terminal frame. The client handles that
-honestly — the stream surfaces `interrupted` and FE-014's error states render
-it — but **no question can currently be answered or properly refused**,
-whoever asks it and however the corpus is populated.
+**4. The embedding provider is wired but has no key.**
+Voyage is chosen and implemented — `app/ai/retrieval/embedding.py` behind a
+callable seam, `EMBEDDING_PROVIDER` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`
+in settings and `.env.example`, `voyageai` in the API dependencies, and
+`hybrid_search.embed_query` delegating to it. Voyage's default output width is
+1024, which is exactly what `mappings.EMBEDDING_DIMENSIONS` already pinned, so
+adopting it needs no re-index.
 
-This is upstream of the empty index and larger than a missing function body.
-What is actually absent:
+**What remains is an account, not code.** With `EMBEDDING_API_KEY` unset,
+`get_embedder` refuses with a named error rather than falling back — a default
+provider would let a misconfigured deployment return vectors from a model the
+index was never built against, which fails silently rather than loudly. So a
+diagnosis still cannot complete on this machine, and the failure now says why.
 
-- **No provider is chosen or configured.** Nothing in `Settings`, `.env`, or
-  `.env.example` names an embedding model, endpoint, or key, and no embedding
-  client is in `pyproject.toml`.
-- **Anthropic does not offer an embeddings API**, so the one AI key already
-  configured cannot serve this. It needs a second vendor (Voyage, Cohere,
-  OpenAI) with its own key, cost line and data-processing agreement, or a
-  self-hosted model.
-- **Self-hosting is an explicit deployment-shape decision**, not an
-  implementation detail. ADR-0002 names it as extraction trigger 2 — "the most
-  likely trigger" for splitting the AI layer into its own runtime, because it
-  makes GPU-class nodes a requirement — and notes that acting on it also forces
-  resolving ADR-0001's transaction problem.
-- **The write side is missing too.** `chunk_body` in
-  `app/ingestion/staging_pipeline.py` emits no `content_vector`, so ingestion
-  would index chunks the kNN leg cannot match even once queries embed. Both
-  halves need the same model.
-- **`EMBEDDING_DIMENSIONS = 1024` is already pinned** in
-  `app/ai/retrieval/mappings.py` and baked into the index mapping. It happens
-  to match Voyage and Cohere's 1024-dimension models; a provider with a
-  different width means editing that constant, which is a full re-index rather
-  than a config change.
+Two properties are worth knowing before anyone swaps the model or the vendor:
 
-Everything downstream is built and tested: the hybrid query assembles both
-legs, blends them 0.6/0.4, and filters by verification status. The retrieval
-tests monkeypatch `embed_query` and say so in their own docstring — *
-"Embeddings are supplied by the test rather than by `embed_query`"* — which is
-why a green suite never exercised this.
+- **A vector of the wrong width is refused, not padded.** The width is baked
+  into the index mapping, so a 1536-wide model would either be rejected by
+  OpenSearch at query time or — against a freshly built index — accepted and
+  quietly wrong.
+- **A provider outage raises rather than returning zeros.** A zero vector is a
+  legal kNN input that matches arbitrary neighbours, so substituting one would
+  degrade an outage into confidently wrong retrieval with citations attached.
 
-So it is a **provider decision plus a day or so of wiring**, not a small
-function to fill in. There is no BM25-only fallback: `embed_query` is called
-unconditionally, so adding one would itself be a change to the search path.
+`chunk_body` now accepts a `content_vector`, passed in by the caller rather
+than computed inside `app/ingestion` — an architecture rule denies that package
+any import from `app.ai.retrieval`, the same shape as `extract_structure`. The
+field is omitted entirely when absent rather than written as zeros, so a chunk
+indexed without a real embedding is visibly missing one instead of silently
+retrievable.
 
 ### Blocked on source documents that are not in this repository
 
