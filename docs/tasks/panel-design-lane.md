@@ -14,8 +14,6 @@ The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPil
 
 PD-001 through PD-005 are unchanged from the previous transcription.
 
-**One stale cross-reference, left as published.** PD-001's Approach still reads "check EPLAN Data Portal access (PD-006) as a potentially richer, already-structured alternative source". That pointer no longer resolves — PD-006 is the symbol library now, and no PD task covers EPLAN access. The text is reproduced verbatim because this file is a transcription, not an edit of the sheet; the suggestion itself (EPLAN Data Portal as a catalogue source for PD-001) may still be worth pursuing on its own merits, but nothing in this lane assesses access to it any more.
-
 ### Dependency shape
 
 The renderer chain is now internal, so nothing in it waits on a third-party licence:
@@ -47,7 +45,7 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > Objective: Establishes the real product data (enclosure dimensions/SKUs) every panel-sizing calculation in this feature depends on — without it, PD-003/004 have nothing real to size against.
 >
-> Approach: Reuses the same staging-then-verification-then-promotion architecture already built for BE-005, applied to structured product records instead of manual-content chunks. Start from System Catalogue 36 (confirmed freely downloadable as PDF/ebook) as the baseline source. Separately check for BMEcat/eCl@ss structured electronic-catalog data via a Rittal account, and check EPLAN Data Portal access (PD-006) as a potentially richer, already-structured alternative source.
+> Approach: Reuses the same staging-then-verification-then-promotion architecture already built for BE-005, applied to structured product records instead of manual-content chunks. Start from System Catalogue 36 (confirmed freely downloadable as PDF/ebook) as the baseline source. Separately check for BMEcat/eCl@ss structured electronic-catalog data via a Rittal account as a potentially richer, already-structured alternative source.
 >
 > Interface: Structured ProductRecord rows (SKU, external W x H x D, internal usable W x H x D, DIN-rail row capacity, mounting type, IP rating) written to staging, promoted only after verification.
 >

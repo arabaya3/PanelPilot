@@ -51,19 +51,31 @@ StructureExtractor = Callable[[SourceDocument], StructureMap]
 logger = structlog.get_logger(__name__)
 
 
-def chunk_body(chunk: DocumentChunk) -> dict[str, object]:
+def chunk_body(
+    chunk: DocumentChunk, *, content_vector: list[float] | None = None
+) -> dict[str, object]:
     """Render a chunk as the index document body.
 
     Args:
         chunk: The chunk to write.
+        content_vector: The chunk's dense embedding, when one has been
+            computed. Passed in rather than computed here: an architecture
+            rule denies this package any import from ``app.ai.retrieval``, so
+            the embedder is the caller's to hold — the same shape as
+            ``extract_structure``.
 
     Returns:
         The body ``index_chunk`` expects. Every citation field is carried
         through rather than defaulted — ``index_chunk`` refuses a null one, and
         quietly substituting a placeholder here would defeat that check by
         making the field present and meaningless.
+
+        The vector is **omitted entirely when absent**, never written as an
+        empty list or zeros. A zero vector is a legal kNN input that matches
+        arbitrary neighbours, so a chunk indexed without a real embedding would
+        be silently retrievable and wrong; a missing field is visibly missing.
     """
-    return {
+    body: dict[str, object] = {
         "chunk_id": chunk.id,
         "document_id": chunk.document_id,
         "text": chunk.text,
@@ -76,6 +88,9 @@ def chunk_body(chunk: DocumentChunk) -> dict[str, object]:
         "is_atomic": chunk.is_atomic,
         "verification_status": "pending",
     }
+    if content_vector is not None:
+        body["content_vector"] = content_vector
+    return body
 
 
 def prepare_documents(

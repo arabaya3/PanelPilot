@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
+from app.ai.retrieval.embedding import embed_query as _embed_query
 from app.ai.retrieval.mappings import VerificationStatus
 from app.ai.retrieval.query_classifier import classify_query
 from app.core.config import get_settings
@@ -412,5 +413,13 @@ def embed_query(query: str) -> list[float]:
 
     Returns:
         The dense embedding vector.
+
+    Raises:
+        EmbeddingError: If no provider is configured, or embedding fails.
+
+    A thin delegation kept in place rather than removed: every retrieval test
+    monkeypatches this name, and moving the seam would rewrite those tests for
+    no benefit. The width check and the refusal-over-zero-vector behaviour live
+    in `app.ai.retrieval.embedding`.
     """
-    raise NotImplementedError
+    return _embed_query(query)

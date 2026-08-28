@@ -32,6 +32,12 @@ dependencies = [
     # this is the same engine with a grammar written here instead of
     # inherited under a licence the product cannot take.
     "lark>=1.2",
+    # Dense embeddings for retrieval's vector leg. Anthropic publishes no
+    # embeddings API, so this is a second vendor by necessity rather than
+    # preference. Voyage's default output width is 1024, which is what
+    # `mappings.EMBEDDING_DIMENSIONS` already pins — so adopting it needs no
+    # re-index.
+    "voyageai>=0.3",
 ]
 
 [project.optional-dependencies]
@@ -126,7 +132,7 @@ plugins = ["pydantic.mypy"]
 exclude = "^alembic/"
 
 [[tool.mypy.overrides]]
-module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*"]
+module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*", "voyageai.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

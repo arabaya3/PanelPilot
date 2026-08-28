@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     llm_model: str = "claude-sonnet-5"
     llm_max_output_tokens: int = 4096
 
+    # --- Embedding provider ------------------------------------------------
+    # Separate from the LLM provider on purpose: Anthropic publishes no
+    # embeddings API, so the key above cannot serve retrieval's vector leg.
+    # Unset by default and refused at use rather than defaulted — a default
+    # provider would let a misconfigured deployment return vectors from a
+    # model the index was never built against.
+    embedding_provider: str | None = None
+    embedding_api_key: SecretStr | None = None
+    # Voyage's default output width is 1024, which is what
+    # `mappings.EMBEDDING_DIMENSIONS` pins. Changing the model to one of a
+    # different width is a re-index, not a config edit.
+    embedding_model: str = "voyage-3"
+
     # --- Retrieval / guardrails --------------------------------------------
     # These seed RetrievalConfig, which is what the query path actually reads.
     # They stay here because they are documented environment variables an
