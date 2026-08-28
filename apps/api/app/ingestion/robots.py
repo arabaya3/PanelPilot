@@ -144,9 +144,41 @@ def fetch_policy(*, source_id: str, seed_url: str, client: httpx.Client) -> Robo
         )
         raise RobotsUnavailableError(f"{url} returned {response.status_code}")
 
-    parser.parse(response.text.splitlines())
+    parser.parse(_significant_lines(response.text))
     delay = parser.crawl_delay(USER_AGENT)
     return RobotsPolicy(parser=parser, crawl_delay_s=float(delay) if delay is not None else None)
+
+
+def _significant_lines(body: str) -> list[str]:
+    """Split robots.txt into lines, dropping blanks and comments.
+
+    Args:
+        body: The raw robots.txt text.
+
+    Returns:
+        The rule lines, with blank and comment-only lines removed.
+
+    A blank line terminates a record in the robots standard, and Python's
+    parser implements that faithfully — so a file whose ``User-agent`` line is
+    followed by an empty line has every subsequent ``Disallow`` attributed to
+    no agent at all, and the parser then permits everything.
+
+    That is not hypothetical. Rittal's robots.txt is written exactly that way:
+    ``User-agent:*``, a blank line, then 96 ``Disallow`` rules. Parsed
+    literally it reads as "crawl anything", which is plainly not what the file
+    is trying to say, and acting on that reading would mean crawling paths the
+    operator has asked us not to.
+
+    Dropping blank lines collapses the file to a single record, which is the
+    conservative reading: every rule binds, and we crawl less rather than
+    more. The cost is that a file deliberately scoping different rules to
+    different agents by separating records has those rules merged — also the
+    conservative direction, since the union of the disallow sets is what gets
+    enforced.
+    """
+    return [
+        line for line in body.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    ]
 
 
 def require_allowed(policy: RobotsPolicy, *, source_id: str, url: str) -> None:

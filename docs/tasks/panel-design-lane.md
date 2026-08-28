@@ -4,7 +4,9 @@ The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPil
 
 ## Status at a glance
 
-**All nine are `To Do` and assigned to Ayed Rabaya.** None has been started in this repository.
+**PD-006 is done and merged** (PR #70): thirteen IEC 60617-style symbols, 31 tests, five mutants killed. The other eight are `To Do`, all assigned to Ayed Rabaya.
+
+**The rest of the chain is blocked on one thing.** PD-003 needs PD-001's catalogue data and PD-002's module widths; PD-004 needs PD-001; PD-005 needs PD-003 and AI-005; PD-007 needs PD-003/004/005; PD-008 needs PD-007. PD-001 has no obtainable source yet — see its note — so the whole chain from PD-003 onward waits behind it.
 
 ### Re-synced from the sheet
 
@@ -54,10 +56,30 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 > introducing an instance of it to satisfy a registration step would be
 > backwards.
 >
-> Unblocking needs either a direct PDF URL for the catalogue, a headless
-> browser in the crawler (a real change to the ingestion contract, not a new
-> source class), or the BMEcat/eCl@ss structured feed the Approach already
-> mentions via a Rittal account.
+> **The Document Center was tried as an alternative, and fails the same way.**
+> `rittal.com/us_en/apps/download/` returns HTTP 200 and **5 KB containing zero
+> anchors of any kind** — not zero PDF links, zero `<a>` tags at all — with ten
+> script tags. Identical response under a browser User-Agent, so this is
+> client-side rendering rather than bot-blocking. Its one exposed REST
+> endpoint (`/.rest/nav/menu/tree`) returns the site navigation tree and
+> contains no `.pdf` reference at all.
+>
+> So both Rittal entry points are JavaScript-driven. This is not two failures
+> but one: the ingestion pipeline fetches HTML and reads links out of it, and
+> neither page has links in its HTML.
+>
+> Unblocking needs a direct PDF URL, a headless browser in the crawler (a real
+> change to the ingestion contract, not a new source class), or the
+> BMEcat/eCl@ss structured feed the Approach already mentions via a Rittal
+> account.
+>
+> **One useful thing did come out of the attempt.** Rittal's robots.txt puts a
+> blank line immediately after `User-agent:*`, which terminates the record per
+> the standard — so Python's parser attributed all 96 `Disallow` rules to no
+> agent and permitted everything, including the `/products/show/` paths the
+> file explicitly forbids. Our policy layer inherited that reading. Fixed in
+> `app/ingestion/robots.py` with a regression test; the three live sources do
+> not use that format, so nothing was crawled in breach.
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
@@ -207,7 +229,7 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > Output matches hand-calculated reference wiring lists for representative panel scenarios; an unspecified connection topology is flagged, not guessed.
 
-## [ ] PD-006 — Schematic symbol library & rendering conventions
+## [x] PD-006 — Schematic symbol library & rendering conventions
 
 | Field                   | Value                                                     |
 | ----------------------- | --------------------------------------------------------- |
