@@ -79,36 +79,33 @@ than per-deployment. Correct for one worker and wrong the moment there are
 two. A Redis-backed store is the intended replacement; Redis is already in
 the compose stack.
 
-**4. The embedding provider is wired but has no key.**
-Voyage is chosen and implemented — `app/ai/retrieval/embedding.py` behind a
-callable seam, `EMBEDDING_PROVIDER` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL`
-in settings and `.env.example`, `voyageai` in the API dependencies, and
-`hybrid_search.embed_query` delegating to it. Voyage's default output width is
-1024, which is exactly what `mappings.EMBEDDING_DIMENSIONS` already pinned, so
-adopting it needs no re-index.
+**4. Retrieval is wired end to end, and rate-limited on the free tier.**
+Voyage is implemented, keyed and verified live: `embed_query` and
+`embed_documents` both return 1024-dimension vectors from `voyage-3.5`, which
+is exactly what `mappings.EMBEDDING_DIMENSIONS` pins — so no re-index was
+needed. The key is read from `VOYAGE_API_KEY`, named after the vendor so a
+second provider added later gets its own variable rather than overloading one
+that could silently hold the wrong account's credential.
 
-**What remains is an account, not code.** With `EMBEDDING_API_KEY` unset,
-`get_embedder` refuses with a named error rather than falling back — a default
-provider would let a misconfigured deployment return vectors from a model the
-index was never built against, which fails silently rather than loudly. So a
-diagnosis still cannot complete on this machine, and the failure now says why.
+**The remaining limit is an account setting, not code.** Voyage's free tier
+allows 3 requests per minute with no payment method attached, so a crawl of
+any size will hit it. The failure surfaces correctly — `EmbeddingError`, not a
+zero vector — but a real ingestion run needs billing enabled.
 
-Two properties are worth knowing before anyone swaps the model or the vendor:
+Two properties worth knowing before anyone swaps model or vendor:
 
 - **A vector of the wrong width is refused, not padded.** The width is baked
   into the index mapping, so a 1536-wide model would either be rejected by
   OpenSearch at query time or — against a freshly built index — accepted and
-  quietly wrong.
+  quietly wrong. Every vector in a batch is checked.
 - **A provider outage raises rather than returning zeros.** A zero vector is a
   legal kNN input that matches arbitrary neighbours, so substituting one would
   degrade an outage into confidently wrong retrieval with citations attached.
 
-`chunk_body` now accepts a `content_vector`, passed in by the caller rather
-than computed inside `app/ingestion` — an architecture rule denies that package
-any import from `app.ai.retrieval`, the same shape as `extract_structure`. The
-field is omitted entirely when absent rather than written as zeros, so a chunk
-indexed without a real embedding is visibly missing one instead of silently
-retrievable.
+`chunk_body` accepts a `content_vector`, passed in by the caller rather than
+computed inside `app/ingestion` — an architecture rule denies that package any
+import from `app.ai.retrieval`, the same shape as `extract_structure`. The
+field is omitted entirely when absent rather than written as zeros.
 
 ### Blocked on source documents that are not in this repository
 

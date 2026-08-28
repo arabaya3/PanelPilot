@@ -77,12 +77,17 @@ class Settings(BaseSettings):
     # Unset by default and refused at use rather than defaulted — a default
     # provider would let a misconfigured deployment return vectors from a
     # model the index was never built against.
-    embedding_provider: str | None = None
-    embedding_api_key: SecretStr | None = None
-    # Voyage's default output width is 1024, which is what
-    # `mappings.EMBEDDING_DIMENSIONS` pins. Changing the model to one of a
-    # different width is a re-index, not a config edit.
-    embedding_model: str = "voyage-3"
+    embedding_provider: str = "voyage"
+    # Read from VOYAGE_API_KEY rather than a generic EMBEDDING_API_KEY: the key
+    # is vendor-specific, and naming it after the vendor means a second
+    # provider added later gets its own variable instead of overloading one
+    # that could silently hold the wrong account's credential.
+    embedding_api_key: SecretStr | None = Field(default=None, alias="VOYAGE_API_KEY")
+    # voyage-3.5 outputs 1024 dimensions, which is what
+    # `mappings.EMBEDDING_DIMENSIONS` pins — verified against the live API,
+    # not assumed. Changing to a model of a different width is a re-index,
+    # not a config edit.
+    embedding_model: str = "voyage-3.5"
 
     # --- Retrieval / guardrails --------------------------------------------
     # These seed RetrievalConfig, which is what the query path actually reads.
