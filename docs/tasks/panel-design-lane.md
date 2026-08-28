@@ -29,6 +29,36 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 ## [ ] PD-001 — Rittal enclosure catalog ingestion
 
+> **A crawler source was attempted and is not viable as-is.** Registering
+> `webinfo.rittal.com/en/system_catalogue-36` as a `SourceCrawler` was tried
+> the same way the Siemens/ABB/Schneider sources work. Two of the three checks
+> pass and the third does not:
+>
+> - **robots.txt permits it.** The host disallows only `/_hcms/preview/`,
+>   `/hs/manage-preferences/`, `/hs/preferences-center/` and two query
+>   patterns. Run through this project's own `fetch_policy` /
+>   `require_allowed`, the catalogue URL is ALLOWED and a `/_hcms/preview/`
+>   URL is correctly REFUSED — so the policy layer works against this host.
+> - **The page fetches cleanly.** HTTP 200, ~20 KB of HTML.
+> - **It links no documents.** The served HTML contains **zero** `.pdf` hrefs
+>   and no download anchors at all; the "Download (PDF)" and "Ebook Version"
+>   buttons are rendered client-side. Running the real
+>   `_documents_from_links` extractor against the live page discovers **0
+>   documents**.
+>
+> Registering the crawler would therefore add a source that runs green, logs
+> success, and stages nothing — which is worse than no source, because a
+> pipeline reporting a healthy crawl of an empty result is indistinguishable
+> from a manufacturer that published nothing that day. That is the exact
+> failure BE-006's source-health monitoring exists to catch, and deliberately
+> introducing an instance of it to satisfy a registration step would be
+> backwards.
+>
+> Unblocking needs either a direct PDF URL for the catalogue, a headless
+> browser in the crawler (a real change to the ingestion contract, not a new
+> source class), or the BMEcat/eCl@ss structured feed the Approach already
+> mentions via a Rittal account.
+
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
 | **Task ID**             | PD-001                                              |

@@ -458,6 +458,45 @@ recorded rather than decided.
 > plausible function. It would also mean writing the ten test cases myself,
 > which is the exact failure this task's sourcing discipline exists to prevent
 > — and the same call already made for AI-005's `derating_factor`.
+>
+> **DriveSize is installed, and it cannot be driven.** ABB DriveSize 5.9.7.4 is
+> on this machine at `C:\Users\UnclePC\DriveWare\DriveSize`. It was checked for
+> an automation surface before assuming either way: `DriveSize.exe --help`
+> produces no output and exits 0; the binary contains no argument-parsing or
+> usage strings; `ABBDriveSizeLib2.dll` registers no COM/`ProgId`/`IDispatch`
+> interface; the bundled `DriveSize.xsd` is an internal configuration schema,
+> not an input format; and the "Application worksheet" folder holds Excel
+> macro workbooks for manual use. It is a WPF desktop application with no CLI,
+> no scripting hook and no batch export.
+>
+> So the ten cases have to be run by hand. **These are the exact scenarios**,
+> chosen to exercise the axes the function actually branches on rather than
+> ten variations of one case:
+>
+> | #   | Motor power | Supply | Duty   | Load type / note                    |
+> | --- | ----------- | ------ | ------ | ----------------------------------- |
+> | 1   | 7.5 kW      | 400 V  | Normal | Pump, baseline small frame          |
+> | 2   | 7.5 kW      | 400 V  | Heavy  | Same motor, duty changed            |
+> | 3   | 22 kW       | 400 V  | Normal | Fan, mid frame                      |
+> | 4   | 22 kW       | 400 V  | Heavy  | Same motor, duty changed            |
+> | 5   | 90 kW       | 400 V  | Normal | Crosses into a larger frame family  |
+> | 6   | 90 kW       | 400 V  | Heavy  | Expect a frame step up vs #5        |
+> | 7   | 250 kW      | 400 V  | Normal | Top of the ACS880-01 range          |
+> | 8   | 22 kW       | 690 V  | Normal | Voltage axis, same power as #3      |
+> | 9   | 22 kW       | 230 V  | Normal | Low-voltage end, same power as #3   |
+> | 10  | 45 kW       | 400 V  | Heavy  | High inertia, 40 °C ambient, 2000 m |
+>
+> Cases 1/2, 3/4 and 5/6 are deliberate pairs differing **only** in duty class,
+> because that is the input AI-006's spec says must never be defaulted — a pair
+> producing the same frame would prove the parameter is decorative. Cases
+> 3/8/9 vary only voltage. Case 10 is the only one exercising altitude and
+> ambient derating together, which is where `altitude_derate` and the
+> temperature curve compose.
+>
+> What is needed back is the exported report per case, showing at minimum the
+> selected drive type code, its I(N)/I(Ld)/I(Hd) rating, and any derating
+> factor DriveSize applied. Ten reports make the acceptance criterion
+> checkable; fewer, or ten that do not vary duty, do not.
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
@@ -492,10 +531,29 @@ recorded rather than decided.
 
 > **BLOCKED — do not attempt on general knowledge.**
 >
-> This task's constants must come from a named source document that is not
-> available in this repository or to this run: Rittal Handbook 36 §2 and §5, and Schneider Electric Electrical Installation Guide 2024 §H. The acceptance
-> criterion requires exact agreement with worked examples published in that
-> document.
+> This task's constants come from two named sources. **One is now obtained,
+> the other is not.**
+>
+> **EIG Chapter H — retrieved and read.** Schneider's _Electrical Installation
+> Guide_ 2010, Chapter H ("LV switchgear: functions & selection"), 28 pages,
+> fetched the same way Chapter G was for AI-005. It genuinely carries usable
+> data: Fig. H7 (utilization categories AC-20 to AC-23 with making/breaking
+> multiples and cos φ), Fig. H13 (gG fuse conventional non-fusing and fusing
+> current bands by rating), and worked examples that check — a 32 A fuse at
+> 1.25 In = 40 A must not melt within an hour, at 1.6 In must melt within one;
+> a 100 A AC-23 switch must make 10 In and break 8 In.
+>
+> **What Chapter H does not contain**, checked rather than assumed: no
+> standard/preferred breaker rating series (the rounding AI-007's Approach
+> calls for), no terminal-block sizing content at all (zero mentions), and no
+> worked panel or load-schedule scenario. The chapter is about selecting _a_
+> switching device, not composing a panel's worth of them.
+>
+> **Rittal Handbook 36 §2 and §5 remain unobtained**, and that is the half
+> AI-007 needs for mounting space and component pitch. The acceptance
+> criterion asks for 5 representative panel scenarios verified against
+> hand-calculated references; Chapter H supplies protection-device behaviour
+> for part of one load's chain, not a panel.
 >
 > Ampacity, derating and rating tables can be written from general engineering
 > knowledge. They would look correct, carry citations to a document nobody
