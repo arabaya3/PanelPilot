@@ -31,6 +31,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Generator
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,9 @@ _REPLAY_CITATION_ID = "recorded-turn"
 # banner is about how much to trust the answer, and a stored score is the same
 # score the engineer originally saw.
 _REPLAY_CONFIDENT = 0.6
+
+
+logger = structlog.get_logger(__name__)
 
 
 def run_diagnosis(
@@ -224,6 +228,45 @@ def _resolve_session(
     return _load_session(session=session, user=user, session_id=request.session_id)
 
 
+#: Shown when a turn fails for an infrastructure reason rather than a lack of
+#: evidence. Deliberately does not name the failing service or echo the
+#: exception: the person reading it cannot act on "OpenSearch returned 400",
+#: and an exception string on a user-facing surface is a disclosure risk. The
+#: detail goes to the log, which is where whoever can fix it will look.
+_STREAM_FAILURE_MESSAGE = (
+    "This question could not be answered because a service it depends on is "
+    "unavailable. Nothing was charged for this attempt. Please try again; if "
+    "it keeps happening, report it."
+)
+
+
+def _stream_failure_response(request: DiagnosticRequest) -> DiagnosticResponse:
+    """Build the terminal result for a turn that failed mid-stream.
+
+    Args:
+        request: The question that failed.
+
+    Returns:
+        A refusal-shaped response the frontend can render unchanged.
+
+    Every confidence signal is zero rather than omitted, because the failure
+    happened before anything was retrieved or scored. A non-zero placeholder
+    would be a fabricated measurement, and the uncertainty banner is raised so
+    the turn cannot read as a confident "no".
+    """
+    return DiagnosticResponse(
+        session_id=request.session_id or "",
+        confidence=ConfidenceBreakdown(
+            overall=0.0,
+            retrieval_score=0.0,
+            passage_agreement=0.0,
+            citation_density=0.0,
+        ),
+        low_confidence=True,
+        refusal_message=_STREAM_FAILURE_MESSAGE,
+    )
+
+
 def stream_diagnosis(
     *,
     session: Session,
@@ -249,19 +292,42 @@ def stream_diagnosis(
         user: The authenticated caller.
         request: The question.
 
-    Yields:
-        Progress events, then exactly one ``result`` event.
+    **Nothing raises out of this generator once streaming has begun.** A
+    generator body does not run until its first item is requested, which for a
+    ``StreamingResponse`` is after ``200 OK`` and the SSE headers have gone to
+    the client. An exception escaping past that point cannot become a status
+    code: it aborts the response body, and the client sees a connection that
+    ended after ``retrieving`` with no terminal event — indistinguishable from
+    a dropped network. So every failure is converted to a ``refused`` event
+    followed by a ``result``, which is the shape the client already
+    understands. Unknown event names are ignored by the frontend by design, so
+    inventing an ``error`` event here would be *less* visible than a refusal,
+    not more.
 
-    Raises:
-        ValidationError: If the tenant has no free questions left.
-            Raised by ``consume_free_question``; it maps to a 400, not a
-            payment-specific status, because the free tier is a usage
-            limit rather than a billing state.
-        NotFoundError: If the session id is unknown or belongs elsewhere.
+    Yields:
+        Progress events, then exactly one ``result`` event — including when
+        the turn fails.
     """
     yield DiagnosisEvent(event="retrieving", data={})
 
-    response = run_diagnosis(session=session, user=user, request=request, charge=False)
+    try:
+        response = run_diagnosis(session=session, user=user, request=request, charge=False)
+    except Exception:
+        # Broad because the alternative is silence. Retrieval reaches
+        # OpenSearch, generation reaches Anthropic, and embedding reaches
+        # Voyage; each can fail in ways this layer cannot enumerate, and every
+        # one of them must still leave the engineer with a terminal event
+        # rather than a stalled panel.
+        logger.exception("diagnosis.stream_failed", tenant_id=user.tenant_id)
+        yield DiagnosisEvent(event="refused", data={"reason": _STREAM_FAILURE_MESSAGE})
+        yield DiagnosisEvent(
+            event="result",
+            data=_stream_failure_response(request).model_dump(mode="json"),
+        )
+        # Deliberately not re-raised, and the quota deliberately not charged:
+        # the turn produced no answer, so billing for it is the exact failure
+        # the charge-after-delivery ordering below exists to prevent.
+        return
 
     if response.diagnosis is None:
         yield DiagnosisEvent(event="refused", data={"reason": response.refusal_message})

@@ -1054,3 +1054,208 @@ def test_a_streamed_refusal_is_not_charged(
         )
     )
     assert charged == []
+
+
+# --- a turn that fails after streaming has begun ----------------------------
+#
+# The bug these pin: a real query produced `event: retrieving` and then
+# nothing. OpenSearch rejected the query with `Pipeline
+# panelpilot-hybrid-symptom_description is not defined`, the exception escaped
+# the generator, and because a `StreamingResponse` has already sent 200 and the
+# SSE headers by the time the body runs, there was no status code left to
+# return. The client saw a body that stopped mid-stream — identical to a
+# dropped connection, and impossible to tell from a hung backend.
+
+
+def _failing_retrieval(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
+    """Make retrieval raise, as an unreachable OpenSearch does."""
+
+    def boom(*_a: object, **_kw: object) -> list[RetrievedPassage]:
+        raise exc
+
+    monkeypatch.setattr(diagnostics_domain, "search", boom)
+
+
+def test_a_failure_mid_stream_still_ends_with_a_terminal_event(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The core regression: the stream must never just stop.
+
+    Without this, the generator died after `retrieving` and the frontend could
+    only report "connection lost" — which sends the engineer to check their
+    network for a server-side fault.
+    """
+    _failing_retrieval(monkeypatch, RuntimeError("Pipeline ... is not defined"))
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert [event.event for event in events] == ["retrieving", "refused", "result"]
+
+
+def test_the_terminal_event_is_a_well_formed_refusal(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """So the frontend renders it through the path it already has.
+
+    A `result` that failed `DiagnosticResponse` validation would raise inside
+    the generator and reintroduce the silent stop by another door.
+    """
+    _failing_retrieval(monkeypatch, RuntimeError("boom"))
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    payload = events[-1].data
+    assert payload["diagnosis"] is None
+    assert payload["answer"] is None
+    assert payload["refusal_message"]
+    assert payload["low_confidence"] is True
+
+
+def test_a_failed_turn_reports_zero_confidence(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Nothing was retrieved or scored, so every signal is zero.
+
+    A placeholder above zero would be a fabricated measurement on a turn that
+    performed no measurement.
+    """
+    _failing_retrieval(monkeypatch, RuntimeError("boom"))
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert events[-1].data["confidence"]["overall"] == 0.0
+    assert events[-1].data["confidence"]["retrieval_score"] == 0.0
+
+
+def test_a_failed_turn_is_not_charged(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """A failed turn must not consume the tenant's quota.
+
+    Billing for an answer that was never produced is the failure the
+    charge-after-delivery ordering exists to prevent, and a mid-stream fault
+    must not route around it.
+    """
+    charged: list[str] = []
+    monkeypatch.setattr(
+        diagnostics_domain, "consume_free_question", lambda **_kw: charged.append("x")
+    )
+    _failing_retrieval(monkeypatch, RuntimeError("boom"))
+
+    list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert charged == []
+
+
+def test_the_failure_message_does_not_leak_the_exception(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The refusal text must not carry the underlying exception.
+
+    An exception string on a user-facing surface is a disclosure risk, and
+    the engineer reading it cannot act on an OpenSearch error anyway.
+    """
+    _failing_retrieval(
+        monkeypatch, RuntimeError("connection to opensearch:9200 refused; index secret-idx")
+    )
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    rendered = json.dumps([event.data for event in events])
+    assert "opensearch" not in rendered.lower()
+    assert "secret-idx" not in rendered
+
+
+def test_the_failure_says_nothing_was_charged(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The one fact the reader can act on: retry without cost."""
+    _failing_retrieval(monkeypatch, RuntimeError("boom"))
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert "charged" in events[-1].data["refusal_message"].lower()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RuntimeError("boom"), ValueError("bad"), TimeoutError(), KeyError("k")],
+    ids=["RuntimeError", "ValueError", "TimeoutError", "KeyError"],
+)
+def test_any_downstream_failure_is_converted(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient, failure: Exception
+) -> None:
+    """Any exception type terminates the stream cleanly.
+
+    Deliberately broad. Retrieval reaches OpenSearch, generation reaches
+    Anthropic and embedding reaches Voyage; this layer cannot enumerate their
+    failure modes, and every one of them must still terminate the stream.
+    """
+    _failing_retrieval(monkeypatch, failure)
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert events[-1].event == "result"
+
+
+def test_the_first_event_is_still_emitted_before_the_failure(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The opening event survives a later failure.
+
+    `retrieving` must survive: it is what proves to the client that the
+    request was accepted, and it is already on the wire when the fault hits.
+    """
+    _failing_retrieval(monkeypatch, RuntimeError("boom"))
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert events[0].event == "retrieving"
+
+
+def test_a_successful_turn_is_unaffected(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The guard must not have swallowed the normal path."""
+    _retrieving(monkeypatch, [_passage()])
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert [event.event for event in events] == ["retrieving", "generated", "result"]
+    assert events[-1].data["diagnosis"] is not None
