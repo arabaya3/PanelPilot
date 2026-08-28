@@ -35,6 +35,10 @@ api_router.include_router(
     tags=["diagnostics"],
     dependencies=[Depends(enforce_trial_rate_limit)],
 )
+# Outside the diagnostics prefix, and so outside its trial rate limit: see
+# `sessions_router` for why reading your own conversation list is not throttled
+# like asking a question is.
+api_router.include_router(diagnostics.sessions_router, prefix="/sessions", tags=["diagnostics"])
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])

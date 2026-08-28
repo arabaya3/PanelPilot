@@ -187,6 +187,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/sessions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Diagnostic Sessions
+     * @description List the caller's conversations, most recently active first.
+     *
+     *     `limit` is bounded here as well as in the domain so an out-of-range value
+     *     is a 422 naming the field, rather than being silently clamped to something
+     *     the caller did not ask for.
+     */
+    get: operations['list_diagnostic_sessions_api_v1_sessions_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/calculations/cable-sizing': {
     parameters: {
       query?: never;
@@ -733,6 +757,65 @@ export interface components {
       id: string;
       /** Turns */
       turns: components['schemas']['DiagnosticTurn'][];
+    };
+    /**
+     * DiagnosticSessionPage
+     * @description One page of the conversation history.
+     *
+     *     Attributes:
+     *         sessions: The page's rows, most recently updated first.
+     *         next_cursor: Opaque cursor for the following page, or ``None`` when
+     *             this is the last one. Callers must treat it as opaque and pass it
+     *             back unmodified; its encoding is an implementation detail that may
+     *             change without a version bump.
+     */
+    DiagnosticSessionPage: {
+      /** Sessions */
+      sessions: components['schemas']['DiagnosticSessionSummary'][];
+      /** Next Cursor */
+      next_cursor?: string | null;
+    };
+    /**
+     * DiagnosticSessionSummary
+     * @description One row in the conversation history sidebar.
+     *
+     *     A summary rather than the session itself: the sidebar shows what a
+     *     conversation *was about* so an engineer can recognise yesterday's problem,
+     *     and shipping every turn to draw a list would send the whole history of
+     *     every session to render a few lines of text.
+     *
+     *     Attributes:
+     *         id: The session id, used to fetch the full conversation on selection.
+     *         title: The first question asked, which is what makes a session
+     *             recognisable. Truncated for display.
+     *         equipment_model: The model this conversation was about, when a turn
+     *             recorded one. ``None`` where no turn identified equipment; the
+     *             sidebar shows the title alone rather than a guessed brand.
+     *         turn_count: How many exchanges the session holds.
+     *         created_at: When the conversation started.
+     *         updated_at: When it was last added to. The list is ordered by this,
+     *             because "yesterday's session" is the one last worked on rather
+     *             than the one first opened.
+     */
+    DiagnosticSessionSummary: {
+      /** Id */
+      id: string;
+      /** Title */
+      title: string;
+      /** Equipment Model */
+      equipment_model?: string | null;
+      /** Turn Count */
+      turn_count: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
     };
     /**
      * DiagnosticTurn
@@ -1798,6 +1881,38 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['DiagnosticSession'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_diagnostic_sessions_api_v1_sessions_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiagnosticSessionPage'];
         };
       };
       /** @description Validation Error */

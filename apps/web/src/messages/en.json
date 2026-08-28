@@ -152,5 +152,13 @@
     "unavailable": "Trials are unavailable right now. Please try again shortly.",
     "failed": "Could not start a trial.",
     "retry": "Try again"
+  },
+  "history": {
+    "label": "Conversation history",
+    "loading": "Loading…",
+    "empty": "No past conversations yet.",
+    "failed": "History could not be loaded.",
+    "unavailable": "History is unavailable.",
+    "loadMore": "Load more"
   }
 }

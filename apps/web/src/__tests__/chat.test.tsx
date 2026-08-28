@@ -807,3 +807,114 @@ describe('retrying clears the ticks', () => {
       });
   });
 });
+
+// --- hydrating a past conversation (FE-011) ---------------------------------
+//
+// The acceptance criterion is that "selecting a past session restores its
+// context indicator and message history correctly" — both halves. The messages
+// are the visible half and the indicator is the half that quietly fails: with
+// it unset the chip comes back blank and the engineer has to restate the
+// equipment they already identified, which is the friction the chip exists to
+// remove.
+
+describe('hydrating a stored session', () => {
+  function turn(question: string, model: string | null = 'ACS880') {
+    return {
+      request: { session_id: 'old-session', symptom: question, locale: 'en' as const },
+      response: {
+        ...RESPONSE,
+        session_id: 'old-session',
+        diagnosis: RESPONSE.diagnosis ? { ...RESPONSE.diagnosis, equipment_model: model } : null,
+      },
+    };
+  }
+
+  it('replaces the transcript rather than appending to it', () => {
+    // Appending would leave the previous conversation's messages above the
+    // opened one, reading as a single conversation that changed subject.
+    const existing = chatReducer(INITIAL_STATE, {
+      type: 'ask',
+      userId: 'u1',
+      assistantId: 'a1',
+      text: 'a question from another session',
+    });
+
+    const state = chatReducer(existing, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('why is it tripping?')],
+    });
+
+    expect(state.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(JSON.stringify(state.messages)).not.toContain('another session');
+  });
+
+  it('adopts the stored session id', () => {
+    // Without this the next question would start a new conversation instead of
+    // continuing the one just opened.
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('q')],
+    });
+
+    expect(state.sessionId).toBe('old-session');
+  });
+
+  it('restores every turn in order', () => {
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('first'), turn('second')],
+    });
+
+    expect(state.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(state.messages[0]).toMatchObject({ text: 'first' });
+    expect(state.messages[2]).toMatchObject({ text: 'second' });
+  });
+
+  it('marks restored answers complete, not streaming', () => {
+    // A replayed turn marked `streaming` would render a spinner that never
+    // resolves, because no stream is running to end it.
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('q')],
+    });
+
+    expect(state.messages[1]).toMatchObject({ status: 'complete' });
+  });
+
+  it('keeps each answer attached to its own question', () => {
+    // Ids are derived per index; colliding ones would make `replace` update
+    // the wrong turn on a later retry.
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('first'), turn('second')],
+    });
+
+    const ids = state.messages.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('carries the prompt so a restored turn can still be retried', () => {
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [turn('why is it tripping?')],
+    });
+
+    expect(state.messages[1]).toMatchObject({ prompt: 'why is it tripping?' });
+  });
+
+  it('restores an empty conversation without crashing', () => {
+    const state = chatReducer(INITIAL_STATE, {
+      type: 'hydrate',
+      sessionId: 'old-session',
+      turns: [],
+    });
+
+    expect(state).toEqual({ sessionId: 'old-session', messages: [] });
+  });
+});

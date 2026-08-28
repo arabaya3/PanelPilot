@@ -6,11 +6,13 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
+import { fetchSession, listSessions } from '@/lib/sessions';
 import type { uploadImage } from '@/lib/recognition';
 import type { TrialSession } from '@/lib/trial';
 
 import { ChecklistProvider, useChecklist } from './checklist-provider';
 import { ContextChip, contextFromResponse } from './context-chip';
+import { HistorySidebar } from './history-sidebar';
 import { Composer } from './composer';
 import { ImageCapture } from './image-capture';
 import { TrialLimitModal } from './trial-limit-modal';
@@ -43,6 +45,10 @@ export function Chat(props: {
   /** How many free questions are left; `null` when the caller does not know. */
   questionsRemaining?: number | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  /** Injected in tests so the history list can be driven without a server. */
+  listImpl?: typeof listSessions;
+  /** Injected the same way, for hydrating a selected session. */
+  fetchSessionImpl?: typeof fetchSession;
 }) {
   return (
     <ChecklistProvider>
@@ -65,6 +71,8 @@ function ChatSurface({
   trial = null,
   questionsRemaining = null,
   onSignedUp,
+  listImpl = listSessions,
+  fetchSessionImpl = fetchSession,
 }: {
   token: string;
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
@@ -72,6 +80,8 @@ function ChatSurface({
   trial?: TrialSession | null;
   questionsRemaining?: number | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  listImpl?: typeof listSessions;
+  fetchSessionImpl?: typeof fetchSession;
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
@@ -210,6 +220,43 @@ function ChatSurface({
     (message) => message.role === 'assistant' && message.status === 'streaming',
   );
 
+  // Bumped when a turn completes, so the sidebar re-fetches: a new conversation
+  // has to appear in the list, and an existing one has to move to the top.
+  const [historyKey, setHistoryKey] = useState(0);
+  const completed = state.messages.filter(
+    (message) => message.role === 'assistant' && message.status === 'complete',
+  ).length;
+  useEffect(() => {
+    if (completed > 0) setHistoryKey((previous) => previous + 1);
+  }, [completed]);
+
+  const openSession = useCallback(
+    async (sessionId: string) => {
+      // A live turn is abandoned rather than left running: its events would
+      // dispatch into a transcript that has since been replaced, appending an
+      // answer from the previous conversation to the one just opened.
+      abortRef.current?.abort();
+      liveRef.current = null;
+
+      const result = await fetchSessionImpl({ token, sessionId });
+      if (result.kind !== 'loaded') return;
+
+      dispatch({ type: 'hydrate', sessionId: result.session.id, turns: result.session.turns });
+
+      // The acceptance criterion: the context indicator comes back too, not
+      // just the messages. Taken from the last turn that recorded equipment,
+      // which is the same rule the live path uses -- and set directly rather
+      // than through `contextFromResponse`, because that function's job is to
+      // protect an engineer's own entry from being overwritten mid-session,
+      // and opening a different conversation is exactly when it should be.
+      const restored = lastEquipmentModel(result.session.turns);
+      setContext(
+        restored === null ? null : { manufacturer: null, model: restored, fault_codes: [] },
+      );
+    },
+    [fetchSessionImpl, token],
+  );
+
   // The limit modal appears only once the free questions are gone *and* no
   // turn is in flight. The spec is explicit that it must never interrupt an
   // answer, and the reason is easy to underrate: cutting off a diagnosis to
@@ -220,25 +267,52 @@ function ChatSurface({
   const showLimit = outOfQuestions && !busy && !dismissedLimit;
 
   return (
-    <div className="flex h-full flex-col" data-testid="chat">
-      <header className="flex items-center gap-2 border-b border-border p-2">
-        <ContextChip context={context} onChange={setContext} />
-      </header>
-      <MessageList messages={state.messages} onRetry={retry} />
-      <ImageCapture token={token} onConfirm={ask} {...(uploadImpl ? { uploadImpl } : {})} />
-      <Composer onSubmit={ask} onStop={stop} busy={busy} />
-      {showLimit ? (
-        <TrialLimitModal
-          trial={trial}
-          onSignedUp={(tokens) => {
-            setDismissedLimit(true);
-            onSignedUp?.(tokens);
-          }}
-          onDismiss={() => {
-            setDismissedLimit(true);
-          }}
-        />
-      ) : null}
+    // A row, so the sidebar sits beside the conversation. Which side that is
+    // follows the document direction rather than being pinned here: in Arabic
+    // or Hebrew the same markup puts it on the visual right.
+    <div className="flex h-full" data-testid="chat">
+      <HistorySidebar
+        token={token}
+        activeSessionId={state.sessionId}
+        onSelect={(id) => void openSession(id)}
+        listImpl={listImpl}
+        refreshKey={historyKey}
+      />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-2 border-b border-border p-2">
+          <ContextChip context={context} onChange={setContext} />
+        </header>
+        <MessageList messages={state.messages} onRetry={retry} />
+        <ImageCapture token={token} onConfirm={ask} {...(uploadImpl ? { uploadImpl } : {})} />
+        <Composer onSubmit={ask} onStop={stop} busy={busy} />
+        {showLimit ? (
+          <TrialLimitModal
+            trial={trial}
+            onSignedUp={(tokens) => {
+              setDismissedLimit(true);
+              onSignedUp?.(tokens);
+            }}
+            onDismiss={() => {
+              setDismissedLimit(true);
+            }}
+          />
+        ) : null}
+      </div>
     </div>
   );
+}
+
+/**
+ * The equipment the conversation most recently identified.
+ *
+ * Read from the end backwards so a follow-up that names no unit does not blank
+ * a context the conversation had already established, and so an engineer who
+ * moved to a different machine mid-session gets the machine they moved to.
+ */
+function lastEquipmentModel(turns: components['schemas']['DiagnosticTurn'][]): string | null {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const model = turns[index]?.response.diagnosis?.equipment_model;
+    if (typeof model === 'string' && model !== '') return model;
+  }
+  return null;
 }

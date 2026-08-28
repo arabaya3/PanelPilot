@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import CurrentUserDep, SessionDep
@@ -18,10 +18,18 @@ from app.models.schemas.diagnostics import (
     DiagnosticRequest,
     DiagnosticResponse,
     DiagnosticSession,
+    DiagnosticSessionPage,
 )
 from app.models.schemas.streaming import DiagnosisEvent
 
 router = APIRouter()
+
+#: Mounted at `/sessions` rather than under `/diagnostics`, and deliberately
+#: outside that prefix's trial rate limit. That limit exists because asking a
+#: question costs a model call; listing conversations the caller already owns
+#: costs one indexed query, and throttling it would make an engineer's own
+#: sidebar fail to load while they were reading it.
+sessions_router = APIRouter()
 
 
 @router.post("", response_model=DiagnosticResponse)
@@ -111,3 +119,19 @@ def get_diagnostic_session(
     user: CurrentUserDep,
 ) -> DiagnosticSession:
     return diagnostics_domain.get_session(session=session, user=user, session_id=session_id)
+
+
+@sessions_router.get("", response_model=DiagnosticSessionPage)
+def list_diagnostic_sessions(
+    session: SessionDep,
+    user: CurrentUserDep,
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> DiagnosticSessionPage:
+    """List the caller's conversations, most recently active first.
+
+    `limit` is bounded here as well as in the domain so an out-of-range value
+    is a 422 naming the field, rather than being silently clamped to something
+    the caller did not ask for.
+    """
+    return diagnostics_domain.list_sessions(session=session, user=user, limit=limit, cursor=cursor)

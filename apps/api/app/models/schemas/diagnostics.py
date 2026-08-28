@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, model_validator
 
 from app.models.schemas.locale import Locale
@@ -135,3 +137,48 @@ class DiagnosticSession(BaseModel):
 
     id: str
     turns: list[DiagnosticTurn]
+
+
+class DiagnosticSessionSummary(BaseModel):
+    """One row in the conversation history sidebar.
+
+    A summary rather than the session itself: the sidebar shows what a
+    conversation *was about* so an engineer can recognise yesterday's problem,
+    and shipping every turn to draw a list would send the whole history of
+    every session to render a few lines of text.
+
+    Attributes:
+        id: The session id, used to fetch the full conversation on selection.
+        title: The first question asked, which is what makes a session
+            recognisable. Truncated for display.
+        equipment_model: The model this conversation was about, when a turn
+            recorded one. ``None`` where no turn identified equipment; the
+            sidebar shows the title alone rather than a guessed brand.
+        turn_count: How many exchanges the session holds.
+        created_at: When the conversation started.
+        updated_at: When it was last added to. The list is ordered by this,
+            because "yesterday's session" is the one last worked on rather
+            than the one first opened.
+    """
+
+    id: str
+    title: str
+    equipment_model: str | None = None
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class DiagnosticSessionPage(BaseModel):
+    """One page of the conversation history.
+
+    Attributes:
+        sessions: The page's rows, most recently updated first.
+        next_cursor: Opaque cursor for the following page, or ``None`` when
+            this is the last one. Callers must treat it as opaque and pass it
+            back unmodified; its encoding is an implementation detail that may
+            change without a version bump.
+    """
+
+    sessions: list[DiagnosticSessionSummary]
+    next_cursor: str | None = None
