@@ -153,3 +153,39 @@ def test_require_allowed_raises_with_the_source_and_url_attached() -> None:
 
     assert caught.value.source_id == "abb"
     assert caught.value.url == SEED
+
+
+def test_a_blank_line_after_the_user_agent_does_not_discard_the_rules() -> None:
+    """A stray blank line must not turn a restrictive file into a permissive one.
+
+    A blank line terminates a record in the robots standard, and Python's
+    parser implements that faithfully — so this shape attributes every
+    `Disallow` to no agent and permits everything.
+
+    Not hypothetical: Rittal's robots.txt is written exactly this way,
+    `User-agent:*` followed by an empty line and then 96 `Disallow` rules.
+    Reading it literally would mean crawling paths the operator explicitly
+    asked us not to, while believing we were compliant.
+    """
+    body = "User-agent:*\r\n\r\nDisallow: /products/show/\r\nDisallow: /private/\r\n"
+    with client_returning(200, body) as client:
+        policy = fetch_policy(source_id="s", seed_url=SEED, client=client)
+
+    with pytest.raises(RobotsDisallowedError):
+        require_allowed(policy, source_id="s", url="https://example.invalid/products/show/x")
+    with pytest.raises(RobotsDisallowedError):
+        require_allowed(policy, source_id="s", url="https://example.invalid/private/y")
+
+    # Anything not named is still permitted.
+    require_allowed(policy, source_id="s", url="https://example.invalid/apps/download/")
+
+
+def test_comment_only_lines_are_ignored() -> None:
+    """Comments must not be mistaken for rules or terminate a record."""
+    body = "User-agent: *\n# a comment\nDisallow: /nope/\n"
+    with client_returning(200, body) as client:
+        policy = fetch_policy(source_id="s", seed_url=SEED, client=client)
+
+    with pytest.raises(RobotsDisallowedError):
+        require_allowed(policy, source_id="s", url="https://example.invalid/nope/x")
+    require_allowed(policy, source_id="s", url="https://example.invalid/yes/x")
