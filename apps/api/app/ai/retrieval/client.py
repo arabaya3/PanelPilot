@@ -119,7 +119,40 @@ def index_chunk(target: IndexTarget, *, chunk_id: str, document: dict[str, Any])
     missing = missing_required_fields(document)
     if missing:
         raise ValueError(
-            f"refusing to index {chunk_id!r}: required fields missing or null: "
-            f"{', '.join(missing)}"
+            f"refusing to index {chunk_id!r}: required fields missing or null: {', '.join(missing)}"
         )
     get_client().index(index=resolve_index(target), id=chunk_id, body=document)
+
+
+def stage_chunk(*, chunk_id: str, document: dict[str, Any]) -> None:
+    """Write one chunk into the STAGING index, and only ever staging.
+
+    Args:
+        chunk_id: Stable document id.
+        document: The chunk body, including ``content_vector``.
+
+    Raises:
+        ValueError: If any required field is absent or null.
+
+    Separate from ``index_chunk`` rather than a call with a different target,
+    and it is the target that is the point: this function cannot address
+    production. ``index_chunk`` takes an ``IndexTarget``, so a caller holding it
+    is one argument away from publishing, which is why the architecture tests
+    keep its call sites down to promotion.py alone. A crawl has to write
+    somewhere, and giving the ingestion path a helper with no production
+    spelling available is what lets it do that without widening the guard that
+    protects the live corpus.
+
+    The completeness check is the same one, deliberately. A chunk missing its
+    page or source_url is unusable as a citation whether it is staged or live,
+    and catching it at the staging write means a reviewer never sees an item
+    that could not have been promoted anyway.
+    """
+    from app.ai.retrieval.mappings import missing_required_fields
+
+    missing = missing_required_fields(document)
+    if missing:
+        raise ValueError(
+            f"refusing to stage {chunk_id!r}: required fields missing or null: {', '.join(missing)}"
+        )
+    get_client().index(index=resolve_index(IndexTarget.STAGING), id=chunk_id, body=document)

@@ -124,6 +124,7 @@ def crawl_source(
     known_hashes: Iterable[str] = (),
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    payloads: dict[str, bytes] | None = None,
 ) -> CrawlResult:
     """Fetch documents from one allow-listed manufacturer source.
 
@@ -139,6 +140,12 @@ def crawl_source(
         client: HTTP client to use. Injected so a test can drive the whole
             loop — robots, pacing, hashing, change detection — without a
             network.
+        payloads: Optional sink filled with each fetched document's raw bytes,
+            keyed by document id. Supplied by a caller that needs the real file
+            — the structure extractor opens it with pdfplumber, and
+            ``SourceDocument.text`` cannot serve, being a lossy UTF-8 decode
+            that replaces every binary byte with U+FFFD. Optional so the
+            crawler still runs, and is still testable, without one.
         sleep: Injected for the same reason; a test should not spend real
             seconds proving the pacer works.
 
@@ -168,6 +175,7 @@ def crawl_source(
             max_documents=max_documents,
             known=set(known_hashes),
             sleep=sleep,
+            payloads=payloads,
         )
     finally:
         if owns_client:
@@ -176,6 +184,7 @@ def crawl_source(
 
 def _run(
     *,
+    payloads: dict[str, bytes] | None = None,
     crawler: SourceCrawler,
     source: SourceDefinition,
     client: httpx.Client,
@@ -197,6 +206,9 @@ def _run(
     documents: list[SourceDocument] = []
     outcomes: list[CrawlOutcome] = []
     seen_urls: set[str] = set()
+    # A local sink when the caller did not supply one, so `_crawl_one` always
+    # has somewhere to put the bytes and the optional parameter stays optional.
+    sink: dict[str, bytes] = {} if payloads is None else payloads
 
     for listing_url in crawler.listing_urls(source.seed_urls):
         robots_module.require_allowed(policy, source_id=source.id, url=listing_url)
@@ -230,6 +242,7 @@ def _run(
                 policy=policy,
                 known=known,
                 documents=documents,
+                payloads=sink,
             )
             outcomes.append(outcome)
 
@@ -245,11 +258,29 @@ def _crawl_one(
     policy: robots_module.RobotsPolicy,
     known: set[str],
     documents: list[SourceDocument],
+    payloads: dict[str, bytes],
 ) -> CrawlOutcome:
     """Fetch and hash one document, appending it when it is new.
 
+    Args:
+        source: The source being crawled.
+        document: The discovered document to fetch.
+        client: HTTP client to fetch with.
+        pacer: Enforces the delay between requests.
+        policy: The robots policy for this source.
+        known: Content hashes already seen; appended to as documents are kept.
+        documents: Accumulator for documents that turned out to be new.
+        payloads: Filled with the fetched bytes, keyed by document id.
+
     Returns:
         What happened to this URL, for the run's outcome list.
+
+    The raw bytes are carried out rather than re-derived from
+    ``SourceDocument.text``. That field is ``body.decode("utf-8",
+    errors="replace")``, which for a PDF replaces every non-UTF-8 byte with
+    U+FFFD -- the binary content is destroyed and cannot be recovered by
+    re-encoding. The structure extractor opens the real file with pdfplumber,
+    so without this the crawler and the extractor cannot be connected at all.
     """
     # Checked per document, not only per listing: a portal can permit its
     # index and disallow the files it links to.
@@ -270,6 +301,7 @@ def _crawl_one(
     # Added to `known` immediately so two listings pointing at the same file
     # under different URLs do not both stage it.
     known.add(digest)
+    payloads[digest[:32]] = body
     documents.append(
         SourceDocument(
             id=digest[:32],

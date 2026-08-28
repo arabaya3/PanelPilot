@@ -33,10 +33,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         A process exit code — ``0`` on success, non-zero on failure.
     """
-    _args = list(sys.argv[1:] if argv is None else argv)
+    args = list(sys.argv[1:] if argv is None else argv)
     settings = load_settings_or_exit()
     configure_logging(log_level=settings.log_level, json_output=not settings.debug)
-    raise NotImplementedError
+
+    from app.core.errors import NotFoundError
+    from app.worker.jobs import REGISTRY, get_job
+
+    if not args or args[0] in {"--list", "-l"}:
+        for spec in REGISTRY.values():
+            print(f"{spec.name:24} {spec.description}")
+        # No job named is a usage error, not a successful listing: a scheduler
+        # invoking the worker with a missing argument must not look like a run
+        # that succeeded.
+        return 0 if args else 2
+
+    name, *rest = args
+    try:
+        spec = get_job(name)
+    except NotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    return spec.handler(rest)
 
 
 if __name__ == "__main__":
