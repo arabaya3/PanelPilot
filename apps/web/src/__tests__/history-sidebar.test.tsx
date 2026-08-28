@@ -319,7 +319,7 @@ describe('pagination', () => {
 describe('layout', () => {
   it('uses logical inline-end for its separator, not a physical side', async () => {
     // The spec's RTL requirement: the sidebar must land on the visual right in
-    // Arabic and Hebrew from the same markup. `border-r` would draw a rule
+    // Arabic and Hebrew from the same markup. `border-r` would draw a rule allow-physical-property
     // down the middle of the page in those locales.
     renderApp(
       <HistorySidebar
@@ -332,8 +332,8 @@ describe('layout', () => {
 
     const nav = await screen.findByTestId('history-sidebar');
     expect(nav.className).toContain('border-e');
-    expect(nav.className).not.toContain('border-r');
-    expect(nav.className).not.toContain('border-l');
+    expect(nav.className).not.toContain('border-r'); // allow-physical-property
+    expect(nav.className).not.toContain('border-l'); // allow-physical-property
   });
 
   it('labels itself for assistive technology', async () => {

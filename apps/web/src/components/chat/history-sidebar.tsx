@@ -18,7 +18,7 @@ import { listSessions, type SessionSummary } from '@/lib/sessions';
  * pinned to a side: the sidebar is a flex sibling and its separator uses the
  * logical `border-e` (inline-end), so in Arabic or Hebrew the whole thing
  * moves to the visual right with no RTL-specific stylesheet. Hardcoding
- * `border-r` would put a rule down the middle of the page in those locales,
+ * `border-r` would put a rule down the middle of the page in those locales, allow-physical-property (named here only to say not to use it),
  * which is the failure the logical-properties approach exists to prevent.
  *
  * Pagination is by cursor, appended on demand. The list is not loaded in full
