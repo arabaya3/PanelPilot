@@ -369,8 +369,13 @@ recorded rather than decided.
 >   Still blocked, on its own sources, unchanged by this.
 > - **BE-011** depends on BE-001 and AI-007, not AI-005. Unaffected.
 > - **FE-010** depends on FE-001, BE-011 and AI-007, not AI-005. Unaffected.
-> - **PD-005 / PD-006** do not exist in this repository — no task, tracker row
->   or code references either. Nothing to check.
+> - **PD-005 / PD-006** were not in this repository when that check ran. They
+>   are real tasks in the project spreadsheet and are now transcribed into
+>   `panel-design-lane.md`. **PD-005 does depend on AI-005** ("extends the
+>   existing cable-sizing calculation"), so it inherits exactly what AI-005
+>   leaves outstanding: `voltage_drop` is sourced and implemented,
+>   `size_conductor` and `derating_factor` are not. PD-006 is independent of
+>   AI-005 — it is the EPLAN access decision.
 > - Nothing in `app/` outside the module imports `cable_sizing`, so no
 >   production caller changed behaviour.
 
@@ -405,21 +410,54 @@ recorded rather than decided.
 
 ### [ ] AI-006 — VFD selection calculation function
 
-> **BLOCKED — do not attempt on general knowledge.**
+> **STILL BLOCKED — but not for the reason previously recorded.**
 >
-> This task's constants must come from a named source document that is not
-> available in this repository or to this run: ABB ACS880 Hardware Manual (3AUA0000078093) §3 and §5, cross-checked against Siemens SINAMICS G120 Operating Instructions §4.2. The acceptance
-> criterion requires exact agreement with worked examples published in that
-> document.
+> The earlier note said the ABB ACS880 Hardware Manual was unavailable. That
+> is no longer true and was worth checking: the manual (3AUA0000078093, doc
+> code confirmed on its page 2) was retrieved, and the ACS880-01 catalogue
+> with it. **The data this task needs is there. The worked examples are not.**
 >
-> Ampacity, derating and rating tables can be written from general engineering
-> knowledge. They would look correct, carry citations to a document nobody
-> read, and pass tests invented alongside them. The spec is explicit that
-> "close enough is not an acceptable test result, given real cable/fire safety
-> is downstream of this number" — which is exactly why plausible-but-unsourced
-> values are the worst possible output here, not an acceptable interim one.
+> **What the manual does give:**
 >
-> Unblocking needs the document, not more effort.
+> - Full IEC ratings tables per frame — I(1N), I(max), I(N)/P(N) nominal,
+>   I(Ld)/P(Ld) light-overload, I(Hd)/P(Hd) heavy-duty — across 230/400/500/690 V.
+>   That covers `select_frame`'s catalogue and the duty distinction directly.
+> - Ambient temperature derating: 1% per °C from +40 to +55 °C (3.5%/°C for
+>   some variants, to a 45 °C maximum).
+> - Altitude derating: 1% per 100 m from 1000 m to 4000 m.
+>
+> **What it does not give, and this is the blocker:** the manual contains
+> exactly **one** worked "Calculation example" (p166), and it computes the
+> _short-circuit current of the installation_ for fuse selection — not drive
+> selection. Every other occurrence of the word "example" in 238 pages is
+> incidental ("for example, emergency stop"). The catalogue's _"How to select
+> a drive"_ section is prose plus a pointer to the rating tables.
+>
+> ABB states the reason itself, on the ratings page: _"The DriveSize
+> dimensioning tool available from ABB is recommended for selecting the drive,
+> motor and gear combination."_ Selection is deferred to software, so ABB does
+> not publish the worked selection examples this task's acceptance criterion
+> requires — _"Output matches manufacturer-published selection-guide examples
+> for at least 10 test cases."_
+>
+> **So the gap is a specific, nameable one:** not the hardware manual, but a
+> source that publishes ≥10 worked drive-selection cases. Three candidates,
+> none yet obtained:
+>
+> 1. **ABB DriveSize output** — the tool is free; ten dimensioning runs
+>    exported would be manufacturer-generated reference cases. This is a
+>    licensing/usage question for Ayed, not a coding one, and is the most
+>    likely route.
+> 2. **The Siemens SINAMICS G120 Operating Instructions §4.2** already named
+>    as the cross-check — not yet retrieved, and worth checking for worked
+>    examples before assuming it has none.
+> 3. **An ABB application/dimensioning guide** distinct from the hardware
+>    manual, if one publishes examples.
+>
+> Implementing against the tables alone is possible and would produce a
+> plausible function. It would also mean writing the ten test cases myself,
+> which is the exact failure this task's sourcing discipline exists to prevent
+> — and the same call already made for AI-005's `derating_factor`.
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
