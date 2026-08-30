@@ -8,7 +8,7 @@ Grouped by phase rather than by task id, so the dependency order is visible: the
 
 ## Status at a glance
 
-**11 of 17 complete.** All of the in-scope work is merged: BE-005, BE-006,
+**12 of 17 complete.** All of the in-scope work is merged: BE-005, BE-006, BE-015,
 BE-007, AI-012, AI-013, AI-014, AI-009, BE-010, FE-009, FE-012, FE-013.
 
 AI-012 was built before BE-007 despite the order above, because BE-007 encodes
@@ -22,8 +22,10 @@ each task; the short version is that writing the tables from general knowledge
 would produce confident, uncitable numbers with cable and fire safety
 downstream of them.
 
-**1 partially satisfied** — BE-015, left unticked with its two remaining gaps
-recorded rather than decided.
+**BE-015 is now complete.** Its two remaining gaps were repository settings
+rather than code, and were Ayed's call; he made it. `main` now requires one
+approving review and a protected `staging` branch exists with identical
+protection. **No PR can be self-merged from this point on.**
 
 ---
 
@@ -260,7 +262,7 @@ recorded rather than decided.
 
 ## Foundation
 
-### [ ] BE-015 — CI/CD pipeline & branch protection
+### [x] BE-015 — CI/CD pipeline & branch protection
 
 > **PARTIALLY SATISFIED by work already on `main` — left unticked.**
 >
@@ -271,7 +273,22 @@ recorded rather than decided.
 > `GH006` during this run, so the no-direct-push criterion is proven rather
 > than configured-and-hoped.
 >
-> Two specific gaps remain, deliberately **not** settled unilaterally:
+> **Both gaps are now closed**, on Ayed's explicit instruction (they were his
+> call, and he made it):
+>
+> 1. `required_approving_review_count` is now **1** on `main`.
+> 2. A `staging` branch was created from main's tip and given identical
+>    protection: `ci` required, `enforce_admins: true`, no force-push, no
+>    deletions, 1 required approval.
+>
+> Verified behaviourally rather than from the settings alone: a direct push to
+> each branch is rejected with "Changes must be made through a pull request".
+>
+> **Consequence, recorded because it changes how this repo is worked:** with one
+> required approval and admin enforcement on, no PR can be self-merged any more.
+> Every future change needs a second person to approve it.
+>
+> The gaps as they previously stood:
 >
 > 1. `required_approving_review_count` is `0`; the criterion asks for ≥1.
 >    Enforcing it would end the unattended run, since these PRs are
