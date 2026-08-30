@@ -134,7 +134,7 @@ export function HistorySidebar({
                   data-active={active ? 'true' : 'false'}
                   className={
                     active
-                      ? 'w-full rounded-md border border-border bg-surface-raised p-2 text-start text-sm text-text'
+                      ? 'w-full rounded-md border border-border bg-surface-raised p-2 text-start text-sm text-text shadow-sm'
                       : 'w-full rounded-md border border-transparent p-2 text-start text-sm text-text-muted hover:bg-surface-raised'
                   }
                 >
