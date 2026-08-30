@@ -4,7 +4,9 @@ The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPil
 
 ## Status at a glance
 
-**PD-006 is done and merged** (PR #70): thirteen IEC 60617-style symbols, 31 tests, five mutants killed. The other eight are `To Do`, all assigned to Ayed Rabaya.
+**PD-006 and PD-002 are done and merged.** PD-006 (PR #70): thirteen IEC 60617-style symbols, 31 tests, five mutants killed. PD-002: DIN module widths sourced from ABB S200, Schneider Acti9 iC60H and WAGO TOPJOB S datasheets, 19 tests, ten mutants killed. The other seven are `To Do`, all assigned to Ayed Rabaya.
+
+**PD-002 found that there is no single module width.** DIN 43880 specifies a band, not a value: ABB's S200 is 17.5 mm per module and Schneider's Acti9 iC60H is 18 mm, both conforming. PD-003 must therefore size rows from per-series millimetres rather than a module count times one constant — an enclosure laid out on 17.5 mm rows and filled with 18 mm devices does not close. **Contactors are absent from the table**: every manufacturer-hosted contactor datasheet reachable from here returned 403, and a lookup for one raises rather than guessing.
 
 **The rest of the chain is blocked on one thing.** PD-003 needs PD-001's catalogue data and PD-002's module widths; PD-004 needs PD-001; PD-005 needs PD-003 and AI-005; PD-007 needs PD-003/004/005; PD-008 needs PD-007. PD-001 has no obtainable source yet — see its note — so the whole chain from PD-003 onward waits behind it.
 
@@ -109,7 +111,7 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > A sample of enclosure records matches the published catalog exactly on SKU, dimensions, and DIN-rail capacity; no record with missing required dimension data reaches production unflagged.
 
-## [ ] PD-002 — DIN module width reference data
+## [x] PD-002 — DIN module width reference data
 
 | Field                   | Value                                            |
 | ----------------------- | ------------------------------------------------ |
