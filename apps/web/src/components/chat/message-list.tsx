@@ -157,7 +157,7 @@ function AssistantTurn({
   if (message.status === 'streaming') {
     return (
       <div
-        className="rounded-lg border border-border bg-surface p-4 text-text-muted"
+        className="rounded-lg border border-border bg-surface p-4 text-text-muted shadow-sm"
         data-testid="assistant-progress"
         data-stage={message.stage}
       >
@@ -179,7 +179,7 @@ function AssistantTurn({
         // Dashed and neutral rather than amber. The amber it used to wear is
         // what a confident warning-severity diagnosis wears, so a turn that
         // *failed* looked exactly like an answer that *arrived*.
-        className="rounded-lg border border-s-8 border-severity-critical bg-surface p-4"
+        className="rounded-lg border border-s-8 border-severity-critical bg-surface p-4 shadow-sm"
         data-testid="assistant-failure"
         data-failure={message.failure}
       >

@@ -105,7 +105,9 @@ function Citations({
 
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <Heading className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      {/* Mono, uppercase and tracked: a section label over citation data, not
+          prose. Matches the mono stack's existing rationale in tokens.css. */}
+      <Heading className="mb-1 font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">
         {label}
       </Heading>
       <ul className="space-y-1">
@@ -221,7 +223,7 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
       data-variant="uncertain"
       data-reason={variant.reason}
       aria-labelledby={headingId}
-      className={`rounded-lg border ${classes.border} ${classes.surface} p-4`}
+      className={`rounded-lg border shadow-sm ${classes.border} ${classes.surface} p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
         <span
@@ -253,7 +255,7 @@ function RefusalCard({ message }: { message: string }) {
       data-testid="diagnostic-card"
       data-variant="refusal"
       aria-labelledby={headingId}
-      className={`rounded-lg border border-s-8 ${classes.border} bg-surface p-4`}
+      className={`rounded-lg border border-s-8 shadow-sm ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5 text-xs font-semibold uppercase text-text-muted">
@@ -295,7 +297,7 @@ function DiagnosisCard({
       data-variant="diagnosis"
       data-severity={diagnosis.severity}
       aria-labelledby={headingId}
-      className={`rounded-lg border ${classes.border} bg-surface p-4`}
+      className={`rounded-lg border shadow-sm ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span

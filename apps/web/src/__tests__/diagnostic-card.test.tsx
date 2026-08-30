@@ -278,6 +278,27 @@ describe('decideVariant', () => {
 // --- what actually reaches the screen ---------------------------------------
 
 describe('DiagnosticCard', () => {
+  it('carries elevation, so a card reads as a surface above the page', () => {
+    // Part of the visual pass taken from the design prototype. Asserted rather
+    // than eyeballed because a card that loses its shadow does not break
+    // anything a functional test would notice — it just quietly flattens.
+    renderApp(<DiagnosticCard response={response()} />);
+
+    expect(screen.getByTestId('diagnostic-card').className).toContain('shadow-sm');
+  });
+
+  it('sets the sources label in the mono family', () => {
+    // A section label over citation data, not prose. The mono stack exists for
+    // exactly this: identifiers an engineer transcribes by hand.
+    const { container } = renderApp(<DiagnosticCard response={response()} />);
+
+    const label = [...container.querySelectorAll('*')].find(
+      (node) =>
+        /sources/i.test(node.textContent) && (node as HTMLElement).className.includes('font-mono'),
+    );
+    expect(label, 'the sources label should use font-mono').toBeTruthy();
+  });
+
   it('renders all five zones of a confident diagnosis', () => {
     renderApp(<DiagnosticCard response={response()} />);
     const card = screen.getByTestId('diagnostic-card');
