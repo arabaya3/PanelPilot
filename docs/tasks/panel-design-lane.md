@@ -75,6 +75,31 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 > BMEcat/eCl@ss structured feed the Approach already mentions via a Rittal
 > account.
 >
+> **A structured catalogue feed now supplies the data the crawler could not.**
+> The Approach names "BMEcat/eCl@ss structured electronic-catalog data" as the
+> richer alternative to crawling, and an EPLAN Data Portal export is exactly
+> that: structured product records rather than PDFs to parse.
+>
+> Three exports were filtered (`app/ingestion/eplan_catalogue.py`). The largest
+> ran on the search term "enclosure system" and returned **487 rows, of which
+> 266 survive** — 190 dropped as not panel components, 31 as publishing no
+> dimension. The filter requires a _structured_ dimension (`Width (mm):`,
+> `Width/height/depth:`), not the presence of "mm": 41 rows in that export
+> contain millimetres that are camera resolutions and working ranges, not object
+> sizes.
+>
+> Of the 266, **107 are sizing candidates** (enclosures, flush enclosures,
+> mounting plates, rails). **130 covers are retained and tagged but excluded
+> from PD-003's fitting logic** on Ayed's instruction — a cover is chosen to
+> match an enclosure already selected, and offering one as somewhere to mount a
+> component would propose using a door. `covers_for_width` keeps them
+> available for BOM completion.
+>
+> **Still not complete.** PD-001 asks for internal usable dimensions, DIN-rail
+> row capacity, mounting type and IP rating; the export publishes external W/H/D
+> and, for ETI, an IP rating in prose. Rittal remains uncrawled. What exists now
+> is the dimensional half of the record, which is what PD-003 needs first.
+>
 > **One useful thing did come out of the attempt.** Rittal's robots.txt puts a
 > blank line immediately after `User-agent:*`, which terminates the record per
 > the standard — so Python's parser attributed all 96 `Disallow` rules to no
