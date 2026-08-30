@@ -22,10 +22,12 @@ each task; the short version is that writing the tables from general knowledge
 would produce confident, uncitable numbers with cable and fire safety
 downstream of them.
 
-**BE-015 is now complete.** Its two remaining gaps were repository settings
-rather than code, and were Ayed's call; he made it. `main` now requires one
-approving review and a protected `staging` branch exists with identical
-protection. **No PR can be self-merged from this point on.**
+**BE-015 is complete, with one criterion deliberately relaxed.** Its two
+remaining gaps were repository settings rather than code, and were Ayed's call.
+The `staging` branch now exists with protection identical to `main`. The
+approving-review requirement was raised to 1, then **reverted to 0 on Ayed's
+instruction** so the unattended run can continue self-merging; everything else
+about the protection stands. See the task entry for what that leaves open.
 
 ---
 
@@ -262,7 +264,7 @@ protection. **No PR can be self-merged from this point on.**
 
 ## Foundation
 
-### [x] BE-015 — CI/CD pipeline & branch protection
+### [x] BE-015 — CI/CD pipeline & branch protection _(approving-review clause relaxed by choice — see below)_
 
 > **PARTIALLY SATISFIED by work already on `main` — left unticked.**
 >
@@ -273,22 +275,34 @@ protection. **No PR can be self-merged from this point on.**
 > `GH006` during this run, so the no-direct-push criterion is proven rather
 > than configured-and-hoped.
 >
-> **Both gaps are now closed**, on Ayed's explicit instruction (they were his
-> call, and he made it):
+> **One gap closed permanently, one closed and then deliberately reopened.**
+> Both were Ayed's call; he made both decisions.
 >
-> 1. `required_approving_review_count` is now **1** on `main`.
-> 2. A `staging` branch was created from main's tip and given identical
->    protection: `ci` required, `enforce_admins: true`, no force-push, no
->    deletions, 1 required approval.
+> **Closed and standing — the `staging` branch.** Created from main's tip
+> (`d455d15`) with protection identical to `main`: `ci` required,
+> `enforce_admins: true`, no force-push, no deletions. Verified behaviourally
+> rather than from the settings alone — a direct push to either branch is
+> rejected with "Changes must be made through a pull request".
 >
-> Verified behaviourally rather than from the settings alone: a direct push to
-> each branch is rejected with "Changes must be made through a pull request".
+> **Raised, then reverted — the approving-review count.** It was set to 1 on
+> both branches, which satisfied the criterion in full and was confirmed
+> working: PR #82 immediately went to `BLOCKED` / `REVIEW_REQUIRED`, because
+> GitHub does not let anyone approve their own pull request. That is precisely
+> what the criterion asks for, and precisely what makes an unattended run
+> impossible.
 >
-> **Consequence, recorded because it changes how this repo is worked:** with one
-> required approval and admin enforcement on, no PR can be self-merged any more.
-> Every future change needs a second person to approve it.
+> Ayed reverted it to **0** on both branches as a temporary accommodation for
+> the unattended run, leaving every other protection in place. So the criterion
+> "a PR cannot merge with ... zero approvals" is **not** met today, by choice
+> rather than by oversight.
 >
-> The gaps as they previously stood:
+> **What that leaves open.** A single person can still merge their own work to
+> `main` with no second pair of eyes. The safeguards that remain — required CI,
+> admin enforcement, no direct pushes, no force-pushes — bound what that can
+> break, but they do not provide review. Restoring it is one API call
+> (`required_approving_review_count: 1`) whenever a second reviewer exists.
+>
+> The gaps as they originally stood:
 >
 > 1. `required_approving_review_count` is `0`; the criterion asks for ≥1.
 >    Enforcing it would end the unattended run, since these PRs are
