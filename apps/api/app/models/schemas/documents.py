@@ -6,11 +6,21 @@ from pydantic import BaseModel, Field
 
 
 class SourceDefinition(BaseModel):
-    """An allow-listed documentation source to crawl."""
+    """An allow-listed documentation source to crawl.
+
+    Attributes:
+        id: The source identifier.
+        manufacturer: Brand recorded on every chunk from this source.
+        seed_urls: Listing pages to discover documents from.
+        document_urls: Documents to fetch directly, bypassing discovery. See
+            ``app.ingestion.known_documents`` for why these exist.
+        max_depth: How deep to follow listings.
+    """
 
     id: str
     manufacturer: str
     seed_urls: list[str]
+    document_urls: list[str] = []
     max_depth: int = 2
 
 

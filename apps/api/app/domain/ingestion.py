@@ -26,6 +26,7 @@ from app.ai.retrieval.mappings import INDEXED_FIELDS
 from app.core.errors import AuthorizationError, ValidationError
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
 from app.ingestion.crawler import crawl_source
+from app.ingestion.known_documents import urls_for
 from app.ingestion.sources import crawler_for
 from app.ingestion.staging_pipeline import prepare_documents
 from app.ingestion.structure import UnreadableDocumentError, extract_structure
@@ -95,11 +96,18 @@ def create_crawl_job(
     if crawler_for(request.source_id) is None:
         raise ValidationError(f"source {request.source_id!r} is not on the allow-list")
 
-    if not request.seed_urls:
+    # A run needs somewhere to start: either listings to discover from, or
+    # documents named outright. Curated URLs are the fallback for sources whose
+    # discovery is blocked -- see `app.ingestion.known_documents`.
+    document_urls = request.document_urls or urls_for(request.source_id)
+
+    if not request.seed_urls and not document_urls:
         # `crawl_source` would raise on this too, but only after the job row
         # exists and the status has moved to RUNNING. Catching it here keeps a
         # configuration mistake from looking like a failed crawl.
-        raise ValidationError(f"source {request.source_id!r} has no seed URLs to crawl")
+        raise ValidationError(
+            f"source {request.source_id!r} has no seed URLs and no known document URLs to crawl"
+        )
 
     job = CrawlJobRow(source_id=request.source_id, status=CrawlJobStatus.RUNNING.value)
     session.add(job)
@@ -165,6 +173,10 @@ def _run_crawl_into_staging(
         id=request.source_id,
         manufacturer=crawler_for(request.source_id).manufacturer,  # type: ignore[union-attr]
         seed_urls=request.seed_urls,
+        # Falls back to the curated list when the caller named none, so a
+        # scheduled `crawl abb` picks up the known documents without anyone
+        # having to paste URLs into a cron entry.
+        document_urls=request.document_urls or urls_for(request.source_id),
         max_depth=request.max_depth,
     )
 

@@ -189,3 +189,182 @@ def test_comment_only_lines_are_ignored() -> None:
     with pytest.raises(RobotsDisallowedError):
         require_allowed(policy, source_id="s", url="https://example.invalid/nope/x")
     require_allowed(policy, source_id="s", url="https://example.invalid/yes/x")
+
+
+# --- wildcards, which the stock parser silently ignores ----------------------
+#
+# Python's `RuleLine` percent-encodes its path and matches by `startswith`, so
+# `*` becomes `%2A` and matches nothing. A file written with wildcards parses
+# without error and permits everything it meant to forbid.
+#
+# Schneider's robots.txt is written exactly that way: `/*/*/documents/*`,
+# `/*/*/library/*` and `/*/*/product/download-pdf/*` — every path its documents
+# live at. Asked whether `/us/en/documents/foo.pdf` may be fetched, the stock
+# parser answers yes. These are the tests that make the fix falsifiable.
+
+
+def test_a_wildcard_rule_disallows_a_matching_path() -> None:
+    """The defect, in one assertion.
+
+    Without wildcard handling this returns True and we crawl a path the
+    operator has asked us not to.
+    """
+    policy = fetch_policy(
+        source_id="schneider",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /*/*/documents/*\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/us/en/documents/foo.pdf") is False
+
+
+def test_a_wildcard_rule_still_permits_a_non_matching_path() -> None:
+    """The other half: the fix must not over-block.
+
+    A rule that forbade everything would also "pass" the test above, and would
+    quietly stop every crawl in the system.
+    """
+    policy = fetch_policy(
+        source_id="schneider",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /*/*/documents/*\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/us/en/about-us/") is True
+
+
+def test_a_leading_wildcard_matches_anywhere() -> None:
+    """`Disallow: /*.pdf` is a common spelling and means any PDF."""
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /*.pdf\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/a/b/manual.pdf") is False
+    assert policy.allows("https://library.abb.com/a/b/manual.html") is True
+
+
+def test_a_trailing_wildcard_matches_the_rest() -> None:
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /docs/*\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/docs/anything/at/all") is False
+
+
+def test_an_end_anchor_matches_only_at_the_end() -> None:
+    """`$` is the other metacharacter urllib encodes into a literal.
+
+    `Disallow: /*.pdf$` forbids a PDF and must not forbid a path that merely
+    contains `.pdf` before a query string or a longer segment.
+    """
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /*.pdf$\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/a/manual.pdf") is False
+    assert policy.allows("https://library.abb.com/a/manual.pdf.html") is True
+
+
+def test_a_plain_prefix_rule_is_unchanged() -> None:
+    """The fix must not alter rules that never had a wildcard.
+
+    Those go through the base class untouched, which is what keeps this a
+    contained change rather than a reimplementation of the whole matcher.
+    """
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /private/\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/private/a.pdf") is False
+    assert policy.allows("https://library.abb.com/public/a.pdf") is True
+
+
+def test_a_wildcard_allow_rule_matches_when_it_is_reached() -> None:
+    """Wildcards appear in `Allow` too, so those rules must match as well.
+
+    Stated without a competing earlier `Disallow`, deliberately. Python
+    resolves a conflict by taking the FIRST matching rule rather than the most
+    specific one, so a later `Allow` never overrides an earlier `Disallow` --
+    with or without wildcards, and regardless of this fix. That is a separate
+    defect in the stock parser, out of scope here and recorded rather than
+    smuggled into a wildcard change; a test asserting the carve-out wins would
+    be asserting behaviour the parser does not have.
+    """
+    body = "User-agent: *\nAllow: /docs/*/public/\nDisallow: /docs/\n"
+    policy = fetch_policy(source_id="s", seed_url=SEED, client=client_returning(200, body))
+
+    assert policy.allows("https://library.abb.com/docs/a/public/x.pdf") is True
+    assert policy.allows("https://library.abb.com/docs/a/private/x.pdf") is False
+
+
+def test_a_literal_percent_encoded_star_is_not_treated_as_a_wildcard() -> None:
+    """A site may legitimately have `%2A` in a path.
+
+    Only the spelling `quote` itself emits is restored, so a path the operator
+    wrote encoded stays literal rather than silently becoming a wildcard.
+    """
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /files/star/\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/files/star/a.pdf") is False
+    assert policy.allows("https://library.abb.com/files/other/a.pdf") is True
+
+
+def test_consecutive_wildcards_collapse() -> None:
+    """`**` is not special; it means what `*` means."""
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /a**b/\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/axxb/c.pdf") is False
+
+
+def test_the_schneider_pattern_end_to_end() -> None:
+    """The real file's shape, since that is what motivated the fix.
+
+    Three document paths forbidden, one unrelated path still allowed — the
+    combination that proves the rules bind without over-blocking.
+    """
+    body = (
+        "User-agent: *\n"
+        "Disallow: /*/*/documents/*\n"
+        "Disallow: /*/*/library/*\n"
+        "Disallow: /*/*/product/download-pdf/*\n"
+    )
+    policy = fetch_policy(source_id="schneider", seed_url=SEED, client=client_returning(200, body))
+
+    assert policy.allows("https://library.abb.com/us/en/documents/x.pdf") is False
+    assert policy.allows("https://library.abb.com/ww/en/library/x.pdf") is False
+    assert policy.allows("https://library.abb.com/us/en/product/download-pdf/ABC") is False
+    assert policy.allows("https://library.abb.com/us/en/about-us/") is True
+
+
+def test_the_text_before_the_first_wildcard_is_a_prefix_not_a_search() -> None:
+    """`Disallow: /docs/*` governs paths that START with `/docs/`.
+
+    Treating that leading text as a floating match instead would make the rule
+    also cover `/other/docs/`, silently blocking paths the operator never
+    restricted — over-blocking is quieter than under-blocking and just as
+    wrong. A mutation removing the anchor survived every other test here.
+    """
+    policy = fetch_policy(
+        source_id="s",
+        seed_url=SEED,
+        client=client_returning(200, "User-agent: *\nDisallow: /docs/*\n"),
+    )
+
+    assert policy.allows("https://library.abb.com/docs/a.pdf") is False
+    assert policy.allows("https://library.abb.com/other/docs/a.pdf") is True
