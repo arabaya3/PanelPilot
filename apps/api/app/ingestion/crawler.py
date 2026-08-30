@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Iterable
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -193,14 +194,19 @@ def _run(
     sleep: Callable[[float], None],
 ) -> CrawlResult:
     """Drive one source's crawl. See ``crawl_source`` for the contract."""
-    if not source.seed_urls:
+    if not source.seed_urls and not source.document_urls:
         return CrawlResult(source_id=source.id, documents=[], outcomes=[])
 
     # Checked once per run, before anything is fetched. A source that has
     # closed to us should cost one request to discover, not a whole crawl.
-    policy = robots_module.fetch_policy(
-        source_id=source.id, seed_url=source.seed_urls[0], client=client
-    )
+    #
+    # Derived from whichever entry point exists: a direct-document run has no
+    # listing to start from, and robots.txt lives at the host root either way.
+    # `_crawl_one` re-checks every document against this policy, so a run whose
+    # documents sit on a different host from its seeds is still checked against
+    # the host it is actually fetching from -- see `_policy_for` below.
+    origin_url = source.seed_urls[0] if source.seed_urls else source.document_urls[0]
+    policy = robots_module.fetch_policy(source_id=source.id, seed_url=origin_url, client=client)
     pacer = _Pacer(max(policy.crawl_delay_s or 0.0, DEFAULT_DELAY_S), sleep=sleep)
 
     documents: list[SourceDocument] = []
@@ -209,6 +215,36 @@ def _run(
     # A local sink when the caller did not supply one, so `_crawl_one` always
     # has somewhere to put the bytes and the optional parameter stays optional.
     sink: dict[str, bytes] = {} if payloads is None else payloads
+    policies: dict[str, robots_module.RobotsPolicy] = {_host_of(origin_url): policy}
+
+    # Directly-supplied documents first, so a run carrying both still fetches
+    # the known-good URLs when a listing turns out to be unreachable.
+    for direct_url in source.document_urls:
+        if max_documents is not None and len(documents) >= max_documents:
+            break
+        if direct_url in seen_urls:
+            continue
+        seen_urls.add(direct_url)
+        outcomes.append(
+            _crawl_one(
+                source=source,
+                # The filename is the only title available without opening the
+                # PDF. The curated list carries a real one, but the crawler is
+                # not the layer that knows about it.
+                document=DiscoveredDocument(url=direct_url, title=direct_url.rsplit("/", 1)[-1]),
+                client=client,
+                pacer=pacer,
+                policy=_policy_for(
+                    url=direct_url,
+                    source_id=source.id,
+                    client=client,
+                    policies=policies,
+                ),
+                known=known,
+                documents=documents,
+                payloads=sink,
+            )
+        )
 
     for listing_url in crawler.listing_urls(source.seed_urls):
         robots_module.require_allowed(policy, source_id=source.id, url=listing_url)
@@ -247,6 +283,56 @@ def _run(
             outcomes.append(outcome)
 
     return CrawlResult(source_id=source.id, documents=documents, outcomes=outcomes)
+
+
+def _host_of(url: str) -> str:
+    """Return the scheme and host a URL belongs to.
+
+    Args:
+        url: An absolute URL.
+
+    Returns:
+        The ``scheme://host`` prefix, used to key one robots policy per host.
+    """
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _policy_for(
+    *,
+    url: str,
+    source_id: str,
+    client: httpx.Client,
+    policies: dict[str, robots_module.RobotsPolicy],
+) -> robots_module.RobotsPolicy:
+    """Return the robots policy governing a URL, fetching it once per host.
+
+    Args:
+        url: The URL about to be fetched.
+        source_id: The source being crawled, for the log entry.
+        client: HTTP client to fetch robots.txt with.
+        policies: Cache of already-fetched policies, keyed by host.
+
+    Returns:
+        The policy for that URL's host.
+
+    Raises:
+        RobotsUnavailableError: If that host's robots.txt cannot be read.
+
+    Per host rather than per run, because a curated document list legitimately
+    points at a different host from the listing pages: ABB's documents live on
+    ``library.e.abb.com`` while its portal is ``library.abb.com``. Reusing the
+    portal's policy for the asset host would be checking the wrong file — and
+    the direction of that mistake is permitting a fetch nobody authorised.
+    """
+    host = _host_of(url)
+    cached = policies.get(host)
+    if cached is not None:
+        return cached
+
+    policy = robots_module.fetch_policy(source_id=source_id, seed_url=url, client=client)
+    policies[host] = policy
+    return policy
 
 
 def _crawl_one(

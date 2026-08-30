@@ -627,6 +627,21 @@ export interface components {
     /**
      * CrawlJobRequest
      * @description Request to queue a crawl.
+     *
+     *     Attributes:
+     *         source_id: Which allow-listed source to crawl.
+     *         seed_urls: Listing pages to discover documents from.
+     *         document_urls: Documents to fetch directly, skipping discovery. For
+     *             sources whose listings cannot be crawled — ABB's is a JavaScript
+     *             application serving no links — while the documents themselves are
+     *             plainly fetchable. Supplying these skips discovery and nothing
+     *             else: robots.txt, hashing, parsing and human verification all
+     *             still apply.
+     *         max_depth: How deep to follow listings.
+     *
+     *     At least one of ``seed_urls`` or ``document_urls`` must be present; a
+     *     request carrying neither has nothing to fetch, and the domain refuses it
+     *     rather than recording an empty run as a success.
      */
     CrawlJobRequest: {
       /** Source Id */
@@ -636,6 +651,11 @@ export interface components {
        * @default []
        */
       seed_urls: string[];
+      /**
+       * Document Urls
+       * @default []
+       */
+      document_urls: string[];
       /**
        * Max Depth
        * @default 2
