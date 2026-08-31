@@ -8,7 +8,12 @@ The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPil
 
 **PD-002 found that there is no single module width.** DIN 43880 specifies a band, not a value: ABB's S200 is 17.5 mm per module and Schneider's Acti9 iC60H is 18 mm, both conforming. PD-003 must therefore size rows from per-series millimetres rather than a module count times one constant — an enclosure laid out on 17.5 mm rows and filled with 18 mm devices does not close. **Contactors are absent from the table**: every manufacturer-hosted contactor datasheet reachable from here returned 403, and a lookup for one raises rather than guessing.
 
-**The rest of the chain is blocked on one thing.** PD-003 needs PD-001's catalogue data and PD-002's module widths; PD-004 needs PD-001; PD-005 needs PD-003 and AI-005; PD-007 needs PD-003/004/005; PD-008 needs PD-007. PD-001 has no obtainable source yet — see its note — so the whole chain from PD-003 onward waits behind it.
+**The chain is no longer blocked at the root, but PD-004 now blocks it further down.** PD-001 was unblocked by a structured EPLAN catalogue export rather than by crawling Rittal, and PD-002 and PD-003 followed. What remains:
+
+- **PD-004 is deferred**, not merely unstarted: no normative fill ratio exists to cite. IEC 60364-5-52 was investigated and does not contain one; NEC 376.22 (20%) is the wrong jurisdiction and IET OSG Appendix E (45%) is guidance rather than a standard. See its note — the candidates were rejected on sourcing grounds, not overlooked.
+- **PD-005** needs PD-003 (done) and AI-005 (partial — `voltage_drop` only).
+- **PD-007** needs PD-003 (done), PD-004 (**deferred**) and PD-005, so it inherits PD-004's block.
+- **PD-008** needs PD-007, and so inherits it too.
 
 ### Re-synced from the sheet
 
@@ -23,7 +28,7 @@ PD-001 through PD-005 are unchanged from the previous transcription.
 The renderer chain is now internal, so nothing in it waits on a third-party licence:
 
 - **PD-006** (symbol library) — no dependencies. The entry point.
-- **PD-007** (schematic schema) — needs PD-003, PD-004, PD-005 and PD-006.
+- **PD-007** (schematic schema) — needs PD-003 ✅, PD-004 (**deferred**), PD-005 and PD-006 ✅. PD-004's deferral is the live blocker here.
 - **PD-008** (renderer) — needs PD-006 and PD-007.
 - **PD-009** — deferred; nothing depends on it.
 
@@ -259,28 +264,74 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > Output matches hand-calculated reference enclosure selections for representative component lists; a genuinely oversized request correctly refuses rather than force-fitting.
 
-## [ ] PD-004 — Trunking/wireway sizing calculation
+## [ ] PD-004 — Trunking/wireway sizing calculation _(deferred — no normative fill ratio exists to cite)_
 
-> **BLOCKED — neither of its two inputs exists yet.** Checked rather than
-> assumed, before writing anything:
+> **DEFERRED, on Ayed's decision — same treatment as AI-005's remaining
+> stubs.** No fill-ratio number is written without a genuine normative
+> citation, and after investigation none exists to cite.
 >
-> 1. **No trunking products in the catalogue.** Of PD-001's 266 ingested
->    records, **zero** match trunking, wireway, duct, cable channel or
->    Kabelkanal. The EPLAN export ran on "enclosure system" and returned
->    enclosures, covers, plates and brackets. There is nothing to match a
->    computed cross-section against.
-> 2. **No sourced fill-ratio convention.** The Approach calls for "standard
->    cable fill-ratio conventions (wireway fill should not exceed a defined
->    percentage of its cross-sectional area)". That percentage is a real
->    published figure in a real standard, and it is not in this repository. The
->    widely-quoted numbers differ by jurisdiction and by whether the run is
->    straight or has bends.
+> **The real blocker is the fill ratio, not the missing catalogue data.** The
+> Approach calls for "standard cable fill-ratio conventions (wireway fill
+> should not exceed a defined percentage of its cross-sectional area)". That
+> percentage was searched for properly and the candidates were **rejected as
+> insufficient sourcing, not overlooked**:
 >
-> Writing it would mean inventing both the catalogue and the constant, which is
-> exactly what AI-005's `size_conductor` and AI-006 were left unimplemented to
-> avoid. **Unblocking needs a trunking export** (the same EPLAN mechanism, a
-> different search term) **and a citable fill-ratio clause.** The first is
-> cheap; the second is the real dependency.
+> - **IEC 60364-5-52 — investigated and disproven.** This was the leading
+>   hypothesis, and a reasonable one: the project already cites this standard
+>   in three places (`cable_sizing.py`, `calculations.py`) for ampacity and
+>   derating, and the brand list is IEC-oriented. It does **not** contain a
+>   fill ratio. Verified against the official IEC preview (Ed. 3.1 2024-11,
+>   consolidated, from VDE-Verlag), which carries the complete clause and annex
+>   structure: **zero** occurrences of "space factor", "fill", "percentage", or
+>   even the `%` character. Every table in the standard is about operating
+>   temperature, conductor CSA, installation method or current-carrying
+>   capacity. Clause 521.6 ("Conduit systems, cable ducting systems, cable
+>   trunking systems…") cross-refers to product standards without giving a
+>   figure; 522.8 is "Other mechanical stresses (AJ)".
+>
+>   **Worth recording as a trap:** web sources confidently assert
+>   _"IEC 60364-5-52 clause 522.8.1 — 40%"_ with a specific clause number. That
+>   contradicts the document. Treat it as false rather than unverified — it is
+>   exactly the plausible-looking citation this project's sourcing rule exists
+>   to keep out.
+>
+> - **NEC / NFPA 70 Article 376.22(A) — 20%. Rejected: wrong jurisdiction.**
+>   Genuinely normative and citable ("shall not exceed 20 percent of the
+>   interior cross-sectional area of the wireway"), but it is a US code for
+>   _wireways_, a different product and convention from IEC/EN panel trunking.
+>   Applying it to an IEC-oriented catalogue would be a category error, and a
+>   conservative one that sizes trunking more than twice as large as European
+>   practice.
+>
+> - **IET On-Site Guide Appendix E — 45% trunking / 35% conduit. Rejected:
+>   guidance, not a standard.** This is the figure the UK/IEC panel-building
+>   world actually uses, but it is not a normative requirement. Cable
+>   capacities were **removed from the Wiring Regulations in 1991** because the
+>   committee considered them guidance; they now live only in the IET On-Site
+>   Guide and Guidance Note 1, worded "should not exceed" rather than "shall".
+>   The IET's own GN1 later described the earlier space factor as "an arbitrary
+>   value, later shown to be inappropriate". No current BS 7671 regulation
+>   number carries it.
+>
+> - **IEC 61537, IEC 61084 / EN 50085 — no fill percentage found.** These are
+>   product construction and test standards (dimensions, IP, impact, flame);
+>   installation-side fill rules are outside their scope.
+>
+> **The missing catalogue is the smaller half and is not being pursued.** Of
+> PD-001's 266 ingested records, zero match trunking, wireway, duct, cable
+> channel or Kabelkanal — the export ran on "enclosure system". A trunking
+> export is cheap to obtain by the same EPLAN mechanism with a different search
+> term, and would need one class added to `PANEL_CLASSES`, which currently
+> holds no trunking class and would filter every such row out. It is left
+> undone deliberately: with no citable fill ratio there is nothing to match a
+> computed cross-section against, so the catalogue alone would not unblock the
+> task.
+>
+> **What would genuinely unblock it:** a normative fill-ratio clause in a
+> standard appropriate to this project's IEC-oriented scope — or an explicit
+> decision to adopt the IET guidance figure while labelling it guidance-grade
+> in the code, which is a departure from the exact-source discipline every
+> other calc tool follows and is Ayed's call to make, not one to slide into.
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
