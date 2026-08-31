@@ -4,7 +4,7 @@ The nine Panel Design tasks, transcribed from the project spreadsheet (`PanelPil
 
 ## Status at a glance
 
-**PD-006 and PD-002 are done and merged.** PD-006 (PR #70): thirteen IEC 60617-style symbols, 31 tests, five mutants killed. PD-002: DIN module widths sourced from ABB S200, Schneider Acti9 iC60H and WAGO TOPJOB S datasheets, 19 tests, ten mutants killed. The other seven are `To Do`, all assigned to Ayed Rabaya.
+**PD-001, PD-002, PD-003 and PD-006 are done and merged.** PD-006 (PR #70): thirteen IEC 60617-style symbols, 31 tests, five mutants killed. PD-002: DIN module widths sourced from ABB S200, Schneider Acti9 iC60H and WAGO TOPJOB S datasheets, 19 tests, ten mutants killed. The other seven are `To Do`, all assigned to Ayed Rabaya.
 
 **PD-002 found that there is no single module width.** DIN 43880 specifies a band, not a value: ABB's S200 is 17.5 mm per module and Schneider's Acti9 iC60H is 18 mm, both conforming. PD-003 must therefore size rows from per-series millimetres rather than a module count times one constant — an enclosure laid out on 17.5 mm rows and filled with 18 mm devices does not close. **Contactors are absent from the table**: every manufacturer-hosted contactor datasheet reachable from here returned 403, and a lookup for one raises rather than guessing.
 
@@ -31,7 +31,7 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 ---
 
-## [ ] PD-001 — Rittal enclosure catalog ingestion
+## [x] PD-001 — Rittal enclosure catalog ingestion _(external dimensions delivered; internal dims and rail capacity deferred — see below)_
 
 > **A crawler source was attempted and is not viable as-is.** Registering
 > `webinfo.rittal.com/en/system_catalogue-36` as a `SourceCrawler` was tried
@@ -75,7 +75,42 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 > BMEcat/eCl@ss structured feed the Approach already mentions via a Rittal
 > account.
 >
-> **A structured catalogue feed now supplies the data the crawler could not.**
+> **Ticked on revised scope, with the remainder deliberately deferred.**
+> What is delivered: external W x H x D for 266 real catalogue records, plus a
+> partial IP rating (19 of 53 enclosures publish one as a structured field).
+> That is the dimensional half of the `ProductRecord` the spec describes, and
+> it is what PD-003 needs to size against.
+>
+> **Not delivered, and why:** internal usable dimensions and full DIN-rail row
+> capacity. Both were investigated rather than assumed:
+>
+> - **Internal dimensions are absent from the commercial export.** The 38 rows
+>   whose text matches "internal" all say _"Internal set elements"_ — a
+>   catalogue group name, not a dimension. Zero rows publish an internal size.
+> - **Rail capacity is published on the wrong objects.** 46 rows carry an
+>   "N mod." figure, but they are covers (25), mounting plates (15) and rails
+>   (6). **Zero of 53 enclosures publish one.**
+> - **It is not derivable.** The six rails publish both a module count and a
+>   width, and the implied pitch drifts 17.9 -> 19.9 mm per module. Dividing a
+>   width by a constant would produce a confident wrong capacity, which is the
+>   error PD-002's own finding (DIN 43880 specifies a band, not a value)
+>   predicts.
+> - **The geometry exists, but only per-part.** An individual part download
+>   (`MAC_VX8900100_xD.zip`) does contain a real `dxf/` folder — six Panel
+>   layout DXFs, 159 LINE entities, bounds 601.0 x 2061.7 mm against a
+>   published 600x2000x800 enclosure. The bulk exports never populate
+>   `Relative path of the DXF file`: it is empty in all 510 rows across three
+>   exports. So DXF coverage means downloading enclosures one at a time, and
+>   extracting usable internal dimensions from them means parsing CAD geometry
+>   — closer to PD-009's deferred 2D-layout work than to what PD-003 needs.
+>
+> Treated the same way as AI-005's `size_conductor`/`derating_factor` stubs and
+> PD-009: recorded as a known limitation rather than filled in from general
+> knowledge. **PD-003 consumes what exists and refuses what does not** — see its
+> own note on why rail capacity is a caller-supplied input there.
+
+**A structured catalogue feed now supplies the data the crawler could not.**
+
 > The Approach names "BMEcat/eCl@ss structured electronic-catalog data" as the
 > richer alternative to crawling, and an EPLAN Data Portal export is exactly
 > that: structured product records rather than PDFs to parse.
@@ -166,7 +201,35 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > Looked-up module widths match published manufacturer datasheets exactly for a representative sample across breaker/contactor/terminal categories.
 
-## [ ] PD-003 — Enclosure sizing calculation
+## [x] PD-003 — Enclosure sizing calculation
+
+> **Built on PD-001's catalogue and PD-002's widths.** `size_enclosure` sums
+> DIN modules per functional group, rounds each group up to whole rail rows,
+> and selects the smallest catalogue enclosure whose width holds the rail and
+> whose height holds the rows.
+>
+> **Rail capacity is a caller-supplied input, not a derived one.** PD-001
+> established that zero of 53 ingested enclosures publish a module capacity,
+> and that the six rails publishing both a count and a width imply a pitch
+> drifting from 17.9 to 19.9 mm — so no constant recovers it from an
+> enclosure's width. `usable_rail_mm` and `row_pitch_mm` come from the
+> enclosure drawing, and a run without them refuses rather than guessing. A
+> version that multiplied width by a fudge factor would always return an
+> enclosure, and would be wrong in the direction of a panel that does not
+> close.
+>
+> **A real bug was caught before merge.** The first version used
+> `-(-width // rail)` for ceiling division. That is correct for `int` and wrong
+> for `Decimal`, whose floor division truncates toward zero: 210 mm on a 465 mm
+> rail returned **0 rows** and 500 mm returned **1**. A panel sized a row short
+> builds as a component with nowhere to go. Fixed with `math.ceil` and pinned
+> by a parametrised boundary test (26 devices = 455 mm = 1 row; 27 = 472.5 mm =
+> 2 rows).
+>
+> Deep-tier: 9 mutants, all killed. One survived the first pass — the width
+> check dropped, so a 300 mm cabinet could be selected for a 465 mm rail. The
+> tall-enough enclosures in the fixture happened to be wide enough too, which
+> is exactly the sort of coincidence a mutation run exists to find.
 
 | Field                   | Value                                         |
 | ----------------------- | --------------------------------------------- |
@@ -197,6 +260,27 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 > Output matches hand-calculated reference enclosure selections for representative component lists; a genuinely oversized request correctly refuses rather than force-fitting.
 
 ## [ ] PD-004 — Trunking/wireway sizing calculation
+
+> **BLOCKED — neither of its two inputs exists yet.** Checked rather than
+> assumed, before writing anything:
+>
+> 1. **No trunking products in the catalogue.** Of PD-001's 266 ingested
+>    records, **zero** match trunking, wireway, duct, cable channel or
+>    Kabelkanal. The EPLAN export ran on "enclosure system" and returned
+>    enclosures, covers, plates and brackets. There is nothing to match a
+>    computed cross-section against.
+> 2. **No sourced fill-ratio convention.** The Approach calls for "standard
+>    cable fill-ratio conventions (wireway fill should not exceed a defined
+>    percentage of its cross-sectional area)". That percentage is a real
+>    published figure in a real standard, and it is not in this repository. The
+>    widely-quoted numbers differ by jurisdiction and by whether the run is
+>    straight or has bends.
+>
+> Writing it would mean inventing both the catalogue and the constant, which is
+> exactly what AI-005's `size_conductor` and AI-006 were left unimplemented to
+> avoid. **Unblocking needs a trunking export** (the same EPLAN mechanism, a
+> different search term) **and a citable fill-ratio clause.** The first is
+> cheap; the second is the real dependency.
 
 | Field                   | Value                                               |
 | ----------------------- | --------------------------------------------------- |
