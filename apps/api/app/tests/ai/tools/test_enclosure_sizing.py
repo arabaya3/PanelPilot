@@ -325,6 +325,29 @@ def test_a_non_positive_row_pitch_is_refused() -> None:
         )
 
 
+@pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity", "-Infinity", "-1"])
+def test_a_non_finite_rail_length_is_refused_as_documented(value: str) -> None:
+    """The documented refusal, not a `decimal.InvalidOperation` crash.
+
+    Ordering a NaN `Decimal` against zero raises rather than answering, so a
+    NaN escaped as an exception the caller does not expect. Infinity is worse:
+    it divides every group down to zero rows, a panel sized to hold nothing.
+    """
+    with pytest.raises(ValidationError, match="rail length must be positive"):
+        rail_requirements([_mcb(1)], usable_rail_mm=Decimal(value))
+
+
+@pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity"])
+def test_a_non_finite_row_pitch_is_refused_as_documented(value: str) -> None:
+    with pytest.raises(ValidationError, match="row pitch must be positive"):
+        size_enclosure(
+            [_mcb(1)],
+            catalogue=_catalogue(),
+            usable_rail_mm=_RAIL,
+            row_pitch_mm=Decimal(value),
+        )
+
+
 def test_an_unsourced_component_width_propagates_the_refusal() -> None:
     """PD-002 refuses a contactor because no manufacturer datasheet was.
 

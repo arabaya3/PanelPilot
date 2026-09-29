@@ -99,6 +99,35 @@ _COS_PHI_NORMAL = Decimal("0.8")
 _COS_PHI_STARTUP = Decimal("0.35")
 
 
+def _require_finite(name: str, value: Decimal) -> None:
+    """Refuse ``NaN``, ``sNaN`` and infinities.
+
+    Args:
+        name: The argument's name, for the message.
+        value: The argument.
+
+    Raises:
+        ValidationError: If ``value`` is not a finite number.
+    """
+    if not value.is_finite():
+        raise ValidationError(f"{name} must be a finite number, got {value}")
+
+
+def _require_positive(name: str, value: Decimal) -> None:
+    """Refuse anything but a finite number above zero.
+
+    Args:
+        name: The argument's name, for the message.
+        value: The argument.
+
+    Raises:
+        ValidationError: If ``value`` is not finite, or not above zero.
+    """
+    _require_finite(name, value)
+    if value <= 0:
+        raise ValidationError(f"{name} must be positive, got {value}")
+
+
 class LoadType(StrEnum):
     """Which of Fig. G28's column pairs applies.
 
@@ -149,8 +178,9 @@ def voltage_drop(
         The phase-to-phase voltage drop in volts.
 
     Raises:
-        ValidationError: If the cross-section is not tabulated, the conductor
-            is not copper, or the power factor is not one the guide tabulates.
+        ValidationError: If the current or length is not a finite positive
+            number, the cross-section is not tabulated, the conductor is not
+            copper, or the power factor is not one the guide tabulates.
 
     **Interpolation is refused, not performed.** Fig. G28 is a table of
     measured values at two power factors, not a curve — the relationship
@@ -159,7 +189,20 @@ def voltage_drop(
     does not support, for a circuit whose conductor sizing depends on it.
     A caller outside the table gets a refusal it can surface, which is the
     behaviour AI-005's spec asks for.
+
+    **Every quantity is checked before any lookup.** ``Decimal`` admits
+    ``NaN``, ``sNaN`` and ``Infinity``, and without this a negative current
+    returned a negative drop, ``NaN`` and ``Infinity`` came back as results,
+    and ``sNaN`` escaped as a ``TypeError`` from hashing it into the table --
+    each a number or a crash where the contract promises a refusal. A zero
+    current or length is refused too: it is a run carrying nothing, and the
+    only answer to it is one no caller needed to ask for.
     """
+    _require_positive("current_a", current_a)
+    _require_positive("length_m", length_m)
+    _require_finite("cross_section_mm2", cross_section_mm2)
+    _require_finite("power_factor", power_factor)
+
     if conductor_material is not ConductorMaterial.COPPER:
         # The guide's aluminium column is offset against the copper one and is
         # not transcribed here. Refusing is honest; guessing the offset is the
