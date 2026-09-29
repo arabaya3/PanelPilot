@@ -18,6 +18,9 @@ from app.models.schemas.health import DependencyState, HealthResponse
 
 logger = get_logger(__name__)
 
+#: Seconds the readiness probe waits for OpenSearch to answer.
+_PING_TIMEOUT_S = 2
+
 
 def _check_database() -> DependencyState:
     """Report whether a trivial query succeeds against Postgres."""
@@ -33,7 +36,11 @@ def _check_database() -> DependencyState:
 def _check_opensearch() -> DependencyState:
     """Report whether the OpenSearch cluster answers a ping."""
     try:
-        reachable = bool(get_client().ping())
+        # Bounded well inside the container healthcheck's own timeout. The
+        # client default (10 s, with retries) outlived the probe, so a slow
+        # cluster left probes stacking up on blocked threads instead of
+        # reporting it down.
+        reachable = bool(get_client().ping(request_timeout=_PING_TIMEOUT_S))
     except Exception as exc:
         logger.warning("readiness_check_failed", dependency="opensearch", error=str(exc))
         return DependencyState.DOWN

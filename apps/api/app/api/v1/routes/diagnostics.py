@@ -6,7 +6,10 @@ a diagnosis is produced belongs in ``app.domain.diagnostics``.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
+from typing import cast
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
@@ -77,7 +80,7 @@ def stream_diagnosis(
     """
     events = diagnostics_domain.stream_diagnosis(session=session, user=user, request=payload)
     return StreamingResponse(
-        _timed_frames(events),
+        _with_keepalive(_timed_frames(events)),
         media_type="text/event-stream",
         # Proxies buffer by default, which defeats the point: the client would
         # receive every event at once, at the end.
@@ -115,6 +118,58 @@ def _timed_frames(events: Iterable[DiagnosisEvent]) -> Iterator[str]:
         raise
     finally:
         timer.finish(failed=failed)
+
+
+#: Seconds of silence after which a comment frame is sent. Retrieval and
+#: generation send nothing for as long as the model takes, and the proxies in
+#: front of this — the web app's own, a load balancer — cut a connection that
+#: has been idle for 30 to 60 s, which the engineer saw as "connection lost"
+#: on exactly the slow questions most worth waiting for.
+KEEPALIVE_INTERVAL_S = 15.0
+
+#: An SSE comment: every conforming client ignores it, the frontend's parser
+#: included, and it resets every idle timer between here and the browser.
+KEEPALIVE_FRAME = ": keepalive\n\n"
+
+_END = object()
+
+
+def _with_keepalive(
+    frames: Iterator[str], *, interval_s: float = KEEPALIVE_INTERVAL_S
+) -> Generator[str, None, None]:
+    """Pass frames through, filling long silences with keep-alive comments.
+
+    The next frame is produced on a worker thread only when the previous one
+    has been handed on — never ahead of the client. That is load-bearing: the
+    domain charges the quota when it is asked for the frame after
+    ``generated``, and a client that has gone must never be asked. Prefetching
+    in the background would bill every abandoned stream.
+
+    Args:
+        frames: The rendered frames.
+        interval_s: Silence tolerated before a comment frame is sent.
+
+    Yields:
+        Each frame in order, with comment frames between them while waiting.
+    """
+    producer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sse")
+    try:
+        while True:
+            pending = producer.submit(next, frames, _END)
+            while True:
+                try:
+                    frame = pending.result(timeout=interval_s)
+                    break
+                except FutureTimeout:
+                    yield KEEPALIVE_FRAME
+            if frame is _END:
+                return
+            yield cast(str, frame)
+    finally:
+        # Not waiting: on a disconnect the frame in progress finishes on its
+        # own thread, exactly as it did before this wrapper existed, and
+        # nothing further is requested.
+        producer.shutdown(wait=False)
 
 
 @router.get("/{session_id}", response_model=DiagnosticSession)
