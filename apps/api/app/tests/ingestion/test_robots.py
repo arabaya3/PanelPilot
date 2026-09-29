@@ -8,11 +8,15 @@ the three ways a robots.txt can be *absent* — 404, unreachable host, and a
 
 from __future__ import annotations
 
+import gzip
+
 import httpx
 import pytest
 
 from app.ingestion.robots import (
+    MAX_ROBOTS_BYTES,
     USER_AGENT,
+    CrawlDelayTooLongError,
     RobotsDisallowedError,
     RobotsUnavailableError,
     fetch_policy,
@@ -368,3 +372,108 @@ def test_the_text_before_the_first_wildcard_is_a_prefix_not_a_search() -> None:
 
     assert policy.allows("https://library.abb.com/docs/a.pdf") is False
     assert policy.allows("https://library.abb.com/other/docs/a.pdf") is True
+
+
+# --- redirects and size --------------------------------------------------------
+#
+# robots.txt is fetched before anything else on a host, so it is the first
+# request an attacker-controlled redirect could steer, and the first body a
+# hostile server could inflate.
+
+
+def routed_client(
+    routes: dict[str, httpx.Response], requested: list[str] | None = None
+) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if requested is not None:
+            requested.append(str(request.url))
+        return routes.get(str(request.url), httpx.Response(404))
+
+    # Would follow redirects itself if allowed to; `fetch_policy` must not let it.
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+ROBOTS = "https://library.abb.com/robots.txt"
+
+
+def test_a_same_host_redirect_is_followed() -> None:
+    routes = {
+        ROBOTS: httpx.Response(301, headers={"Location": "/real-robots.txt"}),
+        "https://library.abb.com/real-robots.txt": httpx.Response(
+            200, content=b"User-agent: *\nDisallow: /private/\n"
+        ),
+    }
+
+    policy = fetch_policy(source_id="abb", seed_url=SEED, client=routed_client(routes))
+
+    assert policy.allows("https://library.abb.com/private/a.pdf") is False
+
+
+def test_a_cross_host_redirect_is_refused_by_default() -> None:
+    requested: list[str] = []
+    routes = {ROBOTS: httpx.Response(302, headers={"Location": "http://169.254.169.254/"})}
+
+    with pytest.raises(RobotsUnavailableError, match="refused"):
+        fetch_policy(source_id="abb", seed_url=SEED, client=routed_client(routes, requested))
+
+    assert requested == [ROBOTS]
+
+
+def test_the_callers_redirect_check_decides() -> None:
+    target = "https://cdn.abb.com/robots.txt"
+    routes = {
+        ROBOTS: httpx.Response(302, headers={"Location": target}),
+        target: httpx.Response(200, content=b"User-agent: *\nDisallow: /\n"),
+    }
+    asked: list[str] = []
+
+    def allow(url: str) -> bool:
+        asked.append(url)
+        return True
+
+    policy = fetch_policy(
+        source_id="abb", seed_url=SEED, client=routed_client(routes), allow_redirect=allow
+    )
+
+    assert asked == [target]
+    assert policy.allows(SEED) is False
+
+    with pytest.raises(RobotsUnavailableError):
+        fetch_policy(
+            source_id="abb",
+            seed_url=SEED,
+            client=routed_client(routes),
+            allow_redirect=lambda _url: False,
+        )
+
+
+def test_a_redirect_loop_is_unreadable() -> None:
+    routes = {ROBOTS: httpx.Response(302, headers={"Location": ROBOTS})}
+
+    with pytest.raises(RobotsUnavailableError, match="redirected more than"):
+        fetch_policy(source_id="abb", seed_url=SEED, client=routed_client(routes))
+
+
+def test_an_oversized_robots_file_is_unreadable_rather_than_truncated() -> None:
+    # Truncating could drop the very `Disallow` lines at the end of the file.
+    body = b"User-agent: *\n" + b"# padding\n" * (MAX_ROBOTS_BYTES // 10) + b"Disallow: /\n"
+    routes = {ROBOTS: httpx.Response(200, content=body)}
+
+    with pytest.raises(RobotsUnavailableError):
+        fetch_policy(source_id="abb", seed_url=SEED, client=routed_client(routes))
+
+
+def test_a_robots_file_is_measured_after_decompression() -> None:
+    bomb = gzip.compress(b"#" * (MAX_ROBOTS_BYTES + 1))
+    routes = {ROBOTS: httpx.Response(200, content=bomb, headers={"Content-Encoding": "gzip"})}
+
+    with pytest.raises(RobotsUnavailableError):
+        fetch_policy(source_id="abb", seed_url=SEED, client=routed_client(routes))
+
+
+def test_a_long_crawl_delay_error_names_the_source_and_the_limit() -> None:
+    error = CrawlDelayTooLongError("abb", SEED, 3600.0, 60.0)
+
+    assert (error.source_id, error.url, error.delay_s) == ("abb", SEED, 3600.0)
+    assert "3600" in str(error)
+    assert "60" in str(error)

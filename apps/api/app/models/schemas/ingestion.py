@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+#: Most listing pages one crawl request may name. The three sources each have
+#: a handful of library entry points; twenty covers them with room to spare.
+MAX_SEED_URLS = 20
+
+#: Most documents one crawl request may name directly. Four times the
+#: default per-run document cap, so a curated list can outgrow a single run
+#: -- unchanged documents cost a fetch but stage nothing -- without becoming
+#: unbounded.
+MAX_DOCUMENT_URLS = 100
 
 
 class CrawlJobStatus(StrEnum):
@@ -33,11 +43,17 @@ class CrawlJobRequest(BaseModel):
     At least one of ``seed_urls`` or ``document_urls`` must be present; a
     request carrying neither has nothing to fetch, and the domain refuses it
     rather than recording an empty run as a success.
+
+    Both lists are capped (``MAX_SEED_URLS``, ``MAX_DOCUMENT_URLS``). Each URL
+    is a request the crawler makes, so an uncapped list is an uncapped crawl
+    one POST away; the crawler also caps total fetches per run, but refusing
+    an oversized request outright tells the caller rather than silently
+    crawling a prefix of it.
     """
 
     source_id: str
-    seed_urls: list[str] = []
-    document_urls: list[str] = []
+    seed_urls: list[str] = Field(default_factory=list, max_length=MAX_SEED_URLS)
+    document_urls: list[str] = Field(default_factory=list, max_length=MAX_DOCUMENT_URLS)
     max_depth: int = 2
 
 

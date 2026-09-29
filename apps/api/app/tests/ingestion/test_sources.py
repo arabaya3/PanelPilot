@@ -13,16 +13,21 @@ politeness violation dressed up as thoroughness.
 
 from __future__ import annotations
 
+import gzip
+
+import httpx
 import pytest
 
 from app.ingestion.sources import (
     CRAWLERS,
     AbbCrawler,
+    ResponseLimitError,
     SchneiderCrawler,
     SiemensCrawler,
     SourceCrawler,
     crawler_for,
     http_client,
+    read_limited,
 )
 
 
@@ -184,11 +189,77 @@ def test_the_client_identifies_itself() -> None:
         assert client.headers["User-Agent"] == "PanelPilotBot"
 
 
-def test_the_client_follows_redirects() -> None:
-    # Download portals redirect to a CDN path constantly; not following would
-    # register every document as unreachable.
+def test_the_client_leaves_redirects_to_the_crawl_loop() -> None:
+    # Download portals redirect to a CDN path constantly, so redirects must be
+    # followed -- but by the crawl loop, one checked hop at a time. Left to
+    # httpx, a manufacturer page answering 302 to the cloud metadata address
+    # was fetched and staged. The crawler tests cover the following itself.
     with http_client(user_agent="PanelPilotBot") as client:
-        assert client.follow_redirects is True
+        assert client.follow_redirects is False
+
+
+# --- bounded reads ------------------------------------------------------------
+
+
+def _streamed(body: bytes, headers: dict[str, str] | None = None) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body, headers=headers)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_read_limited_returns_a_body_within_its_caps() -> None:
+    with (
+        _streamed(b"abc") as client,
+        client.stream("GET", "https://library.abb.com/a.pdf") as response,
+    ):
+        assert read_limited(response, max_bytes=3, deadline=float("inf")) == b"abc"
+
+
+def test_read_limited_refuses_a_declared_length_over_the_cap() -> None:
+    # Refused on the header, before a byte of the body is read.
+    with (
+        _streamed(b"abcd") as client,
+        client.stream("GET", "https://library.abb.com/a.pdf") as response,
+        pytest.raises(ResponseLimitError) as caught,
+    ):
+        read_limited(response, max_bytes=3, deadline=float("inf"))
+    assert caught.value.reason == "too-large"
+
+
+def test_read_limited_counts_decompressed_bytes() -> None:
+    # The reported bug: a 204 KB gzip body became 200 MB in memory. Here the
+    # encoded body -- and so Content-Length -- is tiny, and only a count over
+    # what httpx actually hands back catches it.
+    bomb = gzip.compress(b"\0" * 1_000_000)
+    assert len(bomb) < 10_000
+    with (
+        _streamed(bomb, {"Content-Encoding": "gzip"}) as client,
+        client.stream("GET", "https://library.abb.com/a.pdf") as response,
+        pytest.raises(ResponseLimitError) as caught,
+    ):
+        read_limited(response, max_bytes=100_000, deadline=float("inf"))
+    assert caught.value.reason == "too-large"
+
+
+def test_read_limited_abandons_a_read_past_its_deadline() -> None:
+    with (
+        _streamed(b"abc") as client,
+        client.stream("GET", "https://library.abb.com/a.pdf") as response,
+        pytest.raises(ResponseLimitError) as caught,
+    ):
+        read_limited(response, max_bytes=100, deadline=5.0, now=lambda: 10.0)
+    assert caught.value.reason == "timed-out"
+
+
+@pytest.mark.parametrize(
+    ("crawler", "suffix"),
+    [(SiemensCrawler(), "siemens.com"), (AbbCrawler(), "abb.com"), (SchneiderCrawler(), "se.com")],
+)
+def test_each_crawler_names_its_own_domain(crawler: SourceCrawler, suffix: str) -> None:
+    # The same suffix gates discovered links and, through `url_guard`, every
+    # URL and redirect the crawl loop requests.
+    assert crawler.host_suffix == suffix
 
 
 @pytest.mark.parametrize(

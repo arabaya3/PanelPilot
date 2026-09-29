@@ -16,7 +16,9 @@ two methods below. A fourth brand implements them and is done.
 from __future__ import annotations
 
 import re
+import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
@@ -53,6 +55,11 @@ class SourceCrawler(ABC):
 
     #: Shown in logs and in the source-health record (BE-006).
     manufacturer: str
+
+    #: The source's own domain. A URL is only fetched when its host is this or
+    #: a subdomain of it -- whether it was discovered on a listing, supplied
+    #: directly, or reached by a redirect. See ``app.ingestion.url_guard``.
+    host_suffix: str
 
     @abstractmethod
     def listing_urls(self, seed_urls: list[str]) -> list[str]:
@@ -170,6 +177,7 @@ class SiemensCrawler(SourceCrawler):
     """Siemens Industry Online Support / SiePortal."""
 
     source_id = "siemens"
+    host_suffix = "siemens.com"
     manufacturer = "Siemens"
 
     def listing_urls(self, seed_urls: list[str]) -> list[str]:
@@ -178,13 +186,16 @@ class SiemensCrawler(SourceCrawler):
 
     def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
         """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(listing_url=listing_url, html=html, host_suffix="siemens.com")
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
 
 
 class AbbCrawler(SourceCrawler):
     """ABB Library."""
 
     source_id = "abb"
+    host_suffix = "abb.com"
     manufacturer = "ABB"
 
     def listing_urls(self, seed_urls: list[str]) -> list[str]:
@@ -193,13 +204,16 @@ class AbbCrawler(SourceCrawler):
 
     def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
         """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(listing_url=listing_url, html=html, host_suffix="abb.com")
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
 
 
 class SchneiderCrawler(SourceCrawler):
     """Schneider Electric Download Center."""
 
     source_id = "schneider"
+    host_suffix = "se.com"
     manufacturer = "Schneider Electric"
 
     def listing_urls(self, seed_urls: list[str]) -> list[str]:
@@ -208,7 +222,9 @@ class SchneiderCrawler(SourceCrawler):
 
     def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
         """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(listing_url=listing_url, html=html, host_suffix="se.com")
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
 
 
 #: The allow-list. A source not registered here cannot be crawled, which is
@@ -238,10 +254,84 @@ def http_client(*, user_agent: str) -> httpx.Client:
         user_agent: Identifies us to the source.
 
     Returns:
-        A client that follows redirects and identifies itself.
+        A client that identifies itself and does *not* follow redirects.
+
+    Redirects are followed by the crawl loop one hop at a time, because each
+    hop is a URL the source chose rather than one we vetted, and it has to pass
+    the same host, address and robots checks as the URL we asked for. Left to
+    httpx, a manufacturer page answering 302 to ``169.254.169.254`` was
+    fetched and staged under the original URL.
     """
     return httpx.Client(
         headers={"User-Agent": user_agent},
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=30.0,
     )
+
+
+class ResponseLimitError(Exception):
+    """A response body ran past its size cap or its deadline.
+
+    Attributes:
+        reason: ``"too-large"`` or ``"timed-out"``, suitable for a crawl
+            outcome's ``skipped_reason``.
+    """
+
+    def __init__(self, reason: str, detail: str) -> None:
+        """Record why the body was abandoned.
+
+        Args:
+            reason: The short outcome code.
+            detail: A human-readable explanation for the log.
+        """
+        self.reason = reason
+        super().__init__(detail)
+
+
+def read_limited(
+    response: httpx.Response,
+    *,
+    max_bytes: int,
+    deadline: float,
+    now: Callable[[], float] = time.monotonic,
+) -> bytes:
+    """Read a streamed response body, abandoning it past a size or time cap.
+
+    Args:
+        response: A response opened with ``client.stream``, body not yet read.
+        max_bytes: The most decoded bytes to accept.
+        deadline: A ``now()`` value after which the read is abandoned.
+        now: Clock, injectable for tests.
+
+    Returns:
+        The decoded body.
+
+    Raises:
+        ResponseLimitError: If the declared or actual size exceeds
+            ``max_bytes``, or the deadline passes mid-read.
+
+    Counted while streaming rather than after ``response.content``, because
+    httpx decompresses transparently: a 204 KB gzip body became 200 MB in
+    memory before a post-hoc length check ever ran. ``Content-Length`` is
+    checked first as a cheap early refusal, but it describes the *encoded*
+    size and a server can omit or understate it, so the running total over
+    decoded bytes is the check that actually binds.
+
+    The deadline is checked between chunks, so a server dripping bytes slowly
+    enough to stay under the per-read timeout still cannot hold a scheduled job
+    open indefinitely; it overruns by at most one read timeout.
+    """
+    declared = response.headers.get("Content-Length")
+    if declared is not None and declared.isdigit() and int(declared) > max_bytes:
+        raise ResponseLimitError("too-large", f"declared {declared} bytes, cap {max_bytes}")
+
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in response.iter_bytes():
+        total += len(chunk)
+        if total > max_bytes:
+            raise ResponseLimitError("too-large", f"body passed {max_bytes} bytes")
+        if now() > deadline:
+            raise ResponseLimitError("timed-out", "body not read before its deadline")
+        chunks.append(chunk)
+    return b"".join(chunks)

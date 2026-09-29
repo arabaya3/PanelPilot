@@ -30,6 +30,7 @@ from app.ingestion.known_documents import urls_for
 from app.ingestion.sources import crawler_for
 from app.ingestion.staging_pipeline import prepare_documents
 from app.ingestion.structure import UnreadableDocumentError, extract_structure
+from app.ingestion.url_guard import require_source_url
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.documents import CrawlResult, SourceDefinition, SourceDocument
 from app.models.schemas.ingestion import (
@@ -70,8 +71,9 @@ def create_crawl_job(
 
     Raises:
         AuthorizationError: If the caller lacks the ingestion role.
-        ValidationError: If the source is not on the allowed-source list, or
-            carries no seed URLs.
+        ValidationError: If the source is not on the allowed-source list,
+            carries no seed URLs, or names a seed or document URL that is not
+            https on the source's own domain.
         RobotsDisallowedError: If robots.txt forbids a URL the crawl needs.
         RobotsUnavailableError: If robots.txt could not be read at all.
 
@@ -93,7 +95,8 @@ def create_crawl_job(
 
     # Checked before the job row is written, so a rejected source leaves no
     # trace of an attempt that never ran.
-    if crawler_for(request.source_id) is None:
+    crawler = crawler_for(request.source_id)
+    if crawler is None:
         raise ValidationError(f"source {request.source_id!r} is not on the allow-list")
 
     # A run needs somewhere to start: either listings to discover from, or
@@ -108,6 +111,14 @@ def create_crawl_job(
         raise ValidationError(
             f"source {request.source_id!r} has no seed URLs and no known document URLs to crawl"
         )
+
+    # Every URL the caller named is a request the crawler will make from inside
+    # our network. One naming an internal address, or any host that is not the
+    # source's own, is refused here -- before a job row exists -- so a probe
+    # leaves no run behind and never reaches the network. The crawler checks
+    # again, and additionally checks where each host resolves, per request.
+    for url in (*request.seed_urls, *document_urls):
+        require_source_url(url, host_suffix=crawler.host_suffix)
 
     job = CrawlJobRow(source_id=request.source_id, status=CrawlJobStatus.RUNNING.value)
     session.add(job)

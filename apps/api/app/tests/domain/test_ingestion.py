@@ -25,6 +25,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from typing import Any
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -137,7 +138,9 @@ def _wire(
     monkeypatch.setattr(
         ingestion_domain,
         "crawl_source",
-        lambda source, **kw: real_crawl(source, client=client, sleep=lambda _s: None, **kw),
+        lambda source, **kw: real_crawl(
+            source, client=client, sleep=lambda _s: None, resolve=_public_dns, **kw
+        ),
     )
 
     if queued is not None:
@@ -147,6 +150,11 @@ def _wire(
             lambda **_kw: _capture_into(queued),
         )
     return recorder
+
+
+def _public_dns(_host: str) -> list[str]:
+    """Resolve every host publicly, so the crawler's address check never hits DNS."""
+    return ["93.184.215.14"]
 
 
 def _fake_embedder(texts: Any) -> list[list[float]]:
@@ -271,6 +279,32 @@ def test_a_source_with_no_seed_urls_is_refused(db_session: Session) -> None:
             user=_user(),
             request=_request(source_id="siemens", seed_urls=[]),
         )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # The reported reproduction: fetched and staged before this check.
+        {"seed_urls": [], "document_urls": ["http://10.0.0.5:8080/admin.pdf"]},
+        {"seed_urls": ["https://169.254.169.254/latest/meta-data/"]},
+        {"seed_urls": ["http://library.abb.com/listing"]},
+        {"document_urls": ["https://evil-abb.com/manual.pdf"]},
+    ],
+)
+def test_a_url_off_the_source_is_refused_before_a_job_exists(overrides: dict[str, Any]) -> None:
+    """Every named URL is a request made from inside our network.
+
+    Refused before the job row is written, so a probe leaves no run behind and
+    no request is made. No database: nothing may touch the session at all.
+    """
+    session = MagicMock()
+
+    with pytest.raises(ValidationError):
+        ingestion_domain.create_crawl_job(
+            session=session, user=_user(), request=_request(**overrides)
+        )
+
+    assert session.mock_calls == []
 
 
 # --- the happy path ----------------------------------------------------------
@@ -546,7 +580,9 @@ def test_a_run_is_capped_at_a_document_limit(
 
     def capture(source: Any, **kw: Any) -> Any:
         seen.update(kw)
-        return real_crawl(source, client=_client(_routes()), sleep=lambda _s: None, **kw)
+        return real_crawl(
+            source, client=_client(_routes()), sleep=lambda _s: None, resolve=_public_dns, **kw
+        )
 
     _wire(monkeypatch)
     monkeypatch.setattr(ingestion_domain, "crawl_source", capture)
