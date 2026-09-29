@@ -15,12 +15,25 @@ them is worth having.
 
 from __future__ import annotations
 
+import gzip
+
 import httpx
 import pytest
 
 from app.core.errors import ValidationError
-from app.ingestion.crawler import DEFAULT_DELAY_S, content_hash, crawl_source
-from app.ingestion.robots import RobotsDisallowedError, RobotsUnavailableError
+from app.ingestion import crawler as crawler_module
+from app.ingestion import url_guard
+from app.ingestion.crawler import (
+    DEFAULT_DELAY_S,
+    MAX_CRAWL_DELAY_S,
+    content_hash,
+    crawl_source,
+)
+from app.ingestion.robots import (
+    CrawlDelayTooLongError,
+    RobotsDisallowedError,
+    RobotsUnavailableError,
+)
 from app.models.schemas.documents import SourceDefinition
 
 SEED = "https://library.abb.com/manuals"
@@ -69,6 +82,23 @@ def routes_with(
 
 def no_sleep(_seconds: float) -> None:
     """Pacing is asserted separately; tests should not spend real seconds."""
+
+
+#: A publicly routable address every test host "resolves" to, unless a test
+#: says otherwise.
+PUBLIC_ADDRESS = "93.184.215.14"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve every host to a public address, without touching DNS.
+
+    The crawler refuses hosts resolving to internal addresses, which means it
+    resolves every host it fetches from. A test suite that did that for real
+    would depend on the network and on what these manufacturers' DNS says
+    today.
+    """
+    monkeypatch.setattr(url_guard, "system_resolver", lambda _host: [PUBLIC_ADDRESS])
 
 
 # --- the acceptance criterion, both halves ----------------------------------
@@ -547,3 +577,284 @@ def test_each_host_is_asked_for_its_own_robots_once() -> None:
         "https://library.e.abb.com/robots.txt",
         "https://other.abb.com/robots.txt",
     ]
+
+
+# --- where the crawler will send a request -----------------------------------
+#
+# The crawler runs inside our network, so a URL naming an internal address --
+# directly, or through a redirect the source chose -- makes it a proxy into
+# that network whose responses get staged for a reviewer to read. Both
+# reproductions from review are here.
+
+
+def recording_client(
+    routes: dict[str, httpx.Response], requested: list[str] | None = None
+) -> httpx.Client:
+    """A transport serving whole responses, recording every URL requested."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if requested is not None:
+            requested.append(url)
+        return routes.get(url, httpx.Response(404))
+
+    # `follow_redirects=True` deliberately: the crawler must follow by hand
+    # even when handed a client that would otherwise do it for it.
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+def siemens_direct(*urls: str) -> SourceDefinition:
+    return SourceDefinition(
+        id="siemens", manufacturer="Siemens", seed_urls=[], document_urls=list(urls)
+    )
+
+
+SIEMENS_ROBOTS = "https://www.siemens.com/robots.txt"
+SIEMENS_DOC = "https://www.siemens.com/manual.pdf"
+METADATA = "http://169.254.169.254/latest/meta-data/iam"
+
+
+def allow_all() -> httpx.Response:
+    return httpx.Response(200, content=ROBOTS_ALLOW_ALL.encode())
+
+
+def redirect_to(location: str) -> httpx.Response:
+    return httpx.Response(302, headers={"Location": location})
+
+
+def test_an_internal_document_url_is_refused_before_any_request() -> None:
+    requested: list[str] = []
+    source = siemens_direct("http://10.0.0.5:8080/admin.pdf")
+
+    with pytest.raises(ValidationError, match="https"):
+        crawl_source(source, client=recording_client({}, requested), sleep=no_sleep)
+
+    assert requested == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.siemens.com/manual.pdf",
+        "https://www.siemens.com:8443/manual.pdf",
+        "https://evil.example/manual.pdf",
+        "https://www.siemens.com@10.0.0.5/manual.pdf",
+    ],
+)
+def test_a_seed_off_the_source_is_refused(url: str) -> None:
+    source = SourceDefinition(id="siemens", manufacturer="Siemens", seed_urls=[url])
+
+    with pytest.raises(ValidationError):
+        crawl_source(source, client=recording_client({}), sleep=no_sleep)
+
+
+def test_a_redirect_to_the_metadata_endpoint_is_not_followed() -> None:
+    requested: list[str] = []
+    routes = {SIEMENS_ROBOTS: allow_all(), SIEMENS_DOC: redirect_to(METADATA)}
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC), client=recording_client(routes, requested), sleep=no_sleep
+    )
+
+    assert result.documents == []
+    assert [o.skipped_reason for o in result.outcomes] == ["redirect-rejected"]
+    assert METADATA not in requested
+
+
+def test_a_redirect_to_a_host_resolving_internally_is_not_followed() -> None:
+    # On the source's own domain by name, internal by address: the name check
+    # alone would pass it.
+    cdn = "https://cdn.siemens.com/manual.pdf"
+    requested: list[str] = []
+    routes = {SIEMENS_ROBOTS: allow_all(), SIEMENS_DOC: redirect_to(cdn)}
+    addresses = {"www.siemens.com": [PUBLIC_ADDRESS], "cdn.siemens.com": ["10.1.2.3"]}
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC),
+        client=recording_client(routes, requested),
+        sleep=no_sleep,
+        resolve=lambda host: addresses[host],
+    )
+
+    assert [o.skipped_reason for o in result.outcomes] == ["redirect-rejected"]
+    assert not any("cdn.siemens.com" in url for url in requested)
+
+
+def test_a_redirect_within_the_source_is_followed_and_staged_under_the_original_url() -> None:
+    cdn = "https://cdn.siemens.com/files/manual.pdf"
+    routes = {
+        SIEMENS_ROBOTS: allow_all(),
+        "https://cdn.siemens.com/robots.txt": allow_all(),
+        SIEMENS_DOC: redirect_to(cdn),
+        cdn: httpx.Response(200, content=b"%PDF-1.4 real"),
+    }
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC), client=recording_client(routes), sleep=no_sleep
+    )
+
+    assert [d.url for d in result.documents] == [SIEMENS_DOC]
+
+
+def test_a_redirect_target_is_checked_against_its_own_robots() -> None:
+    cdn = "https://cdn.siemens.com/private/manual.pdf"
+    requested: list[str] = []
+    routes = {
+        SIEMENS_ROBOTS: allow_all(),
+        "https://cdn.siemens.com/robots.txt": httpx.Response(
+            200, content=b"User-agent: *\nDisallow: /private/\n"
+        ),
+        SIEMENS_DOC: redirect_to(cdn),
+        cdn: httpx.Response(200, content=b"%PDF-1.4 forbidden"),
+    }
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC), client=recording_client(routes, requested), sleep=no_sleep
+    )
+
+    assert [o.skipped_reason for o in result.outcomes] == ["redirect-rejected"]
+    assert cdn not in requested
+
+
+def test_a_redirect_loop_ends_as_an_outcome() -> None:
+    routes = {SIEMENS_ROBOTS: allow_all(), SIEMENS_DOC: redirect_to(SIEMENS_DOC)}
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC), client=recording_client(routes), sleep=no_sleep
+    )
+
+    assert [o.skipped_reason for o in result.outcomes] == ["too-many-redirects"]
+
+
+def test_a_document_host_resolving_internally_is_skipped() -> None:
+    other = "https://intranet.siemens.com/manual.pdf"
+    requested: list[str] = []
+    routes = {SIEMENS_ROBOTS: allow_all(), SIEMENS_DOC: httpx.Response(200, content=b"ok")}
+    addresses = {"www.siemens.com": [PUBLIC_ADDRESS], "intranet.siemens.com": ["127.0.0.1"]}
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC, other),
+        client=recording_client(routes, requested),
+        sleep=no_sleep,
+        resolve=lambda host: addresses[host],
+    )
+
+    assert [d.url for d in result.documents] == [SIEMENS_DOC]
+    assert (other, "unsafe-url") in [(o.url, o.skipped_reason) for o in result.outcomes]
+    # Not even its robots.txt: that request would reach the internal host too.
+    assert not any("intranet" in url for url in requested)
+
+
+def test_an_origin_resolving_internally_fails_the_run() -> None:
+    with pytest.raises(ValidationError, match="non-public"):
+        crawl_source(
+            siemens_direct(SIEMENS_DOC),
+            client=recording_client({}),
+            sleep=no_sleep,
+            resolve=lambda _host: ["169.254.169.254"],
+        )
+
+
+# --- robots.txt of the right host for discovered documents -------------------
+
+
+def test_a_discovered_document_is_checked_against_its_own_hosts_robots() -> None:
+    # The listing's host permits everything; the PDF's subdomain does not.
+    # Checking the PDF against the listing host's robots.txt reads the wrong
+    # file and permits a fetch its own host forbids.
+    pdf = "https://library.e.abb.com/public/a.pdf"
+    routes = {
+        "https://library.abb.com/robots.txt": (200, ROBOTS_ALLOW_ALL.encode()),
+        SEED: (200, listing(pdf)),
+        "https://library.e.abb.com/robots.txt": (200, b"User-agent: *\nDisallow: /public/\n"),
+        pdf: (200, b"%PDF-1.4"),
+    }
+
+    with pytest.raises(RobotsDisallowedError) as caught:
+        crawl_source(abb_source(), client=client_for(routes), sleep=no_sleep)
+
+    assert caught.value.url == pdf
+
+
+# --- bounded work ------------------------------------------------------------
+
+
+def test_an_oversized_document_is_skipped_without_being_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(crawler_module, "MAX_DOCUMENT_BYTES", 1000)
+    big = "https://library.abb.com/big.pdf"
+    small = "https://library.abb.com/small.pdf"
+    routes = routes_with((big, b"x" * 1001), (small, b"y" * 1000))
+
+    result = crawl_source(abb_source(), client=client_for(routes), sleep=no_sleep)
+
+    assert [d.url for d in result.documents] == [small]
+    assert (big, "too-large") in [(o.url, o.skipped_reason) for o in result.outcomes]
+
+
+def test_a_compressed_document_is_measured_after_decompression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The reported shape: a small gzip body that inflates far past the cap.
+    monkeypatch.setattr(crawler_module, "MAX_DOCUMENT_BYTES", 100_000)
+    routes = {
+        SIEMENS_ROBOTS: allow_all(),
+        SIEMENS_DOC: httpx.Response(
+            200,
+            content=gzip.compress(b"\0" * 1_000_000),
+            headers={"Content-Encoding": "gzip"},
+        ),
+    }
+
+    result = crawl_source(
+        siemens_direct(SIEMENS_DOC), client=recording_client(routes), sleep=no_sleep
+    )
+
+    assert [o.skipped_reason for o in result.outcomes] == ["too-large"]
+
+
+def test_every_request_counts_against_the_fetch_budget() -> None:
+    # Five unchanged documents: `max_documents` would never bind, because
+    # nothing is new. The fetch budget does -- robots, listing, then two
+    # documents, and the run ends with an outcome saying why.
+    docs = [(f"https://library.abb.com/{i}.pdf", f"body {i}".encode()) for i in range(5)]
+    known = [content_hash(body) for _, body in docs]
+
+    result = crawl_source(
+        abb_source(),
+        client=client_for(routes_with(*docs)),
+        known_hashes=known,
+        max_fetches=4,
+        sleep=no_sleep,
+    )
+
+    assert [o.skipped_reason for o in result.outcomes] == [
+        "unchanged",
+        "unchanged",
+        "fetch-budget-exhausted",
+    ]
+    assert result.outcomes[-1].url == "https://library.abb.com/2.pdf"
+
+
+def test_an_excessive_crawl_delay_fails_the_run_rather_than_being_clamped() -> None:
+    robots = "User-agent: *\nAllow: /\nCrawl-delay: 3600\n"
+    routes = routes_with(("https://library.abb.com/a.pdf", b"a"), robots=robots)
+    slept: list[float] = []
+
+    with pytest.raises(CrawlDelayTooLongError) as caught:
+        crawl_source(abb_source(), client=client_for(routes), sleep=slept.append)
+
+    assert caught.value.delay_s == 3600
+    assert slept == []
+
+
+def test_the_longest_permitted_crawl_delay_is_honoured() -> None:
+    robots = f"User-agent: *\nAllow: /\nCrawl-delay: {int(MAX_CRAWL_DELAY_S)}\n"
+    routes = routes_with(("https://library.abb.com/a.pdf", b"a"), robots=robots)
+    slept: list[float] = []
+
+    crawl_source(abb_source(), client=client_for(routes), sleep=slept.append)
+
+    assert slept
+    assert max(slept) > MAX_CRAWL_DELAY_S - 1

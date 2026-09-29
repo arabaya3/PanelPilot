@@ -10,8 +10,11 @@ from app.models.schemas.health import DependencyState, HealthResponse
 router = APIRouter()
 
 
+# `async` on purpose. It touches no dependency, and a sync route needs a free
+# thread from the pool every diagnosis also draws on: under load, liveness
+# queued behind model calls and the container was restarted for being busy.
 @router.get("/live", response_model=HealthResponse)
-def liveness() -> HealthResponse:
+async def liveness() -> HealthResponse:
     return health_domain.liveness()
 
 

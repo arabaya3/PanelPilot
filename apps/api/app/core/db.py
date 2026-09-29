@@ -29,13 +29,58 @@ def create_engine_from_settings() -> Engine:
         An engine configured with the pool sizing from settings.
     """
     settings = get_settings()
+    url = settings.database_url.get_secret_value()
     return create_engine(
-        settings.database_url.get_secret_value(),
+        url,
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
         pool_pre_ping=True,
+        # How long a request waits for a free connection before failing. The
+        # default is 30 s, which turned an exhausted pool into half a minute
+        # of stalled requests — health checks included — before any error.
+        pool_timeout=POOL_TIMEOUT_S,
+        # Recycled before the idle cut-off common to managed Postgres and
+        # proxies, so the pool does not hand out connections that were
+        # severed while idle; `pool_pre_ping` would catch those, one failed
+        # round trip at a time.
+        pool_recycle=POOL_RECYCLE_S,
+        connect_args=_connect_args(url),
         future=True,
     )
+
+
+#: Seconds a request waits for a pooled connection before failing.
+POOL_TIMEOUT_S = 10
+
+#: Seconds after which a pooled connection is replaced.
+POOL_RECYCLE_S = 1800
+
+#: Seconds to establish a new connection.
+CONNECT_TIMEOUT_S = 5
+
+#: Longest any single statement may run, in milliseconds. Every query on the
+#: request path is an indexed lookup; one running this long is a missing index
+#: or a lock pile-up, and holding its connection indefinitely lets that spread
+#: to every other request waiting on the pool.
+STATEMENT_TIMEOUT_MS = 30_000
+
+
+def _connect_args(url: str) -> dict[str, object]:
+    """Return driver options bounding how long the database can hold us.
+
+    Args:
+        url: The database URL.
+
+    Returns:
+        psycopg options for Postgres; nothing for any other driver, which
+        would reject them.
+    """
+    if not url.startswith("postgresql"):
+        return {}
+    return {
+        "connect_timeout": CONNECT_TIMEOUT_S,
+        "options": f"-c statement_timeout={STATEMENT_TIMEOUT_MS}",
+    }
 
 
 @lru_cache(maxsize=1)

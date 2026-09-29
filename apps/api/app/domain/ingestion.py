@@ -23,13 +23,14 @@ from sqlalchemy.orm import Session
 from app.ai.retrieval.client import stage_chunk
 from app.ai.retrieval.embedding import embed_documents
 from app.ai.retrieval.mappings import INDEXED_FIELDS
-from app.core.errors import AuthorizationError, ValidationError
+from app.core.errors import AuthorizationError, NotImplementedYetError, ValidationError
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
 from app.ingestion.crawler import crawl_source
 from app.ingestion.known_documents import urls_for
 from app.ingestion.sources import crawler_for
 from app.ingestion.staging_pipeline import prepare_documents
 from app.ingestion.structure import UnreadableDocumentError, extract_structure
+from app.ingestion.url_guard import require_source_url
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.documents import CrawlResult, SourceDefinition, SourceDocument
 from app.models.schemas.ingestion import (
@@ -51,6 +52,12 @@ logger = structlog.get_logger(__name__)
 #: that is only visible after the bill.
 DEFAULT_MAX_DOCUMENTS = 25
 
+#: Most chunk texts sent to the embedding provider in one request. Providers
+#: cap both the number of inputs and the total tokens per call; 128 chunks of
+#: this pipeline's size stays well inside both, while still turning a manual's
+#: worth of chunks into a handful of requests rather than hundreds.
+EMBEDDING_BATCH_SIZE = 128
+
 
 def create_crawl_job(
     *,
@@ -70,8 +77,9 @@ def create_crawl_job(
 
     Raises:
         AuthorizationError: If the caller lacks the ingestion role.
-        ValidationError: If the source is not on the allowed-source list, or
-            carries no seed URLs.
+        ValidationError: If the source is not on the allowed-source list,
+            carries no seed URLs, or names a seed or document URL that is not
+            https on the source's own domain.
         RobotsDisallowedError: If robots.txt forbids a URL the crawl needs.
         RobotsUnavailableError: If robots.txt could not be read at all.
 
@@ -93,7 +101,8 @@ def create_crawl_job(
 
     # Checked before the job row is written, so a rejected source leaves no
     # trace of an attempt that never ran.
-    if crawler_for(request.source_id) is None:
+    crawler = crawler_for(request.source_id)
+    if crawler is None:
         raise ValidationError(f"source {request.source_id!r} is not on the allow-list")
 
     # A run needs somewhere to start: either listings to discover from, or
@@ -108,6 +117,14 @@ def create_crawl_job(
         raise ValidationError(
             f"source {request.source_id!r} has no seed URLs and no known document URLs to crawl"
         )
+
+    # Every URL the caller named is a request the crawler will make from inside
+    # our network. One naming an internal address, or any host that is not the
+    # source's own, is refused here -- before a job row exists -- so a probe
+    # leaves no run behind and never reaches the network. The crawler checks
+    # again, and additionally checks where each host resolves, per request.
+    for url in (*request.seed_urls, *document_urls):
+        require_source_url(url, host_suffix=crawler.host_suffix)
 
     job = CrawlJobRow(source_id=request.source_id, status=CrawlJobStatus.RUNNING.value)
     session.add(job)
@@ -291,11 +308,17 @@ def _stage_bodies(
             # of staging content that looks verifiable and is not.
             raise ValidationError(f"staged chunk for unknown document {document_id!r}")
 
-        # One call per document rather than per chunk: the provider bills and
-        # rate-limits per request, and a fifty-chunk manual is fifty round
-        # trips done the naive way.
+        # Batched rather than per chunk: the provider bills and rate-limits per
+        # request, and a fifty-chunk manual is fifty round trips done the naive
+        # way. But bounded rather than one call per document, because a
+        # thousand-page manual is thousands of chunks, and a single request
+        # that size exceeds what the provider accepts and fails the whole run.
+        # Order is preserved batch by batch, so the zip below still pairs each
+        # chunk with its own vector.
         texts = [str(body.get("text", "")) for body in chunks]
-        vectors = embed_documents(texts)
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+            vectors.extend(embed_documents(texts[start : start + EMBEDDING_BATCH_SIZE]))
 
         session.add(
             StagedDocumentRow(
@@ -399,5 +422,15 @@ def list_verification_queue(
 
     Raises:
         AuthorizationError: If the caller lacks the reviewer role.
+        NotImplementedYetError: Always, for now. The queue itself lives in
+            ``app.domain.verification_queue`` and is served by the
+            verification routes; this listing is not built. A 501 says so,
+            where a bare NotImplementedError answered 500.
     """
-    raise NotImplementedError
+    del (
+        session,
+        user,
+        limit,
+        cursor,
+    )  # Unused until the listing exists; the signature is the contract.
+    raise NotImplementedYetError("the verification queue listing is not implemented yet")

@@ -181,6 +181,28 @@ def validate_plc_code(
     if not source.strip():
         return _incomplete(dialect, "empty source")
 
+    # Before anything that scans comments with a regex. Both the comment
+    # stripper and the grammar's COMMENT terminal rescan to the end of the
+    # input for every `(*` that is never closed, so 100,000 characters of
+    # `(*` took 17 seconds of CPU on an unauthenticated endpoint. An unclosed
+    # block comment is a syntax error in any case; saying so here costs one
+    # linear pass.
+    unterminated = _unterminated_comment_line(source)
+    if unterminated is not None:
+        return PlcValidationResult(
+            status=ValidationStatus.INVALID,
+            dialect=dialect,
+            checked_by=CHECKER,
+            findings=[
+                ValidationFinding(
+                    code="syntax-error",
+                    message="block comment opened with (* is never closed",
+                    severity=FindingSeverity.ERROR,
+                    line=unterminated,
+                )
+            ],
+        )
+
     unsupported = _first_unsupported(source)
     if unsupported is not None:
         # Not a failure. The code may be perfectly correct; this checker just
@@ -256,6 +278,30 @@ def _first_unsupported(source: str) -> str | None:
     for pattern, description in _UNSUPPORTED:
         if pattern.search(stripped):
             return description
+    return None
+
+
+def _unterminated_comment_line(source: str) -> int | None:
+    """Find a block comment that is never closed, in linear time.
+
+    Only the text after the last ``*)`` can hold one: any ``(*`` before it has
+    a closer somewhere after it. ``(*`` inside a ``//`` line comment is not an
+    opener — the grammar reads the whole line as one comment — so line
+    comments are removed from that tail first.
+
+    Args:
+        source: The code.
+
+    Returns:
+        The 1-based line of the first unclosed ``(*``, or ``None`` if every
+        block comment is closed.
+    """
+    last_close = source.rfind("*)")
+    start = last_close + 2 if last_close >= 0 else 0
+    base_line = source.count("\n", 0, start) + 1
+    for offset, line in enumerate(source[start:].split("\n")):
+        if "(*" in line.split("//", 1)[0]:
+            return base_line + offset
     return None
 
 

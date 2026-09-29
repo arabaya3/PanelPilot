@@ -14,7 +14,7 @@
 # ---------------------------------------------------------------------------
 # deps — install the workspace once, cached on manifests alone.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 # Next's SWC binary is glibc-linked; this shim lets it run on musl.
 RUN apk add --no-cache libc6-compat
@@ -33,7 +33,7 @@ RUN npm ci
 # ---------------------------------------------------------------------------
 # builder — produce .next/standalone.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 RUN apk add --no-cache libc6-compat
 WORKDIR /repo
@@ -54,7 +54,7 @@ RUN npm run build --workspace @panelpilot/web
 # dev — next dev with the source bind-mounted by compose.
 # Never use this target for a deployed image.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS dev
+FROM node:22-alpine AS dev
 
 RUN apk add --no-cache libc6-compat
 WORKDIR /repo
@@ -82,7 +82,7 @@ CMD ["npm", "run", "dev", "--workspace", "@panelpilot/web", "--", "-H", "0.0.0.0
 # ---------------------------------------------------------------------------
 # runner — standalone output only. Last stage, so it is the default target.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 

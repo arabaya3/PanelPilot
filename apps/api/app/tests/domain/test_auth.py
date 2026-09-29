@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core import security as auth_security
 from app.core.errors import AuthenticationError, NotFoundError, ValidationError
 from app.core.security import (
     decode_access_token,
@@ -240,6 +241,176 @@ def test_expired_refresh_token_is_refused(db: Session) -> None:
     db.commit()
     with pytest.raises(AuthenticationError, match="expired"):
         auth.refresh(session=db, refresh_token=tokens.refresh_token)
+
+
+def _live_refresh_tokens(db: Session, email: str) -> int:
+    count: int = db.execute(
+        text(
+            "SELECT count(*) FROM refresh_tokens r JOIN users u ON u.id = r.user_id "
+            "WHERE u.email = :e AND r.revoked_at IS NULL"
+        ),
+        {"e": email},
+    ).scalar_one()
+    return count
+
+
+@requires_db
+def test_replaying_a_spent_token_revokes_the_whole_family(db: Session) -> None:
+    """A spent token only comes back if it was copied.
+
+    Either the client or a thief already rotated it, and there is no telling
+    which — so every live refresh token for the user is revoked, ending the
+    thief's session at the cost of one re-login.
+    """
+    email = _email()
+    first = auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+    # A second device's session, also live.
+    auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    assert _live_refresh_tokens(db, email) == 2
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=first.refresh_token)
+    # Rolled back, as the request's session would be on a 401. The revocation
+    # must survive that: a detection that is rolled back protects nobody.
+    db.rollback()
+
+    assert _live_refresh_tokens(db, email) == 0
+    with pytest.raises(AuthenticationError):
+        auth.refresh(session=db, refresh_token=rotated.refresh_token)
+
+
+@requires_db
+def test_an_unknown_refresh_token_revokes_nothing(db: Session) -> None:
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token="never-issued")
+    db.rollback()
+
+    assert _live_refresh_tokens(db, email) == 1
+
+
+@requires_db
+def test_concurrent_refreshes_mint_exactly_one_pair(db: Session) -> None:
+    """Regression: rotation was a SELECT, then an assignment.
+
+    Every racer read the token as live and minted its own pair, so one stolen
+    token became as many live sessions as the thief cared to race. Rotation
+    is now one conditional UPDATE, and only one racer can match it.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.core.config import get_settings
+
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+
+    engine = create_engine(get_settings().database_url.get_secret_value())
+    factory = sessionmaker(bind=engine)
+
+    def attempt(_n: int) -> bool:
+        own = factory()
+        try:
+            auth.refresh(session=own, refresh_token=tokens.refresh_token)
+            own.commit()
+            return True
+        except AuthenticationError:
+            own.rollback()
+            return False
+        finally:
+            own.close()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        succeeded = sum(pool.map(attempt, range(8)))
+
+    assert succeeded == 1, f"{succeeded} pairs minted from one refresh token"
+
+
+# --- signup races and timing ------------------------------------------------
+
+
+@requires_db
+def test_concurrent_duplicate_signups_are_a_validation_error(db: Session) -> None:
+    """Regression: a concurrent duplicate signup was a 500.
+
+    Both racers passed the existence check, and the loser's IntegrityError
+    escaped the domain.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.core.config import get_settings
+
+    email = _email()
+    engine = create_engine(get_settings().database_url.get_secret_value())
+    factory = sessionmaker(bind=engine)
+
+    def attempt(_n: int) -> str:
+        own = factory()
+        try:
+            auth.signup(session=own, email=email, password=PASSWORD)
+            own.commit()
+            return "created"
+        except ValidationError as exc:
+            own.rollback()
+            return str(exc)
+        finally:
+            own.close()
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        outcomes = list(pool.map(attempt, range(6)))
+
+    assert outcomes.count("created") == 1
+    assert set(outcomes) == {"created", "that email is already registered"}
+
+
+@requires_db
+def test_a_duplicate_signup_still_pays_for_the_hash(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A registered address costs the same bcrypt hash as a new one.
+
+    Skipping it made signup answer measurably faster for a registered address —
+    a timing oracle for which emails have accounts.
+    """
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    hashed: list[str] = []
+    real = auth_security.hash_password
+
+    def _counting(password: str) -> str:
+        hashed.append(password)
+        return real(password)
+
+    monkeypatch.setattr(auth, "hash_password", _counting)
+    with pytest.raises(ValidationError, match="already registered"):
+        auth.signup(session=db, email=email, password=PASSWORD)
+    assert hashed == [PASSWORD]
+
+
+# --- known_user_id ------------------------------------------------------------
+
+
+@requires_db
+def test_known_user_id_recognises_a_real_user(db: Session) -> None:
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    subject = decode_access_token(tokens.access_token).id
+    assert auth.known_user_id(session=db, subject=subject) == uuid.UUID(subject)
+
+
+@requires_db
+@pytest.mark.parametrize("subject", [str(uuid.uuid4()), "not-a-uuid", uuid.uuid4()])
+def test_known_user_id_refuses_anything_else(db: Session, subject: str | uuid.UUID) -> None:
+    """A trial's subject is its anonymous session; so is any other stranger."""
+    assert auth.known_user_id(session=db, subject=subject) is None
 
 
 # --- the free-tier quota, which the spec names explicitly -------------------

@@ -342,6 +342,11 @@ def generate_diagnosis(
         tools=[diagnosis_tool_definition()],
         tool_choice={"type": "tool", "name": DIAGNOSIS_TOOL_NAME},
     )
+    if getattr(message, "stop_reason", None) == "max_tokens":
+        # Cut off mid-answer. The truncated tool input can still validate — a
+        # diagnosis that lost its last steps is schema-valid and silently
+        # incomplete, and on a panel the missing step can be the isolation one.
+        return None, _to_refusal(decision, "the answer was cut off at the output limit")
     return structured_or_refuse(
         extract_tool_payload(message), evidence_ids=evidence_ids, decision=decision
     )

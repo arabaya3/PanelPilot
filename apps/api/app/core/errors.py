@@ -45,6 +45,34 @@ class PromotionError(PanelPilotError):
     """A staging-to-production content promotion was rejected."""
 
 
+class TooManyRequestsError(PanelPilotError):
+    """The caller has made too many requests and must wait.
+
+    Its own type rather than a ``ValidationError``: nothing is wrong with the
+    request itself, and a 422 tells a well-behaved client to fix its payload
+    rather than to slow down.
+    """
+
+    def __init__(self, message: str, *, retry_after_seconds: int | None = None) -> None:
+        """Record the message and, when known, how long to wait.
+
+        Args:
+            message: Human-readable explanation, including the wait.
+            retry_after_seconds: Whole seconds until a retry can succeed,
+                sent as ``Retry-After`` so a client need not parse the text.
+        """
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class NotImplementedYetError(PanelPilotError):
+    """The endpoint exists in the contract but its behaviour does not yet.
+
+    Raised instead of ``NotImplementedError`` so a stub answers 501 with a
+    reason, rather than an anonymous 500 that reads as the server breaking.
+    """
+
+
 # The single place mapping domain failures to HTTP. Adding an error type
 # without adding it here yields a 500, which is the correct default: an
 # unmapped error is a bug, not a documented outcome.
@@ -55,6 +83,8 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     AuthorizationError: HTTPStatus.FORBIDDEN,
     InsufficientEvidenceError: HTTPStatus.UNPROCESSABLE_ENTITY,
     PromotionError: HTTPStatus.CONFLICT,
+    TooManyRequestsError: HTTPStatus.TOO_MANY_REQUESTS,
+    NotImplementedYetError: HTTPStatus.NOT_IMPLEMENTED,
 }
 
 
@@ -86,9 +116,15 @@ def install_exception_handlers(app: FastAPI) -> None:
     async def handle_panelpilot_error(_request: Request, exc: Exception) -> JSONResponse:
         assert isinstance(exc, PanelPilotError)
         status = status_for(exc)
+        headers: dict[str, str] = {}
+        if isinstance(exc, TooManyRequestsError) and exc.retry_after_seconds is not None:
+            # RFC 9110 §10.2.3: the machine-readable half of "please wait",
+            # so a client backs off by the number rather than guessing.
+            headers["Retry-After"] = str(exc.retry_after_seconds)
         return JSONResponse(
             status_code=status,
             content={"error": type(exc).__name__, "detail": str(exc) or status.phrase},
+            headers=headers or None,
         )
 
     app.add_exception_handler(PanelPilotError, handle_panelpilot_error)

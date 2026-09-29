@@ -45,11 +45,22 @@ type Stage =
 export function ImageCapture({
   token,
   onConfirm,
+  busy = false,
+  onUnauthorized,
   uploadImpl = uploadImage,
 }: {
   token: string;
   /** Hands the confirmed text to the composer for a one-tap send. */
   onConfirm: (text: string) => void;
+  /**
+   * A turn is in flight. The composer already refuses to send while one is;
+   * this path must too, or confirming a photo mid-answer starts a second
+   * stream that replaces the live turn's abort handle, leaving Stop unable to
+   * stop the first one.
+   */
+  busy?: boolean;
+  /** The upload's token was refused, so the caller can fetch a fresh one. */
+  onUnauthorized?: () => void;
   uploadImpl?: typeof uploadImage;
 }) {
   const t = useTranslations('capture');
@@ -130,6 +141,7 @@ export function ImageCapture({
 
     if (outcome.kind === 'failed') {
       fail(outcome.reason);
+      if (outcome.reason === 'unauthorized') onUnauthorized?.();
       return;
     }
     if (outcome.kind === 'stored') {
@@ -250,7 +262,11 @@ export function ImageCapture({
       <Confirmation
         result={stage.result}
         previewUrl={stage.prepared.previewUrl}
+        busy={busy}
         onSend={(text) => {
+          // Checked here as well as by `disabled`: the button's state is only
+          // as current as the last render, and the guard must not be.
+          if (busy) return;
           setStage({ kind: 'idle' });
           onConfirm(text);
         }}
@@ -321,11 +337,14 @@ export function ImageCapture({
 function Confirmation({
   result,
   previewUrl,
+  busy,
   onSend,
   onDiscard,
 }: {
   result: FaultRecognitionResult;
   previewUrl: string;
+  /** Held rather than dismissed, so the read survives until the turn ends. */
+  busy: boolean;
   onSend: (text: string) => void;
   onDiscard: () => void;
 }) {
@@ -394,10 +413,11 @@ function Confirmation({
       <div className="mt-2 flex gap-2">
         <button
           type="button"
+          disabled={busy}
           onClick={() => {
             onSend(message);
           }}
-          className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast"
+          className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast disabled:opacity-50"
         >
           {confident ? t('confirmSend') : t('confirmAnyway')}
         </button>

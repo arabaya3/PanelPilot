@@ -240,6 +240,47 @@ def test_aluminium_is_refused_rather_than_guessed() -> None:
         )
 
 
+_VALID_DROP: dict[str, Decimal] = {
+    "current_a": Decimal("100"),
+    "length_m": Decimal("50"),
+    "cross_section_mm2": Decimal("35"),
+    "power_factor": Decimal("0.8"),
+}
+
+
+def _drop_with(argument: str, value: str) -> Decimal:
+    """A tabulated three-phase copper case with one argument replaced."""
+    arguments = {**_VALID_DROP, argument: Decimal(value)}
+    return cable_sizing.voltage_drop(
+        current_a=arguments["current_a"],
+        length_m=arguments["length_m"],
+        cross_section_mm2=arguments["cross_section_mm2"],
+        power_factor=arguments["power_factor"],
+        conductor_material=ConductorMaterial.COPPER,
+        three_phase=True,
+    )
+
+
+@pytest.mark.parametrize("argument", ["current_a", "length_m"])
+@pytest.mark.parametrize("value", ["-1", "0", "NaN", "sNaN", "Infinity", "-Infinity"])
+def test_a_non_positive_or_non_finite_quantity_is_refused(argument: str, value: str) -> None:
+    # A negative current returned a negative drop, NaN and Infinity came back
+    # as results, and sNaN escaped as a TypeError. Each must be the documented
+    # refusal instead: a number here goes on a drawing.
+    with pytest.raises(ValidationError, match=argument):
+        _drop_with(argument, value)
+
+
+@pytest.mark.parametrize("argument", ["cross_section_mm2", "power_factor"])
+@pytest.mark.parametrize("value", ["NaN", "sNaN", "Infinity"])
+def test_a_non_finite_lookup_key_is_refused_before_the_lookup(argument: str, value: str) -> None:
+    # sNaN cannot even be hashed into the table, and NaN compares as nothing;
+    # both are refused as inputs rather than surfacing as a crash or as "not
+    # tabulated" for a value that was never a number.
+    with pytest.raises(ValidationError, match=f"{argument} must be a finite number"):
+        _drop_with(argument, value)
+
+
 def test_lighting_and_motor_columns_actually_differ() -> None:
     # Pinned because it is the distinction Example 2 turns on. If these ever
     # returned the same value, the load_type parameter would be silently

@@ -24,6 +24,10 @@ class IndexTarget(StrEnum):
     PRODUCTION = "production"
 
 
+#: Seconds before an OpenSearch request is abandoned.
+OPENSEARCH_TIMEOUT_S = 10
+
+
 @lru_cache(maxsize=1)
 def get_client() -> OpenSearch:
     """Return the process-wide OpenSearch client.
@@ -44,7 +48,16 @@ def get_client() -> OpenSearch:
         # silently "trusted" — there is nothing to trust.
         use_ssl=settings.opensearch_url.startswith("https://"),
         verify_certs=settings.opensearch_url.startswith("https://"),
-        pool_maxsize=20,
+        # At least the request thread pool (40): with 20, concurrent searches
+        # past the twentieth opened throwaway connections and logged "pool is
+        # full" instead of reusing one.
+        pool_maxsize=40,
+        # Explicit rather than the client default. Retrieval sits on the path
+        # of a question someone is waiting for, and a search slower than this
+        # is failed and refused rather than left holding the request.
+        timeout=OPENSEARCH_TIMEOUT_S,
+        max_retries=1,
+        retry_on_timeout=False,
     )
 
 

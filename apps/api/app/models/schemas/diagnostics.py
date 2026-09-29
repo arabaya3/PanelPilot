@@ -3,20 +3,32 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.models.schemas.locale import Locale
 from app.models.schemas.responses import NonBlankText, StructuredDiagnosis
 from app.models.schemas.search import Citation
 
+#: Longest question accepted. Generous — a pasted fault log is a legitimate
+#: question — but bounded: the text goes into an embedding call, a model
+#: prompt and a database row, so unbounded input was unbounded cost.
+MAX_SYMPTOM_CHARS = 8000
+
+#: A fault code is a short identifier; anything longer is not one.
+_FaultCode = Annotated[str, StringConstraints(max_length=64)]
+
+#: Manufacturer and model names, bounded like the rest of the request.
+_Name = Annotated[str, StringConstraints(max_length=200)]
+
 
 class EquipmentContext(BaseModel):
     """What the engineer is working on."""
 
-    manufacturer: str | None = None
-    model: str | None = None
-    fault_codes: list[str] = []
+    manufacturer: _Name | None = None
+    model: _Name | None = None
+    fault_codes: list[_FaultCode] = Field(default=[], max_length=20)
 
 
 class DiagnosticRequest(BaseModel):
@@ -32,8 +44,10 @@ class DiagnosticRequest(BaseModel):
             looks like working software until someone reads the answer.
     """
 
-    session_id: str | None = None
-    symptom: str
+    session_id: str | None = Field(default=None, max_length=64)
+    # Not blank: an empty question reached the embedding call and failed
+    # there as a service error, instead of being refused as a bad request.
+    symptom: str = Field(min_length=1, max_length=MAX_SYMPTOM_CHARS, pattern=r"\S")
     equipment: EquipmentContext | None = None
     locale: Locale = Locale.ENGLISH
 

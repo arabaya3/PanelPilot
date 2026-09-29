@@ -10,9 +10,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. No job pushes, comments, or publishes; a job that ever
+# needs more should ask for it itself rather than every job inheriting it.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '20'
+  # 22, not 20: Node 20 reached end of life in April 2026 and no longer gets
+  # security fixes. Matches the node:22-alpine base in apps/web/Dockerfile.
+  NODE_VERSION: '22'
 
 jobs:
   api:
@@ -184,6 +191,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@localhost:5432/panelpilot
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
       # A throwaway index name so a run can never touch a real corpus.
@@ -318,6 +327,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@localhost:5432/panelpilot
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
     steps:
@@ -485,6 +496,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://placeholder:placeholder@localhost:5432/placeholder
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder-secret-at-least-32-bytes-long
     steps:

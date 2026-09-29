@@ -391,3 +391,46 @@ def test_a_page_renders_its_rows(
     assert body["next_cursor"] == "next"
     assert body["sessions"][0]["title"] == "ACS880 undervoltage"
     assert body["sessions"][0]["turn_count"] == 3
+
+
+# --- keep-alive frames on a slow stream ---------------------------------------
+
+
+def test_a_long_silence_is_filled_with_comment_frames() -> None:
+    """Proxies cut an idle connection; a slow generation must not look idle."""
+    import time
+
+    def _slow() -> Iterator[str]:
+        yield "event: retrieving\ndata: {}\n\n"
+        time.sleep(0.25)
+        yield "event: result\ndata: {}\n\n"
+
+    frames = list(diagnostics_route._with_keepalive(_slow(), interval_s=0.05))
+
+    assert frames[0].startswith("event: retrieving")
+    assert frames[-1].startswith("event: result")
+    keepalives = frames[1:-1]
+    assert keepalives, "no keep-alive was sent during a long silence"
+    assert all(f == diagnostics_route.KEEPALIVE_FRAME for f in keepalives)
+
+
+def test_keepalive_never_asks_for_a_frame_the_client_has_not_taken() -> None:
+    """The quota is charged when the frame after `generated` is requested.
+
+    A wrapper that prefetched in the background would request it for a client
+    that had already gone, and bill every abandoned stream.
+    """
+    produced: list[str] = []
+
+    def _frames() -> Iterator[str]:
+        for name in ("retrieving", "generated", "result"):
+            produced.append(name)
+            yield f"event: {name}\ndata: {{}}\n\n"
+
+    stream = diagnostics_route._with_keepalive(_frames(), interval_s=5)
+    for frame in stream:
+        if frame.startswith("event: generated"):
+            break
+    stream.close()
+
+    assert produced == ["retrieving", "generated"], "a frame was produced ahead of demand"

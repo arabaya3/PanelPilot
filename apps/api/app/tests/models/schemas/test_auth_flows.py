@@ -8,7 +8,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.models.schemas.auth_flows import QuotaStatus, SignupRequest
+from app.models.schemas.auth_flows import (
+    LoginRequest,
+    QuotaStatus,
+    RefreshRequest,
+    SignupRequest,
+    TrialResumeRequest,
+)
 
 
 def test_signup_rejects_a_short_password() -> None:
@@ -34,6 +40,47 @@ def test_signup_rejects_a_malformed_email() -> None:
 def test_claim_session_is_optional() -> None:
     """Signing up without a trial session is the normal path."""
     assert SignupRequest(email="a@example.com", password="a" * 20).claim_session_id is None
+
+
+def test_signup_bounds_the_full_name_to_its_column() -> None:
+    """users.full_name is String(200); longer was a DataError, i.e. a 500."""
+    assert SignupRequest(email="a@example.com", password="a" * 20, full_name="x" * 200)
+    with pytest.raises(ValidationError):
+        SignupRequest(email="a@example.com", password="a" * 20, full_name="x" * 201)
+
+
+def test_signup_bounds_the_claim_secret() -> None:
+    with pytest.raises(ValidationError):
+        SignupRequest(email="a@example.com", password="a" * 20, claim_secret="x" * 257)
+
+
+def test_login_accepts_any_password_up_to_its_bound() -> None:
+    """No minimum: login answers "incorrect", it does not enforce policy."""
+    assert LoginRequest(email="a@example.com", password="x").password == "x"
+    assert LoginRequest(email="a@example.com", password="x" * 1024)
+    with pytest.raises(ValidationError):
+        LoginRequest(email="a@example.com", password="x" * 1025)
+
+
+def test_the_refresh_token_is_bounded() -> None:
+    assert RefreshRequest(refresh_token="x" * 256)
+    with pytest.raises(ValidationError):
+        RefreshRequest(refresh_token="x" * 257)
+
+
+def test_trial_resume_needs_both_halves_of_the_pair() -> None:
+    """The session id alone is not a credential."""
+    with pytest.raises(ValidationError):
+        TrialResumeRequest.model_validate({"session_id": "abc"})
+    request = TrialResumeRequest(session_id="abc", claim_secret="s")
+    assert request.claim_secret == "s"
+
+
+def test_trial_resume_is_bounded() -> None:
+    with pytest.raises(ValidationError):
+        TrialResumeRequest(session_id="x" * 65, claim_secret="s")
+    with pytest.raises(ValidationError):
+        TrialResumeRequest(session_id="abc", claim_secret="x" * 257)
 
 
 def test_quota_reports_remaining_separately_from_used() -> None:

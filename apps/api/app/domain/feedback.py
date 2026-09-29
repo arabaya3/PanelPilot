@@ -25,6 +25,8 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import NotFoundError, PanelPilotError
+from app.domain.auth import known_user_id
 from app.models.schemas.search import RetrievedPassage
 from app.models.tables.diagnostics import DiagnosticTurnRow
 from app.models.tables.escalation import FlaggedAnswerRow
@@ -39,8 +41,22 @@ ORIGIN_CRAWL = "crawl"
 ORIGIN_USER_FLAG = "user-flag"
 
 
-class FeedbackError(RuntimeError):
-    """Raised when a flag cannot be recorded as asked."""
+class FeedbackError(PanelPilotError):
+    """Raised when a flag cannot be recorded or read back as asked.
+
+    Unmapped on its own, so an unreadable stored context stays a 500: that is
+    a bug in what was written, not something the caller did.
+    """
+
+
+class FlaggedTurnNotFoundError(FeedbackError, NotFoundError):
+    """The flagged turn does not exist, or belongs to another tenant.
+
+    One error for both causes, answered 404 by the central handler.
+    Distinguishing "no such turn" from "not yours" would let a caller probe
+    for the existence of other tenants' turns by watching which code came
+    back.
+    """
 
 
 def flag_answer(
@@ -59,7 +75,10 @@ def flag_answer(
         session: Open database session. The caller commits.
         turn_id: The turn the user flagged.
         tenant_id: The flagging user's tenant.
-        flagged_by_id: Who flagged it, when known.
+        flagged_by_id: Who flagged it, when known — the caller's token
+            subject. Stored only if it names a real user: a trial caller's
+            subject is its anonymous session, and the column is a foreign
+            key into ``users``.
         retrieved: The passages that backed the answer, **as they were shown**.
             Supplied by the caller rather than fetched here, because by the
             time this runs the index may no longer return them.
@@ -70,8 +89,8 @@ def flag_answer(
         The stored flag.
 
     Raises:
-        FeedbackError: If the turn does not exist, or belongs to another
-            tenant.
+        FlaggedTurnNotFoundError: If the turn does not exist, or belongs to
+            another tenant.
 
     The turn's question and answer are copied onto the flag rather than
     referenced through ``turn_id``. The foreign key is ``SET NULL`` so a
@@ -82,17 +101,23 @@ def flag_answer(
 
     turn = session.get(DiagnosticTurnRow, turn_id)
     if turn is None:
-        raise FeedbackError(f"no diagnostic turn {turn_id}")
+        raise FlaggedTurnNotFoundError(f"no diagnostic turn {turn_id}")
 
     # Checked rather than trusted: the turn id arrives from a client, and
     # without this one tenant could flag — and thereby read — another's answer.
+    # Worded exactly as the missing-turn case: the message reaches the client,
+    # and a different one would say what the status code is careful not to.
     if turn.session.tenant_id != tenant_id:
-        raise FeedbackError(f"turn {turn_id} does not belong to this tenant")
+        raise FlaggedTurnNotFoundError(f"no diagnostic turn {turn_id}")
 
     flag = FlaggedAnswerRow(
         tenant_id=tenant_id,
         turn_id=turn_id,
-        flagged_by_id=flagged_by_id,
+        flagged_by_id=(
+            known_user_id(session=session, subject=flagged_by_id)
+            if flagged_by_id is not None
+            else None
+        ),
         question=turn.question,
         answer=turn.answer,
         retrieved_context=_serialise(retrieved),

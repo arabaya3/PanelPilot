@@ -10,7 +10,12 @@
  */
 import type { paths } from '@panelpilot/shared-types';
 
-/** Base URL of the API, from `NEXT_PUBLIC_API_BASE_URL`. */
+/**
+ * Base URL of the API.
+ *
+ * Unused: the client modules call relative `/api/v1/*` paths, which the
+ * same-origin proxy in `src/app/api/[...path]/route.ts` forwards.
+ */
 export function getApiBaseUrl(): string {
   throw new Error('not implemented');
 }

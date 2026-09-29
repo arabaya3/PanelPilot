@@ -368,11 +368,18 @@ def test_check_free_question_allowed_is_never_used_as_the_gate() -> None:
     into the diagnosis path, and the function whose name reads like a
     permission check is the one it will reach for first.
     """
+    # A pre-flight is allowed only beside the real gate: a module that calls
+    # the advisory check must also charge through ``consume_free_question``.
+    # The diagnosis path uses it to refuse a long-spent allowance before paying
+    # for a model call, which the locked charge alone cannot do — it runs
+    # after generation, by design. What stays forbidden is the check standing
+    # in for the charge.
     callers = [
         p.relative_to(APP_ROOT)
         for p in _source_modules("domain", "api", "worker", "ai", "ingestion")
         if p != APP_ROOT / "domain" / "auth.py"
-        and "check_free_question_allowed" in p.read_text(encoding="utf-8")
+        and "check_free_question_allowed" in (text := p.read_text(encoding="utf-8"))
+        and "consume_free_question(" not in text
     ]
     assert not callers, (
         f"{callers} call check_free_question_allowed. It is advisory only — a "
@@ -426,8 +433,13 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     honours_a_verdict = "ConfidenceDecision"
     obeys_a_verdict = ("may_generate", "DecisionOutcome.ANSWER")
 
-    # Transcription, not answering. See the docstring.
-    exempt = {APP_ROOT / "ai" / "recognition.py", APP_ROOT / "domain" / "recognition.py"}
+    # Transcription, not answering. See the docstring. The client factory
+    # builds a client and calls nothing — see the test below that keeps it so.
+    exempt = {
+        APP_ROOT / "ai" / "recognition.py",
+        APP_ROOT / "domain" / "recognition.py",
+        APP_ROOT / "ai" / "anthropic_client.py",
+    }
 
     for module in _source_modules("domain", "ai", "api", "worker"):
         if module in exempt:
@@ -443,6 +455,23 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
             "the cite-or-refuse guardrail. Either call evaluate_confidence first, "
             "or take a ConfidenceDecision and return early unless it permits "
             "generation — see app/ai/guardrails/."
+        )
+
+
+def test_the_client_factory_exemption_stays_narrow() -> None:
+    """The shared client module constructs a client and never calls a model.
+
+    It mentions ``anthropic`` because it builds the client every generation
+    path uses, which is all the rule above can see. If it ever issued a
+    request itself it would be a generation path with no guardrail, and the
+    exemption would be hiding it.
+    """
+    source = (APP_ROOT / "ai" / "anthropic_client.py").read_text(encoding="utf-8")
+    for forbidden in ("messages.create", ".messages", "search("):
+        assert forbidden not in source, (
+            f"app/ai/anthropic_client.py now references {forbidden!r}. It is exempt "
+            "from the cite-or-refuse rule only because it builds a client and calls "
+            "nothing — move any model call to a module the guardrail rule covers."
         )
 
 

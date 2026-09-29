@@ -557,3 +557,27 @@ def test_a_call_to_some_other_tool_is_not_a_diagnosis() -> None:
 
 def test_an_empty_response_extracts_nothing() -> None:
     assert extract_tool_payload(_Message()) is None
+
+
+def test_an_answer_cut_off_at_the_output_limit_is_refused() -> None:
+    """Truncated tool input can still validate — with steps missing.
+
+    A diagnosis that lost its last steps is schema-valid and silently
+    incomplete, so the stop reason is checked, not just the shape.
+    """
+    client = _client_returning(_valid_payload())
+    client._message.stop_reason = "max_tokens"  # type: ignore[attr-defined]
+
+    diagnosis, decision = _generate(client)
+
+    assert diagnosis is None
+    assert decision.reason is RefusalReason.UNVALIDATABLE_OUTPUT
+
+
+def test_a_normally_finished_answer_is_not_refused_for_its_stop_reason() -> None:
+    client = _client_returning(_valid_payload())
+    client._message.stop_reason = "tool_use"  # type: ignore[attr-defined]
+
+    diagnosis, _decision = _generate(client)
+
+    assert diagnosis is not None

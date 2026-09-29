@@ -99,6 +99,13 @@ describe('listSessions failures', () => {
     expect(result).toEqual({ kind: 'unavailable' });
   });
 
+  it('reports a refused token as unauthorized, not as a failure', async () => {
+    // The remedy differs: a fresh token, not a retry into the same 401.
+    const result = await listSessions({ token: 't', fetchImpl: respond({}, 401) });
+
+    expect(result).toEqual({ kind: 'unauthorized' });
+  });
+
   it('reports a server error as failed', async () => {
     const result = await listSessions({ token: 't', fetchImpl: respond({}, 500) });
 
@@ -215,6 +222,16 @@ describe('fetchSession', () => {
     await fetchSession({ token: 't', sessionId: '../admin', fetchImpl: impl });
 
     expect(impl).toHaveBeenCalledWith('/api/v1/diagnostics/..%2Fadmin', expect.anything());
+  });
+
+  it('reports a refused token as unauthorized', async () => {
+    const result = await fetchSession({
+      token: 't',
+      sessionId: 's1',
+      fetchImpl: respond({}, 401),
+    });
+
+    expect(result).toEqual({ kind: 'unauthorized' });
   });
 
   it('reports a missing session as not-found', async () => {

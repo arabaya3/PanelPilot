@@ -25,6 +25,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from app.ai.retrieval import embedding
 from app.ai.retrieval.embedding import (
     Embedder,
     EmbeddingError,
@@ -206,3 +207,25 @@ def test_batch_order_is_preserved() -> None:
     vectors = embed_texts(["a", "b", "c"], input_type="document", embedder=indexed)
 
     assert [v[0] for v in vectors] == [0.0, 1.0, 2.0]
+
+
+def test_the_voyage_client_is_bounded_and_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The library defaults are no timeout and no retries, rebuilt per call."""
+    built: list[dict[str, object]] = []
+
+    class _Client:
+        def __init__(self, **kwargs: object) -> None:
+            built.append(kwargs)
+
+    monkeypatch.setattr("voyageai.client.Client", _Client)
+    embedding._voyage_embedder.cache_clear()
+    try:
+        first = embedding._voyage_embedder("key", "voyage-3.5")
+        second = embedding._voyage_embedder("key", "voyage-3.5")
+    finally:
+        embedding._voyage_embedder.cache_clear()
+
+    assert first is second
+    assert len(built) == 1
+    assert built[0]["timeout"] == embedding.EMBEDDING_TIMEOUT_S
+    assert built[0]["max_retries"] == embedding.EMBEDDING_MAX_RETRIES

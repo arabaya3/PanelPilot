@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
+from typing import Any
 
+import pdfplumber
+import pdfplumber.page
 import pytest
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from app.ingestion import structure
 from app.ingestion.structure import UnreadableDocumentError, extract_structure
 from app.models.schemas.structure import FRONT_MATTER, BlockKind, StructuralBlock
 
@@ -786,3 +790,75 @@ def test_a_contents_page_among_prose_is_still_not_refused() -> None:
 
     blocks = extract_structure(build(contents)).blocks
     assert any("Introduction" in b.text for b in blocks)
+
+
+# --- bounded work ------------------------------------------------------------
+#
+# A 79 KB, 500-page PDF once took 83 seconds and 4 GB: every page's layout was
+# held until the end, and each page re-scanned the whole document's lines.
+# Pages are now read one at a time and capped in number and total time.
+
+
+def test_a_document_over_the_page_cap_is_refused_before_any_page_is_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(structure, "MAX_PAGES", 3)
+    read: list[int] = []
+    real_read = structure._read_page
+
+    def record(page: pdfplumber.page.Page, *args: Any) -> None:
+        read.append(page.page_number)
+        real_read(page, *args)
+
+    monkeypatch.setattr(structure, "_read_page", record)
+    data = build(*[lambda p: p.body("One line of body text.")] * 4)
+
+    with pytest.raises(UnreadableDocumentError, match="more than 3 pages"):
+        extract_structure(data)
+
+    assert read == [], "pages were laid out before the count was checked"
+
+
+def test_a_document_at_the_page_cap_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(structure, "MAX_PAGES", 3)
+    data = build(*[lambda p: p.body("One line of body text.")] * 3)
+
+    assert [b.page for b in extract_structure(data).blocks] == [1, 2, 3]
+
+
+def test_an_extraction_past_its_deadline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(structure, "EXTRACTION_DEADLINE_S", -1.0)
+    data = build(lambda p: p.body("One line of body text."))
+
+    with pytest.raises(UnreadableDocumentError, match="extraction passed"):
+        extract_structure(data)
+
+
+def test_every_page_is_released_after_it_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The memory fix is that nothing keeps a page's layout alive once its
+    # lines and table rows are taken; closing it is what drops pdfplumber's
+    # caches. Scanned pages included -- their layout costs the same.
+    #
+    # Checked while the next page is being read, not afterwards: closing the
+    # PDF releases everything at the end regardless, which is too late.
+    seen: list[pdfplumber.page.Page] = []
+    still_held: list[int] = []
+    real_read = structure._read_page
+
+    def read(page: pdfplumber.page.Page, *args: Any) -> None:
+        still_held.extend(p.page_number for p in seen if hasattr(p, "_layout"))
+        seen.append(page)
+        real_read(page, *args)
+
+    monkeypatch.setattr(structure, "_read_page", read)
+    data = build(
+        lambda p: p.body("Readable page."),
+        lambda p: p.pdf.rect(60, HEIGHT - 300, 400, 200, stroke=1, fill=0),
+        lambda p: p.ruled_table([["Code", "Meaning"], ["F1", "Overcurrent"]]),
+        lambda p: p.body("Last page."),
+    )
+
+    extract_structure(data)
+
+    assert len(seen) == 4
+    assert still_held == []
