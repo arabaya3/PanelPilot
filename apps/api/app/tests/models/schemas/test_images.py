@@ -86,9 +86,16 @@ def test_an_unidentified_record_is_refused(blank: str) -> None:
         _record(image_id=blank)
 
 
-def test_the_upload_response_carries_only_the_id() -> None:
+def test_the_upload_response_carries_only_the_id_and_the_reading() -> None:
     """Nothing about where it is stored reaches the client.
 
     A storage key in the response would be a path a caller could reason about.
+    The recogniser's report is the only other field, and it is about the
+    photo's content, not its storage.
     """
-    assert set(ImageUploadResponse(image_id="abc").model_dump()) == {"image_id"}
+    assert set(ImageUploadResponse(image_id="abc").model_dump()) == {"image_id", "recognition"}
+
+
+def test_an_upload_without_a_reading_says_so_explicitly() -> None:
+    """Absent recognition is `null` on the wire, which the client reads as `stored`."""
+    assert ImageUploadResponse(image_id="abc").recognition is None

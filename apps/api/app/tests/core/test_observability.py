@@ -21,9 +21,17 @@ from app.core.logging import get_logger
 
 
 @pytest.fixture
-def captured() -> Iterator[list[dict[str, Any]]]:
-    """Capture structlog output for the duration of a test."""
+def captured(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, Any]]]:
+    """Capture structlog output for the duration of a test.
+
+    The module's own logger is swapped for a fresh one as well as structlog
+    being reconfigured. ``configure_logging`` caches a logger on first use, so
+    if any earlier test built the app and then went through ``timed``, that
+    module-level logger is bound to the production pipeline for good and would
+    never reach the capture below — a failure that depends on test order.
+    """
     entries: list[dict[str, Any]] = []
+    monkeypatch.setattr(observability, "_logger", get_logger(observability.__name__))
 
     def _capture(
         _logger: Any, _name: str, event_dict: MutableMapping[str, Any]
