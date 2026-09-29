@@ -40,6 +40,7 @@ import structlog
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session, aliased
 
+from app.ai.anthropic_client import get_anthropic_client
 from app.ai.guardrails.cite_or_refuse import evaluate_confidence, verify_citations
 from app.ai.guardrails.confidence import is_publishable, score_confidence
 from app.ai.guardrails.refusal_text import render_refusal
@@ -172,6 +173,7 @@ def run_diagnosis(
             # From the request, never a server-side default: the engineer's
             # language is theirs to state.
             locale=request.locale,
+            max_tokens=get_settings().llm_max_output_tokens,
         )
     if diagnosis is None:
         # Schema-invalid output takes the same refuse path as weak evidence.
@@ -229,18 +231,16 @@ def run_diagnosis(
 
 
 def _anthropic_client() -> object:
-    """Return a Claude client.
+    """Return the shared Claude client.
 
-    Constructed here rather than at import time so a missing key fails on the
-    first request rather than at startup, and so tests can substitute one
-    without a live key.
+    An accessor rather than a direct import so tests can substitute a client
+    without a live key; the client itself is built once per process, with
+    bounded timeouts, in ``app.ai.anthropic_client``.
 
     Returns:
         An Anthropic client.
     """
-    import anthropic
-
-    return anthropic.Anthropic(api_key=get_settings().anthropic_api_key.get_secret_value())
+    return get_anthropic_client()
 
 
 def _resolve_conversation(

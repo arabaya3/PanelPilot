@@ -23,6 +23,7 @@ from typing import Any
 
 import structlog
 
+from app.ai.anthropic_client import get_anthropic_client
 from app.ai.recognition import recognise_fault_display
 from app.core.config import get_settings
 from app.core.observability import timed
@@ -112,14 +113,13 @@ def _recognise_or_none(
 
 
 def _anthropic_client() -> Any:
-    """Return a Claude client.
+    """Return the shared Claude client.
 
-    Constructed per call rather than at import time so tests can substitute
-    one without a live key, matching ``app.domain.diagnostics``.
+    An accessor so tests can substitute one without a live key, matching
+    ``app.domain.diagnostics``. Shared rather than built per call: see
+    ``app.ai.anthropic_client`` for the timeouts it carries.
 
     Returns:
         An Anthropic client.
     """
-    import anthropic
-
-    return anthropic.Anthropic(api_key=get_settings().anthropic_api_key.get_secret_value())
+    return get_anthropic_client()

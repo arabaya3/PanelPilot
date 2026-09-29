@@ -28,6 +28,7 @@ quietly costs retrieval quality in a way no test would notice.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from functools import lru_cache
 from typing import Literal
 
 import structlog
@@ -53,6 +54,21 @@ class EmbeddingError(PanelPilotError):
     """Raised when embedding fails or returns something unusable."""
 
 
+#: Seconds before an embedding call is abandoned. A query embeds in well under
+#: a second; this is long enough for a large ingestion batch and short enough
+#: that a stalled provider fails the request instead of holding its thread.
+EMBEDDING_TIMEOUT_S = 30.0
+
+#: Retries, with the client's own backoff, on rate limits and transient
+#: errors. The free tier allows 3 requests a minute, so with none a single 429
+#: failed an entire crawl.
+EMBEDDING_MAX_RETRIES = 3
+
+
+# Cached per key and model: the client was rebuilt on every embedding call.
+# Keyed on the key as well so a rotated credential takes effect without a
+# restart, instead of a stale client being reused under the new setting.
+@lru_cache(maxsize=4)
 def _voyage_embedder(api_key: str, model: str) -> Embedder:
     """Build an embedder backed by Voyage.
 
@@ -83,7 +99,14 @@ def _voyage_embedder(api_key: str, model: str) -> Embedder:
             "installed; add it to the api dependencies"
         ) from exc
 
-    client = Client(api_key=api_key)
+    # Bounded, and retried: the library defaults are no timeout at all and
+    # no retries, so one stalled call pinned a request thread indefinitely
+    # and a single 429 failed a whole crawl.
+    client = Client(
+        api_key=api_key,
+        timeout=EMBEDDING_TIMEOUT_S,
+        max_retries=EMBEDDING_MAX_RETRIES,
+    )
 
     def embed(texts: Sequence[str], input_type: InputType) -> list[list[float]]:
         """Embed a batch through Voyage.

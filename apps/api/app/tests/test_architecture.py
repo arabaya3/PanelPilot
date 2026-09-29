@@ -433,8 +433,13 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     honours_a_verdict = "ConfidenceDecision"
     obeys_a_verdict = ("may_generate", "DecisionOutcome.ANSWER")
 
-    # Transcription, not answering. See the docstring.
-    exempt = {APP_ROOT / "ai" / "recognition.py", APP_ROOT / "domain" / "recognition.py"}
+    # Transcription, not answering. See the docstring. The client factory
+    # builds a client and calls nothing — see the test below that keeps it so.
+    exempt = {
+        APP_ROOT / "ai" / "recognition.py",
+        APP_ROOT / "domain" / "recognition.py",
+        APP_ROOT / "ai" / "anthropic_client.py",
+    }
 
     for module in _source_modules("domain", "ai", "api", "worker"):
         if module in exempt:
@@ -450,6 +455,23 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
             "the cite-or-refuse guardrail. Either call evaluate_confidence first, "
             "or take a ConfidenceDecision and return early unless it permits "
             "generation — see app/ai/guardrails/."
+        )
+
+
+def test_the_client_factory_exemption_stays_narrow() -> None:
+    """The shared client module constructs a client and never calls a model.
+
+    It mentions ``anthropic`` because it builds the client every generation
+    path uses, which is all the rule above can see. If it ever issued a
+    request itself it would be a generation path with no guardrail, and the
+    exemption would be hiding it.
+    """
+    source = (APP_ROOT / "ai" / "anthropic_client.py").read_text(encoding="utf-8")
+    for forbidden in ("messages.create", ".messages", "search("):
+        assert forbidden not in source, (
+            f"app/ai/anthropic_client.py now references {forbidden!r}. It is exempt "
+            "from the cite-or-refuse rule only because it builds a client and calls "
+            "nothing — move any model call to a module the guardrail rule covers."
         )
 
 

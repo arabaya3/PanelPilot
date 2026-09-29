@@ -227,6 +227,7 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> _CountingClient:
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
     return client
@@ -330,6 +331,7 @@ def test_unparseable_output_becomes_a_refusal_not_an_error(monkeypatch: pytest.M
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
     _retrieving(monkeypatch, [_passage()])
@@ -389,6 +391,7 @@ def test_unparseable_output_is_not_charged(monkeypatch: pytest.MonkeyPatch) -> N
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
     charged: list[str] = []
@@ -1955,9 +1958,12 @@ def test_a_spent_allowance_streams_a_refusal_without_a_model_call(
     """The pre-flight stops the spend, not just the answer."""
     searched: list[str] = []
     monkeypatch.setattr(diagnostics_domain, "check_free_question_allowed", _spent)
-    monkeypatch.setattr(
-        diagnostics_domain, "search", lambda *_a, **_kw: searched.append("x") or [_passage()]
-    )
+
+    def _search(*_a: Any, **_kw: Any) -> list[RetrievedPassage]:
+        searched.append("x")
+        return [_passage()]
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
 
     events = list(
         diagnostics_domain.stream_diagnosis(
@@ -1968,7 +1974,8 @@ def test_a_spent_allowance_streams_a_refusal_without_a_model_call(
     assert [e.event for e in events] == ["retrieving", "refused", "result"]
     assert "free question limit" in events[1].data["reason"]
     assert events[-1].data["diagnosis"] is None
-    assert wired.calls == 0 and searched == []
+    assert wired.calls == 0
+    assert searched == []
 
 
 def test_losing_the_quota_race_withholds_the_answer(
@@ -2076,7 +2083,8 @@ def test_the_quota_is_charged_after_the_turn_is_written(
 
     diagnostics_domain.run_diagnosis(session=cast(Session, db), user=_user(), request=_request())
 
-    assert "flush" in db.events and "charge" in db.events
+    assert "flush" in db.events
+    assert "charge" in db.events
     assert db.events.index("charge") > max(
         i for i, e in enumerate(db.events) if e == "flush"
     ), "the tenant was locked before the conversation"
