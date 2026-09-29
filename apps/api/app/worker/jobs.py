@@ -123,6 +123,75 @@ def run_expire_stale_sources(args: list[str]) -> int:
     raise NotImplementedError
 
 
+def run_grant_role(args: list[str]) -> int:
+    """Give an account a role: ``grant-role <email> <role>``.
+
+    The only way a role is granted. An operator runs it; there is no API for
+    it, deliberately, until there is an admin surface to put it behind.
+
+    Args:
+        args: ``[email, role]``.
+
+    Returns:
+        ``0`` on success (including "already held"), ``2`` on bad arguments.
+    """
+    return _change_role(args, grant=True)
+
+
+def run_revoke_role(args: list[str]) -> int:
+    """Take a role away: ``revoke-role <email> <role>``. Applies to the next request.
+
+    Args:
+        args: ``[email, role]``.
+
+    Returns:
+        ``0`` on success (including "was not held"), ``2`` on bad arguments.
+    """
+    return _change_role(args, grant=False)
+
+
+def _change_role(args: list[str], *, grant: bool) -> int:
+    """Parse the arguments, then call one domain function and commit.
+
+    Args:
+        args: ``[email, role]``.
+        grant: Grant when true, revoke when false.
+
+    Returns:
+        The exit code.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import roles as roles_domain
+
+    verb = "grant-role" if grant else "revoke-role"
+    if len(args) != 2:
+        print(f"usage: {verb} <email> <role>", file=sys.stderr)
+        return 2
+    email, role_name = args
+    try:
+        role = Role(role_name)
+    except ValueError:
+        known = ", ".join(r.value for r in Role)
+        print(f"unknown role {role_name!r}; known roles: {known}", file=sys.stderr)
+        return 2
+
+    sessions = get_session()
+    session = next(sessions)
+    # An operator acts for no tenant: the account is found by email, whichever
+    # tenant it is in (ADR 0003).
+    with closing(session), cross_tenant(session, reason="an operator manages any account's roles"):
+        change = roles_domain.grant_role if grant else roles_domain.revoke_role
+        changed = change(session=session, email=email, role=role)
+        session.commit()
+
+    state = ("granted" if grant else "revoked") if changed else "unchanged"
+    print(f"{verb} {role.value}: {state}")
+    return 0
+
+
 REGISTRY: dict[str, JobSpec] = {
     spec.name: spec
     for spec in (
@@ -137,6 +206,10 @@ REGISTRY: dict[str, JobSpec] = {
             "Flag production documents whose upstream source was superseded.",
             run_expire_stale_sources,
         ),
+        JobSpec(
+            "grant-role", "Give an account a role (reviewer, ingestion, admin).", run_grant_role
+        ),
+        JobSpec("revoke-role", "Take a role away from an account.", run_revoke_role),
     )
 }
 

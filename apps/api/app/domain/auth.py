@@ -37,6 +37,7 @@ from app.core.security import (
     verify_password,
 )
 from app.core.tenancy import TenantScopeError, bind_tenant, cross_tenant
+from app.domain.roles import IMPLICIT_ROLES, roles_of
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
 from app.models.tables.diagnostics import DiagnosticSessionRow
@@ -414,7 +415,10 @@ def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPa
         access_token=create_access_token(
             subject=str(user.id),
             tenant_id=str(tenant.id),
-            roles=frozenset({Role.ENGINEER}),
+            # A hint for the client only. Authorization re-reads the account's
+            # roles on every request (`authenticate`), so this cannot grant
+            # anything, and a revocation does not wait for it to expire.
+            roles=roles_of(user),
         ),
         refresh_token=token,
         expires_in=settings.access_token_ttl_seconds,
@@ -740,6 +744,32 @@ def known_user_id(*, session: Session, subject: str | uuid.UUID) -> uuid.UUID | 
         return None
     exists = session.execute(select(User.id).where(User.id == identifier)).scalar_one_or_none()
     return identifier if exists is not None else None
+
+
+def authenticate(*, session: Session, caller: CurrentUser) -> CurrentUser:
+    """Turn a decoded token into the caller authorization should trust.
+
+    ``resolve_caller`` proves the account is live and scopes the session to
+    its tenant; this then builds the caller from the **database**, not the
+    token: the roles an account holds now, and its email. A token's own role
+    claim is ignored, so a grant applies from the next request and a
+    revocation cannot be outlived by a token minted before it.
+
+    Args:
+        session: Open database session; bound to the caller's tenant here.
+        caller: The caller decoded from the access token.
+
+    Returns:
+        The caller, with roles and email as the database has them. A trial,
+        which has no account, is an engineer and nothing more.
+
+    Raises:
+        AuthenticationError: As ``resolve_caller``.
+    """
+    user = resolve_caller(session=session, caller=caller)
+    if user is None:
+        return caller.model_copy(update={"roles": IMPLICIT_ROLES, "email": ""})
+    return caller.model_copy(update={"roles": roles_of(user), "email": user.email})
 
 
 def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
