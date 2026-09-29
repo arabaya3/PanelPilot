@@ -96,33 +96,72 @@ def run_crawl(args: list[str]) -> int:
 
 
 def run_reindex_staging(args: list[str]) -> int:
-    """Re-chunk and re-embed the staging corpus in place.
+    """Re-embed the staging corpus in place: ``reindex-staging [source_id]``.
 
-    Run this after a chunking or embedding change. Production is untouched:
-    re-verification and promotion follow separately. See
-    docs/adr/0001-staging-vs-production-index.md.
+    Run after an embedding-model change. Production is untouched: live chunks
+    keep their vectors until a reviewer re-promotes them. Re-chunking is a
+    re-crawl (``crawl``), not this job — staging holds chunks, not documents.
+    See ``app.domain.staging_maintenance.reembed_staging``.
 
     Args:
-        args: Positional arguments, optionally ``[source_id]`` to limit scope.
+        args: Optionally ``[source_id]`` to limit scope.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``0`` on success, ``1`` if embedding failed part-way (safe to re-run),
+        ``2`` for a usage error.
     """
-    raise NotImplementedError
+    from app.core.errors import PanelPilotError
+    from app.domain import staging_maintenance
+
+    if len(args) > 1:
+        print("usage: reindex-staging [source_id]", file=sys.stderr)
+        return 2
+    source_id = args[0] if args else None
+
+    with _session() as session:
+        try:
+            count = staging_maintenance.reembed_staging(session=session, source_id=source_id)
+        except PanelPilotError as exc:
+            # EmbeddingError, named by its base: the worker is barred from
+            # importing app.ai, and every provider failure derives from this.
+            print(
+                f"re-embedding stopped: {exc}. Re-run to finish; it is idempotent.", file=sys.stderr
+            )
+            return 1
+
+    print(f"re-embedded {count} staging chunks")
+    return 0
+
+
+#: Exit code when live content is stale. Distinct from 1 (the job failed) so a
+#: scheduler can alert on "someone needs to review this" without treating it
+#: as a broken job, and vice versa.
+EXIT_STALE_CONTENT_FOUND = 3
 
 
 def run_expire_stale_sources(args: list[str]) -> int:
-    """Flag production documents whose upstream source has been superseded.
+    """Flag production chunks whose upstream document has since changed.
 
-    Flags only — retraction is a reviewed operation, not an automated one.
+    Flags only — retraction is a reviewed operation, not an automated one. Each
+    stale chunk is printed and logged; the exit code tells a scheduler whether
+    anything needs a reviewer.
 
     Args:
         args: Unused; accepted for a uniform handler signature.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``0`` when production is current, ``3`` when stale chunks were found.
     """
-    raise NotImplementedError
+    del args
+    from app.domain import staging_maintenance
+
+    with _session() as session:
+        stale = staging_maintenance.find_superseded(session=session)
+
+    for item in stale:
+        print(f"stale: {item.chunk_id}  ({item.source_url} changed since verification)")
+    print(f"{len(stale)} live chunks cite a document that has changed")
+    return EXIT_STALE_CONTENT_FOUND if stale else 0
 
 
 def run_grant_role(args: list[str]) -> int:
@@ -246,7 +285,7 @@ REGISTRY: dict[str, JobSpec] = {
         JobSpec("crawl", "Crawl one documentation source into staging.", run_crawl),
         JobSpec(
             "reindex-staging",
-            "Re-chunk and re-embed the staging corpus after a pipeline change.",
+            "Re-embed the staging corpus after an embedding-model change.",
             run_reindex_staging,
         ),
         JobSpec(

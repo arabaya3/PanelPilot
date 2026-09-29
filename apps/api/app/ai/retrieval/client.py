@@ -8,6 +8,7 @@ one place.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any
@@ -156,3 +157,65 @@ def stage_chunk(*, chunk_id: str, document: dict[str, Any]) -> None:
             f"refusing to stage {chunk_id!r}: required fields missing or null: {', '.join(missing)}"
         )
     get_client().index(index=resolve_index(IndexTarget.STAGING), id=chunk_id, body=document)
+
+
+def iter_staging_chunks(
+    *, content_hashes: list[str] | None = None
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Stream every chunk in the staging index, optionally narrowed by document.
+
+    Args:
+        content_hashes: Only chunks cut from documents with these hashes. An
+            empty list streams nothing; ``None`` streams the whole index.
+
+    Yields:
+        ``(chunk_id, body)`` pairs. A scroll rather than one search, so a
+        corpus larger than the result window is still read in full.
+    """
+    yield from _iter_chunks(IndexTarget.STAGING, content_hashes=content_hashes)
+
+
+def iter_production_chunks() -> Iterator[tuple[str, dict[str, Any]]]:
+    """Stream every live chunk. Read-only: nothing here can write production.
+
+    Yields:
+        ``(chunk_id, body)`` pairs, without the embedding.
+    """
+    yield from _iter_chunks(IndexTarget.PRODUCTION, content_hashes=None, with_vectors=False)
+
+
+def _iter_chunks(
+    target: IndexTarget,
+    *,
+    content_hashes: list[str] | None,
+    with_vectors: bool = True,
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Scroll an index, returning ids and bodies.
+
+    Args:
+        target: Which index.
+        content_hashes: Narrow to these documents; ``None`` for everything.
+        with_vectors: Whether to fetch ``content_vector``. A caller that does
+            not use it should not pull 1024 floats per chunk over the wire.
+
+    Yields:
+        ``(chunk_id, body)`` pairs.
+    """
+    from opensearchpy import helpers
+
+    if content_hashes is not None and not content_hashes:
+        return
+    query: dict[str, Any] = (
+        {"terms": {"content_hash": content_hashes}}
+        if content_hashes is not None
+        else {"match_all": {}}
+    )
+    body: dict[str, Any] = {"query": query}
+    if not with_vectors:
+        body["_source"] = {"excludes": ["content_vector"]}
+    client = get_client()
+    index = resolve_index(target)
+    if not client.indices.exists(index=index):
+        return
+    for hit in helpers.scan(client, index=index, query=body, preserve_order=False):
+        yield str(hit["_id"]), dict(hit["_source"])
