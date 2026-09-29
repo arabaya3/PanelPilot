@@ -497,6 +497,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/schematics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Build Schematic
+     * @description Turn a panel schedule into what the single-line diagram draws.
+     *
+     *     Authenticated but not rate-limited: it reads nothing and calls no model,
+     *     so it costs a validation pass. A schedule whose wiring is ambiguous is a
+     *     422 listing every problem.
+     */
+    post: operations['build_schematic_api_v1_schematics_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/images': {
     parameters: {
       query?: never;
@@ -615,6 +639,25 @@ export interface components {
       derated_ampacity_a: string;
       /** Applied Factors */
       applied_factors: components['schemas']['AppliedFactor'][];
+    };
+    /**
+     * CalculatedValue
+     * @description A quantity a tool produced.
+     *
+     *     Attributes:
+     *         display: The value as it is printed, with its unit.
+     *         source: Where it came from, citable.
+     */
+    CalculatedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'calculated';
+      /** Display */
+      display: string;
+      /** Source */
+      source: string;
     };
     /**
      * Citation
@@ -872,6 +915,29 @@ export interface components {
     DiagnosticTurn: {
       request: components['schemas']['DiagnosticRequest'];
       response: components['schemas']['DiagnosticResponse'];
+    };
+    /**
+     * DinSpec
+     * @description What PD-002 needs to look up a device's rail width.
+     *
+     *     Attributes:
+     *         category: The device family, which decides the width convention.
+     *         series: Manufacturer series, where the family has more than one.
+     *         poles: Pole count; module-pitch devices scale with it.
+     */
+    DinSpec: {
+      /**
+       * Category
+       * @enum {string}
+       */
+      category: 'mcb' | 'rcbo' | 'terminal-block';
+      /** Series */
+      series?: string | null;
+      /**
+       * Poles
+       * @default 1
+       */
+      poles: number;
     };
     /**
      * DisplayVerdict
@@ -1191,6 +1257,25 @@ export interface components {
       password: string;
     };
     /**
+     * NotCalculatedValue
+     * @description A quantity no tool can produce yet.
+     *
+     *     Attributes:
+     *         reason: Why, in words an engineer can act on.
+     *         blocked_by: The task(s) that would unblock it, e.g. ``"AI-005"``.
+     */
+    NotCalculatedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'not_calculated';
+      /** Reason */
+      reason: string;
+      /** Blocked By */
+      blocked_by: string;
+    };
+    /**
      * PanelBomRequest
      * @description Inputs for BOM generation.
      */
@@ -1393,6 +1478,22 @@ export interface components {
       refresh_token: string;
     };
     /**
+     * RefusedValue
+     * @description A quantity a tool declined to produce for these inputs.
+     *
+     *     Attributes:
+     *         reason: The tool's refusal, verbatim.
+     */
+    RefusedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'refused';
+      /** Reason */
+      reason: string;
+    };
+    /**
      * ResolveRequest
      * @description A lead's decision on an escalated item.
      *
@@ -1422,6 +1523,177 @@ export interface components {
       /** Score */
       score: number;
       citation: components['schemas']['Citation'];
+    };
+    /**
+     * ScheduleLine
+     * @description One device in the panel schedule, as the engineer states it.
+     *
+     *     Attributes:
+     *         designator: Its reference designator; unique within the schedule.
+     *         kind: The PD-006 symbol kind. An unrecognised kind is accepted and
+     *             drawn as a marked placeholder, never dropped.
+     *         rating: The device's stated rating, e.g. ``"C16"``. The engineer's
+     *             input, not a calculation, so it is printed as given.
+     *         group: The functional row it belongs to, e.g. ``"motors"``.
+     *         feeds_from: The designator directly upstream of it. ``None`` for the
+     *             incomer only — exactly one line may leave it empty.
+     *         mounting: Where it physically sits. Only rail-mounted devices take rail.
+     *         din: How to look up its rail width; omit when not rail-mounted, or
+     *             when its width is not sourced (the group's rows then say so).
+     */
+    ScheduleLine: {
+      /** Designator */
+      designator: string;
+      /** Kind */
+      kind: string;
+      /** Rating */
+      rating?: string | null;
+      /**
+       * Group
+       * @default main
+       */
+      group: string;
+      /** Feeds From */
+      feeds_from?: string | null;
+      /**
+       * Mounting
+       * @default rail
+       * @enum {string}
+       */
+      mounting: 'rail' | 'door' | 'field';
+      din?: components['schemas']['DinSpec'] | null;
+    };
+    /**
+     * SchematicComponent
+     * @description A device placed on the diagram.
+     *
+     *     Attributes:
+     *         designator: Its reference designator.
+     *         kind: Its PD-006 symbol kind, possibly one the library cannot draw.
+     *         rating: Its stated rating, if any.
+     *         group: Its functional row.
+     *         mounting: Where it sits.
+     */
+    SchematicComponent: {
+      /** Designator */
+      designator: string;
+      /** Kind */
+      kind: string;
+      /** Rating */
+      rating: string | null;
+      /** Group */
+      group: string;
+      /**
+       * Mounting
+       * @enum {string}
+       */
+      mounting: 'rail' | 'door' | 'field';
+    };
+    /**
+     * SchematicConnection
+     * @description One conductor between two devices.
+     *
+     *     Attributes:
+     *         upstream: The feeding device.
+     *         downstream: The fed device.
+     *         conductor: The conductor size — explicit when not calculated.
+     */
+    SchematicConnection: {
+      /** Upstream */
+      upstream: string;
+      /** Downstream */
+      downstream: string;
+      /** Conductor */
+      conductor:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+    };
+    /**
+     * SchematicGroup
+     * @description A functional row, in drawing order.
+     *
+     *     Attributes:
+     *         name: The group.
+     *         order: Position left to right on the diagram.
+     *         designators: Its devices, in schedule order.
+     *         rail_rows: How many rail rows it needs (PD-003).
+     */
+    SchematicGroup: {
+      /** Name */
+      name: string;
+      /** Order */
+      order: number;
+      /** Designators */
+      designators: string[];
+      /** Rail Rows */
+      rail_rows:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+    };
+    /**
+     * SchematicRequest
+     * @description A panel to draw.
+     *
+     *     Attributes:
+     *         title: Printed in the title block.
+     *         supply: The incoming supply as printed, e.g. ``"400 V 3~ 50 Hz"``.
+     *         lines: The schedule.
+     *         usable_rail_mm: Usable rail length per row, from the enclosure drawing.
+     *             Without it rail rows are reported as not calculated.
+     */
+    SchematicRequest: {
+      /** Title */
+      title: string;
+      /** Supply */
+      supply: string;
+      /** Lines */
+      lines: components['schemas']['ScheduleLine'][];
+      /** Usable Rail Mm */
+      usable_rail_mm?: number | string | null;
+    };
+    /**
+     * SchematicSpec
+     * @description Everything the renderer needs, and nothing it has to infer.
+     *
+     *     Attributes:
+     *         title: For the title block.
+     *         supply: The incoming supply.
+     *         incomer: The designator fed by the supply.
+     *         components: Every device, in schedule order.
+     *         connections: The topology, one entry per fed device.
+     *         groups: Functional rows, in drawing order.
+     *         enclosure: The enclosure selection (PD-003).
+     *         trunking: The trunking size (PD-004).
+     *         unknown_kinds: Symbol kinds the library cannot draw, so a caller can
+     *             warn before rendering rather than discover placeholders after.
+     */
+    SchematicSpec: {
+      /** Title */
+      title: string;
+      /** Supply */
+      supply: string;
+      /** Incomer */
+      incomer: string;
+      /** Components */
+      components: components['schemas']['SchematicComponent'][];
+      /** Connections */
+      connections: components['schemas']['SchematicConnection'][];
+      /** Groups */
+      groups: components['schemas']['SchematicGroup'][];
+      /** Enclosure */
+      enclosure:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+      /** Trunking */
+      trunking:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+      /** Unknown Kinds */
+      unknown_kinds: string[];
     };
     /**
      * SearchFilters
@@ -2480,6 +2752,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PlcValidationResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  build_schematic_api_v1_schematics_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SchematicRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SchematicSpec'];
         };
       };
       /** @description Validation Error */
