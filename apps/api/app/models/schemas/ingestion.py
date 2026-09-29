@@ -58,10 +58,17 @@ class CrawlJobRequest(BaseModel):
 
 
 class CrawlJobResponse(BaseModel):
-    """A queued crawl job."""
+    """A crawl job and where it has got to.
+
+    Attributes:
+        id: The job, for polling ``GET /ingestion/crawl-jobs/{id}``.
+        status: ``queued`` until the worker picks it up.
+        error: Why it failed, when it did.
+    """
 
     id: str
     status: CrawlJobStatus
+    error: str | None = None
 
 
 class VerificationDecision(StrEnum):

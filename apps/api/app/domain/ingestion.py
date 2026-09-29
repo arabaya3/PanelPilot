@@ -16,14 +16,21 @@ it cannot itself write anywhere.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import structlog
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.ai.retrieval.client import stage_chunk
 from app.ai.retrieval.embedding import embed_documents
 from app.ai.retrieval.mappings import INDEXED_FIELDS
-from app.core.errors import AuthorizationError, NotImplementedYetError, ValidationError
+from app.core.errors import (
+    AuthorizationError,
+    NotFoundError,
+    NotImplementedYetError,
+    ValidationError,
+)
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
 from app.ingestion.crawler import crawl_source
 from app.ingestion.known_documents import urls_for
@@ -65,35 +72,33 @@ def create_crawl_job(
     user: CurrentUser,
     request: CrawlJobRequest,
 ) -> CrawlJobResponse:
-    """Queue a crawl of a manufacturer documentation source.
+    """Queue a crawl of a manufacturer documentation source for the worker.
 
     Args:
-        session: Open database session.
+        session: Open database session. The caller commits.
         user: The authenticated caller; must hold the ingestion role.
         request: Source identifier, seed URLs, and crawl depth.
 
     Returns:
-        The queued job with its identifier and initial status.
+        The queued job, with status ``QUEUED``.
 
     Raises:
         AuthorizationError: If the caller lacks the ingestion role.
         ValidationError: If the source is not on the allowed-source list,
             carries no seed URLs, or names a seed or document URL that is not
             https on the source's own domain.
-        RobotsDisallowedError: If robots.txt forbids a URL the crawl needs.
-        RobotsUnavailableError: If robots.txt could not be read at all.
 
-    **Runs the crawl inline rather than queueing it.** The name says queue and
-    the status field has a ``QUEUED`` member, both of which predate there being
-    anything to run; there is no task broker in this deployment, and inventing
-    one to satisfy a verb would be a larger change than the crawl itself. The
-    job row still records the lifecycle honestly -- ``RUNNING`` while it works,
-    then ``SUCCEEDED`` or ``FAILED`` -- so moving this behind a broker later
-    changes the caller and not the record.
+    **Queues; does not run.** The crawl used to run right here, inside the
+    HTTP request: fetching, PDF parsing, embedding and staging, for minutes,
+    on a request thread holding a database transaction — the exact load ADR
+    0002 keeps off the API runtime. Everything that can be refused is still
+    refused here, synchronously, so a bad request is a 4xx and never a failed
+    job; the crawl itself happens when the worker picks the job up
+    (``run_next_crawl_job``).
 
     **Nothing here can make content live.** Chunks are written to staging and
     queued for human review. Promotion is a separate, reviewer-roled path that
-    this function has no way to reach: see ADR 0001, and
+    this module has no way to reach: see ADR 0001, and
     ``test_only_the_promotion_module_writes_production`` which enforces it.
     """
     if not user.has_role(Role.INGESTION):
@@ -111,9 +116,9 @@ def create_crawl_job(
     document_urls = request.document_urls or urls_for(request.source_id)
 
     if not request.seed_urls and not document_urls:
-        # `crawl_source` would raise on this too, but only after the job row
-        # exists and the status has moved to RUNNING. Catching it here keeps a
-        # configuration mistake from looking like a failed crawl.
+        # Refused now rather than queued to fail later: a configuration
+        # mistake should come back to whoever made it, not look like a crawl
+        # that ran and broke.
         raise ValidationError(
             f"source {request.source_id!r} has no seed URLs and no known document URLs to crawl"
         )
@@ -126,39 +131,193 @@ def create_crawl_job(
     for url in (*request.seed_urls, *document_urls):
         require_source_url(url, host_suffix=crawler.host_suffix)
 
-    job = CrawlJobRow(source_id=request.source_id, status=CrawlJobStatus.RUNNING.value)
+    job = CrawlJobRow(
+        source_id=request.source_id,
+        status=CrawlJobStatus.QUEUED.value,
+        request=request.model_dump(mode="json"),
+        requested_by=user.id,
+    )
     session.add(job)
     session.flush()
+    logger.info("crawl.queued", source_id=request.source_id, job_id=str(job.id))
+    return _job_response(job)
 
+
+def get_crawl_job(*, session: Session, user: CurrentUser, job_id: str) -> CrawlJobResponse:
+    """Report where a queued crawl has got to.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller; must hold the ingestion role.
+        job_id: The job, as ``create_crawl_job`` returned it.
+
+    Returns:
+        Its status, and why it failed if it did.
+
+    Raises:
+        AuthorizationError: If the caller lacks the ingestion role.
+        NotFoundError: If there is no such job.
+    """
+    if not user.has_role(Role.INGESTION):
+        raise AuthorizationError(f"{user.email} does not hold the ingestion role")
+    try:
+        job = session.get(CrawlJobRow, uuid.UUID(job_id))
+    except ValueError:
+        job = None
+    if job is None:
+        raise NotFoundError(f"no crawl job {job_id!r}")
+    return _job_response(job)
+
+
+#: A running job whose worker has not finished it in this long is presumed
+#: dead. Comfortably past the longest a crawl can take — the per-run fetch
+#: budget times the per-document deadline — so a slow crawl is never failed
+#: while it is still working.
+ABANDONED_AFTER = timedelta(hours=6)
+
+
+def run_next_crawl_job(*, session: Session, now: datetime | None = None) -> CrawlJobResponse | None:
+    """Claim the oldest queued crawl and run it to completion.
+
+    One job per call, and so per worker process, like every worker job: the
+    scheduler decides how often and how many at once.
+
+    Args:
+        session: A session able to see every tenant's accounts (the worker's
+            is cross-tenant). Committed here: the claim must be visible to
+            other workers before the slow part starts.
+        now: Current time; injected for tests.
+
+    Returns:
+        The finished job, or ``None`` if nothing was queued.
+
+    **Claimed with ``FOR UPDATE SKIP LOCKED``,** so two workers started at
+    once take two different jobs instead of both running the first. The claim
+    is committed as ``RUNNING`` before the crawl starts, which is also what
+    lets a job whose worker died be found afterwards: it stays ``RUNNING``
+    past ``ABANDONED_AFTER``, and the next call marks it failed rather than
+    leaving it looking busy forever.
+    """
+    moment = now or datetime.now(UTC)
+    _fail_abandoned_jobs(session=session, now=moment)
+
+    job = session.execute(
+        select(CrawlJobRow)
+        .where(CrawlJobRow.status == CrawlJobStatus.QUEUED.value)
+        .order_by(CrawlJobRow.created_at, CrawlJobRow.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+    if job is None:
+        session.commit()
+        return None
+    return _run_claimed_job(session=session, job=job, now=moment)
+
+
+def run_crawl_job(*, session: Session, job_id: str) -> CrawlJobResponse:
+    """Run one specific queued job now, as the ``crawl`` command does.
+
+    Args:
+        session: A cross-tenant session, as ``run_next_crawl_job``'s.
+        job_id: A job in ``QUEUED``.
+
+    Returns:
+        The finished job.
+
+    Raises:
+        NotFoundError: If the job does not exist or is no longer queued —
+            another worker got to it first.
+    """
+    job = session.execute(
+        select(CrawlJobRow)
+        .where(
+            CrawlJobRow.id == uuid.UUID(job_id),
+            CrawlJobRow.status == CrawlJobStatus.QUEUED.value,
+        )
+        .with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+    if job is None:
+        raise NotFoundError(f"no queued crawl job {job_id!r}")
+    return _run_claimed_job(session=session, job=job, now=datetime.now(UTC))
+
+
+def _fail_abandoned_jobs(*, session: Session, now: datetime) -> None:
+    """Mark running jobs whose worker evidently died as failed.
+
+    Args:
+        session: Open database session.
+        now: Current time.
+    """
+    abandoned = session.execute(
+        update(CrawlJobRow)
+        .where(
+            CrawlJobRow.status == CrawlJobStatus.RUNNING.value,
+            CrawlJobRow.started_at < now - ABANDONED_AFTER,
+        )
+        .values(
+            status=CrawlJobStatus.FAILED.value,
+            error="abandoned: the worker running it stopped without finishing",
+            finished_at=now,
+        )
+    )
+    count = getattr(abandoned, "rowcount", 0)
+    if count:
+        logger.warning("crawl.abandoned_jobs_failed", count=count)
+
+
+def _run_claimed_job(*, session: Session, job: CrawlJobRow, now: datetime) -> CrawlJobResponse:
+    """Run a job this session holds locked, recording how it ended.
+
+    Args:
+        session: Open database session holding the job's row lock.
+        job: The claimed job.
+        now: When it was claimed.
+
+    Returns:
+        The finished job.
+    """
+    job.status = CrawlJobStatus.RUNNING.value
+    job.started_at = now
+    session.commit()
+
+    request = CrawlJobRequest.model_validate(job.request or {"source_id": job.source_id})
+    ingester = CurrentUser(
+        id=job.requested_by or "",
+        email="",
+        tenant_id="",
+        roles=frozenset({Role.INGESTION}),
+    )
     try:
         staged_count = _run_crawl_into_staging(
-            session=session,
-            user=user,
-            job=job,
-            request=request,
+            session=session, user=ingester, job=job, request=request
         )
-    except Exception:
-        # The status is part of the record, so it must survive the failure that
-        # set it. `rollback` would discard the job row along with the partial
-        # work, leaving no evidence the crawl was attempted -- which is exactly
-        # what someone debugging a source that stopped returning documents
-        # needs to see.
+    except Exception as exc:
+        # The partial work is rolled back and the job row kept: its status is
+        # the record someone debugging a source that stopped returning
+        # documents needs, and now it can also say why.
         session.rollback()
-        failed = CrawlJobRow(source_id=request.source_id, status=CrawlJobStatus.FAILED.value)
-        session.add(failed)
+        job.status = CrawlJobStatus.FAILED.value
+        job.error = f"{type(exc).__name__}: {exc}"[:2000]
+        job.finished_at = datetime.now(UTC)
         session.commit()
-        logger.exception("crawl.failed", source_id=request.source_id, job_id=str(failed.id))
-        return CrawlJobResponse(id=str(failed.id), status=CrawlJobStatus.FAILED)
+        logger.exception("crawl.failed", source_id=job.source_id, job_id=str(job.id))
+        return _job_response(job)
 
     job.status = CrawlJobStatus.SUCCEEDED.value
+    job.finished_at = datetime.now(UTC)
     session.commit()
     logger.info(
         "crawl.succeeded",
-        source_id=request.source_id,
+        source_id=job.source_id,
         job_id=str(job.id),
         staged_chunks=staged_count,
     )
-    return CrawlJobResponse(id=str(job.id), status=CrawlJobStatus.SUCCEEDED)
+    return _job_response(job)
+
+
+def _job_response(job: CrawlJobRow) -> CrawlJobResponse:
+    """Render a job row as the API returns it."""
+    return CrawlJobResponse(id=str(job.id), status=CrawlJobStatus(job.status), error=job.error)
 
 
 def _run_crawl_into_staging(

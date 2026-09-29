@@ -319,6 +319,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ingestion/crawl-jobs/{job_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Crawl Job */
+    get: operations['get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ingestion/verification-queue': {
     parameters: {
       query?: never;
@@ -692,12 +709,19 @@ export interface components {
     };
     /**
      * CrawlJobResponse
-     * @description A queued crawl job.
+     * @description A crawl job and where it has got to.
+     *
+     *     Attributes:
+     *         id: The job, for polling ``GET /ingestion/crawl-jobs/{id}``.
+     *         status: ``queued`` until the worker picks it up.
+     *         error: Why it failed, when it did.
      */
     CrawlJobResponse: {
       /** Id */
       id: string;
       status: components['schemas']['CrawlJobStatus'];
+      /** Error */
+      error?: string | null;
     };
     /**
      * CrawlJobStatus
@@ -2217,6 +2241,37 @@ export interface operations {
         'application/json': components['schemas']['CrawlJobRequest'];
       };
     };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CrawlJobResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
     responses: {
       /** @description Successful Response */
       200: {

@@ -85,11 +85,17 @@ def _patch_crawl(monkeypatch: pytest.MonkeyPatch, status: CrawlJobStatus) -> dic
     def fake_create(*, session: Any, user: Any, request: Any) -> CrawlJobResponse:
         seen["user"] = user
         seen["request"] = request
-        return CrawlJobResponse(id="job-1", status=status)
+        return CrawlJobResponse(id="job-1", status=CrawlJobStatus.QUEUED)
+
+    def fake_run(*, session: Any, job_id: str) -> CrawlJobResponse:
+        # The command runs the job it just queued, not whatever is next.
+        seen["ran"] = job_id
+        return CrawlJobResponse(id=job_id, status=status)
 
     from app.domain import ingestion as ingestion_domain
 
     monkeypatch.setattr(ingestion_domain, "create_crawl_job", fake_create)
+    monkeypatch.setattr(ingestion_domain, "run_crawl_job", fake_run)
 
     # A stand-in with `close`, because the handler wraps the session in
     # `closing()` -- which is the behaviour under test: a job that leaked a
@@ -101,12 +107,25 @@ def _patch_crawl(monkeypatch: pytest.MonkeyPatch, status: CrawlJobStatus) -> dic
             # Where the job declares it spans tenants (ADR 0003).
             self.info: dict[str, object] = {}
 
+        def commit(self) -> None:
+            # The queued row must be committed before it is run.
+            seen["committed_before_run"] = "ran" not in seen
+
         def close(self) -> None:
             _Session.closed = True
 
     monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
     seen["session_class"] = _Session
     return seen
+
+
+def test_the_crawl_command_runs_the_job_it_queued(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _patch_crawl(monkeypatch, CrawlJobStatus.SUCCEEDED)
+
+    jobs.run_crawl(["abb", "https://library.abb.com/x"])
+
+    assert seen["ran"] == "job-1"
+    assert seen["committed_before_run"]
 
 
 def test_a_successful_crawl_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -239,3 +258,54 @@ def test_bad_role_arguments_are_a_usage_error(
 def test_the_role_jobs_are_registered() -> None:
     assert jobs.get_job("grant-role").handler is jobs.run_grant_role
     assert jobs.get_job("revoke-role").handler is jobs.run_revoke_role
+
+
+# --- crawl-queue ---------------------------------------------------------------
+
+
+def _patch_queue(
+    monkeypatch: pytest.MonkeyPatch, result: CrawlJobResponse | None
+) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+
+    def fake_next(*, session: Any) -> CrawlJobResponse | None:
+        seen["info"] = dict(session.info)
+        return result
+
+    from app.domain import ingestion as ingestion_domain
+
+    monkeypatch.setattr(ingestion_domain, "run_next_crawl_job", fake_next)
+
+    class _Session:
+        closed = False
+
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+
+        def close(self) -> None:
+            _Session.closed = True
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    seen["session_class"] = _Session
+    return seen
+
+
+def test_an_empty_queue_is_not_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scheduled every few minutes, it will usually find nothing."""
+    _patch_queue(monkeypatch, None)
+
+    assert jobs.run_crawl_queue([]) == 0
+
+
+def test_a_queued_crawl_that_fails_exits_non_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_queue(monkeypatch, CrawlJobResponse(id="j", status=CrawlJobStatus.FAILED, error="x"))
+
+    assert jobs.run_crawl_queue([]) == 1
+
+
+def test_a_queued_crawl_runs_cross_tenant_and_closes(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _patch_queue(monkeypatch, CrawlJobResponse(id="j", status=CrawlJobStatus.SUCCEEDED))
+
+    assert jobs.run_crawl_queue([]) == 0
+    assert seen["info"], "the job ran without declaring it spans tenants"
+    assert seen["session_class"].closed
