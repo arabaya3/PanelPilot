@@ -20,22 +20,50 @@ const nextConfig = {
   // lands, which the Dockerfile's CMD depends on.
   outputFileTracingRoot: join(here, '../..'),
 
+  // Nothing gains from announcing the framework and its version to a scanner.
+  poweredByHeader: false,
+
+  // API calls are proxied by the route handler in src/app/api/[...path], not a
+  // `rewrites()` entry here. A rewrite's destination is resolved at build time
+  // and baked into routes-manifest.json, so the production image forwarded to
+  // whatever API_PROXY_TARGET the builder stage had — none — and every
+  // deployed container sent API traffic to localhost:8000 inside itself. The
+  // handler reads the variable per request instead.
+
   /**
-   * Proxy API calls through this origin.
+   * Security headers on every response.
    *
-   * The browser cannot reach the API's container hostname, and the client
-   * modules post to relative paths — so without this every request lands on
-   * the Next server as a 404 and the landing page reports the trial endpoint
-   * missing when it is running perfectly well.
+   * The Content-Security-Policy is deliberately narrow. `frame-ancestors`,
+   * `object-src`, `base-uri` and `form-action` restrict nothing Next itself
+   * needs, whereas a `script-src` would block the inline bootstrap scripts
+   * Next emits unless every page carried a nonce — a policy that breaks the
+   * app is one somebody deletes. Clickjacking is covered twice, by
+   * `frame-ancestors` and by X-Frame-Options for browsers that predate it.
    *
-   * A rewrite rather than an absolute base URL in the client: same-origin
-   * requests need no CORS entry, carry cookies correctly, and keep the API's
-   * address out of the browser bundle, where it would be baked in at build
-   * time and wrong in every environment built elsewhere.
+   * The camera stays allowed for this origin: photographing a drive's display
+   * is a core feature, and `capture="environment"` needs it.
    */
-  async rewrites() {
-    const target = process.env.API_PROXY_TARGET ?? 'http://localhost:8000';
-    return [{ source: '/api/:path*', destination: `${target}/api/:path*` }];
+  async headers() {
+    const headers = [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=()' },
+      {
+        key: 'Content-Security-Policy',
+        value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'",
+      },
+    ];
+    // Production only. HSTS is remembered by the browser for a year, and
+    // sending it from `next dev` on localhost would pin every other local
+    // service on that host to HTTPS too.
+    if (process.env.NODE_ENV === 'production') {
+      headers.push({
+        key: 'Strict-Transport-Security',
+        value: 'max-age=31536000; includeSubDomains',
+      });
+    }
+    return [{ source: '/:path*', headers }];
   },
 };
 

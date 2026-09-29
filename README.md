@@ -144,13 +144,16 @@ once. Production runs the upgrade as a separate, ordered step. Without the
 override a fresh volume starts at the initial revision and every auth route
 500s on a missing column.
 
-**The web container proxies `/api/*` to the API.** A Next rewrite, targeted by
-`API_PROXY_TARGET` (`http://api:8000` under compose). The browser cannot
-resolve a container hostname, and the client modules post to relative paths —
-without the rewrite every request lands on the Next server as a 404, and the
-landing page reports the trial endpoint missing when it is running fine.
-Same-origin also means no CORS entry and no API address baked into the browser
-bundle at build time.
+**The web container proxies `/api/v1/*` to the API.** A route handler
+(`apps/web/src/app/api/[...path]/route.ts`) that reads `API_PROXY_TARGET`
+(`http://api:8000` under compose) on every request. The browser cannot resolve
+a container hostname, and the client modules post to relative paths — without
+the proxy every request lands on the Next server as a 404, and the landing page
+reports the trial endpoint missing when it is running fine. Same-origin also
+means no CORS entry and no API address baked into the browser bundle. It is a
+route handler rather than a Next rewrite because a rewrite's target is fixed at
+build time, which sent the production image's API traffic to its own
+`localhost:8000`.
 
 ### Deliberate incompletenesses in merged work
 
@@ -354,13 +357,14 @@ Compose brings up five services on one internal network:
 | Service      | Image / target                        | Host port  | Purpose                        |
 | ------------ | ------------------------------------- | ---------- | ------------------------------ |
 | `web`        | `apps/web`, `dev`                     | **3000**   | `next dev`, hot reload         |
-| `api`        | `apps/api`, `dev`                     | _internal_ | `uvicorn --reload`, hot reload |
+| `api`        | `apps/api`, `dev`                     | 8000 (lo)  | `uvicorn --reload`, hot reload |
 | `postgres`   | `postgres:16-alpine`                  | _internal_ | Primary database               |
 | `opensearch` | `opensearchproject/opensearch:2.17.1` | _internal_ | Retrieval index                |
 | `redis`      | `redis:7-alpine`                      | _internal_ | Rate limiting, cached lookups  |
 
-**Only `web` publishes a port.** Everything else is reachable inside the
-network by service name (`http://api:8000`, `postgres:5432`, and so on). Both
+**Only `web` publishes a port to the network.** `api` is published on
+loopback only, for tools on your own machine. Everything else is reachable
+inside the network by service name (`http://api:8000`, `postgres:5432`, and so on). Both
 app services bind-mount their source, so edits on the host reload in place —
 you do not rebuild to change code, only to change dependencies.
 
@@ -393,12 +397,10 @@ docker compose exec api mypy app
 
 ### Reaching the API from the host
 
-`NEXT_PUBLIC_API_BASE_URL` is inlined into the **browser** bundle, so it has to
-be an address your machine can resolve — not the internal `http://api:8000`. As
-long as nothing in the frontend calls the API this does not matter. When it
-does, either uncomment the `ports` block on the `api` service in
-`docker-compose.yml`, or add a Next rewrite so the browser only ever talks to
-`:3000`. The second keeps the API off the host network; the first is quicker.
+The browser never needs to: it talks only to `:3000`, and the web server
+proxies `/api/v1/*` to the API over the compose network. For curl or an OpenAPI
+client on your own machine, the API is published on loopback only, at
+`http://127.0.0.1:8000`.
 
 > **The compose file is for local development only.** It runs OpenSearch with
 > security disabled and carries placeholder database credentials in plain text.
