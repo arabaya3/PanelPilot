@@ -59,7 +59,15 @@ export interface ActiveTrial {
 }
 
 export type TrialStart =
-  ({ kind: 'started' } & ActiveTrial) | { kind: 'unavailable' } | { kind: 'failed' };
+  | ({ kind: 'started' } & ActiveTrial)
+  | { kind: 'unavailable' }
+  /**
+   * Too many trials started from this address. Its own kind because the
+   * remedy is to wait, and a workshop behind one shared address reaches it
+   * honestly: "could not start a trial" read as the product being broken.
+   */
+  | { kind: 'rate-limited' }
+  | { kind: 'failed' };
 
 export type TrialResume =
   | ({ kind: 'resumed' } & ActiveTrial)
@@ -153,6 +161,7 @@ export async function startTrial(options: StartOptions = {}): Promise<TrialStart
   }
 
   if (response.status === 404 || response.status === 405) return { kind: 'unavailable' };
+  if (response.status === 429) return { kind: 'rate-limited' };
   if (!response.ok) return { kind: 'failed' };
 
   let payload: unknown;

@@ -122,6 +122,14 @@ describe('startTrial', () => {
     expect(outcome).toEqual({ kind: 'unavailable' });
   });
 
+  it('reports a rate limit as its own outcome', async () => {
+    // A workshop behind one address reaches it honestly; "could not start"
+    // read as the product being broken.
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    const outcome = await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(outcome).toEqual({ kind: 'rate-limited' });
+  });
+
   it('reads the session, its secret, and the token it may ask with', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

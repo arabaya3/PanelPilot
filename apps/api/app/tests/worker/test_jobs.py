@@ -457,3 +457,41 @@ def test_an_unreadable_eval_set_is_a_usage_error(tmp_path: Any) -> None:
 
     assert jobs.run_calibrate_relevance([str(tmp_path / "missing.json")]) == 2
     assert jobs.run_calibrate_relevance([str(bad)]) == 2
+
+
+# --- operator mistakes and unbuilt jobs --------------------------------------
+
+
+def test_granting_to_an_unknown_email_is_a_message_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import roles as roles_domain
+
+    class _Session:
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+
+        def commit(self) -> None:
+            raise AssertionError("nothing to commit after a refusal")
+
+        def close(self) -> None:
+            pass
+
+    def unknown(**_kwargs: object) -> bool:
+        raise NotFoundError("no account with that email")
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    monkeypatch.setattr(roles_domain, "grant_role", unknown)
+
+    assert jobs.run_grant_role(["nobody@example.com", "reviewer"]) == 1
+    assert "no account with that email" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("job", ["reindex-staging", "expire-stale-sources"])
+def test_an_unbuilt_job_says_so_and_exits_distinctly(
+    job: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """It raised NotImplementedError: a traceback in the scheduler's log."""
+    assert jobs.get_job(job).handler([]) == jobs.NOT_BUILT
+    assert "not built yet" in capsys.readouterr().err
+    assert jobs.get_job(job).description.startswith("(not built yet)")

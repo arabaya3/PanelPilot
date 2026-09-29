@@ -56,6 +56,7 @@ type Phase =
       conversationId: string | null;
     }
   | { kind: 'unavailable' }
+  | { kind: 'rate-limited' }
   | { kind: 'failed' };
 
 function readyWith(active: ActiveTrial): Phase {
@@ -118,7 +119,7 @@ export default function HomePage() {
 
     const outcome = await startTrial();
     if (outcome.kind !== 'started') {
-      setPhase({ kind: outcome.kind === 'unavailable' ? 'unavailable' : 'failed' });
+      setPhase({ kind: outcome.kind });
       return;
     }
 
@@ -233,6 +234,23 @@ export default function HomePage() {
           >
             {tl('unavailable')}
           </p>
+        )}
+
+        {phase.kind === 'rate-limited' && (
+          <div
+            role="alert"
+            data-testid="landing-rate-limited"
+            className="rounded-md border border-severity-warning bg-severity-warning-surface p-3 text-sm text-severity-warning"
+          >
+            <p>{tl('rateLimited')}</p>
+            <button
+              type="button"
+              onClick={() => void begin()}
+              className="mt-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast"
+            >
+              {tl('retry')}
+            </button>
+          </div>
         )}
 
         {phase.kind === 'failed' && (

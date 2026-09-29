@@ -30,3 +30,9 @@ out/
 .idea/
 .vscode/
 claude.md
+# Uploaded equipment photos (IMAGE_STORAGE_ROOT defaults to ./var/images).
+# Engineers' photographs of real plants: never commit them.
+apps/api/var/
+
+# Claude Code's local git worktrees
+.claude/worktrees/

@@ -340,7 +340,10 @@ function ChatSurface({
     // A row, so the sidebar sits beside the conversation. Which side that is
     // follows the document direction rather than being pinned here: in Arabic
     // or Hebrew the same markup puts it on the visual right.
-    <div className="flex h-full" data-testid="chat">
+    // Stacked on a phone, side by side from `md` up. Side by side at 360px
+    // left the conversation a column a few words wide beside the sidebar,
+    // and the page scrolled sideways.
+    <div className="flex h-full flex-col md:flex-row" data-testid="chat">
       <HistorySidebar
         token={token}
         activeSessionId={state.sessionId}

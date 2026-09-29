@@ -106,6 +106,15 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('chat')).toBeNull();
   });
 
+  it('says why when too many trials came from this network, and offers a retry', async () => {
+    mockStart({ kind: 'rate-limited' });
+    renderApp(<HomePage />, { theme: 'light' });
+
+    const notice = await screen.findByTestId('landing-rate-limited');
+    expect(notice.textContent).toMatch(/too many trials/i);
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
+  });
+
   it('offers a retry when starting a trial broke', async () => {
     // Distinct from `unavailable`: one is "not built yet", the other is "try
     // again", and they need different words.

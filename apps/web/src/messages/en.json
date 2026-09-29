@@ -161,7 +161,8 @@
     "failed": "Could not start a trial.",
     "retry": "Try again",
     "plcLink": "Check PLC code",
-    "reviewLink": "Reviewer sign-in"
+    "reviewLink": "Reviewer sign-in",
+    "rateLimited": "Too many trials have been started from this network. Wait a few minutes and try again, or sign in."
   },
   "history": {
     "label": "Conversation history",
