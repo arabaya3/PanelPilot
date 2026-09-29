@@ -10,9 +10,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. No job pushes, comments, or publishes; a job that ever
+# needs more should ask for it itself rather than every job inheriting it.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '20'
+  # 22, not 20: Node 20 reached end of life in April 2026 and no longer gets
+  # security fixes. Matches the node:22-alpine base in apps/web/Dockerfile.
+  NODE_VERSION: '22'
 
 jobs:
   api:

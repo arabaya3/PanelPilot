@@ -18,7 +18,7 @@ Three, from two build artifacts:
 
 | Target   | Build                                | Runs                                    |
 | -------- | ------------------------------------ | --------------------------------------- |
-| `web`    | `apps/web`                           | `next start`                            |
+| `web`    | `apps/web`                           | `node apps/web/server.js` (standalone)  |
 | `api`    | `apps/api`                           | `uvicorn app.main:create_app --factory` |
 | `worker` | `apps/api` — **same image as `api`** | `panelpilot-worker <job>`, scheduled    |
 
