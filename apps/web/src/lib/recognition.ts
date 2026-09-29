@@ -1,18 +1,16 @@
 /**
  * Uploading a display photo and reading what was recognised.
  *
- * **The recognition half is not reachable yet.** `POST /api/v1/images` stores
- * the image and returns `{image_id}` and nothing else. AI-008's recogniser is
- * complete — `app/ai/recognition.py`, with a verdict, per-field confidence and
- * an off-topic rejection path — but it is wired to no route, so there is
- * nothing to call. The task's `{recognizedCode, brand, model, confidence}` does
- * not exist over the wire today.
+ * `POST /api/v1/images` stores the image and runs AI-008's recogniser on it,
+ * returning `{image_id, recognition}`. `recognition` is AI-008's own
+ * `FaultRecognitionResult` — a verdict, per-field confidence, and an off-topic
+ * rejection path — not the task's `{recognizedCode, brand, model, confidence}`
+ * paraphrase of it.
  *
- * This is written against the shape AI-008 actually produces rather than the
- * task's paraphrase of it, so wiring a route is the only thing left to do.
- * `recognise` posts to the endpoint the route will occupy and reports
- * `unavailable` when it is not there, which is what happens now — a state the
- * UI shows honestly rather than a spinner that never resolves.
+ * `recognition` is `null` when the model could not be reached or returned a
+ * report that did not validate. The image is stored either way, so that is
+ * reported as `stored` — a state the UI shows honestly, asking the engineer to
+ * type the code — rather than as a failure.
  */
 
 /** Mirrors `DisplayVerdict` in `app/models/schemas/recognition.py`. */
@@ -109,7 +107,7 @@ export interface UploadOptions {
   onSlow?: () => void;
 }
 
-/** Upload one image and, when a recogniser exists, read what it saw. */
+/** Upload one image and read what the recogniser saw, if it saw anything. */
 export async function uploadImage(options: UploadOptions): Promise<UploadOutcome> {
   const {
     file,
@@ -142,9 +140,9 @@ export async function uploadImage(options: UploadOptions): Promise<UploadOutcome
     const imageId = readImageId(payload);
     if (imageId === null) return { kind: 'failed', reason: 'rejected' };
 
-    // The recogniser's output, if the endpoint has grown one. Absent today,
-    // and absence is reported as `stored` rather than as a failure — the
-    // image did upload, and the engineer can still describe the fault.
+    // The recogniser's output. Null when the model failed, and that is
+    // reported as `stored` rather than as a failure — the image did upload,
+    // and the engineer can still describe the fault.
     const result = readRecognition(payload);
     return result ? { kind: 'recognised', imageId, result } : { kind: 'stored', imageId };
   } catch {

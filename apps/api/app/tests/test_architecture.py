@@ -409,9 +409,13 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     transcribes a photograph. It answers nothing, cites nothing, and has no
     retrieved evidence to be judged against — cite-or-refuse has no opinion on
     reading characters off a screen. Its equivalent guard is its own
-    per-field confidence gate, which is tested separately. The exemption is a
-    single named module rather than a pattern, so adding a second one is a
-    deliberate edit here and not an accident of matching a rule too loosely.
+    per-field confidence gate, which is tested separately. The exemption is
+    named modules rather than a pattern, so adding one is a deliberate edit
+    here and not an accident of matching a rule too loosely.
+
+    ``app/domain/recognition.py`` is the same exemption, not a second one: it
+    is the composition root that hands the recogniser its client, and calls
+    nothing but ``recognise_fault_display``. It generates no answer either.
     """
     generation_markers = ("anthropic", "messages.create", "client.messages")
     # Either the module runs the gate itself...
@@ -423,7 +427,7 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
     obeys_a_verdict = ("may_generate", "DecisionOutcome.ANSWER")
 
     # Transcription, not answering. See the docstring.
-    exempt = {APP_ROOT / "ai" / "recognition.py"}
+    exempt = {APP_ROOT / "ai" / "recognition.py", APP_ROOT / "domain" / "recognition.py"}
 
     for module in _source_modules("domain", "ai", "api", "worker"):
         if module in exempt:

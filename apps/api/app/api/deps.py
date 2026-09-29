@@ -6,20 +6,23 @@ business logic — that belongs in ``app.domain``.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
+import redis
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.config import RateLimitBackend, get_settings
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.domain import auth as auth_domain
 from app.domain.rate_limit import (
     InMemoryRateLimitStore,
     RateLimitStore,
+    RedisRateLimitStore,
     check_trial_rate_limit,
 )
 from app.domain.storage import FilesystemObjectStore, ObjectStore
@@ -41,25 +44,35 @@ def get_object_store() -> ObjectStore:
 ObjectStoreDep = Annotated[ObjectStore, Depends(get_object_store)]
 
 
+# Seconds. An unreachable Redis should cost a trial request a fraction of a
+# second before the limiter fails open, not hang it on the OS default.
+_REDIS_SOCKET_TIMEOUT_SECONDS = 0.5
+
+
+@lru_cache(maxsize=1)
 def get_rate_limit_store() -> RateLimitStore:
     """Return the store trial rate limiting counts against.
 
     Returns:
-        A process-local store.
+        One store per process, chosen by ``RATE_LIMIT_BACKEND``. Cached so
+        counts survive between requests — a new in-memory store per request
+        would count to one every time and enforce nothing — and so the Redis
+        connection pool is built once rather than per request.
 
-        **This is single-worker only.** Each worker keeps its own counts, so a
-        deployment with N workers has an effective limit N times the
-        configured one. ``RATE_LIMIT_BACKEND`` documents the intended Redis
-        adapter; until it exists this is honest about what it enforces rather
-        than pretending to a guarantee it cannot make. The per-account quota
-        (BE-002) is unaffected and remains the hard limit.
+        ``redis`` shares one window across every worker. ``memory`` is
+        per-worker: a deployment with N workers then has an effective limit N
+        times the configured one. The per-account quota (BE-002) is the hard
+        limit either way.
     """
-    return _rate_limit_store
-
-
-# One instance per process, so counts survive between requests. A new store per
-# request would count to one every time and enforce nothing.
-_rate_limit_store: RateLimitStore = InMemoryRateLimitStore()
+    settings = get_settings()
+    if settings.rate_limit_backend is RateLimitBackend.MEMORY:
+        return InMemoryRateLimitStore()
+    client = redis.Redis.from_url(
+        settings.redis_url,
+        socket_connect_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+        socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+    )
+    return RedisRateLimitStore(client)
 
 
 def enforce_trial_rate_limit(

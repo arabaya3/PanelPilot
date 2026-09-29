@@ -30,6 +30,18 @@ class Environment(StrEnum):
     PROD = "prod"
 
 
+class RateLimitBackend(StrEnum):
+    """Where the trial rate limiter keeps its request history.
+
+    ``redis`` is the default because it is the only one that is correct with
+    more than one worker. ``memory`` exists for a single process with no Redis
+    to hand; it enforces a per-worker limit, not a per-deployment one.
+    """
+
+    MEMORY = "memory"
+    REDIS = "redis"
+
+
 class Settings(BaseSettings):
     """Typed view over the process environment.
 
@@ -123,6 +135,7 @@ class Settings(BaseSettings):
 
     # --- Redis -------------------------------------------------------------
     redis_url: str = Field(..., description="Redis URL used for rate limiting and cached lookups.")
+    rate_limit_backend: RateLimitBackend = RateLimitBackend.REDIS
 
     # --- Ingestion ---------------------------------------------------------
     ingestion_user_agent: str = "PanelPilotBot/0.1"
