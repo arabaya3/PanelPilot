@@ -421,7 +421,21 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > Every component type PD-001/PD-002 can produce has a corresponding correct symbol; an unrecognized type renders a visible placeholder, never a silent gap or a guessed symbol.
 
-## [ ] PD-007 — Schematic data schema
+## [x] PD-007 — Schematic data schema _(built ahead of PD-004/PD-005 on Ayed's instruction; their values are explicit "not calculated")_
+
+> **Delivered.** `SchematicSpec` (`app/models/schemas/schematic.py`), built by
+> `app/domain/schematics.py` behind `POST /api/v1/schematics`. Every quantity a
+> calculation would supply is one of three explicit shapes — `calculated` with
+> its source, `not_calculated` with the blocking task, or `refused` — never an
+> optional field that can be missing. Conductors are not calculated (AI-005,
+> PD-005), trunking not calculated (PD-004), enclosure not calculated (the
+> PD-001 export is not in the deployment). Rail rows per group come from
+> PD-003's `rail_requirements` with PD-002 widths; a rail device with no sourced
+> width (e.g. a contactor) is named, and a PD-003 refusal is carried as a
+> refusal. An unspecified topology — no incomer, two, an unknown upstream, a
+> duplicate, a self-feed or a loop — is a 422 listing every problem.
+> Acceptance: a representative motor-control panel runs through end to end,
+> including its uncalculated and refused quantities.
 
 | Field                   | Value                                  |
 | ----------------------- | -------------------------------------- |
@@ -451,7 +465,21 @@ PD-005 still depends on **AI-005**, and so inherits what AI-005 leaves outstandi
 
 > The schema produces a complete, correctly structured representation of a representative full panel design, including how it represents any refused/out-of-range calc-tool result.
 
-## [ ] PD-008 — Single-line schematic renderer
+## [x] PD-008 — Single-line schematic renderer
+
+> **Delivered.** `apps/web/src/components/schematic/` — `layout.ts` (pure
+> pagination), `single-line.tsx` (SVG), `export.ts` — at `/schematic`. Fixed
+> scale: 8 columns by 6 levels per sheet, and a larger design continues on
+> numbered sheets with off-sheet markers at both ends of each cut, never
+> shrunk. Every conductor shows `n/c` when not calculated and every sheet's
+> notes give the reason and blocking task. Export: PNG per sheet (computed
+> styles inlined, so the image keeps its strokes) and PDF via print, one sheet
+> per page. Verified in Chromium: the example draws with 11 symbols and 10
+> `n/c` conductors; a 20-feeder panel splits across 3 sheets.
+>
+> **Limit:** "matches the calc-tool output exactly" holds trivially today,
+> because the only calculated figures are rail rows — conductors, trunking and
+> enclosure are not yet calculated by anything.
 
 | Field                   | Value                                           |
 | ----------------------- | ----------------------------------------------- |
