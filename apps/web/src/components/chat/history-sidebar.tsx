@@ -90,7 +90,9 @@ export function HistorySidebar({
     <nav
       aria-label={t('label')}
       data-testid="history-sidebar"
-      className="flex w-64 shrink-0 flex-col gap-2 border-e border-border bg-surface p-3"
+      // Above the conversation on a phone, capped so a long history cannot
+      // push the question box off the screen; beside it from `md` up.
+      className="flex max-h-40 w-full shrink-0 flex-col gap-2 overflow-y-auto border-b border-border bg-surface p-3 md:max-h-none md:w-64 md:border-b-0 md:border-e"
     >
       <h2 className="text-sm font-medium text-text-muted">{t('label')}</h2>
 

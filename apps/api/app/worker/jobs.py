@@ -15,7 +15,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.models.schemas.auth import CurrentUser, Role
 
 #: The principal unattended jobs act as. Fixed so a staged document always
@@ -176,9 +176,15 @@ def run_reindex_staging(args: list[str]) -> int:
         args: Positional arguments, optionally ``[source_id]`` to limit scope.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``3``: not built yet. Said and exited rather than raised, so a
+        scheduler sees a clear failure instead of a traceback.
     """
-    raise NotImplementedError
+    del args
+    return _not_built(
+        "reindex-staging",
+        "re-chunking and re-embedding staging is not implemented; re-crawl the "
+        "source instead (`crawl <source> <seed_url>`)",
+    )
 
 
 def run_expire_stale_sources(args: list[str]) -> int:
@@ -190,9 +196,32 @@ def run_expire_stale_sources(args: list[str]) -> int:
         args: Unused; accepted for a uniform handler signature.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``3``: not built yet, for the reason ``reindex-staging`` gives.
     """
-    raise NotImplementedError
+    del args
+    return _not_built(
+        "expire-stale-sources",
+        "detecting a superseded upstream document is not implemented",
+    )
+
+
+#: The exit code of a registered job that has no implementation yet. Distinct
+#: from 1 (the job ran and failed) and 2 (bad arguments).
+NOT_BUILT = 3
+
+
+def _not_built(name: str, reason: str) -> int:
+    """Report a registered job with no implementation, without a traceback.
+
+    Args:
+        name: The job.
+        reason: What is missing, and what to do instead.
+
+    Returns:
+        ``NOT_BUILT``.
+    """
+    print(f"{name}: not built yet -- {reason}", file=sys.stderr)
+    return NOT_BUILT
 
 
 def run_grant_role(args: list[str]) -> int:
@@ -256,7 +285,13 @@ def _change_role(args: list[str], *, grant: bool) -> int:
     # tenant it is in (ADR 0003).
     with closing(session), cross_tenant(session, reason="an operator manages any account's roles"):
         change = roles_domain.grant_role if grant else roles_domain.revoke_role
-        changed = change(session=session, email=email, role=role)
+        try:
+            changed = change(session=session, email=email, role=role)
+        except (NotFoundError, ValidationError) as exc:
+            # An operator's typo, not a crash: say which, exit non-zero, and
+            # leave the traceback out of it.
+            print(f"{verb}: {exc}", file=sys.stderr)
+            return 1
         session.commit()
 
     state = ("granted" if grant else "revoked") if changed else "unchanged"
@@ -323,12 +358,12 @@ REGISTRY: dict[str, JobSpec] = {
         ),
         JobSpec(
             "reindex-staging",
-            "Re-chunk and re-embed the staging corpus after a pipeline change.",
+            "(not built yet) Re-chunk and re-embed the staging corpus.",
             run_reindex_staging,
         ),
         JobSpec(
             "expire-stale-sources",
-            "Flag production documents whose upstream source was superseded.",
+            "(not built yet) Flag documents whose upstream source was superseded.",
             run_expire_stale_sources,
         ),
         JobSpec(
