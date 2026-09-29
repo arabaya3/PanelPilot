@@ -286,31 +286,59 @@ def record_label(
 
     Raises:
         QueueError: If the item does not exist, is not assigned to this
-            verifier, or escalates without a note.
+            verifier, has already been labelled, or escalates without a note.
 
     The routing rule comes from ``escalates`` rather than being restated here,
     so AI-012's rubric and this code cannot drift apart: an ``incorrect`` or
     ``uncertain`` label goes to a lead rather than closing, and the verifier
     who applied it does not get to resolve it.
-    """
-    row = session.get(VerificationItemRow, item_id)
-    if row is None:
-        raise QueueError(f"no verification item {item_id}")
 
-    # Checked rather than assumed: the item id comes from a URL, and a verifier
-    # labelling someone else's item would silently overwrite an assignment.
-    if row.assigned_to_id != verifier_id:
-        raise QueueError(f"item {item_id} is not assigned to {verifier_id}")
+    **Only a pending item can be labelled**, and that is enforced by the same
+    conditional ``UPDATE`` that ``claim_item`` uses. Checking only the assignee
+    let the verifier who escalated an item relabel it ``correct`` and close
+    the escalation themselves -- exactly the resolution the rubric withholds
+    from them -- and reading the row before writing it let two concurrent
+    requests both see ``pending`` and both write.
+    """
+    new_status = STATUS_ESCALATED if escalates(label) else STATUS_LABELED
 
     if escalates(label) and not note.strip():
         # Refused rather than defaulted. A lead receiving "incorrect" with no
         # note has to redo the verification from scratch to find out what was
         # wrong, which is the work the label was supposed to save.
-        raise QueueError(f"a {label.value} label requires a note")
+        #
+        # An item that is missing or someone else's is reported as that first,
+        # as it always was: "not yours" is the more useful answer to a request
+        # that is wrong in both ways.
+        raise _refusal(session=session, item_id=item_id, verifier_id=verifier_id) or QueueError(
+            f"a {label.value} label requires a note"
+        )
 
-    row.label = label.value
-    row.notes = note
-    row.status = STATUS_ESCALATED if escalates(label) else STATUS_LABELED
+    # Narrowed to `CursorResult` for its rowcount; see `claim_item`.
+    result: CursorResult[Any] = session.execute(  # type: ignore[assignment]
+        update(VerificationItemRow)
+        .where(
+            VerificationItemRow.id == item_id,
+            # Checked rather than assumed: the item id comes from a URL, and a
+            # verifier labelling someone else's item would silently overwrite
+            # an assignment.
+            VerificationItemRow.assigned_to_id == verifier_id,
+            VerificationItemRow.status == STATUS_PENDING,
+        )
+        .values(label=label.value, notes=note, status=new_status)
+    )
+    if result.rowcount != 1:
+        # The write matched nothing; now find out which condition failed, so
+        # the caller gets "not found", "not yours" or "already labelled"
+        # rather than one undifferentiated refusal. Read after the fact, so
+        # this diagnosis can never let a write through.
+        raise _refusal(session=session, item_id=item_id, verifier_id=verifier_id) or QueueError(
+            f"item {item_id} could not be labelled"
+        )
+
+    row = session.get(VerificationItemRow, item_id)
+    if row is None:  # pragma: no cover - the UPDATE above just matched it
+        raise QueueError(f"no verification item {item_id}")
 
     logger.info(
         "verification_queue.labeled",
@@ -319,6 +347,37 @@ def record_label(
         status=row.status,
     )
     return row
+
+
+def _refusal(*, session: Session, item_id: UUID, verifier_id: UUID) -> QueueError | None:
+    """Explain why a verifier may not label an item, if they may not.
+
+    Args:
+        session: Open database session.
+        item_id: The item.
+        verifier_id: Who wants to label it.
+
+    Returns:
+        The error to raise, or ``None`` if the item is theirs and pending.
+
+    The messages are part of the contract: the verification route maps
+    "no verification item" to 404 and "not assigned" to 403, and anything
+    else -- including "already labelled" -- to 422.
+    """
+    # `populate_existing` so a row already in this session is re-read rather
+    # than trusted: its in-memory status may predate another request's label.
+    row = session.get(VerificationItemRow, item_id, populate_existing=True)
+    if row is None:
+        return QueueError(f"no verification item {item_id}")
+    if row.assigned_to_id != verifier_id:
+        return QueueError(f"item {item_id} is not assigned to {verifier_id}")
+    if row.status != STATUS_PENDING:
+        # An escalation belongs to a lead now, and a closed item is closed;
+        # neither is the verifier's to relabel.
+        return QueueError(
+            f"item {item_id} is already {row.status}; only a pending item can be labelled"
+        )
+    return None
 
 
 def escalations(*, session: Session) -> list[VerificationItemRow]:
