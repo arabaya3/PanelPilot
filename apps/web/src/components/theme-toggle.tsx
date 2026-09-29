@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { MoonIcon, SunIcon } from '@/components/icons';
 import { useTheme } from '@/components/theme-provider';
 
 /**
@@ -23,9 +24,12 @@ export function ThemeToggle() {
       // The pressed state is what a screen reader announces; the visible label
       // says where the button leads.
       aria-pressed={theme === 'dark'}
-      className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-text hover:bg-surface-raised"
+      title={t('switchTo', { theme: t(next) })}
+      className="btn-icon"
     >
-      {t('switchTo', { theme: t(next) })}
+      {/* The icon shows where the button leads, like the label it replaces. */}
+      {next === 'dark' ? <MoonIcon /> : <SunIcon />}
+      <span className="sr-only">{t('switchTo', { theme: t(next) })}</span>
     </button>
   );
 }

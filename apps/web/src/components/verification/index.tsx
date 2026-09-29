@@ -101,11 +101,8 @@ function ReviewPane({
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <section
-        aria-labelledby={proposedId}
-        className="rounded-lg border border-border bg-surface p-4"
-      >
-        <h3 id={proposedId} className="mb-2 text-sm font-semibold text-text">
+      <section aria-labelledby={proposedId} className="card p-4 md:p-5">
+        <h3 id={proposedId} className="eyebrow mb-2">
           {labels.proposed}
         </h3>
         <p data-testid="chunk-id" className="mb-3 font-mono text-xs text-text-muted">
@@ -121,7 +118,7 @@ function ReviewPane({
           <blockquote
             data-testid="proposed-content"
             dir="auto"
-            className="mb-3 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-raised p-3 text-sm text-text"
+            className="mb-3 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-surface-raised p-3 text-sm leading-relaxed text-text"
           >
             {item.content}
           </blockquote>
@@ -139,11 +136,8 @@ function ReviewPane({
         />
       </section>
 
-      <section
-        aria-labelledby={sourceId}
-        className="rounded-lg border border-border bg-surface p-4"
-      >
-        <h3 id={sourceId} className="mb-2 text-sm font-semibold text-text">
+      <section aria-labelledby={sourceId} className="card p-4 md:p-5">
+        <h3 id={sourceId} className="eyebrow mb-2">
           {labels.source}
         </h3>
         {sourceUrl === null ? (
@@ -160,7 +154,7 @@ function ReviewPane({
               data-testid="source-frame"
               src={sourceUrl}
               title={labels.source}
-              className="h-96 w-full rounded-sm border border-border bg-surface-raised"
+              className="h-96 w-full rounded-md border border-border-subtle bg-surface-raised"
             />
             {/* Many manufacturer sites refuse to be framed, which leaves the
                 frame blank; the document must still be one click away. */}
@@ -169,7 +163,7 @@ function ReviewPane({
               target="_blank"
               rel="noopener noreferrer"
               data-testid="source-link"
-              className="mt-2 inline-block text-sm text-accent hover:text-accent-hover"
+              className="link mt-2 inline-block text-sm"
             >
               {labels.openSource}
             </a>
@@ -229,11 +223,11 @@ export function VerificationConsole({
 
   return (
     <section aria-labelledby={headingId} className="space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h2 id={headingId} className="text-lg font-semibold text-text">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={headingId} className="text-xl font-bold text-text">
           {labels.heading}
         </h2>
-        <p data-testid="remaining" className="text-sm text-text-muted">
+        <p data-testid="remaining" className="chip">
           {labels.itemCount.replace('{count}', String(remaining.length))}
         </p>
       </div>
@@ -245,7 +239,7 @@ export function VerificationConsole({
       )}
 
       {current === undefined ? (
-        <p data-testid="queue-empty" className="text-sm text-text-muted">
+        <p data-testid="queue-empty" className="card p-6 text-center text-sm text-text-muted">
           {labels.empty}
         </p>
       ) : (

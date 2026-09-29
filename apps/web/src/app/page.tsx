@@ -5,9 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chat } from '@/components/chat';
-import { LangSwitcher } from '@/components/lang-switcher';
+import { AppShell } from '@/components/app-shell';
 import { SignInForm } from '@/components/sign-in-form';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { UserIcon } from '@/components/icons';
 import {
   clearTrial,
   readTrial,
@@ -184,30 +184,39 @@ export default function HomePage() {
     void begin();
   }, [begin]);
 
+  const signInButton =
+    // Offered wherever the visitor is not already in an account.
+    !(phase.kind === 'ready' && phase.trial === null) && !signingIn ? (
+      <button
+        type="button"
+        onClick={() => {
+          setSigningIn(true);
+        }}
+        className="btn btn-sm btn-secondary"
+      >
+        <UserIcon width="16" height="16" />
+        {/* Icon-only on a phone, where the header is short of room; the
+            name stays for a screen reader either way. */}
+        <span className="max-sm:sr-only">{ts('open')}</span>
+      </button>
+    ) : null;
+
   return (
-    <main className="min-h-screen bg-bg p-6 text-text">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl">{t('name')}</h1>
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Offered wherever the visitor is not already in an account. */}
-          {!(phase.kind === 'ready' && phase.trial === null) && !signingIn && (
-            <button
-              type="button"
-              onClick={() => {
-                setSigningIn(true);
-              }}
-              className="rounded-md border border-border px-3 py-2 text-sm text-text"
-            >
-              {ts('open')}
-            </button>
-          )}
-          <LangSwitcher />
-          <ThemeToggle />
-        </div>
-      </div>
+    <AppShell actions={signInButton}>
+      {/* Pared down on a phone to the headline alone, so the question box is
+          on the first screen rather than under the pitch. */}
+      <section className="mx-auto mb-4 flex max-w-3xl flex-col items-center gap-3 text-center md:mb-6">
+        <span className="chip max-sm:hidden">{tl('eyebrow')}</span>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl md:text-3xl">
+          {tl('headline')}
+        </h1>
+        <p className="max-w-2xl text-base text-text-muted max-sm:hidden md:text-lg">
+          {tl('subhead')}
+        </p>
+      </section>
 
       {signingIn && (
-        <div className="mb-6">
+        <div className="mx-auto mb-6 w-full max-w-sm">
           <SignInForm
             onSignedIn={onSignedIn}
             onCancel={() => {
@@ -217,20 +226,24 @@ export default function HomePage() {
         </div>
       )}
 
-      <p className="mb-6 max-w-2xl text-text-muted">{t('tagline')}</p>
-
-      <div className="mb-6 max-w-3xl">
+      <div className="mx-auto w-full max-w-screen-lg">
         {phase.kind === 'starting' && (
-          <p data-testid="landing-starting" className="text-sm text-text-muted">
-            {tl('starting')}
-          </p>
+          <div className="card flex items-center justify-center gap-3 p-7">
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
+            />
+            <p data-testid="landing-starting" className="text-sm text-text-muted">
+              {tl('starting')}
+            </p>
+          </div>
         )}
 
         {phase.kind === 'unavailable' && (
           <p
             role="alert"
             data-testid="landing-unavailable"
-            className="rounded-md border border-severity-warning bg-severity-warning-surface p-3 text-sm text-severity-warning"
+            className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
           >
             {tl('unavailable')}
           </p>
@@ -240,14 +253,10 @@ export default function HomePage() {
           <div
             role="alert"
             data-testid="landing-rate-limited"
-            className="rounded-md border border-severity-warning bg-severity-warning-surface p-3 text-sm text-severity-warning"
+            className="flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
           >
             <p>{tl('rateLimited')}</p>
-            <button
-              type="button"
-              onClick={() => void begin()}
-              className="mt-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast"
-            >
+            <button type="button" onClick={() => void begin()} className="btn btn-sm btn-primary">
               {tl('retry')}
             </button>
           </div>
@@ -257,43 +266,39 @@ export default function HomePage() {
           <div
             role="alert"
             data-testid="landing-failed"
-            className="rounded-md border border-severity-critical bg-severity-critical-surface p-3 text-sm text-severity-critical"
+            className="flex flex-col items-start gap-3 rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
           >
             <p>{tl('failed')}</p>
-            <button
-              type="button"
-              onClick={() => void begin()}
-              className="mt-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast"
-            >
+            <button type="button" onClick={() => void begin()} className="btn btn-sm btn-primary">
               {tl('retry')}
             </button>
           </div>
         )}
 
         {phase.kind === 'ready' && (
-          <Chat
-            key={chatKey}
-            token={phase.token}
-            trial={phase.trial}
-            questionsRemaining={phase.questionsRemaining}
-            conversationId={phase.conversationId}
-            onSignedUp={onSignedUp}
-            onUnauthorized={() => void onUnauthorized()}
-          />
+          // A fixed height, so the transcript scrolls inside the card with the
+          // question box pinned under it, rather than the page growing a
+          // screen per answer.
+          <div className="card h-[calc(100dvh-13rem)] min-h-96 md:h-[calc(100dvh-19rem)] overflow-hidden rounded-xl shadow-lg">
+            <Chat
+              key={chatKey}
+              token={phase.token}
+              trial={phase.trial}
+              questionsRemaining={phase.questionsRemaining}
+              conversationId={phase.conversationId}
+              onSignedUp={onSignedUp}
+              onUnauthorized={() => void onUnauthorized()}
+            />
+          </div>
         )}
       </div>
 
-      <p className="flex flex-wrap gap-4">
-        <Link className="text-accent hover:text-accent-hover" href="/plc">
-          {tl('plcLink')}
+      <footer className="mt-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-7 text-xs text-text-muted">
+        <span>{t('tagline')}</span>
+        <Link className="link" href="/tokens">
+          Design tokens
         </Link>
-        <Link className="text-accent hover:text-accent-hover" href="/review">
-          {tl('reviewLink')}
-        </Link>
-        <Link className="text-accent hover:text-accent-hover" href="/tokens">
-          <span>Design tokens</span>
-        </Link>
-      </p>
-    </main>
+      </footer>
+    </AppShell>
   );
 }

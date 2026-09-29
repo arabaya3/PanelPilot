@@ -43,3 +43,67 @@
     font-family: var(--font-mono);
   }
 }
+
+/**
+ * The handful of shapes every screen repeats.
+ *
+ * Classes rather than a component per shape, because each one is a button, a
+ * link or an input underneath and wrapping them would hide the element a
+ * screen reader and a test both need to see. Built from the same tokens as
+ * everything else, so both themes follow.
+ */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    /* 40px: comfortably a fingertip, and the height of `.input` beside it. */
+    min-height: 2.5rem;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1 text-sm;
+    min-height: 2.25rem;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-accent-contrast shadow-sm hover:bg-accent-hover;
+  }
+
+  .btn-secondary {
+    @apply border border-border bg-surface text-text hover:bg-surface-raised;
+  }
+
+  .btn-ghost {
+    @apply text-text-muted hover:bg-surface-raised hover:text-text;
+  }
+
+  .btn-danger {
+    @apply border border-severity-critical bg-severity-critical-surface text-severity-critical;
+  }
+
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-md border border-border-subtle text-text-muted transition-colors hover:bg-surface-raised hover:text-text;
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-base text-text transition-colors placeholder:text-text-muted;
+    min-height: 2.5rem;
+  }
+
+  .card {
+    @apply rounded-lg border border-border-subtle bg-surface shadow-md;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full bg-accent-subtle px-3 py-1 text-xs font-medium text-accent-hover;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-wide text-text-muted;
+  }
+
+  .link {
+    @apply font-medium text-accent underline-offset-4 hover:text-accent-hover hover:underline;
+  }
+}

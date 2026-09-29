@@ -92,30 +92,30 @@ export function HistorySidebar({
       data-testid="history-sidebar"
       // Above the conversation on a phone, capped so a long history cannot
       // push the question box off the screen; beside it from `md` up.
-      className="flex max-h-40 w-full shrink-0 flex-col gap-2 overflow-y-auto border-b border-border bg-surface p-3 md:max-h-none md:w-64 md:border-b-0 md:border-e"
+      className="flex max-h-40 w-full shrink-0 flex-col gap-2 overflow-y-auto border-b border-border-subtle bg-surface-raised p-3 md:max-h-none md:w-64 md:border-b-0 md:border-e"
     >
-      <h2 className="text-sm font-medium text-text-muted">{t('label')}</h2>
+      <h2 className="eyebrow px-2 pt-1">{t('label')}</h2>
 
       {status === 'loading' && (
-        <p className="text-sm text-text-muted" data-testid="history-loading">
+        <p className="px-2 text-sm text-text-muted" data-testid="history-loading">
           {t('loading')}
         </p>
       )}
 
       {status === 'unavailable' && (
-        <p className="text-sm text-text-muted" data-testid="history-unavailable">
+        <p className="px-2 text-sm text-text-muted" data-testid="history-unavailable">
           {t('unavailable')}
         </p>
       )}
 
       {status === 'failed' && (
-        <p className="text-sm text-text-muted" data-testid="history-failed">
+        <p className="px-2 text-sm text-text-muted" data-testid="history-failed">
           {t('failed')}
         </p>
       )}
 
       {status === 'ready' && sessions.length === 0 && (
-        <p className="text-sm text-text-muted" data-testid="history-empty">
+        <p className="px-2 text-sm text-text-muted" data-testid="history-empty">
           {t('empty')}
         </p>
       )}
@@ -138,8 +138,8 @@ export function HistorySidebar({
                   data-active={active ? 'true' : 'false'}
                   className={
                     active
-                      ? 'w-full rounded-md border border-border bg-surface-raised p-2 text-start text-sm text-text shadow-sm'
-                      : 'w-full rounded-md border border-transparent p-2 text-start text-sm text-text-muted hover:bg-surface-raised'
+                      ? 'w-full rounded-md border border-border-subtle bg-surface px-3 py-2 text-start text-sm font-semibold text-text shadow-sm'
+                      : 'w-full rounded-md border border-transparent px-3 py-2 text-start text-sm font-medium text-text transition-colors hover:bg-surface'
                   }
                 >
                   {/* `line-clamp` rather than a truncated string: the full
@@ -151,13 +151,16 @@ export function HistorySidebar({
                   </span>
                   {session.equipmentModel !== null && (
                     <span
-                      className="mt-1 block text-xs text-text-muted"
+                      className="mt-1 block font-mono text-xs text-text-muted"
                       data-testid={`history-model-${session.id}`}
                     >
                       {session.equipmentModel}
                     </span>
                   )}
-                  <time className="mt-1 block text-xs text-text-muted" dateTime={session.updatedAt}>
+                  <time
+                    className="mt-1 block text-xs font-normal text-text-muted"
+                    dateTime={session.updatedAt}
+                  >
                     {formatDay(session.updatedAt, locale)}
                   </time>
                 </button>
@@ -175,7 +178,7 @@ export function HistorySidebar({
           }}
           disabled={loadingMore}
           data-testid="history-load-more"
-          className="rounded-md border border-border p-2 text-sm text-text-muted hover:bg-surface-raised disabled:opacity-50"
+          className="btn btn-sm btn-ghost"
         >
           {loadingMore ? t('loading') : t('loadMore')}
         </button>

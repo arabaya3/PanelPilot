@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { CameraIcon } from '@/components/icons';
 import { StateIcon } from '@/components/state-icon';
 import { TechnicalToken } from '@/components/technical-token';
 import {
@@ -163,7 +164,7 @@ export function ImageCapture({
         // no border, no colour and no shape — a failure styled more weakly
         // than the success beside it, and indistinguishable from the
         // off-topic rejection.
-        className="rounded-lg border border-s-8 border-severity-critical bg-surface p-3 text-sm text-text"
+        className="rounded-lg border border-s-8 border-severity-critical bg-surface p-4 text-sm text-text"
       >
         <p className="flex items-center gap-2 font-medium">
           <StateIcon shape="error" className="text-severity-critical" />
@@ -174,7 +175,7 @@ export function ImageCapture({
           onClick={() => {
             setStage({ kind: 'idle' });
           }}
-          className="mt-2 rounded-md border border-border bg-surface px-3 py-1 text-sm"
+          className="btn btn-sm btn-secondary mt-3"
         >
           {t('tryAnother')}
         </button>
@@ -196,7 +197,7 @@ export function ImageCapture({
         <img
           src={stage.prepared.previewUrl}
           alt={t('previewAlt')}
-          className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+          className="mb-3 max-h-40 max-w-full rounded-md border border-border-subtle object-contain"
         />
         <p role="status" data-testid="capture-uploading" data-slow={stage.slow ? 'true' : 'false'}>
           {stage.slow ? t('stillUploading') : t('uploading')}
@@ -211,7 +212,7 @@ export function ImageCapture({
         <img
           src={stage.prepared.previewUrl}
           alt={t('previewAlt')}
-          className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+          className="mb-3 max-h-40 max-w-full rounded-md border border-border-subtle object-contain"
         />
         <div className="flex gap-2">
           <button
@@ -219,7 +220,7 @@ export function ImageCapture({
             onClick={() => {
               void send(stage.prepared);
             }}
-            className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast"
+            className="btn btn-sm btn-primary"
           >
             {t('send')}
           </button>
@@ -228,7 +229,7 @@ export function ImageCapture({
             onClick={() => {
               setStage({ kind: 'idle' });
             }}
-            className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
+            className="btn btn-sm btn-secondary"
           >
             {t('discard')}
           </button>
@@ -249,7 +250,7 @@ export function ImageCapture({
           onClick={() => {
             setStage({ kind: 'idle' });
           }}
-          className="mt-2 rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
+          className="btn btn-sm btn-secondary mt-3"
         >
           {t('describeInstead')}
         </button>
@@ -296,11 +297,15 @@ export function ImageCapture({
       }}
       className={
         dragging
-          ? 'rounded-md border-2 border-dashed border-accent p-3 text-sm text-text'
-          : 'rounded-md border-2 border-dashed border-border p-3 text-sm text-text-muted'
+          ? 'flex flex-wrap items-center gap-2 rounded-md border-2 border-dashed border-accent bg-accent-subtle px-3 py-2 text-sm text-text'
+          : 'flex flex-wrap items-center gap-2 rounded-md border-2 border-dashed border-border-subtle px-3 py-2 text-sm text-text-muted transition-colors hover:border-border'
       }
     >
-      <label htmlFor={inputId} className="cursor-pointer underline">
+      <CameraIcon width="18" height="18" className="shrink-0 text-accent" />
+      <label
+        htmlFor={inputId}
+        className="cursor-pointer font-semibold text-accent underline-offset-4 hover:text-accent-hover hover:underline"
+      >
         {t('choose')}
       </label>
       <input
@@ -320,7 +325,7 @@ export function ImageCapture({
           event.target.value = '';
         }}
       />
-      <span className="ms-2">{t('orDrop')}</span>
+      <span>{t('orDrop')}</span>
     </div>
   );
 }
@@ -355,24 +360,20 @@ function Confirmation({
   if (result.verdict !== 'fault_display') {
     return (
       <div
-        className="rounded-lg border border-s-8 border-severity-info bg-surface p-3 text-sm"
+        className="rounded-lg border border-s-8 border-severity-info bg-surface p-4 text-sm"
         data-testid="capture-rejected"
         data-verdict={result.verdict}
       >
         <img
           src={previewUrl}
           alt={t('previewAlt')}
-          className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+          className="mb-3 max-h-40 max-w-full rounded-md border border-border-subtle object-contain"
         />
         <p className="flex items-center gap-2 text-text">
           <StateIcon shape="uncertain" className="text-severity-info" />
           {result.note ?? t(`verdict.${result.verdict}`)}
         </p>
-        <button
-          type="button"
-          onClick={onDiscard}
-          className="mt-2 rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
-        >
+        <button type="button" onClick={onDiscard} className="btn btn-sm btn-secondary mt-3">
           {t('tryAnother')}
         </button>
       </div>
@@ -399,7 +400,7 @@ function Confirmation({
       <img
         src={previewUrl}
         alt={t('previewAlt')}
-        className="mb-2 max-h-40 max-w-full rounded-md object-contain"
+        className="mb-3 max-h-40 max-w-full rounded-md border border-border-subtle object-contain"
       />
       <p className="text-text">{confident ? t('readAs') : t('pleaseConfirm')}</p>
       <p className="mt-1">
@@ -417,15 +418,11 @@ function Confirmation({
           onClick={() => {
             onSend(message);
           }}
-          className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast disabled:opacity-50"
+          className="btn btn-sm btn-primary"
         >
           {confident ? t('confirmSend') : t('confirmAnyway')}
         </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
-        >
+        <button type="button" onClick={onDiscard} className="btn btn-sm btn-secondary">
           {t('tryAnother')}
         </button>
       </div>

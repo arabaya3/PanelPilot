@@ -78,14 +78,14 @@ export function MessageList({
       aria-label={t('transcript')}
       data-testid="transcript"
       data-direction={direction}
-      className="flex-1 overflow-y-auto p-4"
+      className="flex-1 overflow-y-auto p-4 md:p-5"
     >
       {/* The empty state lives *inside* the live region rather than replacing
           it. A region that is created at the same moment as its first content
           is not reliably announced — the assistive technology has nothing to
           observe until the mutation has already happened. */}
       {messages.length === 0 ? (
-        <p className="flex h-full items-center justify-center p-8 text-center text-text-muted">
+        <p className="flex h-full items-center justify-center p-6 text-center text-base text-text-muted">
           {t('empty')}
         </p>
       ) : null}
@@ -129,7 +129,7 @@ function UserTurn({ text }: { text: string }) {
         // one unbroken string is one word to CSS — the 80% cap bounds the
         // bubble, not the text inside it, so without this the content runs
         // past the viewport on a phone.
-        className="ms-auto max-w-[80%] break-words rounded-lg bg-accent px-3 py-2 text-accent-contrast"
+        className="ms-auto max-w-[80%] break-words rounded-lg rounded-ee-sm bg-accent px-4 py-3 text-accent-contrast shadow-sm"
         data-testid="user-turn"
       >
         <span className="sr-only">{t('youAsked')}</span>
@@ -157,7 +157,7 @@ function AssistantTurn({
   if (message.status === 'streaming') {
     return (
       <div
-        className="rounded-lg border border-border bg-surface p-4 text-text-muted shadow-sm"
+        className="rounded-lg rounded-es-sm border border-border-subtle bg-surface-raised p-4 text-text-muted"
         data-testid="assistant-progress"
         data-stage={message.stage}
       >
@@ -200,7 +200,7 @@ function AssistantTurn({
           onClick={() => {
             onRetry(message.id);
           }}
-          className="mt-3 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text"
+          className="btn btn-sm btn-secondary mt-3"
         >
           {t('retry')}
         </button>

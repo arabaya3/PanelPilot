@@ -24,6 +24,10 @@
    * boundary, so 3:1 applies — the first version scored 1.48:1, which is a
    * suggestion of an edge rather than an edge. */
   --color-border: #64748b;
+  /* Decorative only: card outlines and dividers that sit beside a real
+   * boundary (a shadow, a fill change). Never the only edge of a control —
+   * that is --color-border, which clears 3:1. */
+  --color-border-subtle: #e2e8f0;
   --color-text: #0f172a;
   --color-text-muted: #475569;
 
@@ -48,6 +52,8 @@
   --color-accent: #0f766e;
   --color-accent-hover: #115e59;
   --color-accent-contrast: #ffffff;
+  /* A tint for selected navigation and chips. accent-hover on it is 6.8:1. */
+  --color-accent-subtle: #e6f5f3;
 
   /* --- Focus -------------------------------------------------------------
    * Two tokens, not one, because no single colour works.
@@ -86,6 +92,7 @@
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.5rem;
   --font-size-2xl: 2rem;
+  --font-size-3xl: 2.5rem;
 
   /* --- Families ----------------------------------------------------------
    * The mono stack is not decorative. Fault codes, parameter numbers and
@@ -119,12 +126,14 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* --- Radii and elevation ----------------------------------------------- */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
 
   --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.1);
+  --shadow-md: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 4px 12px -2px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 12px 32px -8px rgb(15 23 42 / 0.12);
 }
 
 /**
@@ -140,31 +149,36 @@
  * as a smudge is worse than no colour at all.
  */
 :root[data-theme='dark'] {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-raised: #334155;
-  --color-border: #94a3b8;
+  /* A blue-black rather than slate: the surfaces step up in lightness so a
+   * card reads as raised without needing a visible outline. */
+  --color-bg: #0b1220;
+  --color-surface: #111a2e;
+  --color-surface-raised: #1c2740;
+  --color-border: #8b9ab3;
+  --color-border-subtle: #243251;
   --color-text: #f1f5f9;
-  /* 9.9:1 on surface and 7.0:1 on surface-raised. The first version cleared
-   * AA on surface and scored 4.04:1 on raised — the contrast claim above was
-   * checked against one surface and not the other. */
-  --color-text-muted: #cbd5e1;
+  /* Measured against surface-raised as well as surface. The first version
+   * cleared AA on surface and scored 4.04:1 on raised — the contrast claim
+   * was checked against one surface and not the other. */
+  --color-text-muted: #b8c4d6;
 
   --color-severity-critical: #fca5a5;
   --color-severity-warning: #fcd34d;
   --color-severity-info: #93c5fd;
 
-  --color-severity-critical-surface: #450a0a;
-  --color-severity-warning-surface: #451a03;
-  --color-severity-info-surface: #172554;
+  --color-severity-critical-surface: #3b0d0d;
+  --color-severity-warning-surface: #3a1a05;
+  --color-severity-info-surface: #13204a;
 
   --color-accent: #2dd4bf;
   --color-accent-hover: #5eead4;
   --color-accent-contrast: #042f2e;
+  --color-accent-subtle: #0b2e2c;
 
   --color-focus: #ffffff;
-  --color-focus-offset: #0f172a;
+  --color-focus-offset: #0b1220;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
 }

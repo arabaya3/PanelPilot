@@ -3,6 +3,8 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { SendIcon, StopIcon } from '@/components/icons';
+
 /**
  * The question input.
  *
@@ -33,7 +35,13 @@ export function Composer({
   }
 
   return (
-    <form onSubmit={submit} className="flex gap-2 border-t border-border p-4">
+    <form
+      onSubmit={submit}
+      // The focus ring is drawn around the whole field-and-button pill rather
+      // than the bare input inside it, where it crowded the button. Same
+      // colour and weight as every other ring.
+      className="flex items-center gap-2 rounded-lg border border-border bg-surface p-1 ps-3 shadow-sm transition-colors has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
+    >
       <label className="sr-only" htmlFor="chat-input">
         {t('inputLabel')}
       </label>
@@ -46,23 +54,19 @@ export function Composer({
         placeholder={t('placeholder')}
         // The field stays enabled while a turn runs so the next question can
         // be typed; only submission is gated.
-        className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-text placeholder:text-text-muted"
+        // The border is the form's, so the field and its button read as one
+        // control; the focus ring stays on the field itself.
+        className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-2 text-base text-text placeholder:text-text-muted focus-visible:shadow-none focus-visible:outline-none"
       />
       {busy ? (
-        <button
-          type="button"
-          onClick={onStop}
-          className="rounded-md border border-border bg-surface px-4 py-2 text-text"
-        >
+        <button type="button" onClick={onStop} className="btn btn-secondary">
+          <StopIcon width="16" height="16" />
           {t('stop')}
         </button>
       ) : (
-        <button
-          type="submit"
-          disabled={text.trim() === ''}
-          className="rounded-md bg-accent px-4 py-2 text-accent-contrast disabled:opacity-50"
-        >
-          {t('send')}
+        <button type="submit" disabled={text.trim() === ''} className="btn btn-primary">
+          <SendIcon width="16" height="16" />
+          <span className="max-sm:sr-only">{t('send')}</span>
         </button>
       )}
     </form>

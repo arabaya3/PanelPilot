@@ -104,7 +104,7 @@ function Citations({
   if (citations.length === 0) return null;
 
   return (
-    <div className="mt-3 border-t border-border pt-3">
+    <div className="mt-4 border-t border-border-subtle pt-3">
       {/* Mono, uppercase and tracked: a section label over citation data, not
           prose. Matches the mono stack's existing rationale in tokens.css. */}
       <Heading className="mb-1 font-mono text-xs font-semibold uppercase tracking-wider text-text-muted">
@@ -223,11 +223,11 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
       data-variant="uncertain"
       data-reason={variant.reason}
       aria-labelledby={headingId}
-      className={`rounded-lg border shadow-sm ${classes.border} ${classes.surface} p-4`}
+      className={`rounded-lg border shadow-sm ${classes.border} ${classes.surface} p-4 md:p-5`}
     >
       <div className="mb-2 flex items-center gap-2">
         <span
-          className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase ${classes.badge}`}
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold uppercase ${classes.badge}`}
         >
           <StateIcon shape="uncertain" />
           {t('uncertainBadge')}
@@ -255,10 +255,10 @@ function RefusalCard({ message }: { message: string }) {
       data-testid="diagnostic-card"
       data-variant="refusal"
       aria-labelledby={headingId}
-      className={`rounded-lg border border-s-8 shadow-sm ${classes.border} bg-surface p-4`}
+      className={`rounded-lg border border-s-8 shadow-sm ${classes.border} bg-surface p-4 md:p-5`}
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex items-center gap-1 rounded-sm border border-border px-2 py-1 text-xs font-semibold uppercase text-text-muted">
+        <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-semibold uppercase text-text-muted">
           <StateIcon shape="error" />
           {t('refusalBadge')}
         </span>
@@ -297,11 +297,11 @@ function DiagnosisCard({
       data-variant="diagnosis"
       data-severity={diagnosis.severity}
       aria-labelledby={headingId}
-      className={`rounded-lg border shadow-sm ${classes.border} bg-surface p-4`}
+      className={`rounded-lg border shadow-sm ${classes.border} bg-surface p-4 md:p-5`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span
-          className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase ${classes.badge}`}
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold uppercase ${classes.badge}`}
         >
           {/* Shape as well as colour. Simulated through the common colour
               deficiencies, critical and warning sit at ΔE 6 under

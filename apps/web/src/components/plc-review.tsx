@@ -1,13 +1,12 @@
 'use client';
 
 import type { components } from '@panelpilot/shared-types';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
-import { LangSwitcher } from '@/components/lang-switcher';
+import { AppShell } from '@/components/app-shell';
+import { CheckCircleIcon, CodeIcon } from '@/components/icons';
 import { PlcView } from '@/components/plc-view';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { reviewPlc } from '@/lib/plc';
 
 type PlcValidationResult = components['schemas']['PlcValidationResult'];
@@ -31,7 +30,6 @@ type Review =
  */
 export function PlcReview({ reviewImpl = reviewPlc }: { reviewImpl?: typeof reviewPlc }) {
   const t = useTranslations('plc');
-  const tApp = useTranslations('app');
   const [source, setSource] = useState('');
   const [review, setReview] = useState<Review>({ kind: 'idle' });
   const fieldId = useId();
@@ -48,31 +46,23 @@ export function PlcReview({ reviewImpl = reviewPlc }: { reviewImpl?: typeof revi
   }
 
   return (
-    <main className="min-h-screen bg-bg p-6 text-text">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl">
-          <Link href="/" className="hover:text-accent-hover">
-            {tApp('name')}
-          </Link>
-        </h1>
-        <div className="flex flex-wrap items-center gap-4">
-          <LangSwitcher />
-          <ThemeToggle />
-        </div>
+    <AppShell>
+      <div className="mb-6 flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
+        <p className="max-w-3xl text-text-muted">{t('intro')}</p>
       </div>
 
-      <div className="max-w-3xl">
-        <h2 className="mb-2 text-xl">{t('heading')}</h2>
-        <p className="mb-4 text-text-muted">{t('intro')}</p>
-
+      {/* Side by side from `lg`, so a finding and the line it names are both
+          on screen; stacked below that, the code first. */}
+      <div className="grid items-start gap-5 lg:grid-cols-2">
         <form
           onSubmit={(event) => {
             event.preventDefault();
             void check();
           }}
-          className="mb-6 flex flex-col gap-2"
+          className="card flex flex-col gap-3 p-4 md:p-5"
         >
-          <label htmlFor={fieldId} className="text-sm font-medium">
+          <label htmlFor={fieldId} className="text-sm font-semibold">
             {t('label')}
           </label>
           <textarea
@@ -81,37 +71,61 @@ export function PlcReview({ reviewImpl = reviewPlc }: { reviewImpl?: typeof revi
             onChange={(event) => {
               setSource(event.target.value);
             }}
-            rows={14}
+            rows={16}
             spellCheck={false}
             dir="ltr"
             placeholder={t('placeholder')}
-            className="w-full rounded-md border border-border bg-surface p-3 font-mono text-sm text-text placeholder:text-text-muted"
+            className="w-full rounded-md border border-border bg-surface-raised p-3 font-mono text-sm leading-relaxed text-text placeholder:text-text-muted"
           />
           <div>
             <button
               type="submit"
               disabled={source.trim() === '' || review.kind === 'checking'}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast disabled:opacity-50"
+              className="btn btn-primary"
             >
+              <CheckCircleIcon width="16" height="16" />
               {review.kind === 'checking' ? t('checking') : t('check')}
             </button>
           </div>
         </form>
 
-        {review.kind === 'reviewed' && (
-          <PlcView language="structured-text" source={review.source} validation={review.result} />
-        )}
-        {review.kind === 'rejected' && (
-          <p role="alert" data-testid="plc-rejected" className="text-sm text-severity-warning">
-            {review.detail ?? t('rejected')}
-          </p>
-        )}
-        {review.kind === 'failed' && (
-          <p role="alert" data-testid="plc-failed" className="text-sm text-severity-critical">
-            {t('failed')}
-          </p>
-        )}
+        <div className="flex min-w-0 flex-col gap-3">
+          {review.kind === 'reviewed' && (
+            <PlcView language="structured-text" source={review.source} validation={review.result} />
+          )}
+          {review.kind === 'rejected' && (
+            <p
+              role="alert"
+              data-testid="plc-rejected"
+              className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+            >
+              {review.detail ?? t('rejected')}
+            </p>
+          )}
+          {review.kind === 'failed' && (
+            <p
+              role="alert"
+              data-testid="plc-failed"
+              className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
+            >
+              {t('failed')}
+            </p>
+          )}
+          {(review.kind === 'idle' || review.kind === 'checking') && (
+            <div className="flex min-h-96 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border-subtle p-6 text-center text-sm text-text-muted">
+              {review.kind === 'checking' ? (
+                <span
+                  aria-hidden="true"
+                  className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
+                />
+              ) : (
+                <CodeIcon width="28" height="28" className="text-accent" />
+              )}
+              <p className="max-w-sm">{t('emptyResult')}</p>
+            </div>
+          )}
+        </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -56,12 +56,12 @@ export function SignInForm({
         event.preventDefault();
         void submit();
       }}
-      className="flex max-w-sm flex-col gap-3 rounded-lg border border-border bg-surface p-4"
+      className="card flex w-full max-w-sm flex-col gap-3 p-5"
     >
-      <h2 id={headingId} className="text-lg font-semibold text-text">
+      <h2 id={headingId} className="mb-1 text-xl font-bold text-text">
         {t('heading')}
       </h2>
-      <label htmlFor={emailId} className="text-sm text-text">
+      <label htmlFor={emailId} className="text-sm font-medium text-text">
         {t('email')}
       </label>
       <input
@@ -74,9 +74,9 @@ export function SignInForm({
         onChange={(event) => {
           setEmail(event.target.value);
         }}
-        className="rounded-md border border-border bg-surface-raised px-3 py-2 text-text"
+        className="input"
       />
-      <label htmlFor={passwordId} className="text-sm text-text">
+      <label htmlFor={passwordId} className="text-sm font-medium text-text">
         {t('password')}
       </label>
       <input
@@ -88,27 +88,23 @@ export function SignInForm({
         onChange={(event) => {
           setPassword(event.target.value);
         }}
-        className="rounded-md border border-border bg-surface-raised px-3 py-2 text-text"
+        className="input"
       />
       {error !== null && (
         <p role="alert" data-testid="sign-in-error" className="text-sm text-severity-critical">
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="mt-1 flex flex-wrap gap-2">
         <button
           type="submit"
           disabled={busy || email.trim() === '' || password === ''}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast disabled:opacity-50"
+          className="btn btn-primary flex-1"
         >
           {busy ? t('submitting') : t('submit')}
         </button>
         {onCancel !== undefined && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-border px-4 py-2 text-sm text-text"
-          >
+          <button type="button" onClick={onCancel} className="btn btn-ghost">
             {t('cancel')}
           </button>
         )}
