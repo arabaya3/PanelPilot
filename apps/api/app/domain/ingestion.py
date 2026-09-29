@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.ai.retrieval.client import stage_chunk
 from app.ai.retrieval.embedding import embed_documents
 from app.ai.retrieval.mappings import INDEXED_FIELDS
-from app.core.errors import AuthorizationError, ValidationError
+from app.core.errors import AuthorizationError, NotImplementedYetError, ValidationError
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
 from app.ingestion.crawler import crawl_source
 from app.ingestion.known_documents import urls_for
@@ -422,5 +422,15 @@ def list_verification_queue(
 
     Raises:
         AuthorizationError: If the caller lacks the reviewer role.
+        NotImplementedYetError: Always, for now. The queue itself lives in
+            ``app.domain.verification_queue`` and is served by the
+            verification routes; this listing is not built. A 501 says so,
+            where a bare NotImplementedError answered 500.
     """
-    raise NotImplementedError
+    del (
+        session,
+        user,
+        limit,
+        cursor,
+    )  # Unused until the listing exists; the signature is the contract.
+    raise NotImplementedYetError("the verification queue listing is not implemented yet")

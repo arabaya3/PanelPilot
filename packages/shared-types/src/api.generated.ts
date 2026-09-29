@@ -664,6 +664,12 @@ export interface components {
      *     At least one of ``seed_urls`` or ``document_urls`` must be present; a
      *     request carrying neither has nothing to fetch, and the domain refuses it
      *     rather than recording an empty run as a success.
+     *
+     *     Both lists are capped (``MAX_SEED_URLS``, ``MAX_DOCUMENT_URLS``). Each URL
+     *     is a request the crawler makes, so an uncapped list is an uncapped crawl
+     *     one POST away; the crawler also caps total fetches per run, but refusing
+     *     an oversized request outright tells the caller rather than silently
+     *     crawling a prefix of it.
      */
     CrawlJobRequest: {
       /** Source Id */

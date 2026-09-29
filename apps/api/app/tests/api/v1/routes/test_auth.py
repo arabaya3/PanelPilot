@@ -20,7 +20,12 @@ from sqlalchemy import create_engine, text
 
 from app.api import deps
 from app.core.config import Environment, Settings
-from app.domain.rate_limit import SIGNUP_POLICY, TRIAL_START_POLICY, InMemoryRateLimitStore
+from app.domain.rate_limit import (
+    SIGNUP_POLICY,
+    TRIAL_RESUME_POLICY,
+    InMemoryRateLimitStore,
+    check_trial_start_rate_limit,
+)
 from app.main import create_app
 
 _SLUG_PREFIX = "routetest-"
@@ -277,8 +282,12 @@ class _NoRowsSession:
         """Nothing to commit."""
 
 
-def test_resume_shares_the_trial_start_budget() -> None:
-    """To an abuser, resuming a trial and starting one are the same request.
+def test_resume_has_its_own_budget() -> None:
+    """Resuming mints nothing, and the web app resumes on every page load.
+
+    Sharing the ten-an-hour start budget let a few engineers on one site
+    address, reloading, lock each other out of trials they already held. It is
+    still bounded, on its own counter.
 
     Needs no database: the limit is decided before the domain is reached, and
     an unknown session is refused with a 401 without writing anything.
@@ -299,7 +308,9 @@ def test_resume_shares_the_trial_start_budget() -> None:
     app.dependency_overrides[get_session] = _NoRowsSession
     body = {"session_id": str(uuid.uuid4()), "claim_secret": "anything"}
     with TestClient(app) as test_client:
-        for _ in range(TRIAL_START_POLICY.limit):
+        for _ in range(TRIAL_RESUME_POLICY.limit):
             assert test_client.post("/api/v1/auth/trial/resume", json=body).status_code == 401
         refused = test_client.post("/api/v1/auth/trial/resume", json=body)
         assert refused.status_code == 429
+    # The start budget is untouched by all that resuming.
+    assert check_trial_start_rate_limit(store=store, client_ip="testclient") == 1

@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import httpx
@@ -724,3 +724,13 @@ def test_the_chunk_text_reaches_the_index_as_content(
     for body in recorder.staged.values():
         assert "undervoltage" in str(body["content"])
         assert "text" not in body
+
+
+def test_the_unbuilt_queue_listing_answers_not_implemented() -> None:
+    """A stub must say 501, not fail as a 500 that reads like an outage."""
+    from app.core.errors import NotImplementedYetError
+
+    with pytest.raises(NotImplementedYetError):
+        ingestion_domain.list_verification_queue(
+            session=cast(Session, None), user=_user(), limit=10, cursor=None
+        )

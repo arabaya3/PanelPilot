@@ -26,6 +26,7 @@ from app.domain.rate_limit import (
     check_login_rate_limit,
     check_signup_rate_limit,
     check_trial_rate_limit,
+    check_trial_resume_rate_limit,
     check_trial_start_rate_limit,
 )
 from app.domain.storage import FilesystemObjectStore, ObjectStore
@@ -136,7 +137,7 @@ def enforce_trial_start_rate_limit(
     request: Request,
     store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
 ) -> None:
-    """Throttle starting or resuming a trial, per source address.
+    """Throttle starting a trial, per source address.
 
     Separate from the trial-path limit: each start mints a tenant with a
     fresh free allowance, which is the abuse this stops, and its budget is
@@ -150,6 +151,22 @@ def enforce_trial_start_rate_limit(
         RateLimitExceededError: If this source has started too many trials.
     """
     check_trial_start_rate_limit(store=store, client_ip=_client_ip(request))
+
+
+def enforce_trial_resume_rate_limit(
+    request: Request,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Throttle resuming a trial, per source address, on its own budget.
+
+    Args:
+        request: The incoming request, for its source address.
+        store: Where request history lives.
+
+    Raises:
+        RateLimitExceededError: If this source has resumed too often.
+    """
+    check_trial_resume_rate_limit(store=store, client_ip=_client_ip(request))
 
 
 def enforce_signup_rate_limit(

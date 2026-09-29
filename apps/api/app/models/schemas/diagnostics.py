@@ -28,7 +28,7 @@ class EquipmentContext(BaseModel):
 
     manufacturer: _Name | None = None
     model: _Name | None = None
-    fault_codes: list[_FaultCode] = Field(default_factory=list, max_length=20)
+    fault_codes: list[_FaultCode] = Field(default=[], max_length=20)
 
 
 class DiagnosticRequest(BaseModel):

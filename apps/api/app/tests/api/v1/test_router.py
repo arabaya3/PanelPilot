@@ -61,7 +61,7 @@ _RESUME = {"session_id": str(uuid.uuid4()), "claim_secret": "s"}
     ("method", "path", "body", "expected"),
     [
         ("POST", "/api/v1/auth/trial", None, ["auth-trial"]),
-        ("POST", "/api/v1/auth/trial/resume", _RESUME, ["auth-trial"]),
+        ("POST", "/api/v1/auth/trial/resume", _RESUME, ["auth-trial-resume"]),
         ("POST", "/api/v1/auth/login", _LOGIN, ["auth-login-ip", "auth-login-account"]),
         ("POST", "/api/v1/auth/signup", _SIGNUP, ["auth-signup"]),
         # Refresh needs a live single-use token already; quota is a read.

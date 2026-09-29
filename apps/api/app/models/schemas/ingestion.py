@@ -52,8 +52,8 @@ class CrawlJobRequest(BaseModel):
     """
 
     source_id: str
-    seed_urls: list[str] = Field(default_factory=list, max_length=MAX_SEED_URLS)
-    document_urls: list[str] = Field(default_factory=list, max_length=MAX_DOCUMENT_URLS)
+    seed_urls: list[str] = Field(default=[], max_length=MAX_SEED_URLS)
+    document_urls: list[str] = Field(default=[], max_length=MAX_DOCUMENT_URLS)
     max_depth: int = 2
 
 

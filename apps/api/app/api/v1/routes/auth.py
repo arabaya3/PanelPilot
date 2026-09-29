@@ -14,6 +14,7 @@ from app.api.deps import (
     SessionDep,
     enforce_login_rate_limit,
     enforce_signup_rate_limit,
+    enforce_trial_resume_rate_limit,
     enforce_trial_start_rate_limit,
 )
 from app.domain import auth as auth_domain
@@ -74,7 +75,7 @@ def start_trial(session: SessionDep) -> TrialStart:
 @router.post(
     "/trial/resume",
     response_model=TrialStart,
-    dependencies=[Depends(enforce_trial_start_rate_limit)],
+    dependencies=[Depends(enforce_trial_resume_rate_limit)],
 )
 def resume_trial(payload: TrialResumeRequest, session: SessionDep) -> TrialStart:
     """Mint a fresh access token for a trial this browser already started.

@@ -88,10 +88,17 @@ class RateLimitPolicy:
 # this limiter has always used, so a deploy does not reset live windows.
 TRIAL_POLICY = RateLimitPolicy("trial", TRIAL_REQUESTS_PER_WINDOW, TRIAL_WINDOW_SECONDS)
 
-# Starting or resuming a trial. Each start mints a tenant with its own free
-# allowance, so an unthrottled start is an unthrottled free quota. Ten an hour
-# covers several visitors from one site; a script is stopped at the eleventh.
+# Starting a trial. Each start mints a tenant with its own free allowance, so
+# an unthrottled start is an unthrottled free quota. Ten an hour covers several
+# visitors from one site; a script is stopped at the eleventh.
 TRIAL_START_POLICY = RateLimitPolicy("auth-trial", 10, 3600)
+
+# Resuming a trial, separately and far more generously. The web app resumes on
+# every page load, so sharing the start budget meant a handful of engineers
+# behind one site address, reloading, locked each other out of trials they
+# already held. Resuming mints nothing, and the claim secret is 256 bits, so
+# this bounds load rather than guessing.
+TRIAL_RESUME_POLICY = RateLimitPolicy("auth-trial-resume", 120, 3600)
 
 # Login, per source address. More generous than the per-account limit below:
 # a whole shift can log in from one NAT'd address at the start of a day, and
@@ -465,7 +472,7 @@ def check_trial_rate_limit(
 def check_trial_start_rate_limit(
     *, store: RateLimitStore, client_ip: str, now: float | None = None
 ) -> int:
-    """Throttle starting or resuming a trial, per source address.
+    """Throttle starting a trial, per source address.
 
     Args:
         store: Where request history lives.
@@ -483,6 +490,31 @@ def check_trial_start_rate_limit(
         policy=TRIAL_START_POLICY,
         subject=_ip_subject(client_ip),
         message="too many trials started from this network",
+        now=now,
+    )
+
+
+def check_trial_resume_rate_limit(
+    *, store: RateLimitStore, client_ip: str, now: float | None = None
+) -> int:
+    """Throttle resuming an existing trial, per source address.
+
+    Args:
+        store: Where request history lives.
+        client_ip: The source address.
+        now: Current time; defaults to now.
+
+    Returns:
+        Requests from this source in the window, including this one.
+
+    Raises:
+        RateLimitExceededError: If this source has resumed too often.
+    """
+    return check_rate_limit(
+        store=store,
+        policy=TRIAL_RESUME_POLICY,
+        subject=_ip_subject(client_ip),
+        message="too many trial resumptions from this network",
         now=now,
     )
 
