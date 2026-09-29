@@ -247,14 +247,17 @@ def crawler_for(source_id: str) -> SourceCrawler | None:
     return CRAWLERS.get(source_id)
 
 
-def http_client(*, user_agent: str) -> httpx.Client:
+def http_client(*, user_agent: str, resolve: Callable[[str], list[str]]) -> httpx.Client:
     """Build the HTTP client the crawl loop uses.
 
     Args:
         user_agent: Identifies us to the source.
+        resolve: Resolves hostnames for the client's connections; see
+            ``app.ingestion.url_guard.pinned_transport``.
 
     Returns:
-        A client that identifies itself and does *not* follow redirects.
+        A client that identifies itself, does *not* follow redirects, and
+        connects only to public addresses it resolved itself.
 
     Redirects are followed by the crawl loop one hop at a time, because each
     hop is a URL the source chose rather than one we vetted, and it has to pass
@@ -262,9 +265,13 @@ def http_client(*, user_agent: str) -> httpx.Client:
     httpx, a manufacturer page answering 302 to ``169.254.169.254`` was
     fetched and staged under the original URL.
     """
+    # Imported here: url_guard reads this module's host check at import time.
+    from app.ingestion.url_guard import pinned_transport
+
     return httpx.Client(
         headers={"User-Agent": user_agent},
         follow_redirects=False,
+        transport=pinned_transport(resolve),
         timeout=30.0,
     )
 

@@ -331,8 +331,9 @@ class _Fetcher:
                     )
                     return None, "redirect-rejected"
             try:
-                # Before every hop, not once: the name is resolved again for
-                # each connection, and a redirect can name a new host.
+                # Before every hop, not once: a redirect can name a new host.
+                # The pinned transport enforces this on the connection itself;
+                # checking here first gives the refusal its own outcome.
                 url_guard.require_public_host(target, resolve=self.resolve)
             except url_guard.UnsafeUrlError as exc:
                 logger.error(
@@ -427,8 +428,15 @@ def crawl_source(
         # is precisely what the allow-list exists to prevent.
         raise ValidationError(f"source {source.id!r} is not on the allow-list")
 
+    # Looked up at call time rather than bound as a default, so a test
+    # replacing `url_guard.system_resolver` reaches every caller.
+    resolver = resolve if resolve is not None else url_guard.system_resolver
     owns_client = client is None
-    active = client if client is not None else http_client(user_agent=robots_module.USER_AGENT)
+    active = (
+        client
+        if client is not None
+        else http_client(user_agent=robots_module.USER_AGENT, resolve=resolver)
+    )
     try:
         return _run(
             crawler=crawler,
@@ -438,9 +446,7 @@ def crawl_source(
             known=set(known_hashes),
             sleep=sleep,
             payloads=payloads,
-            # Looked up at call time rather than bound as a default, so a test
-            # replacing `url_guard.system_resolver` reaches every caller.
-            resolve=resolve if resolve is not None else url_guard.system_resolver,
+            resolve=resolver,
             max_fetches=max_fetches,
         )
     finally:
