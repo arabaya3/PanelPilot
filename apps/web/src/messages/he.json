@@ -160,5 +160,32 @@
     "failed": "לא ניתן היה לטעון את ההיסטורייה.",
     "unavailable": "ההיסטורייה אינה זמינה.",
     "loadMore": "טען עוד"
+  },
+  "schematic": {
+    "heading": "תרשים חד-קווי",
+    "intro": "הדביקו את טבלת הלוח ושרטטו את התרשים החד-קווי שלו. ערכים שאף כלי מאומת עדיין לא יכול לחשב מסומנים \"לא חושב\" במקום להישאר ריקים.",
+    "scheduleLabel": "טבלת הלוח (JSON)",
+    "draw": "שרטוט התרשים",
+    "drawing": "משרטט…",
+    "badJson": "הטבלה אינה JSON תקין: {error}",
+    "invalid": "לא ניתן לשרטט את הטבלה כפי שהיא: {message}",
+    "failed": "לא ניתן היה לבנות את התרשים. נסו שוב.",
+    "unavailable": "שירות התרשימים אינו זמין כרגע.",
+    "unknownKinds": "{count, plural, one {לסוג רכיב אחד אין סמל} other {ל-# סוגי רכיבים אין סמל}} והם משורטטים כמציין מקום מסומן: {kinds}",
+    "sheetOf": "גיליון {number} מתוך {total}",
+    "notes": "הערות",
+    "moreNotes": "+ עוד {count} — ראו את רשימת ההערות",
+    "notCalculated": "לא חושב",
+    "refused": "נדחה",
+    "conductors": "חתכי מוליכים",
+    "enclosure": "ארון",
+    "trunking": "תעלות חיווט",
+    "railRows": "שורות מסילה, {group}",
+    "continuedOn": "לגיליון {sheet}",
+    "continuedFrom": "מ-{designator}, גיליון {sheet}",
+    "exportPng": "הורדת גיליון {number} (PNG)",
+    "exportFailed": "לא ניתן היה לייצא את גיליון {number}.",
+    "print": "הדפסה או שמירה כ-PDF",
+    "navLink": "תרשים חד-קווי"
   }
 }

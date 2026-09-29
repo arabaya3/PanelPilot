@@ -160,5 +160,32 @@
     "failed": "History could not be loaded.",
     "unavailable": "History is unavailable.",
     "loadMore": "Load more"
+  },
+  "schematic": {
+    "heading": "Single-line schematic",
+    "intro": "Paste a panel schedule and draw its single-line diagram. Quantities no verified tool can size yet are marked \"not calculated\" rather than left blank.",
+    "scheduleLabel": "Panel schedule (JSON)",
+    "draw": "Draw schematic",
+    "drawing": "Drawing…",
+    "badJson": "The schedule is not valid JSON: {error}",
+    "invalid": "The schedule cannot be drawn as given: {message}",
+    "failed": "The schematic could not be built. Please try again.",
+    "unavailable": "The schematic service is not available right now.",
+    "unknownKinds": "No symbol exists for {count, plural, one {# component type} other {# component types}}, drawn as marked placeholders: {kinds}",
+    "sheetOf": "Sheet {number} of {total}",
+    "notes": "Notes",
+    "moreNotes": "+ {count} more — see the notes list",
+    "notCalculated": "not calculated",
+    "refused": "refused",
+    "conductors": "Conductor sizes",
+    "enclosure": "Enclosure",
+    "trunking": "Trunking",
+    "railRows": "Rail rows, {group}",
+    "continuedOn": "to sheet {sheet}",
+    "continuedFrom": "from {designator}, sheet {sheet}",
+    "exportPng": "Download sheet {number} (PNG)",
+    "exportFailed": "Sheet {number} could not be exported.",
+    "print": "Print or save as PDF",
+    "navLink": "Single-line schematic"
   }
 }
