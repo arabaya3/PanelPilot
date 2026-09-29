@@ -113,3 +113,20 @@ def classify_query(query: str) -> QueryType:
         return QueryType.FAULT_CODE
 
     return QueryType.SYMPTOM_DESCRIPTION
+
+
+def code_references(query: str) -> list[str]:
+    """Return the fault-code and parameter references a query names.
+
+    Args:
+        query: The engineer's question.
+
+    Returns:
+        Each match as written, in order. Used to recognise a passage that
+        contains the exact code asked about, which is evidence of relevance
+        no similarity score can supply: every fault code in a manual embeds
+        close to every other, so "F0001" and "F0002" are near neighbours.
+    """
+    return [
+        match.group(0) for pattern in (_FAULT_CODE, _PARAMETER) for match in pattern.finditer(query)
+    ]

@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     # Hybrid scores are normalised to [0, 1] by the search pipeline, so this
     # is a fraction of the top hit rather than a raw BM25 value.
     retrieval_min_score: float = 0.05
+    # Absolute relevance floor (cosine similarity). Unset: measured and logged
+    # but not enforced, until `python -m app.worker calibrate-relevance`
+    # recommends a value for this corpus. See app.ai.retrieval.relevance.
+    retrieval_min_similarity: float | None = Field(default=None, gt=0.0, lt=1.0)
     guardrail_min_confidence: float = 0.6
 
     # --- Object storage ----------------------------------------------------

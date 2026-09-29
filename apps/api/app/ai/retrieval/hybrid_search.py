@@ -14,13 +14,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
 from app.ai.retrieval.embedding import embed_query as _embed_query
 from app.ai.retrieval.mappings import VerificationStatus
 from app.ai.retrieval.query_classifier import classify_query
+from app.ai.retrieval.relevance import anchors_of, cosine, is_anchored
 from app.core.config import get_settings
 from app.models.schemas.retrieval_config import BlendWeights, QueryType, RetrievalConfig
 from app.models.schemas.search import Citation, RetrievedPassage, SearchFilters
+
+logger = structlog.get_logger(__name__)
 
 # The fallback blend, carried by the named server-side pipeline. Every query
 # issued through this module overrides it with the weights for that query's
@@ -58,13 +63,14 @@ def retrieval_config_from_settings() -> RetrievalConfig:
     in play rather than two that can silently disagree.
 
     Returns:
-        A config carrying the configured top_k and score floor, with the
-        default per-query-type blend weights.
+        A config carrying the configured top_k, score floor and similarity
+        floor, with the default per-query-type blend weights.
     """
     settings = get_settings()
     return RetrievalConfig(
         top_k=settings.retrieval_top_k,
         min_score=settings.retrieval_min_score,
+        min_similarity=settings.retrieval_min_similarity,
     )
 
 
@@ -217,27 +223,58 @@ def _build_query(
     }
 
 
-def _to_passages(response: dict[str, Any], *, min_score: float) -> list[RetrievedPassage]:
+def _to_passages(
+    response: dict[str, Any],
+    *,
+    min_score: float,
+    query: str,
+    query_vector: list[float],
+    min_similarity: float | None,
+) -> list[RetrievedPassage]:
     """Convert a raw OpenSearch response into scored passages.
 
     Args:
         response: The decoded search response.
         min_score: Fused-score floor; hits below it are dropped.
+        query: The query text, for code anchors.
+        query_vector: The query's embedding, for absolute similarity.
+        min_similarity: Absolute similarity floor. A hit below it, and not
+            anchored by a code the query names, is dropped. ``None`` drops
+            nothing; the similarity is still measured and logged, which is
+            what a floor is calibrated from.
 
     Returns:
         Passages in descending relevance order.
     """
+    anchors = anchors_of(query)
     passages: list[RetrievedPassage] = []
+    unmeasured = dropped = 0
     for hit in response.get("hits", {}).get("hits", []):
         source = hit.get("_source", {})
         score = float(hit.get("_score") or 0.0)
         if score < min_score:
             continue
+        text = source.get("content", "")
+        vector = source.get("content_vector")
+        similarity = cosine(query_vector, vector) if isinstance(vector, list) else None
+        anchored = is_anchored(text, anchors)
+        unmeasured += similarity is None
+        # Unmeasurable counts as below: "could not check" must not let a
+        # passage through a floor that exists to keep unrelated ones out.
+        if (
+            min_similarity is not None
+            and not anchored
+            and (similarity is None or similarity < min_similarity)
+        ):
+            dropped += 1
+            continue
         passages.append(
             RetrievedPassage(
                 id=str(hit.get("_id")),
-                text=source.get("content", ""),
+                text=text,
                 score=score,
+                similarity=similarity,
+                anchored=anchored,
                 citation=Citation(
                     document_id=source.get("source_url", ""),
                     document_title=source.get("section") or source.get("model", ""),
@@ -247,6 +284,19 @@ def _to_passages(response: dict[str, Any], *, min_score: float) -> list[Retrieve
                 ),
             )
         )
+
+    measured = [p.similarity for p in passages if p.similarity is not None]
+    # Numbers only, never the query or passage text. This is also the data a
+    # floor is calibrated from when no eval set is at hand.
+    logger.info(
+        "retrieval.absolute_relevance",
+        passages=len(passages),
+        top_similarity=round(max(measured), 4) if measured else None,
+        anchored=sum(p.anchored for p in passages),
+        unmeasured=unmeasured,
+        min_similarity=min_similarity,
+        dropped=dropped,
+    )
     return passages
 
 
@@ -294,9 +344,10 @@ def _search(
     if brand and brand not in merged.manufacturers:
         merged = merged.model_copy(update={"manufacturers": [*merged.manufacturers, brand]})
 
+    query_vector = embed_query(query)
     body = _build_query(
         query=query,
-        vector=embed_query(query),
+        vector=query_vector,
         filters=merged,
         top_k=resolved_top_k,
         # Derived from the target, never passed in: the reviewer path is the
@@ -323,7 +374,13 @@ def _search(
         body=body,
         params={"search_pipeline": pipeline_name_for(query_type)},
     )
-    return _to_passages(response, min_score=resolved_min_score)
+    return _to_passages(
+        response,
+        min_score=resolved_min_score,
+        query=query,
+        query_vector=query_vector,
+        min_similarity=resolved.min_similarity,
+    )
 
 
 def search(

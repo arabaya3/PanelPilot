@@ -109,11 +109,16 @@ class RetrievalConfig(BaseModel):
         top_k: Passages retrieved per query.
         min_score: Fused-score floor. Passages below it are dropped before the
             guardrail ever sees them.
+        min_similarity: Absolute floor on query/passage cosine similarity
+            (see ``app.ai.retrieval.relevance``). ``None`` measures and logs
+            without enforcing: the right value depends on the embedding model
+            and the corpus, and comes from ``calibrate-relevance``.
     """
 
     weights: dict[QueryType, BlendWeights] = Field(default_factory=lambda: dict(_DEFAULT_WEIGHTS))
     top_k: int = Field(default=12, ge=1, le=100)
     min_score: float = Field(default=0.05, ge=0.0, le=1.0)
+    min_similarity: float | None = Field(default=None, gt=0.0, lt=1.0)
     # The bar retrieval must clear, per category, before a change ships.
     #
     # This is deliberately a config field and not a constant: it is a product

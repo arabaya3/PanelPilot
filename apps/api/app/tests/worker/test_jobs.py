@@ -361,3 +361,99 @@ def test_no_reviewers_is_a_failure_the_scheduler_sees(monkeypatch: pytest.Monkey
 
     assert jobs.run_assign_review_batches([]) == 1
     assert not seen["session_class"].committed
+
+
+# --- calibrate-relevance ------------------------------------------------------
+
+
+def _eval_set(tmp_path: Any, answerable: int, off_topic: int) -> str:
+    import json
+
+    entries = [
+        {
+            "id": f"a{i}",
+            "query": f"question {i}",
+            "category": "straightforward",
+            "expected_answer_summary": "An answer.",
+            "required_phrases": ["answer"],
+            "expected_citation": {"document_id": "doc"},
+        }
+        for i in range(answerable)
+    ] + [
+        {
+            "id": f"o{i}",
+            "query": "torque spec for a Corolla head bolt",
+            "category": "out_of_scope",
+            "expected_answer_summary": "Not in the corpus.",
+        }
+        for i in range(off_topic)
+    ]
+    path = tmp_path / "eval.json"
+    path.write_text(json.dumps(entries))
+    return str(path)
+
+
+def _patch_search(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Answerable questions match at 0.7, off-topic ones at 0.1."""
+    from app.ai.retrieval import hybrid_search
+    from app.models.schemas.retrieval_config import RetrievalConfig
+    from app.models.schemas.search import Citation, RetrievedPassage
+
+    configs: list[Any] = []
+
+    def fake_search(query: str, brand: Any, model: Any, *, config: Any) -> list[RetrievedPassage]:
+        configs.append(config)
+        similarity = 0.1 if "Corolla" in query else 0.7
+        return [
+            RetrievedPassage(
+                id="p",
+                text="t",
+                score=1.0,
+                similarity=similarity,
+                citation=Citation(document_id="doc", document_title="Doc", manufacturer="ABB"),
+            )
+        ]
+
+    monkeypatch.setattr(hybrid_search, "search", fake_search)
+    monkeypatch.setattr(
+        hybrid_search,
+        "retrieval_config_from_settings",
+        lambda: RetrievalConfig(min_similarity=0.9),
+    )
+    return configs
+
+
+def test_calibration_prints_the_setting_to_apply(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configs = _patch_search(monkeypatch)
+
+    assert jobs.run_calibrate_relevance([_eval_set(tmp_path, 20, 5)]) == 0
+
+    assert "RETRIEVAL_MIN_SIMILARITY=0.7" in capsys.readouterr().out
+    # Measured with no floor, or a configured one would hide what it measures.
+    assert configs
+    assert all(config.min_similarity is None for config in configs)
+
+
+def test_calibration_without_enough_data_says_why_and_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_search(monkeypatch)
+
+    assert jobs.run_calibrate_relevance([_eval_set(tmp_path, 3, 1)]) == 1
+
+    assert "no recommendation" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args", [[], ["a.json", "b.json"]])
+def test_calibration_needs_exactly_one_eval_set(args: list[str]) -> None:
+    assert jobs.run_calibrate_relevance(args) == 2
+
+
+def test_an_unreadable_eval_set_is_a_usage_error(tmp_path: Any) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text('[{"id": "x"}]')
+
+    assert jobs.run_calibrate_relevance([str(tmp_path / "missing.json")]) == 2
+    assert jobs.run_calibrate_relevance([str(bad)]) == 2

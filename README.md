@@ -433,6 +433,7 @@ python -m app.worker --list
 python -m app.worker crawl abb https://library.abb.com/...   # queue and run one now
 python -m app.worker crawl-queue   # run the oldest crawl queued via POST /ingestion/crawl-jobs
 python -m app.worker assign-review-batches   # daily: hand staged chunks to reviewers
+python -m app.worker calibrate-relevance eval.json   # recommend RETRIEVAL_MIN_SIMILARITY
 
 # `POST /api/v1/ingestion/crawl-jobs` only queues (202); schedule `crawl-queue`
 # every few minutes to run what it queued. Poll GET .../crawl-jobs/{id}.

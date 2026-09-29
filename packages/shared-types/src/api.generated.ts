@@ -1419,6 +1419,13 @@ export interface components {
       /** Score */
       score: number;
       citation: components['schemas']['Citation'];
+      /** Similarity */
+      similarity?: number | null;
+      /**
+       * Anchored
+       * @default false
+       */
+      anchored: boolean;
     };
     /**
      * SearchFilters

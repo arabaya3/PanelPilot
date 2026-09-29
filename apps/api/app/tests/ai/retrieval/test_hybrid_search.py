@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from app.ai.guardrails.cite_or_refuse import evaluate_confidence
 from app.ai.retrieval import hybrid_search
 from app.ai.retrieval.mappings import (
     EMBEDDING_DIMENSIONS,
@@ -33,6 +34,7 @@ from app.ai.retrieval.mappings import (
     missing_required_fields,
 )
 from app.ai.retrieval.query_classifier import classify_query
+from app.models.schemas.guardrail import DecisionOutcome
 from app.models.schemas.retrieval_config import BlendWeights, QueryType, RetrievalConfig
 from app.models.schemas.search import SearchFilters
 
@@ -218,8 +220,93 @@ def test_passages_below_min_score_are_dropped() -> None:
             ]
         }
     }
-    passages = hybrid_search._to_passages(response, min_score=0.5)
+    passages = _passages(response, min_score=0.5)
     assert [p.id for p in passages] == ["a"]
+
+
+def _passages(
+    response: dict[str, Any],
+    *,
+    min_score: float = 0.0,
+    query: str = "question",
+    query_vector: list[float] | None = None,
+    min_similarity: float | None = None,
+) -> list[Any]:
+    return hybrid_search._to_passages(
+        response,
+        min_score=min_score,
+        query=query,
+        query_vector=query_vector if query_vector is not None else [1.0, 0.0],
+        min_similarity=min_similarity,
+    )
+
+
+def _hit(hit_id: str, content: str, vector: list[float] | None, score: float = 0.9) -> Any:
+    source: dict[str, Any] = {"content": content, "brand": "ABB"}
+    if vector is not None:
+        source["content_vector"] = vector
+    return {"_id": hit_id, "_score": score, "_source": source}
+
+
+# --- unit: absolute relevance -------------------------------------------------
+
+
+def test_each_passage_carries_its_absolute_similarity() -> None:
+    response = {"hits": {"hits": [_hit("same", "x", [2.0, 0.0]), _hit("apart", "y", [0.0, 1.0])]}}
+
+    passages = _passages(response, query_vector=[1.0, 0.0])
+
+    assert [(p.id, p.similarity) for p in passages] == [("same", 1.0), ("apart", 0.0)]
+
+
+def test_without_a_floor_nothing_is_dropped_for_similarity() -> None:
+    """Unset is measure-only: the floor needs calibrating before it enforces."""
+    response = {"hits": {"hits": [_hit("apart", "y", [0.0, 1.0]), _hit("blind", "z", None)]}}
+
+    passages = _passages(response, query_vector=[1.0, 0.0], min_similarity=None)
+
+    assert [p.id for p in passages] == ["apart", "blind"]
+    assert passages[1].similarity is None
+
+
+def test_the_floor_drops_passages_that_only_outrank_others() -> None:
+    """The gap: a top fused score says nothing about whether anything matched."""
+    response = {
+        "hits": {
+            "hits": [
+                _hit("unrelated-but-best", "y", [0.1, 1.0], score=1.0),
+                _hit("related", "x", [1.0, 0.2], score=0.4),
+            ]
+        }
+    }
+
+    passages = _passages(response, query_vector=[1.0, 0.0], min_similarity=0.5)
+
+    assert [p.id for p in passages] == ["related"]
+
+
+def test_a_passage_that_cannot_be_measured_does_not_pass_the_floor() -> None:
+    response = {"hits": {"hits": [_hit("blind", "z", None), _hit("mismatch", "z", [1.0])]}}
+
+    assert _passages(response, query_vector=[1.0, 0.0], min_similarity=0.1) == []
+
+
+def test_a_passage_naming_the_code_asked_about_passes_the_floor() -> None:
+    """Fault codes embed alike; the exact code in the passage is the evidence."""
+    response = {
+        "hits": {
+            "hits": [
+                _hit("exact", "Fault F2330 EARTH LEAKAGE", [0.0, 1.0]),
+                _hit("other", "Fault F2331 overtemperature", [0.0, 1.0]),
+            ]
+        }
+    }
+
+    passages = _passages(
+        response, query="what does F2330 mean", query_vector=[1.0, 0.0], min_similarity=0.5
+    )
+
+    assert [(p.id, p.anchored) for p in passages] == [("exact", True)]
 
 
 # --- unit: the conditional blend reaches the actual request -----------------
@@ -359,11 +446,13 @@ def test_the_environment_still_configures_top_k(monkeypatch: pytest.MonkeyPatch)
     class _Settings:
         retrieval_top_k = 3
         retrieval_min_score = 0.42
+        retrieval_min_similarity = 0.37
 
     monkeypatch.setattr(hybrid_search, "get_settings", _Settings)
     config = hybrid_search.retrieval_config_from_settings()
     assert config.top_k == 3
     assert config.min_score == 0.42
+    assert config.min_similarity == 0.37
 
 
 # --- unit: the staging isolation ADR 0001 requires --------------------------
@@ -593,6 +682,56 @@ def test_vector_leg_is_load_bearing(indexed_corpus: str, monkeypatch: pytest.Mon
         "BM25 alone answered a paraphrase-only query, so this fixture cannot "
         "detect a broken vector leg"
     )
+
+
+@requires_opensearch
+def test_similarity_is_the_cosine_of_the_stored_vectors(
+    indexed_corpus: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Against a real engine: the vectors come back with the hits."""
+    monkeypatch.setattr(hybrid_search, "embed_query", _semantic_embed)
+    query = "earth leakage fault on the motor cable"
+
+    results = hybrid_search.search(query, top_k=5, min_score=0.0)
+
+    by_id = {doc["id"]: doc["content"] for doc in CORPUS}
+    for passage in results:
+        expected = sum(
+            a * b
+            for a, b in zip(_semantic_embed(query), _semantic_embed(by_id[passage.id]), strict=True)
+        )
+        assert passage.similarity == pytest.approx(expected, abs=1e-4), passage.id
+
+
+@requires_opensearch
+def test_an_off_topic_question_is_refused_once_the_floor_is_set(
+    indexed_corpus: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gap, reproduced end to end against a real engine.
+
+    A question the corpus says nothing about still retrieves passages -- the
+    lexical leg matches "the" -- and min-max normalisation puts the best of
+    them at the top of the scale, so the answer threshold is cleared. Only
+    the absolute similarity shows nothing matched.
+    """
+    monkeypatch.setattr(hybrid_search, "embed_query", _semantic_embed)
+    off_topic = "what is the recommended tyre pressure for the bicycle"
+    unfloored = RetrievalConfig(min_score=0.0)
+
+    passages = hybrid_search.search(off_topic, config=unfloored)
+    assert passages, "the lexical leg should still find something"
+    assert evaluate_confidence(passages, threshold=0.6).outcome is DecisionOutcome.ANSWER
+
+    floored = unfloored.model_copy(update={"min_similarity": 0.5})
+    passages = hybrid_search.search(off_topic, config=floored)
+    assert passages == []
+    assert (
+        evaluate_confidence(passages, threshold=0.6).outcome is DecisionOutcome.NO_VERIFIED_SOURCE
+    )
+
+    # ...while a question the corpus does answer still gets its passage.
+    answered = hybrid_search.search("earth leakage fault on the motor cable", config=floored)
+    assert "abb-acs880-earth-fault" in [p.id for p in answered]
 
 
 @requires_opensearch

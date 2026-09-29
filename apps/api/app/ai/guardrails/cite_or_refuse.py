@@ -17,8 +17,14 @@ decline this time, and the times it does not are exactly the times it matters.
 
 **Confidence comes from retrieval, never from the model.** A self-reported
 confidence is uncalibrated and tends to be highest when a model is confidently
-wrong. The score here is the top retrieval score, which is a measurement of
-whether the corpus actually contains an answer.
+wrong. The score here is the top fused retrieval score.
+
+That score is normalised within each result set, so on its own it says how a
+passage ranks, not whether anything matched: the best hit of an off-topic
+question scores near 1.0 too. Whether a passage matches at all is decided
+before it gets here, by the absolute relevance floor in
+``app.ai.retrieval.relevance``; a question nothing matches arrives with no
+passages and is refused as ``NO_EVIDENCE``.
 """
 
 from __future__ import annotations
