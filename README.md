@@ -431,6 +431,12 @@ uvicorn app.main:create_app --factory --reload   # API runtime
 python -m app.worker --list
 python -m app.worker crawl abb-drives
 
+# Roles: every account is an engineer; reviewer, ingestion and admin are
+# granted by an operator. Read from the database on every request, so a grant
+# or revocation applies to the account's next request, not when its token expires.
+python -m app.worker grant-role engineer@example.com reviewer
+python -m app.worker revoke-role engineer@example.com reviewer
+
 # Frontend (from the repo root)
 npm install
 npm run dev --workspace @panelpilot/web

@@ -258,9 +258,9 @@ def get_current_user(
             longer match a live account.
     """
     caller = decode_access_token(credentials.credentials if credentials else "")
-    # Raises if the account is gone, inactive, or has moved tenant.
-    auth_domain.resolve_caller(session=session, caller=caller)
-    return caller
+    # Raises if the account is gone, inactive, or has moved tenant; returns the
+    # caller with roles read from the database rather than taken from the token.
+    return auth_domain.authenticate(session=session, caller=caller)
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]

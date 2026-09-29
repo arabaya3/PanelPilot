@@ -164,3 +164,78 @@ def test_the_session_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs.run_crawl(["abb", "https://a.example/1"])
 
     assert seen["session_class"].closed is True
+
+
+# --- grant-role / revoke-role --------------------------------------------------
+
+
+def _patch_roles(monkeypatch: pytest.MonkeyPatch, *, changed: bool = True) -> dict[str, Any]:
+    """Replace the role domain calls and the session, capturing what was passed."""
+    seen: dict[str, Any] = {"calls": []}
+
+    def _fake(verb: str) -> Any:
+        def change(*, session: Any, email: str, role: Any) -> bool:
+            # The exemption must be in force while the account is looked up.
+            seen["calls"].append((verb, email, role, dict(session.info)))
+            return changed
+
+        return change
+
+    from app.domain import roles as roles_domain
+
+    monkeypatch.setattr(roles_domain, "grant_role", _fake("grant"))
+    monkeypatch.setattr(roles_domain, "revoke_role", _fake("revoke"))
+
+    class _Session:
+        closed = False
+        committed = False
+
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+
+        def commit(self) -> None:
+            _Session.committed = True
+
+        def close(self) -> None:
+            _Session.closed = True
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    seen["session_class"] = _Session
+    return seen
+
+
+def test_grant_role_grants_commits_and_closes(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _patch_roles(monkeypatch)
+
+    assert jobs.run_grant_role(["a@example.com", "reviewer"]) == 0
+
+    verb, email, role, info = seen["calls"][0]
+    assert (verb, email, role) == ("grant", "a@example.com", Role.REVIEWER)
+    assert info, "the account was looked up without declaring it spans tenants"
+    assert seen["session_class"].committed
+    assert seen["session_class"].closed
+
+
+def test_revoke_role_revokes(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _patch_roles(monkeypatch)
+
+    assert jobs.run_revoke_role(["a@example.com", "ingestion"]) == 0
+    assert seen["calls"][0][:3] == ("revoke", "a@example.com", Role.INGESTION)
+
+
+@pytest.mark.parametrize(
+    "args", [[], ["a@example.com"], ["a@example.com", "reviewer", "extra"], ["a@x", "owner"]]
+)
+def test_bad_role_arguments_are_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, args: list[str]
+) -> None:
+    """Including a role name that does not exist: nothing is touched."""
+    seen = _patch_roles(monkeypatch)
+
+    assert jobs.run_grant_role(args) == 2
+    assert seen["calls"] == []
+
+
+def test_the_role_jobs_are_registered() -> None:
+    assert jobs.get_job("grant-role").handler is jobs.run_grant_role
+    assert jobs.get_job("revoke-role").handler is jobs.run_revoke_role
