@@ -50,6 +50,7 @@ from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.observability import record_latency, timed
+from app.core.tenancy import bind_tenant
 from app.domain.auth import check_free_question_allowed, consume_free_question
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.diagnostics import (
@@ -114,6 +115,8 @@ def run_diagnosis(
             limit rather than a billing state.
         NotFoundError: If ``request.session_id`` refers to an unknown session.
     """
+    _scope_to(session, user)
+
     # The quota is NOT charged here. See step 5 in the module docstring: only
     # an answer the engineer receives burns a question.
 
@@ -361,6 +364,8 @@ def stream_diagnosis(
         Progress events, then exactly one ``result`` event — including when
         the turn fails.
     """
+    _scope_to(session, user)
+
     yield DiagnosisEvent(event="retrieving", data={})
 
     # Before any model is paid for. Advisory only — the locked charge below is
@@ -457,6 +462,8 @@ def answer_question(
         ValidationError: If the tenant has no free questions left.
         NotFoundError: If ``request.session_id`` refers to an unknown session.
     """
+    _scope_to(session, user)
+
     spent = _quota_spent_reason(session=session, user=user)
     if spent is not None:
         raise ValidationError(spent)
@@ -502,6 +509,30 @@ def _refusal_frames(
         event="result",
         data=_stream_failure_response(request, reason).model_dump(mode="json"),
     )
+
+
+def _scope_to(session: Session, user: CurrentUser) -> uuid.UUID:
+    """Bind the session to the caller's tenant, and return that tenant.
+
+    Every entry point that acts for a user calls this first. On the request
+    path authentication has already bound the same tenant, so it changes
+    nothing; it is what makes each function safe on its own, whoever calls it,
+    since from here on a conversation of another tenant does not exist as far
+    as this session can tell (ADR 0003).
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+
+    Returns:
+        The caller's tenant.
+
+    Raises:
+        NotFoundError: If the tenant claim is not a UUID.
+    """
+    tenant = _tenant_uuid(user)
+    bind_tenant(session, tenant)
+    return tenant
 
 
 def _tenant_uuid(user: CurrentUser) -> uuid.UUID:
@@ -652,6 +683,7 @@ def _persist_and_return(
     session.add(
         DiagnosticTurnRow(
             session_id=conversation_id,
+            tenant_id=_tenant_uuid(user),
             position=position,
             question=request.symptom,
             answer=_stored_answer(response),
@@ -786,6 +818,8 @@ def list_sessions(
     would push a session an engineer worked on all afternoon below one they
     opened yesterday and abandoned.
     """
+    _scope_to(session, user)
+
     if limit < 1:
         raise ValidationError("limit must be at least 1")
     limit = min(limit, _SESSIONS_PAGE_MAX)
@@ -951,6 +985,8 @@ def get_session(
             tells a caller that a session id they cannot read does exist,
             which is a membership oracle over other tenants' conversations.
     """
+    _scope_to(session, user)
+
     conversation = _load_session(session=session, user=user, session_id=session_id)
     turns = session.scalars(
         select(DiagnosticTurnRow)

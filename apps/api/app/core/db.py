@@ -14,6 +14,9 @@ from functools import lru_cache
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+# Imported for its side effect: it registers the tenant filter on every
+# Session (ADR 0003), so no session this process hands out can skip it.
+from app.core import tenancy  # noqa: F401
 from app.core.config import get_settings
 
 

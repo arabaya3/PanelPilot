@@ -1,6 +1,6 @@
 # ADR 0003: Tenant isolation needs one enforcement point, chosen before the queries exist
 
-- **Status:** Proposed — decide before the first tenant-scoped query ships
+- **Status:** Accepted — option 1, failing closed (2026-09-29)
 - **Date:** 2026-08-25
 - **Deciders:** PanelPilot engineering
 
@@ -64,9 +64,51 @@ queries is a potential cross-tenant disclosure that no test will catch.
 
 Not deciding is itself a decision — for option zero, per-query discipline.
 
+## Outcome
+
+Option zero had already shipped by the time this was decided: every query
+carried its own `.where(Row.tenant_id == ...)`. None of them was wrong, but
+nothing would have noticed the first one that was, and `diagnostic_turns` had
+no `tenant_id` at all — a turn loaded by id (to flag it) relied on a
+hand-written check of its session's tenant.
+
+**Option 1, with the default inverted so it fails closed.** Implemented in
+`app/core/tenancy.py`:
+
+- A `do_orm_execute` listener on every `Session` adds
+  `with_loader_criteria(TenantScopedMixin, tenant_id == <bound tenant>)` to
+  every ORM `SELECT`, `UPDATE` and `DELETE`. Verified to reach `session.get`,
+  joins, correlated subqueries and relationship loads.
+- **A session bound to no tenant cannot query a scoped table at all** — it
+  raises `TenantScopeError`. This is what option 1 lacked on its own: a path
+  that forgot to scope used to return every tenant's rows; now it fails the
+  first time it runs, in any test that exercises it.
+- The request's session is bound in `resolve_caller`, to the tenant the token
+  claims, _before_ the account is loaded. Domain entry points that act for a
+  user bind the same tenant again (idempotent; rebinding to a different one
+  raises), so each is safe whoever calls it.
+- Paths that genuinely span tenants — authentication finding an account by
+  email, a system job — say so with `cross_tenant(session, reason=...)`.
+- A bound session refuses to flush a scoped row of another tenant, and binding
+  evicts other tenants' rows from the identity map, which `session.get` would
+  otherwise answer from without a query.
+- `diagnostic_turns` now carries `tenant_id` (migration `f3a9c2d4e5b1`,
+  backfilled from each turn's session).
+
+**The guards**, in `app/tests/test_architecture.py`: `cross_tenant` only in the
+modules listed in `CROSS_TENANT_ALLOWED`, and no `text()` or Core `Table`
+statements in `domain/`, since those bypass ORM events.
+`app/tests/core/test_tenancy.py` checks every scoped model against two tenants.
+
+**Still not covered**, and why that is acceptable for now: raw SQL outside
+`domain/` (migrations, the readiness probe) and anything connecting outside
+the application. Option 3 (row-level security) is the step that would close
+those, and remains the upgrade path if a second service ever reads this
+database.
+
 ## If you are picking this up
 
-Read `app/models/tables/tenant.py` for what the schema guarantees, and
+Start at `app/core/tenancy.py`. Read `app/models/tables/tenant.py` for what the schema guarantees, and
 `app/tests/models/tables/test_tenant.py::test_every_table_is_either_tenant_scoped_or_deliberately_not`
 for the list of what is and is not customer data. The enforcement point goes
 between those and `app/domain/`.

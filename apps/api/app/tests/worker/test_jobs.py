@@ -97,6 +97,10 @@ def _patch_crawl(monkeypatch: pytest.MonkeyPatch, status: CrawlJobStatus) -> dic
     class _Session:
         closed = False
 
+        def __init__(self) -> None:
+            # Where the job declares it spans tenants (ADR 0003).
+            self.info: dict[str, object] = {}
+
         def close(self) -> None:
             _Session.closed = True
 

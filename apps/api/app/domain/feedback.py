@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, PanelPilotError
+from app.core.tenancy import bind_tenant
 from app.domain.auth import known_user_id
 from app.models.schemas.search import RetrievedPassage
 from app.models.tables.diagnostics import DiagnosticTurnRow
@@ -99,15 +100,21 @@ def flag_answer(
     """
     del now  # `created_at` is the flag time, set by the database.
 
+    # Bound to the flagging tenant, so another tenant's turn is not found at
+    # all — the filter decides that, not the check below. Idempotent on the
+    # request path, where authentication already bound this same tenant.
+    bind_tenant(session, tenant_id)
+
     turn = session.get(DiagnosticTurnRow, turn_id)
     if turn is None:
         raise FlaggedTurnNotFoundError(f"no diagnostic turn {turn_id}")
 
-    # Checked rather than trusted: the turn id arrives from a client, and
-    # without this one tenant could flag — and thereby read — another's answer.
+    # Kept as a second line of defence behind the tenant filter: the turn id
+    # arrives from a client, and without it one tenant could flag — and
+    # thereby read — another's answer.
     # Worded exactly as the missing-turn case: the message reaches the client,
     # and a different one would say what the status code is careful not to.
-    if turn.session.tenant_id != tenant_id:
+    if turn.tenant_id != tenant_id:
         raise FlaggedTurnNotFoundError(f"no diagnostic turn {turn_id}")
 
     flag = FlaggedAnswerRow(

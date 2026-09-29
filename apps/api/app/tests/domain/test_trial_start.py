@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthenticationError, ValidationError
 from app.core.security import decode_access_token, hash_claim_secret
+from app.core.tenancy import cross_tenant_info
 from app.domain.auth import TRIAL_TTL, resolve_caller, resume_trial, signup, start_trial
 from app.models.schemas.auth import Role
 
@@ -112,7 +113,9 @@ def _session() -> Iterator[Session]:
 
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    with sessionmaker(bind=engine)() as session:
+    with sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )() as session:
         yield session
 
 

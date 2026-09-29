@@ -30,6 +30,7 @@ TENANT_SCOPED = {
     # A flagged answer carries the customer's question and the content they
     # were shown, which is as confidential as any other turn. See AI-014.
     "flagged_answers",
+    "diagnostic_turns",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would
@@ -43,7 +44,6 @@ DELIBERATELY_UNSCOPED = {
     "verification_items",
     "promotion_audits",
     "source_health",
-    "diagnostic_turns",  # reached only through its tenant-scoped session
 }
 
 

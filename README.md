@@ -240,6 +240,13 @@ this business do".
 Everything reads config through `get_settings()`. No module anywhere else
 touches `os.environ`.
 
+**Tenant isolation lives here too, not in each query.** `core/tenancy.py`
+filters every ORM query on a tenant-scoped table to the tenant the session is
+bound to, and a session bound to none cannot query one at all. Requests are
+bound in `resolve_caller`. Code that genuinely spans tenants says why with
+`cross_tenant(...)`, in the modules the architecture test allows
+([ADR 0003](docs/adr/0003-tenant-isolation-needs-one-enforcement-point.md)).
+
 **Goes here:** a new setting, a new middleware, a new error type.
 **Does not:** anything that would differ between two products built on the same
 stack.

@@ -39,12 +39,16 @@ class DiagnosticSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Ba
     )
 
 
-class DiagnosticTurnRow(UUIDPrimaryKey, TimestampMixin, Base):
+class DiagnosticTurnRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     """One question/answer exchange, with its citations and confidence.
 
     Citations and the confidence breakdown are stored as rendered JSON rather
     than normalised: they are an immutable record of what the engineer was
     shown, not queryable state.
+
+    Tenant-scoped in its own right, not only through its session: a turn is
+    loaded by id (to flag it), and the tenant filter can only guard a table
+    that carries the column. Always the same tenant as its session.
     """
 
     __tablename__ = "diagnostic_turns"

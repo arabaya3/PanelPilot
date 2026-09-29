@@ -32,6 +32,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.tenancy import cross_tenant_info
 from app.domain.verification_queue import (
     STATUS_ESCALATED,
     STATUS_LABELED,
@@ -93,7 +94,9 @@ def _engine() -> Iterator[Engine]:
 @pytest.fixture(name="session")
 def _session(engine: Engine) -> Iterator[Session]:
     """A clean queue for one test."""
-    with sessionmaker(bind=engine)() as session:
+    with sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )() as session:
         session.execute(text("TRUNCATE verification_items CASCADE"))
         session.commit()
         yield session
@@ -109,7 +112,9 @@ def _verifier_pool(engine: Engine) -> list[uuid.UUID]:
     that does not exist is an item nobody will ever review. Created once per
     module and reused; the queue is truncated per test, not the roster.
     """
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
     with factory() as session:
         tenant = session.execute(
             select(TenantRow).where(TenantRow.slug == "queue-tests")
@@ -336,7 +341,9 @@ def test_simultaneous_claims_produce_exactly_one_winner(
     # whose WHERE clause matches only unassigned rows, so the database decides
     # the winner while holding the row lock. A read-check-write in Python would
     # pass a sequential test and fail exactly here.
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
     with factory() as setup:
         setup.execute(text("TRUNCATE verification_items CASCADE"))
         item = VerificationItemRow(chunk_id="contested", status=STATUS_PENDING)
@@ -402,7 +409,9 @@ def test_concurrent_assignment_runs_never_double_assign(
     # This test therefore pins the invariant (each row has at most one
     # assignee) and deliberately does not claim to pin SKIP LOCKED, which no
     # outcome-based test here can distinguish.
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
     with factory() as setup:
         setup.execute(text("TRUNCATE verification_items CASCADE"))
         setup.add_all(
@@ -643,7 +652,10 @@ def test_a_stale_session_cannot_label_an_item_already_labelled_elsewhere(
     item, verifier = _one_assigned_item(session, verifier_pool)
     assert item.status == STATUS_PENDING  # loaded, and now stale
 
-    other = Session(bind=session.get_bind())
+    other = Session(
+        bind=session.get_bind(),
+        info=cross_tenant_info("tests set up and inspect rows across tenants"),
+    )
     try:
         record_label(
             session=other,
