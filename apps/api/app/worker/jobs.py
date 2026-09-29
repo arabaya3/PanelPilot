@@ -264,6 +264,53 @@ def _change_role(args: list[str], *, grant: bool) -> int:
     return 0
 
 
+def run_calibrate_relevance(args: list[str]) -> int:
+    """Recommend a retrieval similarity floor from an eval set.
+
+    Runs every question in the set against the production index with no
+    floor, and reports the highest floor that still lets 95% of in-scope
+    questions through, with how many out-of-scope ones it would refuse. Read
+    only: it recommends ``RETRIEVAL_MIN_SIMILARITY``, an operator sets it.
+
+    Args:
+        args: ``[eval_set.json]``: a JSON array of eval entries.
+
+    Returns:
+        ``0`` with a recommendation, ``1`` without one (the report says why),
+        ``2`` if the eval set cannot be read.
+    """
+    from pathlib import Path
+
+    from pydantic import TypeAdapter, ValidationError
+
+    from app.domain import search as search_domain
+    from app.models.schemas.evaluation import EvalEntry
+
+    if len(args) != 1:
+        print("usage: calibrate-relevance <eval_set.json>", file=sys.stderr)
+        return 2
+    try:
+        entries = TypeAdapter(list[EvalEntry]).validate_json(Path(args[0]).read_bytes())
+    except (OSError, ValidationError) as exc:
+        print(f"cannot read eval set {args[0]!r}: {exc}", file=sys.stderr)
+        return 2
+
+    result = search_domain.calibrate_relevance(entries)
+
+    print(
+        f"measured {result.in_scope} in-scope and {result.out_of_scope} out-of-scope "
+        f"questions; skipped {result.skipped} (code-anchored, nothing retrieved, or unmeasurable)"
+    )
+    if result.floor is None:
+        print(f"no recommendation: {result.reason}")
+        return 1
+    print(
+        f"RETRIEVAL_MIN_SIMILARITY={result.floor}  "
+        f"keeps {result.kept:.0%} of in-scope, refuses {result.refused:.0%} of out-of-scope"
+    )
+    return 0
+
+
 REGISTRY: dict[str, JobSpec] = {
     spec.name: spec
     for spec in (
@@ -288,6 +335,11 @@ REGISTRY: dict[str, JobSpec] = {
             "grant-role", "Give an account a role (reviewer, ingestion, admin).", run_grant_role
         ),
         JobSpec("revoke-role", "Take a role away from an account.", run_revoke_role),
+        JobSpec(
+            "calibrate-relevance",
+            "Recommend RETRIEVAL_MIN_SIMILARITY from an eval set.",
+            run_calibrate_relevance,
+        ),
     )
 }
 

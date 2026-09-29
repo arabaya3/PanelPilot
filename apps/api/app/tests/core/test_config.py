@@ -150,3 +150,22 @@ def test_the_image_body_limit_leaves_room_for_the_largest_image() -> None:
 def test_the_plc_body_limit_fits_the_largest_review_request() -> None:
     """PLC review accepts 100,000 characters of source."""
     assert _settings().max_plc_request_body_bytes > 100_000 * 4
+
+
+# --- the absolute relevance floor ---------------------------------------------
+
+
+def test_the_similarity_floor_is_unset_by_default() -> None:
+    """Measure-only until calibrated: the right value depends on the corpus."""
+    assert _settings().retrieval_min_similarity is None
+
+
+@pytest.mark.parametrize("floor", [0.0, 1.0, -0.2, 1.5])
+def test_a_similarity_floor_outside_the_open_unit_interval_is_refused(floor: float) -> None:
+    # 0 or below enforces nothing while looking enforced; 1 refuses everything.
+    with pytest.raises(PydanticValidationError):
+        _settings(retrieval_min_similarity=floor)
+
+
+def test_a_calibrated_similarity_floor_is_accepted() -> None:
+    assert _settings(retrieval_min_similarity=0.42).retrieval_min_similarity == 0.42

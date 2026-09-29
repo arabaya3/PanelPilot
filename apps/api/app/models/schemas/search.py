@@ -20,8 +20,16 @@ class RetrievedPassage(BaseModel):
 
     id: str
     text: str
+    #: Fused hybrid score, normalised within this result set: it ranks, it
+    #: does not say how well anything matched. See ``similarity``.
     score: float
     citation: Citation
+    #: Cosine between the query's and the passage's embeddings -- an absolute
+    #: measure of match, unlike ``score``. ``None`` when it could not be
+    #: measured. See ``app.ai.retrieval.relevance``.
+    similarity: float | None = None
+    #: The passage contains a fault code or parameter number the query names.
+    anchored: bool = False
 
 
 class SearchFilters(BaseModel):
