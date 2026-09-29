@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -220,7 +220,7 @@ def test_refresh_tokens_are_never_stored_in_the_clear(db: Session) -> None:
     """A leaked dump must not hand over working credentials."""
     tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
     db.commit()
-    rows = db.execute(text("SELECT token_hash FROM refresh_tokens")).scalars().all()
+    rows: Sequence[str] = db.execute(text("SELECT token_hash FROM refresh_tokens")).scalars().all()
     assert tokens.refresh_token not in rows
     assert hash_refresh_token(tokens.refresh_token) in rows
 
@@ -376,7 +376,7 @@ def test_a_claimed_session_keeps_its_history(db: Session) -> None:
     db.commit()
 
     tenant_id = _tenant_of(tokens)
-    rows = (
+    rows: Sequence[str] = (
         db.execute(
             text(
                 "SELECT t.question FROM diagnostic_turns t "
@@ -633,7 +633,7 @@ def test_the_quota_holds_under_concurrency(db: Session) -> None:
         granted = sum(pool.map(lambda _: attempt(), range(20)))
 
     db.expire_all()
-    used = db.execute(
+    used: int = db.execute(
         text("SELECT free_questions_used FROM tenants WHERE id = :i"),
         {"i": uuid.UUID(tenant_id)},
     ).scalar_one()
