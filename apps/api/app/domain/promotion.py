@@ -1,8 +1,10 @@
 """Staging-to-production promotion service.
 
 This module is the **only** write path into the production index. Nothing in
-``app.ingestion`` or ``app.domain.ingestion`` may write there, and no route may
-bypass ``promote_document``. Rationale and consequences:
+``app.ingestion`` or ``app.domain.ingestion`` may write there. The path is
+``clear_item`` -> ``promote_chunk``: a reviewer labels a queue item correct and
+the chunk is published in the same transaction, on the strength of that
+recorded label and nothing else. Rationale and consequences:
 docs/adr/0001-staging-vs-production-index.md.
 
 If you are adding a feature that needs content to become live, extend this
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.retrieval.client import IndexTarget, get_client, index_chunk, resolve_index
@@ -23,6 +26,8 @@ from app.core.errors import (
     NotImplementedYetError,
     PromotionError,
 )
+from app.domain import verification_queue as queue_domain
+from app.domain.verification_queue import STATUS_LABELED
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import (
     PromotionRequest,
@@ -30,7 +35,8 @@ from app.models.schemas.ingestion import (
     VerificationDecision,
     VerificationVerdict,
 )
-from app.models.tables.ingestion import PromotionAuditRow
+from app.models.schemas.verification import VerificationLabel
+from app.models.tables.ingestion import PromotionAuditRow, VerificationItemRow
 
 
 def promote_document(
@@ -68,7 +74,10 @@ def promote_document(
             a 501 that says so beats an anonymous 500.
     """
     del session, reviewer, request  # Unused until built; the signature is the contract.
-    raise NotImplementedYetError("whole-document promotion is not available yet")
+    raise NotImplementedYetError(
+        "whole-document promotion is not available; chunks are promoted by labelling "
+        "them correct: POST /api/v1/verification/items/{item_id}/label"
+    )
 
 
 def _as_uuid(value: str, *, field: str) -> uuid.UUID:
@@ -149,6 +158,30 @@ def promote_chunk(
             f"not {VerificationDecision.APPROVED.value}"
         )
 
+    # The verdict argument is the caller's claim; the queue item is the record.
+    # Promotion requires that this reviewer actually labelled this chunk
+    # correct through the review queue, so no caller -- a script, a future
+    # route, a bug -- can publish on a verdict nobody recorded. Locked, so two
+    # clearances of one chunk cannot both pass this check and both publish.
+    reviewer_uuid = _as_uuid(reviewer.id, field="reviewer.id")
+    item = session.execute(
+        select(VerificationItemRow)
+        .where(VerificationItemRow.chunk_id == chunk_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if (
+        item is None
+        or item.status != STATUS_LABELED
+        or item.label != VerificationLabel.CORRECT.value
+        or item.assigned_to_id != reviewer_uuid
+    ):
+        raise PromotionError(
+            f"cannot promote {chunk_id!r}: it has not been labelled correct by this "
+            "reviewer in the verification queue"
+        )
+    if item.staged_document_id is None:
+        raise PromotionError(f"cannot promote {chunk_id!r}: it names no staged document")
+
     client = get_client()
     staging_index = resolve_index(IndexTarget.STAGING)
     if not client.exists(index=staging_index, id=chunk_id):
@@ -156,8 +189,16 @@ def promote_chunk(
 
     staged = client.get(index=staging_index, id=chunk_id)["_source"]
 
-    # Four-eyes: whoever brought the content in cannot also bless it.
-    if staged.get("ingested_by") and staged["ingested_by"] == reviewer.id:
+    # Four-eyes: whoever brought the content in cannot also bless it. Failing
+    # closed: a chunk with no ingester of record used to skip the comparison
+    # entirely, so anyone -- the ingester included -- could promote it.
+    ingested_by = staged.get("ingested_by")
+    if not ingested_by:
+        raise PromotionError(
+            f"cannot promote {chunk_id!r}: it has no ingester of record, so four-eyes "
+            "cannot be checked"
+        )
+    if ingested_by == reviewer.id:
         raise PromotionError(
             f"cannot promote {chunk_id!r}: {reviewer.email} is the ingester of record"
         )
@@ -196,8 +237,11 @@ def promote_chunk(
     # crash in that window re-reviews and re-promotes. Flushing gives the
     # ordering guarantee without taking the transaction boundary away.
     audit = PromotionAuditRow(
-        staged_document_id=_as_uuid(chunk_id, field="chunk_id"),
-        reviewer_id=_as_uuid(reviewer.id, field="reviewer.id"),
+        # The document the chunk came from, as the queue recorded it. Chunk
+        # ids are "<document>#<ordinal>-<digest>", never UUIDs: parsing one as
+        # the staged-document key refused every real chunk ever crawled.
+        staged_document_id=item.staged_document_id,
+        reviewer_id=reviewer_uuid,
         production_document_id=chunk_id,
         revision=revision,
         notes=verdict.notes or None,
@@ -222,3 +266,57 @@ def promote_chunk(
         revision=revision,
         audit_id=str(audit.id),
     )
+
+
+def clear_item(
+    *,
+    session: Session,
+    reviewer: CurrentUser,
+    item_id: uuid.UUID,
+    label: VerificationLabel,
+    note: str = "",
+) -> VerificationItemRow:
+    """Record a reviewer's label, and publish the chunk when it is correct.
+
+    The clearance handler ADR 0001 describes: the label and the promotion
+    happen in one transaction, so a chunk is never live with its queue item
+    still pending, and never marked correct without being published. Any
+    promotion failure -- four-eyes, an incomplete citation, OpenSearch --
+    raises, and the caller's transaction (the label included) rolls back.
+
+    Args:
+        session: Open database session. The caller commits.
+        reviewer: Who is labelling; must hold the reviewer role.
+        item_id: The queue item.
+        label: Their judgement.
+        note: Their reasoning; required for labels that escalate.
+
+    Returns:
+        The labelled queue item.
+
+    Raises:
+        AuthorizationError: If the caller lacks the reviewer role. Labelling is
+            review: the verdict it records is what promotion acts on.
+        QueueError: As ``record_label``.
+        PromotionError: If a correct label cannot be published.
+    """
+    if not reviewer.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{reviewer.email} does not hold the reviewer role")
+
+    row = queue_domain.record_label(
+        session=session,
+        item_id=item_id,
+        verifier_id=_as_uuid(reviewer.id, field="reviewer.id"),
+        label=label,
+        note=note,
+    )
+    # Only a crawled chunk has anything to publish; a flagged answer is a
+    # report about content already live, and is resolved by other means.
+    if label is VerificationLabel.CORRECT and row.chunk_id is not None:
+        promote_chunk(
+            session=session,
+            reviewer=reviewer,
+            chunk_id=row.chunk_id,
+            verdict=VerificationVerdict(decision=VerificationDecision.APPROVED, notes=note),
+        )
+    return row

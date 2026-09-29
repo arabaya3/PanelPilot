@@ -57,6 +57,31 @@ between them.**
    promotion can be reasoned about after the fact and a bad revision rolled
    back to its predecessor.
 
+## As built (2026-09-29)
+
+The single write path is `app.domain.promotion.promote_chunk`, reached through
+`clear_item` — the handler behind `POST /verification/items/{id}/label`. A
+reviewer labelling a chunk **correct** publishes it in the same transaction as
+the label; any refusal rolls the label back too. `promote_document` (whole
+documents) is not built and answers 501.
+
+How each condition above is enforced:
+
+- **Reviewer role** — required to label at all, and again by `promote_chunk`.
+  Roles are read from the database per request.
+- **Four-eyes** — the chunk's `ingested_by` (whoever requested the crawl) must
+  be present and must not be the reviewer. A chunk with no ingester is refused
+  rather than waved through.
+- **A recorded human decision** — `promote_chunk` does not act on the verdict
+  it is handed: it requires the chunk's queue item to be `labeled` / `correct`
+  by this same reviewer, and locks it while it publishes.
+- **Automated checks / resolvable citation** — a chunk missing any required
+  citation field (brand, model, page, source URL, content hash…) is refused,
+  both when it is staged and again when it is indexed into production.
+
+Work reaches reviewers through the worker's `assign-review-batches`, which
+hands out daily batches to every account currently holding the reviewer role.
+
 ## Consequences
 
 **What this buys us**

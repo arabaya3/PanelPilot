@@ -25,6 +25,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import verification as verification_route
+from app.core.errors import install_exception_handlers
+from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import QueueError
 from app.models.schemas.auth import CurrentUser, Role
@@ -110,9 +112,28 @@ def _client(user_factory: Callable[[], CurrentUser]) -> Iterator[TestClient]:
     app.include_router(verification_route.router, prefix="/verification")
     app.dependency_overrides[deps.get_current_user] = user_factory
     app.dependency_overrides[get_session] = _Session
+    # The role check that labelling now carries is decided by the domain's
+    # error type and mapped centrally, so the handlers are part of the test.
+    install_exception_handlers(app)
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def published(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record promotions instead of reaching OpenSearch.
+
+    A correct label publishes its chunk (ADR 0001); these are route tests, so
+    the publication itself is the promotion module's tests' concern.
+    """
+    published: list[str] = []
+    monkeypatch.setattr(
+        promotion_domain,
+        "promote_chunk",
+        lambda **kw: published.append(kw["chunk_id"]),
+    )
+    return published
 
 
 @pytest.fixture(name="client")
@@ -184,7 +205,7 @@ def test_an_empty_queue_is_an_empty_list_not_an_error(
 
 
 def test_a_label_is_recorded_and_committed(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     item_id = uuid.UUID(int=42)
     monkeypatch.setattr(
@@ -193,7 +214,7 @@ def test_a_label_is_recorded_and_committed(
         lambda **_: _Row(row_id=item_id, status="labeled", label="correct"),
     )
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{item_id}/label",
         json={"label": "correct", "note": ""},
     )
@@ -207,7 +228,7 @@ def test_a_label_is_recorded_and_committed(
 
 
 def test_an_escalating_label_reports_the_escalated_status(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     item_id = uuid.UUID(int=42)
     monkeypatch.setattr(
@@ -216,7 +237,7 @@ def test_an_escalating_label_reports_the_escalated_status(
         lambda **_: _Row(row_id=item_id, status="escalated", label="uncertain"),
     )
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{item_id}/label",
         json={"label": "uncertain", "note": "two passages conflict"},
     )
@@ -224,10 +245,10 @@ def test_an_escalating_label_reports_the_escalated_status(
     assert response.json()["status"] == "escalated"
 
 
-def test_an_unknown_label_is_rejected_by_the_schema(client: TestClient) -> None:
+def test_an_unknown_label_is_rejected_by_the_schema(lead_client: TestClient) -> None:
     # The vocabulary is closed. A client sending "mostly-correct" gets a 422
     # rather than having it stored as a fourth label nobody defined.
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
         json={"label": "mostly-correct", "note": "x"},
     )
@@ -235,13 +256,13 @@ def test_an_unknown_label_is_rejected_by_the_schema(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_a_missing_item_is_a_404(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_missing_item_is_a_404(lead_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(**_: object) -> None:
         raise QueueError("no verification item 123")
 
     monkeypatch.setattr(queue_domain, "record_label", _raise)
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
         json={"label": "correct", "note": ""},
     )
@@ -250,7 +271,7 @@ def test_a_missing_item_is_a_404(client: TestClient, monkeypatch: pytest.MonkeyP
 
 
 def test_labelling_someone_elses_item_is_a_403(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Distinct from 404 on purpose: "not yours" and "does not exist" are
     # different problems for whoever is debugging the client.
@@ -259,7 +280,7 @@ def test_labelling_someone_elses_item_is_a_403(
 
     monkeypatch.setattr(queue_domain, "record_label", _raise)
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
         json={"label": "correct", "note": ""},
     )
@@ -268,14 +289,14 @@ def test_labelling_someone_elses_item_is_a_403(
 
 
 def test_an_escalating_label_without_a_note_is_a_422(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def _raise(**_: object) -> None:
         raise QueueError("a incorrect label requires a note")
 
     monkeypatch.setattr(queue_domain, "record_label", _raise)
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
         json={"label": "incorrect", "note": ""},
     )
@@ -284,7 +305,7 @@ def test_an_escalating_label_without_a_note_is_a_422(
 
 
 def test_a_failed_label_is_not_committed(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The commit must sit after the domain call, not before it. A commit on the
     # error path would persist whatever partial state the domain had written
@@ -294,7 +315,7 @@ def test_a_failed_label_is_not_committed(
 
     monkeypatch.setattr(queue_domain, "record_label", _raise)
 
-    response = client.post(
+    response = lead_client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
         json={"label": "correct", "note": ""},
     )
@@ -341,3 +362,39 @@ def test_an_ordinary_verifier_cannot_read_the_escalation_queue(
     assert response.status_code == 403
     # Refused before the query runs, not filtered afterwards.
     assert not called
+
+
+# --- labelling is clearance ----------------------------------------------------
+
+
+def test_only_a_reviewer_may_label(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The label is the verdict promotion publishes on, so it takes that role."""
+    labelled: list[object] = []
+    monkeypatch.setattr(queue_domain, "record_label", lambda **kw: labelled.append(kw))
+
+    response = client.post(
+        f"/verification/items/{uuid.UUID(int=7)}/label", json={"label": "correct", "note": ""}
+    )
+
+    assert response.status_code == 403
+    assert labelled == [], "a non-reviewer's label was recorded"
+
+
+def test_a_correct_label_publishes_the_chunk(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch, published: list[str]
+) -> None:
+    item_id = uuid.UUID(int=8)
+    monkeypatch.setattr(
+        queue_domain,
+        "record_label",
+        lambda **_: _Row(
+            row_id=item_id, chunk_id="doc#0001-abc", status="labeled", label="correct"
+        ),
+    )
+
+    response = lead_client.post(
+        f"/verification/items/{item_id}/label", json={"label": "correct", "note": ""}
+    )
+
+    assert response.status_code == 200
+    assert published == ["doc#0001-abc"]

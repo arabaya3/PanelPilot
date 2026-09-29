@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from typing import cast
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -283,3 +284,33 @@ def test_a_granted_reviewer_reaches_the_reviewer_routes(db: Session) -> None:
         db.commit()
 
         assert client.get("/api/v1/verification/escalations", headers=headers).status_code == 200
+
+
+# --- who holds a role --------------------------------------------------------
+
+
+@requires_db
+def test_holders_are_the_active_accounts_granted_the_role(db: Session) -> None:
+    """The reviewer pool the daily assignment hands work to."""
+    granted, _ = _account(db)
+    revoked, _ = _account(db)
+    inactive, _ = _account(db)
+    never, _ = _account(db)
+    for email in (granted, revoked, inactive):
+        roles.grant_role(session=db, email=email, role=Role.REVIEWER)
+    roles.revoke_role(session=db, email=revoked, role=Role.REVIEWER)
+    db.query(User).filter(User.email == inactive).update({"is_active": False})
+    db.commit()
+
+    holders = set(roles.holders_of(session=db, role=Role.REVIEWER))
+    ids = {u.email: u.id for u in db.query(User).filter(User.email.like(f"{_PREFIX}%"))}
+
+    assert ids[granted] in holders
+    assert ids[revoked] not in holders
+    assert ids[inactive] not in holders
+    assert ids[never] not in holders
+
+
+def test_asking_who_holds_the_implicit_role_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        roles.holders_of(session=cast(Session, None), role=Role.ENGINEER)

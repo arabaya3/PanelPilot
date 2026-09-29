@@ -36,6 +36,7 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.schemas.auth import Role
 from app.models.schemas.verification import VerificationLabel, escalates
 from app.models.tables.ingestion import VerificationItemRow
 
@@ -110,6 +111,36 @@ def enqueue_chunks(
         skipped=len(chunk_ids) - len(created),
     )
     return created
+
+
+def assign_to_reviewers(
+    *, session: Session, batch_size: int = DAILY_BATCH_SIZE, now: datetime | None = None
+) -> dict[UUID, int]:
+    """Hand out today's batches to everyone who currently holds the reviewer role.
+
+    The pool is read from the roles table at run time, so granting or revoking
+    the role changes who gets work from the next run, with no list to keep in
+    step by hand.
+
+    Args:
+        session: A cross-tenant session; the caller commits.
+        batch_size: Maximum items per reviewer for this run.
+        now: Current time; injected for tests.
+
+    Returns:
+        How many items each reviewer was assigned.
+
+    Raises:
+        QueueError: If nobody holds the reviewer role.
+    """
+    from app.domain.roles import holders_of
+
+    reviewers = holders_of(session=session, role=Role.REVIEWER)
+    if not reviewers:
+        raise QueueError("nobody holds the reviewer role; grant it with `grant-role`")
+    return assign_daily_batches(
+        session=session, verifier_ids=reviewers, batch_size=batch_size, now=now
+    )
 
 
 def assign_daily_batches(

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ from app.domain import promotion as promotion_module
 from app.domain.promotion import promote_chunk
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import VerificationDecision, VerificationVerdict
+from app.models.schemas.verification import VerificationLabel
 
 # Every table module is imported so SQLAlchemy can resolve the audit row's
 # foreign keys into users and staged_documents. Importing only the row
@@ -31,9 +32,11 @@ from app.models.schemas.ingestion import VerificationDecision, VerificationVerdi
 from app.models.tables import calculations, diagnostics, user  # noqa: F401
 from app.models.tables.ingestion import PromotionAuditRow
 
-# The audit row's foreign keys are UUIDs, so ids here are real UUIDs rather
-# than slugs — the promotion path writes a database row, not just an index doc.
-CHUNK_ID = "3f7a1c2e-0b44-4d21-9a51-6c8e5d2f1a90"
+# A chunk id in the shape the chunker actually produces --
+# "<document>#<ordinal>-<digest>" -- not a UUID. These tests used a UUID here,
+# which is why none of them noticed that promotion refused every real chunk.
+STAGED_DOCUMENT_ID = "3f7a1c2e-0b44-4d21-9a51-6c8e5d2f1a90"
+CHUNK_ID = f"{STAGED_DOCUMENT_ID.replace('-', '')}#0001-0a1b2c3d4e5f"
 REVIEWER_ID = "9c1d4e6a-2f33-4b78-8e10-5a7b3c9d2e41"
 INGESTER_ID = "1a2b3c4d-5e6f-4708-9a0b-1c2d3e4f5a6b"
 TENANT_ID = "5d6e7f80-9a1b-4c2d-8e3f-4a5b6c7d8e9f"
@@ -136,9 +139,10 @@ def db() -> Iterator[Session]:
     session.execute(
         text(
             "INSERT INTO crawl_jobs (id, source_id, status, created_at, updated_at) "
-            "VALUES (:i, 'test', 'succeeded', now(), now()) ON CONFLICT (id) DO NOTHING"
+            "VALUES (:i, 'promotion-test', 'succeeded', now(), now()) "
+            "ON CONFLICT (id) DO NOTHING"
         ),
-        {"i": CHUNK_ID},
+        {"i": STAGED_DOCUMENT_ID},
     )
     session.execute(
         text(
@@ -146,16 +150,53 @@ def db() -> Iterator[Session]:
             "created_at, updated_at) VALUES (:i, :i, 'https://x.invalid', :h, now(), now()) "
             "ON CONFLICT (id) DO NOTHING"
         ),
-        {"i": CHUNK_ID, "h": CHUNK_ID},
+        {"i": STAGED_DOCUMENT_ID, "h": STAGED_DOCUMENT_ID},
     )
     session.commit()
+    # The reviewer has labelled the chunk correct in the queue: the record
+    # promotion now requires, rather than trusting the verdict it is passed.
+    _review(session)
     try:
         yield session
     finally:
         session.rollback()
+        # Everything this fixture created, not only the audits: other modules
+        # count staged documents, and leftovers made them fail when this ran
+        # first against a reused database.
         session.execute(text("DELETE FROM promotion_audits"))
+        session.execute(
+            text("DELETE FROM verification_items WHERE staged_document_id = :i"),
+            {"i": STAGED_DOCUMENT_ID},
+        )
+        session.execute(
+            text("DELETE FROM staged_documents WHERE id = :i"), {"i": STAGED_DOCUMENT_ID}
+        )
+        session.execute(text("DELETE FROM crawl_jobs WHERE id = :i"), {"i": STAGED_DOCUMENT_ID})
         session.commit()
         session.close()
+
+
+def _review(
+    session: Session,
+    *,
+    chunk_id: str = CHUNK_ID,
+    label: str = "correct",
+    status: str = "labeled",
+    reviewer_id: str = REVIEWER_ID,
+) -> None:
+    """Record a queue item for a chunk, as the review queue would have."""
+    from sqlalchemy import text
+
+    session.execute(text("DELETE FROM verification_items WHERE chunk_id = :c"), {"c": chunk_id})
+    session.execute(
+        text(
+            "INSERT INTO verification_items (id, staged_document_id, chunk_id, assigned_to_id, "
+            "status, origin, label, created_at, updated_at) VALUES (gen_random_uuid(), :d, :c, "
+            ":r, :s, 'crawl', :l, now(), now())"
+        ),
+        {"d": STAGED_DOCUMENT_ID, "c": chunk_id, "r": reviewer_id, "s": status, "l": label},
+    )
+    session.commit()
 
 
 def _stage(staging: str, document: dict[str, Any], chunk_id: str = CHUNK_ID) -> None:
@@ -290,6 +331,7 @@ def test_ingester_cannot_clear_their_own_content(indices: tuple[str, str], db: S
 
 @requires_opensearch
 def test_missing_staged_chunk_is_not_found(indices: tuple[str, str], db: Session) -> None:
+    _review(db, chunk_id="nope")
     with pytest.raises(NotFoundError):
         promote_chunk(session=db, reviewer=_reviewer(), chunk_id="nope", verdict=APPROVED)
 
@@ -524,9 +566,161 @@ def test_whole_document_promotion_says_it_is_not_available_yet() -> None:
     from app.core.errors import NotImplementedYetError
     from app.models.schemas.ingestion import PromotionRequest
 
-    with pytest.raises(NotImplementedYetError, match="not available yet"):
+    # And it says where promotion does happen, so the 501 is not a dead end.
+    with pytest.raises(NotImplementedYetError, match="labelling them correct"):
         promotion_module.promote_document(
             session=object(),  # type: ignore[arg-type]
             reviewer=_reviewer(),
             request=PromotionRequest(staged_document_id=CHUNK_ID),
+        )
+
+
+# --- promotion acts on the review queue's record, not on a claim --------------
+
+
+@requires_opensearch
+def test_a_real_chunk_id_is_promoted(indices: tuple[str, str], db: Session) -> None:
+    """Every real chunk failed here: its id was parsed as a staged-document UUID."""
+    staging, production = indices
+    _stage(staging, _staged_chunk())
+
+    response = promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    db.commit()
+
+    assert "#" in CHUNK_ID
+    assert _live(production) is not None
+    audit = db.get(PromotionAuditRow, uuid.UUID(response.audit_id))
+    assert audit is not None
+    assert str(audit.staged_document_id) == STAGED_DOCUMENT_ID
+    assert audit.production_document_id == CHUNK_ID
+
+
+@requires_opensearch
+@pytest.mark.parametrize(
+    ("label", "status", "reviewer_id"),
+    [
+        ("incorrect", "escalated", REVIEWER_ID),  # judged wrong
+        ("correct", "pending", REVIEWER_ID),  # not yet labelled
+        ("correct", "labeled", INGESTER_ID),  # labelled by somebody else
+    ],
+)
+def test_a_verdict_nobody_recorded_publishes_nothing(
+    indices: tuple[str, str], db: Session, label: str, status: str, reviewer_id: str
+) -> None:
+    """The verdict argument is a claim; the queue item is the record."""
+    staging, production = indices
+    _stage(staging, _staged_chunk())
+    _review(db, label=label, status=status, reviewer_id=reviewer_id)
+
+    with pytest.raises(PromotionError, match="not been labelled correct"):
+        promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    assert _live(production) is None
+
+
+@requires_opensearch
+def test_a_chunk_with_no_ingester_is_refused(indices: tuple[str, str], db: Session) -> None:
+    """Four-eyes used to be skipped when there was nobody to compare against."""
+    staging, production = indices
+    chunk = _staged_chunk()
+    del chunk["ingested_by"]
+    _stage(staging, chunk)
+
+    with pytest.raises(PromotionError, match="no ingester of record"):
+        promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    assert _live(production) is None
+
+
+# --- clear_item: labelling is clearance ----------------------------------------
+
+
+def _pending_item(db: Session) -> uuid.UUID:
+    """A crawled chunk assigned to the reviewer and not yet labelled."""
+    from sqlalchemy import text
+
+    _review(db, status="pending", label="")
+    db.execute(
+        text("UPDATE verification_items SET label = NULL WHERE chunk_id = :c"), {"c": CHUNK_ID}
+    )
+    db.commit()
+    return uuid.UUID(
+        str(
+            db.execute(
+                text("SELECT id FROM verification_items WHERE chunk_id = :c"), {"c": CHUNK_ID}
+            ).scalar_one()
+        )
+    )
+
+
+@requires_opensearch
+def test_labelling_correct_publishes_in_the_same_transaction(
+    indices: tuple[str, str], db: Session
+) -> None:
+    staging, production = indices
+    _stage(staging, _staged_chunk())
+    item_id = _pending_item(db)
+
+    row = promotion_module.clear_item(
+        session=db, reviewer=_reviewer(), item_id=item_id, label=VerificationLabel.CORRECT
+    )
+    db.commit()
+
+    assert row.status == "labeled"
+    live = _live(production)
+    assert live is not None
+    assert live["verification_status"] == VerificationStatus.VERIFIED.value
+
+
+@requires_opensearch
+def test_an_escalating_label_publishes_nothing(indices: tuple[str, str], db: Session) -> None:
+    staging, production = indices
+    _stage(staging, _staged_chunk())
+    item_id = _pending_item(db)
+
+    row = promotion_module.clear_item(
+        session=db,
+        reviewer=_reviewer(),
+        item_id=item_id,
+        label=VerificationLabel.INCORRECT,
+        note="the manual says 63 A, not 36 A",
+    )
+
+    assert row.status == "escalated"
+    assert _live(production) is None
+
+
+@requires_opensearch
+def test_a_failed_publication_takes_the_label_with_it(
+    indices: tuple[str, str], db: Session
+) -> None:
+    """Never marked correct without being published: here, four-eyes refuses."""
+    from sqlalchemy import text
+
+    staging, production = indices
+    _stage(staging, _staged_chunk(ingested_by=REVIEWER_ID))
+    item_id = _pending_item(db)
+
+    with pytest.raises(PromotionError):
+        promotion_module.clear_item(
+            session=db, reviewer=_reviewer(), item_id=item_id, label=VerificationLabel.CORRECT
+        )
+    db.rollback()  # what the request does when the handler raises
+
+    status: str = db.execute(
+        text("SELECT status FROM verification_items WHERE id = :i"), {"i": item_id}
+    ).scalar_one()
+    assert status == "pending"
+    assert _live(production) is None
+
+
+def test_only_a_reviewer_may_label() -> None:
+    """Labelling is the verdict promotion acts on, so it takes the same role."""
+    engineer = CurrentUser(
+        id=REVIEWER_ID, email="e@example.invalid", tenant_id=TENANT_ID, roles=frozenset()
+    )
+    with pytest.raises(AuthorizationError):
+        promotion_module.clear_item(
+            session=cast(Session, None),
+            reviewer=engineer,
+            item_id=uuid.uuid4(),
+            label=VerificationLabel.CORRECT,
         )

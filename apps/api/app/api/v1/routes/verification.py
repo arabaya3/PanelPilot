@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
 from app.models.schemas.auth import Role
 from app.models.schemas.verification import (
@@ -69,10 +70,12 @@ def label_item(
             another verifier, 422 if an escalating label carries no note.
     """
     try:
-        row = queue_domain.record_label(
+        # Labelling is clearance: a correct label publishes the chunk in the
+        # same transaction (ADR 0001), so this commits both or neither.
+        row = promotion_domain.clear_item(
             session=session,
+            reviewer=user,
             item_id=item_id,
-            verifier_id=UUID(user.id),
             label=payload.label,
             note=payload.note,
         )

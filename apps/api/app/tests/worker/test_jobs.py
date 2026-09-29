@@ -309,3 +309,55 @@ def test_a_queued_crawl_runs_cross_tenant_and_closes(monkeypatch: pytest.MonkeyP
     assert jobs.run_crawl_queue([]) == 0
     assert seen["info"], "the job ran without declaring it spans tenants"
     assert seen["session_class"].closed
+
+
+# --- assign-review-batches -----------------------------------------------------
+
+
+def _patch_assignment(monkeypatch: pytest.MonkeyPatch, outcome: Any) -> dict[str, Any]:
+    seen: dict[str, Any] = {}
+
+    from app.domain import verification_queue as queue_domain
+
+    def fake_assign(*, session: Any) -> Any:
+        seen["info"] = dict(session.info)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(queue_domain, "assign_to_reviewers", fake_assign)
+
+    class _Session:
+        committed = False
+
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+
+        def commit(self) -> None:
+            _Session.committed = True
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    seen["session_class"] = _Session
+    return seen
+
+
+def test_assignment_commits_and_spans_tenants(monkeypatch: pytest.MonkeyPatch) -> None:
+    import uuid as _uuid
+
+    seen = _patch_assignment(monkeypatch, {_uuid.uuid4(): 3, _uuid.uuid4(): 2})
+
+    assert jobs.run_assign_review_batches([]) == 0
+    assert seen["session_class"].committed
+    assert seen["info"], "reviewers were looked up without declaring it spans tenants"
+
+
+def test_no_reviewers_is_a_failure_the_scheduler_sees(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain.verification_queue import QueueError
+
+    seen = _patch_assignment(monkeypatch, QueueError("nobody holds the reviewer role"))
+
+    assert jobs.run_assign_review_batches([]) == 1
+    assert not seen["session_class"].committed
