@@ -41,12 +41,14 @@ from __future__ import annotations
 import io
 import itertools
 import re
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import pdfplumber
 import structlog
+from pdfminer.pdfpage import PDFPage
 
 from app.models.schemas.structure import (
     FRONT_MATTER,
@@ -113,6 +115,17 @@ COLUMN_LINE_SHARE = 0.5
 #: contents page's gap has a page number on the right — one or two characters
 #: — which is what separates it from a column boundary regardless of width.
 MIN_COLUMN_SIDE_CHARS = 6
+
+#: The most pages one document may have. The longest real manuals in the
+#: three libraries run to about a thousand pages; past twice that, a file is
+#: far more likely a trap than a manual -- a few kilobytes of PDF can declare
+#: thousands of pages, each costing a full layout pass.
+MAX_PAGES = 2000
+
+#: Wall-clock budget for one document's extraction. Checked between pages, so
+#: a single pathological page can overrun it, but a document cannot hold the
+#: crawl job open page after page.
+EXTRACTION_DEADLINE_S = 300.0
 
 
 class UnreadableDocumentError(Exception):
@@ -546,7 +559,7 @@ def _table_rows(table: Any) -> str:
 
 
 def _flush_tables_above(
-    pending: list[tuple[float, Any]],
+    pending: list[tuple[float, list[list[str]]]],
     *,
     limit: float,
     page: int,
@@ -563,8 +576,8 @@ def _flush_tables_above(
     final page's section, silently.
 
     Args:
-        pending: Remaining ``(top, table)`` pairs for this page, ascending.
-            Consumed in place.
+        pending: Remaining ``(top, rows)`` pairs for this page, ascending,
+            with each table's rows already extracted. Consumed in place.
         limit: Emit tables starting at or above this vertical position.
         page: 1-indexed page number.
         stack: The heading stack as it stands at this point in the page.
@@ -577,8 +590,7 @@ def _flush_tables_above(
             leaving an 11-row fragment presenting itself as a whole table.
     """
     while pending and pending[0][0] <= limit:
-        _, table = pending.pop(0)
-        rows = _rows_of(table)
+        _, rows = pending.pop(0)
         if not rows:
             continue
 
@@ -613,6 +625,66 @@ def _flush_tables_above(
         last_page[len(into) - 1] = page
 
 
+def _count_pages(document: Any) -> int:
+    """Count a PDF's pages, refusing one with more than ``MAX_PAGES``.
+
+    Args:
+        document: An open pdfplumber PDF.
+
+    Returns:
+        The page count.
+
+    Raises:
+        UnreadableDocumentError: If there are more than ``MAX_PAGES``.
+
+    Counted by walking pdfminer's page tree lazily and stopping one past the
+    cap, rather than through ``document.pages`` (which builds every page
+    object first) or the catalogue's ``/Count`` (which the file itself
+    declares, and so can understate). A tiny file can declare thousands of
+    pages, and the refusal should cost as little as the file did.
+    """
+    counted = sum(1 for _ in itertools.islice(PDFPage.create_pages(document.doc), MAX_PAGES + 1))
+    if counted > MAX_PAGES:
+        raise UnreadableDocumentError(f"more than {MAX_PAGES} pages; refusing to extract")
+    return counted
+
+
+def _read_page(
+    page: Any,
+    lines_by_page: dict[int, list[_Line]],
+    tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]],
+    widths: dict[int, float],
+    document_id: str,
+) -> None:
+    """Reduce one page to the small records the block pass needs.
+
+    Args:
+        page: A pdfplumber page.
+        lines_by_page: Filled with the page's lines, keyed by page number.
+        tables_by_page: Filled with each detected table's
+            ``(top, bottom, rows)``, keyed by page number.
+        widths: Filled with the page's width, keyed by page number.
+        document_id: For log lines.
+
+    Table rows are extracted here, while the page is open, rather than later
+    from retained pdfplumber table objects: those hold a reference to their
+    page, and so to its entire parsed layout.
+    """
+    page_number = int(page.page_number)
+    chars = page.chars
+    if len(chars) < MIN_CHARS_PER_PAGE:
+        # A scan. Skipped rather than failed: a manual with one scanned
+        # appendix should still yield its readable pages.
+        logger.info("structure.page_without_text", document_id=document_id, page=page_number)
+        return
+    lines_by_page[page_number] = _group_lines(chars, page_number)
+    tables_by_page[page_number] = [
+        (float(table.bbox[1]), float(table.bbox[3]), _rows_of(table))
+        for table in page.find_tables()
+    ]
+    widths[page_number] = float(page.width)
+
+
 def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     """Read a PDF's structural blocks from its layout.
 
@@ -625,28 +697,44 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
 
     Raises:
         UnreadableDocumentError: If the file is not a readable PDF, has no text
-            layer, or is laid out in columns this cannot read in order.
+            layer, is laid out in columns this cannot read in order, has more
+            than ``MAX_PAGES`` pages, or takes longer than
+            ``EXTRACTION_DEADLINE_S`` to read.
+
+    Pages are read one at a time, and each is reduced to its lines and its
+    tables' rows before the next is opened, with pdfplumber's per-page caches
+    released in between. Holding every page's characters and table objects
+    until the end -- as this once did -- kept each page's whole layout alive:
+    a 79 KB, 500-page PDF took 4 GB and 83 seconds.
     """
+    # Everything pdfplumber does is inside the try, table extraction included:
+    # any failure of the parser on this input is "not a readable PDF", which
+    # the caller records per document rather than as a crashed run.
+    deadline = time.monotonic() + EXTRACTION_DEADLINE_S
+    lines_by_page: dict[int, list[_Line]] = {}
+    tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]] = {}
+    widths: dict[int, float] = {}
     try:
         with pdfplumber.open(io.BytesIO(data)) as document:
-            pages = list(document.pages)
-            per_page = [(page.page_number, page.chars, page.find_tables()) for page in pages]
+            page_count = _count_pages(document)
+            for page in document.pages:
+                if time.monotonic() > deadline:
+                    raise UnreadableDocumentError(
+                        f"extraction passed {EXTRACTION_DEADLINE_S:g}s at page "
+                        f"{page.page_number} of {page_count}"
+                    )
+                try:
+                    _read_page(page, lines_by_page, tables_by_page, widths, document_id)
+                finally:
+                    # Released whether or not the page was usable: the layout
+                    # is the expensive part, and nothing below needs it.
+                    page.close()
     except UnreadableDocumentError:
         raise
     except Exception as exc:
         raise UnreadableDocumentError(f"could not open PDF: {exc}") from exc
 
-    all_lines: list[_Line] = []
-    tables_by_page: dict[int, list[Any]] = {}
-    for page_number, chars, tables in per_page:
-        if len(chars) < MIN_CHARS_PER_PAGE:
-            # A scan. Skipped rather than failed: a manual with one scanned
-            # appendix should still yield its readable pages.
-            logger.info("structure.page_without_text", document_id=document_id, page=page_number)
-            continue
-        all_lines.extend(_group_lines(chars, page_number))
-        tables_by_page[page_number] = tables
-
+    all_lines = list(itertools.chain.from_iterable(lines_by_page.values()))
     if not all_lines:
         raise UnreadableDocumentError("no text layer in any page")
 
@@ -659,9 +747,11 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     # Index of a block in `blocks` -> the last page its content came from.
     last_page: dict[int, int] = {}
 
-    for page_number in sorted({line.page for line in all_lines}):
-        page_lines = [line for line in all_lines if line.page == page_number]
-        page_width = float(pages[page_number - 1].width)
+    # Grouped by page once, up front. Filtering the whole document's lines for
+    # each page made this quadratic in document length.
+    for page_number in sorted(page for page, lines in lines_by_page.items() if lines):
+        page_lines = lines_by_page[page_number]
+        page_width = widths[page_number]
 
         # Tables are interleaved with the lines by vertical position rather
         # than emitted up front. Emitting them first filed every table under
@@ -670,8 +760,8 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
         # "Front matter", which is a citation pointing at the wrong part of
         # the manual.
         page_tables = tables_by_page.get(page_number, [])
-        table_bands = [(float(t.bbox[1]), float(t.bbox[3])) for t in page_tables]
-        pending = sorted(((float(t.bbox[1]), t) for t in page_tables), key=lambda pair: pair[0])
+        table_bands = [(top, bottom) for top, bottom, _ in page_tables]
+        pending = sorted(((top, rows) for top, _, rows in page_tables), key=lambda pair: pair[0])
 
         # Lines inside a detected table are excluded: a wide two-column table
         # has a gap at the same x on every row, which is a corridor by any
@@ -769,7 +859,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     logger.info(
         "structure.extracted",
         document_id=document_id,
-        pages=len(per_page),
+        pages=page_count,
         blocks=len(blocks),
         tables=sum(len(t) for t in tables_by_page.values()),
     )
