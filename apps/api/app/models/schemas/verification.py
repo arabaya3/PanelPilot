@@ -22,6 +22,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.models.schemas.ingestion import VerificationDecision
+
 
 class VerificationLabel(StrEnum):
     """A verifier's judgement on one chunk.
@@ -100,11 +102,34 @@ class LabelRequest(BaseModel):
 
 
 class LabelResponse(BaseModel):
-    """The outcome of recording a label."""
+    """The outcome of recording a label.
+
+    Attributes:
+        id: The item.
+        status: ``labeled``, ``escalated`` or ``resolved``.
+        label: The verifier's label.
+        decision: ``approved`` once the chunk is live in production,
+            ``rejected`` if a lead kept it out, otherwise ``None``.
+    """
 
     id: UUID
     status: str
     label: str | None
+    decision: str | None = None
+
+
+class ResolveRequest(BaseModel):
+    """A lead's decision on an escalated item.
+
+    Attributes:
+        decision: ``approved`` publishes the chunk; ``rejected`` keeps it in
+            staging only.
+        note: Why. Required; the domain refuses an empty one so the message
+            names the rule.
+    """
+
+    decision: VerificationDecision
+    note: str = ""
 
 
 class EscalationPage(BaseModel):

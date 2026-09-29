@@ -160,3 +160,130 @@ def test_the_session_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs.run_crawl(["abb", "https://a.example/1"])
 
     assert seen["session_class"].closed is True
+
+
+# --- operator commands: roles and assignment ----------------------------------
+
+
+class _RecordingSession:
+    """A session stand-in recording commits and closure."""
+
+    def __init__(self) -> None:
+        self.committed = False
+        self.closed = False
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_session(monkeypatch: pytest.MonkeyPatch) -> _RecordingSession:
+    session = _RecordingSession()
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([session]))
+    return session
+
+
+def test_grant_role_grants_commits_and_closes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import auth as auth_domain
+
+    session = _patch_session(monkeypatch)
+    calls: list[tuple[str, Role]] = []
+
+    def fake_grant(*, session: Any, email: str, role: Role) -> frozenset[Role]:
+        calls.append((email, role))
+        return frozenset({Role.ENGINEER, role})
+
+    monkeypatch.setattr(auth_domain, "grant_role", fake_grant)
+
+    code = jobs.run_grant_role(["lead@example.com", "reviewer"])
+
+    assert code == 0
+    assert calls == [("lead@example.com", Role.REVIEWER)]
+    assert session.committed
+    assert session.closed
+    assert "engineer, reviewer" in capsys.readouterr().out
+
+
+def test_revoke_role_revokes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain import auth as auth_domain
+
+    _patch_session(monkeypatch)
+    calls: list[Role] = []
+
+    def fake_revoke(*, session: Any, email: str, role: Role) -> frozenset[Role]:
+        calls.append(role)
+        return frozenset({Role.ENGINEER})
+
+    monkeypatch.setattr(auth_domain, "revoke_role", fake_revoke)
+
+    assert jobs.run_revoke_role(["lead@example.com", "reviewer"]) == 0
+    assert calls == [Role.REVIEWER]
+
+
+@pytest.mark.parametrize("args", [[], ["only@example.com"], ["a@b.c", "reviewer", "extra"]])
+def test_a_role_command_with_the_wrong_arguments_is_a_usage_error(args: list[str]) -> None:
+    assert jobs.run_grant_role(args) == 2
+
+
+def test_an_unknown_role_is_a_usage_error_naming_the_real_ones(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert jobs.run_grant_role(["a@b.c", "superuser"]) == 2
+    assert "reviewer" in capsys.readouterr().err
+
+
+def test_granting_to_a_missing_account_fails_without_committing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.domain import auth as auth_domain
+
+    session = _patch_session(monkeypatch)
+
+    def fake_grant(**_: Any) -> frozenset[Role]:
+        raise NotFoundError("no account with email 'x@y.z'")
+
+    monkeypatch.setattr(auth_domain, "grant_role", fake_grant)
+
+    assert jobs.run_grant_role(["x@y.z", "reviewer"]) == 1
+    assert not session.committed
+    assert session.closed
+
+
+def test_assignment_commits_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import uuid
+
+    from app.domain import verification_queue as queue_domain
+
+    session = _patch_session(monkeypatch)
+    monkeypatch.setattr(
+        queue_domain,
+        "assign_to_reviewers",
+        lambda **_: {uuid.UUID(int=1): 3, uuid.UUID(int=2): 2},
+    )
+
+    assert jobs.run_assign_verification([]) == 0
+    assert session.committed
+    assert "assigned 5 items across 2 reviewers" in capsys.readouterr().out
+
+
+def test_assignment_with_no_reviewers_says_how_to_fix_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import verification_queue as queue_domain
+
+    session = _patch_session(monkeypatch)
+
+    def fake_assign(**_: Any) -> dict[Any, int]:
+        raise queue_domain.QueueError("cannot assign a batch with no verifiers")
+
+    monkeypatch.setattr(queue_domain, "assign_to_reviewers", fake_assign)
+
+    assert jobs.run_assign_verification([]) == 1
+    assert not session.committed
+    assert "grant-role" in capsys.readouterr().err

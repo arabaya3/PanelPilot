@@ -38,6 +38,7 @@ from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
 from app.models.tables.diagnostics import DiagnosticSessionRow
 from app.models.tables.session import AnonymousSessionRow, RefreshTokenRow
 from app.models.tables.tenant import TenantRow
+from app.models.tables.user import Role as RoleRow
 from app.models.tables.user import User
 
 # How long a refresh token stays usable. Longer than an access token by design:
@@ -280,6 +281,105 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
     return _issue_tokens(session=session, user=user, tenant=tenant)
 
 
+def held_roles(user: User) -> frozenset[Role]:
+    """Return the roles an account holds, as the token will carry them.
+
+    Args:
+        user: The account.
+
+    Returns:
+        ``engineer`` — every account can ask questions — plus each stored grant
+        that names a known role. A stored name the enum does not know is
+        skipped rather than raised on: a role retired from the code must not
+        lock its former holders out of signing in.
+    """
+    known = {role.value for role in Role}
+    granted = {Role(row.name) for row in user.roles if row.name in known}
+    return frozenset({Role.ENGINEER, *granted})
+
+
+def grant_role(*, session: Session, email: str, role: Role) -> frozenset[Role]:
+    """Give an account a role, creating the role row on first use.
+
+    An operator action (``python -m app.worker grant-role``), not an API: no
+    route can elevate a caller, so a compromised account cannot grant itself
+    the reviewer role that promotion requires.
+
+    Args:
+        session: Open database session. The caller commits.
+        email: The account to grant to.
+        role: The role to grant.
+
+    Returns:
+        Every role the account now holds.
+
+    Raises:
+        NotFoundError: If no account has that email.
+
+    Takes effect at the account's next sign-in, when a token carrying it is
+    issued. Idempotent: granting a held role changes nothing.
+    """
+    user = _user_by_email(session=session, email=email)
+    role_row = session.execute(
+        select(RoleRow).where(RoleRow.name == role.value)
+    ).scalar_one_or_none()
+    if role_row is None:
+        role_row = RoleRow(name=role.value)
+        session.add(role_row)
+    if role_row not in user.roles:
+        user.roles.append(role_row)
+    session.flush()
+    return held_roles(user)
+
+
+def revoke_role(*, session: Session, email: str, role: Role) -> frozenset[Role]:
+    """Take a role away from an account.
+
+    Args:
+        session: Open database session. The caller commits.
+        email: The account to revoke from.
+        role: The role to remove.
+
+    Returns:
+        Every role the account still holds.
+
+    Raises:
+        NotFoundError: If no account has that email.
+        ValidationError: If asked to revoke ``engineer``, which every account
+            holds implicitly and so cannot lose.
+
+    Immediate, not at the next sign-in: ``resolve_caller`` refuses a token
+    that claims a role the account no longer holds.
+    """
+    if role is Role.ENGINEER:
+        raise ValidationError("every account holds the engineer role; it cannot be revoked")
+    user = _user_by_email(session=session, email=email)
+    user.roles = [row for row in user.roles if row.name != role.value]
+    session.flush()
+    return held_roles(user)
+
+
+def _user_by_email(*, session: Session, email: str) -> User:
+    """Load an account by email.
+
+    Args:
+        session: Open database session.
+        email: The address, matched case-insensitively as signup stores it.
+
+    Returns:
+        The account.
+
+    Raises:
+        NotFoundError: If there is no such account.
+    """
+    user = session.execute(
+        select(User).where(User.email == email.strip().lower())
+    ).scalar_one_or_none()
+    if user is None:
+        raise NotFoundError(f"no account with email {email!r}")
+    return user
+
+
 def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPair:
     """Mint an access token and a stored refresh token for a user.
 
@@ -309,7 +409,7 @@ def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPa
         access_token=create_access_token(
             subject=str(user.id),
             tenant_id=str(tenant.id),
-            roles=frozenset({Role.ENGINEER}),
+            roles=held_roles(user),
         ),
         refresh_token=token,
         expires_in=settings.access_token_ttl_seconds,
@@ -559,6 +659,10 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
     # trusting it would let a moved user act on their old tenant's data.
     if str(user.tenant_id) != caller.tenant_id:
         raise AuthenticationError("token tenant does not match the account")
+    # A token is only as privileged as the account still is. Without this a
+    # revoked reviewer keeps promoting content until their token expires.
+    if not caller.roles <= held_roles(user):
+        raise AuthenticationError("token carries a role the account no longer holds")
     return user
 
 

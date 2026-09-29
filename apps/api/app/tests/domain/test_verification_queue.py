@@ -32,18 +32,27 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.errors import AuthorizationError
+from app.domain.auth import grant_role, held_roles
 from app.domain.verification_queue import (
     STATUS_ESCALATED,
     STATUS_LABELED,
     STATUS_PENDING,
+    STATUS_RESOLVED,
     QueueError,
     assign_daily_batches,
+    assign_to_reviewers,
     claim_item,
     enqueue_chunks,
     escalations,
+    label_and_publish,
     queue_for,
     record_label,
+    resolve_escalation,
+    reviewer_ids,
 )
+from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.ingestion import VerificationDecision
 from app.models.schemas.verification import VerificationLabel
 
 # Imported for their side effect on `Base.metadata`, not for direct use.
@@ -606,3 +615,366 @@ def test_a_labelled_item_leaves_the_verifiers_queue(
     session.commit()
 
     assert len(queue_for(session=session, verifier_id=verifier)) == 1
+
+
+# --- clearing publishes (BE-004 x BE-007) -------------------------------------
+#
+# A `correct` label is the only way content reaches production, so these run
+# against a real OpenSearch as well as Postgres: the property under test is that
+# the label and the production write happen together or not at all.
+
+OPENSEARCH_URL = os.environ.get("OPENSEARCH_URL", "")
+
+
+def _opensearch_available() -> bool:
+    if not OPENSEARCH_URL:
+        return False
+    try:
+        from app.ai.retrieval.client import get_client
+
+        return bool(get_client().ping())
+    except Exception:
+        return False
+
+
+requires_search = pytest.mark.skipif(
+    not DATABASE_URL.startswith("postgresql") or not _opensearch_available(),
+    reason="needs Postgres and a reachable OpenSearch; CI provides both",
+)
+
+#: Whoever crawled the content. Not a reviewer, and not anyone in the pool, so
+#: the four-eyes rule never refuses the reviewers these tests use.
+INGESTER = "0f0f0f0f-0000-4000-8000-000000000001"
+
+
+def _as_user(session: Session, user_id: uuid.UUID, *roles: Role) -> CurrentUser:
+    """Grant `roles` for real, and return the caller a token would carry."""
+    user = session.get(User, user_id)
+    assert user is not None
+    for role in roles:
+        grant_role(session=session, email=user.email, role=role)
+    session.commit()
+    return CurrentUser(
+        id=str(user.id),
+        email=user.email,
+        tenant_id=str(user.tenant_id),
+        roles=held_roles(user),
+    )
+
+
+@pytest.fixture(name="staged")
+def _staged(session: Session) -> Iterator[tuple[str, str, str]]:
+    """One crawled chunk in a fresh staging index, and its staged document.
+
+    Yields:
+        ``(chunk_id, staging_index, production_index)``.
+    """
+    from app.ai.retrieval.client import IndexTarget, ensure_index, get_client
+    from app.ai.retrieval.mappings import VerificationStatus
+    from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
+
+    client = get_client()
+    staging = ensure_index(IndexTarget.STAGING, recreate=True)
+    production = ensure_index(IndexTarget.PRODUCTION, recreate=True)
+
+    content_hash = f"queue-test-{uuid.uuid4().hex}"
+    job = CrawlJobRow(source_id="queue-test", status="succeeded")
+    session.add(job)
+    session.flush()
+    session.add(
+        StagedDocumentRow(
+            crawl_job_id=job.id,
+            source_url="https://example.invalid/m.pdf",
+            content_hash=content_hash,
+        )
+    )
+    session.commit()
+
+    chunk_id = "queue-test-doc#0001-abcdef012345"
+    client.index(
+        index=staging,
+        id=chunk_id,
+        refresh=True,
+        body={
+            "brand": "ABB",
+            "model": "ACS880",
+            "doc_type": "manual",
+            "page": 12,
+            "section": "Fault tracing",
+            "source_url": "https://example.invalid/m.pdf#page=12",
+            "verification_status": VerificationStatus.UNVERIFIED.value,
+            "content": "F0001 OVERCURRENT: output current exceeded the trip limit.",
+            "content_vector": [0.1] * 1024,
+            "content_hash": content_hash,
+            "ingested_by": INGESTER,
+        },
+    )
+    enqueue_chunks(session=session, chunk_ids=[chunk_id])
+    session.commit()
+    try:
+        yield chunk_id, staging, production
+    finally:
+        session.rollback()
+        session.execute(text("DELETE FROM promotion_audits"))
+        session.execute(text("TRUNCATE verification_items CASCADE"))
+        session.execute(
+            text(
+                "DELETE FROM staged_documents WHERE crawl_job_id IN "
+                "(SELECT id FROM crawl_jobs WHERE source_id = 'queue-test')"
+            )
+        )
+        session.execute(text("DELETE FROM crawl_jobs WHERE source_id = 'queue-test'"))
+        session.commit()
+        client.indices.delete(index=staging, ignore=[404])
+        client.indices.delete(index=production, ignore=[404])
+
+
+def _assigned_item(session: Session, verifier: CurrentUser) -> VerificationItemRow:
+    assign_daily_batches(session=session, verifier_ids=[uuid.UUID(verifier.id)], now=NOW)
+    session.commit()
+    item = session.query(VerificationItemRow).one()
+    return item
+
+
+def _is_live(production: str, chunk_id: str) -> bool:
+    from app.ai.retrieval.client import get_client
+
+    return bool(get_client().exists(index=production, id=chunk_id))
+
+
+@requires_search
+def test_a_correct_label_makes_the_chunk_live(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    chunk_id, _, production = staged
+    reviewer = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    item = _assigned_item(session, reviewer)
+
+    row = label_and_publish(
+        session=session, item_id=item.id, verifier=reviewer, label=VerificationLabel.CORRECT
+    )
+    session.commit()
+
+    assert row.status == STATUS_LABELED
+    assert row.decision == VerificationDecision.APPROVED.value
+    assert _is_live(production, chunk_id)
+    audits: int = session.execute(text("SELECT count(*) FROM promotion_audits")).scalar_one()
+    assert audits == 1, "live content without an audit row names no human"
+
+
+@requires_search
+def test_a_correct_label_without_the_reviewer_role_publishes_nothing(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    """Refused whole: the queue must never read "verified" for content not live."""
+    chunk_id, _, production = staged
+    engineer = _as_user(session, verifier_pool[1])
+    item = _assigned_item(session, engineer)
+
+    with pytest.raises(AuthorizationError):
+        label_and_publish(
+            session=session, item_id=item.id, verifier=engineer, label=VerificationLabel.CORRECT
+        )
+    session.rollback()
+
+    assert not _is_live(production, chunk_id)
+    assert session.get(VerificationItemRow, item.id).status == STATUS_PENDING  # type: ignore[union-attr]
+
+
+@requires_search
+def test_an_escalating_label_publishes_nothing(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    chunk_id, _, production = staged
+    reviewer = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    item = _assigned_item(session, reviewer)
+
+    row = label_and_publish(
+        session=session,
+        item_id=item.id,
+        verifier=reviewer,
+        label=VerificationLabel.INCORRECT,
+        note="the manual gives 63 A, not 50 A",
+    )
+    session.commit()
+
+    assert row.status == STATUS_ESCALATED
+    assert row.decision is None
+    assert not _is_live(production, chunk_id)
+
+
+def _escalated(session: Session, verifier: CurrentUser) -> VerificationItemRow:
+    item = _assigned_item(session, verifier)
+    label_and_publish(
+        session=session,
+        item_id=item.id,
+        verifier=verifier,
+        label=VerificationLabel.UNCERTAIN,
+        note="two passages conflict",
+    )
+    session.commit()
+    return item
+
+
+@requires_search
+def test_a_lead_approval_publishes_and_keeps_the_verifiers_note(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    chunk_id, _, production = staged
+    verifier = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    lead = _as_user(session, verifier_pool[2], Role.REVIEWER)
+    item = _escalated(session, verifier)
+
+    row = resolve_escalation(
+        session=session,
+        item_id=item.id,
+        lead=lead,
+        decision=VerificationDecision.APPROVED,
+        note="p.12 governs; p.40 is a superseded table",
+    )
+    session.commit()
+
+    assert row.status == STATUS_RESOLVED
+    assert row.decision == VerificationDecision.APPROVED.value
+    assert row.label == VerificationLabel.UNCERTAIN.value
+    assert row.notes is not None
+    assert "two passages conflict" in row.notes
+    assert "p.12 governs" in row.notes
+    assert _is_live(production, chunk_id)
+
+
+@requires_search
+def test_a_lead_rejection_keeps_the_chunk_out(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    chunk_id, _, production = staged
+    verifier = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    lead = _as_user(session, verifier_pool[2], Role.REVIEWER)
+    item = _escalated(session, verifier)
+
+    row = resolve_escalation(
+        session=session,
+        item_id=item.id,
+        lead=lead,
+        decision=VerificationDecision.REJECTED,
+        note="the citation does not support the claim",
+    )
+    session.commit()
+
+    assert row.status == STATUS_RESOLVED
+    assert row.decision == VerificationDecision.REJECTED.value
+    assert not _is_live(production, chunk_id)
+    assert escalations(session=session) == []
+
+
+@requires_search
+def test_the_verifier_who_escalated_cannot_resolve_it(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    """AI-012: never resolved unilaterally by whoever applied the label."""
+    chunk_id, _, production = staged
+    verifier = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    item = _escalated(session, verifier)
+
+    with pytest.raises(QueueError, match="another lead"):
+        resolve_escalation(
+            session=session,
+            item_id=item.id,
+            lead=verifier,
+            decision=VerificationDecision.APPROVED,
+            note="on reflection it is fine",
+        )
+
+    assert not _is_live(production, chunk_id)
+
+
+@requires_search
+@pytest.mark.parametrize(
+    ("note", "match"),
+    [("", "requires a note"), ("   ", "requires a note")],
+)
+def test_a_resolution_needs_a_reason(
+    session: Session,
+    verifier_pool: list[uuid.UUID],
+    staged: tuple[str, str, str],
+    note: str,
+    match: str,
+) -> None:
+    verifier = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    lead = _as_user(session, verifier_pool[2], Role.REVIEWER)
+    item = _escalated(session, verifier)
+
+    with pytest.raises(QueueError, match=match):
+        resolve_escalation(
+            session=session,
+            item_id=item.id,
+            lead=lead,
+            decision=VerificationDecision.APPROVED,
+            note=note,
+        )
+
+
+@requires_search
+def test_only_escalated_items_can_be_resolved(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    lead = _as_user(session, verifier_pool[2], Role.REVIEWER)
+    item = session.query(VerificationItemRow).one()
+
+    with pytest.raises(QueueError, match="not escalated"):
+        resolve_escalation(
+            session=session,
+            item_id=item.id,
+            lead=lead,
+            decision=VerificationDecision.APPROVED,
+            note="looks fine",
+        )
+
+
+@requires_postgres
+def test_resolving_needs_the_reviewer_role(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    engineer = _as_user(session, verifier_pool[3])
+
+    with pytest.raises(AuthorizationError):
+        resolve_escalation(
+            session=session,
+            item_id=uuid.uuid4(),
+            lead=engineer,
+            decision=VerificationDecision.APPROVED,
+            note="x",
+        )
+
+
+# --- assigning to the reviewer pool -------------------------------------------
+
+
+@requires_postgres
+def test_work_is_assigned_only_to_reviewers(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    reviewer = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    engineer = _as_user(session, verifier_pool[5])
+    enqueue_chunks(session=session, chunk_ids=[f"c{i}" for i in range(3)])
+    session.commit()
+
+    counts = assign_to_reviewers(session=session, now=NOW)
+
+    assert uuid.UUID(reviewer.id) in counts
+    assert uuid.UUID(engineer.id) not in counts
+    assert uuid.UUID(engineer.id) not in reviewer_ids(session=session)
+
+
+@requires_postgres
+def test_no_reviewers_is_an_error_not_a_silent_no_op(session: Session) -> None:
+    """A queue nobody can drain looks, from outside, like one keeping up."""
+    session.execute(
+        text(
+            "DELETE FROM user_roles WHERE role_id IN (SELECT id FROM roles WHERE name = 'reviewer')"
+        )
+    )
+
+    with pytest.raises(QueueError, match="no verifiers"):
+        assign_to_reviewers(session=session, now=NOW)
+    session.rollback()

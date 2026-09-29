@@ -361,11 +361,13 @@ export interface paths {
     put?: never;
     /**
      * Label Item
-     * @description Record the caller's label for one item.
+     * @description Record the caller's label for one item; a ``correct`` label publishes it.
      *
      *     Raises:
      *         HTTPException: 404 if the item does not exist, 403 if it belongs to
      *             another verifier, 422 if an escalating label carries no note.
+     *             Promotion failures surface through the shared handlers: 403 for a
+     *             caller without the reviewer role, 409 for a promotion refusal.
      */
     post: operations['label_item_api_v1_verification_items__item_id__label_post'];
     delete?: never;
@@ -396,6 +398,32 @@ export interface paths {
     get: operations['list_escalations_api_v1_verification_escalations_get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/escalations/{item_id}/resolve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Escalation
+     * @description Decide an escalated item as a lead: publish it or keep it out.
+     *
+     *     Raises:
+     *         HTTPException: 404 if the item does not exist, 422 if it is not
+     *             escalated, carries no note, or the caller escalated it themselves.
+     *             The reviewer-role check and promotion refusals surface through the
+     *             shared handlers (403 and 409).
+     */
+    post: operations['resolve_escalation_api_v1_verification_escalations__item_id__resolve_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1025,6 +1053,13 @@ export interface components {
     /**
      * LabelResponse
      * @description The outcome of recording a label.
+     *
+     *     Attributes:
+     *         id: The item.
+     *         status: ``labeled``, ``escalated`` or ``resolved``.
+     *         label: The verifier's label.
+     *         decision: ``approved`` once the chunk is live in production,
+     *             ``rejected`` if a lead kept it out, otherwise ``None``.
      */
     LabelResponse: {
       /**
@@ -1036,6 +1071,8 @@ export interface components {
       status: string;
       /** Label */
       label: string | null;
+      /** Decision */
+      decision?: string | null;
     };
     /**
      * LadderBlock
@@ -1354,6 +1391,24 @@ export interface components {
     RefreshRequest: {
       /** Refresh Token */
       refresh_token: string;
+    };
+    /**
+     * ResolveRequest
+     * @description A lead's decision on an escalated item.
+     *
+     *     Attributes:
+     *         decision: ``approved`` publishes the chunk; ``rejected`` keeps it in
+     *             staging only.
+     *         note: Why. Required; the domain refuses an empty one so the message
+     *             names the rule.
+     */
+    ResolveRequest: {
+      decision: components['schemas']['VerificationDecision'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /**
      * RetrievedPassage
@@ -2300,6 +2355,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EscalationPage'];
+        };
+      };
+    };
+  };
+  resolve_escalation_api_v1_verification_escalations__item_id__resolve_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LabelResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };
