@@ -56,9 +56,13 @@ dev = [
     # In-process Redis for the rate-limit store's tests: real sorted-set and
     # MULTI semantics without a server. BSD-3.
     "fakeredis>=2.26",
-    "ruff>=0.7",
-    "black>=24.10",
-    "mypy>=1.13",
+    # Pinned exactly. These gate CI, and a floating ">=" let a new mypy
+    # release turn main red overnight with no code change: its stricter
+    # inference flagged three variables that had passed for months. Upgrading
+    # a checker is a deliberate commit that fixes what it finds, not a surprise.
+    "ruff==0.16.9",
+    "black==26.5.1",
+    "mypy==2.3.1",
 ]
 
 # Two runtimes, one package. See docs/adr/0002-one-package-two-runtimes.md.

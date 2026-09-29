@@ -115,9 +115,14 @@ export function LocaleProvider({
     [locale, setLocale],
   );
 
+  // Stated rather than left for next-intl to infer: without it every render
+  // logs ENVIRONMENT_FALLBACK, and a date formatted through next-intl would
+  // silently use whichever zone the server or browser happened to have.
+  const timeZone = useMemo(viewerTimeZone, []);
+
   return (
     <LocaleContext.Provider value={value}>
-      <NextIntlClientProvider locale={locale} messages={messages[locale]}>
+      <NextIntlClientProvider locale={locale} messages={messages[locale]} timeZone={timeZone}>
         {children}
       </NextIntlClientProvider>
     </LocaleContext.Provider>
@@ -138,4 +143,19 @@ export function useLocale(): LocaleContextValue {
     throw new Error('useLocale must be used inside a LocaleProvider');
   }
   return context;
+}
+
+/**
+ * The viewer's IANA time zone, or UTC when the runtime cannot say.
+ *
+ * Exported for the tests. A zone is always returned: next-intl treats a
+ * missing one as a configuration error, not as "use the default".
+ */
+export function viewerTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    // Some embedded runtimes ship Intl without time zone data.
+    return 'UTC';
+  }
 }
