@@ -1,8 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { PlcView } from '@/components/plc-view';
 import { tokeniseLine, tokeniseProgram } from '@/components/plc-view/tokenise';
+
+import { renderApp } from './helpers';
 
 /**
  * Tests for the PLC display component.
@@ -144,7 +146,7 @@ describe('Structured Text highlighting', () => {
 
 describe('validation findings', () => {
   it('attaches a finding to the line it is about', () => {
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -156,7 +158,7 @@ describe('validation findings', () => {
   });
 
   it('marks the line itself, not only the message below it', () => {
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -169,7 +171,7 @@ describe('validation findings', () => {
   });
 
   it('shows several findings on one line', () => {
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -186,7 +188,7 @@ describe('validation findings', () => {
   it('shows whole-program findings separately rather than pinning them to line one', () => {
     // An unreferenced tag is about the program, not about line 1. Attaching it
     // there would send someone looking at code that is not the problem.
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -206,7 +208,7 @@ describe('the verdict banner', () => {
   it('blocks the looks-done impression when validation failed', () => {
     // The stated edge case. Inline marks alone are what a hurried engineer's
     // eye skips, and code on a screen reads as finished work.
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -223,7 +225,7 @@ describe('the verdict banner', () => {
   it('treats an unverified result as seriously as a failed one', () => {
     // `incomplete` means nothing checked this. Styling it as a mild note would
     // put unverified code one glance from looking approved.
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -237,7 +239,7 @@ describe('the verdict banner', () => {
   });
 
   it('says in words why unverified is not a pass', () => {
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -253,13 +255,13 @@ describe('the verdict banner', () => {
   it('shows no banner at all when the code passed cleanly', () => {
     // A banner on every result is a banner nobody reads, which is how the
     // failing one stops working.
-    render(<PlcView language="structured-text" source={VALID_ST} validation={validation()} />);
+    renderApp(<PlcView language="structured-text" source={VALID_ST} validation={validation()} />);
 
     expect(screen.queryByTestId('verdict-banner')).toBeNull();
   });
 
   it('shows a non-alerting banner when only warnings were found', () => {
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -272,10 +274,30 @@ describe('the verdict banner', () => {
     expect(banner.textContent).toContain('1 warning');
   });
 
+  it("speaks the reader's language, but keeps the code left to right", () => {
+    // Shown on an Arabic page the banner was English, and the code inherited
+    // the page's direction: every line's trailing semicolon moved to its start.
+    renderApp(
+      <PlcView
+        language="structured-text"
+        source={VALID_ST}
+        validation={validation({
+          status: 'invalid',
+          findings: [finding({ severity: 'error', line: 2 })],
+        })}
+      />,
+      { locale: 'ar' },
+    );
+
+    expect(screen.getByTestId('verdict-banner').textContent).toContain('فشل الفحص');
+    expect(screen.getByTestId('finding-line-2').textContent).toContain('السطر 2');
+    expect(screen.getByTestId('finding-line-2').closest('[dir]')?.getAttribute('dir')).toBe('ltr');
+  });
+
   it('names what did the checking', () => {
     // "Checked" means little without knowing whether a parser or a language
     // model did it, and this whole feature exists because those differ.
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source={VALID_ST}
@@ -327,20 +349,20 @@ describe('ladder rendering', () => {
   it('draws SVG rather than an image or text art', () => {
     // "so it stays crisp at any zoom" — a raster diagram is unreadable at the
     // magnification someone inspects a contact at.
-    render(<PlcView language="ladder" rungs={CONTACT_COIL as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={CONTACT_COIL} validation={validation()} />);
 
     const diagram = screen.getByTestId('ladder-diagram');
     expect(diagram.tagName.toLowerCase()).toBe('svg');
   });
 
   it('labels the diagram for a screen reader', () => {
-    render(<PlcView language="ladder" rungs={CONTACT_COIL as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={CONTACT_COIL} validation={validation()} />);
 
     expect(screen.getByRole('img', { name: /ladder diagram/i })).not.toBeNull();
   });
 
   it('draws the simple contact-to-coil rung', () => {
-    render(<PlcView language="ladder" rungs={CONTACT_COIL as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={CONTACT_COIL} validation={validation()} />);
 
     const rung = screen.getByTestId('rung-0');
     expect(within(rung).getByText('StartButton')).not.toBeNull();
@@ -351,7 +373,7 @@ describe('ladder rendering', () => {
     // The case the task names explicitly. A renderer that flattened a branch
     // would draw a circuit that only runs while the button is held — a
     // different machine than the one the program describes.
-    render(<PlcView language="ladder" rungs={SEAL_IN as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={SEAL_IN} validation={validation()} />);
 
     const rung = screen.getByTestId('rung-0');
     expect(within(rung).getByText('StartButton')).not.toBeNull();
@@ -363,8 +385,8 @@ describe('ladder rendering', () => {
     // The geometric property, not a proxy. An earlier version counted lines
     // with x1 === x2, which a mutant dodged by moving one endpoint a single
     // pixel — still drawing a collapsed branch, still passing.
-    const { container } = render(
-      <PlcView language="ladder" rungs={SEAL_IN as never} validation={validation()} />,
+    const { container } = renderApp(
+      <PlcView language="ladder" rungs={SEAL_IN} validation={validation()} />,
     );
 
     const rows = [...container.querySelectorAll('text')]
@@ -383,8 +405,8 @@ describe('ladder rendering', () => {
     // the two power rails are also vertical and span the whole diagram, so a
     // bare count passes even when the branch has collapsed. A connector has to
     // start and end on the rows the branch actually occupies.
-    const { container } = render(
-      <PlcView language="ladder" rungs={SEAL_IN as never} validation={validation()} />,
+    const { container } = renderApp(
+      <PlcView language="ladder" rungs={SEAL_IN} validation={validation()} />,
     );
 
     const contactRows = [...container.querySelectorAll('text')]
@@ -411,7 +433,7 @@ describe('ladder rendering', () => {
   it('draws a function block with its parameters', () => {
     // A timer preset means nothing to this component and everything to the
     // engineer reading it, so it is passed through verbatim.
-    render(<PlcView language="ladder" rungs={WITH_TIMER as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={WITH_TIMER} validation={validation()} />);
 
     const rung = screen.getByTestId('rung-0');
     expect(within(rung).getByText('TON')).not.toBeNull();
@@ -422,11 +444,11 @@ describe('ladder rendering', () => {
   it('marks a normally-closed contact differently from a normally-open one', () => {
     // Confusing the two inverts the logic. NC carries a diagonal, which is
     // what every ladder editor draws.
-    const { container: nc } = render(
-      <PlcView language="ladder" rungs={SEAL_IN as never} validation={validation()} />,
+    const { container: nc } = renderApp(
+      <PlcView language="ladder" rungs={SEAL_IN} validation={validation()} />,
     );
-    const { container: no } = render(
-      <PlcView language="ladder" rungs={CONTACT_COIL as never} validation={validation()} />,
+    const { container: no } = renderApp(
+      <PlcView language="ladder" rungs={CONTACT_COIL} validation={validation()} />,
     );
 
     const diagonals = (root: HTMLElement) =>
@@ -440,7 +462,7 @@ describe('ladder rendering', () => {
   });
 
   it('draws several rungs', () => {
-    render(
+    renderApp(
       <PlcView
         language="ladder"
         rungs={[...CONTACT_COIL, ...WITH_TIMER] as never}
@@ -453,7 +475,7 @@ describe('ladder rendering', () => {
   });
 
   it('shows the rung comment', () => {
-    render(<PlcView language="ladder" rungs={SEAL_IN as never} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={SEAL_IN} validation={validation()} />);
 
     expect(screen.getByText('Seal in around the start button')).not.toBeNull();
   });
@@ -461,10 +483,10 @@ describe('ladder rendering', () => {
   it('still shows the failure banner over a ladder diagram', () => {
     // The banner is about the verdict, not about the language. A failed ladder
     // must block the looks-done impression exactly as failed text does.
-    render(
+    renderApp(
       <PlcView
         language="ladder"
-        rungs={SEAL_IN as never}
+        rungs={SEAL_IN}
         validation={validation({ status: 'invalid', findings: [finding({ line: null })] })}
       />,
     );
@@ -477,13 +499,13 @@ describe('ladder rendering', () => {
 
 describe('empty states', () => {
   it('says so when there is no code', () => {
-    render(<PlcView language="structured-text" source="" validation={validation()} />);
+    renderApp(<PlcView language="structured-text" source="" validation={validation()} />);
 
     expect(screen.getByText('No code to display.')).not.toBeNull();
   });
 
   it('says so when there are no rungs', () => {
-    render(<PlcView language="ladder" rungs={[]} validation={validation()} />);
+    renderApp(<PlcView language="ladder" rungs={[]} validation={validation()} />);
 
     expect(screen.getByText('No rungs to display.')).not.toBeNull();
   });
@@ -491,7 +513,7 @@ describe('empty states', () => {
   it('still shows the verdict when there is nothing to display', () => {
     // An empty result with a failed verdict is exactly when someone needs
     // telling — the absence of code is not the absence of a problem.
-    render(
+    renderApp(
       <PlcView
         language="structured-text"
         source=""

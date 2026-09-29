@@ -28,6 +28,7 @@ const STARTED: trial.TrialStart = {
   trial: { sessionId: 'sess-1', claimSecret: 'secret-1' },
   accessToken: 'tok-1',
   questionsRemaining: 10,
+  conversationId: null,
 };
 
 const EXISTING: trial.TrialSession = { sessionId: 'existing-1', claimSecret: 'existing-secret' };
@@ -133,6 +134,7 @@ describe('HomePage', () => {
       trial: EXISTING,
       accessToken: 'tok-resumed',
       questionsRemaining: 4,
+      conversationId: null,
     });
     const start = mockStart(STARTED);
     const list = spyHistory();
@@ -251,12 +253,14 @@ describe('HomePage', () => {
         trial: EXISTING,
         accessToken: 'tok-old',
         questionsRemaining: 5,
+        conversationId: null,
       })
       .mockResolvedValueOnce({
         kind: 'resumed',
         trial: EXISTING,
         accessToken: 'tok-new',
         questionsRemaining: 5,
+        conversationId: null,
       });
     vi.spyOn(stream, 'streamDiagnosis').mockImplementation(async function* () {
       await Promise.resolve();

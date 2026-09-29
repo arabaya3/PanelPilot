@@ -157,15 +157,19 @@ describe('malformed rows', () => {
     expect(result.sessions[0]?.id).toBe('session-1');
   });
 
-  it('falls back to a title rather than rendering an empty row', async () => {
-    const result = await listSessions({
-      token: 't',
-      fetchImpl: respond(page({ sessions: [{ id: 'a', title: '' }] })),
-    });
+  it.each([[''], [null]])(
+    'reads a missing title (%j) as untitled, for the sidebar to name',
+    async (title) => {
+      const result = await listSessions({
+        token: 't',
+        fetchImpl: respond(page({ sessions: [{ id: 'a', title }] })),
+      });
 
-    if (result.kind !== 'loaded') throw new Error('expected loaded');
-    expect(result.sessions[0]?.title).not.toBe('');
-  });
+      if (result.kind !== 'loaded') throw new Error('expected loaded');
+      // Not a placeholder string: that was English in every locale.
+      expect(result.sessions[0]?.title).toBeNull();
+    },
+  );
 
   it('treats a missing equipment model as absent, not as a string', async () => {
     // `String(null)` would print "null" under the title on every row that

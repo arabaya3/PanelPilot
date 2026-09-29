@@ -1409,7 +1409,7 @@ def test_another_tenants_titles_do_not_leak(db: Session, db_user: CurrentUser) -
 
     page = diagnostics_domain.list_sessions(session=db, user=db_user)
 
-    assert all("secret" not in row.title for row in page.sessions)
+    assert all("secret" not in (row.title or "") for row in page.sessions)
 
 
 @requires_db
@@ -1445,7 +1445,7 @@ def test_a_cursor_cannot_be_used_to_page_into_another_tenant(
     # The other tenant's own cursor, replayed by our caller.
     mine = diagnostics_domain.list_sessions(session=db, user=db_user, cursor=their_page.next_cursor)
 
-    assert all("their" not in row.title for row in mine.sessions)
+    assert all("their" not in (row.title or "") for row in mine.sessions)
 
 
 # --- ordering ----------------------------------------------------------------
@@ -1541,8 +1541,10 @@ def test_a_long_question_is_truncated(db: Session, db_user: CurrentUser) -> None
 
     page = diagnostics_domain.list_sessions(session=db, user=db_user)
 
-    assert len(page.sessions[0].title) < 200
-    assert page.sessions[0].title.endswith("\u2026")
+    title = page.sessions[0].title
+    assert title is not None
+    assert len(title) < 200
+    assert title.endswith("\u2026")
 
 
 @requires_db
@@ -1558,7 +1560,9 @@ def test_a_session_with_no_turns_still_appears(db: Session, db_user: CurrentUser
 
     assert [row.id for row in page.sessions] == [str(empty)]
     assert page.sessions[0].turn_count == 0
-    assert page.sessions[0].title
+    # Untitled, for the client to name in the engineer's language: a
+    # placeholder chosen here was English in every locale.
+    assert page.sessions[0].title is None
 
 
 @requires_db

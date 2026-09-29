@@ -59,7 +59,14 @@ export type InterruptionReason =
    * caller shows the signup step instead of an error, which is the whole
    * point of the trial flow.
    */
-  | 'quota-exhausted';
+  | 'quota-exhausted'
+  /**
+   * The same refusal, for a caller who already has an account. Never sent by
+   * the server: the chat tells the two apart, because "create an account to
+   * keep asking" said to someone who just did is false, and a signup form
+   * offered to them would make a second account instead of continuing.
+   */
+  | 'account-quota-exhausted';
 
 /**
  * How much unterminated text may accumulate before the stream is given up on.

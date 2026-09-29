@@ -32,7 +32,23 @@ import pytest
 from app.models.schemas.verification import VerificationLabel, escalates
 from app.tests.verification.calibration_set import CALIBRATION_SET, CalibrationItem
 
-RUBRIC_PATH = Path(__file__).resolve().parents[5] / "docs" / "verification-rubric.md"
+RUBRIC_NAME = "verification-rubric.md"
+
+
+def _find_rubric() -> Path | None:
+    """Find ``docs/verification-rubric.md`` in the nearest ancestor holding it.
+
+    Searched for rather than computed as a fixed number of levels up: in the
+    compose dev container the source sits at ``/app`` and ``docs/`` is mounted
+    at ``/docs``, so the repository-relative depth this used to assume does
+    not exist there. Computing it at import time made the whole run stop at
+    collection, taking every other test down with it.
+    """
+    for directory in Path(__file__).resolve().parents:
+        candidate = directory / "docs" / RUBRIC_NAME
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 @pytest.fixture(scope="module", name="rubric")
@@ -42,7 +58,13 @@ def _rubric() -> str:
     Read from disk rather than duplicated here: the point is to catch the
     document and the calibration set drifting apart, which a copy would hide.
     """
-    return RUBRIC_PATH.read_text(encoding="utf-8")
+    path = _find_rubric()
+    if path is None:
+        pytest.skip(
+            f"docs/{RUBRIC_NAME} is not reachable from this checkout; in the compose "
+            "container it is mounted at /docs"
+        )
+    return path.read_text(encoding="utf-8")
 
 
 def test_the_rubric_document_exists(rubric: str) -> None:
@@ -86,7 +108,7 @@ def test_the_clause_each_item_cites_exists_in_the_rubric(
 
     assert re.search(rf"^#+.*`?{re.escape(section)}`?", rubric, re.MULTILINE | re.IGNORECASE), (
         f"{item.item_id} cites rubric section {section!r}, which is not a heading in "
-        f"{RUBRIC_PATH.name}"
+        f"{RUBRIC_NAME}"
     )
 
 

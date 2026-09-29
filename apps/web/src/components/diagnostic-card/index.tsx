@@ -227,7 +227,7 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
     >
       <div className="mb-2 flex items-center gap-2">
         <span
-          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+          className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase ${classes.badge}`}
         >
           <StateIcon shape="uncertain" />
           {t('uncertainBadge')}
@@ -258,7 +258,7 @@ function RefusalCard({ message }: { message: string }) {
       className={`rounded-lg border border-s-8 shadow-sm ${classes.border} bg-surface p-4`}
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5 text-xs font-semibold uppercase text-text-muted">
+        <span className="inline-flex items-center gap-1 rounded-sm border border-border px-2 py-1 text-xs font-semibold uppercase text-text-muted">
           <StateIcon shape="error" />
           {t('refusalBadge')}
         </span>
@@ -301,7 +301,7 @@ function DiagnosisCard({
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span
-          className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase ${classes.badge}`}
+          className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase ${classes.badge}`}
         >
           {/* Shape as well as colour. Simulated through the common colour
               deficiencies, critical and warning sit at ΔE 6 under

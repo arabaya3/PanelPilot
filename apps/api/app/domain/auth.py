@@ -627,6 +627,7 @@ def start_trial(
             # to signing up.
             session_id=str(anonymous.id),
             claim_secret=claim_secret,
+            conversation_id=str(diagnostic.id),
             access_token=token,
             expires_in=access_token_ttl_seconds,
             questions_remaining=tenant.free_question_limit - tenant.free_questions_used,
@@ -712,6 +713,7 @@ def resume_trial(
         return TrialStart(
             session_id=session_id,
             claim_secret=claim_secret,
+            conversation_id=str(row.diagnostic_session_id),
             access_token=token,
             expires_in=access_token_ttl_seconds,
             questions_remaining=max(0, tenant.free_question_limit - tenant.free_questions_used),

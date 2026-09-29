@@ -338,7 +338,7 @@ def _analyse(tree: Tree[Token]) -> list[ValidationFinding]:
     read = _read_names(tree)
 
     findings: list[ValidationFinding] = []
-    findings.extend(_undeclared_findings(declared, assigned | read))
+    findings.extend(_undeclared_findings(declared, assigned | read, _first_lines(tree)))
     findings.extend(_unreferenced_findings(declared, assigned, read))
     findings.extend(_type_findings(tree, declared))
     findings.extend(_unreachable_findings(tree))
@@ -408,15 +408,43 @@ def _read_names(tree: Tree[Token]) -> set[str]:
     return names
 
 
-def _undeclared_findings(declared: dict[str, str], used: set[str]) -> list[ValidationFinding]:
+def _first_lines(tree: Tree[Token]) -> dict[str, int]:
+    """Return the first line each name is used on, read or written.
+
+    Args:
+        tree: The parse tree.
+
+    Returns:
+        The earliest line per name, for names whose token carries one.
+    """
+    lines: dict[str, int] = {}
+    tokens = [
+        node.children[0]
+        for data in ("assignment", "for_statement", "var_ref", "call_expr")
+        for node in tree.find_data(data)
+    ]
+    for token in tokens:
+        line = getattr(token, "line", None)
+        if isinstance(token, Token) and isinstance(line, int):
+            name = str(token)
+            lines[name] = min(line, lines.get(name, line))
+    return lines
+
+
+def _undeclared_findings(
+    declared: dict[str, str], used: set[str], first_lines: dict[str, int]
+) -> list[ValidationFinding]:
     """Report names used but never declared.
 
     Args:
         declared: Declared variables.
         used: Names read or written.
+        first_lines: Where each name is first used.
 
     Returns:
-        One error per undeclared name.
+        One error per undeclared name, on the line it is first used. Without
+        the line the finding named a symbol and left the engineer to search a
+        program they may not have written for where it was mistyped.
 
     An error, not a warning. In ST an undeclared symbol does not compile, so
     this is not a matter of taste — and a typo'd tag name is exactly the
@@ -428,6 +456,7 @@ def _undeclared_findings(declared: dict[str, str], used: set[str]) -> list[Valid
             code="undeclared-tag",
             message=f"{name!r} is used but never declared",
             severity=FindingSeverity.ERROR,
+            line=first_lines.get(name),
         )
         for name in unknown
     ]

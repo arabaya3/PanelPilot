@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 
+import { useLocale } from '@/components/locale-provider';
 import { listSessions, type SessionSummary } from '@/lib/sessions';
 
 /**
@@ -40,6 +41,7 @@ export function HistorySidebar({
   refreshKey?: number;
 }) {
   const t = useTranslations('history');
+  const { locale } = useLocale();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'failed' | 'unavailable'>('loading');
@@ -142,8 +144,8 @@ export function HistorySidebar({
                       title stays in the accessible name and in the tooltip,
                       so a long question is shortened visually without being
                       lost to someone who cannot see the clamp. */}
-                  <span className="line-clamp-2 break-words" title={session.title}>
-                    {session.title}
+                  <span className="line-clamp-2 break-words" title={session.title ?? undefined}>
+                    {session.title ?? t('untitled')}
                   </span>
                   {session.equipmentModel !== null && (
                     <span
@@ -154,7 +156,7 @@ export function HistorySidebar({
                     </span>
                   )}
                   <time className="mt-1 block text-xs text-text-muted" dateTime={session.updatedAt}>
-                    {formatDay(session.updatedAt)}
+                    {formatDay(session.updatedAt, locale)}
                   </time>
                 </button>
               </li>
@@ -184,14 +186,16 @@ export function HistorySidebar({
  * A date the engineer can scan.
  *
  * Rendered from the locale's own formatter rather than a hand-built string, so
- * an Arabic or Hebrew locale gets its own calendar conventions. An unparseable
- * value renders as empty rather than `Invalid Date`, which would be the only
- * text on the row that looked like an error.
+ * an Arabic or Hebrew locale gets its own calendar conventions. In the app's
+ * locale, not the browser's: the browser's is whatever the machine was set up
+ * with, and an English date under an Arabic sidebar was the result. An
+ * unparseable value renders as empty rather than `Invalid Date`, which would
+ * be the only text on the row that looked like an error.
  */
-function formatDay(iso: string): string {
+function formatDay(iso: string, locale: string): string {
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toLocaleDateString(undefined, {
+  return parsed.toLocaleDateString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

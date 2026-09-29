@@ -132,6 +132,7 @@ describe('startTrial', () => {
           claim_secret: 'secret-1',
           access_token: 'tok-1',
           questions_remaining: 10,
+          conversation_id: 'conv-1',
         }),
     });
     const outcome = await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -140,7 +141,24 @@ describe('startTrial', () => {
       trial: TRIAL,
       accessToken: 'tok-1',
       questionsRemaining: 10,
+      conversationId: 'conv-1',
     });
+  });
+
+  it('reads a server that names no conversation as none, not as a failure', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: () =>
+        Promise.resolve({
+          session_id: 'sess-1',
+          claim_secret: 'secret-1',
+          access_token: 'tok-1',
+          questions_remaining: 10,
+        }),
+    });
+    const outcome = await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(outcome).toMatchObject({ kind: 'started', conversationId: null });
   });
 
   it('refuses a response carrying no usable token', async () => {
@@ -187,6 +205,7 @@ describe('resumeTrial', () => {
     access_token: 'tok-2',
     expires_in: 900,
     questions_remaining: 3,
+    conversation_id: 'conv-1',
   };
 
   it('sends the pair in the body, never the URL', async () => {
@@ -206,6 +225,7 @@ describe('resumeTrial', () => {
       trial: TRIAL,
       accessToken: 'tok-2',
       questionsRemaining: 3,
+      conversationId: 'conv-1',
     });
   });
 
@@ -704,5 +724,118 @@ describe('when the limit modal appears', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /not now/i }));
     expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+  });
+});
+
+// --- the trial's own conversation, and an account at its limit -------------
+
+describe('the conversation a trial opened', () => {
+  function recorder(events: StreamEvent[]) {
+    const requests: { session_id?: string | null }[] = [];
+    async function* streamImpl(options: {
+      request: { session_id?: string | null };
+    }): AsyncGenerator<StreamEvent> {
+      requests.push(options.request);
+      await Promise.resolve();
+      for (const event of events) yield event;
+    }
+    return { requests, streamImpl };
+  }
+
+  function ask(question: string) {
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: question } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+  }
+
+  const EMPTY_CONVERSATION = {
+    kind: 'loaded' as const,
+    session: {
+      id: 'conv-1',
+      turns: [],
+      created_at: '2026-09-29T00:00:00Z',
+      updated_at: '2026-09-29T00:00:00Z',
+    } as unknown as components['schemas']['DiagnosticSession'],
+  };
+
+  it('asks the first question in it rather than opening another', async () => {
+    // Every trial used to leave an empty "New conversation" in the history:
+    // the trial opened one, and the first question opened a second.
+    const fetchSessionImpl = vi.fn().mockResolvedValue(EMPTY_CONVERSATION);
+    const { requests, streamImpl } = recorder([]);
+    renderApp(
+      <Chat
+        token="t"
+        trial={TRIAL}
+        questionsRemaining={5}
+        conversationId="conv-1"
+        fetchSessionImpl={fetchSessionImpl}
+        streamImpl={streamImpl as never}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchSessionImpl).toHaveBeenCalledWith({ token: 't', sessionId: 'conv-1' });
+    });
+    ask('Why is it tripping?');
+
+    await waitFor(() => {
+      expect(requests[0]?.session_id).toBe('conv-1');
+    });
+  });
+
+  it('opens it once, not again when the token is renewed', async () => {
+    const fetchSessionImpl = vi.fn().mockResolvedValue(EMPTY_CONVERSATION);
+    const view = renderApp(
+      <Chat token="t" trial={TRIAL} conversationId="conv-1" fetchSessionImpl={fetchSessionImpl} />,
+    );
+    await waitFor(() => {
+      expect(fetchSessionImpl).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <Chat
+        token="t-renewed"
+        trial={TRIAL}
+        conversationId="conv-1"
+        fetchSessionImpl={fetchSessionImpl}
+      />,
+    );
+    await Promise.resolve();
+
+    expect(fetchSessionImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells an account it has used its questions, without offering signup', async () => {
+    // After signup the account is in the trial's tenant, with its allowance.
+    // The card said "create an account to keep asking" and the signup form
+    // opened again -- to someone who had just made one.
+    const { streamImpl } = recorder([{ kind: 'interrupted', reason: 'quota-exhausted' }]);
+    renderApp(<Chat token="t" trial={null} streamImpl={streamImpl as never} />);
+
+    ask('One more question');
+
+    await waitFor(() => {
+      expect(screen.getByText(/free questions on this account/i)).toBeTruthy();
+    });
+    expect(screen.queryByText(/create an account/i)).toBeNull();
+    expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+  });
+
+  it('never shows an account the signup form, whatever its count says', () => {
+    // Signing up from an account would make a second one, not continue this.
+    renderApp(<Chat token="t" trial={null} questionsRemaining={0} />);
+    expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+  });
+
+  it('still offers signup to a trial refused for its quota', async () => {
+    const { streamImpl } = recorder([{ kind: 'interrupted', reason: 'quota-exhausted' }]);
+    renderApp(<Chat token="t" trial={TRIAL} streamImpl={streamImpl as never} />);
+
+    ask('One more question');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trial-limit-modal')).toBeTruthy();
+    });
   });
 });

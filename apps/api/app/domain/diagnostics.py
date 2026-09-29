@@ -947,17 +947,19 @@ def _first_question() -> Any:
     )
 
 
-def _session_title(question: str | None) -> str:
+def _session_title(question: str | None) -> str | None:
     """Return a conversation's first question, truncated for display.
 
     Args:
         question: The first question, or ``None`` when there are no turns yet.
 
     Returns:
-        The title to show.
+        The title to show, or ``None`` for a conversation with no question
+        yet. Not a placeholder string: the sidebar is read in Arabic and
+        Hebrew too, and English chosen here showed through in both.
     """
     if question is None:
-        return "New conversation"
+        return None
     if len(question) <= _SESSION_TITLE_MAX:
         return question
     return question[: _SESSION_TITLE_MAX - 1].rstrip() + "…"

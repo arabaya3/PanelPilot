@@ -56,6 +56,47 @@ describe('the session list', () => {
     expect(screen.getByText('second')).not.toBeNull();
   });
 
+  it.each([
+    ['en', 'New conversation'],
+    ['ar', 'محادثة جديدة'],
+    ['he', 'שיחה חדשה'],
+  ] as const)(
+    "names an untitled conversation in the reader's language (%s)",
+    async (locale, name) => {
+      // The server used to send "New conversation", in English, in every locale.
+      renderApp(
+        <HistorySidebar
+          token="t"
+          activeSessionId={null}
+          onSelect={() => {}}
+          listImpl={listing(loaded([summary({ title: null })]))}
+        />,
+        { locale },
+      );
+
+      expect(await screen.findByText(name)).not.toBeNull();
+    },
+  );
+
+  it("dates a row in the app's language, not the browser's", async () => {
+    renderApp(
+      <HistorySidebar
+        token="t"
+        activeSessionId={null}
+        onSelect={() => {}}
+        listImpl={listing(loaded([summary({ updatedAt: '2026-01-02T09:00:00Z' })]))}
+      />,
+      { locale: 'ar' },
+    );
+
+    const expected = new Date('2026-01-02T09:00:00Z').toLocaleDateString('ar', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+    expect(await screen.findByText(expected)).not.toBeNull();
+  });
+
   it('preserves the order the API returned', async () => {
     // Not re-sorted client-side: the server knows when each conversation was
     // last added to, and this component only knows what it was sent. Sorting

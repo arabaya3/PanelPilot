@@ -46,10 +46,17 @@ class TrialStart(BaseModel):
     The secret is returned exactly once, here. Only its hash is stored, so it
     cannot be re-read or recovered later — losing it means starting a new
     trial, which is the safe direction.
+
+    ``conversation_id`` is the diagnostic session the trial opened. The client
+    asks its first question in it: without the id, the first question opened a
+    second conversation and left this one in the history, empty, as "New
+    conversation". Distinct from ``session_id``, which names the anonymous
+    session and is what a signup claims.
     """
 
     session_id: str
     claim_secret: str
+    conversation_id: str
     access_token: str
     token_type: str = "bearer"
     expires_in: int

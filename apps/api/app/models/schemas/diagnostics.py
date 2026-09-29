@@ -164,7 +164,9 @@ class DiagnosticSessionSummary(BaseModel):
     Attributes:
         id: The session id, used to fetch the full conversation on selection.
         title: The first question asked, which is what makes a session
-            recognisable. Truncated for display.
+            recognisable. Truncated for display. ``None`` before the first
+            question: the client names an untitled conversation in the
+            engineer's language, which a string chosen here could not.
         equipment_model: The model this conversation was about, when a turn
             recorded one. ``None`` where no turn identified equipment; the
             sidebar shows the title alone rather than a guessed brand.
@@ -176,7 +178,7 @@ class DiagnosticSessionSummary(BaseModel):
     """
 
     id: str
-    title: str
+    title: str | None
     equipment_model: str | None = None
     turn_count: int
     created_at: datetime

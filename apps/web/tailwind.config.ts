@@ -84,7 +84,18 @@ const config: Config = {
       sm: 'var(--shadow-sm)',
       md: 'var(--shadow-md)',
     },
-    extend: {},
+    // Box sizes, which are not spacing. Replacing `spacing` above also removed
+    // Tailwind's default width and height scale, since both inherit from it,
+    // and a class naming a missing key does not fail -- it generates nothing.
+    // `w-64` on the history sidebar was silently dropped, so the sidebar sized
+    // itself to its longest title and squeezed the conversation to a sliver.
+    // Only the sizes in use, at Tailwind's own values; `tailwind-classes.test`
+    // fails on any other.
+    extend: {
+      width: { 24: '6rem', 40: '10rem', 56: '14rem', 64: '16rem' },
+      height: { 96: '24rem' },
+      maxHeight: { 40: '10rem' },
+    },
   },
   plugins: [],
 };
