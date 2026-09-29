@@ -126,6 +126,9 @@ class _FakeSession:
     ) -> None:
         self.added: list[Any] = []
         self.flushes = 0
+        self.commits = 0
+        self.rollbacks = 0
+        self.events: list[str] = []
         self.locked = False
         self._existing = existing
         self._positions = positions or []
@@ -135,6 +138,17 @@ class _FakeSession:
 
     def flush(self) -> None:
         self.flushes += 1
+        self.events.append("flush")
+
+    def commit(self) -> None:
+        # Recorded in order with flushes, so a test can assert the transaction
+        # was released before the model call rather than held across it.
+        self.commits += 1
+        self.events.append("commit")
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+        self.events.append("rollback")
 
     def execute(self, statement: Any) -> Any:
         # The row lock taken before reading the last turn position. Recorded
@@ -203,6 +217,9 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> _CountingClient:
     client = _CountingClient()
     monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
     monkeypatch.setattr(diagnostics_domain, "consume_free_question", lambda **_kw: None)
+    # The advisory pre-flight reads the tenant, which the fake session cannot
+    # serve. Tests of the pre-flight itself replace this.
+    monkeypatch.setattr(diagnostics_domain, "check_free_question_allowed", lambda **_kw: None)
     monkeypatch.setattr(
         "app.ai.guardrails.cite_or_refuse._resolve_threshold",
         lambda threshold: 0.6 if threshold is None else threshold,
@@ -1923,3 +1940,186 @@ def test_equipment_does_not_leak_between_sessions(db: Session, db_user: CurrentU
 
     by_title = {row.title: row.equipment_model for row in page.sessions}
     assert by_title == {"a": "ACS880", "b": None}
+
+
+# --- quota, transactions and evidence on the answering path -----------------
+
+
+def _spent(**_kw: Any) -> None:
+    raise ValidationError("free question limit of 10 reached")
+
+
+def test_a_spent_allowance_streams_a_refusal_without_a_model_call(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The pre-flight stops the spend, not just the answer."""
+    searched: list[str] = []
+    monkeypatch.setattr(diagnostics_domain, "check_free_question_allowed", _spent)
+    monkeypatch.setattr(
+        diagnostics_domain, "search", lambda *_a, **_kw: searched.append("x") or [_passage()]
+    )
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    )
+
+    assert [e.event for e in events] == ["retrieving", "refused", "result"]
+    assert "free question limit" in events[1].data["reason"]
+    assert events[-1].data["diagnosis"] is None
+    assert wired.calls == 0 and searched == []
+
+
+def test_losing_the_quota_race_withholds_the_answer(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The locked charge decides delivery — the bug was charging after it.
+
+    The pre-flight passed (a concurrent question had not yet been charged),
+    generation ran, and then the locked charge found the allowance spent. The
+    answer must not go out, and the turn written for it must be rolled back.
+    """
+    monkeypatch.setattr(diagnostics_domain, "consume_free_question", _spent)
+    _retrieving(monkeypatch, [_passage()])
+    db = _FakeSession()
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, db), user=_user(), request=_request()
+        )
+    )
+
+    assert [e.event for e in events] == ["retrieving", "generated", "refused", "result"]
+    assert events[-1].data["diagnosis"] is None
+    assert "free question limit" in events[-1].data["refusal_message"]
+    assert db.rollbacks == 1
+    assert db.events[-1] == "rollback", "the unshown turn was committed"
+
+
+def test_the_stream_commits_before_the_result_leaves(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """A client must never render a turn that was not durably recorded."""
+    _retrieving(monkeypatch, [_passage()])
+    db = _FakeSession()
+    commits_when_result_seen: list[int] = []
+
+    for event in diagnostics_domain.stream_diagnosis(
+        session=cast(Session, db), user=_user(), request=_request()
+    ):
+        if event.event == "result":
+            commits_when_result_seen.append(db.commits)
+
+    # One commit releasing the connection before the model call, one for the turn.
+    assert commits_when_result_seen == [2]
+
+
+def test_a_failed_commit_still_ends_the_stream_with_a_terminal_event(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Nothing raises out of the generator once streaming has begun."""
+    _retrieving(monkeypatch, [_passage()])
+
+    class _FailingCommit(_FakeSession):
+        def commit(self) -> None:
+            super().commit()
+            if self.commits > 1:
+                raise RuntimeError("connection lost")
+
+    events = list(
+        diagnostics_domain.stream_diagnosis(
+            session=cast(Session, _FailingCommit()), user=_user(), request=_request()
+        )
+    )
+
+    assert events[-1].event == "result"
+    assert events[-1].data["diagnosis"] is None
+
+
+def test_the_transaction_is_released_before_the_model_is_called(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """No pooled connection is held across retrieval and generation.
+
+    A new conversation used to be inserted and flushed up front, which kept a
+    transaction — and so a connection — open for the whole model call.
+    """
+    db = _FakeSession()
+    events_at_search: list[list[str]] = []
+
+    def _search(*_a: Any, **_kw: Any) -> list[RetrievedPassage]:
+        events_at_search.append(list(db.events))
+        return [_passage()]
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
+    diagnostics_domain.run_diagnosis(session=cast(Session, db), user=_user(), request=_request())
+
+    assert events_at_search == [["commit"]], "something was written before the slow part"
+    new_conversations = [r for r in db.added if isinstance(r, DiagnosticSessionRow)]
+    assert len(new_conversations) == 1, "the new conversation was never created"
+
+
+def test_the_quota_is_charged_after_the_turn_is_written(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Lock order: conversation, then tenant — the order the stream must use.
+
+    Charging first on this path and last on the stream let one turn on each
+    endpoint in the same conversation deadlock.
+    """
+    db = _FakeSession()
+    monkeypatch.setattr(
+        diagnostics_domain, "consume_free_question", lambda **_kw: db.events.append("charge")
+    )
+    _retrieving(monkeypatch, [_passage()])
+
+    diagnostics_domain.run_diagnosis(session=cast(Session, db), user=_user(), request=_request())
+
+    assert "flush" in db.events and "charge" in db.events
+    assert db.events.index("charge") > max(
+        i for i, e in enumerate(db.events) if e == "flush"
+    ), "the tenant was locked before the conversation"
+
+
+def test_a_passage_below_the_threshold_is_not_citable(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Generation sees only what the guardrail would cite.
+
+    With one strong and one weak passage the guardrail answers, and it cites
+    only the strong one. A model citing only the weak one must be refused, not
+    resolved against it.
+    """
+    weak = RetrievedPassage(
+        id="weak",
+        text="Barely related text.",
+        score=0.06,
+        citation=Citation(document_id="weak-doc", document_title="Weak", manufacturer="ABB"),
+    )
+    payload = _valid_tool_payload()
+    payload["summary_citation_ids"] = ["weak"]
+    payload["steps"][0]["citation_ids"] = ["weak"]
+    client = _CountingClient(payload)
+    monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
+    _retrieving(monkeypatch, [_passage(), weak])
+
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+
+    assert client.calls == 1
+    assert response.diagnosis is None, "a sub-threshold passage was accepted as a citation"
+
+
+def test_the_post_path_refuses_a_spent_allowance_before_paying(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    monkeypatch.setattr(diagnostics_domain, "check_free_question_allowed", _spent)
+    _retrieving(monkeypatch, [_passage()])
+
+    with pytest.raises(ValidationError, match="free question limit"):
+        diagnostics_domain.answer_question(
+            session=cast(Session, _FakeSession()), user=_user(), request=_request()
+        )
+    assert wired.calls == 0

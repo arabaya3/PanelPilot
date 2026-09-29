@@ -368,11 +368,18 @@ def test_check_free_question_allowed_is_never_used_as_the_gate() -> None:
     into the diagnosis path, and the function whose name reads like a
     permission check is the one it will reach for first.
     """
+    # A pre-flight is allowed only beside the real gate: a module that calls
+    # the advisory check must also charge through ``consume_free_question``.
+    # The diagnosis path uses it to refuse a long-spent allowance before paying
+    # for a model call, which the locked charge alone cannot do — it runs
+    # after generation, by design. What stays forbidden is the check standing
+    # in for the charge.
     callers = [
         p.relative_to(APP_ROOT)
         for p in _source_modules("domain", "api", "worker", "ai", "ingestion")
         if p != APP_ROOT / "domain" / "auth.py"
-        and "check_free_question_allowed" in p.read_text(encoding="utf-8")
+        and "check_free_question_allowed" in (text := p.read_text(encoding="utf-8"))
+        and "consume_free_question(" not in text
     ]
     assert not callers, (
         f"{callers} call check_free_question_allowed. It is advisory only — a "

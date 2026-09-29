@@ -5,9 +5,10 @@ machinery upstream becomes load-bearing. Every guardrail in ``app/ai`` is
 worthless if this function forgets to call it, so the order here is the
 product's accuracy claim expressed as code:
 
-1. Retrieve and judge the evidence first. The quota is charged later, so an
-   over-quota caller is told after one wasted retrieval rather than being
-   billed for an answer they never saw — the cheaper mistake of the two.
+1. Refuse a spent allowance before paying for anything, then retrieve and
+   judge the evidence. That early check is advisory; the quota is *charged*
+   later, under a row lock, so a caller is never billed for an answer they
+   never saw — and the charge, not the early check, is what enforces it.
 2. Retrieve from **production only**. ``search`` takes no index argument, so
    staging is not reachable from here even by mistake.
 3. Ask the guardrail. If it refuses, render the refusal from a template and
@@ -40,7 +41,7 @@ from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session, aliased
 
 from app.ai.guardrails.cite_or_refuse import evaluate_confidence, verify_citations
-from app.ai.guardrails.confidence import score_confidence
+from app.ai.guardrails.confidence import is_publishable, score_confidence
 from app.ai.guardrails.refusal_text import render_refusal
 from app.ai.localisation import generate_localised_diagnosis
 from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
@@ -48,7 +49,7 @@ from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.observability import record_latency, timed
-from app.domain.auth import consume_free_question
+from app.domain.auth import check_free_question_allowed, consume_free_question
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.diagnostics import (
     ConfidenceBreakdown,
@@ -115,7 +116,17 @@ def run_diagnosis(
     # The quota is NOT charged here. See step 5 in the module docstring: only
     # an answer the engineer receives burns a question.
 
-    conversation = _resolve_session(session=session, user=user, request=request)
+    conversation_id, is_new = _resolve_conversation(session=session, user=user, request=request)
+
+    # End the transaction before the slow part. Retrieval and generation take
+    # seconds (a model call can take a minute), and an open transaction pins a
+    # pooled connection for all of it: with a pool of 30, the 31st concurrent
+    # question waited out the pool timeout and failed while threads were still
+    # free. Nothing is pending at this point — authentication and the
+    # conversation lookup only read — so this releases the connection and
+    # writes nothing. The turn is written in a fresh transaction afterwards,
+    # which is also why a new conversation is not inserted until then.
+    session.commit()
 
     # Production only. `search` exposes no index argument, so this cannot be
     # pointed at unverified staging content by passing an argument.
@@ -135,18 +146,28 @@ def run_diagnosis(
         # can be forgotten, and a forgotten discard is an unsourced answer.
         return _persist_and_return(
             session=session,
-            conversation=conversation,
+            user=user,
+            conversation_id=conversation_id,
+            is_new=is_new,
             request=request,
-            response=_refusal_response(conversation.id, decision, passages),
+            response=_refusal_response(conversation_id, decision, passages),
         )
+
+    # Only the passages that cleared the threshold. The guardrail limits its
+    # own citations to exactly these, and handing the model everything
+    # retrieved undid that: a 0.06-scoring passage became citable, and
+    # `verify_citations` resolved a citation to it because it was "evidence".
+    # The prompt, the allowed ids, citation checking and scoring must all see
+    # the same set, or one of them is judging a different answer.
+    evidence = [passage for passage in passages if passage.score >= decision.threshold]
 
     with timed("generation", locale=request.locale.value):
         diagnosis, decision = generate_localised_diagnosis(
             _anthropic_client(),
             model=get_settings().llm_model,
             system=SYSTEM_PROMPT,
-            question=build_diagnostic_prompt(request=request, evidence=passages),
-            evidence_ids={passage.id for passage in passages},
+            question=build_diagnostic_prompt(request=request, evidence=evidence),
+            evidence_ids={passage.id for passage in evidence},
             decision=decision,
             # From the request, never a server-side default: the engineer's
             # language is theirs to state.
@@ -157,35 +178,54 @@ def run_diagnosis(
         # A response the system could not parse is one it cannot vouch for.
         return _persist_and_return(
             session=session,
-            conversation=conversation,
+            user=user,
+            conversation_id=conversation_id,
+            is_new=is_new,
             request=request,
-            response=_refusal_response(conversation.id, decision, passages),
+            response=_refusal_response(conversation_id, decision, passages),
         )
-
-    # Charged here, not at the top: only an answer the engineer receives
-    # burns a question, per the policy recorded on ``TenantRow``. Atomic —
-    # `consume_free_question` locks the row and raises rather than reporting,
-    # so concurrent requests cannot each see "allowed" and all proceed.
-    if charge:
-        consume_free_question(session=session, tenant_id=user.tenant_id)
 
     answer = verify_citations(
         GeneratedAnswer(
             text=diagnosis.summary,
             cited_passage_ids=list(diagnosis.summary_citation_ids),
         ),
-        evidence=passages,
+        evidence=evidence,
     )
+    confidence = score_confidence(answer, evidence=evidence)
     response = DiagnosticResponse(
-        session_id=str(conversation.id),
+        session_id=str(conversation_id),
         answer=answer,
         diagnosis=diagnosis,
-        confidence=score_confidence(answer, evidence=passages),
-        low_confidence=False,
+        confidence=confidence,
+        # The same rule the replayed turn applies, so an answer does not lose
+        # its uncertainty banner on the way into history or gain one on the
+        # way out.
+        low_confidence=not is_publishable(confidence),
     )
-    return _persist_and_return(
-        session=session, conversation=conversation, request=request, response=response
+    _persist_and_return(
+        session=session,
+        user=user,
+        conversation_id=conversation_id,
+        is_new=is_new,
+        request=request,
+        response=response,
     )
+
+    # Charged after the turn is written, not before: only an answer the
+    # engineer receives burns a question, per the policy recorded on
+    # ``TenantRow``. Atomic — `consume_free_question` locks the row and raises
+    # rather than reporting, so concurrent requests cannot each see "allowed"
+    # and all proceed.
+    #
+    # After persisting rather than before it for lock order: writing the turn
+    # locks the conversation, charging locks the tenant, and the streaming
+    # path necessarily does them in that order. Taking them in the opposite
+    # order here let one turn on each endpoint in the same conversation
+    # deadlock.
+    if charge:
+        consume_free_question(session=session, tenant_id=user.tenant_id)
+    return response
 
 
 def _anthropic_client() -> object:
@@ -203,13 +243,17 @@ def _anthropic_client() -> object:
     return anthropic.Anthropic(api_key=get_settings().anthropic_api_key.get_secret_value())
 
 
-def _resolve_session(
+def _resolve_conversation(
     *,
     session: Session,
     user: CurrentUser,
     request: DiagnosticRequest,
-) -> DiagnosticSessionRow:
-    """Load the conversation this turn belongs to, or start one.
+) -> tuple[uuid.UUID, bool]:
+    """Identify the conversation this turn belongs to, without writing.
+
+    A new conversation gets its id now and its row when the turn is written.
+    Inserting it up front held a transaction open across retrieval and
+    generation for no benefit: nothing reads the row before the turn does.
 
     Args:
         session: Open database session.
@@ -217,7 +261,7 @@ def _resolve_session(
         request: The incoming request.
 
     Returns:
-        The conversation row.
+        The conversation id, and whether it still has to be created.
 
     Raises:
         NotFoundError: If a session id was supplied but does not belong to
@@ -226,12 +270,12 @@ def _resolve_session(
             history back through ``get_session``.
     """
     if request.session_id is None:
-        conversation = DiagnosticSessionRow(tenant_id=_tenant_uuid(user))
-        session.add(conversation)
-        session.flush()
-        return conversation
+        # Validated now, so a malformed tenant claim fails before the model
+        # is paid for rather than at the insert afterwards.
+        _tenant_uuid(user)
+        return uuid.uuid4(), True
 
-    return _load_session(session=session, user=user, session_id=request.session_id)
+    return _load_session(session=session, user=user, session_id=request.session_id).id, False
 
 
 #: Shown when a turn fails for an infrastructure reason rather than a lack of
@@ -246,11 +290,14 @@ _STREAM_FAILURE_MESSAGE = (
 )
 
 
-def _stream_failure_response(request: DiagnosticRequest) -> DiagnosticResponse:
-    """Build the terminal result for a turn that failed mid-stream.
+def _stream_failure_response(
+    request: DiagnosticRequest, message: str = _STREAM_FAILURE_MESSAGE
+) -> DiagnosticResponse:
+    """Build the terminal result for a turn that ended without an answer.
 
     Args:
         request: The question that failed.
+        message: What the engineer is told.
 
     Returns:
         A refusal-shaped response the frontend can render unchanged.
@@ -269,7 +316,7 @@ def _stream_failure_response(request: DiagnosticRequest) -> DiagnosticResponse:
             citation_density=0.0,
         ),
         low_confidence=True,
-        refusal_message=_STREAM_FAILURE_MESSAGE,
+        refusal_message=message,
     )
 
 
@@ -316,6 +363,14 @@ def stream_diagnosis(
     """
     yield DiagnosisEvent(event="retrieving", data={})
 
+    # Before any model is paid for. Advisory only — the locked charge below is
+    # the gate — but without it a spent allowance still bought a full
+    # retrieval and generation per request, only to be refused at the end.
+    spent = _quota_spent_reason(session=session, user=user)
+    if spent is not None:
+        yield from _refusal_frames(request, spent)
+        return
+
     try:
         response = run_diagnosis(session=session, user=user, request=request, charge=False)
     except Exception:
@@ -325,14 +380,10 @@ def stream_diagnosis(
         # one of them must still leave the engineer with a terminal event
         # rather than a stalled panel.
         logger.exception("diagnosis.stream_failed", tenant_id=user.tenant_id)
-        yield DiagnosisEvent(event="refused", data={"reason": _STREAM_FAILURE_MESSAGE})
-        yield DiagnosisEvent(
-            event="result",
-            data=_stream_failure_response(request).model_dump(mode="json"),
-        )
         # Deliberately not re-raised, and the quota deliberately not charged:
         # the turn produced no answer, so billing for it is the exact failure
-        # the charge-after-delivery ordering below exists to prevent.
+        # the charge-before-delivery ordering below exists to prevent.
+        yield from _refusal_frames(request, _STREAM_FAILURE_MESSAGE)
         return
 
     if response.diagnosis is None:
@@ -340,20 +391,117 @@ def stream_diagnosis(
     else:
         yield DiagnosisEvent(event="generated", data={})
 
+        # Charged before the answer leaves, and only if the engineer is still
+        # there to receive it. `yield` above returns here only when the
+        # consumer asked for the next item, which for a `StreamingResponse`
+        # means `generated` was handed to the transport; a client that
+        # vanished during generation never resumes this generator, so it is
+        # never billed.
+        #
+        # This used to charge *after* yielding `result`, which made the charge
+        # unenforceable: a tenant with nothing left received the full answer
+        # and only then hit the limit. The locked charge has to decide whether
+        # the answer is delivered, so it must come first.
+        try:
+            consume_free_question(session=session, tenant_id=user.tenant_id)
+        except ValidationError as exc:
+            # Lost the race to a concurrent question. The turn written above
+            # is rolled back: recording an answer nobody was shown would make
+            # history claim something the engineer never saw.
+            session.rollback()
+            yield from _refusal_frames(request, str(exc))
+            return
+        except Exception:
+            session.rollback()
+            logger.exception("diagnosis.stream_charge_failed", tenant_id=user.tenant_id)
+            yield from _refusal_frames(request, _STREAM_FAILURE_MESSAGE)
+            return
+
+    # Committed before the result goes out, not by the request dependency
+    # afterwards: that runs once the whole body has been sent, so a failed
+    # commit would silently lose a turn the client already rendered, and a
+    # follow-up question could race the commit and find no such session.
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("diagnosis.stream_commit_failed", tenant_id=user.tenant_id)
+        yield from _refusal_frames(request, _STREAM_FAILURE_MESSAGE)
+        return
+
     yield DiagnosisEvent(event="result", data=response.model_dump(mode="json"))
 
-    # Charged only once the result has actually left for the client. A
-    # disconnect part-way through a stream would otherwise bill for an answer
-    # nobody received — the precise thing ``TenantRow`` says must not happen,
-    # and streaming makes long-lived connections the normal case rather than
-    # the exception.
-    #
-    # `yield` above returns here only when the consumer asked for the next
-    # item, which for a `StreamingResponse` means the previous frame was
-    # handed to the transport. A client that vanished mid-stream never
-    # resumes this generator, so the charge simply never happens.
-    if response.diagnosis is not None:
-        consume_free_question(session=session, tenant_id=user.tenant_id)
+
+def answer_question(
+    *,
+    session: Session,
+    user: CurrentUser,
+    request: DiagnosticRequest,
+) -> DiagnosticResponse:
+    """Answer one question in a single response, charging the free quota.
+
+    The non-streaming counterpart of ``stream_diagnosis``: the same advisory
+    pre-flight, so a spent allowance is refused before any model is paid for,
+    and ``run_diagnosis`` charging under the row lock, which is what actually
+    enforces the limit.
+
+    Args:
+        session: Open database session. The caller commits.
+        user: The authenticated caller.
+        request: The question.
+
+    Returns:
+        The diagnosis, or a refusal.
+
+    Raises:
+        ValidationError: If the tenant has no free questions left.
+        NotFoundError: If ``request.session_id`` refers to an unknown session.
+    """
+    spent = _quota_spent_reason(session=session, user=user)
+    if spent is not None:
+        raise ValidationError(spent)
+    return run_diagnosis(session=session, user=user, request=request)
+
+
+def _quota_spent_reason(*, session: Session, user: CurrentUser) -> str | None:
+    """Report, without enforcing, whether the free allowance is already spent.
+
+    An unlocked read, so a concurrent question can still slip past it — which
+    is why every path also charges through ``consume_free_question``. This
+    only saves the model call for the common case of a tenant that ran out
+    some time ago.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+
+    Returns:
+        The refusal to show, or ``None`` if a question may be attempted.
+    """
+    try:
+        check_free_question_allowed(session=session, tenant_id=user.tenant_id)
+    except ValidationError as exc:
+        return str(exc)
+    return None
+
+
+def _refusal_frames(
+    request: DiagnosticRequest, reason: str
+) -> Generator[DiagnosisEvent, None, None]:
+    """Yield the terminal pair for a turn that ends without an answer.
+
+    Args:
+        request: The question.
+        reason: What the engineer is told.
+
+    Yields:
+        A ``refused`` event, then the ``result`` carrying the same message.
+    """
+    yield DiagnosisEvent(event="refused", data={"reason": reason})
+    yield DiagnosisEvent(
+        event="result",
+        data=_stream_failure_response(request, reason).model_dump(mode="json"),
+    )
 
 
 def _tenant_uuid(user: CurrentUser) -> uuid.UUID:
@@ -453,7 +601,9 @@ def _refusal_response(
 def _persist_and_return(
     *,
     session: Session,
-    conversation: DiagnosticSessionRow,
+    user: CurrentUser,
+    conversation_id: uuid.UUID,
+    is_new: bool,
     request: DiagnosticRequest,
     response: DiagnosticResponse,
 ) -> DiagnosticResponse:
@@ -465,13 +615,19 @@ def _persist_and_return(
 
     Args:
         session: Open database session.
-        conversation: The conversation row.
+        user: The authenticated caller, whose tenant owns a new conversation.
+        conversation_id: The conversation this turn belongs to.
+        is_new: Whether the conversation row has yet to be created.
         request: What was asked.
         response: What is being returned.
 
     Returns:
         ``response``, unchanged.
     """
+    if is_new:
+        session.add(DiagnosticSessionRow(id=conversation_id, tenant_id=_tenant_uuid(user)))
+        session.flush()
+
     # Lock the conversation before reading the last position. Without it two
     # concurrent turns both read the same maximum and both write position N+1,
     # and `get_session`'s ORDER BY then returns them in arbitrary order — a
@@ -480,13 +636,13 @@ def _persist_and_return(
     # bypassed; this lock is what stops it happening in the first place.
     session.execute(
         select(DiagnosticSessionRow.id)
-        .where(DiagnosticSessionRow.id == conversation.id)
+        .where(DiagnosticSessionRow.id == conversation_id)
         .with_for_update()
     )
     position = (
         session.scalars(
             select(DiagnosticTurnRow.position)
-            .where(DiagnosticTurnRow.session_id == conversation.id)
+            .where(DiagnosticTurnRow.session_id == conversation_id)
             .order_by(DiagnosticTurnRow.position.desc())
             .limit(1)
         ).one_or_none()
@@ -495,7 +651,7 @@ def _persist_and_return(
 
     session.add(
         DiagnosticTurnRow(
-            session_id=conversation.id,
+            session_id=conversation_id,
             position=position,
             question=request.symptom,
             answer=_stored_answer(response),

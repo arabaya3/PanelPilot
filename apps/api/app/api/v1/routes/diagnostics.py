@@ -38,7 +38,12 @@ def create_diagnosis(
     session: SessionDep,
     user: CurrentUserDep,
 ) -> DiagnosticResponse:
-    return diagnostics_domain.run_diagnosis(session=session, user=user, request=payload)
+    response = diagnostics_domain.answer_question(session=session, user=user, request=payload)
+    # Before returning, not in the session dependency: that commits only after
+    # the response has been sent, so a failed commit would be invisible to a
+    # client already holding a 200, and a follow-up could race it.
+    session.commit()
+    return response
 
 
 @router.post(
