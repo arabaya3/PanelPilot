@@ -123,6 +123,10 @@ def _wire(
 
     monkeypatch.setattr(ingestion_domain, "stage_chunk", recorder)
     monkeypatch.setattr(ingestion_domain, "extract_structure", _structure)
+    # The curated fallback list (`app.ingestion.known_documents`) points at real
+    # manufacturer hosts. Every route here is an in-memory double, so the list
+    # is emptied: otherwise a run crawls live URLs the double does not serve.
+    monkeypatch.setattr(ingestion_domain, "urls_for", lambda _source_id: [])
     monkeypatch.setattr(
         ingestion_domain,
         "embed_documents",
@@ -198,6 +202,23 @@ requires_db = pytest.mark.skipif(
 )
 
 
+def _staged_rows(session: Session) -> list[Any]:
+    """Staged documents written by this module's crawls, and only those.
+
+    Scoped to this module's source rather than the whole table: other suites
+    sharing the database (`test_promotion.py` seeds a fixed staged document)
+    legitimately leave rows behind, and an unscoped count would fail on them.
+    """
+    from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
+
+    return (
+        session.query(StagedDocumentRow)
+        .join(CrawlJobRow, CrawlJobRow.id == StagedDocumentRow.crawl_job_id)
+        .filter(CrawlJobRow.source_id == "abb")
+        .all()
+    )
+
+
 @pytest.fixture
 def db_session() -> Iterator[Session]:
     """A real session, cleaned of anything this module created."""
@@ -256,12 +277,17 @@ def test_a_source_not_on_the_allow_list_is_refused(db_session: Session) -> None:
 
 
 @requires_db
-def test_a_source_with_no_seed_urls_is_refused(db_session: Session) -> None:
+def test_a_source_with_no_seed_urls_is_refused(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A configuration mistake, not a failed crawl.
 
     `crawl_source` would raise on this too, but only after the job had been
     recorded as RUNNING — which reads afterwards like the source went down.
+    Refused only when the source has no curated document list either, so that
+    list is emptied here.
     """
+    monkeypatch.setattr(ingestion_domain, "urls_for", lambda _source_id: [])
     with pytest.raises(ValidationError, match="seed URL"):
         ingestion_domain.create_crawl_job(
             session=db_session, user=_user(), request=_request(seed_urls=[])
@@ -368,12 +394,10 @@ def test_a_staged_document_row_is_written(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """So a re-crawl can tell what it has already seen."""
-    from app.models.tables.ingestion import StagedDocumentRow
-
     _wire(monkeypatch)
     ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
 
-    rows = db_session.query(StagedDocumentRow).all()
+    rows = _staged_rows(db_session)
     assert len(rows) == 1
     assert rows[0].source_url == _PDF
     assert rows[0].content_hash
@@ -447,8 +471,6 @@ def test_a_failed_crawl_stages_nothing_partial(
     A half-staged document in the review queue looks finished, and the
     missing half is invisible precisely because it is missing.
     """
-    from app.models.tables.ingestion import StagedDocumentRow
-
     _wire(monkeypatch)
     monkeypatch.setattr(
         ingestion_domain,
@@ -458,7 +480,7 @@ def test_a_failed_crawl_stages_nothing_partial(
 
     ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
 
-    assert db_session.query(StagedDocumentRow).all() == []
+    assert _staged_rows(db_session) == []
 
 
 @requires_db

@@ -22,7 +22,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import diagnostics as diagnostics_route
+from app.core import observability
 from app.core.config import Settings
+from app.core.logging import get_logger
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.diagnostics import (
@@ -216,6 +218,11 @@ def test_the_stream_records_time_to_first_token(
         wrapper_class=structlog.make_filtering_bound_logger(0),
         cache_logger_on_first_use=False,
     )
+    # A fresh module logger too: `configure_logging` caches loggers on first
+    # use, so if an earlier test built the app and went through the stream
+    # timer, the module-level one is bound to the production pipeline for good
+    # and never reaches the capture above. Same fix as `test_observability.py`.
+    monkeypatch.setattr(observability, "_logger", get_logger(observability.__name__))
     try:
         monkeypatch.setattr(
             diagnostics_domain,
