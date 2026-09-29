@@ -52,9 +52,10 @@ def run_crawl(args: list[str]) -> int:
     staging index only; nothing this job does can make content live.
 
     Args:
-        args: Positional arguments, ``[source_id, seed_url, ...]``. At least
-            one seed URL is required — there is no stored source registry, so
-            the entry points come from the command line or the API caller.
+        args: Positional arguments, ``[source_id, seed_url, ...]``. With no
+            seed URL the source's curated document list is crawled
+            (``app.ingestion.known_documents``); a source with neither is
+            refused by the domain with a message saying so.
 
     Returns:
         ``0`` on success, non-zero on failure.
@@ -70,8 +71,8 @@ def run_crawl(args: list[str]) -> int:
     from app.domain import ingestion as ingestion_domain
     from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
 
-    if len(args) < 2:
-        print("usage: crawl <source_id> <seed_url> [seed_url ...]", file=sys.stderr)
+    if len(args) < 1:
+        print("usage: crawl <source_id> [seed_url ...]", file=sys.stderr)
         return 2
 
     source_id, *seed_urls = args

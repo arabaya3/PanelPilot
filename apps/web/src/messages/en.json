@@ -145,7 +145,18 @@
     "submit": "Submit",
     "submitting": "Submitting…",
     "claimedBy": "Already claimed by {name}",
-    "submitFailed": "Could not submit. Try again."
+    "submitFailed": "Could not submit. Try again.",
+    "contentMissing": "The text of this chunk is no longer in staging. Do not approve it — it was re-crawled or removed.",
+    "citation": "Page {page} — {section}",
+    "signInHeading": "Sign in to review",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "signInFailed": "Those credentials were not accepted.",
+    "loadFailed": "The queue could not be loaded.",
+    "notReviewer": "This account does not hold the reviewer role. An operator grants it with: python -m app.worker grant-role you@example.com reviewer",
+    "signOut": "Sign out"
   },
   "landing": {
     "starting": "Starting your trial…",

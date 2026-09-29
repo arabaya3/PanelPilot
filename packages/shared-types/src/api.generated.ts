@@ -339,7 +339,7 @@ export interface paths {
     };
     /**
      * My Queue
-     * @description Return the caller's outstanding batch.
+     * @description Return the caller's outstanding batch, with each item's text and citation.
      */
     get: operations['my_queue_api_v1_verification_queue_me_get'];
     put?: never;
@@ -1414,7 +1414,23 @@ export interface components {
     };
     /**
      * QueueItem
-     * @description One chunk in a verifier's queue.
+     * @description One chunk in a verifier's queue, with what the verifier must judge.
+     *
+     *     Attributes:
+     *         id: The queue item.
+     *         chunk_id: The staged chunk it covers.
+     *         status: Its queue status.
+     *         assigned_at: When it reached this verifier.
+     *         content: The chunk's text, as it would go live.
+     *         source_url: The document it cites, for checking against.
+     *         page: The page it cites.
+     *         section: The section it cites.
+     *         brand: Manufacturer, from the chunk's metadata.
+     *         model: Equipment model, from the chunk's metadata.
+     *
+     *     The citation fields are ``None`` when the chunk is no longer in staging —
+     *     re-crawled or removed — which the reviewer must see rather than approving
+     *     an id whose text they cannot read.
      */
     QueueItem: {
       /**
@@ -1428,6 +1444,18 @@ export interface components {
       status: string;
       /** Assigned At */
       assigned_at: string | null;
+      /** Content */
+      content?: string | null;
+      /** Source Url */
+      source_url?: string | null;
+      /** Page */
+      page?: number | null;
+      /** Section */
+      section?: string | null;
+      /** Brand */
+      brand?: string | null;
+      /** Model */
+      model?: string | null;
     };
     /**
      * QueuePage

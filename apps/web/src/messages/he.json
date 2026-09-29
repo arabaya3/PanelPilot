@@ -145,7 +145,18 @@
     "submit": "שליחה",
     "submitting": "שולח…",
     "claimedBy": "כבר נתפס על ידי {name}",
-    "submitFailed": "השליחה נכשלה. נסה שוב."
+    "submitFailed": "השליחה נכשלה. נסה שוב.",
+    "contentMissing": "הטקסט של קטע זה כבר אינו באזור ההכנה. אל תאשרו אותו — הוא נאסף מחדש או הוסר.",
+    "citation": "עמוד {page} — {section}",
+    "signInHeading": "התחברו כדי לסקור",
+    "email": "דוא\"ל",
+    "password": "סיסמה",
+    "signIn": "התחברות",
+    "signingIn": "מתחבר…",
+    "signInFailed": "פרטי ההתחברות לא התקבלו.",
+    "loadFailed": "לא ניתן היה לטעון את התור.",
+    "notReviewer": "לחשבון זה אין תפקיד סוקר. מפעיל מעניק אותו בפקודה: python -m app.worker grant-role you@example.com reviewer",
+    "signOut": "התנתקות"
   },
   "landing": {
     "starting": "מתחיל את גרסת הניסיון…",

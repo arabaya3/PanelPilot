@@ -145,7 +145,18 @@
     "submit": "إرسال",
     "submitting": "جارٍ الإرسال…",
     "claimedBy": "محجوز بالفعل من قبل {name}",
-    "submitFailed": "تعذّر الإرسال. حاول مرة أخرى."
+    "submitFailed": "تعذّر الإرسال. حاول مرة أخرى.",
+    "contentMissing": "نص هذا المقطع لم يعد موجودًا في منطقة التجهيز. لا توافق عليه — أُعيد جلبه أو أُزيل.",
+    "citation": "الصفحة {page} — {section}",
+    "signInHeading": "سجّل الدخول للمراجعة",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "signingIn": "جارٍ تسجيل الدخول…",
+    "signInFailed": "لم تُقبل بيانات الدخول هذه.",
+    "loadFailed": "تعذّر تحميل قائمة المراجعة.",
+    "notReviewer": "هذا الحساب لا يملك دور المراجِع. يمنحه المشغّل بالأمر: python -m app.worker grant-role you@example.com reviewer",
+    "signOut": "تسجيل الخروج"
   },
   "landing": {
     "starting": "جارٍ بدء النسخة التجريبية…",

@@ -36,11 +36,12 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ai.retrieval.client import get_staging_chunks
 from app.core.errors import AuthorizationError
 from app.domain.promotion import promote_chunk
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import VerificationDecision, VerificationVerdict
-from app.models.schemas.verification import VerificationLabel, escalates
+from app.models.schemas.verification import QueueItem, VerificationLabel, escalates
 from app.models.tables.ingestion import VerificationItemRow
 from app.models.tables.user import Role as RoleRow
 from app.models.tables.user import User, user_roles
@@ -550,3 +551,61 @@ def escalations(*, session: Session) -> list[VerificationItemRow]:
         .scalars()
         .all()
     )
+
+
+def review_queue(*, session: Session, verifier_id: UUID) -> list[QueueItem]:
+    """A verifier's outstanding items, each with the text and citation to judge.
+
+    Args:
+        session: Open database session.
+        verifier_id: Whose queue.
+
+    Returns:
+        Their unlabelled items, oldest first, with staged content attached.
+    """
+    return with_content(queue_for(session=session, verifier_id=verifier_id))
+
+
+def review_escalations(*, session: Session) -> list[QueueItem]:
+    """Every escalated item, with its text and citation, for a lead.
+
+    Args:
+        session: Open database session.
+
+    Returns:
+        Escalated items, oldest first, with staged content attached.
+    """
+    return with_content(escalations(session=session))
+
+
+def with_content(rows: Sequence[VerificationItemRow]) -> list[QueueItem]:
+    """Attach each item's staged text and citation.
+
+    Args:
+        rows: Queue rows.
+
+    Returns:
+        The items as the API presents them. One staging read for the whole
+        page, not one per item. A chunk no longer in staging keeps its id and
+        loses its text, so the reviewer sees the gap instead of approving blind.
+    """
+    bodies = get_staging_chunks([row.chunk_id for row in rows if row.chunk_id])
+    items: list[QueueItem] = []
+    for row in rows:
+        body: dict[str, Any] = bodies.get(row.chunk_id or "", {})
+        page = body.get("page")
+        items.append(
+            QueueItem(
+                id=row.id,
+                chunk_id=row.chunk_id,
+                status=row.status,
+                assigned_at=row.assigned_at,
+                content=body.get("content"),
+                source_url=body.get("source_url"),
+                page=page if isinstance(page, int) else None,
+                section=body.get("section"),
+                brand=body.get("brand"),
+                model=body.get("model"),
+            )
+        )
+    return items

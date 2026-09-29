@@ -23,37 +23,17 @@ from app.models.schemas.verification import (
     EscalationPage,
     LabelRequest,
     LabelResponse,
-    QueueItem,
     QueuePage,
     ResolveRequest,
 )
-from app.models.tables.ingestion import VerificationItemRow
 
 router = APIRouter()
 
 
-def _to_item(row: VerificationItemRow) -> QueueItem:
-    """Project a queue row onto its wire shape.
-
-    Args:
-        row: The database row.
-
-    Returns:
-        The item as the API presents it.
-    """
-    return QueueItem(
-        id=row.id,
-        chunk_id=row.chunk_id,
-        status=row.status,
-        assigned_at=row.assigned_at,
-    )
-
-
 @router.get("/queue/me", response_model=QueuePage)
 def my_queue(session: SessionDep, user: CurrentUserDep) -> QueuePage:
-    """Return the caller's outstanding batch."""
-    rows = queue_domain.queue_for(session=session, verifier_id=UUID(user.id))
-    return QueuePage(items=[_to_item(row) for row in rows])
+    """Return the caller's outstanding batch, with each item's text and citation."""
+    return QueuePage(items=queue_domain.review_queue(session=session, verifier_id=UUID(user.id)))
 
 
 @router.post("/items/{item_id}/label", response_model=LabelResponse)
@@ -104,8 +84,7 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
             f"{user.email} does not hold the reviewer role",
         )
 
-    rows = queue_domain.escalations(session=session)
-    return EscalationPage(items=[_to_item(row) for row in rows])
+    return EscalationPage(items=queue_domain.review_escalations(session=session))
 
 
 @router.post("/escalations/{item_id}/resolve", response_model=LabelResponse)

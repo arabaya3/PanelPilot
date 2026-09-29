@@ -482,3 +482,43 @@ def test_the_guardrail_threshold_is_never_read_directly() -> None:
         f"{offenders} read the guardrail threshold directly. Call "
         "evaluate_confidence instead of comparing against it yourself."
     )
+
+
+# --- every table is registered, whatever is imported first -------------------
+
+
+_TABLE_MODULES = sorted(
+    p.stem for p in (APP_ROOT / "models" / "tables").glob("*.py") if not p.name.startswith("__")
+)
+
+
+@pytest.mark.parametrize("module", _TABLE_MODULES)
+def test_importing_any_one_table_registers_every_foreign_key_target(module: str) -> None:
+    """A fresh process that imports one table module can still flush.
+
+    Run in a subprocess because this suite imports every model long before
+    this test runs, which is exactly how the worker's crawl job came to fail on
+    `verification_items.flagged_answer_id` with nothing here noticing: the
+    failure depends on import order, and a shared process hides it.
+    """
+    import subprocess
+    import sys
+
+    probe = (
+        f"import app.models.tables.{module}\n"
+        "from app.models.tables.base import Base\n"
+        # Resolving every FK is what a flush does first; it raises
+        # NoReferencedTableError for a target that was never imported.
+        "Base.metadata.sorted_tables\n"
+        "print('ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=APP_ROOT.parent,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "ok" in result.stdout

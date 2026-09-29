@@ -78,12 +78,35 @@ def escalates(label: VerificationLabel) -> bool:
 
 
 class QueueItem(BaseModel):
-    """One chunk in a verifier's queue."""
+    """One chunk in a verifier's queue, with what the verifier must judge.
+
+    Attributes:
+        id: The queue item.
+        chunk_id: The staged chunk it covers.
+        status: Its queue status.
+        assigned_at: When it reached this verifier.
+        content: The chunk's text, as it would go live.
+        source_url: The document it cites, for checking against.
+        page: The page it cites.
+        section: The section it cites.
+        brand: Manufacturer, from the chunk's metadata.
+        model: Equipment model, from the chunk's metadata.
+
+    The citation fields are ``None`` when the chunk is no longer in staging —
+    re-crawled or removed — which the reviewer must see rather than approving
+    an id whose text they cannot read.
+    """
 
     id: UUID
     chunk_id: str | None
     status: str
     assigned_at: datetime | None
+    content: str | None = None
+    source_url: str | None = None
+    page: int | None = None
+    section: str | None = None
+    brand: str | None = None
+    model: str | None = None
 
 
 class QueuePage(BaseModel):

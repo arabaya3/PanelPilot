@@ -219,3 +219,27 @@ def _iter_chunks(
         return
     for hit in helpers.scan(client, index=index, query=body, preserve_order=False):
         yield str(hit["_id"]), dict(hit["_source"])
+
+
+def get_staging_chunks(chunk_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Fetch staged chunks by id, without their embeddings.
+
+    Args:
+        chunk_ids: The chunks wanted.
+
+    Returns:
+        Bodies keyed by chunk id. A chunk no longer in staging is simply
+        absent, so the caller decides what a missing one means.
+    """
+    if not chunk_ids:
+        return {}
+    client = get_client()
+    index = resolve_index(IndexTarget.STAGING)
+    if not client.indices.exists(index=index):
+        return {}
+    response = client.mget(
+        index=index,
+        body={"ids": chunk_ids},
+        params={"_source_excludes": "content_vector"},
+    )
+    return {str(doc["_id"]): dict(doc["_source"]) for doc in response["docs"] if doc.get("found")}

@@ -130,7 +130,52 @@ def _lead_client() -> Iterator[TestClient]:
     yield from _client(_lead)
 
 
+@pytest.fixture(autouse=True)
+def _no_staging_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route tests run without OpenSearch; the staging read returns nothing."""
+    monkeypatch.setattr(queue_domain, "get_staging_chunks", lambda _ids: {})
+
+
 # --- the verifier's own queue -------------------------------------------------
+
+
+def test_each_item_carries_the_text_and_citation_to_judge(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reviewer approving an id they cannot read is not a review."""
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=42))])
+    monkeypatch.setattr(
+        queue_domain,
+        "get_staging_chunks",
+        lambda _ids: {
+            "c1": {
+                "content": "F0001 OVERCURRENT: output current exceeded the trip limit.",
+                "source_url": "https://example.invalid/acs880.pdf#page=12",
+                "page": 12,
+                "section": "Fault tracing",
+                "brand": "ABB",
+                "model": "ACS880",
+            }
+        },
+    )
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["content"].startswith("F0001 OVERCURRENT")
+    assert item["source_url"] == "https://example.invalid/acs880.pdf#page=12"
+    assert item["page"] == 12
+
+
+def test_an_item_whose_chunk_left_staging_says_so_by_omission(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=42))])
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["chunk_id"] == "c1"
+    assert item["content"] is None
+    assert item["source_url"] is None
 
 
 def test_the_queue_returns_the_callers_items(

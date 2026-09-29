@@ -49,6 +49,7 @@ from app.domain.verification_queue import (
     queue_for,
     record_label,
     resolve_escalation,
+    review_queue,
     reviewer_ids,
 )
 from app.models.schemas.auth import CurrentUser, Role
@@ -978,3 +979,20 @@ def test_no_reviewers_is_an_error_not_a_silent_no_op(session: Session) -> None:
     with pytest.raises(QueueError, match="no verifiers"):
         assign_to_reviewers(session=session, now=NOW)
     session.rollback()
+
+
+@requires_search
+def test_the_review_queue_carries_the_staged_text_and_citation(
+    session: Session, verifier_pool: list[uuid.UUID], staged: tuple[str, str, str]
+) -> None:
+    chunk_id, _, _ = staged
+    reviewer = _as_user(session, verifier_pool[0], Role.REVIEWER)
+    _assigned_item(session, reviewer)
+
+    (item,) = review_queue(session=session, verifier_id=uuid.UUID(reviewer.id))
+
+    assert item.chunk_id == chunk_id
+    assert item.content is not None
+    assert item.content.startswith("F0001 OVERCURRENT")
+    assert item.source_url == "https://example.invalid/m.pdf#page=12"
+    assert item.page == 12

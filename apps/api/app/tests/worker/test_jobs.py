@@ -126,7 +126,14 @@ def test_a_failed_crawl_exits_non_zero(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_missing_arguments_are_a_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not a crash, and not a success."""
     assert jobs.run_crawl([]) == 2
-    assert jobs.run_crawl(["abb"]) == 2
+
+
+def test_a_source_alone_crawls_its_curated_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No seed URL: the domain falls back to the source's known document list."""
+    seen = _patch_crawl(monkeypatch, CrawlJobStatus.SUCCEEDED)
+
+    assert jobs.run_crawl(["abb"]) == 0
+    assert seen["request"].seed_urls == []
 
 
 def test_every_seed_url_is_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
