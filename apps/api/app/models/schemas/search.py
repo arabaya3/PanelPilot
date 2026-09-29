@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Citation(BaseModel):
@@ -35,9 +35,11 @@ class SearchFilters(BaseModel):
 class SearchRequest(BaseModel):
     """A search issued by a caller."""
 
-    query: str
+    # Bounds match the diagnostic question's: longer is not a search query,
+    # and an unbounded top_k is a request for the whole index.
+    query: str = Field(max_length=4000)
     filters: SearchFilters | None = None
-    top_k: int | None = None
+    top_k: int | None = Field(default=None, ge=1, le=50)
 
 
 class SearchResponse(BaseModel):

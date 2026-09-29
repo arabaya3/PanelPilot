@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from app.ai.retrieval.client import IndexTarget, get_client, index_chunk, resolve_index
 from app.ai.retrieval.mappings import VerificationStatus
-from app.core.errors import AuthorizationError, NotFoundError, PromotionError
+from app.core.errors import (
+    AuthorizationError,
+    NotFoundError,
+    NotImplementedYetError,
+    PromotionError,
+)
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import (
     PromotionRequest,
@@ -58,8 +63,12 @@ def promote_document(
         AuthorizationError: If the reviewer lacks the reviewer role.
         PromotionError: If any precondition above is unmet.
         NotFoundError: If the staged document does not exist.
+        NotImplementedYetError: Always, for now. Whole-document promotion is
+            not built — ``promote_chunk`` is the implemented write path — and
+            a 501 that says so beats an anonymous 500.
     """
-    raise NotImplementedError
+    del session, reviewer, request  # Unused until built; the signature is the contract.
+    raise NotImplementedYetError("whole-document promotion is not available yet")
 
 
 def _as_uuid(value: str, *, field: str) -> uuid.UUID:

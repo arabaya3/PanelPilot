@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.domain import feedback as feedback_domain
@@ -28,24 +28,16 @@ def flag_answer(
 ) -> FlagResponse:
     """Record a flagged answer and queue it for verification.
 
-    Raises:
-        HTTPException: 404 if the turn does not exist or belongs to another
-            tenant.
+    A missing turn and another tenant's turn are both 404, decided by the
+    domain's ``FlaggedTurnNotFoundError`` and mapped centrally — not here.
     """
-    try:
-        flag = feedback_domain.flag_answer(
-            session=session,
-            turn_id=payload.message_id,
-            tenant_id=UUID(user.tenant_id),
-            flagged_by_id=UUID(user.id),
-            retrieved=payload.retrieved,
-            reason=payload.reason,
-        )
-    except feedback_domain.FeedbackError as exc:
-        # Both causes report 404, deliberately. Distinguishing "no such turn"
-        # from "not yours" would let a caller probe for the existence of other
-        # tenants' turns by watching which code comes back.
-        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-
+    flag = feedback_domain.flag_answer(
+        session=session,
+        turn_id=payload.message_id,
+        tenant_id=UUID(user.tenant_id),
+        flagged_by_id=UUID(user.id),
+        retrieved=payload.retrieved,
+        reason=payload.reason,
+    )
     session.commit()
     return FlagResponse(flag_id=flag.id, queued=True)

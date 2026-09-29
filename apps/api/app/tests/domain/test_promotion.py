@@ -514,3 +514,19 @@ def test_caller_rollback_leaves_live_content_unattributed(
     row = db.get(PromotionAuditRow, uuid.UUID(retry.audit_id))
     assert row is not None, "retry did not restore the audit trail"
     assert response.audit_id != retry.audit_id
+
+
+def test_whole_document_promotion_says_it_is_not_available_yet() -> None:
+    """A 501 with a reason, not the anonymous 500 of a bare NotImplementedError.
+
+    Needs neither database nor index: it refuses before touching either.
+    """
+    from app.core.errors import NotImplementedYetError
+    from app.models.schemas.ingestion import PromotionRequest
+
+    with pytest.raises(NotImplementedYetError, match="not available yet"):
+        promotion_module.promote_document(
+            session=object(),  # type: ignore[arg-type]
+            reviewer=_reviewer(),
+            request=PromotionRequest(staged_document_id=CHUNK_ID),
+        )

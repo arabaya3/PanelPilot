@@ -32,6 +32,9 @@ const DUMP = [
 // deliberately not real values.
 const env = {
   ...process.env,
+  // Required by Settings, which has no default environment. dev, so the
+  // placeholder secret below is accepted; the schema is the same in all three.
+  ENVIRONMENT: process.env.ENVIRONMENT ?? 'dev',
   DATABASE_URL:
     process.env.DATABASE_URL ??
     'postgresql+psycopg://placeholder:placeholder@localhost:5432/placeholder',

@@ -171,11 +171,19 @@ def decode_access_token(token: str) -> CurrentUser:
         # A token without a tenant cannot be scoped, so it is not usable.
         raise AuthenticationError("token carries no tenant")
 
+    try:
+        roles = frozenset(Role(r) for r in payload.get("roles", []))
+    except (ValueError, TypeError) as exc:
+        # A role this build does not know — from a newer deploy, or a token
+        # that was never ours — is a credential we cannot interpret. That is
+        # a 401, not the 500 an escaped ValueError used to produce.
+        raise AuthenticationError("token carries an unknown role") from exc
+
     return CurrentUser(
         id=str(payload["sub"]),
         email=str(payload.get("email", "")),
         tenant_id=str(tenant_id),
-        roles=frozenset(Role(r) for r in payload.get("roles", [])),
+        roles=roles,
     )
 
 

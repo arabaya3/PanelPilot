@@ -18,8 +18,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import feedback as feedback_route
+from app.core.errors import install_exception_handlers
 from app.domain import feedback as feedback_domain
-from app.domain.feedback import FeedbackError
+from app.domain.feedback import FlaggedTurnNotFoundError
 from app.models.schemas.auth import CurrentUser, Role
 
 _TENANT_ID = str(uuid.UUID(int=7))
@@ -70,6 +71,9 @@ def _client() -> Iterator[TestClient]:
     app.include_router(feedback_route.router, prefix="/feedback")
     app.dependency_overrides[deps.get_current_user] = _user
     app.dependency_overrides[get_session] = _Session
+    # The 404 is decided by the domain's error type and mapped centrally, so
+    # the handlers are part of what is under test here.
+    install_exception_handlers(app)
 
     with TestClient(app) as test_client:
         yield test_client
@@ -180,7 +184,7 @@ def test_a_flag_on_a_refusal_carries_no_passages(
 
 def test_a_missing_turn_is_a_404(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(**_: object) -> None:
-        raise FeedbackError("no diagnostic turn 42")
+        raise FlaggedTurnNotFoundError("no diagnostic turn 42")
 
     monkeypatch.setattr(feedback_domain, "flag_answer", _raise)
 
@@ -196,7 +200,7 @@ def test_another_tenants_turn_is_also_a_404(
     # caller enumerate which turn ids exist in other tenants by watching which
     # status came back.
     def _raise(**_: object) -> None:
-        raise FeedbackError("turn 42 does not belong to this tenant")
+        raise FlaggedTurnNotFoundError("no diagnostic turn 42")
 
     monkeypatch.setattr(feedback_domain, "flag_answer", _raise)
 
@@ -221,5 +225,17 @@ def test_a_missing_message_id_is_rejected(client: TestClient) -> None:
     del body["message_id"]
 
     response = client.post("/feedback/flag", json=body)
+
+    assert response.status_code == 422
+
+
+def test_an_oversized_passage_is_rejected(client: TestClient) -> None:
+    # The list is bounded; so is each passage, or one could carry it all.
+    one = _payload()["retrieved"]
+    assert isinstance(one, list)
+    passage = dict(one[0])
+    passage["text"] = "x" * 10_001
+
+    response = client.post("/feedback/flag", json=_payload(retrieved=[passage]))
 
     assert response.status_code == 422

@@ -14,7 +14,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from app.models.schemas.feedback import FlagRequest, FlagResponse
+from app.models.schemas.feedback import MAX_FLAGGED_PASSAGE_CHARS, FlagRequest, FlagResponse
 from app.models.schemas.search import Citation, RetrievedPassage
 
 
@@ -97,3 +97,38 @@ def test_the_response_reports_the_flag_and_that_it_was_queued() -> None:
 
     assert response.flag_id == uuid.UUID(int=9)
     assert response.queued
+
+
+def _long_passage(length: int) -> dict[str, object]:
+    """A passage as a client would send it, with text of a given length."""
+    body = _passage().model_dump()
+    body["text"] = "x" * length
+    return body
+
+
+def test_each_passage_is_bounded() -> None:
+    # Bounding the list alone lets one passage carry the whole payload.
+    with pytest.raises(ValidationError, match="passage text"):
+        FlagRequest.model_validate(
+            {
+                "message_id": str(uuid.UUID(int=1)),
+                "retrieved": [_long_passage(MAX_FLAGGED_PASSAGE_CHARS + 1)],
+            }
+        )
+
+
+def test_a_passage_at_the_limit_is_accepted() -> None:
+    request = FlagRequest.model_validate(
+        {
+            "message_id": str(uuid.UUID(int=1)),
+            "retrieved": [_long_passage(MAX_FLAGGED_PASSAGE_CHARS)],
+        }
+    )
+    assert len(request.retrieved[0].text) == MAX_FLAGGED_PASSAGE_CHARS
+
+
+def test_retrieval_itself_is_not_bounded() -> None:
+    # The bound is on what a client echoes back, not on what retrieval may
+    # produce: a long chunk must not crash the answer path.
+    passage = RetrievedPassage.model_validate(_long_passage(50_000))
+    assert len(passage.text) == 50_000

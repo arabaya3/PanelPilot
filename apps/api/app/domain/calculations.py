@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import NotImplementedYetError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
     CableSizingRequest,
@@ -18,6 +19,16 @@ from app.models.schemas.calculations import (
     PanelBomResponse,
     VfdSelectionRequest,
     VfdSelectionResponse,
+)
+
+# Why every calculation answers 501 today. The formulas and tables come from
+# named manufacturer engineering guides that are not in this repository, and
+# a table written from general knowledge would be confident and uncitable —
+# the failure cite-or-refuse exists to prevent. See the README, "Blocked on
+# source documents that are not in this repository".
+_BLOCKED_ON_SOURCES = (
+    "{tool} is not available yet: it is blocked on the manufacturer engineering "
+    "guides its tables must be cited from"
 )
 
 
@@ -42,8 +53,10 @@ def size_cable(
     Raises:
         ValidationError: If the inputs fall outside the supported ranges of the
             underlying tables.
+        NotImplementedYetError: Always, until the source guide is supplied.
     """
-    raise NotImplementedError
+    del session, user, request  # Unused until the tool exists; the signature is the contract.
+    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="Cable sizing"))
 
 
 def select_vfd(
@@ -64,8 +77,10 @@ def select_vfd(
 
     Raises:
         ValidationError: If no catalogue frame covers the requested duty.
+        NotImplementedYetError: Always, until the source guide is supplied.
     """
-    raise NotImplementedError
+    del session, user, request  # Unused until the tool exists; the signature is the contract.
+    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="VFD selection"))
 
 
 def build_panel_bom(
@@ -86,5 +101,7 @@ def build_panel_bom(
 
     Raises:
         ValidationError: If the load schedule is internally inconsistent.
+        NotImplementedYetError: Always, until the calc tools it consumes exist.
     """
-    raise NotImplementedError
+    del session, user, request  # Unused until the tool exists; the signature is the contract.
+    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="Panel BOM generation"))

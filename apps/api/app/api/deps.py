@@ -23,10 +23,14 @@ from app.domain.rate_limit import (
     InMemoryRateLimitStore,
     RateLimitStore,
     RedisRateLimitStore,
+    check_login_rate_limit,
+    check_signup_rate_limit,
     check_trial_rate_limit,
+    check_trial_start_rate_limit,
 )
 from app.domain.storage import FilesystemObjectStore, ObjectStore
 from app.models.schemas.auth import CurrentUser
+from app.models.schemas.auth_flows import LoginRequest
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -101,6 +105,91 @@ def enforce_trial_rate_limit(
     check_trial_rate_limit(store=store, client_ip=_client_ip(request))
 
 
+# Reads a caller cannot use to spend anything: no model call, no stored file.
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def enforce_trial_rate_limit_on_writes(
+    request: Request,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Apply the trial limit to everything on a router except reads.
+
+    For a router that mixes the costly path (asking a question) with cheap
+    reads of the caller's own data. Counting a page reload of a conversation
+    against the allowance for asking questions would lock a site out of
+    reading its own history mid-fault, for no saving at all.
+
+    Args:
+        request: The incoming request, for its method and source address.
+        store: Where request history lives.
+
+    Raises:
+        RateLimitExceededError: If this source is over its limit.
+    """
+    if request.method in _READ_METHODS:
+        return
+    check_trial_rate_limit(store=store, client_ip=_client_ip(request))
+
+
+def enforce_trial_start_rate_limit(
+    request: Request,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Throttle starting or resuming a trial, per source address.
+
+    Separate from the trial-path limit: each start mints a tenant with a
+    fresh free allowance, which is the abuse this stops, and its budget is
+    sized for that rather than for asking questions.
+
+    Args:
+        request: The incoming request, for its source address.
+        store: Where request history lives.
+
+    Raises:
+        RateLimitExceededError: If this source has started too many trials.
+    """
+    check_trial_start_rate_limit(store=store, client_ip=_client_ip(request))
+
+
+def enforce_signup_rate_limit(
+    request: Request,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Throttle account creation, per source address.
+
+    Args:
+        request: The incoming request, for its source address.
+        store: Where request history lives.
+
+    Raises:
+        RateLimitExceededError: If this source has signed up too often.
+    """
+    check_signup_rate_limit(store=store, client_ip=_client_ip(request))
+
+
+def enforce_login_rate_limit(
+    request: Request,
+    payload: LoginRequest,
+    store: Annotated[RateLimitStore, Depends(get_rate_limit_store)],
+) -> None:
+    """Throttle login attempts, per source address and per account.
+
+    Takes the login body so the account can be limited as well as the
+    address. FastAPI parses the body once and hands the same model to this
+    dependency and to the route, because both name it ``payload``.
+
+    Args:
+        request: The incoming request, for its source address.
+        payload: The submitted credentials; only the email is read.
+        store: Where request history lives.
+
+    Raises:
+        RateLimitExceededError: If either limit is exhausted.
+    """
+    check_login_rate_limit(store=store, client_ip=_client_ip(request), email=payload.email)
+
+
 def _client_ip(request: Request) -> str:
     """Return the address to limit by.
 
@@ -116,7 +205,10 @@ def _client_ip(request: Request) -> str:
         each request — the exact abuse this is meant to stop. A deployment
         behind a proxy should have that proxy set the socket address, or this
         needs an explicit trusted-proxy configuration rather than a header we
-        hope is honest.
+        hope is honest. Uvicorn provides exactly that: with
+        ``FORWARDED_ALLOW_IPS`` set to the proxy's address, it rewrites the
+        socket address from the proxy's header before this ever runs (see
+        the Dockerfile).
     """
     return request.client.host if request.client else ""
 
