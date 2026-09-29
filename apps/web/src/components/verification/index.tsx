@@ -58,6 +58,12 @@ export interface VerificationLabels {
   proposed: string;
   source: string;
   sourceMissing: string;
+  /** Shown when the item's own text could not be loaded. */
+  contentMissing: string;
+  /** The link that opens the source outside the frame. */
+  openSource: string;
+  /** Where in the source, e.g. "p. {page}". */
+  page: string;
   correct: string;
   incorrect: string;
   uncertain: string;
@@ -104,7 +110,26 @@ function ReviewPane({
         </h3>
         <p data-testid="chunk-id" className="mb-3 font-mono text-xs text-text-muted">
           {item.chunk_id ?? item.id}
+          {item.section ? ` · ${item.section}` : ''}
+          {typeof item.page === 'number'
+            ? ` · ${labels.page.replace('{page}', String(item.page))}`
+            : ''}
         </p>
+        {/* The text being judged. The console used to show only the id above,
+            which left a verifier to label content they had never seen. */}
+        {item.content ? (
+          <blockquote
+            data-testid="proposed-content"
+            dir="auto"
+            className="mb-3 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-sm border border-border bg-surface-raised p-3 text-sm text-text"
+          >
+            {item.content}
+          </blockquote>
+        ) : (
+          <p data-testid="content-missing" className="mb-3 text-sm text-severity-warning">
+            {labels.contentMissing}
+          </p>
+        )}
         <Labeller
           itemId={item.id}
           onSubmit={onSubmit}
@@ -130,12 +155,25 @@ function ReviewPane({
             {labels.sourceMissing}
           </p>
         ) : (
-          <iframe
-            data-testid="source-frame"
-            src={sourceUrl}
-            title={labels.source}
-            className="h-96 w-full rounded-sm border border-border bg-surface-raised"
-          />
+          <>
+            <iframe
+              data-testid="source-frame"
+              src={sourceUrl}
+              title={labels.source}
+              className="h-96 w-full rounded-sm border border-border bg-surface-raised"
+            />
+            {/* Many manufacturer sites refuse to be framed, which leaves the
+                frame blank; the document must still be one click away. */}
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="source-link"
+              className="mt-2 inline-block text-sm text-accent hover:text-accent-hover"
+            >
+              {labels.openSource}
+            </a>
+          </>
         )}
       </section>
     </div>

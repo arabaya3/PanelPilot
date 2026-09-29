@@ -295,6 +295,43 @@ def queue_for(
     )
 
 
+def staged_chunks(chunk_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Read the staged chunks a batch of queue items points at.
+
+    A reviewer labels what a chunk *says* against its source, so the queue has
+    to carry both: it used to carry only the chunk's id, and a verifier cannot
+    check text they were never shown.
+
+    Args:
+        chunk_ids: The chunks to read, from the staging index.
+
+    Returns:
+        Each chunk's stored fields by id. A chunk missing from the index, or
+        every chunk when the index cannot be reached, is simply absent: the
+        console then says the source is missing rather than failing the whole
+        queue, and a verifier must not label what they cannot see.
+    """
+    from app.ai.retrieval.client import IndexTarget, get_client, resolve_index
+
+    wanted = [chunk_id for chunk_id in dict.fromkeys(chunk_ids) if chunk_id]
+    if not wanted:
+        return {}
+    try:
+        response = get_client().mget(
+            index=resolve_index(IndexTarget.STAGING),
+            body={"ids": wanted},
+            # The vector is 1024 floats per chunk the console has no use for.
+            params={"_source_excludes": "content_vector"},
+        )
+    # Broad on purpose: any client failure degrades the same way.
+    except Exception as exc:
+        logger.warning("verification.staged_chunks_unavailable", error=str(exc))
+        return {}
+    return {
+        doc["_id"]: doc.get("_source", {}) for doc in response.get("docs", []) if doc.get("found")
+    }
+
+
 def record_label(
     *,
     session: Session,

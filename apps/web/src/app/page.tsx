@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chat } from '@/components/chat';
 import { LangSwitcher } from '@/components/lang-switcher';
+import { SignInForm } from '@/components/sign-in-form';
 import { ThemeToggle } from '@/components/theme-toggle';
 import {
   clearTrial,
@@ -70,7 +71,14 @@ function readyWith(active: ActiveTrial): Phase {
 export default function HomePage() {
   const t = useTranslations('app');
   const tl = useTranslations('landing');
+  const ts = useTranslations('signIn');
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
+  const [signingIn, setSigningIn] = useState(false);
+  // Bumped on sign-in so the chat mounts fresh. Signing in moves to another
+  // tenant, where the trial's open conversation does not exist: kept mounted,
+  // the next question would name it and be refused. Signup does not bump it,
+  // because signup joins the trial's own tenant and the conversation carries.
+  const [chatKey, setChatKey] = useState(0);
 
   // Held in a ref, not state and not storage: nothing renders from it, and it
   // must not outlive the tab.
@@ -137,6 +145,21 @@ export default function HomePage() {
     });
   }, []);
 
+  const onSignedIn = useCallback((tokens: { accessToken: string; refreshToken: string }) => {
+    refreshRef.current = tokens.refreshToken;
+    setSigningIn(false);
+    setChatKey((key) => key + 1);
+    // The stored trial is left alone: it was not claimed, and it is still
+    // this browser's to return to after the account's in-memory tokens go.
+    setPhase({
+      kind: 'ready',
+      token: tokens.accessToken,
+      trial: null,
+      questionsRemaining: null,
+      conversationId: null,
+    });
+  }, []);
+
   const onUnauthorized = useCallback(async () => {
     // An account renews with its refresh token. Falling through to `begin`
     // when that fails is the best available: there is no sign-in form here,
@@ -165,10 +188,33 @@ export default function HomePage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl">{t('name')}</h1>
         <div className="flex flex-wrap items-center gap-4">
+          {/* Offered wherever the visitor is not already in an account. */}
+          {!(phase.kind === 'ready' && phase.trial === null) && !signingIn && (
+            <button
+              type="button"
+              onClick={() => {
+                setSigningIn(true);
+              }}
+              className="rounded-md border border-border px-3 py-2 text-sm text-text"
+            >
+              {ts('open')}
+            </button>
+          )}
           <LangSwitcher />
           <ThemeToggle />
         </div>
       </div>
+
+      {signingIn && (
+        <div className="mb-6">
+          <SignInForm
+            onSignedIn={onSignedIn}
+            onCancel={() => {
+              setSigningIn(false);
+            }}
+          />
+        </div>
+      )}
 
       <p className="mb-6 max-w-2xl text-text-muted">{t('tagline')}</p>
 
@@ -208,6 +254,7 @@ export default function HomePage() {
 
         {phase.kind === 'ready' && (
           <Chat
+            key={chatKey}
             token={phase.token}
             trial={phase.trial}
             questionsRemaining={phase.questionsRemaining}
@@ -221,6 +268,9 @@ export default function HomePage() {
       <p className="flex flex-wrap gap-4">
         <Link className="text-accent hover:text-accent-hover" href="/plc">
           {tl('plcLink')}
+        </Link>
+        <Link className="text-accent hover:text-accent-hover" href="/review">
+          {tl('reviewLink')}
         </Link>
         <Link className="text-accent hover:text-accent-hover" href="/tokens">
           <span>Design tokens</span>

@@ -765,3 +765,59 @@ def test_the_pool_is_read_from_the_roles_table(monkeypatch: pytest.MonkeyPatch) 
     queue_domain.assign_to_reviewers(session=cast(Session, None))
 
     assert seen["verifier_ids"] == reviewers
+
+
+# --- the text under review -----------------------------------------------------
+
+
+class _FakeSearch:
+    def __init__(self, docs: list[dict[str, object]] | Exception) -> None:
+        self.docs = docs
+        self.calls: list[dict[str, object]] = []
+
+    def mget(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(kwargs)
+        if isinstance(self.docs, Exception):
+            raise self.docs
+        return {"docs": self.docs}
+
+
+def _with_search(monkeypatch: pytest.MonkeyPatch, fake: _FakeSearch) -> None:
+    from app.ai.retrieval import client as client_module
+
+    monkeypatch.setattr(client_module, "get_client", lambda: fake)
+    monkeypatch.setattr(client_module, "resolve_index", lambda _target: "staging-test")
+
+
+def test_staged_chunks_are_read_in_one_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSearch(
+        [
+            {"_id": "a", "found": True, "_source": {"content": "text a"}},
+            {"_id": "b", "found": False},
+        ]
+    )
+    _with_search(monkeypatch, fake)
+
+    chunks = queue_domain.staged_chunks(["a", "b", "a"])
+
+    assert chunks == {"a": {"content": "text a"}}
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["body"] == {"ids": ["a", "b"]}
+    assert fake.calls[0]["index"] == "staging-test"
+
+
+def test_nothing_to_read_asks_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSearch([])
+    _with_search(monkeypatch, fake)
+
+    assert queue_domain.staged_chunks([]) == {}
+    assert fake.calls == []
+
+
+def test_an_unreachable_index_degrades_to_nothing_rather_than_failing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The queue still loads; each item then says its source is missing."""
+    _with_search(monkeypatch, _FakeSearch(ConnectionError("down")))
+
+    assert queue_domain.staged_chunks(["a"]) == {}
