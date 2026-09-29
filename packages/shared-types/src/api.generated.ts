@@ -78,6 +78,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/auth/trial/resume': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resume Trial
+     * @description Mint a fresh access token for a trial this browser already started.
+     *
+     *     Shares the trial-start budget: to an abuser, resuming a known trial and
+     *     starting a new one are the same request.
+     */
+    post: operations['resume_trial_api_v1_auth_trial_resume_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/auth/login': {
     parameters: {
       query?: never;
@@ -415,9 +438,8 @@ export interface paths {
      * Flag Answer
      * @description Record a flagged answer and queue it for verification.
      *
-     *     Raises:
-     *         HTTPException: 404 if the turn does not exist or belongs to another
-     *             tenant.
+     *     A missing turn and another tenant's turn are both 404, decided by the
+     *     domain's ``FlaggedTurnNotFoundError`` and mapped centrally — not here.
      */
     post: operations['flag_answer_api_v1_feedback_flag_post'];
     delete?: never;
@@ -1479,6 +1501,19 @@ export interface components {
       expires_in: number;
     };
     /**
+     * TrialResumeRequest
+     * @description Get a fresh access token for a trial this browser already started.
+     *
+     *     The pair ``POST /auth/trial`` returned. The secret is what proves the
+     *     caller is that browser: the session id alone is not a credential.
+     */
+    TrialResumeRequest: {
+      /** Session Id */
+      session_id: string;
+      /** Claim Secret */
+      claim_secret: string;
+    };
+    /**
      * TrialStart
      * @description A newly started anonymous trial.
      *
@@ -1770,6 +1805,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['TrialStart'];
+        };
+      };
+    };
+  };
+  resume_trial_api_v1_auth_trial_resume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TrialResumeRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TrialStart'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

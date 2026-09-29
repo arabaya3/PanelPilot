@@ -27,6 +27,7 @@ from app.domain.feedback import (
     ORIGIN_CRAWL,
     ORIGIN_USER_FLAG,
     FeedbackError,
+    FlaggedTurnNotFoundError,
     context_for,
     flag_answer,
     flagged_items,
@@ -37,6 +38,7 @@ from app.models.tables.diagnostics import DiagnosticSessionRow, DiagnosticTurnRo
 from app.models.tables.escalation import FlaggedAnswerRow
 from app.models.tables.ingestion import VerificationItemRow
 from app.models.tables.tenant import TenantRow
+from app.models.tables.user import User
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -321,7 +323,10 @@ def test_one_tenant_cannot_flag_anothers_answer(session: Session) -> None:
     session.add(other)
     session.flush()
 
-    with pytest.raises(FeedbackError, match="does not belong"):
+    # Reported exactly like a missing turn, message included: the message
+    # reaches the client, and a distinct one would be the probe the shared
+    # 404 exists to deny.
+    with pytest.raises(FlaggedTurnNotFoundError, match="no diagnostic turn"):
         flag_answer(
             session=session,
             turn_id=turn.id,
@@ -329,6 +334,47 @@ def test_one_tenant_cannot_flag_anothers_answer(session: Session) -> None:
             flagged_by_id=None,
             retrieved=[],
         )
+
+
+@requires_postgres
+def test_a_trial_caller_is_recorded_as_nobody_rather_than_failing(session: Session) -> None:
+    """A trial token's subject is its anonymous session, not a user.
+
+    ``flagged_answers.flagged_by_id`` is a foreign key into ``users``, so
+    storing the subject blindly was a ForeignKeyViolation — a 500 for a trial
+    user doing nothing wrong.
+    """
+    turn = _a_turn(session)
+
+    flag = flag_answer(
+        session=session,
+        turn_id=turn.id,
+        tenant_id=_tenant_of(session, turn),
+        flagged_by_id=uuid.uuid4(),  # names no user row
+        retrieved=[],
+    )
+    session.flush()
+
+    assert flag.flagged_by_id is None
+
+
+@requires_postgres
+def test_a_real_user_is_recorded_as_the_flagger(session: Session) -> None:
+    turn = _a_turn(session)
+    tenant_id = _tenant_of(session, turn)
+    user = User(tenant_id=tenant_id, email=f"flagger-{uuid.uuid4().hex[:8]}@test.invalid")
+    session.add(user)
+    session.flush()
+
+    flag = flag_answer(
+        session=session,
+        turn_id=turn.id,
+        tenant_id=tenant_id,
+        flagged_by_id=user.id,
+        retrieved=[],
+    )
+
+    assert flag.flagged_by_id == user.id
 
 
 @requires_postgres

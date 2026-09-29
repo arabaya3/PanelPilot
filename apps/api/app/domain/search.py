@@ -6,6 +6,7 @@ mechanics live in ``app.ai.retrieval``.
 
 from __future__ import annotations
 
+from app.core.errors import NotImplementedYetError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.search import SearchRequest, SearchResponse
 
@@ -25,5 +26,9 @@ def search_documents(*, user: CurrentUser, request: SearchRequest) -> SearchResp
 
     Raises:
         AuthorizationError: If a non-reviewer requests the staging index.
+        NotImplementedYetError: Always, for now. Retrieval serves the
+            diagnosis path; a standalone search endpoint over it has not been
+            built, and saying so beats an anonymous 500.
     """
-    raise NotImplementedError
+    del user, request  # Unused until search exists; the signature is the contract.
+    raise NotImplementedYetError("document search is not available yet")
