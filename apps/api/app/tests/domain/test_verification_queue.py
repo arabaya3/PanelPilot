@@ -550,6 +550,121 @@ def test_labelling_a_missing_item_is_refused(
         )
 
 
+def _one_assigned_item(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> tuple[VerificationItemRow, uuid.UUID]:
+    enqueue_chunks(session=session, chunk_ids=["c1"])
+    session.commit()
+    verifier = _verifiers(verifier_pool, 1)[0]
+    assign_daily_batches(session=session, verifier_ids=[verifier], now=NOW)
+    session.commit()
+    return session.query(VerificationItemRow).one(), verifier
+
+
+@requires_postgres
+def test_an_escalated_item_cannot_be_relabelled_correct_by_its_verifier(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    # The reported bug: the check was on the assignee only, so the verifier who
+    # escalated an item could relabel it `correct` and close the escalation
+    # themselves -- the resolution AI-012's rubric reserves for a lead.
+    item, verifier = _one_assigned_item(session, verifier_pool)
+    record_label(
+        session=session,
+        item_id=item.id,
+        verifier_id=verifier,
+        label=VerificationLabel.INCORRECT,
+        note="cited section gives 63 A, chunk says 80 A",
+    )
+    session.commit()
+
+    with pytest.raises(QueueError, match="already escalated"):
+        record_label(
+            session=session,
+            item_id=item.id,
+            verifier_id=verifier,
+            label=VerificationLabel.CORRECT,
+        )
+    session.commit()
+
+    session.expire_all()
+    stored = session.get(VerificationItemRow, item.id)
+    assert stored is not None
+    assert stored.status == STATUS_ESCALATED
+    assert stored.label == "incorrect"
+    assert [row.id for row in escalations(session=session)] == [item.id]
+
+
+@requires_postgres
+def test_a_closed_item_cannot_be_relabelled(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    item, verifier = _one_assigned_item(session, verifier_pool)
+    record_label(
+        session=session, item_id=item.id, verifier_id=verifier, label=VerificationLabel.CORRECT
+    )
+    session.commit()
+
+    with pytest.raises(QueueError, match="already labeled"):
+        record_label(
+            session=session,
+            item_id=item.id,
+            verifier_id=verifier,
+            label=VerificationLabel.UNCERTAIN,
+            note="second thoughts",
+        )
+
+
+@requires_postgres
+def test_an_escalating_label_on_someone_elses_item_is_reported_as_not_theirs(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    # Wrong in two ways at once; "not yours" (403) is the more useful answer
+    # than "add a note" (422), and it is the one this always gave.
+    item, _ = _one_assigned_item(session, verifier_pool)
+
+    with pytest.raises(QueueError, match="not assigned"):
+        record_label(
+            session=session,
+            item_id=item.id,
+            verifier_id=verifier_pool[1],
+            label=VerificationLabel.INCORRECT,
+            note="",
+        )
+
+
+@requires_postgres
+def test_a_stale_session_cannot_label_an_item_already_labelled_elsewhere(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    # Read-then-write was the other half of the bug: a session holding the row
+    # as `pending` would write over a label another request had committed.
+    # The conditional UPDATE is decided by the database, not by that copy.
+    item, verifier = _one_assigned_item(session, verifier_pool)
+    assert item.status == STATUS_PENDING  # loaded, and now stale
+
+    other = Session(bind=session.get_bind())
+    try:
+        record_label(
+            session=other,
+            item_id=item.id,
+            verifier_id=verifier,
+            label=VerificationLabel.UNCERTAIN,
+            note="two passages in the manual conflict",
+        )
+        other.commit()
+    finally:
+        other.close()
+
+    with pytest.raises(QueueError, match="already escalated"):
+        record_label(
+            session=session,
+            item_id=item.id,
+            verifier_id=verifier,
+            label=VerificationLabel.CORRECT,
+        )
+
+
 @requires_postgres
 def test_escalated_items_are_visible_to_a_lead_immediately(
     session: Session, verifier_pool: list[uuid.UUID]

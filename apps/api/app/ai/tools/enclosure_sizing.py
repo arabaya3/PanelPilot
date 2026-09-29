@@ -95,6 +95,23 @@ class EnclosureSizingResult:
     total_width_mm: Decimal
 
 
+def _require_positive_mm(name: str, value: Decimal) -> None:
+    """Refuse a length that is not a finite number above zero.
+
+    Args:
+        name: What the length is, for the message.
+        value: The length in millimetres.
+
+    Raises:
+        ValidationError: If ``value`` is ``NaN``, ``sNaN``, infinite, zero or
+            negative. ``is_finite`` is checked first because ordering a NaN
+            ``Decimal`` against zero raises ``InvalidOperation`` instead of
+            returning ``False``.
+    """
+    if not value.is_finite() or value <= 0:
+        raise ValidationError(f"{name} must be positive, got {value} mm")
+
+
 def _component_width(component: ComponentSpec) -> Decimal:
     """Return the rail width one line occupies.
 
@@ -155,8 +172,11 @@ def rail_requirements(
     if not components:
         raise ValidationError("cannot size an enclosure for an empty component list")
 
-    if usable_rail_mm <= 0:
-        raise ValidationError(f"usable rail length must be positive, got {usable_rail_mm} mm")
+    # Finite as well as positive, and checked in that order: comparing a NaN
+    # `Decimal` raises `InvalidOperation` rather than answering, and an
+    # infinite rail divides every group's width down to zero rows -- a panel
+    # sized to hold nothing, reported as a fit.
+    _require_positive_mm("usable rail length", usable_rail_mm)
 
     totals: dict[str, Decimal] = {}
     for component in components:
@@ -224,8 +244,7 @@ def size_enclosure(
     cover is a door rather than somewhere to mount a component — see
     ``app.models.schemas.products``.
     """
-    if row_pitch_mm <= 0:
-        raise ValidationError(f"row pitch must be positive, got {row_pitch_mm} mm")
+    _require_positive_mm("row pitch", row_pitch_mm)
 
     requirements = rail_requirements(components, usable_rail_mm=usable_rail_mm)
     total_rows = sum(requirement.rows for requirement in requirements)

@@ -14,12 +14,16 @@ nothing new.
 
 from __future__ import annotations
 
+import time
 import urllib.robotparser
+from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
+
+from app.ingestion.sources import ResponseLimitError, read_limited
 
 logger = structlog.get_logger(__name__)
 
@@ -30,6 +34,20 @@ USER_AGENT = "PanelPilotBot"
 # robots.txt is small; a source that cannot serve one in this long is a source
 # having a bad day, and we would rather fail than hang a scheduled job.
 FETCH_TIMEOUT_S = 10.0
+
+#: Overall wall-clock budget for reading one robots.txt, redirects included.
+#: ``FETCH_TIMEOUT_S`` bounds each read, not the whole body, so a server
+#: dripping a byte at a time would otherwise never trip it.
+ROBOTS_DEADLINE_S = 30.0
+
+#: The largest robots.txt we will read. RFC 9309 asks crawlers to parse at
+#: least 500 KiB; real files are a few KiB. Past this we refuse rather than
+#: buffer whatever a host chooses to send -- decompressed, since httpx inflates
+#: gzip transparently.
+MAX_ROBOTS_BYTES = 512 * 1024
+
+#: RFC 9309 §2.3.1.2: follow at least five consecutive redirects.
+MAX_ROBOTS_REDIRECTS = 5
 
 
 class RobotsDisallowedError(Exception):
@@ -59,6 +77,36 @@ class RobotsUnavailableError(Exception):
     we do not know what we are permitted to fetch, and "we could not check"
     must not resolve to "so we proceeded".
     """
+
+
+class CrawlDelayTooLongError(Exception):
+    """A source asked for a crawl delay longer than we are willing to keep.
+
+    Fatal for the run rather than clamped. Clamping would quietly crawl faster
+    than the operator asked, which is the one direction a politeness rule must
+    never be bent; honouring an arbitrary delay would let one line in someone
+    else's file hold a scheduled job open for days (``Crawl-delay: 86400``
+    over a hundred documents is three months). Refusing is the only option
+    that neither ignores the source nor hands it our scheduler, and like a
+    disallow it is a standing instruction, not something to retry.
+    """
+
+    def __init__(self, source_id: str, url: str, delay_s: float, limit_s: float) -> None:
+        """Record which source asked for what.
+
+        Args:
+            source_id: The source whose robots.txt set the delay.
+            url: A URL on the host whose robots.txt it was.
+            delay_s: The delay it asked for, in seconds.
+            limit_s: The most we will honour, in seconds.
+        """
+        self.source_id = source_id
+        self.url = url
+        self.delay_s = delay_s
+        super().__init__(
+            f"robots.txt for {source_id} ({url}) asks for Crawl-delay {delay_s:g}s; "
+            f"the most this crawler will honour is {limit_s:g}s"
+        )
 
 
 @dataclass(frozen=True)
@@ -101,31 +149,40 @@ def robots_url_for(url: str) -> str:
     return urljoin(f"{parsed.scheme}://{parsed.netloc}", "/robots.txt")
 
 
-def fetch_policy(*, source_id: str, seed_url: str, client: httpx.Client) -> RobotsPolicy:
+def fetch_policy(
+    *,
+    source_id: str,
+    seed_url: str,
+    client: httpx.Client,
+    allow_redirect: Callable[[str], bool] | None = None,
+) -> RobotsPolicy:
     """Read and parse one source's robots.txt.
 
     Args:
         source_id: The source being crawled, for the log entry.
         seed_url: Any URL on the source; the host is what matters.
         client: HTTP client to fetch with.
+        allow_redirect: Decides whether a redirect target may be followed.
+            The crawler passes its host and address checks here. When
+            omitted, only a redirect to the same scheme and host is followed.
 
     Returns:
         The parsed policy.
 
     Raises:
-        RobotsUnavailableError: If robots.txt cannot be fetched or parsed.
+        RobotsUnavailableError: If robots.txt cannot be fetched or parsed,
+            is larger than ``MAX_ROBOTS_BYTES``, or redirects somewhere we
+            will not follow.
     """
     url = robots_url_for(seed_url)
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(url)
 
-    try:
-        response = client.get(url, timeout=FETCH_TIMEOUT_S)
-    except httpx.HTTPError as exc:
-        logger.error("robots.unreachable", source_id=source_id, robots_url=url, error=str(exc))
-        raise RobotsUnavailableError(f"could not fetch {url}: {exc}") from exc
+    status_code, text = _read_robots(
+        url, source_id=source_id, client=client, allow_redirect=allow_redirect
+    )
 
-    if response.status_code == 404:
+    if status_code == 404:
         # No robots.txt is the one case that legitimately means "no
         # restrictions" — the standard says an absent file permits everything,
         # and treating it as a failure would lock us out of compliant sources.
@@ -133,23 +190,99 @@ def fetch_policy(*, source_id: str, seed_url: str, client: httpx.Client) -> Robo
         parser.parse([])
         return RobotsPolicy(parser=parser, crawl_delay_s=None)
 
-    if response.status_code >= 400:
+    if status_code >= 400:
         # Anything else — 401, 403, 500 — means we could not read the rules.
         # A 403 on robots.txt in particular is a strong hint we are unwelcome.
         logger.error(
             "robots.unreadable",
             source_id=source_id,
             robots_url=url,
-            status_code=response.status_code,
+            status_code=status_code,
         )
-        raise RobotsUnavailableError(f"{url} returned {response.status_code}")
+        raise RobotsUnavailableError(f"{url} returned {status_code}")
 
-    parser.parse(_significant_lines(response.text))
+    parser.parse(_significant_lines(text))
     # Wildcards are honoured here rather than left to urllib, which encodes
     # them into literals that match nothing. See `_WildcardRule`.
     _apply_wildcard_matching(parser)
     delay = parser.crawl_delay(USER_AGENT)
     return RobotsPolicy(parser=parser, crawl_delay_s=float(delay) if delay is not None else None)
+
+
+def _read_robots(
+    url: str,
+    *,
+    source_id: str,
+    client: httpx.Client,
+    allow_redirect: Callable[[str], bool] | None,
+) -> tuple[int, str]:
+    """Fetch robots.txt, following redirects by hand and capping the body.
+
+    Args:
+        url: The robots.txt URL.
+        source_id: The source being crawled, for the log entry.
+        client: HTTP client to fetch with.
+        allow_redirect: See ``fetch_policy``.
+
+    Returns:
+        The final status code and, for a success, the body as text (empty
+        otherwise; an error status's body is never read).
+
+    Raises:
+        RobotsUnavailableError: If the file cannot be fetched, is too large or
+            slow, or redirects too often or somewhere refused.
+
+    Redirects are followed because RFC 9309 says to (at least five hops), and
+    by hand because each target is a URL the source chose: automatic
+    following would send our request wherever it pointed, internal addresses
+    included. A refused redirect is "could not read the rules", not "no
+    rules", for the same reason a 403 is.
+    """
+    origin = urlparse(url)
+    deadline = time.monotonic() + ROBOTS_DEADLINE_S
+    target = url
+    for _hop in range(MAX_ROBOTS_REDIRECTS + 1):
+        try:
+            with client.stream(
+                "GET", target, timeout=FETCH_TIMEOUT_S, follow_redirects=False
+            ) as response:
+                if not response.is_redirect:
+                    if response.status_code >= 400:
+                        return response.status_code, ""
+                    body = read_limited(response, max_bytes=MAX_ROBOTS_BYTES, deadline=deadline)
+                    return response.status_code, body.decode(
+                        response.encoding or "utf-8", errors="replace"
+                    )
+                next_url = str(response.url.join(response.headers.get("Location", "")))
+        except httpx.HTTPError as exc:
+            logger.error(
+                "robots.unreachable", source_id=source_id, robots_url=target, error=str(exc)
+            )
+            raise RobotsUnavailableError(f"could not fetch {target}: {exc}") from exc
+        except ResponseLimitError as exc:
+            # Refused rather than truncated: parsing a prefix could drop the
+            # very `Disallow` lines at the end of the file, and the direction
+            # of that mistake is fetching what the operator forbade.
+            logger.error(
+                "robots.oversized", source_id=source_id, robots_url=target, reason=exc.reason
+            )
+            raise RobotsUnavailableError(f"{target}: {exc}") from exc
+
+        parsed = urlparse(next_url)
+        permitted = (
+            allow_redirect(next_url)
+            if allow_redirect is not None
+            else (parsed.scheme, parsed.netloc) == (origin.scheme, origin.netloc)
+        )
+        if not permitted:
+            logger.error(
+                "robots.redirect_refused", source_id=source_id, robots_url=url, target=next_url
+            )
+            raise RobotsUnavailableError(f"{url} redirected to refused target {next_url}")
+        target = next_url
+
+    logger.error("robots.too_many_redirects", source_id=source_id, robots_url=url)
+    raise RobotsUnavailableError(f"{url} redirected more than {MAX_ROBOTS_REDIRECTS} times")
 
 
 def _significant_lines(body: str) -> list[str]:
