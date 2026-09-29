@@ -17,6 +17,10 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.12'
+  # The uv that generates apps/api/requirements*.lock. Pinned because another
+  # version may lay the files out differently and fail `lock drift` on a
+  # change that altered no dependency.
+  UV_VERSION: '0.8.17'
   # 22, not 20: Node 20 reached end of life in April 2026 and no longer gets
   # security fixes. Matches the node:22-alpine base in apps/web/Dockerfile.
   NODE_VERSION: '22'
@@ -39,8 +43,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
 
       - name: Lint (ruff)
         if: matrix.check == 'lint'
@@ -204,8 +209,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
       - name: Migrate
         run: alembic upgrade head
       # The whole suite, not a list of files. The `test` job above runs without
@@ -337,8 +343,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
 
       - name: Apply migrations
         run: alembic upgrade head
@@ -524,13 +531,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: apps/api/requirements-dev.lock
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Install API
         working-directory: apps/api
-        run: pip install -e ".[dev]"
+        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
       - name: Install workspace
         run: npm ci
       # The same command a developer runs, so the check cannot disagree with
@@ -559,6 +567,38 @@ jobs:
             exit 1
           fi
 
+  lock-drift:
+    name: lock drift
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    # Every other job installs from the lock files, so a dependency added to
+    # pyproject.toml but not locked would fail somewhere confusing, or, if
+    # something else pulled it in transitively, pass at a version nobody chose.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install uv
+        run: pip install "uv==${UV_VERSION}"
+      # The same script a developer runs. It keeps existing pins, so it
+      # changes the files only when pyproject.toml asks for something the
+      # lock does not hold.
+      - name: Regenerate the lock files
+        run: scripts/lock-deps.sh
+      - name: Fail if the checked-in lock files were stale
+        run: |
+          if ! git diff --exit-code -- requirements.lock requirements-dev.lock; then
+            echo
+            echo "apps/api/requirements*.lock do not match pyproject.toml."
+            echo "Regenerate them and commit the result:"
+            echo
+            echo "  cd apps/api && scripts/lock-deps.sh"
+            exit 1
+          fi
+
   deps-audit:
     name: deps audit (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -576,13 +616,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: apps/api/requirements-dev.lock
       - name: Audit Python dependencies (pip-audit)
         if: matrix.target == 'python'
         working-directory: apps/api
         # --skip-editable: panelpilot-api itself is not on PyPI and cannot be
         # audited; its dependencies are what matter here.
         run: |
-          pip install -e ".[dev]"
+          pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
           pip-audit --skip-editable
 
       - uses: actions/setup-node@v4
@@ -612,6 +653,7 @@ jobs:
         compose-smoke,
         migration-drift,
         shared-types-drift,
+        lock-drift,
         deps-audit,
       ]
     if: always()

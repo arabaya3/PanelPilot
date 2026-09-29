@@ -7,9 +7,10 @@
 #   runtime  production-shaped, no build or dev tooling   (default)
 #   dev      runtime + dev extras, for docker compose up
 #
-# There is no dependency lockfile in this repo, so `pip install` resolves
-# versions at build time and two builds of the same commit can differ. Pinning
-# is a real gap; it belongs in a lockfile, not in a workaround here.
+# Dependencies come from the lock files (requirements.lock for runtime,
+# requirements-dev.lock for dev), installed with --require-hashes: two builds
+# of the same commit get the same packages, byte for byte, or fail. Regenerate
+# them with scripts/lock-deps.sh after editing pyproject.toml.
 
 # ---------------------------------------------------------------------------
 # base — settings shared by every stage. No dependencies, no source.
@@ -46,12 +47,11 @@ RUN apt-get update \
 
 RUN python -m venv "$VIRTUAL_ENV"
 
-# Dependencies are installed from pyproject's [project.dependencies] only —
-# never optional-dependencies.dev — so dev tooling cannot leak into the image.
-# Copying pyproject alone first keeps this layer cached across source edits.
-COPY pyproject.toml ./
-RUN python -c "import pathlib, tomllib; print('\n'.join(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']))" > /tmp/requirements.txt \
- && pip install --no-cache-dir -r /tmp/requirements.txt
+# The runtime lock only — never the dev one — so dev tooling cannot leak into
+# the image. Copying the lock alone first keeps this layer cached across
+# source edits.
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # ---------------------------------------------------------------------------
 # dev — adds the dev extras so `docker compose exec api pytest` works.
@@ -59,8 +59,9 @@ RUN python -c "import pathlib, tomllib; print('\n'.join(tomllib.loads(pathlib.Pa
 # ---------------------------------------------------------------------------
 FROM builder AS dev
 
-RUN python -c "import pathlib, tomllib; print('\n'.join(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['optional-dependencies']['dev']))" > /tmp/dev-requirements.txt \
- && pip install --no-cache-dir -r /tmp/dev-requirements.txt
+# A superset of the runtime lock at the same pins, so this only adds.
+COPY requirements-dev.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements-dev.lock
 
 COPY --chown=app:app . /app
 

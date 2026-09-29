@@ -423,7 +423,8 @@ cp .env.example .env       # fill in local values; .env is gitignored
 # Backend — needs Postgres, OpenSearch, and Redis reachable at the URLs in .env
 cd apps/api
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install --require-hashes -r requirements-dev.lock   # the exact versions CI runs
+pip install --no-deps -e .
 alembic upgrade head
 uvicorn app.main:create_app --factory --reload   # API runtime
 
@@ -458,6 +459,13 @@ ruff check . && black --check . && mypy app && pytest
 # repo root
 npm run lint && npm run format:check && npm run typecheck
 ```
+
+Python dependencies are locked. After editing `dependencies` or the `dev`
+extra in `apps/api/pyproject.toml`, run `scripts/lock-deps.sh` from
+`apps/api` and commit both `requirements*.lock` files; CI's `lock drift` job
+fails otherwise. It keeps every other pin where it is; `--upgrade` (or
+`--upgrade-package <name>`) moves them. It needs `uv` at the version CI pins
+(`UV_VERSION` in `.github/workflows/ci.yml`).
 
 `mypy` runs in strict mode and `ruff` enforces Google-style docstrings on
 `domain/` and `ai/`. Both are non-negotiable in those directories; route files
