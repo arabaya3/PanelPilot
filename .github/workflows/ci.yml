@@ -184,6 +184,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@localhost:5432/panelpilot
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
       # A throwaway index name so a run can never touch a real corpus.
@@ -318,6 +320,8 @@ jobs:
       TEST_DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@localhost:5432/panelpilot
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
     steps:
@@ -485,6 +489,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://placeholder:placeholder@localhost:5432/placeholder
       OPENSEARCH_URL: http://localhost:9200
       REDIS_URL: redis://localhost:6379/0
+      # Required by Settings; there is no default environment.
+      ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder-secret-at-least-32-bytes-long
     steps:

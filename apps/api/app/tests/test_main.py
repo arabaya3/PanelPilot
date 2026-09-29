@@ -11,8 +11,16 @@ once.
 from __future__ import annotations
 
 import pytest
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.middleware import (
+    BodySizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+    correlation_id_middleware,
+)
 from app.core.config import (
     EXIT_CONFIG_ERROR,
     ConfigurationError,
@@ -20,9 +28,12 @@ from app.core.config import (
     Settings,
     get_settings,
 )
+from app.core.observability import CORRELATION_HEADER
 from app.main import create_app
 
 REQUIRED_ENV = (
+    # Required with no default: a prod deploy that forgot it used to run as dev.
+    "ENVIRONMENT",
     "DATABASE_URL",
     "OPENSEARCH_URL",
     "ANTHROPIC_API_KEY",
@@ -89,6 +100,7 @@ def test_startup_fails_loudly_when_a_required_variable_is_absent(
     making it required is visible here.
     """
     values = {
+        "ENVIRONMENT": "prod",
         "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
         "OPENSEARCH_URL": "http://localhost:9200",
         "ANTHROPIC_API_KEY": "k",
@@ -182,3 +194,146 @@ def test_explicit_settings_bypass_the_environment(settings: Settings) -> None:
     """Tests construct settings directly; that path must not read the process env."""
     app = create_app(settings)
     assert app.title == "PanelPilot API"
+
+
+# --- API docs ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", list(Environment))
+def test_docs_are_served_everywhere_but_prod(settings: Settings, env: Environment) -> None:
+    """Docs are off in prod only.
+
+    A map of every endpoint helps a developer in dev and staging, and only
+    someone probing the API in prod.
+    """
+    configured = settings.model_copy(update={"environment": env, "jwt_secret": SecretStr("x" * 48)})
+    with TestClient(create_app(configured)) as client:
+        expected = 404 if env is Environment.PROD else 200
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            assert client.get(path).status_code == expected, path
+
+
+def test_the_schema_can_still_be_generated_in_prod(settings: Settings) -> None:
+    """The shared-types generator calls app.openapi(), not the route."""
+    configured = settings.model_copy(
+        update={"environment": Environment.PROD, "jwt_secret": SecretStr("x" * 48)}
+    )
+    schema = create_app(configured).openapi()
+    assert "/api/v1/auth/trial/resume" in schema["paths"]
+
+
+# --- middleware order ------------------------------------------------------------
+
+
+def test_the_correlation_id_middleware_is_outermost(settings: Settings) -> None:
+    """The correlation middleware runs first on every request.
+
+    Starlette runs the middleware added LAST first. The comment in main.py said
+    "outermost" while CORS, added after it, actually was.
+    """
+    app = create_app(settings)
+    stack: list[object] = [m.cls for m in app.user_middleware]
+    assert stack == [
+        BaseHTTPMiddleware,
+        SecurityHeadersMiddleware,
+        CORSMiddleware,
+        BodySizeLimitMiddleware,
+    ]
+    assert app.user_middleware[0].kwargs["dispatch"] is correlation_id_middleware
+
+
+def test_a_rejected_body_still_carries_every_outer_header(settings: Settings) -> None:
+    """A 413 passes through every outer middleware.
+
+    It is produced innermost, so it passes through CORS (a browser can read
+    it), the security headers, and the correlation id on its way out.
+    """
+    configured = settings.model_copy(update={"cors_allowed_origins": ["http://app.test"]})
+    with TestClient(create_app(configured)) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            content=b"x" * (configured.max_request_body_bytes + 1),
+            headers={
+                "Content-Type": "application/json",
+                "Origin": "http://app.test",
+                CORRELATION_HEADER: "trace-413",
+            },
+        )
+    assert response.status_code == 413
+    assert response.headers[CORRELATION_HEADER] == "trace-413"
+    assert response.headers["access-control-allow-origin"] == "http://app.test"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_image_uploads_get_the_larger_body_limit(settings: Settings) -> None:
+    """A 1 MiB photo is refused by the default limit and must not be here.
+
+    Unauthenticated, so the route answers 401 — the point is that it answers
+    at all rather than the body limit answering 413 first.
+    """
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/images", files={"file": ("panel.jpg", b"\xff" * (1024 * 1024))}
+        )
+    assert response.status_code != 413
+
+
+# --- CORS ----------------------------------------------------------------------
+
+
+def test_cors_allows_only_what_the_frontend_uses(settings: Settings) -> None:
+    configured = settings.model_copy(update={"cors_allowed_origins": ["http://app.test"]})
+    with TestClient(create_app(configured)) as client:
+        preflight = client.options(
+            "/api/v1/auth/login",
+            headers={
+                "Origin": "http://app.test",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        assert preflight.status_code == 200
+        # Bearer auth, never cookies: no ambient credential to carry.
+        assert "access-control-allow-credentials" not in preflight.headers
+
+        refused = client.options(
+            "/api/v1/auth/login",
+            headers={"Origin": "http://app.test", "Access-Control-Request-Method": "DELETE"},
+        )
+        assert refused.status_code == 400
+
+        foreign = client.options(
+            "/api/v1/auth/login",
+            headers={
+                "Origin": "http://app.test",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-something-else",
+            },
+        )
+        assert foreign.status_code == 400
+
+
+# --- unhandled exceptions --------------------------------------------------------
+
+
+def test_an_unhandled_exception_is_a_generic_500(settings: Settings) -> None:
+    """Never the exception text: it can name tables, paths, or echo SQL."""
+    app = create_app(settings)
+
+    @app.get("/api/v1/boom-for-test")
+    def boom() -> None:
+        raise RuntimeError("password_hash column leaked")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/boom-for-test", headers={CORRELATION_HEADER: "trace-x"})
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "InternalServerError",
+        "detail": "Internal server error",
+        "correlation_id": "trace-x",
+    }
+    assert "leaked" not in response.text
+    assert response.headers[CORRELATION_HEADER] == "trace-x"
+    assert response.headers["X-Frame-Options"] == "DENY"

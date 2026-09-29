@@ -10,11 +10,18 @@ from __future__ import annotations
 import sys
 from enum import StrEnum
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# RFC 7518 §3.2: an HMAC key shorter than the hash output weakens the
+# signature. PyJWT only warns, so a one-character secret would sign real tokens
+# in production. A module constant rather than a setting: an environment
+# variable that can lower the floor is a floor anyone with deploy access can
+# remove without noticing they did.
+JWT_SECRET_MIN_BYTES = 32
 
 
 class Environment(StrEnum):
@@ -57,7 +64,10 @@ class Settings(BaseSettings):
     )
 
     # --- Runtime -----------------------------------------------------------
-    environment: Environment = Environment.DEV
+    # Required, with no default. A default of dev meant a production deploy
+    # that forgot ENVIRONMENT silently ran with dev's relaxations — a one-byte
+    # JWT_SECRET, debug tracebacks, wildcard CORS — and nothing said so.
+    environment: Environment
     debug: bool = False
     log_level: str = "INFO"
     api_v1_prefix: str = "/api/v1"
@@ -121,17 +131,30 @@ class Settings(BaseSettings):
 
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
-    # RFC 7518 §3.2: an HMAC key shorter than the hash output weakens the
-    # signature. PyJWT only warns, so a one-character secret would sign real
-    # tokens in production. Enforced below rather than left to a warning
-    # nobody reads in a log.
-    jwt_secret_min_bytes: int = 32
-    jwt_algorithm: str = "HS256"
+    # A closed set. Anything else is either asymmetric (needs a key pair this
+    # service does not hold) or "none", and both are refused at startup rather
+    # than discovered when the first token fails to verify.
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_ttl_seconds: int = 3600
     # NoDecode stops pydantic-settings JSON-decoding this before validation,
     # so the comma-separated form documented in .env.example actually works.
     # Without it, CORS_ALLOWED_ORIGINS=http://localhost:3000 is a startup error.
     cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    # --- Request limits ----------------------------------------------------
+    # Enforced by middleware before anything parses the body. FastAPI reads,
+    # parses and spools a body (multipart files to temp files) BEFORE any
+    # dependency runs, so without a ceiling an unauthenticated caller could
+    # make the server buffer an arbitrary amount ahead of auth and rate
+    # limiting. Bytes, on the raw request body.
+    max_request_body_bytes: int = 64 * 1024
+    # Image upload. Must exceed app.domain.images.MAX_IMAGE_BYTES (8 MiB) by
+    # the multipart framing, so the domain's precise "image too large" message
+    # stays reachable; a test pins the relationship.
+    max_image_request_body_bytes: int = 9 * 1024 * 1024
+    # PLC review accepts up to 100,000 characters of source, which a 64 KiB
+    # ceiling would reject for a perfectly valid request.
+    max_plc_request_body_bytes: int = 512 * 1024
 
     # --- Redis -------------------------------------------------------------
     redis_url: str = Field(..., description="Redis URL used for rate limiting and cached lookups.")
@@ -153,14 +176,40 @@ class Settings(BaseSettings):
         """
         secret = self.jwt_secret.get_secret_value()
         # Dev keeps short throwaway secrets usable; staging and prod do not.
-        if (
-            self.environment is not Environment.DEV
-            and len(secret.encode()) < self.jwt_secret_min_bytes
-        ):
+        if self.environment is not Environment.DEV and len(secret.encode()) < JWT_SECRET_MIN_BYTES:
             raise ValueError(
                 f"JWT_SECRET is {len(secret.encode())} bytes; {self.environment.value} "
-                f"requires at least {self.jwt_secret_min_bytes}. Generate one with "
+                f"requires at least {JWT_SECRET_MIN_BYTES}. Generate one with "
                 '`python -c "import secrets; print(secrets.token_urlsafe(32))"`.'
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_dev_only_switches_outside_dev(self) -> Settings:
+        """Refuse settings that are only safe on a developer's machine.
+
+        Returns:
+            The validated settings.
+
+        Raises:
+            ValueError: If debug is on, or CORS allows any origin, outside dev.
+        """
+        if self.environment is Environment.DEV:
+            return self
+        # FastAPI(debug=True) renders the traceback — exception text, file
+        # paths, local source — into the body of every 500. Verified, not
+        # assumed. In staging or prod that is an information leak per error.
+        if self.debug:
+            raise ValueError(
+                f"DEBUG=true is refused in {self.environment.value}: it returns "
+                "tracebacks in error responses. Set DEBUG=false."
+            )
+        # A wildcard lets any website script this API from a visitor's
+        # browser. There is no deployment where that is the intent.
+        if "*" in self.cors_allowed_origins:
+            raise ValueError(
+                f"CORS_ALLOWED_ORIGINS='*' is refused in {self.environment.value}. "
+                "List the frontend's origins explicitly."
             )
         return self
 

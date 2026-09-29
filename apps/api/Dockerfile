@@ -85,6 +85,12 @@ COPY --chown=app:app app ./app
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app alembic.ini pyproject.toml ./
 
+# IMAGE_STORAGE_ROOT defaults to ./var/images, i.e. /app/var/images. /app is
+# root-owned, so the non-root user below could not create it at runtime and
+# the first upload would fail. Created here and owned by the app user; a
+# volume mounted there needs the same ownership (uid 10001).
+RUN mkdir -p /app/var/images && chown -R app:app /app/var
+
 USER app
 EXPOSE 8000
 
@@ -97,4 +103,18 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
 
 # create_app is a factory — there is no module-level `app` object, so --factory
 # is required. See apps/api/app/main.py.
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+#
+# --timeout-graceful-shutdown: on SIGTERM, in-flight requests (a streaming
+# diagnosis can run for many seconds) get 25s to finish, inside the usual 30s
+# an orchestrator waits before SIGKILL, rather than being cut mid-answer.
+#
+# Client addresses behind a proxy: uvicorn's --proxy-headers is on by default,
+# but it only trusts X-Forwarded-For from the addresses in FORWARDED_ALLOW_IPS
+# (default 127.0.0.1). Behind a load balancer every request therefore appears
+# to come from the balancer, and the per-client rate limits collapse into one
+# shared bucket. Set FORWARDED_ALLOW_IPS to the proxy's address in the
+# deployment. Never '*', and not here in the image: with '*' any caller can
+# forge X-Forwarded-For and pick a fresh address per request, which disables
+# the limits entirely.
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", \
+     "--timeout-graceful-shutdown", "25"]
