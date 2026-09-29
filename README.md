@@ -9,8 +9,9 @@ calculations performed by deterministic code rather than by the model.
 > orchestration endpoint, and the web client that renders it in English,
 > Arabic and Hebrew. `docker compose up` boots all five services healthy.
 >
-> Three backend gaps remain, listed below. Each one is a missing _endpoint_
-> rather than missing logic: the code behind it exists and is tested.
+> One backend gap remains, listed below, and it is an account setting rather
+> than code: the embedding provider's free tier is too rate-limited to ingest
+> a corpus.
 
 ---
 
@@ -28,6 +29,11 @@ serves a live chat input on an anonymous trial — no signup, no form.
   call. This is the best thing to try first.
 - **Signup, login, and the trial claim** — including carrying an anonymous
   conversation into a new account.
+- **Fault-code photo recognition** — `POST /api/v1/images`, or the camera
+  button in the chat. The photo is stored and read by the vision model; a
+  confident reading pre-fills the message, and anything less asks the engineer
+  to confirm. Needs a real `ANTHROPIC_API_KEY`; without one the upload still
+  succeeds and the UI asks for the code to be typed.
 
 **What will not work yet, and why:**
 
@@ -48,9 +54,8 @@ anyone picking this up needs these before they need the history.
 
 ### Backend work between here and a usable product
 
-Three things. The first two are routes whose client half is already built and
-tested; the third is a vendor decision, and is the one that actually blocks
-the product being usable at all.
+One thing: a vendor account setting, and it is what actually blocks the
+product being usable at all.
 
 _Previously listed here and now resolved: the anonymous-trial endpoint.
 `POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
@@ -68,22 +73,22 @@ with the chip blank. Re-deriving it from the stored prose would have meant
 guessing a model number out of an answer, which is what the chip's neutral
 state exists to prevent._
 
-**1. AI-008's recogniser is wired to no route.**
-`app/ai/recognition.py` is complete: a verdict, per-field confidence, and an
-off-topic rejection path, with the schema refusing a fault code reported
-alongside a non-fault-display verdict. But `POST /api/v1/images` only stores
-the image and returns `{image_id}`, so nothing calls it. The web client
-(`apps/web/src/lib/recognition.ts`) is written against the real
-`FaultRecognitionResult` shape and reports today's stored-but-unread outcome
-honestly; wiring the route is the only work left.
+_Also resolved: AI-008's recogniser is wired. `POST /api/v1/images` stores
+the photo and returns `{image_id, recognition}`, where `recognition` is the
+model's verdict and per-field confidences. It is best-effort: once the bytes
+are stored, a model outage or an unparseable report returns
+`recognition: null` rather than failing an upload that already happened, and
+the client shows that as "uploaded, please type the code"._
 
-**2. BE-012's rate limiter is in-memory and single-worker.**
-The sliding window lives in process memory, so the limit is per-worker rather
-than per-deployment. Correct for one worker and wrong the moment there are
-two. A Redis-backed store is the intended replacement; Redis is already in
-the compose stack.
+_And resolved: BE-012's rate limiter is shared across workers. The sliding
+window lives in Redis (`RATE_LIMIT_BACKEND=redis`, the default), so the limit
+is per deployment rather than per worker. It fails open — an unreachable
+Redis is logged and the request allowed — because failing closed would lock
+every trial user out at once, and the per-account quota still bounds spend.
+`RATE_LIMIT_BACKEND=memory` keeps the old single-process store for running
+without Redis._
 
-**3. Retrieval is wired end to end, and rate-limited on the free tier.**
+**Retrieval is wired end to end, and rate-limited on the free tier.**
 Voyage is implemented, keyed and verified live: `embed_query` and
 `embed_documents` both return 1024-dimension vectors from `voyage-3.5`, which
 is exactly what `mappings.EMBEDDING_DIMENSIONS` pins — so no re-index was
