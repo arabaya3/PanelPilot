@@ -810,6 +810,9 @@ def list_sessions(
             # because an engineer who moved to a different unit mid-session is
             # looking for the unit they moved to.
             _latest_equipment_model().label("equipment_model"),
+            # In the same query rather than one lookup per row afterwards,
+            # which was up to a hundred extra round trips for one page.
+            _first_question().label("first_question"),
         )
         .join(
             DiagnosticTurnRow,
@@ -845,7 +848,7 @@ def list_sessions(
     summaries = [
         DiagnosticSessionSummary(
             id=str(row.id),
-            title=_session_title(session=session, session_id=row.id),
+            title=_session_title(row.first_question),
             equipment_model=row.equipment_model,
             turn_count=row.turn_count,
             created_at=row.created_at,
@@ -886,27 +889,39 @@ def _latest_equipment_model() -> Any:
     )
 
 
-def _session_title(*, session: Session, session_id: uuid.UUID) -> str:
-    """Return the first question of a conversation, truncated for display.
-
-    Args:
-        session: Open database session.
-        session_id: The conversation.
+def _first_question() -> Any:
+    """Return a scalar subquery for a conversation's opening question.
 
     Returns:
-        The first question, or a placeholder when the session has no turns yet.
+        A correlated scalar selecting the first turn's question, cut to one
+        character more than a title shows — enough for ``_session_title`` to
+        know it was truncated, without sending a multi-kilobyte symptom per
+        row to render two lines of text.
 
     Ordered by ``position`` rather than by id or insertion order: position is
     the column that defines a turn's place in the conversation, and an id sorts
     by creation only by accident of how ids happen to be generated.
     """
-    question = session.scalars(
-        select(DiagnosticTurnRow.question)
-        .where(DiagnosticTurnRow.session_id == session_id)
-        .order_by(DiagnosticTurnRow.position)
+    inner = aliased(DiagnosticTurnRow)
+    return (
+        select(func.substr(inner.question, 1, _SESSION_TITLE_MAX + 1))
+        .where(inner.session_id == DiagnosticSessionRow.id)
+        .order_by(inner.position)
         .limit(1)
-    ).first()
+        .correlate(DiagnosticSessionRow)
+        .scalar_subquery()
+    )
 
+
+def _session_title(question: str | None) -> str:
+    """Return a conversation's first question, truncated for display.
+
+    Args:
+        question: The first question, or ``None`` when there are no turns yet.
+
+    Returns:
+        The title to show.
+    """
     if question is None:
         return "New conversation"
     if len(question) <= _SESSION_TITLE_MAX:

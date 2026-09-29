@@ -432,3 +432,34 @@ def test_ready_survives_warnings_alone() -> None:
 
     assert result.status is ValidationStatus.VALID
     assert result.ready
+
+
+# --- pathological comments ----------------------------------------------------
+
+
+def test_many_unclosed_comment_openers_are_rejected_quickly() -> None:
+    """Every unclosed `(*` used to rescan to the end: 100 KB took 17 s of CPU."""
+    import time
+
+    source = "PROGRAM p\nVAR x : INT; END_VAR\nx := 1; " + "(*" * 49_970
+
+    started = time.perf_counter()
+    result = validate_plc_code(source)
+    elapsed = time.perf_counter() - started
+
+    assert result.status is ValidationStatus.INVALID
+    assert result.findings[0].line == 3
+    assert elapsed < 0.5, f"took {elapsed:.2f}s"
+
+
+def test_an_opener_inside_a_line_comment_is_not_a_block_comment() -> None:
+    """The grammar reads `// ... (*` as one line comment; so must the pre-check."""
+    source = "PROGRAM p\nVAR x : INT; END_VAR\nx := 1; // see (* the manual\nEND_PROGRAM"
+
+    assert validate_plc_code(source).status is ValidationStatus.VALID
+
+
+def test_closed_block_comments_are_unaffected() -> None:
+    source = "PROGRAM p\nVAR x : INT; END_VAR\n(* set it *) x := 1; (* done *)\nEND_PROGRAM"
+
+    assert validate_plc_code(source).status is ValidationStatus.VALID

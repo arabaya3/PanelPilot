@@ -2131,3 +2131,36 @@ def test_the_post_path_refuses_a_spent_allowance_before_paying(
             session=cast(Session, _FakeSession()), user=_user(), request=_request()
         )
     assert wired.calls == 0
+
+
+@requires_db
+def test_listing_sessions_costs_the_same_for_one_row_as_for_many(
+    db: Session, db_user: CurrentUser
+) -> None:
+    """The title used to be one extra query per row — a hundred for a full page."""
+    from sqlalchemy import event
+
+    statements: list[str] = []
+
+    def _count(*args: Any, **_kw: Any) -> None:
+        statements.append(args[2])
+
+    tenant = uuid.UUID(db_user.tenant_id)
+    engine = db.get_bind()
+
+    def _listing_cost() -> int:
+        statements.clear()
+        event.listen(engine, "before_cursor_execute", _count)
+        try:
+            diagnostics_domain.list_sessions(session=db, user=db_user)
+        finally:
+            event.remove(engine, "before_cursor_execute", _count)
+        return len(statements)
+
+    _seed_session(db, tenant_id=tenant, questions=["first"])
+    one = _listing_cost()
+    for n in range(5):
+        _seed_session(db, tenant_id=tenant, questions=[f"question {n}"])
+    many = _listing_cost()
+
+    assert one == many == 1

@@ -9,8 +9,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.schemas.diagnostics import (
+    MAX_SYMPTOM_CHARS,
     ConfidenceBreakdown,
+    DiagnosticRequest,
     DiagnosticResponse,
+    EquipmentContext,
     VerifiedAnswer,
 )
 from app.models.schemas.responses import DiagnosisStep, Severity, StructuredDiagnosis
@@ -154,3 +157,29 @@ def test_a_verified_answer_cannot_be_blank_prose(blank: str) -> None:
     """Same reason the structured summary cannot: it renders as an empty card."""
     with pytest.raises(ValidationError):
         VerifiedAnswer(text=blank, citations=[])
+
+
+# --- request bounds -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("symptom", ["", "   ", "\n\t"])
+def test_a_blank_question_is_a_bad_request(symptom: str) -> None:
+    """It used to reach the embedding call and fail there as a service error."""
+    with pytest.raises(ValidationError):
+        DiagnosticRequest(symptom=symptom)
+
+
+def test_a_question_is_bounded() -> None:
+    """The text is embedded, sent to a model and stored: unbounded is unbounded cost."""
+    DiagnosticRequest(symptom="x" * MAX_SYMPTOM_CHARS)
+    with pytest.raises(ValidationError):
+        DiagnosticRequest(symptom="x" * (MAX_SYMPTOM_CHARS + 1))
+
+
+def test_equipment_context_is_bounded() -> None:
+    with pytest.raises(ValidationError):
+        EquipmentContext(fault_codes=["F0001"] * 21)
+    with pytest.raises(ValidationError):
+        EquipmentContext(fault_codes=["F" * 65])
+    with pytest.raises(ValidationError):
+        EquipmentContext(model="x" * 201)
