@@ -23,6 +23,7 @@ from app.domain import images as images_domain
 from app.domain import recognition as recognition_domain
 from app.domain.storage import FilesystemObjectStore
 from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.auth_flows import QuotaStatus
 from app.models.schemas.recognition import FaultRecognitionResult
 
 _TENANT = "33333333-3333-3333-3333-333333333333"
@@ -54,6 +55,19 @@ class _Settings:
     llm_model = "test-model"
 
 
+class _Session:
+    """Accepts the charge's commit; the transaction itself is the domain's."""
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
+
+_ROOM = QuotaStatus(questions_used=0, question_limit=5, questions_remaining=5)
+
+
 @pytest.fixture
 def recognised(monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     """Stub the recogniser so no test here reaches the network.
@@ -70,6 +84,8 @@ def recognised(monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     monkeypatch.setattr(recognition_domain, "recognise_fault_display", _recognise)
     monkeypatch.setattr(recognition_domain, "_anthropic_client", lambda: object())
     monkeypatch.setattr(recognition_domain, "get_settings", _Settings)
+    monkeypatch.setattr(recognition_domain, "get_quota", lambda **_: _ROOM)
+    monkeypatch.setattr(recognition_domain, "consume_free_question", lambda **_: _ROOM)
     return seen
 
 
@@ -81,6 +97,11 @@ def client(store: FilesystemObjectStore, recognised: list[bytes]) -> Iterator[Te
     app.include_router(images_route.router, prefix="/images")
     app.dependency_overrides[deps.get_current_user] = _user
     app.dependency_overrides[deps.get_object_store] = lambda: store
+    # The quota charge is exercised in the domain tests; here it only needs a
+    # session to be handed through, and the allowance to have room.
+    from app.core.db import get_session
+
+    app.dependency_overrides[get_session] = _Session
 
     from app.core.errors import install_exception_handlers
 
