@@ -185,7 +185,7 @@ def test_listing_urls_does_not_alias_the_callers_list() -> None:
 def test_the_client_identifies_itself() -> None:
     # A crawler that will not say who it is has already decided it might not
     # be welcome.
-    with http_client(user_agent="PanelPilotBot") as client:
+    with http_client(user_agent="PanelPilotBot", resolve=lambda _host: ["93.184.216.34"]) as client:
         assert client.headers["User-Agent"] == "PanelPilotBot"
 
 
@@ -194,7 +194,7 @@ def test_the_client_leaves_redirects_to_the_crawl_loop() -> None:
     # followed -- but by the crawl loop, one checked hop at a time. Left to
     # httpx, a manufacturer page answering 302 to the cloud metadata address
     # was fetched and staged. The crawler tests cover the following itself.
-    with http_client(user_agent="PanelPilotBot") as client:
+    with http_client(user_agent="PanelPilotBot", resolve=lambda _host: ["93.184.216.34"]) as client:
         assert client.follow_redirects is False
 
 
