@@ -76,12 +76,21 @@ def escalates(label: VerificationLabel) -> bool:
 
 
 class QueueItem(BaseModel):
-    """One chunk in a verifier's queue."""
+    """One chunk in a verifier's queue, with what the verifier checks it against.
+
+    ``content`` is the chunk's text and ``source_url``/``page``/``section`` say
+    where it came from. All ``None`` when the staged chunk cannot be read; the
+    console then says so rather than inviting a label on unseen text.
+    """
 
     id: UUID
     chunk_id: str | None
     status: str
     assigned_at: datetime | None
+    content: str | None = None
+    source_url: str | None = None
+    page: int | None = None
+    section: str | None = None
 
 
 class QueuePage(BaseModel):

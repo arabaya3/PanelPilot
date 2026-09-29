@@ -94,7 +94,7 @@ const config: Config = {
     extend: {
       width: { 24: '6rem', 40: '10rem', 56: '14rem', 64: '16rem' },
       height: { 96: '24rem' },
-      maxHeight: { 40: '10rem' },
+      maxHeight: { 40: '10rem', 96: '24rem' },
     },
   },
   plugins: [],

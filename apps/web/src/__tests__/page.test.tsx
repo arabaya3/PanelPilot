@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderApp } from './helpers';
 
 import HomePage from '@/app/page';
+import * as auth from '@/lib/auth';
 import * as stream from '@/lib/diagnosis-stream';
 import * as sessions from '@/lib/sessions';
 import * as trial from '@/lib/trial';
@@ -239,6 +240,37 @@ describe('HomePage', () => {
     const everything = JSON.stringify(window.localStorage);
     expect(everything).not.toContain('acct-tok');
     expect(everything).not.toContain('refresh-tok');
+  });
+
+  it('lets a returning account sign in instead of staying a trial', async () => {
+    // There was no way back into an account once its tab closed: tokens live
+    // in memory, and the page only ever offered a new trial.
+    mockStart(STARTED);
+    vi.spyOn(auth, 'signIn').mockResolvedValue({
+      kind: 'signed-in',
+      accessToken: 'acct-tok',
+      refreshToken: 'refresh-tok',
+    });
+    const list = spyHistory();
+    renderApp(<HomePage />, { theme: 'light' });
+    await waitFor(() => {
+      expect(screen.getByTestId('chat')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'e@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.submit(screen.getByTestId('sign-in-form'));
+
+    await waitFor(() => {
+      expect(tokensSeen(list)).toContain('acct-tok');
+    });
+    expect(screen.queryByTestId('sign-in-form')).toBeNull();
+    // Already in an account: nothing left to sign in to.
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    // Not claimed, so still this browser's to return to.
+    expect(storedTrial()).toEqual({ sessionId: 'sess-1', claimSecret: 'secret-1' });
+    expect(JSON.stringify(window.localStorage)).not.toContain('acct-tok');
   });
 
   it('gets a fresh token when a question is refused as unauthorized', async () => {

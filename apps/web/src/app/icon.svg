@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The accent from tokens.css (light theme). A favicon is rendered by the
+       browser outside the page, where the token variables do not reach. -->
+  <rect width="32" height="32" rx="6" fill="#0f766e"/>
+  <path d="M18 5 9 18h6l-2 9 10-14h-6z" fill="#ffffff"/>
+</svg>

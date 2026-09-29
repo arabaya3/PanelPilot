@@ -32,28 +32,41 @@ from app.models.tables.ingestion import VerificationItemRow
 router = APIRouter()
 
 
-def _to_item(row: VerificationItemRow) -> QueueItem:
-    """Project a queue row onto its wire shape.
+def _to_items(rows: list[VerificationItemRow]) -> list[QueueItem]:
+    """Project queue rows onto their wire shape, with the text under review.
 
     Args:
-        row: The database row.
+        rows: The database rows.
 
     Returns:
-        The item as the API presents it.
+        The items as the API presents them. The staged chunks are read in one
+        request for the whole batch, not one per item.
     """
-    return QueueItem(
-        id=row.id,
-        chunk_id=row.chunk_id,
-        status=row.status,
-        assigned_at=row.assigned_at,
-    )
+    chunks = queue_domain.staged_chunks([row.chunk_id for row in rows if row.chunk_id])
+    items = []
+    for row in rows:
+        chunk = chunks.get(row.chunk_id or "", {})
+        page = chunk.get("page")
+        items.append(
+            QueueItem(
+                id=row.id,
+                chunk_id=row.chunk_id,
+                status=row.status,
+                assigned_at=row.assigned_at,
+                content=chunk.get("content"),
+                source_url=chunk.get("source_url"),
+                page=page if isinstance(page, int) else None,
+                section=chunk.get("section"),
+            )
+        )
+    return items
 
 
 @router.get("/queue/me", response_model=QueuePage)
 def my_queue(session: SessionDep, user: CurrentUserDep) -> QueuePage:
     """Return the caller's outstanding batch."""
     rows = queue_domain.queue_for(session=session, verifier_id=UUID(user.id))
-    return QueuePage(items=[_to_item(row) for row in rows])
+    return QueuePage(items=_to_items(list(rows)))
 
 
 @router.post("/items/{item_id}/label", response_model=LabelResponse)
@@ -113,4 +126,4 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
         )
 
     rows = queue_domain.escalations(session=session)
-    return EscalationPage(items=[_to_item(row) for row in rows])
+    return EscalationPage(items=_to_items(list(rows)))

@@ -1346,7 +1346,11 @@ export interface components {
     };
     /**
      * QueueItem
-     * @description One chunk in a verifier's queue.
+     * @description One chunk in a verifier's queue, with what the verifier checks it against.
+     *
+     *     ``content`` is the chunk's text and ``source_url``/``page``/``section`` say
+     *     where it came from. All ``None`` when the staged chunk cannot be read; the
+     *     console then says so rather than inviting a label on unseen text.
      */
     QueueItem: {
       /**
@@ -1360,6 +1364,14 @@ export interface components {
       status: string;
       /** Assigned At */
       assigned_at: string | null;
+      /** Content */
+      content?: string | null;
+      /** Source Url */
+      source_url?: string | null;
+      /** Page */
+      page?: number | null;
+      /** Section */
+      section?: string | null;
     };
     /**
      * QueuePage

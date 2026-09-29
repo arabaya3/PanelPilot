@@ -150,14 +150,18 @@
     "submit": "Submit",
     "submitting": "Submitting…",
     "claimedBy": "Already claimed by {name}",
-    "submitFailed": "Could not submit. Try again."
+    "submitFailed": "Could not submit. Try again.",
+    "contentMissing": "The text of this item could not be loaded. Do not label it until it can be read.",
+    "openSource": "Open the source in a new tab",
+    "page": "p. {page}"
   },
   "landing": {
     "starting": "Starting your trial…",
     "unavailable": "Trials are unavailable right now. Please try again shortly.",
     "failed": "Could not start a trial.",
     "retry": "Try again",
-    "plcLink": "Check PLC code"
+    "plcLink": "Check PLC code",
+    "reviewLink": "Reviewer sign-in"
   },
   "history": {
     "label": "Conversation history",
@@ -188,5 +192,28 @@
     "ladderLabel": "{count, plural, one {Ladder diagram, # rung} other {Ladder diagram, # rungs}}",
     "noRungs": "No rungs to display.",
     "noCode": "No code to display."
+  },
+  "signIn": {
+    "open": "Sign in",
+    "heading": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "cancel": "Cancel",
+    "error": {
+      "invalid": "That email and password do not match an account.",
+      "rate-limited": "Too many attempts. Wait a minute and try again.",
+      "failed": "Could not sign in. Check the connection and try again."
+    }
+  },
+  "review": {
+    "heading": "Review queue",
+    "intro": "Sign in with a reviewer account to work your queue. Each item is labelled against its source; a correct label publishes it.",
+    "loading": "Loading your queue…",
+    "forbidden": "This account does not hold the reviewer role. An administrator grants it.",
+    "otherAccount": "Use another account",
+    "failed": "Your queue could not be loaded.",
+    "retry": "Try again"
   }
 }

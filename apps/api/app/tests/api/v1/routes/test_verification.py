@@ -170,6 +170,47 @@ def test_the_queue_returns_the_callers_items(
     assert body["items"][0]["chunk_id"] == "c1"
 
 
+def test_each_item_carries_the_text_and_source_under_review(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verifier was shown a chunk id and asked to judge text never shown."""
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=1))])
+    asked: list[list[str]] = []
+
+    def staged(chunk_ids: list[str]) -> dict[str, dict[str, object]]:
+        asked.append(list(chunk_ids))
+        return {
+            "c1": {
+                "content": "F0001 OVERCURRENT: check the motor cable.",
+                "source_url": "https://library.abb.com/acs880.pdf",
+                "page": 88,
+                "section": "Fault tracing",
+            }
+        }
+
+    monkeypatch.setattr(queue_domain, "staged_chunks", staged)
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["content"] == "F0001 OVERCURRENT: check the motor cable."
+    assert item["source_url"] == "https://library.abb.com/acs880.pdf"
+    assert item["page"] == 88
+    assert item["section"] == "Fault tracing"
+    assert asked == [["c1"]]  # one read for the batch
+
+
+def test_an_item_whose_chunk_cannot_be_read_says_so_by_omission(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=1))])
+    monkeypatch.setattr(queue_domain, "staged_chunks", lambda _ids: {})
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["content"] is None
+    assert item["source_url"] is None
+
+
 def test_the_queue_asks_only_for_the_callers_own_items(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
