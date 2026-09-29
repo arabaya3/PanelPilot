@@ -5,9 +5,11 @@ only thing standing between one customer's diagnostic history and another's, so
 it is non-nullable everywhere it appears and indexed on every table that will
 be filtered by it.
 
-The isolation itself is enforced in ``app.domain``: queries filter by the
-caller's tenant. This module makes the column impossible to omit, which is the
-half that belongs in the schema.
+The isolation itself is enforced once, in ``app.core.tenancy``: every ORM query
+a session issues against a table with this mixin is filtered to the tenant the
+session is bound to, and an unbound session cannot query one at all (ADR 0003).
+This module makes the column impossible to omit, which is the half that
+belongs in the schema.
 """
 
 from __future__ import annotations

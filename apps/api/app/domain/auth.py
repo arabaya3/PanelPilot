@@ -36,6 +36,7 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.core.tenancy import TenantScopeError, bind_tenant, cross_tenant
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
 from app.models.tables.diagnostics import DiagnosticSessionRow
@@ -118,55 +119,61 @@ def signup(
             unusable.
         NotFoundError: If ``claim_session_id`` names no anonymous session.
     """
-    normalised = email.strip().lower()
-    # Hashed before the existence check, not after. Skipping bcrypt for a
-    # registered address made signup answer measurably faster for it — a
-    # timing oracle for which emails have accounts, even had the message
-    # below been made vague.
-    password_hash = hash_password(password)
-    existing = session.execute(select(User).where(User.email == normalised)).scalar_one_or_none()
-    if existing is not None:
-        raise ValidationError(_EMAIL_TAKEN)
+    with cross_tenant(
+        session,
+        reason="an email identifies its account, and a trial its tenant, before the caller has one",
+    ):
+        normalised = email.strip().lower()
+        # Hashed before the existence check, not after. Skipping bcrypt for a
+        # registered address made signup answer measurably faster for it — a
+        # timing oracle for which emails have accounts, even had the message
+        # below been made vague.
+        password_hash = hash_password(password)
+        existing = session.execute(
+            select(User).where(User.email == normalised)
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ValidationError(_EMAIL_TAKEN)
 
-    claimed: AnonymousSessionRow | None = None
-    if claim_session_id:
-        claimed = _load_claimable_session(
-            session=session, session_id=claim_session_id, claim_secret=claim_secret
+        claimed: AnonymousSessionRow | None = None
+        if claim_session_id:
+            claimed = _load_claimable_session(
+                session=session, session_id=claim_session_id, claim_secret=claim_secret
+            )
+            tenant = session.get(TenantRow, claimed.tenant_id)
+            if tenant is None:  # pragma: no cover — FK guarantees this
+                raise NotFoundError("the anonymous session's tenant is missing")
+        else:
+            tenant = TenantRow(
+                slug=f"{_slugify_email(normalised)}-{uuid.uuid4().hex[:8]}",
+                # Truncated to the column (String(200)): an address can be longer
+                # than that and still valid, and must not surface as a DataError.
+                name=(full_name or normalised)[:_TENANT_NAME_MAX],
+            )
+            session.add(tenant)
+            session.flush()
+
+        user = User(
+            tenant_id=tenant.id,
+            email=normalised,
+            full_name=full_name,
+            password_hash=password_hash,
+            is_active=True,
         )
-        tenant = session.get(TenantRow, claimed.tenant_id)
-        if tenant is None:  # pragma: no cover — FK guarantees this
-            raise NotFoundError("the anonymous session's tenant is missing")
-    else:
-        tenant = TenantRow(
-            slug=f"{_slugify_email(normalised)}-{uuid.uuid4().hex[:8]}",
-            # Truncated to the column (String(200)): an address can be longer
-            # than that and still valid, and must not surface as a DataError.
-            name=(full_name or normalised)[:_TENANT_NAME_MAX],
-        )
-        session.add(tenant)
-        session.flush()
+        session.add(user)
+        try:
+            session.flush()
+        except IntegrityError as exc:
+            # Two concurrent signups for one address both pass the check above;
+            # the unique index stops the second here. Same answer as the check,
+            # rather than the 500 an escaped IntegrityError used to be.
+            raise ValidationError(_EMAIL_TAKEN) from exc
 
-    user = User(
-        tenant_id=tenant.id,
-        email=normalised,
-        full_name=full_name,
-        password_hash=password_hash,
-        is_active=True,
-    )
-    session.add(user)
-    try:
-        session.flush()
-    except IntegrityError as exc:
-        # Two concurrent signups for one address both pass the check above;
-        # the unique index stops the second here. Same answer as the check,
-        # rather than the 500 an escaped IntegrityError used to be.
-        raise ValidationError(_EMAIL_TAKEN) from exc
+        if claimed is not None:
+            claimed.claimed_by_user_id = user.id
+            claimed.claimed_at = datetime.now(UTC)
 
-    if claimed is not None:
-        claimed.claimed_by_user_id = user.id
-        claimed.claimed_at = datetime.now(UTC)
-
-    return _issue_tokens(session=session, user=user, tenant=tenant)
+        return _issue_tokens(session=session, user=user, tenant=tenant)
 
 
 def _load_claimable_session(
@@ -247,24 +254,25 @@ def login(*, session: Session, email: str, password: str) -> TokenPair:
             inactive. The message is identical in every case so it cannot be
             used to discover which addresses are registered.
     """
-    normalised = email.strip().lower()
-    user = session.execute(select(User).where(User.email == normalised)).scalar_one_or_none()
+    with cross_tenant(session, reason="an email identifies its account before any tenant is known"):
+        normalised = email.strip().lower()
+        user = session.execute(select(User).where(User.email == normalised)).scalar_one_or_none()
 
-    # Hash even when the user is absent: returning early on an unknown address
-    # makes login time a reliable oracle for which emails have accounts.
-    # A user with no password set (SSO, or mid-invite) can never match, but
-    # must still cost the same time as a wrong password.
-    stored = (user.password_hash if user is not None else None) or _DUMMY_HASH
-    matched = verify_password(password, stored)
+        # Hash even when the user is absent: returning early on an unknown address
+        # makes login time a reliable oracle for which emails have accounts.
+        # A user with no password set (SSO, or mid-invite) can never match, but
+        # must still cost the same time as a wrong password.
+        stored = (user.password_hash if user is not None else None) or _DUMMY_HASH
+        matched = verify_password(password, stored)
 
-    if user is None or not matched or not user.is_active:
-        raise AuthenticationError("email or password is incorrect")
+        if user is None or not matched or not user.is_active:
+            raise AuthenticationError("email or password is incorrect")
 
-    tenant = session.get(TenantRow, user.tenant_id)
-    if tenant is None or not tenant.is_active:
-        raise AuthenticationError("email or password is incorrect")
+        tenant = session.get(TenantRow, user.tenant_id)
+        if tenant is None or not tenant.is_active:
+            raise AuthenticationError("email or password is incorrect")
 
-    return _issue_tokens(session=session, user=user, tenant=tenant)
+        return _issue_tokens(session=session, user=user, tenant=tenant)
 
 
 # A real bcrypt hash of a value nothing will match, used to keep the timing of
@@ -301,32 +309,35 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
     Raises:
         AuthenticationError: If the token is unknown, expired, or already used.
     """
-    now = datetime.now(UTC)
-    token_hash = hash_refresh_token(refresh_token)
-    rotated = session.execute(
-        update(RefreshTokenRow)
-        .where(
-            RefreshTokenRow.token_hash == token_hash,
-            RefreshTokenRow.revoked_at.is_(None),
-            RefreshTokenRow.expires_at > now,
-        )
-        .values(revoked_at=now)
-        .returning(RefreshTokenRow.user_id, RefreshTokenRow.tenant_id)
-        # The statement names its row by hash, not by identity; there is no
-        # loaded object to keep in step, and evaluating the WHERE in Python
-        # would be a second, weaker copy of the condition.
-        .execution_options(synchronize_session=False)
-    ).one_or_none()
+    with cross_tenant(
+        session, reason="a refresh token identifies its account before any tenant is known"
+    ):
+        now = datetime.now(UTC)
+        token_hash = hash_refresh_token(refresh_token)
+        rotated = session.execute(
+            update(RefreshTokenRow)
+            .where(
+                RefreshTokenRow.token_hash == token_hash,
+                RefreshTokenRow.revoked_at.is_(None),
+                RefreshTokenRow.expires_at > now,
+            )
+            .values(revoked_at=now)
+            .returning(RefreshTokenRow.user_id, RefreshTokenRow.tenant_id)
+            # The statement names its row by hash, not by identity; there is no
+            # loaded object to keep in step, and evaluating the WHERE in Python
+            # would be a second, weaker copy of the condition.
+            .execution_options(synchronize_session=False)
+        ).one_or_none()
 
-    if rotated is None:
-        _refuse_unrotatable_token(session=session, token_hash=token_hash, now=now)
+        if rotated is None:
+            _refuse_unrotatable_token(session=session, token_hash=token_hash, now=now)
 
-    user = session.get(User, rotated.user_id)
-    tenant = session.get(TenantRow, rotated.tenant_id)
-    if user is None or tenant is None or not user.is_active or not tenant.is_active:
-        raise AuthenticationError("refresh token is not valid")
+        user = session.get(User, rotated.user_id)
+        tenant = session.get(TenantRow, rotated.tenant_id)
+        if user is None or tenant is None or not user.is_active or not tenant.is_active:
+            raise AuthenticationError("refresh token is not valid")
 
-    return _issue_tokens(session=session, user=user, tenant=tenant)
+        return _issue_tokens(session=session, user=user, tenant=tenant)
 
 
 def _refuse_unrotatable_token(*, session: Session, token_hash: str, now: datetime) -> NoReturn:
@@ -553,66 +564,69 @@ def start_trial(
     history reads correctly rather than retroactively appearing to be written
     by an account that did not exist at the time.
     """
-    moment = now or datetime.now(UTC)
+    with cross_tenant(
+        session, reason="a trial creates its tenant; there is none to be bound to beforehand"
+    ):
+        moment = now or datetime.now(UTC)
 
-    tenant = TenantRow(
-        slug=f"trial-{uuid.uuid4().hex[:12]}",
-        name="Trial",
-    )
-    session.add(tenant)
-    session.flush()
+        tenant = TenantRow(
+            slug=f"trial-{uuid.uuid4().hex[:12]}",
+            name="Trial",
+        )
+        session.add(tenant)
+        session.flush()
 
-    # No user row, deliberately. `_load_claimable_session` refuses to claim a
-    # trial whose tenant already has one — "a provisional trial tenant has no
-    # users. If it has any, this is not a trial being claimed, it is an attempt
-    # to join somebody's existing account." A placeholder here would satisfy
-    # authentication and make every trial permanently unclaimable, which is the
-    # one thing the whole pair exists to allow.
-    #
-    # `diagnostic_sessions.user_id` is nullable for exactly this case.
-    diagnostic = DiagnosticSessionRow(tenant_id=tenant.id, user_id=None)
-    session.add(diagnostic)
-    session.flush()
+        # No user row, deliberately. `_load_claimable_session` refuses to claim a
+        # trial whose tenant already has one — "a provisional trial tenant has no
+        # users. If it has any, this is not a trial being claimed, it is an attempt
+        # to join somebody's existing account." A placeholder here would satisfy
+        # authentication and make every trial permanently unclaimable, which is the
+        # one thing the whole pair exists to allow.
+        #
+        # `diagnostic_sessions.user_id` is nullable for exactly this case.
+        diagnostic = DiagnosticSessionRow(tenant_id=tenant.id, user_id=None)
+        session.add(diagnostic)
+        session.flush()
 
-    # Generated here and returned once. Only the hash is persisted.
-    claim_secret = secrets.token_urlsafe(32)
-    anonymous = AnonymousSessionRow(
-        tenant_id=tenant.id,
-        diagnostic_session_id=diagnostic.id,
-        claim_secret_hash=hash_claim_secret(claim_secret),
-        expires_at=moment + TRIAL_TTL,
-    )
-    session.add(anonymous)
-    session.flush()
+        # Generated here and returned once. Only the hash is persisted.
+        claim_secret = secrets.token_urlsafe(32)
+        anonymous = AnonymousSessionRow(
+            tenant_id=tenant.id,
+            diagnostic_session_id=diagnostic.id,
+            claim_secret_hash=hash_claim_secret(claim_secret),
+            expires_at=moment + TRIAL_TTL,
+        )
+        session.add(anonymous)
+        session.flush()
 
-    if access_token_ttl_seconds is None:
-        from app.core.config import get_settings
+        if access_token_ttl_seconds is None:
+            from app.core.config import get_settings
 
-        access_token_ttl_seconds = get_settings().access_token_ttl_seconds
+            access_token_ttl_seconds = get_settings().access_token_ttl_seconds
 
-    # The subject is the anonymous session itself. There is no user to name,
-    # and `resolve_caller` validates a trial subject against this row instead —
-    # the same liveness question, asked of the thing that actually exists.
-    token = create_access_token(
-        subject=str(anonymous.id),
-        tenant_id=str(tenant.id),
-        roles=frozenset({Role.ENGINEER}),
-        ttl_seconds=access_token_ttl_seconds,
-    )
+        # The subject is the anonymous session itself. There is no user to name,
+        # and `resolve_caller` validates a trial subject against this row instead —
+        # the same liveness question, asked of the thing that actually exists.
+        token = create_access_token(
+            subject=str(anonymous.id),
+            tenant_id=str(tenant.id),
+            roles=frozenset({Role.ENGINEER}),
+            ttl_seconds=access_token_ttl_seconds,
+        )
 
-    return TrialStart(
-        # The ANONYMOUS session's id, not the diagnostic session's. This value
-        # comes back as `claim_session_id` at signup, and `_load_claimable_session`
-        # looks it up by `AnonymousSessionRow.id`. Returning the diagnostic id
-        # here would produce a trial that starts cleanly and then cannot be
-        # claimed — a failure that only surfaces at the moment someone commits
-        # to signing up.
-        session_id=str(anonymous.id),
-        claim_secret=claim_secret,
-        access_token=token,
-        expires_in=access_token_ttl_seconds,
-        questions_remaining=tenant.free_question_limit - tenant.free_questions_used,
-    )
+        return TrialStart(
+            # The ANONYMOUS session's id, not the diagnostic session's. This value
+            # comes back as `claim_session_id` at signup, and `_load_claimable_session`
+            # looks it up by `AnonymousSessionRow.id`. Returning the diagnostic id
+            # here would produce a trial that starts cleanly and then cannot be
+            # claimed — a failure that only surfaces at the moment someone commits
+            # to signing up.
+            session_id=str(anonymous.id),
+            claim_secret=claim_secret,
+            access_token=token,
+            expires_in=access_token_ttl_seconds,
+            questions_remaining=tenant.free_question_limit - tenant.free_questions_used,
+        )
 
 
 def resume_trial(
@@ -653,48 +667,51 @@ def resume_trial(
     guessed id learns nothing about whether it exists, has expired, or was
     claimed.
     """
-    try:
-        row = session.get(AnonymousSessionRow, uuid.UUID(session_id))
-    except ValueError:
-        row = None
+    with cross_tenant(
+        session, reason="a trial's id and secret identify its tenant before any is known"
+    ):
+        try:
+            row = session.get(AnonymousSessionRow, uuid.UUID(session_id))
+        except ValueError:
+            row = None
 
-    # Compared even when the row is absent, against a hash nothing matches,
-    # so an unknown id costs the same as a wrong secret.
-    expected = row.claim_secret_hash if row is not None else _NO_SECRET_HASH
-    matched = secrets.compare_digest(hash_claim_secret(claim_secret), expected)
-    if row is None or not matched:
-        raise AuthenticationError(_RESUME_REFUSED)
+        # Compared even when the row is absent, against a hash nothing matches,
+        # so an unknown id costs the same as a wrong secret.
+        expected = row.claim_secret_hash if row is not None else _NO_SECRET_HASH
+        matched = secrets.compare_digest(hash_claim_secret(claim_secret), expected)
+        if row is None or not matched:
+            raise AuthenticationError(_RESUME_REFUSED)
 
-    # Past the secret, the caller has proved ownership and may be told why.
-    # The same two conditions `_resolve_trial_caller` enforces on every
-    # request: a token minted here for a dead trial would be refused anyway.
-    if row.is_expired:
-        raise AuthenticationError("that trial session has expired")
-    if row.claimed_by_user_id is not None:
-        raise AuthenticationError("that trial session has been claimed; log in instead")
+        # Past the secret, the caller has proved ownership and may be told why.
+        # The same two conditions `_resolve_trial_caller` enforces on every
+        # request: a token minted here for a dead trial would be refused anyway.
+        if row.is_expired:
+            raise AuthenticationError("that trial session has expired")
+        if row.claimed_by_user_id is not None:
+            raise AuthenticationError("that trial session has been claimed; log in instead")
 
-    tenant = session.get(TenantRow, row.tenant_id)
-    if tenant is None or not tenant.is_active:
-        raise AuthenticationError(_RESUME_REFUSED)
+        tenant = session.get(TenantRow, row.tenant_id)
+        if tenant is None or not tenant.is_active:
+            raise AuthenticationError(_RESUME_REFUSED)
 
-    if access_token_ttl_seconds is None:
-        from app.core.config import get_settings
+        if access_token_ttl_seconds is None:
+            from app.core.config import get_settings
 
-        access_token_ttl_seconds = get_settings().access_token_ttl_seconds
+            access_token_ttl_seconds = get_settings().access_token_ttl_seconds
 
-    token = create_access_token(
-        subject=str(row.id),
-        tenant_id=str(tenant.id),
-        roles=frozenset({Role.ENGINEER}),
-        ttl_seconds=access_token_ttl_seconds,
-    )
-    return TrialStart(
-        session_id=session_id,
-        claim_secret=claim_secret,
-        access_token=token,
-        expires_in=access_token_ttl_seconds,
-        questions_remaining=max(0, tenant.free_question_limit - tenant.free_questions_used),
-    )
+        token = create_access_token(
+            subject=str(row.id),
+            tenant_id=str(tenant.id),
+            roles=frozenset({Role.ENGINEER}),
+            ttl_seconds=access_token_ttl_seconds,
+        )
+        return TrialStart(
+            session_id=session_id,
+            claim_secret=claim_secret,
+            access_token=token,
+            expires_in=access_token_ttl_seconds,
+            questions_remaining=max(0, tenant.free_question_limit - tenant.free_questions_used),
+        )
 
 
 # A SHA-256 hex digest no secret hashes to in practice; see `resume_trial`.
@@ -748,6 +765,15 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
         subject = uuid.UUID(caller.id)
     except ValueError as exc:
         raise AuthenticationError("token subject is not a user id") from exc
+
+    # Bound before the account is even loaded, so from here on this session
+    # sees only the tenant the token claims: an account or trial in any other
+    # tenant is simply not found. This is the one place a request's session
+    # gets its tenant (ADR 0003); every query after it is filtered to it.
+    try:
+        bind_tenant(session, caller.tenant_id)
+    except TenantScopeError as exc:
+        raise AuthenticationError("token tenant is not valid") from exc
 
     user = session.get(User, subject)
     if user is None:

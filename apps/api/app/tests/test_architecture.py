@@ -511,3 +511,62 @@ def test_the_guardrail_threshold_is_never_read_directly() -> None:
         f"{offenders} read the guardrail threshold directly. Call "
         "evaluate_confidence instead of comparing against it yourself."
     )
+
+
+# --- ADR 0003: tenant isolation has one enforcement point ----------------------
+
+#: The only modules that may lift the tenant filter, and why. Adding one is a
+#: reviewed edit here, not something a module can do quietly.
+CROSS_TENANT_ALLOWED = {
+    # Defines the exemption.
+    APP_ROOT / "core" / "tenancy.py",
+    # Login, signup, refresh and trial start/resume identify an account or a
+    # trial before any tenant is known.
+    APP_ROOT / "domain" / "auth.py",
+    # A system job acts for no tenant.
+    APP_ROOT / "worker" / "jobs.py",
+}
+
+
+def test_only_named_modules_may_span_tenants() -> None:
+    """The filter's escape hatch stays where it was reviewed.
+
+    ``cross_tenant`` is what makes the filter livable — authentication has to
+    find an account by email before it knows the tenant — and exactly what a
+    shortcut would reach for. Every other module works inside the tenant its
+    session is bound to.
+    """
+    offenders = [
+        p.relative_to(APP_ROOT)
+        for p in _source_modules("core", "api", "domain", "ai", "ingestion", "models", "worker")
+        if p not in CROSS_TENANT_ALLOWED and "cross_tenant" in p.read_text(encoding="utf-8")
+    ]
+    assert not offenders, (
+        f"{offenders} lift the tenant filter. Bind the session to the caller's "
+        "tenant instead; if the code genuinely spans tenants, add it to "
+        "CROSS_TENANT_ALLOWED with the reason, for review."
+    )
+
+
+def test_domain_code_does_not_bypass_the_orm() -> None:
+    """Raw SQL and Core table statements never reach the tenant filter.
+
+    The filter hooks ORM execution. ``text()`` and statements built on a
+    ``Table`` object skip it entirely, so a query written that way against a
+    customer table would return every tenant's rows — the silent failure ADR
+    0003 exists to end. The readiness probe's ``SELECT 1`` is the one
+    exception: it touches no table.
+    """
+    allowed = {APP_ROOT / "domain" / "health.py"}
+    offenders = [
+        p.relative_to(APP_ROOT)
+        for p in _source_modules("domain")
+        if p not in allowed
+        and any(
+            marker in p.read_text(encoding="utf-8") for marker in ("text(", ".__table__", "Table(")
+        )
+    ]
+    assert not offenders, (
+        f"{offenders} issue raw SQL or Core statements, which bypass the tenant "
+        "filter. Use an ORM select/update/delete on the mapped class."
+    )

@@ -33,6 +33,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, ValidationError
+from app.core.tenancy import cross_tenant_info
 from app.domain import ingestion as ingestion_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.documents import CrawlResult, SourceDocument
@@ -213,7 +214,9 @@ def db_session() -> Iterator[Session]:
     from app.core.config import get_settings
 
     engine = create_engine(get_settings().database_url.get_secret_value())
-    session = sessionmaker(bind=engine)()
+    session = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )()
     try:
         yield session
     finally:

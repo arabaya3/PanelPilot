@@ -26,6 +26,7 @@ from app.core.security import (
     generate_claim_secret,
     hash_refresh_token,
 )
+from app.core.tenancy import cross_tenant_info
 from app.domain import auth
 from app.models.schemas.auth_flows import TokenPair
 from app.models.tables import calculations, diagnostics, escalation, ingestion  # noqa: F401
@@ -63,7 +64,9 @@ def db() -> Iterator[Session]:
     from app.core.config import get_settings
 
     engine = create_engine(get_settings().database_url.get_secret_value())
-    session = sessionmaker(bind=engine)()
+    session = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )()
     try:
         yield session
     finally:
@@ -312,7 +315,9 @@ def test_concurrent_refreshes_mint_exactly_one_pair(db: Session) -> None:
     db.commit()
 
     engine = create_engine(get_settings().database_url.get_secret_value())
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
 
     def attempt(_n: int) -> bool:
         own = factory()
@@ -348,7 +353,9 @@ def test_concurrent_duplicate_signups_are_a_validation_error(db: Session) -> Non
 
     email = _email()
     engine = create_engine(get_settings().database_url.get_secret_value())
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
 
     def attempt(_n: int) -> str:
         own = factory()
@@ -510,10 +517,10 @@ def _start_anonymous_session(db: Session) -> tuple[str, str, str]:
     question = "drive trips on overcurrent at start"
     db.execute(
         text(
-            "INSERT INTO diagnostic_turns (id, session_id, position, question, answer, "
-            "created_at, updated_at) VALUES (:i, :s, 1, :q, 'a', now(), now())"
+            "INSERT INTO diagnostic_turns (id, session_id, tenant_id, position, question, "
+            "answer, created_at, updated_at) VALUES (:i, :s, :t, 1, :q, 'a', now(), now())"
         ),
-        {"i": uuid.uuid4(), "s": session_id, "q": question},
+        {"i": uuid.uuid4(), "s": session_id, "t": tenant.id, "q": question},
     )
     secret, secret_hash = generate_claim_secret()
     anon = AnonymousSessionRow(
@@ -786,7 +793,9 @@ def test_the_quota_holds_under_concurrency(db: Session) -> None:
     db.commit()
 
     engine = create_engine(get_settings().database_url.get_secret_value())
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
 
     def attempt() -> bool:
         own = factory()
@@ -830,7 +839,9 @@ def test_concurrent_claims_cannot_all_succeed(db: Session) -> None:
     db.commit()
 
     engine = create_engine(get_settings().database_url.get_secret_value())
-    factory = sessionmaker(bind=engine)
+    factory = sessionmaker(
+        bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
+    )
 
     def attempt(_n: int) -> bool:
         own = factory()
@@ -865,3 +876,49 @@ def test_expiry_is_derived_rather_than_a_flag(db: Session) -> None:
     assert not anon.is_expired
     anon.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     assert anon.is_expired, "expiry must follow expires_at, not a stored flag"
+
+
+# --- the request's session gets its tenant here (ADR 0003) ---------------------
+
+
+@requires_db
+def test_resolving_the_caller_binds_the_session_to_their_tenant(db: Session) -> None:
+    """The one place a request's session is scoped; everything after is filtered."""
+    from app.core.tenancy import bound_tenant
+
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    caller = decode_access_token(tokens.access_token)
+
+    with sessionmaker(bind=db.get_bind())() as request_session:
+        auth.resolve_caller(session=request_session, caller=caller)
+        assert str(bound_tenant(request_session)) == caller.tenant_id
+
+
+@requires_db
+def test_a_token_claiming_another_tenant_finds_no_account(db: Session) -> None:
+    """Bound before the lookup, so the account is not even visible from there."""
+    mine = decode_access_token(
+        auth.signup(session=db, email=_email(), password=PASSWORD).access_token
+    )
+    theirs = decode_access_token(
+        auth.signup(session=db, email=_email(), password=PASSWORD).access_token
+    )
+    db.commit()
+    forged = mine.model_copy(update={"tenant_id": theirs.tenant_id})
+
+    with sessionmaker(bind=db.get_bind())() as request_session, pytest.raises(AuthenticationError):
+        auth.resolve_caller(session=request_session, caller=forged)
+
+
+@requires_db
+def test_a_malformed_tenant_claim_is_an_authentication_failure(db: Session) -> None:
+    """A 401 for a bad token, not a 500 for a programming error."""
+    caller = decode_access_token(
+        auth.signup(session=db, email=_email(), password=PASSWORD).access_token
+    )
+    db.commit()
+    malformed = caller.model_copy(update={"tenant_id": "not-a-uuid"})
+
+    with sessionmaker(bind=db.get_bind())() as request_session, pytest.raises(AuthenticationError):
+        auth.resolve_caller(session=request_session, caller=malformed)

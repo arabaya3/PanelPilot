@@ -274,6 +274,10 @@ def test_an_unknown_trial_cannot_be_resumed(client: TestClient) -> None:
 class _NoRowsSession:
     """A session in which no row exists, for paths that only look things up."""
 
+    def __init__(self) -> None:
+        # Where the domain records a tenant binding or a cross-tenant reason.
+        self.info: dict[str, object] = {}
+
     def get(self, *_args: object) -> None:
         """Find nothing."""
         return None

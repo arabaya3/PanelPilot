@@ -122,6 +122,7 @@ def _a_turn(session: Session, *, tenant_slug: str = "feedback-tests") -> Diagnos
 
     turn = DiagnosticTurnRow(
         session_id=diag.id,
+        tenant_id=tenant,
         position=0,
         question="What is the 40 C rating of an S201 B16?",
         answer="16 A at 40 C ambient.",
@@ -144,7 +145,7 @@ def _tenant_of(session: Session, turn: DiagnosticTurnRow) -> uuid.UUID:
         Its tenant id.
     """
     del session
-    return turn.session.tenant_id
+    return turn.tenant_id
 
 
 # --- the acceptance criterion -------------------------------------------------

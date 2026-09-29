@@ -62,6 +62,7 @@ def run_crawl(args: list[str]) -> int:
     from contextlib import closing
 
     from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
     from app.domain import ingestion as ingestion_domain
     from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
 
@@ -77,7 +78,9 @@ def run_crawl(args: list[str]) -> int:
     # runs its finally block, which closes the connection.
     sessions = get_session()
     session = next(sessions)
-    with closing(session):
+    # A system job acts for no tenant, so it cannot be bound to one: it
+    # declares that instead of querying customer tables unscoped (ADR 0003).
+    with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
         response = ingestion_domain.create_crawl_job(
             session=session, user=system_actor(), request=request
         )

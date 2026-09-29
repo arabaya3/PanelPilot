@@ -18,6 +18,7 @@ import os
 import threading
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -125,6 +126,9 @@ class _FakeSession:
         self, *, existing: object | None = None, positions: list[int] | None = None
     ) -> None:
         self.added: list[Any] = []
+        # Where the domain records the tenant it bound the session to.
+        self.info: dict[str, Any] = {}
+        self.identity_map: dict[Any, Any] = {}
         self.flushes = 0
         self.commits = 0
         self.rollbacks = 0
@@ -686,6 +690,7 @@ def test_two_turns_cannot_share_a_position(
     db.add(
         DiagnosticTurnRow(
             session_id=uuid.UUID(created.session_id),
+            tenant_id=uuid.UUID(db_user.tenant_id),
             position=1,
             question="a colliding turn",
             answer="text",
@@ -720,8 +725,8 @@ def test_another_tenants_conversation_is_invisible(
         roles=frozenset({Role.ENGINEER}),
     )
 
-    with pytest.raises(NotFoundError):
-        diagnostics_domain.get_session(session=db, user=intruder, session_id=created.session_id)
+    with _another_request(db) as theirs, pytest.raises(NotFoundError):
+        diagnostics_domain.get_session(session=theirs, user=intruder, session_id=created.session_id)
 
 
 @requires_db
@@ -1331,6 +1336,7 @@ def _seed_session(
         db.add(
             DiagnosticTurnRow(
                 session_id=conversation.id,
+                tenant_id=tenant_id,
                 position=index + 1,
                 question=question,
                 answer=f"answer to {question}",
@@ -1343,6 +1349,25 @@ def _seed_session(
         )
     db.flush()
     return conversation.id
+
+
+@contextmanager
+def _another_request(db: Session) -> Iterator[Session]:
+    """A second session, as a separate request would have.
+
+    One session answers for one tenant: the domain binds it to its caller and
+    refuses to rebind it (ADR 0003). A test acting as two callers therefore
+    needs two sessions, just as production has two requests. What the first
+    wrote is committed so the second can see it; the fixture's cleanup deletes
+    it by slug afterwards either way.
+    """
+    db.commit()
+    other = sessionmaker(bind=db.get_bind())()
+    try:
+        yield other
+    finally:
+        other.rollback()
+        other.close()
 
 
 def _other_tenant(db: Session) -> uuid.UUID:
@@ -1413,7 +1438,8 @@ def test_a_cursor_cannot_be_used_to_page_into_another_tenant(
         tenant_id=str(other_tenant),
         roles=frozenset({Role.ENGINEER}),
     )
-    their_page = diagnostics_domain.list_sessions(session=db, user=other_user, limit=1)
+    with _another_request(db) as theirs:
+        their_page = diagnostics_domain.list_sessions(session=theirs, user=other_user, limit=1)
     assert their_page.next_cursor is not None
 
     # The other tenant's own cursor, replayed by our caller.
