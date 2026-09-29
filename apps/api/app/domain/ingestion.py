@@ -52,6 +52,12 @@ logger = structlog.get_logger(__name__)
 #: that is only visible after the bill.
 DEFAULT_MAX_DOCUMENTS = 25
 
+#: Most chunk texts sent to the embedding provider in one request. Providers
+#: cap both the number of inputs and the total tokens per call; 128 chunks of
+#: this pipeline's size stays well inside both, while still turning a manual's
+#: worth of chunks into a handful of requests rather than hundreds.
+EMBEDDING_BATCH_SIZE = 128
+
 
 def create_crawl_job(
     *,
@@ -302,11 +308,17 @@ def _stage_bodies(
             # of staging content that looks verifiable and is not.
             raise ValidationError(f"staged chunk for unknown document {document_id!r}")
 
-        # One call per document rather than per chunk: the provider bills and
-        # rate-limits per request, and a fifty-chunk manual is fifty round
-        # trips done the naive way.
+        # Batched rather than per chunk: the provider bills and rate-limits per
+        # request, and a fifty-chunk manual is fifty round trips done the naive
+        # way. But bounded rather than one call per document, because a
+        # thousand-page manual is thousands of chunks, and a single request
+        # that size exceeds what the provider accepts and fails the whole run.
+        # Order is preserved batch by batch, so the zip below still pairs each
+        # chunk with its own vector.
         texts = [str(body.get("text", "")) for body in chunks]
-        vectors = embed_documents(texts)
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+            vectors.extend(embed_documents(texts[start : start + EMBEDDING_BATCH_SIZE]))
 
         session.add(
             StagedDocumentRow(

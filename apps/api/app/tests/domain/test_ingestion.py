@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.errors import AuthorizationError, ValidationError
 from app.domain import ingestion as ingestion_domain
 from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.documents import CrawlResult, SourceDocument
 from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
 from app.models.schemas.structure import BlockKind, StructuralBlock, StructureMap
 
@@ -305,6 +306,48 @@ def test_a_url_off_the_source_is_refused_before_a_job_exists(overrides: dict[str
         )
 
     assert session.mock_calls == []
+
+
+def test_embedding_is_batched_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A thousand-page manual is thousands of chunks; one request cannot carry them.
+
+    Batches are bounded, and the vectors still pair with their own chunks: a
+    shuffled pairing would stage every chunk under another chunk's embedding,
+    which retrieval would never notice and never recover from.
+    """
+    batches: list[int] = []
+
+    def embedder(texts: Any) -> list[list[float]]:
+        batches.append(len(texts))
+        # Each vector encodes its text's index, so the pairing is checkable.
+        return [[float(text.removeprefix("chunk "))] for text in texts]
+
+    recorder = _Recorder()
+    monkeypatch.setattr(ingestion_domain, "embed_documents", embedder)
+    monkeypatch.setattr(ingestion_domain, "stage_chunk", recorder)
+    monkeypatch.setattr(ingestion_domain, "_known_user_id", lambda **_kw: None)
+
+    count = ingestion_domain.EMBEDDING_BATCH_SIZE * 2 + 5
+    document = SourceDocument(
+        id="d" * 32, source_id="abb", title="t", url=_PDF, content_hash="h" * 64, text=""
+    )
+    bodies: dict[str, list[dict[str, object]]] = {
+        document.id: [{"chunk_id": f"c{i}", "text": f"chunk {i}"} for i in range(count)]
+    }
+
+    written = ingestion_domain._stage_bodies(
+        session=MagicMock(),
+        user=_user(),
+        job=MagicMock(),
+        result=CrawlResult(source_id="abb", documents=[document], outcomes=[]),
+        bodies=bodies,
+    )
+
+    assert written == count
+    size = ingestion_domain.EMBEDDING_BATCH_SIZE
+    assert batches == [size, size, 5]
+    for i in range(count):
+        assert recorder.staged[f"c{i}"]["content_vector"] == [float(i)]
 
 
 # --- the happy path ----------------------------------------------------------
