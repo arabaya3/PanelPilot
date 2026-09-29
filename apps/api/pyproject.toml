@@ -38,6 +38,9 @@ dependencies = [
     # `mappings.EMBEDDING_DIMENSIONS` already pins — so adopting it needs no
     # re-index.
     "voyageai>=0.3",
+    # Shared sliding-window store for the trial rate limit (BE-012), so the
+    # limit is per deployment rather than per worker. MIT.
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +53,9 @@ dev = [
     # the only honest fixture here: the whole point of the extractor is that
     # it reads layout, and a hand-built StructureMap would test nothing.
     "reportlab>=4.2",
+    # In-process Redis for the rate-limit store's tests: real sorted-set and
+    # MULTI semantics without a server. BSD-3.
+    "fakeredis>=2.26",
     "ruff>=0.7",
     "black>=24.10",
     "mypy>=1.13",

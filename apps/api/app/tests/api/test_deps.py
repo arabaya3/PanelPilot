@@ -15,8 +15,13 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import deps
+from app.core.config import RateLimitBackend
 from app.core.errors import install_exception_handlers
-from app.domain.rate_limit import TRIAL_REQUESTS_PER_WINDOW, InMemoryRateLimitStore
+from app.domain.rate_limit import (
+    TRIAL_REQUESTS_PER_WINDOW,
+    InMemoryRateLimitStore,
+    RedisRateLimitStore,
+)
 
 
 @pytest.fixture
@@ -64,12 +69,44 @@ def test_a_forwarded_for_header_does_not_change_the_count(client: TestClient) ->
     assert blocked.status_code == 422
 
 
-def test_the_rate_limit_store_is_shared_between_requests() -> None:
+def _settings_with(monkeypatch: pytest.MonkeyPatch, backend: RateLimitBackend) -> None:
+    class _Settings:
+        rate_limit_backend = backend
+        redis_url = "redis://localhost:6379/0"
+
+    monkeypatch.setattr(deps, "get_settings", _Settings)
+    deps.get_rate_limit_store.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limit_store() -> Iterator[None]:
+    """Never let one test's configured store leak into another's."""
+    deps.get_rate_limit_store.cache_clear()
+    yield
+    deps.get_rate_limit_store.cache_clear()
+
+
+@pytest.mark.parametrize("backend", list(RateLimitBackend))
+def test_the_rate_limit_store_is_shared_between_requests(
+    monkeypatch: pytest.MonkeyPatch, backend: RateLimitBackend
+) -> None:
     """The store outlives a single request.
 
     A new one per request would count to one every time and enforce nothing.
     """
+    _settings_with(monkeypatch, backend)
     assert deps.get_rate_limit_store() is deps.get_rate_limit_store()
+
+
+def test_the_redis_backend_builds_a_redis_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Built without connecting: an unreachable Redis must not fail startup."""
+    _settings_with(monkeypatch, RateLimitBackend.REDIS)
+    assert isinstance(deps.get_rate_limit_store(), RedisRateLimitStore)
+
+
+def test_the_memory_backend_builds_an_in_memory_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    _settings_with(monkeypatch, RateLimitBackend.MEMORY)
+    assert isinstance(deps.get_rate_limit_store(), InMemoryRateLimitStore)
 
 
 def test_the_object_store_is_built_from_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
