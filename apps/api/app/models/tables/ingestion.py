@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -23,6 +25,16 @@ class CrawlJobRow(UUIDPrimaryKey, TimestampMixin, Base):
 
     source_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # The request as the API accepted it, so the worker can run it later.
+    request: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Who asked: the ingester of record on everything the crawl stages, which
+    # promotion's four-eyes check compares against. A string, not a foreign
+    # key: the system actor scheduled crawls run as is not a `users` row.
+    requested_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Why a failed job failed. Operator-facing; the exception, not user data.
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class StagedDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):

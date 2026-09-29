@@ -24,15 +24,16 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import AuthorizationError, ValidationError
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.core.tenancy import cross_tenant_info
 from app.domain import ingestion as ingestion_domain
 from app.models.schemas.auth import CurrentUser, Role
@@ -176,6 +177,17 @@ def _capture_into(sink: list[list[str]]) -> Any:
         sink.append(list(chunk_ids))
 
     return hook
+
+
+def _crawl(*, session: Session, user: CurrentUser, request: CrawlJobRequest) -> Any:
+    """Queue a crawl and run it, as the API and then the worker would.
+
+    The pipeline tests below care what a run does, not how it was scheduled,
+    so they take the same two steps the production path does, in one call.
+    """
+    queued = ingestion_domain.create_crawl_job(session=session, user=user, request=request)
+    session.commit()
+    return ingestion_domain.run_crawl_job(session=session, job_id=queued.id)
 
 
 def _request(**overrides: Any) -> CrawlJobRequest:
@@ -360,9 +372,7 @@ def test_embedding_is_batched_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_crawl_stages_chunks(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = _wire(monkeypatch)
 
-    response = ingestion_domain.create_crawl_job(
-        session=db_session, user=_user(), request=_request()
-    )
+    response = _crawl(session=db_session, user=_user(), request=_request())
 
     assert response.status is CrawlJobStatus.SUCCEEDED
     assert recorder.staged, "the crawl staged nothing"
@@ -379,7 +389,7 @@ def test_every_staged_chunk_carries_its_embedding(
     """
     recorder = _wire(monkeypatch)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     for body in recorder.staged.values():
         assert len(body["content_vector"]) == 1024
@@ -397,7 +407,7 @@ def test_every_staged_chunk_names_its_ingester(
     """
     recorder = _wire(monkeypatch)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     for body in recorder.staged.values():
         assert body["ingested_by"] == _INGESTER_ID
@@ -410,7 +420,7 @@ def test_staged_chunks_are_pending_verification(
     """Nothing this path writes may be retrievable by answer generation."""
     recorder = _wire(monkeypatch)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     for body in recorder.staged.values():
         assert body["verification_status"] == "pending"
@@ -428,7 +438,7 @@ def test_the_run_queues_its_chunks_for_review(
     queued: list[list[str]] = []
     recorder = _wire(monkeypatch, queued=queued)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert queued, "nothing was queued for verification"
     assert set(queued[0]) == set(recorder.staged)
@@ -439,9 +449,7 @@ def test_the_job_row_records_success(db_session: Session, monkeypatch: pytest.Mo
     from app.models.tables.ingestion import CrawlJobRow
 
     _wire(monkeypatch)
-    response = ingestion_domain.create_crawl_job(
-        session=db_session, user=_user(), request=_request()
-    )
+    response = _crawl(session=db_session, user=_user(), request=_request())
 
     row = db_session.get(CrawlJobRow, uuid.UUID(response.id))
     assert row is not None
@@ -456,7 +464,7 @@ def test_a_staged_document_row_is_written(
     from app.models.tables.ingestion import StagedDocumentRow
 
     _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     rows = db_session.query(StagedDocumentRow).all()
     assert len(rows) == 1
@@ -487,7 +495,7 @@ def test_nothing_in_this_path_can_reach_production(
     )
     _wire(monkeypatch)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert calls == [], "the crawl path called the production write helper"
 
@@ -513,9 +521,7 @@ def test_a_failed_crawl_is_recorded_rather_than_lost(
         _boom,
     )
 
-    response = ingestion_domain.create_crawl_job(
-        session=db_session, user=_user(), request=_request()
-    )
+    response = _crawl(session=db_session, user=_user(), request=_request())
 
     assert response.status is CrawlJobStatus.FAILED
     row = db_session.get(CrawlJobRow, uuid.UUID(response.id))
@@ -541,7 +547,7 @@ def test_a_failed_crawl_stages_nothing_partial(
         _boom,
     )
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert db_session.query(StagedDocumentRow).all() == []
 
@@ -563,7 +569,7 @@ def test_an_embedding_failure_does_not_stage_vectorless_chunks(
         _boom,
     )
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert recorder.staged == {}
 
@@ -581,13 +587,11 @@ def test_a_recrawl_of_unchanged_content_stages_nothing(
     cleared, and the queue never empties.
     """
     _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     second = _Recorder()
     _wire(monkeypatch, recorder=second)
-    response = ingestion_domain.create_crawl_job(
-        session=db_session, user=_user(), request=_request()
-    )
+    response = _crawl(session=db_session, user=_user(), request=_request())
 
     assert response.status is CrawlJobStatus.SUCCEEDED
     assert second.staged == {}, "a re-crawl re-staged unchanged content"
@@ -599,11 +603,11 @@ def test_changed_content_is_staged_again(
 ) -> None:
     """The other half: change detection must not suppress a real revision."""
     _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     second = _Recorder()
     _wire(monkeypatch, routes=_routes(b"%PDF-1.4 revised"), recorder=second)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert second.staged, "a revised document was not re-staged"
 
@@ -633,7 +637,7 @@ def test_a_run_is_capped_at_a_document_limit(
     _wire(monkeypatch)
     monkeypatch.setattr(ingestion_domain, "crawl_source", capture)
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert seen["max_documents"] == ingestion_domain.DEFAULT_MAX_DOCUMENTS
     assert seen["max_documents"] is not None, "an uncapped run can fetch a whole library"
@@ -657,7 +661,7 @@ def test_the_extractor_receives_the_original_pdf_bytes(
     _SEEN_BYTES.clear()
     _wire(monkeypatch, routes=_routes(payload))
 
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert _SEEN_BYTES, "the extractor was never called"
     assert _SEEN_BYTES[0] == payload
@@ -685,7 +689,7 @@ def test_a_staged_body_carries_the_fields_the_index_requires(
     from app.ai.retrieval.mappings import missing_required_fields
 
     recorder = _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert recorder.staged
     for body in recorder.staged.values():
@@ -705,7 +709,7 @@ def test_a_staged_body_carries_no_field_the_index_rejects(
     from app.ai.retrieval.mappings import INDEXED_FIELDS
 
     recorder = _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     assert recorder.staged
     for body in recorder.staged.values():
@@ -722,7 +726,7 @@ def test_the_chunk_text_reaches_the_index_as_content(
     nothing and citable as nothing.
     """
     recorder = _wire(monkeypatch)
-    ingestion_domain.create_crawl_job(session=db_session, user=_user(), request=_request())
+    _crawl(session=db_session, user=_user(), request=_request())
 
     for body in recorder.staged.values():
         assert "undervoltage" in str(body["content"])
@@ -737,3 +741,160 @@ def test_the_unbuilt_queue_listing_answers_not_implemented() -> None:
         ingestion_domain.list_verification_queue(
             session=cast(Session, None), user=_user(), limit=10, cursor=None
         )
+
+
+# --- the queue: the API records, the worker runs -------------------------------
+
+
+@pytest.fixture
+def empty_queue(db_session: Session) -> Session:
+    """No queued work but this test's: the worker takes the oldest from all."""
+    db_session.execute(text("DELETE FROM crawl_jobs WHERE status IN ('queued', 'running')"))
+    db_session.commit()
+    return db_session
+
+
+@requires_db
+def test_queueing_does_not_crawl(empty_queue: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The request returns at once; nothing is fetched on its thread."""
+    from app.models.tables.ingestion import CrawlJobRow
+
+    fetched: list[object] = []
+    monkeypatch.setattr(ingestion_domain, "crawl_source", lambda *a, **_k: fetched.append(a))
+
+    response = ingestion_domain.create_crawl_job(
+        session=empty_queue, user=_user(), request=_request()
+    )
+
+    assert response.status is CrawlJobStatus.QUEUED
+    assert fetched == []
+    row = empty_queue.get(CrawlJobRow, uuid.UUID(response.id))
+    assert row is not None
+    assert row.requested_by == _INGESTER_ID
+    assert row.request is not None
+    assert row.request["seed_urls"] == _request().seed_urls
+
+
+@requires_db
+def test_the_worker_runs_the_oldest_queued_job(
+    empty_queue: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorder = _wire(monkeypatch)
+    queued = ingestion_domain.create_crawl_job(
+        session=empty_queue, user=_user(), request=_request()
+    )
+    empty_queue.commit()
+
+    finished = ingestion_domain.run_next_crawl_job(session=empty_queue)
+
+    assert finished is not None
+    assert finished.id == queued.id
+    assert finished.status is CrawlJobStatus.SUCCEEDED
+    # The requester, not the worker, is the ingester of record: promotion's
+    # four-eyes check compares against exactly this.
+    assert recorder.staged
+    assert all(body["ingested_by"] == _INGESTER_ID for body in recorder.staged.values())
+
+
+@requires_db
+def test_an_empty_queue_runs_nothing(empty_queue: Session) -> None:
+    assert ingestion_domain.run_next_crawl_job(session=empty_queue) is None
+
+
+@requires_db
+def test_a_job_another_worker_holds_is_skipped(
+    empty_queue: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two workers started together must not both run the same crawl."""
+    from app.models.tables.ingestion import CrawlJobRow
+
+    _wire(monkeypatch)
+    queued = ingestion_domain.create_crawl_job(
+        session=empty_queue, user=_user(), request=_request()
+    )
+    empty_queue.commit()
+
+    other_worker = sessionmaker(
+        bind=empty_queue.get_bind(), info=cross_tenant_info("test: a second worker")
+    )()
+    try:
+        # The other worker holds the row lock, mid-claim.
+        other_worker.execute(
+            select(CrawlJobRow).where(CrawlJobRow.id == uuid.UUID(queued.id)).with_for_update()
+        )
+        assert ingestion_domain.run_next_crawl_job(session=empty_queue) is None
+    finally:
+        other_worker.rollback()
+        other_worker.close()
+
+
+@requires_db
+def test_a_job_whose_worker_died_is_failed_not_left_running(empty_queue: Session) -> None:
+    from app.models.tables.ingestion import CrawlJobRow
+
+    now = datetime.now(UTC)
+    abandoned = CrawlJobRow(
+        source_id="abb",
+        status=CrawlJobStatus.RUNNING.value,
+        started_at=now - ingestion_domain.ABANDONED_AFTER - timedelta(minutes=1),
+    )
+    working = CrawlJobRow(
+        source_id="abb", status=CrawlJobStatus.RUNNING.value, started_at=now - timedelta(minutes=5)
+    )
+    empty_queue.add_all([abandoned, working])
+    empty_queue.commit()
+
+    ingestion_domain.run_next_crawl_job(session=empty_queue, now=now)
+
+    empty_queue.refresh(abandoned)
+    empty_queue.refresh(working)
+    assert abandoned.status == CrawlJobStatus.FAILED.value
+    assert abandoned.error is not None
+    assert "abandoned" in abandoned.error
+    assert working.status == CrawlJobStatus.RUNNING.value, "a crawl still working was failed"
+
+
+@requires_db
+def test_a_failed_crawl_says_why(empty_queue: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("the source returned 503")
+
+    _wire(monkeypatch)
+    monkeypatch.setattr(ingestion_domain, "crawl_source", _boom)
+
+    finished = _crawl(session=empty_queue, user=_user(), request=_request())
+
+    assert finished.status is CrawlJobStatus.FAILED
+    assert finished.error == "RuntimeError: the source returned 503"
+    polled = ingestion_domain.get_crawl_job(session=empty_queue, user=_user(), job_id=finished.id)
+    assert polled == finished
+
+
+@requires_db
+def test_a_job_can_be_polled_only_by_an_ingester(empty_queue: Session) -> None:
+    queued = ingestion_domain.create_crawl_job(
+        session=empty_queue, user=_user(), request=_request()
+    )
+
+    with pytest.raises(AuthorizationError):
+        ingestion_domain.get_crawl_job(
+            session=empty_queue, user=_user(Role.ENGINEER), job_id=queued.id
+        )
+
+
+@requires_db
+@pytest.mark.parametrize("job_id", [str(uuid.uuid4()), "not-a-uuid"])
+def test_an_unknown_job_is_not_found(empty_queue: Session, job_id: str) -> None:
+    with pytest.raises(NotFoundError):
+        ingestion_domain.get_crawl_job(session=empty_queue, user=_user(), job_id=job_id)
+
+
+@requires_db
+def test_a_job_already_taken_cannot_be_run_again(
+    empty_queue: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _wire(monkeypatch)
+    finished = _crawl(session=empty_queue, user=_user(), request=_request())
+
+    with pytest.raises(NotFoundError):
+        ingestion_domain.run_crawl_job(session=empty_queue, job_id=finished.id)

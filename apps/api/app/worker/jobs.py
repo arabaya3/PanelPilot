@@ -80,16 +80,55 @@ def run_crawl(args: list[str]) -> int:
     session = next(sessions)
     # A system job acts for no tenant, so it cannot be bound to one: it
     # declares that instead of querying customer tables unscoped (ADR 0003).
+    # Queued like an API request, then run here and now: one path for a crawl,
+    # whoever asked for it.
     with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
-        response = ingestion_domain.create_crawl_job(
+        queued = ingestion_domain.create_crawl_job(
             session=session, user=system_actor(), request=request
         )
+        session.commit()
+        response = ingestion_domain.run_crawl_job(session=session, job_id=queued.id)
 
     print(f"crawl {response.id}: {response.status.value}")
     # A FAILED job is a successful recording of a failure, but the process must
     # still exit non-zero: a scheduler that sees 0 will not alert, and a source
     # that silently stops returning documents is the exact failure BE-006's
     # staleness alerting exists to catch.
+    return 0 if response.status is CrawlJobStatus.SUCCEEDED else 1
+
+
+def run_crawl_queue(args: list[str]) -> int:
+    """Run the oldest crawl queued through the API, if there is one.
+
+    ``POST /ingestion/crawl-jobs`` only queues; this is what runs them. One job
+    per invocation, like every worker job — schedule it as often as crawls
+    should start, and run several at once for parallel crawls: each claims a
+    different job.
+
+    Args:
+        args: Unused; accepted for a uniform handler signature.
+
+    Returns:
+        ``0`` when nothing was queued or the crawl succeeded, ``1`` when it
+        failed, so a scheduler alerts on the failure.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import ingestion as ingestion_domain
+    from app.models.schemas.ingestion import CrawlJobStatus
+
+    del args
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
+        response = ingestion_domain.run_next_crawl_job(session=session)
+
+    if response is None:
+        print("crawl queue: empty")
+        return 0
+    print(f"crawl {response.id}: {response.status.value}")
     return 0 if response.status is CrawlJobStatus.SUCCEEDED else 1
 
 
@@ -196,6 +235,7 @@ REGISTRY: dict[str, JobSpec] = {
     spec.name: spec
     for spec in (
         JobSpec("crawl", "Crawl one documentation source into staging.", run_crawl),
+        JobSpec("crawl-queue", "Run the oldest crawl queued through the API.", run_crawl_queue),
         JobSpec(
             "reindex-staging",
             "Re-chunk and re-embed the staging corpus after a pipeline change.",
