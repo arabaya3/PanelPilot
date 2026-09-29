@@ -148,6 +148,9 @@ services:
     volumes:
       # Source mounted for --reload.
       - ./apps/api:/app
+      # Read-only, for the tests that check code against a document in docs/
+      # (the verification rubric). Without it they cannot run in here.
+      - ./docs:/docs:ro
       # Anonymous volume masks the host virtualenv: those are host-platform
       # binaries and must never shadow the container's venv at /opt/venv.
       - /app/.venv

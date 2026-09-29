@@ -1,6 +1,7 @@
 'use client';
 
 import type { components } from '@panelpilot/shared-types';
+import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 
 import { LadderDiagram } from './ladder-svg';
@@ -113,6 +114,7 @@ function groupByLine(findings: readonly ValidationFinding[]): {
  * failure must arrive before the content it is about, not after it.
  */
 function VerdictBanner({ result, headingId }: { result: PlcValidationResult; headingId: string }) {
+  const t = useTranslations('plcView');
   const status = result.status;
   // Defaulted server-side, so the generated type has it optional. Treated as
   // empty rather than asserted non-null: a response that genuinely omitted it
@@ -132,10 +134,10 @@ function VerdictBanner({ result, headingId }: { result: PlcValidationResult; hea
 
   const headline =
     status === 'invalid'
-      ? `Validation failed — ${String(errors.length)} ${errors.length === 1 ? 'error' : 'errors'}`
+      ? t('failed', { count: errors.length })
       : status === 'incomplete'
-        ? 'Not verified — this code was not checked'
-        : `Passed with ${String(warnings.length)} ${warnings.length === 1 ? 'warning' : 'warnings'}`;
+        ? t('notVerified')
+        : t('passed', { count: warnings.length });
 
   return (
     <div
@@ -151,11 +153,12 @@ function VerdictBanner({ result, headingId }: { result: PlcValidationResult; hea
         <p className="mt-1 text-xs text-text">
           {/* Said in words, because "incomplete" alone reads as a smaller
               version of "valid" to anyone not steeped in the vocabulary. */}
-          An unverified result is not a verified-correct one. Do not deploy this without checking it
-          yourself.
+          {t('unverifiedNote')}
         </p>
       )}
-      <p className="mt-1 text-xs text-text-muted">Checked by {result.checked_by}</p>
+      <p className="mt-1 text-xs text-text-muted">
+        {t('checkedBy', { checker: result.checked_by })}
+      </p>
     </div>
   );
 }
@@ -175,6 +178,7 @@ function CodeLine({
   number: number;
   findings: readonly ValidationFinding[];
 }) {
+  const t = useTranslations('plcView');
   const hasError = findings.some((f) => f.severity === 'error');
   const marked = findings.length > 0;
 
@@ -205,14 +209,14 @@ function CodeLine({
         <p
           key={index}
           data-testid={`finding-line-${String(number)}`}
-          className={`ms-11 ps-3 text-xs ${
+          className={`ms-[2.75rem] ps-3 text-xs ${
             finding.severity === 'error' ? 'text-severity-critical' : 'text-severity-warning'
           }`}
         >
           {/* Attached under the line rather than as a tooltip: a finding
               behind a hover is a finding nobody on a tablet ever sees, and
               this is read on a tablet next to a panel. */}
-          Line {number}: {finding.message}
+          {t('finding', { line: number, message: finding.message })}
         </p>
       ))}
     </>
@@ -236,6 +240,7 @@ export function PlcView({
   rungs?: readonly LadderRung[];
   validation: PlcValidationResult;
 }) {
+  const t = useTranslations('plcView');
   const headingId = useId();
   const { byLine, general } = groupByLine(validation.findings ?? []);
 
@@ -262,13 +267,19 @@ export function PlcView({
       {language === 'ladder' ? (
         rungs !== undefined && rungs.length > 0 ? (
           <div className="overflow-x-auto">
-            <LadderDiagram rungs={rungs} label={`Ladder diagram, ${String(rungs.length)} rungs`} />
+            <LadderDiagram rungs={rungs} label={t('ladderLabel', { count: rungs.length })} />
           </div>
         ) : (
-          <p className="text-sm text-text-muted">No rungs to display.</p>
+          <p className="text-sm text-text-muted">{t('noRungs')}</p>
         )
       ) : source !== undefined && source !== null && source.length > 0 ? (
-        <div className="overflow-x-auto rounded border border-border bg-surface-raised py-2">
+        // Left to right whatever the page: code reads that way in every
+        // locale, and inheriting an Arabic or Hebrew page's direction moved
+        // each line's trailing semicolon to its start.
+        <div
+          dir="ltr"
+          className="overflow-x-auto rounded-sm border border-border bg-surface-raised py-2"
+        >
           {tokeniseProgram(source).map((tokens, index) => (
             <CodeLine
               key={index}
@@ -279,7 +290,7 @@ export function PlcView({
           ))}
         </div>
       ) : (
-        <p className="text-sm text-text-muted">No code to display.</p>
+        <p className="text-sm text-text-muted">{t('noCode')}</p>
       )}
     </section>
   );

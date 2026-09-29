@@ -50,6 +50,12 @@ export interface ActiveTrial {
   accessToken: string;
   /** Free questions left on this trial, as the server counts them. */
   questionsRemaining: number;
+  /**
+   * The conversation the trial opened, to ask the first question in. `null`
+   * from a server that does not send it, which falls back to the first
+   * question opening its own.
+   */
+  conversationId: string | null;
 }
 
 export type TrialStart =
@@ -274,6 +280,7 @@ function readActiveTrial(payload: unknown): ActiveTrial | null {
     claim_secret: claimSecret,
     access_token: accessToken,
     questions_remaining: questionsRemaining,
+    conversation_id: conversationId,
   } = payload as Record<string, unknown>;
   if (typeof sessionId !== 'string' || sessionId === '') return null;
   if (typeof claimSecret !== 'string' || claimSecret === '') return null;
@@ -285,6 +292,8 @@ function readActiveTrial(payload: unknown): ActiveTrial | null {
     trial: { sessionId, claimSecret },
     accessToken,
     questionsRemaining: typeof questionsRemaining === 'number' ? questionsRemaining : 0,
+    conversationId:
+      typeof conversationId === 'string' && conversationId !== '' ? conversationId : null,
   };
 }
 

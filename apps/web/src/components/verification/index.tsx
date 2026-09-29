@@ -134,7 +134,7 @@ function ReviewPane({
             data-testid="source-frame"
             src={sourceUrl}
             title={labels.source}
-            className="h-96 w-full rounded border border-border bg-surface-raised"
+            className="h-96 w-full rounded-sm border border-border bg-surface-raised"
           />
         )}
       </section>

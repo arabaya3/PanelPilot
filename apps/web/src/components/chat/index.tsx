@@ -44,6 +44,13 @@ export function Chat(props: {
   trial?: TrialSession | null;
   /** How many free questions are left; `null` when the caller does not know. */
   questionsRemaining?: number | null;
+  /**
+   * A conversation to open on arrival: the one a trial started. Asking the
+   * first question anywhere else left it in the history, empty, beside the
+   * one actually used; opening it also brings a reload back to where the
+   * engineer was.
+   */
+  conversationId?: string | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
   /**
    * The token was refused. The caller fetches a fresh one and passes it back
@@ -77,6 +84,7 @@ function ChatSurface({
   uploadImpl,
   trial = null,
   questionsRemaining = null,
+  conversationId = null,
   onSignedUp,
   onUnauthorized,
   listImpl = listSessions,
@@ -88,6 +96,7 @@ function ChatSurface({
   uploadImpl?: typeof uploadImage;
   trial?: TrialSession | null;
   questionsRemaining?: number | null;
+  conversationId?: string | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
   onUnauthorized?: () => void;
   listImpl?: typeof listSessions;
@@ -170,7 +179,16 @@ function ChatSurface({
       });
 
       try {
-        for await (const event of events) {
+        for await (const received of events) {
+          // An account is refused for the same reason a trial is, but the
+          // remedy is not signing up: it already has. Told apart here, so its
+          // card does not say "create an account" and no signup form opens.
+          const event: StreamEvent =
+            trial === null &&
+            received.kind === 'interrupted' &&
+            received.reason === 'quota-exhausted'
+              ? { kind: 'interrupted', reason: 'account-quota-exhausted' }
+              : received;
           dispatch({ type: 'stream', id: assistantId, event });
           if (event.kind === 'result') {
             // Adopt a model the assistant named, but only when the engineer
@@ -199,7 +217,7 @@ function ChatSurface({
         }
       }
     },
-    [locale, onUnauthorized, refreshQuota, state.sessionId, streamImpl, token],
+    [locale, onUnauthorized, refreshQuota, state.sessionId, streamImpl, token, trial],
   );
 
   const ask = useCallback(
@@ -298,6 +316,15 @@ function ChatSurface({
     [fetchSessionImpl, onUnauthorized, token],
   );
 
+  // Opened once per id: a re-authentication hands back the same one, and
+  // re-opening it would throw away a turn in progress for nothing.
+  const openedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (conversationId === null || openedRef.current === conversationId) return;
+    openedRef.current = conversationId;
+    void openSession(conversationId);
+  }, [conversationId, openSession]);
+
   // The limit modal appears only once the free questions are gone *and* no
   // turn is in flight. The spec is explicit that it must never interrupt an
   // answer, and the reason is easy to underrate: cutting off a diagnosis to
@@ -305,7 +332,9 @@ function ChatSurface({
   // avoid. `busy` already means "a turn has not finished", so gating on it
   // makes the rule structural rather than a timing hope.
   const outOfQuestions = remaining !== null && remaining <= 0;
-  const showLimit = outOfQuestions && !busy && !dismissedLimit;
+  // A trial only: the modal is a signup form, and an account signing up
+  // again would make a second account rather than continue this one.
+  const showLimit = trial !== null && outOfQuestions && !busy && !dismissedLimit;
 
   return (
     // A row, so the sidebar sits beside the conversation. Which side that is

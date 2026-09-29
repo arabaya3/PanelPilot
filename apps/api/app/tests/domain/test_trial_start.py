@@ -191,6 +191,21 @@ def test_the_anonymous_session_points_at_that_diagnostic_session(session: Sessio
     assert str(row.diagnostic_session_id) != trial.session_id
 
 
+def test_the_trial_names_the_conversation_to_ask_in(session: Session) -> None:
+    """The first question goes into the conversation the trial opened.
+
+    Without the id the client could not, so its first question opened a
+    second conversation and this one stayed in the history, empty, as "New
+    conversation" -- in every trial.
+    """
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    row = session.execute(select(AnonymousSessionRow)).scalar_one()
+    assert trial.conversation_id == str(row.diagnostic_session_id)
+    assert trial.conversation_id != trial.session_id
+
+
 # --- the claim secret ---------------------------------------------------------
 
 
@@ -502,6 +517,8 @@ def test_a_trial_can_be_resumed_with_its_secret(session: Session) -> None:
 
     assert resumed.session_id == trial.session_id
     assert resumed.claim_secret == trial.claim_secret
+    # The same conversation, so a reload returns to it rather than beside it.
+    assert resumed.conversation_id == trial.conversation_id
     assert resumed.expires_in == 1800
     assert resumed.questions_remaining == trial.questions_remaining
     assert resumed.token_type == "bearer"

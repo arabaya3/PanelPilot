@@ -351,6 +351,17 @@ def test_a_typo_names_the_symbol_it_could_not_resolve() -> None:
     assert "StartButtton" in undeclared[0].message
 
 
+def test_a_typo_says_which_line_it_is_on() -> None:
+    """The finding came back with ``line: null``, leaving the engineer to search."""
+    source = BROKEN_PROGRAMS["typo in tag name"]
+    result = validate_plc_code(source)
+
+    undeclared = [f for f in result.findings if f.code == "undeclared-tag"]
+    line = undeclared[0].line
+    assert line is not None
+    assert "StartButtton" in source.splitlines()[line - 1]
+
+
 def test_an_undeclared_tag_is_not_also_reported_as_a_type_mismatch() -> None:
     # Saying the same problem twice in different words makes a report harder to
     # act on, not more thorough.

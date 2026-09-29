@@ -19,7 +19,12 @@ type DiagnosticSession = components['schemas']['DiagnosticSession'];
 /** One row in the sidebar. */
 export interface SessionSummary {
   id: string;
-  title: string;
+  /**
+   * The first question, or `null` before one is asked. Named by the sidebar
+   * in the engineer's language rather than here: a placeholder string chosen
+   * in this module was English in the Arabic and Hebrew sidebars too.
+   */
+  title: string | null;
   equipmentModel: string | null;
   turnCount: number;
   createdAt: string;
@@ -118,7 +123,7 @@ function readSummary(row: unknown): SessionSummary | null {
 
   return {
     id,
-    title: typeof title === 'string' && title !== '' ? title : 'Untitled conversation',
+    title: typeof title === 'string' && title !== '' ? title : null,
     equipmentModel:
       typeof equipmentModel === 'string' && equipmentModel !== '' ? equipmentModel : null,
     turnCount: typeof turnCount === 'number' ? turnCount : 0,

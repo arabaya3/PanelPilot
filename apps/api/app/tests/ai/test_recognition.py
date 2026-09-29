@@ -319,6 +319,19 @@ requires_photo_corpus = pytest.mark.skipif(
 )
 
 
+# The two tests below send every photograph to the model, so they need a real
+# key and they cost money. Opt-in by name, rather than implied by the corpus
+# being present: once the photographs are committed, the corpus exists in
+# every CI job, and each would call Anthropic with a placeholder key and fail.
+requires_live_model = pytest.mark.skipif(
+    os.environ.get("PANELPILOT_LIVE_MODEL_TESTS") != "1",
+    reason=(
+        "calls the model with every photograph; set PANELPILOT_LIVE_MODEL_TESTS=1 "
+        "with a real ANTHROPIC_API_KEY to run it"
+    ),
+)
+
+
 def _load_manifest() -> list[dict[str, Any]]:
     return list(json.loads(_MANIFEST.read_text(encoding="utf-8")))
 
@@ -345,6 +358,7 @@ def test_the_corpus_is_large_and_varied_enough_to_mean_anything() -> None:
 
 
 @requires_photo_corpus
+@requires_live_model
 def test_every_good_photo_is_read_correctly() -> None:
     """The acceptance criterion, when the data exists to run it."""
     import anthropic
@@ -377,6 +391,7 @@ def test_every_good_photo_is_read_correctly() -> None:
 
 
 @requires_photo_corpus
+@requires_live_model
 def test_every_off_topic_photo_is_rejected() -> None:
     """The failure mode that matters most.
 

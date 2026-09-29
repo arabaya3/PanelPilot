@@ -859,7 +859,9 @@ export interface components {
      *     Attributes:
      *         id: The session id, used to fetch the full conversation on selection.
      *         title: The first question asked, which is what makes a session
-     *             recognisable. Truncated for display.
+     *             recognisable. Truncated for display. ``None`` before the first
+     *             question: the client names an untitled conversation in the
+     *             engineer's language, which a string chosen here could not.
      *         equipment_model: The model this conversation was about, when a turn
      *             recorded one. ``None`` where no turn identified equipment; the
      *             sidebar shows the title alone rather than a guessed brand.
@@ -873,7 +875,7 @@ export interface components {
       /** Id */
       id: string;
       /** Title */
-      title: string;
+      title: string | null;
       /** Equipment Model */
       equipment_model?: string | null;
       /** Turn Count */
@@ -1567,12 +1569,20 @@ export interface components {
      *     The secret is returned exactly once, here. Only its hash is stored, so it
      *     cannot be re-read or recovered later — losing it means starting a new
      *     trial, which is the safe direction.
+     *
+     *     ``conversation_id`` is the diagnostic session the trial opened. The client
+     *     asks its first question in it: without the id, the first question opened a
+     *     second conversation and left this one in the history, empty, as "New
+     *     conversation". Distinct from ``session_id``, which names the anonymous
+     *     session and is what a signup claims.
      */
     TrialStart: {
       /** Session Id */
       session_id: string;
       /** Claim Secret */
       claim_secret: string;
+      /** Conversation Id */
+      conversation_id: string;
       /** Access Token */
       access_token: string;
       /**

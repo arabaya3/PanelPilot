@@ -51,6 +51,8 @@ type Phase =
       trial: TrialSession | null;
       /** `null` when unknown, which keeps the limit modal away. */
       questionsRemaining: number | null;
+      /** The trial's own conversation, opened on arrival; see `Chat`. */
+      conversationId: string | null;
     }
   | { kind: 'unavailable' }
   | { kind: 'failed' };
@@ -61,6 +63,7 @@ function readyWith(active: ActiveTrial): Phase {
     token: active.accessToken,
     trial: active.trial,
     questionsRemaining: active.questionsRemaining,
+    conversationId: active.conversationId,
   };
 }
 
@@ -129,6 +132,8 @@ export default function HomePage() {
       token: tokens.accessToken,
       trial: null,
       questionsRemaining: null,
+      // Already open: the account continues in the conversation on screen.
+      conversationId: null,
     });
   }, []);
 
@@ -194,7 +199,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => void begin()}
-              className="mt-2 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-contrast"
+              className="mt-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-accent-contrast"
             >
               {tl('retry')}
             </button>
@@ -206,13 +211,17 @@ export default function HomePage() {
             token={phase.token}
             trial={phase.trial}
             questionsRemaining={phase.questionsRemaining}
+            conversationId={phase.conversationId}
             onSignedUp={onSignedUp}
             onUnauthorized={() => void onUnauthorized()}
           />
         )}
       </div>
 
-      <p>
+      <p className="flex flex-wrap gap-4">
+        <Link className="text-accent hover:text-accent-hover" href="/plc">
+          {tl('plcLink')}
+        </Link>
         <Link className="text-accent hover:text-accent-hover" href="/tokens">
           <span>Design tokens</span>
         </Link>

@@ -65,7 +65,8 @@
       "malformed-frame": "The answer arrived damaged and was discarded rather than shown in part.",
       "server-error": "The server could not start this answer.",
       "unauthorized": "Your session had expired, so this answer was not started. It has been renewed — try again.",
-      "quota-exhausted": "You have used all your free questions. Create an account to keep asking."
+      "quota-exhausted": "You have used all your free questions. Create an account to keep asking.",
+      "account-quota-exhausted": "You have used all the free questions on this account."
     },
     "retry": "Try again"
   },
@@ -155,7 +156,8 @@
     "starting": "Starting your trial…",
     "unavailable": "Trials are unavailable right now. Please try again shortly.",
     "failed": "Could not start a trial.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "plcLink": "Check PLC code"
   },
   "history": {
     "label": "Conversation history",
@@ -163,6 +165,28 @@
     "empty": "No past conversations yet.",
     "failed": "History could not be loaded.",
     "unavailable": "History is unavailable.",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "untitled": "New conversation"
+  },
+  "plc": {
+    "heading": "Check PLC code",
+    "intro": "Paste IEC 61131-3 Structured Text. It is checked for syntax errors, undeclared or unused tags, type mismatches and unreachable code, each shown on its line. Nothing is stored.",
+    "label": "Structured Text",
+    "placeholder": "PROGRAM Main\n  VAR\n    Start : BOOL;\n  END_VAR\n  ...\nEND_PROGRAM",
+    "check": "Check code",
+    "checking": "Checking…",
+    "rejected": "That program could not be checked.",
+    "failed": "The check could not run. Try again."
+  },
+  "plcView": {
+    "failed": "{count, plural, one {Validation failed — # error} other {Validation failed — # errors}}",
+    "notVerified": "Not verified — this code was not checked",
+    "passed": "{count, plural, one {Passed with # warning} other {Passed with # warnings}}",
+    "unverifiedNote": "An unverified result is not a verified-correct one. Do not deploy this without checking it yourself.",
+    "checkedBy": "Checked by {checker}",
+    "finding": "Line {line}: {message}",
+    "ladderLabel": "{count, plural, one {Ladder diagram, # rung} other {Ladder diagram, # rungs}}",
+    "noRungs": "No rungs to display.",
+    "noCode": "No code to display."
   }
 }
