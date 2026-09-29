@@ -7,8 +7,10 @@
 #   cp .env.example .env
 #   docker compose up --build
 #
-# Only the web service publishes a port. Everything else is reachable only on
-# the internal network, by service name.
+# The web service publishes a port on all interfaces. The API publishes one on
+# loopback only, for curl and OpenAPI clients on this machine; the browser never
+# uses it, because web proxies /api/v1/* to the API over the internal network.
+# Everything else is reachable only on the internal network, by service name.
 
 name: panelpilot
 
@@ -107,6 +109,14 @@ services:
       DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot
       OPENSEARCH_URL: http://opensearch:9200
       REDIS_URL: redis://redis:6379/0
+      # DEV ONLY. Makes uvicorn trust X-Forwarded-For from any peer, so the
+      # rate limiter buckets requests by the real client the web proxy names
+      # rather than putting every visitor behind the web container's address.
+      # Safe here only because the API is reachable from nothing but the
+      # compose network and this machine's loopback (see `ports` below). A
+      # deployed API must list its actual proxies instead: trusting everyone
+      # lets any caller choose the IP it is rate-limited as.
+      FORWARDED_ALLOW_IPS: '*'
     # DEV ONLY. Migrations run here, in the compose override, and deliberately
     # NOT in the Dockerfile's CMD — the runtime stage is the production image,
     # and a container that migrates its own database on boot is a container
@@ -161,12 +171,12 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-    # Published to the host because NEXT_PUBLIC_API_BASE_URL is inlined into the
-    # browser bundle, and a browser cannot resolve the internal http://api:8000.
-    # Container-to-container traffic still uses the service name; this mapping
-    # exists for the browser, curl, and OpenAPI clients running on the host.
+    # Loopback only, for curl and OpenAPI clients on this machine. The browser
+    # does not need it — it talks to web, which proxies to http://api:8000 —
+    # and binding every interface would put an API that trusts forwarded
+    # client addresses (FORWARDED_ALLOW_IPS above) on the local network.
     ports:
-      - '8000:8000'
+      - '127.0.0.1:8000:8000'
     networks: [panelpilot]
 
   # ---------------------------------------------------------------------------
@@ -183,14 +193,12 @@ services:
     restart: unless-stopped
     environment:
       NEXT_TELEMETRY_DISABLED: '1'
-      # Read by the browser, not by this container, so it must be an address
-      # the host can resolve.
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-      # Where the Next server forwards /api/* to. A container hostname, not
-      # localhost: the rewrite runs server-side, so it resolves on the compose
-      # network rather than in the browser. The browser only ever talks to
-      # this origin, which is what keeps the requests same-origin and out of
-      # CORS entirely.
+      # Where the Next server forwards /api/v1/* to, read per request by
+      # src/app/api/[...path]/route.ts. A container hostname, not localhost:
+      # the proxy runs server-side, so it resolves on the compose network
+      # rather than in the browser. The browser only ever talks to this
+      # origin, which is what keeps the requests same-origin and out of CORS
+      # entirely.
       API_PROXY_TARGET: http://api:8000
     volumes:
       - ./apps/web:/repo/apps/web

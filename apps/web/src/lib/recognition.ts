@@ -62,7 +62,14 @@ export type UploadOutcome =
   | { kind: 'failed'; reason: UploadFailure };
 
 export type UploadFailure =
-  'too-large' | 'rejected' | 'network' | 'unavailable' | 'timeout' | 'aborted';
+  | 'too-large'
+  | 'rejected'
+  | 'network'
+  | 'unavailable'
+  | 'timeout'
+  | 'aborted'
+  /** The token was refused. The caller re-authenticates; retrying won't help. */
+  | 'unauthorized';
 
 /**
  * A field may be used without asking the engineer to confirm it.
@@ -132,6 +139,7 @@ export async function uploadImage(options: UploadOptions): Promise<UploadOutcome
       ...(signal ? { signal } : {}),
     });
 
+    if (response.status === 401) return { kind: 'failed', reason: 'unauthorized' };
     if (response.status === 413) return { kind: 'failed', reason: 'too-large' };
     if (response.status === 404) return { kind: 'failed', reason: 'unavailable' };
     if (!response.ok) return { kind: 'failed', reason: 'rejected' };

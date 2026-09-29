@@ -10,19 +10,13 @@ type QuotaStatus = components['schemas']['QuotaStatus'];
  * first questions answered before anyone is asked for an email. When the limit
  * is reached, one signup step continues the same conversation.
  *
- * **Starting a trial has no endpoint yet.** The backend is ready to *finish*
- * one — `signup` takes `claim_session_id` and `claim_secret`, the
- * `anonymous_sessions` table exists, and the claim joins the new user to the
- * trial's existing tenant rather than copying rows — but nothing issues an
- * anonymous session, and every `/diagnostics` route requires
- * `CurrentUserDep`. So "the first N messages work with zero auth" cannot
- * happen over the wire today.
- *
- * What that means here: the claim half is built against the real contract and
- * works the moment a start endpoint exists. `startTrial` posts where that
- * endpoint will live and reports `unavailable` when it is absent, which is
- * what happens now — surfaced honestly rather than as a landing page that
- * silently does nothing when someone types their first question.
+ * `startTrial` issues an anonymous session and a token to ask with;
+ * `resumeTrial` exchanges the stored claim pair for a fresh token on the same
+ * trial after a reload; `signupClaimingTrial` joins the new user to the
+ * trial's existing tenant rather than copying rows. `startTrial` still
+ * reports `unavailable` when its endpoint is absent, so a deployment without
+ * it says so rather than rendering a landing page that silently does nothing
+ * when someone types their first question.
  *
  * The secret is the part worth getting right, and the backend is explicit
  * about why: the session id travels in URLs and is not secret, so accepting it
@@ -39,26 +33,37 @@ export interface TrialSession {
   claimSecret: string;
 }
 
+/** A trial and the credential to use it with, from a start or a resume. */
+export interface ActiveTrial {
+  trial: TrialSession;
+  /**
+   * The access token the trial may ask questions with.
+   *
+   * Carried in the start response rather than fetched separately: every
+   * diagnostics route authenticates, so a trial without one is a landing
+   * page that collects a question and does nothing with it.
+   *
+   * Deliberately NOT persisted alongside the trial. The claim pair has to
+   * survive a reload; a bearer token does not, and leaving one in storage
+   * on a shared workshop terminal is a disclosure nobody asked for.
+   */
+  accessToken: string;
+  /** Free questions left on this trial, as the server counts them. */
+  questionsRemaining: number;
+}
+
 export type TrialStart =
-  | {
-      kind: 'started';
-      trial: TrialSession;
-      /**
-       * The access token the trial may ask questions with.
-       *
-       * Carried in the start response rather than fetched separately: every
-       * diagnostics route authenticates, so a trial without one is a landing
-       * page that collects a question and does nothing with it.
-       *
-       * Deliberately NOT persisted alongside the trial. The claim pair has to
-       * survive a reload; a bearer token does not, and leaving one in storage
-       * on a shared workshop terminal is a disclosure nobody asked for.
-       */
-      accessToken: string;
-      /** Free questions left on this trial, as the server counts them. */
-      questionsRemaining: number;
-    }
-  | { kind: 'unavailable' }
+  ({ kind: 'started' } & ActiveTrial) | { kind: 'unavailable' } | { kind: 'failed' };
+
+export type TrialResume =
+  | ({ kind: 'resumed' } & ActiveTrial)
+  /**
+   * The server no longer knows this trial — expired, claimed, or never
+   * issued. Distinct from `failed` because the remedy is to forget it and
+   * start a new one, whereas a network failure must not throw away a
+   * conversation that is still reachable.
+   */
+  | { kind: 'gone' }
   | { kind: 'failed' };
 
 /**
@@ -151,11 +156,118 @@ export async function startTrial(options: StartOptions = {}): Promise<TrialStart
     return { kind: 'failed' };
   }
 
-  const started = readStartPayload(payload);
-  return started ?? { kind: 'failed' };
+  const started = readActiveTrial(payload);
+  return started ? { kind: 'started', ...started } : { kind: 'failed' };
 }
 
-function readStartPayload(payload: unknown): Extract<TrialStart, { kind: 'started' }> | null {
+export interface ResumeOptions {
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}
+
+/**
+ * Get a fresh token for the trial this browser already holds.
+ *
+ * What a reload needs. Starting a new trial instead would issue a token for a
+ * *different* tenant, stranding the conversation under one the visitor can
+ * no longer reach and granting a fresh quota for nothing; pairing the old
+ * claim pair with that new token would be worse, since the signup would then
+ * claim a tenant other than the one the questions were asked in.
+ *
+ * The secret goes in the body, never the URL, for the reason the module
+ * comment gives.
+ */
+export async function resumeTrial(
+  trial: TrialSession,
+  options: ResumeOptions = {},
+): Promise<TrialResume> {
+  const { fetchImpl = fetch, endpoint = '/api/v1/auth/trial/resume' } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: trial.sessionId, claim_secret: trial.claimSecret }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+
+  // 401/404/422 are the server's ways of saying the trial is unknown, expired
+  // or already claimed. 405 is an API without the resume route at all, which
+  // leaves the same remedy: a new trial rather than no trial.
+  if ([401, 404, 405, 422].includes(response.status)) return { kind: 'gone' };
+  if (!response.ok) return { kind: 'failed' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+
+  // The returned pair is used as-is, alongside the token it came with, rather
+  // than the one that was sent: the token and the stored trial must always
+  // name the same tenant.
+  const resumed = readActiveTrial(payload);
+  return resumed ? { kind: 'resumed', ...resumed } : { kind: 'failed' };
+}
+
+export type QuotaOutcome =
+  { kind: 'loaded'; quota: QuotaStatus } | { kind: 'unauthorized' } | { kind: 'failed' };
+
+export interface QuotaOptions {
+  token: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}
+
+/**
+ * Ask the server how many free questions are left.
+ *
+ * The server's count is the only one that means anything — the charge happens
+ * after the answer is delivered, and a refused turn is not charged — so the
+ * client asks after each turn rather than decrementing a number of its own.
+ */
+export async function fetchQuota(options: QuotaOptions): Promise<QuotaOutcome> {
+  const { token, fetchImpl = fetch, endpoint = '/api/v1/auth/quota' } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (!response.ok) return { kind: 'failed' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  const {
+    questions_used: used,
+    question_limit: limit,
+    questions_remaining: remaining,
+  } = payload as Record<string, unknown>;
+  if (typeof used !== 'number' || typeof limit !== 'number' || typeof remaining !== 'number') {
+    return { kind: 'failed' };
+  }
+  return {
+    kind: 'loaded',
+    quota: { questions_used: used, question_limit: limit, questions_remaining: remaining },
+  };
+}
+
+function readActiveTrial(payload: unknown): ActiveTrial | null {
   if (typeof payload !== 'object' || payload === null) return null;
   const {
     session_id: sessionId,
@@ -170,7 +282,6 @@ function readStartPayload(payload: unknown): Extract<TrialStart, { kind: 'starte
   // the first question.
   if (typeof accessToken !== 'string' || accessToken === '') return null;
   return {
-    kind: 'started',
     trial: { sessionId, claimSecret },
     accessToken,
     questionsRemaining: typeof questionsRemaining === 'number' ? questionsRemaining : 0,
@@ -250,4 +361,57 @@ export async function signupClaimingTrial(options: SignupOptions): Promise<Signu
     return { kind: 'failed' };
   }
   return { kind: 'signed-up', accessToken, refreshToken };
+}
+
+export type RefreshOutcome =
+  | { kind: 'refreshed'; accessToken: string; refreshToken: string }
+  | { kind: 'expired' }
+  | { kind: 'failed' };
+
+export interface RefreshOptions {
+  refreshToken: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}
+
+/**
+ * Exchange a refresh token for a new pair, once an account's access token
+ * has lapsed.
+ *
+ * The caller holds the refresh token in memory only, for the same reason the
+ * access token is never persisted: a credential left in storage on a shared
+ * workshop terminal outlives the person who signed in.
+ */
+export async function refreshTokens(options: RefreshOptions): Promise<RefreshOutcome> {
+  const { refreshToken, fetchImpl = fetch, endpoint = '/api/v1/auth/refresh' } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+
+  if (response.status === 401 || response.status === 422) return { kind: 'expired' };
+  if (!response.ok) return { kind: 'failed' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  const { access_token: accessToken, refresh_token: newRefresh } = payload as Record<
+    string,
+    unknown
+  >;
+  if (typeof accessToken !== 'string' || accessToken === '' || typeof newRefresh !== 'string') {
+    return { kind: 'failed' };
+  }
+  return { kind: 'refreshed', accessToken, refreshToken: newRefresh };
 }

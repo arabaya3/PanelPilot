@@ -63,7 +63,9 @@
       "connection-lost": "The connection dropped before the answer was complete. Nothing shown is missing — there is no partial answer to read.",
       "aborted": "You stopped this answer.",
       "malformed-frame": "The answer arrived damaged and was discarded rather than shown in part.",
-      "server-error": "The server could not start this answer."
+      "server-error": "The server could not start this answer.",
+      "unauthorized": "Your session had expired, so this answer was not started. It has been renewed — try again.",
+      "quota-exhausted": "You have used all your free questions. Create an account to keep asking."
     },
     "retry": "Try again"
   },
@@ -107,7 +109,9 @@
       "network": "The photo could not be uploaded. Check the connection and try again.",
       "unavailable": "Photo upload is not available right now.",
       "timeout": "The upload took too long and was stopped.",
-      "aborted": "The upload was cancelled."
+      "aborted": "The upload was cancelled.",
+      "unauthorized": "Your session had expired, so the photo was not uploaded. It has been renewed — try again.",
+      "too-large-to-process": "That photo is too large to process. Try a smaller one."
     }
   },
   "trial": {
