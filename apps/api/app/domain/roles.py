@@ -24,6 +24,8 @@ Framework-agnostic — nothing here imports FastAPI.
 
 from __future__ import annotations
 
+import uuid
+
 import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -144,3 +146,30 @@ def _account(*, session: Session, email: str) -> User:
     if user is None:
         raise NotFoundError("no account with that email")
     return user
+
+
+def holders_of(*, session: Session, role: Role) -> list[uuid.UUID]:
+    """Return every active account holding a role, oldest first.
+
+    Args:
+        session: A session able to see every tenant's accounts: reviewers
+            work a queue that spans customers.
+        role: A stored role; the implicit one is held by everyone and is not
+            a meaningful question here.
+
+    Returns:
+        Their ids, in a stable order so repeated runs distribute the same way.
+
+    Raises:
+        ValidationError: If asked about the implicit role.
+    """
+    if role in IMPLICIT_ROLES:
+        raise ValidationError(f"{role.value} is held by every account")
+    return list(
+        session.scalars(
+            select(User.id)
+            .join(User.roles)
+            .where(RoleRow.name == role.value, User.is_active.is_(True))
+            .order_by(User.created_at, User.id)
+        )
+    )

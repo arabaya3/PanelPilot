@@ -25,6 +25,7 @@ import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from sqlalchemy import create_engine, select, text
@@ -33,6 +34,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.tenancy import cross_tenant_info
+from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import (
     STATUS_ESCALATED,
     STATUS_LABELED,
@@ -733,3 +735,33 @@ def test_a_labelled_item_leaves_the_verifiers_queue(
     session.commit()
 
     assert len(queue_for(session=session, verifier_id=verifier)) == 1
+
+
+# --- assigning to whoever holds the reviewer role ------------------------------
+
+
+def test_nobody_holding_the_role_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not a silent no-op: an unassigned queue is a queue nobody reviews."""
+    from app.domain import roles as roles_domain
+
+    monkeypatch.setattr(roles_domain, "holders_of", lambda **_: [])
+
+    with pytest.raises(QueueError, match="grant-role"):
+        queue_domain.assign_to_reviewers(session=cast(Session, None))
+
+
+def test_the_pool_is_read_from_the_roles_table(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain import roles as roles_domain
+
+    reviewers = [uuid.uuid4(), uuid.uuid4()]
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(roles_domain, "holders_of", lambda **_kw: reviewers)
+    monkeypatch.setattr(
+        queue_domain,
+        "assign_daily_batches",
+        lambda **kw: seen.update(kw) or dict.fromkeys(reviewers, 0),
+    )
+
+    queue_domain.assign_to_reviewers(session=cast(Session, None))
+
+    assert seen["verifier_ids"] == reviewers

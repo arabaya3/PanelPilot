@@ -132,6 +132,39 @@ def run_crawl_queue(args: list[str]) -> int:
     return 0 if response.status is CrawlJobStatus.SUCCEEDED else 1
 
 
+def run_assign_review_batches(args: list[str]) -> int:
+    """Hand today's verification batches to everyone holding the reviewer role.
+
+    Schedule it once a day. Without it nothing is ever assigned, and nothing
+    assigned is nothing labelled, so nothing is ever promoted.
+
+    Args:
+        args: Unused; accepted for a uniform handler signature.
+
+    Returns:
+        ``0`` on success, ``1`` if nobody holds the reviewer role.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import verification_queue as queue_domain
+
+    del args
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="reviewers work every tenant's queue"):
+        try:
+            assigned = queue_domain.assign_to_reviewers(session=session)
+        except queue_domain.QueueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        session.commit()
+
+    print(f"assigned {sum(assigned.values())} items across {len(assigned)} reviewers")
+    return 0
+
+
 def run_reindex_staging(args: list[str]) -> int:
     """Re-chunk and re-embed the staging corpus in place.
 
@@ -236,6 +269,11 @@ REGISTRY: dict[str, JobSpec] = {
     for spec in (
         JobSpec("crawl", "Crawl one documentation source into staging.", run_crawl),
         JobSpec("crawl-queue", "Run the oldest crawl queued through the API.", run_crawl_queue),
+        JobSpec(
+            "assign-review-batches",
+            "Hand today's verification batches to every reviewer.",
+            run_assign_review_batches,
+        ),
         JobSpec(
             "reindex-staging",
             "Re-chunk and re-embed the staging corpus after a pipeline change.",
