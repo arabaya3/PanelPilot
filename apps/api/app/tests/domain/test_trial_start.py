@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthenticationError, ValidationError
 from app.core.security import decode_access_token, hash_claim_secret
-from app.domain.auth import TRIAL_TTL, resolve_caller, signup, start_trial
+from app.domain.auth import TRIAL_TTL, resolve_caller, resume_trial, signup, start_trial
 from app.models.schemas.auth import Role
 
 # Imported for their side effect on `Base.metadata`: `create_all` resolves
@@ -476,3 +476,164 @@ def test_one_trials_secret_cannot_claim_another_trial(session: Session) -> None:
             claim_session_id=second.session_id,
             claim_secret=first.claim_secret,
         )
+
+
+# --- resuming a trial ---------------------------------------------------------
+
+
+def test_a_trial_can_be_resumed_with_its_secret(session: Session) -> None:
+    """A trial outlives its token, so it must be resumable.
+
+    An hour-long token on a week-long trial: coming back after lunch must not
+    mean abandoning the conversation for a fresh trial.
+    """
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    resumed = resume_trial(
+        session=session,
+        session_id=trial.session_id,
+        claim_secret=trial.claim_secret,
+        access_token_ttl_seconds=1800,
+    )
+
+    assert resumed.session_id == trial.session_id
+    assert resumed.claim_secret == trial.claim_secret
+    assert resumed.expires_in == 1800
+    assert resumed.questions_remaining == trial.questions_remaining
+    assert resumed.token_type == "bearer"
+
+
+def test_a_resumed_token_is_minted_exactly_as_a_started_one(session: Session) -> None:
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    resumed = resume_trial(
+        session=session,
+        session_id=trial.session_id,
+        claim_secret=trial.claim_secret,
+        access_token_ttl_seconds=3600,
+    )
+
+    original = decode_access_token(trial.access_token)
+    fresh = decode_access_token(resumed.access_token)
+    assert fresh.id == original.id == trial.session_id
+    assert fresh.tenant_id == original.tenant_id
+    assert fresh.roles == original.roles == frozenset({Role.ENGINEER})
+    # And it passes the same liveness check every request makes.
+    assert resolve_caller(session=session, caller=fresh) is None
+
+
+def test_resuming_reports_the_tenants_current_allowance(session: Session) -> None:
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    tenant = session.execute(select(TenantRow)).scalar_one()
+    tenant.free_questions_used = 3
+    session.commit()
+
+    resumed = resume_trial(
+        session=session,
+        session_id=trial.session_id,
+        claim_secret=trial.claim_secret,
+        access_token_ttl_seconds=3600,
+    )
+    assert resumed.questions_remaining == tenant.free_question_limit - 3
+
+
+def test_a_wrong_secret_cannot_resume_the_trial(session: Session) -> None:
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    with pytest.raises(AuthenticationError, match="cannot be resumed"):
+        resume_trial(
+            session=session,
+            session_id=trial.session_id,
+            claim_secret="not-the-real-secret",
+            access_token_ttl_seconds=3600,
+        )
+
+
+def test_one_trials_secret_cannot_resume_another(session: Session) -> None:
+    first = start_trial(session=session, access_token_ttl_seconds=3600)
+    second = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    with pytest.raises(AuthenticationError, match="cannot be resumed"):
+        resume_trial(
+            session=session,
+            session_id=second.session_id,
+            claim_secret=first.claim_secret,
+            access_token_ttl_seconds=3600,
+        )
+
+
+@pytest.mark.parametrize("session_id", [str(uuid.uuid4()), "not-a-uuid"])
+def test_an_unknown_trial_is_refused_like_a_wrong_secret(session: Session, session_id: str) -> None:
+    """Same message either way: a guessed id must learn nothing."""
+    with pytest.raises(AuthenticationError, match="cannot be resumed"):
+        resume_trial(
+            session=session,
+            session_id=session_id,
+            claim_secret="anything",
+            access_token_ttl_seconds=3600,
+        )
+
+
+def test_the_secret_is_checked_before_expiry_is_revealed(session: Session) -> None:
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    row = session.execute(select(AnonymousSessionRow)).scalar_one()
+    row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    session.commit()
+
+    with pytest.raises(AuthenticationError, match="cannot be resumed"):
+        resume_trial(
+            session=session,
+            session_id=trial.session_id,
+            claim_secret="wrong",
+            access_token_ttl_seconds=3600,
+        )
+    with pytest.raises(AuthenticationError, match="expired"):
+        resume_trial(
+            session=session,
+            session_id=trial.session_id,
+            claim_secret=trial.claim_secret,
+            access_token_ttl_seconds=3600,
+        )
+
+
+def test_a_claimed_trial_cannot_be_resumed(session: Session) -> None:
+    """After the claim the tenant is a real account; log in instead."""
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+    signup(
+        session=session,
+        email="engineer@example.com",
+        password="a-long-password-1",
+        claim_session_id=trial.session_id,
+        claim_secret=trial.claim_secret,
+    )
+    session.commit()
+
+    with pytest.raises(AuthenticationError, match="claimed"):
+        resume_trial(
+            session=session,
+            session_id=trial.session_id,
+            claim_secret=trial.claim_secret,
+            access_token_ttl_seconds=3600,
+        )
+
+
+def test_resuming_writes_nothing(session: Session) -> None:
+    """A read of a credential, not a new trial: no tenant, no session row."""
+    trial = start_trial(session=session, access_token_ttl_seconds=3600)
+    session.commit()
+
+    resume_trial(
+        session=session,
+        session_id=trial.session_id,
+        claim_secret=trial.claim_secret,
+        access_token_ttl_seconds=3600,
+    )
+
+    assert not session.new
+    assert not session.dirty
+    assert len(session.execute(select(TenantRow)).scalars().all()) == 1

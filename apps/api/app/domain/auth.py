@@ -20,8 +20,11 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import NoReturn
 
-from sqlalchemy import select
+import structlog
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AuthenticationError, NotFoundError, ValidationError
@@ -40,6 +43,8 @@ from app.models.tables.session import AnonymousSessionRow, RefreshTokenRow
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 
+logger = structlog.get_logger(__name__)
+
 # How long a refresh token stays usable. Longer than an access token by design:
 # it is the thing that saves the user from logging in every hour.
 REFRESH_TOKEN_TTL = timedelta(days=30)
@@ -48,6 +53,17 @@ REFRESH_TOKEN_TTL = timedelta(days=30)
 # come back after a night shift; short enough that an abandoned session's
 # tenant is not claimable indefinitely by whoever finds the secret.
 TRIAL_TTL = timedelta(days=7)
+
+# The one message for an address that already has an account, whether the
+# pre-check or the unique index catches it.
+_EMAIL_TAKEN = "that email is already registered"
+
+# tenants.name is String(200).
+_TENANT_NAME_MAX = 200
+
+# The one message for a trial that cannot be resumed for any reason visible
+# before the secret has been checked, so a guessed id learns nothing.
+_RESUME_REFUSED = "that trial session cannot be resumed with that secret"
 
 
 def _slugify_email(email: str) -> str:
@@ -103,9 +119,14 @@ def signup(
         NotFoundError: If ``claim_session_id`` names no anonymous session.
     """
     normalised = email.strip().lower()
+    # Hashed before the existence check, not after. Skipping bcrypt for a
+    # registered address made signup answer measurably faster for it — a
+    # timing oracle for which emails have accounts, even had the message
+    # below been made vague.
+    password_hash = hash_password(password)
     existing = session.execute(select(User).where(User.email == normalised)).scalar_one_or_none()
     if existing is not None:
-        raise ValidationError("that email is already registered")
+        raise ValidationError(_EMAIL_TAKEN)
 
     claimed: AnonymousSessionRow | None = None
     if claim_session_id:
@@ -118,7 +139,9 @@ def signup(
     else:
         tenant = TenantRow(
             slug=f"{_slugify_email(normalised)}-{uuid.uuid4().hex[:8]}",
-            name=full_name or normalised,
+            # Truncated to the column (String(200)): an address can be longer
+            # than that and still valid, and must not surface as a DataError.
+            name=(full_name or normalised)[:_TENANT_NAME_MAX],
         )
         session.add(tenant)
         session.flush()
@@ -127,11 +150,17 @@ def signup(
         tenant_id=tenant.id,
         email=normalised,
         full_name=full_name,
-        password_hash=hash_password(password),
+        password_hash=password_hash,
         is_active=True,
     )
     session.add(user)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        # Two concurrent signups for one address both pass the check above;
+        # the unique index stops the second here. Same answer as the check,
+        # rather than the 500 an escaped IntegrityError used to be.
+        raise ValidationError(_EMAIL_TAKEN) from exc
 
     if claimed is not None:
         claimed.claimed_by_user_id = user.id
@@ -247,8 +276,20 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
     """Rotate a refresh token for a new pair.
 
     The presented token is revoked as part of issuing its replacement, so a
-    token cannot be used twice. Presenting an already-revoked token is a replay
-    and is refused.
+    token cannot be used twice.
+
+    **Rotation is one conditional UPDATE.** It used to be a SELECT followed by
+    setting ``revoked_at``, and two concurrent refreshes both read the token
+    as live and both minted a pair — one stolen token became two live
+    sessions. The UPDATE only matches a live row, and Postgres re-checks that
+    condition after waiting on the row lock, so exactly one caller wins.
+
+    **Presenting a spent token revokes the whole family.** A spent token only
+    comes back if it was copied: either the legitimate client or a thief
+    already rotated it, and there is no telling which. Revoking every live
+    refresh token for that user ends the thief's session at the cost of one
+    re-login for the real user — the standard reuse-detection trade (RFC 9700
+    §4.14.2).
 
     Args:
         session: Open database session. The caller commits.
@@ -260,24 +301,77 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
     Raises:
         AuthenticationError: If the token is unknown, expired, or already used.
     """
-    row = session.execute(
-        select(RefreshTokenRow).where(
-            RefreshTokenRow.token_hash == hash_refresh_token(refresh_token)
+    now = datetime.now(UTC)
+    token_hash = hash_refresh_token(refresh_token)
+    rotated = session.execute(
+        update(RefreshTokenRow)
+        .where(
+            RefreshTokenRow.token_hash == token_hash,
+            RefreshTokenRow.revoked_at.is_(None),
+            RefreshTokenRow.expires_at > now,
         )
-    ).scalar_one_or_none()
+        .values(revoked_at=now)
+        .returning(RefreshTokenRow.user_id, RefreshTokenRow.tenant_id)
+        # The statement names its row by hash, not by identity; there is no
+        # loaded object to keep in step, and evaluating the WHERE in Python
+        # would be a second, weaker copy of the condition.
+        .execution_options(synchronize_session=False)
+    ).one_or_none()
 
-    if row is None or row.revoked_at is not None:
-        raise AuthenticationError("refresh token is not valid")
-    if row.expires_at <= datetime.now(UTC):
-        raise AuthenticationError("refresh token has expired")
+    if rotated is None:
+        _refuse_unrotatable_token(session=session, token_hash=token_hash, now=now)
 
-    user = session.get(User, row.user_id)
-    tenant = session.get(TenantRow, row.tenant_id)
+    user = session.get(User, rotated.user_id)
+    tenant = session.get(TenantRow, rotated.tenant_id)
     if user is None or tenant is None or not user.is_active or not tenant.is_active:
         raise AuthenticationError("refresh token is not valid")
 
-    row.revoked_at = datetime.now(UTC)
     return _issue_tokens(session=session, user=user, tenant=tenant)
+
+
+def _refuse_unrotatable_token(*, session: Session, token_hash: str, now: datetime) -> NoReturn:
+    """Explain why a token could not be rotated, revoking its family on replay.
+
+    Args:
+        session: Open database session.
+        token_hash: Hash of the presented token.
+        now: The rotation attempt's timestamp.
+
+    Raises:
+        AuthenticationError: Always.
+    """
+    presented = session.execute(
+        select(RefreshTokenRow.user_id, RefreshTokenRow.revoked_at).where(
+            RefreshTokenRow.token_hash == token_hash
+        )
+    ).one_or_none()
+
+    if presented is None:
+        raise AuthenticationError("refresh token is not valid")
+
+    if presented.revoked_at is None:
+        # Live but not matched by the rotation: its expiry has passed.
+        raise AuthenticationError("refresh token has expired")
+
+    session.execute(
+        update(RefreshTokenRow)
+        .where(
+            RefreshTokenRow.user_id == presented.user_id,
+            RefreshTokenRow.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    # Committed here, against the usual "the caller commits": the refusal
+    # below makes the request's session roll back, and a family revocation
+    # that is rolled back is a detection that protects nobody. Nothing else
+    # is pending in this transaction — rotation is the first thing refresh
+    # does — so this commits the revocation and only the revocation.
+    session.commit()
+    # The user id only: the token, its hash, and the caller's address are
+    # not needed to investigate, and a log is the wrong place for any of them.
+    logger.warning("auth.refresh_token_reused", user_id=str(presented.user_id))
+    raise AuthenticationError("refresh token is not valid")
 
 
 def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPair:
@@ -519,6 +613,116 @@ def start_trial(
         expires_in=access_token_ttl_seconds,
         questions_remaining=tenant.free_question_limit - tenant.free_questions_used,
     )
+
+
+def resume_trial(
+    *,
+    session: Session,
+    session_id: str,
+    claim_secret: str,
+    access_token_ttl_seconds: int | None = None,
+) -> TrialStart:
+    """Issue a fresh access token for a trial the caller already started.
+
+    A trial's access token lives an hour; the trial itself lives a week. A
+    visitor who comes back after lunch still holds the session id and claim
+    secret, and without this the only way forward was starting a new trial —
+    abandoning the conversation and minting another free allowance, which is
+    the opposite of what the trial limit wants.
+
+    Args:
+        session: Open database session. Nothing is written.
+        session_id: The anonymous session id ``start_trial`` returned.
+        claim_secret: The secret ``start_trial`` returned with it.
+        access_token_ttl_seconds: Token lifetime; read from settings when not
+            given, as in ``start_trial``.
+
+    Returns:
+        The same shape ``start_trial`` returns: the inputs echoed back, and a
+        new access token minted exactly as ``start_trial`` mints one — scoped
+        to the trial's tenant, with the anonymous session as its subject.
+
+    Raises:
+        AuthenticationError: If the session is unknown, the secret does not
+            match, or the trial has expired or been claimed.
+
+    Deliberately not ``_load_claimable_session``. That takes a row lock and
+    refuses a tenant that has users — both right for joining a tenant, and
+    both irrelevant to reading a credential for it. What resume shares with
+    it is the order of checks: the secret first, in constant time, so a
+    guessed id learns nothing about whether it exists, has expired, or was
+    claimed.
+    """
+    try:
+        row = session.get(AnonymousSessionRow, uuid.UUID(session_id))
+    except ValueError:
+        row = None
+
+    # Compared even when the row is absent, against a hash nothing matches,
+    # so an unknown id costs the same as a wrong secret.
+    expected = row.claim_secret_hash if row is not None else _NO_SECRET_HASH
+    matched = secrets.compare_digest(hash_claim_secret(claim_secret), expected)
+    if row is None or not matched:
+        raise AuthenticationError(_RESUME_REFUSED)
+
+    # Past the secret, the caller has proved ownership and may be told why.
+    # The same two conditions `_resolve_trial_caller` enforces on every
+    # request: a token minted here for a dead trial would be refused anyway.
+    if row.is_expired:
+        raise AuthenticationError("that trial session has expired")
+    if row.claimed_by_user_id is not None:
+        raise AuthenticationError("that trial session has been claimed; log in instead")
+
+    tenant = session.get(TenantRow, row.tenant_id)
+    if tenant is None or not tenant.is_active:
+        raise AuthenticationError(_RESUME_REFUSED)
+
+    if access_token_ttl_seconds is None:
+        from app.core.config import get_settings
+
+        access_token_ttl_seconds = get_settings().access_token_ttl_seconds
+
+    token = create_access_token(
+        subject=str(row.id),
+        tenant_id=str(tenant.id),
+        roles=frozenset({Role.ENGINEER}),
+        ttl_seconds=access_token_ttl_seconds,
+    )
+    return TrialStart(
+        session_id=session_id,
+        claim_secret=claim_secret,
+        access_token=token,
+        expires_in=access_token_ttl_seconds,
+        questions_remaining=max(0, tenant.free_question_limit - tenant.free_questions_used),
+    )
+
+
+# A SHA-256 hex digest no secret hashes to in practice; see `resume_trial`.
+_NO_SECRET_HASH = "0" * 64
+
+
+def known_user_id(*, session: Session, subject: str | uuid.UUID) -> uuid.UUID | None:
+    """Return a token subject as a user id, if it names a real user row.
+
+    Args:
+        session: Open database session.
+        subject: A token subject.
+
+    Returns:
+        The id when a ``users`` row has it, otherwise ``None``.
+
+    A trial token's subject is its anonymous session, not a user — by design,
+    so the tenant stays claimable (see ``start_trial``). A column that is a
+    foreign key into ``users`` therefore cannot take a subject on trust:
+    written blindly, a trial caller's id is a ForeignKeyViolation, and the
+    request fails with a 500 for something the caller did nothing wrong in.
+    """
+    try:
+        identifier = subject if isinstance(subject, uuid.UUID) else uuid.UUID(subject)
+    except ValueError:
+        return None
+    exists = session.execute(select(User.id).where(User.id == identifier)).scalar_one_or_none()
+    return identifier if exists is not None else None
 
 
 def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
