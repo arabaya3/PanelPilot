@@ -8,7 +8,7 @@ import { useLocale } from '@/components/locale-provider';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 import { fetchSession, listSessions } from '@/lib/sessions';
 import type { uploadImage } from '@/lib/recognition';
-import type { TrialSession } from '@/lib/trial';
+import { fetchQuota, type TrialSession } from '@/lib/trial';
 
 import { ChecklistProvider, useChecklist } from './checklist-provider';
 import { ContextChip, contextFromResponse } from './context-chip';
@@ -45,10 +45,17 @@ export function Chat(props: {
   /** How many free questions are left; `null` when the caller does not know. */
   questionsRemaining?: number | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  /**
+   * The token was refused. The caller fetches a fresh one and passes it back
+   * down; the turn that hit the 401 is left failed, with a retry.
+   */
+  onUnauthorized?: () => void;
   /** Injected in tests so the history list can be driven without a server. */
   listImpl?: typeof listSessions;
   /** Injected the same way, for hydrating a selected session. */
   fetchSessionImpl?: typeof fetchSession;
+  /** Injected the same way, for the quota check after each answer. */
+  quotaImpl?: typeof fetchQuota;
 }) {
   return (
     <ChecklistProvider>
@@ -71,8 +78,10 @@ function ChatSurface({
   trial = null,
   questionsRemaining = null,
   onSignedUp,
+  onUnauthorized,
   listImpl = listSessions,
   fetchSessionImpl = fetchSession,
+  quotaImpl = fetchQuota,
 }: {
   token: string;
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
@@ -80,13 +89,35 @@ function ChatSurface({
   trial?: TrialSession | null;
   questionsRemaining?: number | null;
   onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onUnauthorized?: () => void;
   listImpl?: typeof listSessions;
   fetchSessionImpl?: typeof fetchSession;
+  quotaImpl?: typeof fetchQuota;
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
   const [context, setContext] = useState<EquipmentContext | null>(null);
   const [dismissedLimit, setDismissedLimit] = useState(false);
+
+  // The count the limit modal reads. Seeded from the caller and then kept
+  // current from the server after every answer — the charge happens after
+  // delivery and a refusal is not charged, so only the server's number means
+  // anything. Re-seeded whenever the caller's changes (a resumed trial, say).
+  const [remaining, setRemaining] = useState<number | null>(questionsRemaining);
+  useEffect(() => {
+    setRemaining(questionsRemaining);
+  }, [questionsRemaining]);
+
+  const refreshQuota = useCallback(async () => {
+    // Only a trial has a limit worth a modal. An account's own quota is not
+    // what "create an account to continue" is about.
+    if (trial === null) return;
+    const outcome = await quotaImpl({ token });
+    // A failed check leaves the count as it was rather than guessing: `null`
+    // or a stale number both keep the modal away, and a signup wall shown
+    // because a quota request failed would be the worst misreading.
+    if (outcome.kind === 'loaded') setRemaining(outcome.quota.questions_remaining);
+  }, [quotaImpl, token, trial]);
   // Mirrored into a ref so `run` can read the current value without taking it
   // as a dependency — the value that matters is the one current when the
   // request is actually sent, not when the callback was built.
@@ -146,6 +177,15 @@ function ChatSurface({
             // has not set one — see `contextFromResponse`.
             const adopted = contextFromResponse(contextRef.current, event.response);
             if (adopted) setContext(adopted);
+            void refreshQuota();
+          } else if (event.kind === 'interrupted' && event.reason === 'quota-exhausted') {
+            // The server refused because the free questions are spent. That
+            // is the signup moment, so the modal is brought back even if it
+            // was dismissed earlier: the engineer has just tried to ask again.
+            setRemaining(0);
+            setDismissedLimit(false);
+          } else if (event.kind === 'interrupted' && event.reason === 'unauthorized') {
+            onUnauthorized?.();
           }
         }
       } finally {
@@ -159,7 +199,7 @@ function ChatSurface({
         }
       }
     },
-    [locale, state.sessionId, streamImpl, token],
+    [locale, onUnauthorized, refreshQuota, state.sessionId, streamImpl, token],
   );
 
   const ask = useCallback(
@@ -239,6 +279,7 @@ function ChatSurface({
       liveRef.current = null;
 
       const result = await fetchSessionImpl({ token, sessionId });
+      if (result.kind === 'unauthorized') onUnauthorized?.();
       if (result.kind !== 'loaded') return;
 
       dispatch({ type: 'hydrate', sessionId: result.session.id, turns: result.session.turns });
@@ -254,7 +295,7 @@ function ChatSurface({
         restored === null ? null : { manufacturer: null, model: restored, fault_codes: [] },
       );
     },
-    [fetchSessionImpl, token],
+    [fetchSessionImpl, onUnauthorized, token],
   );
 
   // The limit modal appears only once the free questions are gone *and* no
@@ -263,7 +304,7 @@ function ChatSurface({
   // ask for an email is a worse version of the funnel this flow exists to
   // avoid. `busy` already means "a turn has not finished", so gating on it
   // makes the rule structural rather than a timing hope.
-  const outOfQuestions = questionsRemaining !== null && questionsRemaining <= 0;
+  const outOfQuestions = remaining !== null && remaining <= 0;
   const showLimit = outOfQuestions && !busy && !dismissedLimit;
 
   return (
@@ -283,7 +324,13 @@ function ChatSurface({
           <ContextChip context={context} onChange={setContext} />
         </header>
         <MessageList messages={state.messages} onRetry={retry} />
-        <ImageCapture token={token} onConfirm={ask} {...(uploadImpl ? { uploadImpl } : {})} />
+        <ImageCapture
+          token={token}
+          onConfirm={ask}
+          busy={busy}
+          {...(onUnauthorized ? { onUnauthorized } : {})}
+          {...(uploadImpl ? { uploadImpl } : {})}
+        />
         <Composer onSubmit={ask} onStop={stop} busy={busy} />
         {showLimit ? (
           <TrialLimitModal

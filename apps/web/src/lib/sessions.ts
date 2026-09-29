@@ -32,6 +32,8 @@ export type SessionListResult =
   /** The endpoint is not deployed. Distinct from `failed`: the sidebar says
    *  "history is unavailable" rather than offering a retry that cannot work. */
   | { kind: 'unavailable' }
+  /** The token was refused; a fresh one is needed, not a retry. */
+  | { kind: 'unauthorized' }
   | { kind: 'failed' };
 
 export interface ListSessionsOptions {
@@ -66,6 +68,7 @@ export async function listSessions(options: ListSessionsOptions): Promise<Sessio
     return { kind: 'failed' };
   }
 
+  if (response.status === 401) return { kind: 'unauthorized' };
   if (response.status === 404 || response.status === 405) return { kind: 'unavailable' };
   if (!response.ok) return { kind: 'failed' };
 
@@ -126,7 +129,10 @@ function readSummary(row: unknown): SessionSummary | null {
 
 /** The outcome of opening one past conversation. */
 export type SessionFetchResult =
-  { kind: 'loaded'; session: DiagnosticSession } | { kind: 'not-found' } | { kind: 'failed' };
+  | { kind: 'loaded'; session: DiagnosticSession }
+  | { kind: 'not-found' }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
 
 export interface FetchSessionOptions {
   token: string;
@@ -163,6 +169,7 @@ export async function fetchSession(options: FetchSessionOptions): Promise<Sessio
   // same way for each on purpose, so that an id someone cannot read cannot be
   // probed for existence. The client keeps that distinction closed.
   if (response.status === 404) return { kind: 'not-found' };
+  if (response.status === 401) return { kind: 'unauthorized' };
   if (!response.ok) return { kind: 'failed' };
 
   let payload: unknown;

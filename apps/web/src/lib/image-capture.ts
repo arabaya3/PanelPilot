@@ -20,6 +20,17 @@ export const MAX_EDGE_PX = 1600;
 /** Matches the backend's own ceiling in `app/domain/images.py`. */
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
+/**
+ * The largest file this will try to decode at all.
+ *
+ * Decoding is where the memory goes: a file's pixels are held uncompressed,
+ * so a 40 MB JPEG can be a few hundred megabytes of bitmap, and on a
+ * mid-range phone that is enough to have the tab killed — which looks like
+ * the app vanishing mid-job. A phone camera's photos are a fraction of this;
+ * anything bigger is a panorama or a RAW export, not a shot of a display.
+ */
+export const MAX_INPUT_BYTES = 40 * 1024 * 1024;
+
 /** JPEG, because a photograph is not a diagram and PNG would be far larger. */
 const OUTPUT_TYPE = 'image/jpeg';
 const OUTPUT_QUALITY = 0.82;
@@ -36,7 +47,11 @@ export interface Prepared {
 
 /** How the image was obtained, for the messages the two paths need. */
 export type CaptureError =
-  'not-an-image' | 'too-large-after-compression' | 'decode-failed' | 'encode-failed';
+  | 'not-an-image'
+  | 'too-large-to-process'
+  | 'too-large-after-compression'
+  | 'decode-failed'
+  | 'encode-failed';
 
 export class CaptureFailure extends Error {
   constructor(readonly reason: CaptureError) {
@@ -120,6 +135,10 @@ export async function prepareImage(file: File, maxEdge: number = MAX_EDGE_PX): P
   if (!file.type.startsWith('image/')) {
     throw new CaptureFailure('not-an-image');
   }
+  // Before decoding, since decoding is the step that would exhaust memory.
+  if (file.size > MAX_INPUT_BYTES) {
+    throw new CaptureFailure('too-large-to-process');
+  }
 
   const { width, height, source } = await decode(file);
   const target = targetSize(width, height, maxEdge);
@@ -146,13 +165,15 @@ export async function prepareImage(file: File, maxEdge: number = MAX_EDGE_PX): P
   }
   if (!blob) throw new CaptureFailure('encode-failed');
 
-  // Compression is not guaranteed to shrink anything — an already-small JPEG
-  // re-encoded can grow. Keeping whichever is smaller means this step can
-  // never make the upload worse.
-  const useOriginal = blob.size >= file.size && file.type === OUTPUT_TYPE;
-  const chosen = useOriginal
-    ? file
-    : new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: OUTPUT_TYPE });
+  // Always the re-encoded copy, even when it came out larger than the
+  // original. Drawing to a canvas keeps only the pixels, so the re-encode is
+  // what strips the photo's metadata — and a phone's JPEG carries EXIF with
+  // the GPS position it was taken at, which would place the engineer at a
+  // specific plant. Uploading the untouched original to save a few kilobytes
+  // was a location disclosure nobody asked for.
+  const chosen = new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {
+    type: OUTPUT_TYPE,
+  });
 
   if (chosen.size > MAX_UPLOAD_BYTES) {
     // Reported rather than uploaded and rejected: the round trip on a factory

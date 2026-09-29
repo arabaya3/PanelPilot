@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Chat } from '@/components/chat';
 import { chatReducer, INITIAL_STATE, type ChatState } from '@/components/chat/state';
 import {
+  MAX_PENDING_FRAME,
   parseFrames,
   streamDiagnosis,
   type StreamEvent,
@@ -211,6 +212,97 @@ describe('streamDiagnosis', () => {
       }),
     );
     expect(events).toEqual([{ kind: 'interrupted', reason: 'server-error' }]);
+  });
+
+  /** Run a turn against a response and collect what the caller is told. */
+  async function turn(response: unknown): Promise<StreamEvent[]> {
+    return collect(
+      streamDiagnosis({
+        request: { symptom: 'x', locale: 'en', session_id: null },
+        token: 't',
+        fetchImpl: vi.fn().mockResolvedValue(response),
+      }),
+    );
+  }
+
+  function refusedWith(status: number, body: string) {
+    return { ok: false, status, body: null, text: () => Promise.resolve(body) };
+  }
+
+  it('reports a refused token as unauthorized, so the caller can renew it', async () => {
+    // As `server-error`, the engineer would retry into the same 401 forever.
+    expect(await turn(refusedWith(401, '{"detail":"expired"}'))).toEqual([
+      { kind: 'interrupted', reason: 'unauthorized' },
+    ]);
+  });
+
+  it('reports 402 as the free questions being spent', async () => {
+    expect(await turn(refusedWith(402, ''))).toEqual([
+      { kind: 'interrupted', reason: 'quota-exhausted' },
+    ]);
+  });
+
+  it.each([403, 422])('reports a %i naming the free question limit as spent', async (status) => {
+    const body = '{"error":"ValidationError","detail":"free question limit of 10 reached"}';
+    expect(await turn(refusedWith(status, body))).toEqual([
+      { kind: 'interrupted', reason: 'quota-exhausted' },
+    ]);
+  });
+
+  it('keeps any other 422 a server error', async () => {
+    // The API uses 422 for every domain validation failure; only the quota
+    // one means "offer signup".
+    expect(await turn(refusedWith(422, '{"detail":"invalid pagination cursor"}'))).toEqual([
+      { kind: 'interrupted', reason: 'server-error' },
+    ]);
+  });
+
+  it('ends the turn as spent when the refusal names the free question limit', async () => {
+    // A stream that opened and was then refused for the quota. The `result`
+    // after it is not rendered: a refusal card is a worse way of saying
+    // "create an account" than the signup step.
+    const events = await turn(
+      streamingResponse([
+        'event: retrieving\ndata: {}\n\n',
+        'event: refused\ndata: {"reason":"free question limit of 10 reached"}\n\n',
+        `event: result\ndata: ${JSON.stringify(RESPONSE)}\n\n`,
+      ]),
+    );
+    expect(events.at(-1)).toEqual({ kind: 'interrupted', reason: 'quota-exhausted' });
+    expect(events.some((event) => event.kind === 'result')).toBe(false);
+  });
+
+  it('still renders any other refusal as a stage and then the result', async () => {
+    const events = await turn(
+      streamingResponse([
+        'event: refused\ndata: {"reason":"No source covers this fault."}\n\n',
+        `event: result\ndata: ${JSON.stringify(RESPONSE)}\n\n`,
+      ]),
+    );
+    expect(events.map((event) => event.kind)).toEqual(['stage', 'result']);
+  });
+
+  it('gives up on a stream that never terminates a frame', async () => {
+    // Without a cap the buffer grows for as long as the body does — on a
+    // phone, until the tab is killed.
+    const events = await turn(
+      streamingResponse([
+        'event: retrieving\ndata: {}\n\n',
+        'data: ' + 'x'.repeat(MAX_PENDING_FRAME),
+        'x'.repeat(10),
+      ]),
+    );
+    expect(events.at(-1)).toEqual({ kind: 'interrupted', reason: 'malformed-frame' });
+    expect(events).toHaveLength(2);
+  });
+
+  it('accepts a large chunk made of complete frames', async () => {
+    // The cap is on text still waiting for a terminator, not on chunk size.
+    const keepAlives = ': keep-alive\n\n'.repeat(Math.ceil(MAX_PENDING_FRAME / 14) + 1);
+    const events = await turn(
+      streamingResponse([keepAlives, `event: result\ndata: ${JSON.stringify(RESPONSE)}\n\n`]),
+    );
+    expect(events.map((event) => event.kind)).toEqual(['result']);
   });
 
   it('sends the locale and the bearer token', async () => {

@@ -6,7 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chat } from '@/components/chat';
 import type { StreamEvent, StreamOptions } from '@/lib/diagnosis-stream';
 import { ImageCapture } from '@/components/chat/image-capture';
-import { CaptureFailure, prepareImage, targetSize, MAX_EDGE_PX } from '@/lib/image-capture';
+import {
+  CaptureFailure,
+  prepareImage,
+  targetSize,
+  MAX_EDGE_PX,
+  MAX_INPUT_BYTES,
+} from '@/lib/image-capture';
 import {
   MIN_FIELD_CONFIDENCE,
   needsConfirmation,
@@ -171,12 +177,41 @@ describe('prepareImage', () => {
     // Reached by raising the ceiling rather than by using a huge source: a
     // large photo downscales to 1600px like any other, so the only way past
     // the limit is an image that stays large after compression.
-    // The source is itself over the ceiling, so `prepareImage` keeps the
-    // original (re-encoding it would only make it larger) and the guard has
-    // to catch it on the way out.
+    // The re-encode of a 20000px square is still over the ceiling, so the
+    // guard has to catch it on the way out.
     await expect(prepareImage(photo(20000, 20000, 12_000_000), 20000)).rejects.toMatchObject({
       reason: 'too-large-after-compression',
     });
+  });
+
+  it('uploads the re-encoded copy even when it came out larger', async () => {
+    // The re-encode is what strips EXIF, and a phone JPEG's EXIF carries the
+    // GPS position of the plant. Keeping the original because it was a few
+    // bytes smaller used to upload that location.
+    const original = photo(800, 600, 1_000);
+    const prepared = await prepareImage(original);
+
+    expect(prepared.file).not.toBe(original);
+    expect(prepared.compressedBytes).toBeGreaterThan(original.size);
+    expect(prepared.file.type).toBe('image/jpeg');
+    expect(drawnTo).toEqual({ width: 800, height: 600 });
+  });
+
+  it('refuses a file too large to decode safely, before decoding it', async () => {
+    // Decoding is where the memory goes; a file this size can be enough
+    // bitmap to have a phone's tab killed.
+    const huge = photo(4000, 3000, 1);
+    Object.defineProperty(huge, 'size', { value: MAX_INPUT_BYTES + 1 });
+
+    await expect(prepareImage(huge)).rejects.toMatchObject({ reason: 'too-large-to-process' });
+    expect(createImageBitmap).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a file right at the input ceiling', async () => {
+    const big = photo(4000, 3000, 1);
+    Object.defineProperty(big, 'size', { value: MAX_INPUT_BYTES });
+
+    await expect(prepareImage(big)).resolves.toMatchObject({ originalBytes: MAX_INPUT_BYTES });
   });
 });
 
@@ -240,6 +275,15 @@ describe('uploadImage', () => {
       json: () => Promise.resolve(payload),
     });
   }
+
+  it('reports a refused token as unauthorized', async () => {
+    const outcome = await uploadImage({
+      file: photo(100, 100),
+      token: 't',
+      fetchImpl: respond(401, { detail: 'expired' }),
+    });
+    expect(outcome).toEqual({ kind: 'failed', reason: 'unauthorized' });
+  });
 
   it('reports a stored image when nothing read it', async () => {
     // What the endpoint returns when the recogniser failed: the photo is
@@ -425,6 +469,69 @@ describe('capturing a photo by hand', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /confirm and send/i }));
     expect(onConfirm).toHaveBeenCalledWith(expect.stringContaining('F0001'));
+  });
+
+  it('will not send a confirmed read while an answer is still streaming', async () => {
+    // Only the composer checked `busy`. Confirming a photo mid-answer started
+    // a second stream that took over the abort handle, so Stop could no
+    // longer stop the first.
+    const onConfirm = vi.fn();
+    const { rerender } = renderApp(
+      <ImageCapture
+        token="t"
+        busy
+        onConfirm={onConfirm}
+        uploadImpl={uploadReturning({ kind: 'recognised', imageId: 'i', result: recognition() })}
+      />,
+    );
+    chooseFile(photo(4000, 3000));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-preview')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send photo/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-confirm')).toBeTruthy();
+    });
+
+    const confirm = screen.getByRole('button', { name: /confirm and send/i });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    // The read is kept rather than thrown away, so it can be sent once the
+    // answer finishes.
+    rerender(
+      <ImageCapture
+        token="t"
+        busy={false}
+        onConfirm={onConfirm}
+        uploadImpl={uploadReturning({ kind: 'recognised', imageId: 'i', result: recognition() })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /confirm and send/i }));
+    expect(onConfirm).toHaveBeenCalledWith(expect.stringContaining('F0001'));
+  });
+
+  it('tells the caller when the upload’s token was refused', async () => {
+    const onUnauthorized = vi.fn();
+    renderApp(
+      <ImageCapture
+        token="t"
+        onConfirm={vi.fn()}
+        onUnauthorized={onUnauthorized}
+        uploadImpl={uploadReturning({ kind: 'failed', reason: 'unauthorized' })}
+      />,
+    );
+    chooseFile(photo(4000, 3000));
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-preview')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send photo/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-error')).toBeTruthy();
+    });
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it('asks rather than assumes below the threshold', async () => {

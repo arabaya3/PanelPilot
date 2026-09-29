@@ -8,8 +8,11 @@ import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import type { StreamEvent } from '@/lib/diagnosis-stream';
 import {
   clearTrial,
+  fetchQuota,
   limitReached,
   readTrial,
+  refreshTokens,
+  resumeTrial,
   signupClaimingTrial,
   startTrial,
   storeTrial,
@@ -164,6 +167,134 @@ describe('startTrial', () => {
     expect(await startTrial({ fetchImpl: fetchImpl as unknown as typeof fetch })).toEqual({
       kind: 'failed',
     });
+  });
+});
+
+// --- resuming it ---------------------------------------------------------------
+
+describe('resumeTrial', () => {
+  function respond(status: number, payload: unknown = {}) {
+    return vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(payload),
+    });
+  }
+
+  const RESUMED = {
+    session_id: 'sess-1',
+    claim_secret: 'secret-1',
+    access_token: 'tok-2',
+    expires_in: 900,
+    questions_remaining: 3,
+  };
+
+  it('sends the pair in the body, never the URL', async () => {
+    const fetchImpl = respond(200, RESUMED);
+    await resumeTrial(TRIAL, { fetchImpl });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe('/api/v1/auth/trial/resume');
+    expect(url).not.toContain('secret-1');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ session_id: 'sess-1', claim_secret: 'secret-1' });
+  });
+
+  it('returns a fresh token for the same trial', async () => {
+    expect(await resumeTrial(TRIAL, { fetchImpl: respond(200, RESUMED) })).toEqual({
+      kind: 'resumed',
+      trial: TRIAL,
+      accessToken: 'tok-2',
+      questionsRemaining: 3,
+    });
+  });
+
+  it('takes the pair the server returned, so the token and trial always match', async () => {
+    const outcome = await resumeTrial(TRIAL, {
+      fetchImpl: respond(200, { ...RESUMED, session_id: 'sess-9', claim_secret: 'secret-9' }),
+    });
+    expect(outcome).toMatchObject({ trial: { sessionId: 'sess-9', claimSecret: 'secret-9' } });
+  });
+
+  it.each([401, 404, 405, 422])('reports a %i as the trial being gone', async (status) => {
+    // Expired, claimed, or unknown: the remedy is a new trial.
+    expect(await resumeTrial(TRIAL, { fetchImpl: respond(status) })).toEqual({ kind: 'gone' });
+  });
+
+  it.each([500, 502, 503])('reports a %i as a failure, not the trial being gone', async (code) => {
+    // Distinct because "gone" throws the stored pair away, and a server
+    // having a bad minute is no reason to lose a reachable conversation.
+    expect(await resumeTrial(TRIAL, { fetchImpl: respond(code) })).toEqual({ kind: 'failed' });
+  });
+
+  it('reports a network failure as a failure', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('offline'));
+    expect(await resumeTrial(TRIAL, { fetchImpl })).toEqual({ kind: 'failed' });
+  });
+
+  it('refuses a success carrying no token', async () => {
+    const { access_token: _dropped, ...noToken } = RESUMED;
+    expect(await resumeTrial(TRIAL, { fetchImpl: respond(200, noToken) })).toEqual({
+      kind: 'failed',
+    });
+  });
+});
+
+// --- the quota, and renewing an account ----------------------------------------
+
+describe('fetchQuota', () => {
+  it('reads the server’s count with the bearer token', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ questions_used: 9, question_limit: 10, questions_remaining: 1 }),
+    });
+    expect(await fetchQuota({ token: 'tok', fetchImpl })).toEqual({
+      kind: 'loaded',
+      quota: { questions_used: 9, question_limit: 10, questions_remaining: 1 },
+    });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(url).toBe('/api/v1/auth/quota');
+    expect(init.headers.Authorization).toBe('Bearer tok');
+  });
+
+  it('distinguishes a refused token from a failure', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    expect(await fetchQuota({ token: 'tok', fetchImpl })).toEqual({ kind: 'unauthorized' });
+  });
+
+  it('refuses a payload missing the count rather than guessing zero', async () => {
+    // A guessed zero would put a signup wall in front of someone with
+    // questions left.
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ questions_used: 9 }),
+    });
+    expect(await fetchQuota({ token: 'tok', fetchImpl })).toEqual({ kind: 'failed' });
+  });
+});
+
+describe('refreshTokens', () => {
+  it('exchanges a refresh token for a new pair', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ access_token: 'a2', refresh_token: 'r2' }),
+    });
+    expect(await refreshTokens({ refreshToken: 'r1', fetchImpl })).toEqual({
+      kind: 'refreshed',
+      accessToken: 'a2',
+      refreshToken: 'r2',
+    });
+    const init = fetchImpl.mock.calls[0]?.[1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual({ refresh_token: 'r1' });
+  });
+
+  it('reports an expired refresh token as such', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    expect(await refreshTokens({ refreshToken: 'r1', fetchImpl })).toEqual({ kind: 'expired' });
   });
 });
 
@@ -449,6 +580,120 @@ describe('when the limit modal appears', () => {
     // request failed would be the worst possible misreading.
     renderApp(<Chat token="t" trial={TRIAL} />);
     expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+  });
+
+  it('asks the server for the count after each answer, and appears when it hits zero', async () => {
+    // The count used to be read once at start and never again, so the modal
+    // could only appear for a visitor who arrived with nothing left.
+    const stream = controllableStream();
+    const quotaImpl = vi.fn().mockResolvedValue({
+      kind: 'loaded',
+      quota: { questions_used: 10, question_limit: 10, questions_remaining: 0 },
+    });
+    renderApp(
+      <Chat
+        token="tok"
+        streamImpl={stream.generator}
+        trial={TRIAL}
+        questionsRemaining={1}
+        quotaImpl={quotaImpl}
+      />,
+    );
+    expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-progress')).toBeTruthy();
+    });
+    stream.emit({ kind: 'result', response: RESPONSE });
+    stream.end();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trial-limit-modal')).toBeTruthy();
+    });
+    expect(quotaImpl).toHaveBeenCalledWith({ token: 'tok' });
+  });
+
+  it('keeps the count it had when the quota check fails', async () => {
+    const stream = controllableStream();
+    const quotaImpl = vi.fn().mockResolvedValue({ kind: 'failed' });
+    renderApp(
+      <Chat
+        token="tok"
+        streamImpl={stream.generator}
+        trial={TRIAL}
+        questionsRemaining={3}
+        quotaImpl={quotaImpl}
+      />,
+    );
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-progress')).toBeTruthy();
+    });
+    stream.emit({ kind: 'result', response: RESPONSE });
+    stream.end();
+
+    await waitFor(() => {
+      expect(quotaImpl).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('trial-limit-modal')).toBeNull();
+  });
+
+  it('offers signup when the server refuses a question for being over the limit', async () => {
+    // The client's count can be stale — another tab, or the server's own
+    // accounting. The refusal is the authority, and it means signup, not
+    // "the server could not start this answer".
+    const stream = controllableStream();
+    renderApp(
+      <Chat
+        token="tok"
+        streamImpl={stream.generator}
+        trial={TRIAL}
+        questionsRemaining={5}
+        quotaImpl={vi.fn().mockResolvedValue({ kind: 'failed' })}
+      />,
+    );
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-progress')).toBeTruthy();
+    });
+    stream.emit({ kind: 'interrupted', reason: 'quota-exhausted' });
+    stream.end();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('trial-limit-modal')).toBeTruthy();
+    });
+  });
+
+  it('hands a refused token to the caller rather than only showing an error', async () => {
+    const stream = controllableStream();
+    const onUnauthorized = vi.fn();
+    renderApp(
+      <Chat
+        token="tok"
+        streamImpl={stream.generator}
+        trial={TRIAL}
+        onUnauthorized={onUnauthorized}
+      />,
+    );
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-progress')).toBeTruthy();
+    });
+    stream.emit({ kind: 'interrupted', reason: 'unauthorized' });
+    stream.end();
+
+    await waitFor(() => {
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('does not come back after it is dismissed', () => {

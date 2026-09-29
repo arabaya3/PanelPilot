@@ -2,12 +2,21 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chat } from '@/components/chat';
 import { LangSwitcher } from '@/components/lang-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { readTrial, startTrial, storeTrial, type TrialSession } from '@/lib/trial';
+import {
+  clearTrial,
+  readTrial,
+  refreshTokens,
+  resumeTrial,
+  startTrial,
+  storeTrial,
+  type ActiveTrial,
+  type TrialSession,
+} from '@/lib/trial';
 
 /**
  * The front door.
@@ -26,26 +35,75 @@ import { readTrial, startTrial, storeTrial, type TrialSession } from '@/lib/tria
  * (no such endpoint) from `failed` (it broke), and both surface as a message
  * rather than an input that silently does nothing — which is what an engineer
  * standing at a panel would otherwise get.
+ *
+ * Tokens live in memory only — state for the access token, a ref for the
+ * refresh token — and never in storage. The claim pair has to survive a
+ * reload; a bearer credential left on a shared workshop terminal outlives the
+ * person who used it.
  */
 
 type Phase =
   | { kind: 'starting' }
-  | { kind: 'ready'; token: string; trial: TrialSession; questionsRemaining: number }
+  | {
+      kind: 'ready';
+      token: string;
+      /** `null` once signed up: the trial has been claimed into the account. */
+      trial: TrialSession | null;
+      /** `null` when unknown, which keeps the limit modal away. */
+      questionsRemaining: number | null;
+    }
   | { kind: 'unavailable' }
   | { kind: 'failed' };
+
+function readyWith(active: ActiveTrial): Phase {
+  return {
+    kind: 'ready',
+    token: active.accessToken,
+    trial: active.trial,
+    questionsRemaining: active.questionsRemaining,
+  };
+}
 
 export default function HomePage() {
   const t = useTranslations('app');
   const tl = useTranslations('landing');
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
 
-  const begin = useCallback(async () => {
-    setPhase({ kind: 'starting' });
+  // Held in a ref, not state and not storage: nothing renders from it, and it
+  // must not outlive the tab.
+  const refreshRef = useRef<string | null>(null);
 
-    // A trial already in this browser is reused rather than replaced: starting
-    // a second one would strand the first conversation under a tenant the
-    // visitor can no longer reach, and burn a fresh quota for no reason.
+  /**
+   * Get a working token: resume this browser's trial, or start one.
+   *
+   * `keepSurface` is for re-authenticating under a mounted chat. Showing
+   * `starting` would unmount it and throw away the transcript the engineer is
+   * looking at, all to replace a token they never see.
+   */
+  const begin = useCallback(async ({ keepSurface = false } = {}) => {
+    if (!keepSurface) setPhase({ kind: 'starting' });
+
+    // A trial already in this browser is resumed rather than replaced:
+    // starting a second would strand the first conversation under a tenant
+    // the visitor can no longer reach, and burn a fresh quota for no reason.
     const existing = readTrial();
+    if (existing) {
+      const resumed = await resumeTrial(existing);
+      if (resumed.kind === 'resumed') {
+        storeTrial(resumed.trial);
+        setPhase(readyWith(resumed));
+        return;
+      }
+      // A network or server failure keeps the stored trial, so that a retry
+      // once the API is back still reaches the same conversation.
+      if (resumed.kind === 'failed') {
+        setPhase({ kind: 'failed' });
+        return;
+      }
+      // Gone: expired, claimed, or unknown. Nothing can resume it, so it is
+      // forgotten and a new trial takes its place.
+      clearTrial();
+    }
 
     const outcome = await startTrial();
     if (outcome.kind !== 'started') {
@@ -53,30 +111,45 @@ export default function HomePage() {
       return;
     }
 
-    // `startTrial` returns the pair the claim needs; the token travels
-    // alongside it and is not persisted — a reload starts a fresh token
-    // against the same trial rather than leaving a credential in storage.
-    const payload = outcome as unknown as {
-      trial: TrialSession;
-      accessToken?: string;
-      questionsRemaining?: number;
-    };
+    // The trial stored and the token used both come from this one response.
+    // Mixing a stored trial with a new trial's token is how the claim ended up
+    // naming a tenant other than the one the questions were asked in.
+    storeTrial(outcome.trial);
+    setPhase(readyWith(outcome));
+  }, []);
 
-    const token = payload.accessToken ?? '';
-    if (!token) {
-      setPhase({ kind: 'failed' });
-      return;
-    }
-
-    const trial = existing ?? outcome.trial;
-    storeTrial(trial);
+  const onSignedUp = useCallback((tokens: { accessToken: string; refreshToken: string }) => {
+    refreshRef.current = tokens.refreshToken;
+    // The claim has been made; the secret has no further use, and a stored
+    // trial would have the next reload try to resume one that no longer
+    // exists as a trial.
+    clearTrial();
     setPhase({
       kind: 'ready',
-      token,
-      trial,
-      questionsRemaining: payload.questionsRemaining ?? 0,
+      token: tokens.accessToken,
+      trial: null,
+      questionsRemaining: null,
     });
   }, []);
+
+  const onUnauthorized = useCallback(async () => {
+    // An account renews with its refresh token. Falling through to `begin`
+    // when that fails is the best available: there is no sign-in form here,
+    // so a lapsed account can only continue as a trial.
+    const refreshToken = refreshRef.current;
+    if (refreshToken !== null) {
+      const refreshed = await refreshTokens({ refreshToken });
+      if (refreshed.kind === 'refreshed') {
+        refreshRef.current = refreshed.refreshToken;
+        setPhase((current) =>
+          current.kind === 'ready' ? { ...current, token: refreshed.accessToken } : current,
+        );
+        return;
+      }
+      refreshRef.current = null;
+    }
+    await begin({ keepSurface: true });
+  }, [begin]);
 
   useEffect(() => {
     void begin();
@@ -133,6 +206,8 @@ export default function HomePage() {
             token={phase.token}
             trial={phase.trial}
             questionsRemaining={phase.questionsRemaining}
+            onSignedUp={onSignedUp}
+            onUnauthorized={() => void onUnauthorized()}
           />
         )}
       </div>

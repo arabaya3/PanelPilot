@@ -42,7 +42,69 @@ export type StreamEvent =
    */
   | { kind: 'interrupted'; reason: InterruptionReason };
 
-export type InterruptionReason = 'connection-lost' | 'aborted' | 'malformed-frame' | 'server-error';
+export type InterruptionReason =
+  | 'connection-lost'
+  | 'aborted'
+  | 'malformed-frame'
+  | 'server-error'
+  /**
+   * The token was refused. Its own reason because the remedy is not "try
+   * again" but a fresh token — the caller re-authenticates and the retry then
+   * works, whereas `server-error` would have the engineer retrying into the
+   * same 401 forever.
+   */
+  | 'unauthorized'
+  /**
+   * The free questions are spent. Not a failure of the turn at all: the
+   * caller shows the signup step instead of an error, which is the whole
+   * point of the trial flow.
+   */
+  | 'quota-exhausted';
+
+/**
+ * How much unterminated text may accumulate before the stream is given up on.
+ *
+ * A frame is only parsed once its blank-line terminator arrives, so a stream
+ * that never sends one — a misbehaving proxy, or something that is not SSE at
+ * all — would otherwise grow the buffer without limit on a phone that has
+ * little memory to spare. A complete `DiagnosticResponse` is a few kilobytes;
+ * a megabyte with no frame boundary is not a slow answer, it is a broken one.
+ * Measured in UTF-16 code units, since that is what the buffer holds.
+ */
+export const MAX_PENDING_FRAME = 1024 * 1024;
+
+/**
+ * Does this text say the free question limit was reached?
+ *
+ * The backend words it "free question limit of N reached" (see
+ * `check_free_question_allowed`). Matched loosely, on the phrase rather than
+ * the number, and on "quota" as well, because the only cost of a false match
+ * is offering signup to someone who did hit a limit of some kind.
+ */
+function mentionsQuota(text: string): boolean {
+  return /free question limit|quota/i.test(text);
+}
+
+/**
+ * Map a refused HTTP response to the reason the caller acts on.
+ *
+ * 402 is unambiguous. 403 and 422 are not — the API uses 422 for any domain
+ * validation failure — so they count as the quota only when the body says so.
+ */
+async function reasonForStatus(response: Response): Promise<InterruptionReason> {
+  if (response.status === 401) return 'unauthorized';
+  if (response.status === 402) return 'quota-exhausted';
+  if (response.status === 403 || response.status === 422) {
+    let body = '';
+    try {
+      body = await response.text();
+    } catch {
+      // An unreadable body is simply not a quota message.
+    }
+    if (mentionsQuota(body)) return 'quota-exhausted';
+  }
+  return 'server-error';
+}
 
 /** A parsed SSE frame. */
 interface Frame {
@@ -86,6 +148,20 @@ export function parseFrames(buffer: string): { frames: Frame[]; rest: string } {
   }
 
   return { frames, rest };
+}
+
+/** The `reason` a `refused` frame carries, or empty if it has none. */
+function refusalReason(data: string): string {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    if (typeof parsed === 'object' && parsed !== null) {
+      const { reason } = parsed as Record<string, unknown>;
+      if (typeof reason === 'string') return reason;
+    }
+  } catch {
+    // Not JSON; not a quota refusal either.
+  }
+  return '';
 }
 
 /** Everything the caller needs to open the stream. */
@@ -135,7 +211,11 @@ export async function* streamDiagnosis(options: StreamOptions): AsyncGenerator<S
     return;
   }
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
+    yield { kind: 'interrupted', reason: await reasonForStatus(response) };
+    return;
+  }
+  if (!response.body) {
     yield { kind: 'interrupted', reason: 'server-error' };
     return;
   }
@@ -169,6 +249,14 @@ export async function* streamDiagnosis(options: StreamOptions): AsyncGenerator<S
           yield { kind: 'result', response: parsed as DiagnosticResponse };
           return;
         }
+        if (frame.event === 'refused' && mentionsQuota(refusalReason(frame.data))) {
+          // A refusal because the free questions are spent is not an answer
+          // to render; it is the moment to offer signup. Ended here rather
+          // than waiting for the `result` that follows, which would render a
+          // refusal card saying the same thing less usefully.
+          yield { kind: 'interrupted', reason: 'quota-exhausted' };
+          return;
+        }
         if (
           frame.event === 'retrieving' ||
           frame.event === 'generated' ||
@@ -179,6 +267,13 @@ export async function* streamDiagnosis(options: StreamOptions): AsyncGenerator<S
         // Anything else is ignored rather than treated as an error: an
         // unfamiliar event name is a backend that has grown a stage this
         // client does not know about yet, which is not a failure.
+      }
+
+      // Checked after parsing, so only text still waiting for a terminator
+      // counts — a large chunk of complete frames is fine.
+      if (buffer.length > MAX_PENDING_FRAME) {
+        yield { kind: 'interrupted', reason: 'malformed-frame' };
+        return;
       }
     }
   } catch {
