@@ -70,13 +70,13 @@ export function TrialLimitModal({
       aria-modal="true"
       aria-labelledby={headingId}
       data-testid="trial-limit-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 p-4 backdrop-blur-sm"
       onKeyDown={(event) => {
         if (event.key === 'Escape') onDismiss();
       }}
     >
-      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-4">
-        <h2 id={headingId} className="text-lg font-semibold text-text">
+      <div className="w-full max-w-sm rounded-xl border border-border-subtle bg-surface p-5 shadow-lg">
+        <h2 id={headingId} className="text-xl font-bold text-text">
           {t('heading')}
         </h2>
         {/* Says what happens to the conversation, because the fear this
@@ -86,13 +86,13 @@ export function TrialLimitModal({
         </p>
 
         <form
-          className="mt-3 flex flex-col gap-2"
+          className="mt-4 flex flex-col gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <label htmlFor={emailId} className="text-xs text-text-muted">
+          <label htmlFor={emailId} className="text-sm font-medium text-text">
             {t('email')}
           </label>
           <input
@@ -104,10 +104,10 @@ export function TrialLimitModal({
             onChange={(event) => {
               setEmail(event.target.value);
             }}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-text"
+            className="input"
           />
 
-          <label htmlFor={passwordId} className="text-xs text-text-muted">
+          <label htmlFor={passwordId} className="text-sm font-medium text-text">
             {t('password')}
           </label>
           <input
@@ -118,7 +118,7 @@ export function TrialLimitModal({
             onChange={(event) => {
               setPassword(event.target.value);
             }}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-text"
+            className="input"
           />
 
           {error ? (
@@ -127,19 +127,11 @@ export function TrialLimitModal({
             </p>
           ) : null}
 
-          <div className="mt-2 flex gap-2">
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast disabled:opacity-50"
-            >
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} className="btn btn-primary flex-1">
               {busy ? t('creating') : t('create')}
             </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
-            >
+            <button type="button" onClick={onDismiss} className="btn btn-ghost">
               {t('later')}
             </button>
           </div>

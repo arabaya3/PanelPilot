@@ -144,7 +144,7 @@ function VerdictBanner({ result, headingId }: { result: PlcValidationResult; hea
       role={status === 'valid' ? undefined : 'alert'}
       data-testid="verdict-banner"
       data-status={status}
-      className={`mb-3 rounded-md border-2 ${classes.border} ${classes.surface} p-3`}
+      className={`mb-4 rounded-md border ${classes.border} ${classes.surface} p-3`}
     >
       <p id={headingId} className={`text-sm font-semibold ${classes.text}`}>
         {headline}
@@ -245,7 +245,7 @@ export function PlcView({
   const { byLine, general } = groupByLine(validation.findings ?? []);
 
   return (
-    <section aria-labelledby={headingId} className="rounded-lg border border-border bg-surface p-4">
+    <section aria-labelledby={headingId} className="card p-4 md:p-5">
       <VerdictBanner result={validation} headingId={headingId} />
 
       {general.length > 0 && (
@@ -278,7 +278,7 @@ export function PlcView({
         // each line's trailing semicolon to its start.
         <div
           dir="ltr"
-          className="overflow-x-auto rounded-sm border border-border bg-surface-raised py-2"
+          className="overflow-x-auto rounded-md border border-border-subtle bg-surface-raised py-2"
         >
           {tokeniseProgram(source).map((tokens, index) => (
             <CodeLine

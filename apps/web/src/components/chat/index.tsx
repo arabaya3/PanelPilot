@@ -352,18 +352,20 @@ function ChatSurface({
         refreshKey={historyKey}
       />
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-border p-2">
+        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
           <ContextChip context={context} onChange={setContext} />
         </header>
         <MessageList messages={state.messages} onRetry={retry} />
-        <ImageCapture
-          token={token}
-          onConfirm={ask}
-          busy={busy}
-          {...(onUnauthorized ? { onUnauthorized } : {})}
-          {...(uploadImpl ? { uploadImpl } : {})}
-        />
-        <Composer onSubmit={ask} onStop={stop} busy={busy} />
+        <div className="flex flex-col gap-2 border-t border-border-subtle p-3 md:p-4">
+          <ImageCapture
+            token={token}
+            onConfirm={ask}
+            busy={busy}
+            {...(onUnauthorized ? { onUnauthorized } : {})}
+            {...(uploadImpl ? { uploadImpl } : {})}
+          />
+          <Composer onSubmit={ask} onStop={stop} busy={busy} />
+        </div>
         {showLimit ? (
           <TrialLimitModal
             trial={trial}

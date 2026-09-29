@@ -97,6 +97,7 @@ const REQUIRED_TOKENS = [
   '--color-surface',
   '--color-surface-raised',
   '--color-border',
+  '--color-border-subtle',
   '--color-text',
   '--color-text-muted',
   '--color-severity-critical',
@@ -108,6 +109,7 @@ const REQUIRED_TOKENS = [
   '--color-accent',
   '--color-accent-hover',
   '--color-accent-contrast',
+  '--color-accent-subtle',
   '--color-focus',
   '--color-focus-offset',
 ];
@@ -147,7 +149,7 @@ describe('tokens.css', () => {
   });
 
   it('defines the whole type scale', () => {
-    for (const step of ['xs', 'sm', 'base', 'lg', 'xl', '2xl']) {
+    for (const step of ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl']) {
       expect(LIGHT[`--font-size-${step}`], `--font-size-${step} missing`).toBeTruthy();
     }
   });
@@ -239,6 +241,28 @@ describe('contrast', () => {
     expect(
       contrast(token(theme, '--color-accent-contrast'), token(theme, '--color-accent')),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(THEMES)('%s: selected navigation reads on its tint', (_name, theme) => {
+    // The active nav link and the context chips set accent-hover, muted and
+    // body text on accent-subtle. A tint pale enough to look calm is also
+    // pale enough to wash the label out, so each pair is measured.
+    for (const fg of ['--color-accent-hover', '--color-text', '--color-text-muted']) {
+      expect(
+        contrast(token(theme, fg), token(theme, '--color-accent-subtle')),
+        `${fg} on accent-subtle`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it.each(THEMES)('%s: the accent reads as text on every surface', (_name, theme) => {
+    // Links and the logo mark's label use the accent as a text colour.
+    for (const surface of ['--color-bg', '--color-surface', '--color-surface-raised']) {
+      expect(
+        contrast(token(theme, '--color-accent'), token(theme, surface)),
+        `accent on ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it.each(THEMES)('%s: borders meet the 3:1 UI boundary threshold', (_name, theme) => {

@@ -102,14 +102,14 @@ export function Labeller({
             onClick={() => {
               setLabel(option);
             }}
-            className={`rounded-md border-2 px-4 py-2 text-sm font-semibold ${
+            className={`btn border-2 ${
               label === option
                 ? option === 'correct'
                   ? 'border-severity-info bg-severity-info-surface text-severity-info'
                   : option === 'incorrect'
                     ? 'border-severity-critical bg-severity-critical-surface text-severity-critical'
                     : 'border-severity-warning bg-severity-warning-surface text-severity-warning'
-                : 'border-border bg-surface text-text'
+                : 'border-border bg-surface text-text hover:bg-surface-raised'
             }`}
           >
             {labels[option]}
@@ -133,7 +133,7 @@ export function Labeller({
             }}
             placeholder={labels.notePlaceholder}
             rows={3}
-            className="mt-1 w-full rounded-md border border-border bg-surface-raised p-2 font-sans text-sm text-text"
+            className="input mt-1 font-sans text-sm"
           />
           <p id={hintId} className="mt-1 text-xs text-text-muted">
             {labels.notePlaceholder}
@@ -154,7 +154,7 @@ export function Labeller({
         onClick={() => {
           if (label !== null) onSubmit(label, note);
         }}
-        className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast disabled:opacity-50"
+        className="btn btn-primary"
         data-item={itemId}
       >
         {submitting ? labels.submitting : labels.submit}

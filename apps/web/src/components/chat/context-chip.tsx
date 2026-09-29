@@ -131,7 +131,7 @@ export function ContextChip({
         // announced rather than being a silent DOM swap.
         role="group"
         aria-label={t('editLabel')}
-        className="flex flex-wrap items-end gap-2 p-2"
+        className="flex flex-wrap items-end gap-2"
         onKeyDown={(event) => {
           // Escape abandons the edit. Expected of any inline editor, and this
           // one is deliberately keyboard-first.
@@ -146,7 +146,7 @@ export function ContextChip({
         }}
       >
         <div className="flex flex-col">
-          <label htmlFor={manufacturerId} className="text-xs text-text-muted">
+          <label htmlFor={manufacturerId} className="text-xs font-medium text-text-muted">
             {t('manufacturer')}
           </label>
           <input
@@ -156,11 +156,11 @@ export function ContextChip({
             onChange={(event) => {
               setManufacturer(event.target.value);
             }}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+            className="input py-1 text-sm"
           />
         </div>
         <div className="flex flex-col">
-          <label htmlFor={modelId} className="text-xs text-text-muted">
+          <label htmlFor={modelId} className="text-xs font-medium text-text-muted">
             {t('model')}
           </label>
           <input
@@ -169,13 +169,10 @@ export function ContextChip({
             onChange={(event) => {
               setModel(event.target.value);
             }}
-            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+            className="input py-1 text-sm"
           />
         </div>
-        <button
-          type="submit"
-          className="rounded-md bg-accent px-3 py-1 text-sm text-accent-contrast"
-        >
+        <button type="submit" className="btn btn-sm btn-primary">
           {t('save')}
         </button>
         <button
@@ -183,7 +180,7 @@ export function ContextChip({
           onClick={() => {
             setEditing(false);
           }}
-          className="rounded-md border border-border bg-surface px-3 py-1 text-sm text-text"
+          className="btn btn-sm btn-secondary"
         >
           {t('cancel')}
         </button>
@@ -204,8 +201,8 @@ export function ContextChip({
       data-known={known ? 'true' : 'false'}
       className={
         known
-          ? 'inline-flex items-center gap-2 rounded-full border border-border bg-surface-raised px-3 py-1 text-sm text-text'
-          : 'inline-flex items-center gap-2 rounded-full border border-dashed border-border bg-surface px-3 py-1 text-sm text-text-muted'
+          ? 'inline-flex items-center gap-2 rounded-full border border-transparent bg-accent-subtle px-3 py-1 text-sm font-medium text-accent-hover transition-colors hover:border-accent'
+          : 'inline-flex items-center gap-2 rounded-full border border-dashed border-border bg-surface px-3 py-1 text-sm text-text-muted transition-colors hover:text-text'
       }
     >
       {/* Trailing space, so the hint does not run into the equipment text

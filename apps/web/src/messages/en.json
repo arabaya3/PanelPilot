@@ -162,7 +162,10 @@
     "retry": "Try again",
     "plcLink": "Check PLC code",
     "reviewLink": "Reviewer sign-in",
-    "rateLimited": "Too many trials have been started from this network. Wait a few minutes and try again, or sign in."
+    "rateLimited": "Too many trials have been started from this network. Wait a few minutes and try again, or sign in.",
+    "eyebrow": "Industrial troubleshooting assistant",
+    "headline": "Diagnose a panel fault in minutes",
+    "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from."
   },
   "history": {
     "label": "Conversation history",
@@ -181,7 +184,8 @@
     "check": "Check code",
     "checking": "Checking…",
     "rejected": "That program could not be checked.",
-    "failed": "The check could not run. Try again."
+    "failed": "The check could not run. Try again.",
+    "emptyResult": "Findings appear here, each beside the line it is on."
   },
   "plcView": {
     "failed": "{count, plural, one {Validation failed — # error} other {Validation failed — # errors}}",
@@ -216,5 +220,11 @@
     "otherAccount": "Use another account",
     "failed": "Your queue could not be loaded.",
     "retry": "Try again"
+  },
+  "nav": {
+    "label": "Main",
+    "diagnose": "Diagnose",
+    "plc": "PLC check",
+    "review": "Review"
   }
 }

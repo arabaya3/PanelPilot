@@ -28,7 +28,10 @@ const config: Config = {
         DEFAULT: 'var(--color-surface)',
         raised: 'var(--color-surface-raised)',
       },
-      border: 'var(--color-border)',
+      border: {
+        DEFAULT: 'var(--color-border)',
+        subtle: 'var(--color-border-subtle)',
+      },
       text: {
         DEFAULT: 'var(--color-text)',
         muted: 'var(--color-text-muted)',
@@ -45,6 +48,7 @@ const config: Config = {
         DEFAULT: 'var(--color-accent)',
         hover: 'var(--color-accent-hover)',
         contrast: 'var(--color-accent-contrast)',
+        subtle: 'var(--color-accent-subtle)',
       },
       focus: 'var(--color-focus)',
     },
@@ -67,6 +71,7 @@ const config: Config = {
       lg: 'var(--font-size-lg)',
       xl: 'var(--font-size-xl)',
       '2xl': 'var(--font-size-2xl)',
+      '3xl': 'var(--font-size-3xl)',
     },
     fontFamily: {
       sans: 'var(--font-sans)',
@@ -77,12 +82,14 @@ const config: Config = {
       sm: 'var(--radius-sm)',
       md: 'var(--radius-md)',
       lg: 'var(--radius-lg)',
+      xl: 'var(--radius-xl)',
       full: '9999px',
     },
     boxShadow: {
       none: 'none',
       sm: 'var(--shadow-sm)',
       md: 'var(--shadow-md)',
+      lg: 'var(--shadow-lg)',
     },
     // Box sizes, which are not spacing. Replacing `spacing` above also removed
     // Tailwind's default width and height scale, since both inherit from it,
@@ -95,6 +102,7 @@ const config: Config = {
       width: { 24: '6rem', 40: '10rem', 56: '14rem', 64: '16rem' },
       height: { 96: '24rem' },
       maxHeight: { 40: '10rem', 96: '24rem' },
+      minHeight: { 96: '24rem' },
     },
   },
   plugins: [],

@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { GlobeIcon } from '@/components/icons';
 import { useLocale } from '@/components/locale-provider';
 import { LOCALES, type Locale } from '@/i18n/config';
 
@@ -18,14 +19,21 @@ export function LangSwitcher() {
   const t = useTranslations('language');
 
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="text-text-muted">{t('label')}</span>
+    // The globe carries the meaning for sight; the label is still there for a
+    // screen reader, which announces the select as "Language".
+    <label className="relative flex items-center text-sm">
+      <span className="sr-only">{t('label')}</span>
+      <GlobeIcon
+        width="16"
+        height="16"
+        className="pointer-events-none absolute start-0 ms-2 hidden text-text-muted sm:block"
+      />
       <select
         value={locale}
         onChange={(event) => {
           setLocale(event.target.value as Locale);
         }}
-        className="rounded-md border border-border bg-surface px-2 py-1 text-text"
+        className="h-[2.25rem] cursor-pointer rounded-md border border-border-subtle bg-surface py-0 pe-2 ps-2 text-sm sm:ps-6 font-medium text-text transition-colors hover:bg-surface-raised"
       >
         {LOCALES.map((option) => (
           // `lang` on each option so a screen reader pronounces the name in
