@@ -13,6 +13,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.models.schemas.recognition import FaultRecognitionResult
+
 # Ids are opaque tokens the client echoes back on the chat call.
 ImageId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
@@ -74,6 +76,11 @@ class ImageUploadResponse(BaseModel):
 
     Attributes:
         image_id: The handle to pass to the chat endpoint.
+        recognition: What AI-008 read off the photo, or ``None`` when the
+            recogniser could not produce a report. Absent is not an error: the
+            image is stored either way, and the engineer can still describe
+            the fault in words.
     """
 
     image_id: ImageId
+    recognition: FaultRecognitionResult | None = None

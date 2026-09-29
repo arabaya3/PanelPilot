@@ -480,7 +480,7 @@ export interface paths {
     put?: never;
     /**
      * Upload Image
-     * @description Accept a photo of an equipment display.
+     * @description Accept a photo of an equipment display and read the fault code off it.
      *
      *     The declared content type is deliberately not passed on: the domain
      *     sniffs the bytes, and forwarding a client-supplied type would invite a
@@ -846,6 +846,12 @@ export interface components {
       response: components['schemas']['DiagnosticResponse'];
     };
     /**
+     * DisplayVerdict
+     * @description Whether the photo shows what the engineer thinks it shows.
+     * @enum {string}
+     */
+    DisplayVerdict: 'fault_display' | 'not_a_fault_display' | 'unreadable';
+    /**
      * DutyClass
      * @description Drive duty rating.
      * @enum {string}
@@ -902,6 +908,28 @@ export interface components {
     EscalationPage: {
       /** Items */
       items: components['schemas']['QueueItem'][];
+    };
+    /**
+     * FaultRecognitionResult
+     * @description What the model saw.
+     *
+     *     Attributes:
+     *         verdict: Whether this is a readable fault display at all. Checked
+     *             before any field is read.
+     *         fault_code: The code shown, e.g. "F0001".
+     *         brand: The manufacturer, if visibly identifiable — usually only when a
+     *             logo is in frame.
+     *         model: The equipment model, if visibly identifiable.
+     *         note: What the model saw when the verdict is not ``FAULT_DISPLAY``,
+     *             so the engineer is told what to do instead of just "no".
+     */
+    FaultRecognitionResult: {
+      verdict: components['schemas']['DisplayVerdict'];
+      fault_code?: components['schemas']['RecognisedField'];
+      brand?: components['schemas']['RecognisedField'];
+      model?: components['schemas']['RecognisedField'];
+      /** Note */
+      note?: string | null;
     };
     /**
      * FindingSeverity
@@ -966,10 +994,15 @@ export interface components {
      *
      *     Attributes:
      *         image_id: The handle to pass to the chat endpoint.
+     *         recognition: What AI-008 read off the photo, or ``None`` when the
+     *             recogniser could not produce a report. Absent is not an error: the
+     *             image is stored either way, and the engineer can still describe
+     *             the fault in words.
      */
     ImageUploadResponse: {
       /** Image Id */
       image_id: string;
+      recognition?: components['schemas']['FaultRecognitionResult'] | null;
     };
     /**
      * InstallationMethod
@@ -1293,6 +1326,26 @@ export interface components {
       question_limit: number;
       /** Questions Remaining */
       questions_remaining: number;
+    };
+    /**
+     * RecognisedField
+     * @description One extracted value and how sure the model is of it.
+     *
+     *     Attributes:
+     *         value: What was read, verbatim off the screen. ``None`` when the field
+     *             is not visible — which is ordinary, not an error: a fault display
+     *             usually shows a code and rarely shows the manufacturer.
+     *         confidence: How sure the model is, in [0, 1]. Meaningless without
+     *             ``value``, and validated as absent in that case.
+     */
+    RecognisedField: {
+      /** Value */
+      value?: string | null;
+      /**
+       * Confidence
+       * @default 0
+       */
+      confidence: number;
     };
     /**
      * RefreshRequest

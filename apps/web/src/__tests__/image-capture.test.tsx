@@ -242,12 +242,12 @@ describe('uploadImage', () => {
   }
 
   it('reports a stored image when nothing read it', async () => {
-    // What actually happens today: the endpoint stores the photo and returns
-    // an id, because AI-008 is wired to no route.
+    // What the endpoint returns when the recogniser failed: the photo is
+    // stored and `recognition` is null.
     const outcome = await uploadImage({
       file: photo(100, 100),
       token: 't',
-      fetchImpl: respond(200, { image_id: 'img-1' }),
+      fetchImpl: respond(200, { image_id: 'img-1', recognition: null }),
     });
     expect(outcome).toEqual({ kind: 'stored', imageId: 'img-1' });
   });
@@ -483,8 +483,8 @@ describe('capturing a photo by hand', () => {
   });
 
   it('says plainly when the photo uploaded but nothing read it', async () => {
-    // Today's real behaviour: no recogniser route exists. A silent success
-    // would look like a bug, and the engineer can still describe the fault.
+    // The recogniser failed but the upload did not. A silent success would
+    // look like a bug, and the engineer can still describe the fault.
     renderApp(
       <ImageCapture
         token="t"

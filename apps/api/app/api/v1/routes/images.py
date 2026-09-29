@@ -10,9 +10,11 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, File, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserDep, ObjectStoreDep
 from app.domain import images as images_domain
+from app.domain import recognition as recognition_domain
 from app.models.schemas.images import ImageUploadResponse
 
 router = APIRouter()
@@ -24,7 +26,7 @@ async def upload_image(
     store: ObjectStoreDep,
     file: Annotated[UploadFile, File()],
 ) -> ImageUploadResponse:
-    """Accept a photo of an equipment display.
+    """Accept a photo of an equipment display and read the fault code off it.
 
     The declared content type is deliberately not passed on: the domain
     sniffs the bytes, and forwarding a client-supplied type would invite a
@@ -34,4 +36,11 @@ async def upload_image(
     # an arbitrarily large upload before anything could reject it. One byte
     # over the limit is enough to fail, and is not retained.
     data = await file.read(images_domain.MAX_IMAGE_BYTES + 1)
-    return images_domain.store_image(store=store, tenant_id=user.tenant_id, data=data)
+    # The recogniser is a blocking model call of several seconds; run on the
+    # threadpool so it does not stall the event loop for every other request.
+    return await run_in_threadpool(
+        recognition_domain.upload_and_recognise,
+        store=store,
+        tenant_id=user.tenant_id,
+        data=data,
+    )
