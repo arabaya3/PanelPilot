@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import CapabilityUnavailableError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
     CableSizingRequest,
@@ -41,9 +42,17 @@ def size_cable(
 
     Raises:
         ValidationError: If the inputs fall outside the supported ranges of the
-            underlying tables.
+            underlying tables.        CapabilityUnavailableError: Always, until the underlying tool is
+            sourced and verified; see the module docstring.
     """
-    raise NotImplementedError
+    # The signature is the contract the implementation will keep; nothing in
+    # it is read while the capability refuses.
+    del session, user, request
+    raise CapabilityUnavailableError(
+        "cable sizing is not available yet: conductor selection and derating are "
+        "blocked on a manufacturer guide with enough published worked examples to "
+        "verify them against (AI-005). Voltage drop alone is implemented."
+    )
 
 
 def select_vfd(
@@ -63,9 +72,16 @@ def select_vfd(
         The recommended drive rating with applied derates and cited sources.
 
     Raises:
-        ValidationError: If no catalogue frame covers the requested duty.
+        ValidationError: If no catalogue frame covers the requested duty.        CapabilityUnavailableError: Always, until the underlying tool is
+            sourced and verified; see the module docstring.
     """
-    raise NotImplementedError
+    # The signature is the contract the implementation will keep; nothing in
+    # it is read while the capability refuses.
+    del session, user, request
+    raise CapabilityUnavailableError(
+        "VFD selection is not available yet: it is blocked on published worked "
+        "drive-selection examples to verify against (AI-006)."
+    )
 
 
 def build_panel_bom(
@@ -85,6 +101,13 @@ def build_panel_bom(
         The itemised BOM with quantities, part references, and heat load.
 
     Raises:
-        ValidationError: If the load schedule is internally inconsistent.
+        ValidationError: If the load schedule is internally inconsistent.        CapabilityUnavailableError: Always, until the underlying tool is
+            sourced and verified; see the module docstring.
     """
-    raise NotImplementedError
+    # The signature is the contract the implementation will keep; nothing in
+    # it is read while the capability refuses.
+    del session, user, request
+    raise CapabilityUnavailableError(
+        "panel BOM generation is not available yet: it depends on the cable, VFD "
+        "and panel sizing tools, which are blocked on source documents (AI-007, BE-011)."
+    )
