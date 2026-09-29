@@ -197,28 +197,23 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Integration tests (real OpenSearch)
-        run: pytest app/tests/ai/retrieval -q
-      - name: Fail if the integration tests silently skipped
-        # A skip here would mean the service container was unreachable and the
-        # acceptance criterion went unverified while the job still went green.
+      - name: Migrate
+        run: alembic upgrade head
+      # The whole suite, not a list of files. The `test` job above runs without
+      # services, so every database-backed test skips there; a hand-picked list
+      # here left the rest running nowhere, and two of them broke unnoticed.
+      - name: Full suite (real Postgres and OpenSearch)
         run: |
           set -euo pipefail
-          pytest app/tests/ai/retrieval -q -rs 2>&1 | tee /tmp/out.txt
-          if grep -q "needs a reachable OpenSearch" /tmp/out.txt; then
-            echo "::error::integration tests skipped -- OpenSearch was not reachable"
-            exit 1
-          fi
-      - name: Concurrency tests (real Postgres)
-        run: alembic upgrade head && pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py app/tests/domain/test_feedback.py -q
-      - name: Fail if the concurrency tests silently skipped
-        # Same reasoning as above, and it matters more here: these tests are
-        # the only evidence that two verifiers cannot be handed the same item.
+          pytest -q -rs 2>&1 | tee /tmp/out.txt
+      - name: Fail if any service-backed test silently skipped
+        # A skip here would mean a service container was unreachable and the
+        # test went unverified while the job still went green. The patterns
+        # cover every skip reason that names Postgres or OpenSearch.
         run: |
-          set -euo pipefail
-          pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py app/tests/domain/test_feedback.py -q -rs 2>&1 | tee /tmp/pg.txt
-          if grep -q "needs Postgres" /tmp/pg.txt; then
-            echo "::error::concurrency tests skipped -- Postgres was not reachable"
+          if grep -qE "needs (a migrated )?Postgres|needs a reachable OpenSearch" /tmp/out.txt; then
+            echo "::error::service-backed tests skipped -- Postgres or OpenSearch was not reachable"
+            grep -E "needs (a migrated )?Postgres|needs a reachable OpenSearch" /tmp/out.txt | head -20
             exit 1
           fi
 

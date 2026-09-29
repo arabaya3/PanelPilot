@@ -22,7 +22,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import diagnostics as diagnostics_route
+from app.core import observability
 from app.core.config import Settings
+from app.core.logging import get_logger
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.diagnostics import (
@@ -203,6 +205,10 @@ def test_the_stream_records_time_to_first_token(
     looking at nothing.
     """
     entries: list[dict[str, Any]] = []
+    # A fresh module logger, as in test_observability's `captured` fixture: the
+    # module-level one is cached on first use, so once an earlier test has gone
+    # through the stream it stays bound to the production pipeline.
+    monkeypatch.setattr(observability, "_logger", get_logger(observability.__name__))
 
     def _capture(
         _logger: Any, _name: str, event_dict: MutableMapping[str, Any]
