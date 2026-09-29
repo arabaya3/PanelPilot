@@ -67,6 +67,10 @@ export interface VerificationLabels {
   submitting: string;
   claimedBy: string;
   submitFailed: string;
+  /** Shown when the chunk's text is no longer in staging. */
+  contentMissing: string;
+  /** Where the chunk says it comes from; `{page}` and `{section}` are filled in. */
+  citation: string;
 }
 
 /**
@@ -105,6 +109,31 @@ function ReviewPane({
         <p data-testid="chunk-id" className="mb-3 font-mono text-xs text-text-muted">
           {item.chunk_id ?? item.id}
         </p>
+        {/* The text itself, as it would go live. Without it a reviewer is
+            approving an id, which is not a review. */}
+        {item.content ? (
+          <blockquote
+            data-testid="chunk-content"
+            className="mb-3 whitespace-pre-wrap rounded border border-border bg-surface-raised p-3 text-sm text-text"
+          >
+            {item.content}
+          </blockquote>
+        ) : (
+          <p
+            role="alert"
+            data-testid="content-missing"
+            className="mb-3 text-sm text-severity-warning"
+          >
+            {labels.contentMissing}
+          </p>
+        )}
+        {item.page !== null && item.page !== undefined && (
+          <p data-testid="chunk-citation" className="mb-3 text-xs text-text-muted">
+            {labels.citation
+              .replace('{page}', String(item.page))
+              .replace('{section}', item.section ?? '')}
+          </p>
+        )}
         <Labeller
           itemId={item.id}
           onSubmit={onSubmit}

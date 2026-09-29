@@ -39,6 +39,8 @@ const LABELS: VerificationLabels = {
   submitting: 'Submitting…',
   claimedBy: 'Already claimed by {name}',
   submitFailed: 'Could not submit. Try again.',
+  contentMissing: 'The text is no longer in staging.',
+  citation: 'Page {page} — {section}',
 };
 
 function items(count = 2) {
@@ -390,5 +392,46 @@ describe('the source pane', () => {
     const src = screen.getByTestId('source-frame').getAttribute('src') ?? '';
     expect(src).toContain('#page=41');
     expect(src).toContain('section=3.4');
+  });
+});
+
+// --- what the reviewer is judging -------------------------------------------------
+
+describe('the proposed content', () => {
+  it('shows the chunk text and where it says it comes from', () => {
+    const [first] = items(1);
+    render(
+      <VerificationConsole
+        items={[
+          {
+            ...(first as NonNullable<typeof first>),
+            content: 'F0001 OVERCURRENT: output current exceeded the trip limit.',
+            page: 12,
+            section: 'Fault tracing',
+          },
+        ]}
+        api={api()}
+        sourceUrlFor={() => 'https://example.invalid/doc'}
+        labels={LABELS}
+      />,
+    );
+
+    expect(screen.getByTestId('chunk-content').textContent).toContain('F0001 OVERCURRENT');
+    expect(screen.getByTestId('chunk-citation').textContent).toBe('Page 12 — Fault tracing');
+  });
+
+  it('warns rather than showing an id alone when the text is gone', () => {
+    render(
+      <VerificationConsole
+        items={items(1)}
+        api={api()}
+        sourceUrlFor={() => null}
+        labels={LABELS}
+      />,
+    );
+
+    expect(screen.getByTestId('content-missing').textContent).toBe(
+      'The text is no longer in staging.',
+    );
   });
 });

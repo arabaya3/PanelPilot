@@ -12,11 +12,16 @@ from __future__ import annotations
 
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.core.errors import NotFoundError
 from app.models.schemas.auth import CurrentUser, Role
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 #: The principal unattended jobs act as. Fixed so a staged document always
 #: names an ingester, and so no human can ever hold this identity.
@@ -47,9 +52,10 @@ def run_crawl(args: list[str]) -> int:
     staging index only; nothing this job does can make content live.
 
     Args:
-        args: Positional arguments, ``[source_id, seed_url, ...]``. At least
-            one seed URL is required — there is no stored source registry, so
-            the entry points come from the command line or the API caller.
+        args: Positional arguments, ``[source_id, seed_url, ...]``. With no
+            seed URL the source's curated document list is crawled
+            (``app.ingestion.known_documents``); a source with neither is
+            refused by the domain with a message saying so.
 
     Returns:
         ``0`` on success, non-zero on failure.
@@ -65,8 +71,8 @@ def run_crawl(args: list[str]) -> int:
     from app.domain import ingestion as ingestion_domain
     from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
 
-    if len(args) < 2:
-        print("usage: crawl <source_id> <seed_url> [seed_url ...]", file=sys.stderr)
+    if len(args) < 1:
+        print("usage: crawl <source_id> [seed_url ...]", file=sys.stderr)
         return 2
 
     source_id, *seed_urls = args
@@ -91,33 +97,187 @@ def run_crawl(args: list[str]) -> int:
 
 
 def run_reindex_staging(args: list[str]) -> int:
-    """Re-chunk and re-embed the staging corpus in place.
+    """Re-embed the staging corpus in place: ``reindex-staging [source_id]``.
 
-    Run this after a chunking or embedding change. Production is untouched:
-    re-verification and promotion follow separately. See
-    docs/adr/0001-staging-vs-production-index.md.
+    Run after an embedding-model change. Production is untouched: live chunks
+    keep their vectors until a reviewer re-promotes them. Re-chunking is a
+    re-crawl (``crawl``), not this job — staging holds chunks, not documents.
+    See ``app.domain.staging_maintenance.reembed_staging``.
 
     Args:
-        args: Positional arguments, optionally ``[source_id]`` to limit scope.
+        args: Optionally ``[source_id]`` to limit scope.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``0`` on success, ``1`` if embedding failed part-way (safe to re-run),
+        ``2`` for a usage error.
     """
-    raise NotImplementedError
+    from app.core.errors import PanelPilotError
+    from app.domain import staging_maintenance
+
+    if len(args) > 1:
+        print("usage: reindex-staging [source_id]", file=sys.stderr)
+        return 2
+    source_id = args[0] if args else None
+
+    with _session() as session:
+        try:
+            count = staging_maintenance.reembed_staging(session=session, source_id=source_id)
+        except PanelPilotError as exc:
+            # EmbeddingError, named by its base: the worker is barred from
+            # importing app.ai, and every provider failure derives from this.
+            print(
+                f"re-embedding stopped: {exc}. Re-run to finish; it is idempotent.", file=sys.stderr
+            )
+            return 1
+
+    print(f"re-embedded {count} staging chunks")
+    return 0
+
+
+#: Exit code when live content is stale. Distinct from 1 (the job failed) so a
+#: scheduler can alert on "someone needs to review this" without treating it
+#: as a broken job, and vice versa.
+EXIT_STALE_CONTENT_FOUND = 3
 
 
 def run_expire_stale_sources(args: list[str]) -> int:
-    """Flag production documents whose upstream source has been superseded.
+    """Flag production chunks whose upstream document has since changed.
 
-    Flags only — retraction is a reviewed operation, not an automated one.
+    Flags only — retraction is a reviewed operation, not an automated one. Each
+    stale chunk is printed and logged; the exit code tells a scheduler whether
+    anything needs a reviewer.
 
     Args:
         args: Unused; accepted for a uniform handler signature.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``0`` when production is current, ``3`` when stale chunks were found.
     """
-    raise NotImplementedError
+    del args
+    from app.domain import staging_maintenance
+
+    with _session() as session:
+        stale = staging_maintenance.find_superseded(session=session)
+
+    for item in stale:
+        print(f"stale: {item.chunk_id}  ({item.source_url} changed since verification)")
+    print(f"{len(stale)} live chunks cite a document that has changed")
+    return EXIT_STALE_CONTENT_FOUND if stale else 0
+
+
+def run_grant_role(args: list[str]) -> int:
+    """Give an account a role: ``grant-role <email> <role>``.
+
+    The only way to make someone a reviewer or ingester. Deliberately an
+    operator command rather than an API route: no request can elevate its own
+    caller, so a compromised account cannot grant itself the reviewer role
+    that publishing to production requires.
+
+    Args:
+        args: ``[email, role]``, the role one of ``engineer``, ``reviewer``,
+            ``ingestion``, ``admin``.
+
+    Returns:
+        ``0`` on success, ``2`` for a usage error or unknown role, ``1`` if
+        the account does not exist.
+    """
+    return _change_role(args, grant=True)
+
+
+def run_revoke_role(args: list[str]) -> int:
+    """Take a role away: ``revoke-role <email> <role>``. Effective immediately.
+
+    Args:
+        args: ``[email, role]``.
+
+    Returns:
+        ``0`` on success, ``2`` for a usage error, ``1`` if the account does
+        not exist or the role cannot be revoked.
+    """
+    return _change_role(args, grant=False)
+
+
+def _change_role(args: list[str], *, grant: bool) -> int:
+    """Shared body of ``grant-role`` and ``revoke-role``.
+
+    Args:
+        args: ``[email, role]``.
+        grant: Grant when true, revoke when false.
+
+    Returns:
+        The process exit code.
+    """
+    from app.core.errors import NotFoundError, ValidationError
+    from app.domain import auth as auth_domain
+
+    verb = "grant-role" if grant else "revoke-role"
+    if len(args) != 2:
+        print(f"usage: {verb} <email> <role>", file=sys.stderr)
+        return 2
+    email, role_name = args
+    try:
+        role = Role(role_name)
+    except ValueError:
+        known = ", ".join(r.value for r in Role)
+        print(f"unknown role {role_name!r}; known roles: {known}", file=sys.stderr)
+        return 2
+
+    change = auth_domain.grant_role if grant else auth_domain.revoke_role
+    with _session() as session:
+        try:
+            held = change(session=session, email=email, role=role)
+        except (NotFoundError, ValidationError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        session.commit()
+
+    print(f"{email}: {', '.join(sorted(r.value for r in held))}")
+    return 0
+
+
+def run_assign_verification(args: list[str]) -> int:
+    """Hand today's verification batches to every reviewer.
+
+    Run daily. Crawled chunks sit unassigned — and so in nobody's queue — until
+    this runs, which is why a crawl alone never shows up in the dashboard.
+
+    Args:
+        args: Unused; accepted for a uniform handler signature.
+
+    Returns:
+        ``0`` on success, ``1`` if no account holds the reviewer role.
+    """
+    del args
+    from app.domain import verification_queue as queue_domain
+
+    with _session() as session:
+        try:
+            counts = queue_domain.assign_to_reviewers(session=session)
+        except queue_domain.QueueError as exc:
+            print(f"{exc}; grant one with: grant-role <email> reviewer", file=sys.stderr)
+            return 1
+        session.commit()
+
+    print(f"assigned {sum(counts.values())} items across {len(counts)} reviewers")
+    return 0
+
+
+@contextmanager
+def _session() -> Iterator[Session]:
+    """Open a database session for one job run, closed on exit.
+
+    Yields:
+        The session. The job commits what it wants kept.
+
+    ``get_session`` is a FastAPI dependency generator, so it is driven by hand
+    rather than reshaped into a context manager for these callers.
+    """
+    from app.core.db import get_session
+
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session):
+        yield session
 
 
 REGISTRY: dict[str, JobSpec] = {
@@ -126,7 +286,7 @@ REGISTRY: dict[str, JobSpec] = {
         JobSpec("crawl", "Crawl one documentation source into staging.", run_crawl),
         JobSpec(
             "reindex-staging",
-            "Re-chunk and re-embed the staging corpus after a pipeline change.",
+            "Re-embed the staging corpus after an embedding-model change.",
             run_reindex_staging,
         ),
         JobSpec(
@@ -134,6 +294,13 @@ REGISTRY: dict[str, JobSpec] = {
             "Flag production documents whose upstream source was superseded.",
             run_expire_stale_sources,
         ),
+        JobSpec(
+            "assign-verification",
+            "Hand today's verification batches to every reviewer.",
+            run_assign_verification,
+        ),
+        JobSpec("grant-role", "Give an account a role: grant-role <email> <role>.", run_grant_role),
+        JobSpec("revoke-role", "Take a role away: revoke-role <email> <role>.", run_revoke_role),
     )
 }
 

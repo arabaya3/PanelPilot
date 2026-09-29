@@ -45,6 +45,16 @@ class PromotionError(PanelPilotError):
     """A staging-to-production content promotion was rejected."""
 
 
+class CapabilityUnavailableError(PanelPilotError):
+    """A documented endpoint that deliberately refuses until its data is sourced.
+
+    For a calculation whose tables have no citable, verified source yet. The
+    product rule is cite or refuse; a number computed from uncited tables ends
+    up on a drawing, so the endpoint refuses by name instead of guessing — and
+    instead of the opaque 500 an unimplemented body would give.
+    """
+
+
 # The single place mapping domain failures to HTTP. Adding an error type
 # without adding it here yields a 500, which is the correct default: an
 # unmapped error is a bug, not a documented outcome.
@@ -55,6 +65,7 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     AuthorizationError: HTTPStatus.FORBIDDEN,
     InsufficientEvidenceError: HTTPStatus.UNPROCESSABLE_ENTITY,
     PromotionError: HTTPStatus.CONFLICT,
+    CapabilityUnavailableError: HTTPStatus.NOT_IMPLEMENTED,
 }
 
 

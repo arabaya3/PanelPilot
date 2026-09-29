@@ -26,6 +26,7 @@ from app.core.security import (
     hash_refresh_token,
 )
 from app.domain import auth
+from app.models.schemas.auth import Role
 from app.models.schemas.auth_flows import TokenPair
 from app.models.tables import calculations, diagnostics, escalation, ingestion  # noqa: F401
 from app.models.tables.session import AnonymousSessionRow, RefreshTokenRow
@@ -694,3 +695,105 @@ def test_expiry_is_derived_rather_than_a_flag(db: Session) -> None:
     assert not anon.is_expired
     anon.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     assert anon.is_expired, "expiry must follow expires_at, not a stored flag"
+
+
+# --- roles ------------------------------------------------------------------
+
+
+@requires_db
+def test_a_new_account_holds_only_the_engineer_role(db: Session) -> None:
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+
+    assert decode_access_token(tokens.access_token).roles == frozenset({Role.ENGINEER})
+
+
+@requires_db
+def test_a_granted_role_reaches_the_next_token(db: Session) -> None:
+    """Before this, every token said engineer, so no one could ever review.
+
+    Promotion requires the reviewer role; a role stored in the database that
+    never reaches the token made the whole verification path unusable.
+    """
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    held = auth.grant_role(session=db, email=email, role=Role.REVIEWER)
+    db.commit()
+    tokens = auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    assert held == frozenset({Role.ENGINEER, Role.REVIEWER})
+    assert decode_access_token(tokens.access_token).roles == held
+
+
+@requires_db
+def test_granting_a_held_role_is_a_no_op(db: Session) -> None:
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    auth.grant_role(session=db, email=email, role=Role.INGESTION)
+    again = auth.grant_role(session=db, email=email, role=Role.INGESTION)
+    db.commit()
+
+    assert again == frozenset({Role.ENGINEER, Role.INGESTION})
+
+
+@requires_db
+def test_granting_to_an_unknown_email_is_not_found(db: Session) -> None:
+    with pytest.raises(NotFoundError):
+        auth.grant_role(session=db, email="nobody@example.invalid", role=Role.REVIEWER)
+
+
+@requires_db
+def test_a_revoked_role_stops_working_before_the_token_expires(db: Session) -> None:
+    """Otherwise a removed reviewer keeps promoting content for up to an hour."""
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    auth.grant_role(session=db, email=email, role=Role.REVIEWER)
+    db.commit()
+    caller = decode_access_token(
+        auth.login(session=db, email=email, password=PASSWORD).access_token
+    )
+    db.commit()
+    assert Role.REVIEWER in caller.roles
+
+    auth.revoke_role(session=db, email=email, role=Role.REVIEWER)
+    db.commit()
+
+    with pytest.raises(AuthenticationError, match="no longer holds"):
+        auth.resolve_caller(session=db, caller=caller)
+
+
+@requires_db
+def test_a_token_claiming_an_ungranted_role_is_rejected(db: Session) -> None:
+    """A token cannot be more privileged than the account behind it."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    honest = decode_access_token(tokens.access_token)
+    inflated = honest.model_copy(update={"roles": frozenset({Role.ENGINEER, Role.ADMIN})})
+
+    with pytest.raises(AuthenticationError, match="no longer holds"):
+        auth.resolve_caller(session=db, caller=inflated)
+
+
+@requires_db
+def test_the_engineer_role_cannot_be_revoked(db: Session) -> None:
+    email = _email()
+    auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    with pytest.raises(ValidationError, match="cannot be revoked"):
+        auth.revoke_role(session=db, email=email, role=Role.ENGINEER)
+
+
+def test_an_unknown_stored_role_is_ignored_not_fatal() -> None:
+    """A role retired from the code must not lock its holders out."""
+    from app.models.tables.user import Role as RoleRow
+
+    user = User(email="x@example.invalid")
+    user.roles = [RoleRow(name="reviewer"), RoleRow(name="retired-role")]
+
+    assert auth.held_roles(user) == frozenset({Role.ENGINEER, Role.REVIEWER})

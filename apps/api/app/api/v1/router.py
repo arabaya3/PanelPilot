@@ -17,6 +17,7 @@ from app.api.v1.routes import (
     images,
     ingestion,
     plc,
+    schematics,
     search,
     verification,
 )
@@ -45,6 +46,7 @@ api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestio
 api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(plc.router, prefix="/plc", tags=["plc"])
+api_router.include_router(schematics.router, prefix="/schematics", tags=["schematics"])
 api_router.include_router(
     images.router,
     prefix="/images",

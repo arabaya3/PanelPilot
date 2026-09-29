@@ -126,7 +126,14 @@ def test_a_failed_crawl_exits_non_zero(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_missing_arguments_are_a_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not a crash, and not a success."""
     assert jobs.run_crawl([]) == 2
-    assert jobs.run_crawl(["abb"]) == 2
+
+
+def test_a_source_alone_crawls_its_curated_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No seed URL: the domain falls back to the source's known document list."""
+    seen = _patch_crawl(monkeypatch, CrawlJobStatus.SUCCEEDED)
+
+    assert jobs.run_crawl(["abb"]) == 0
+    assert seen["request"].seed_urls == []
 
 
 def test_every_seed_url_is_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,3 +167,222 @@ def test_the_session_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs.run_crawl(["abb", "https://a.example/1"])
 
     assert seen["session_class"].closed is True
+
+
+# --- operator commands: roles and assignment ----------------------------------
+
+
+class _RecordingSession:
+    """A session stand-in recording commits and closure."""
+
+    def __init__(self) -> None:
+        self.committed = False
+        self.closed = False
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_session(monkeypatch: pytest.MonkeyPatch) -> _RecordingSession:
+    session = _RecordingSession()
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([session]))
+    return session
+
+
+def test_grant_role_grants_commits_and_closes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import auth as auth_domain
+
+    session = _patch_session(monkeypatch)
+    calls: list[tuple[str, Role]] = []
+
+    def fake_grant(*, session: Any, email: str, role: Role) -> frozenset[Role]:
+        calls.append((email, role))
+        return frozenset({Role.ENGINEER, role})
+
+    monkeypatch.setattr(auth_domain, "grant_role", fake_grant)
+
+    code = jobs.run_grant_role(["lead@example.com", "reviewer"])
+
+    assert code == 0
+    assert calls == [("lead@example.com", Role.REVIEWER)]
+    assert session.committed
+    assert session.closed
+    assert "engineer, reviewer" in capsys.readouterr().out
+
+
+def test_revoke_role_revokes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain import auth as auth_domain
+
+    _patch_session(monkeypatch)
+    calls: list[Role] = []
+
+    def fake_revoke(*, session: Any, email: str, role: Role) -> frozenset[Role]:
+        calls.append(role)
+        return frozenset({Role.ENGINEER})
+
+    monkeypatch.setattr(auth_domain, "revoke_role", fake_revoke)
+
+    assert jobs.run_revoke_role(["lead@example.com", "reviewer"]) == 0
+    assert calls == [Role.REVIEWER]
+
+
+@pytest.mark.parametrize("args", [[], ["only@example.com"], ["a@b.c", "reviewer", "extra"]])
+def test_a_role_command_with_the_wrong_arguments_is_a_usage_error(args: list[str]) -> None:
+    assert jobs.run_grant_role(args) == 2
+
+
+def test_an_unknown_role_is_a_usage_error_naming_the_real_ones(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert jobs.run_grant_role(["a@b.c", "superuser"]) == 2
+    assert "reviewer" in capsys.readouterr().err
+
+
+def test_granting_to_a_missing_account_fails_without_committing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.domain import auth as auth_domain
+
+    session = _patch_session(monkeypatch)
+
+    def fake_grant(**_: Any) -> frozenset[Role]:
+        raise NotFoundError("no account with email 'x@y.z'")
+
+    monkeypatch.setattr(auth_domain, "grant_role", fake_grant)
+
+    assert jobs.run_grant_role(["x@y.z", "reviewer"]) == 1
+    assert not session.committed
+    assert session.closed
+
+
+def test_assignment_commits_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import uuid
+
+    from app.domain import verification_queue as queue_domain
+
+    session = _patch_session(monkeypatch)
+    monkeypatch.setattr(
+        queue_domain,
+        "assign_to_reviewers",
+        lambda **_: {uuid.UUID(int=1): 3, uuid.UUID(int=2): 2},
+    )
+
+    assert jobs.run_assign_verification([]) == 0
+    assert session.committed
+    assert "assigned 5 items across 2 reviewers" in capsys.readouterr().out
+
+
+def test_assignment_with_no_reviewers_says_how_to_fix_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import verification_queue as queue_domain
+
+    session = _patch_session(monkeypatch)
+
+    def fake_assign(**_: Any) -> dict[Any, int]:
+        raise queue_domain.QueueError("cannot assign a batch with no verifiers")
+
+    monkeypatch.setattr(queue_domain, "assign_to_reviewers", fake_assign)
+
+    assert jobs.run_assign_verification([]) == 1
+    assert not session.committed
+    assert "grant-role" in capsys.readouterr().err
+
+
+# --- corpus maintenance ---------------------------------------------------------
+
+
+def test_reindex_passes_the_source_and_reports(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import staging_maintenance
+
+    _patch_session(monkeypatch)
+    seen: list[str | None] = []
+
+    def fake_reembed(*, session: Any, source_id: str | None) -> int:
+        seen.append(source_id)
+        return 7
+
+    monkeypatch.setattr(staging_maintenance, "reembed_staging", fake_reembed)
+
+    assert jobs.run_reindex_staging(["abb"]) == 0
+    assert seen == ["abb"]
+    assert "re-embedded 7" in capsys.readouterr().out
+
+
+def test_reindex_without_a_source_covers_everything(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain import staging_maintenance
+
+    _patch_session(monkeypatch)
+    seen: list[str | None] = []
+
+    def fake_reembed(*, session: Any, source_id: str | None) -> int:
+        seen.append(source_id)
+        return 0
+
+    monkeypatch.setattr(staging_maintenance, "reembed_staging", fake_reembed)
+
+    assert jobs.run_reindex_staging([]) == 0
+    assert seen == [None]
+
+
+def test_a_provider_failure_exits_non_zero_and_says_rerun_is_safe(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.ai.retrieval.embedding import EmbeddingError
+    from app.domain import staging_maintenance
+
+    _patch_session(monkeypatch)
+
+    def fake_reembed(**_: Any) -> int:
+        raise EmbeddingError("provider down")
+
+    monkeypatch.setattr(staging_maintenance, "reembed_staging", fake_reembed)
+
+    assert jobs.run_reindex_staging([]) == 1
+    assert "idempotent" in capsys.readouterr().err
+
+
+def test_reindex_with_too_many_arguments_is_a_usage_error() -> None:
+    assert jobs.run_reindex_staging(["a", "b"]) == 2
+
+
+def test_a_current_production_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domain import staging_maintenance
+
+    _patch_session(monkeypatch)
+    monkeypatch.setattr(staging_maintenance, "find_superseded", lambda **_: [])
+
+    assert jobs.run_expire_stale_sources([]) == 0
+
+
+def test_stale_content_has_its_own_exit_code_and_is_listed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Distinct from a failed job, so a scheduler can page a reviewer instead."""
+    from app.domain import staging_maintenance
+
+    _patch_session(monkeypatch)
+    monkeypatch.setattr(
+        staging_maintenance,
+        "find_superseded",
+        lambda **_: [
+            staging_maintenance.SupersededChunk(
+                chunk_id="doc#0001-a",
+                source_url="https://m.invalid/x.pdf",
+                live_hash="1",
+                latest_hash="2",
+            )
+        ],
+    )
+
+    assert jobs.run_expire_stale_sources([]) == jobs.EXIT_STALE_CONTENT_FOUND
+    assert "doc#0001-a" in capsys.readouterr().out

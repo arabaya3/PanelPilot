@@ -12,6 +12,7 @@ import {
   LocaleProvider,
   localeInitScript,
   useLocale,
+  viewerTimeZone,
 } from '@/components/locale-provider';
 import { TechnicalToken } from '@/components/technical-token';
 import { DEFAULT_LOCALE, LOCALES, directionOf, toLocale, type Locale } from '@/i18n/config';
@@ -327,5 +328,22 @@ describe('layout direction', () => {
     };
     expect(pkg.scripts.lint).toContain('check:logical');
     expect(pkg.scripts['check:logical']).toContain('check-logical-properties.mjs');
+  });
+});
+
+describe('viewerTimeZone', () => {
+  it('reports the runtime zone', () => {
+    expect(viewerTimeZone()).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  });
+
+  it('falls back to UTC when the runtime cannot say', () => {
+    const spy = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => {
+      throw new RangeError('no time zone data');
+    });
+    try {
+      expect(viewerTimeZone()).toBe('UTC');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

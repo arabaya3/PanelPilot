@@ -37,6 +37,8 @@ type Phase =
 export default function HomePage() {
   const t = useTranslations('app');
   const tl = useTranslations('landing');
+  const ts = useTranslations('schematic');
+  const tv = useTranslations('verification');
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
 
   const begin = useCallback(async () => {
@@ -137,7 +139,13 @@ export default function HomePage() {
         )}
       </div>
 
-      <p>
+      <p className="flex flex-wrap gap-4">
+        <Link className="text-accent hover:text-accent-hover" href="/schematic">
+          <span>{ts('navLink')}</span>
+        </Link>
+        <Link className="text-accent hover:text-accent-hover" href="/verification">
+          <span>{tv('heading')}</span>
+        </Link>
         <Link className="text-accent hover:text-accent-hover" href="/tokens">
           <span>Design tokens</span>
         </Link>

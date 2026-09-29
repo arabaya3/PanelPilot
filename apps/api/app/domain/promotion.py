@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.retrieval.client import IndexTarget, get_client, index_chunk, resolve_index
@@ -25,7 +26,7 @@ from app.models.schemas.ingestion import (
     VerificationDecision,
     VerificationVerdict,
 )
-from app.models.tables.ingestion import PromotionAuditRow
+from app.models.tables.ingestion import PromotionAuditRow, StagedDocumentRow
 
 
 def promote_document(
@@ -81,6 +82,40 @@ def _as_uuid(value: str, *, field: str) -> uuid.UUID:
         return uuid.UUID(str(value))
     except (ValueError, AttributeError, TypeError) as exc:
         raise PromotionError(f"cannot promote: {field}={value!r} is not a UUID") from exc
+
+
+def _staged_document_id(*, session: Session, chunk_id: str, content_hash: object) -> uuid.UUID:
+    """Find the staged document a chunk was cut from.
+
+    Args:
+        session: Open database session.
+        chunk_id: The chunk, for the error message.
+        content_hash: The chunk body's ``content_hash`` — the DOCUMENT's hash,
+            which ``_stage_bodies`` stamps on every chunk and which is unique on
+            ``staged_documents``.
+
+    Returns:
+        The staged document's id, for the audit row's foreign key.
+
+    Raises:
+        PromotionError: If the chunk carries no hash or no staged document has
+            it. Refused rather than attributed to nothing: the audit row is what
+            ties a live passage back to the crawl that fetched it.
+
+    Looked up rather than derived from the chunk id. Chunk ids are
+    ``<document>#<ordinal>-<digest>`` strings, not UUIDs, so treating one as
+    the staged document's id refused every chunk a real crawl produced.
+    """
+    if not isinstance(content_hash, str) or not content_hash:
+        raise PromotionError(f"cannot promote {chunk_id!r}: it carries no content_hash")
+    staged_document_id = session.execute(
+        select(StagedDocumentRow.id).where(StagedDocumentRow.content_hash == content_hash)
+    ).scalar_one_or_none()
+    if staged_document_id is None:
+        raise PromotionError(
+            f"cannot promote {chunk_id!r}: no staged document has content_hash {content_hash!r}"
+        )
+    return staged_document_id
 
 
 def promote_chunk(
@@ -187,7 +222,9 @@ def promote_chunk(
     # crash in that window re-reviews and re-promotes. Flushing gives the
     # ordering guarantee without taking the transaction boundary away.
     audit = PromotionAuditRow(
-        staged_document_id=_as_uuid(chunk_id, field="chunk_id"),
+        staged_document_id=_staged_document_id(
+            session=session, chunk_id=chunk_id, content_hash=staged.get("content_hash")
+        ),
         reviewer_id=_as_uuid(reviewer.id, field="reviewer.id"),
         production_document_id=chunk_id,
         revision=revision,

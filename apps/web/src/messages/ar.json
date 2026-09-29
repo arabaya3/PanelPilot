@@ -145,7 +145,18 @@
     "submit": "إرسال",
     "submitting": "جارٍ الإرسال…",
     "claimedBy": "محجوز بالفعل من قبل {name}",
-    "submitFailed": "تعذّر الإرسال. حاول مرة أخرى."
+    "submitFailed": "تعذّر الإرسال. حاول مرة أخرى.",
+    "contentMissing": "نص هذا المقطع لم يعد موجودًا في منطقة التجهيز. لا توافق عليه — أُعيد جلبه أو أُزيل.",
+    "citation": "الصفحة {page} — {section}",
+    "signInHeading": "سجّل الدخول للمراجعة",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "signingIn": "جارٍ تسجيل الدخول…",
+    "signInFailed": "لم تُقبل بيانات الدخول هذه.",
+    "loadFailed": "تعذّر تحميل قائمة المراجعة.",
+    "notReviewer": "هذا الحساب لا يملك دور المراجِع. يمنحه المشغّل بالأمر: python -m app.worker grant-role you@example.com reviewer",
+    "signOut": "تسجيل الخروج"
   },
   "landing": {
     "starting": "جارٍ بدء النسخة التجريبية…",
@@ -160,5 +171,32 @@
     "failed": "تعذر تحميل السجل.",
     "unavailable": "السجل غير متاح.",
     "loadMore": "تحميل المزيد"
+  },
+  "schematic": {
+    "heading": "المخطط أحادي الخط",
+    "intro": "الصق جدول اللوحة وارسم مخططها أحادي الخط. القيم التي لا تستطيع أي أداة موثّقة حسابها بعد تُعلَّم \"غير محسوبة\" بدل تركها فارغة.",
+    "scheduleLabel": "جدول اللوحة (JSON)",
+    "draw": "ارسم المخطط",
+    "drawing": "جارٍ الرسم…",
+    "badJson": "الجدول ليس JSON صالحًا: {error}",
+    "invalid": "لا يمكن رسم الجدول كما هو: {message}",
+    "failed": "تعذّر إنشاء المخطط. حاول مرة أخرى.",
+    "unavailable": "خدمة المخططات غير متاحة حاليًا.",
+    "unknownKinds": "{count, plural, one {نوع مكوّن واحد ليس له رمز} other {# أنواع مكوّنات ليس لها رموز}} وتُرسم كعنصر نائب مُعلَّم: {kinds}",
+    "sheetOf": "الورقة {number} من {total}",
+    "notes": "ملاحظات",
+    "moreNotes": "+ {count} أخرى — راجع قائمة الملاحظات",
+    "notCalculated": "غير محسوبة",
+    "refused": "مرفوضة",
+    "conductors": "مقاطع الموصلات",
+    "enclosure": "الخزانة",
+    "trunking": "مجاري الأسلاك",
+    "railRows": "صفوف السكة، {group}",
+    "continuedOn": "إلى الورقة {sheet}",
+    "continuedFrom": "من {designator}، الورقة {sheet}",
+    "exportPng": "تنزيل الورقة {number} (PNG)",
+    "exportFailed": "تعذّر تصدير الورقة {number}.",
+    "print": "طباعة أو حفظ PDF",
+    "navLink": "المخطط أحادي الخط"
   }
 }

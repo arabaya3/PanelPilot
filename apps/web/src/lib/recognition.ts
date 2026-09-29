@@ -7,8 +7,9 @@
  * rejection path — not the task's `{recognizedCode, brand, model, confidence}`
  * paraphrase of it.
  *
- * `recognition` is `null` when the model could not be reached or returned a
- * report that did not validate. The image is stored either way, so that is
+ * `recognition` is `null` when the model could not be reached, returned a
+ * report that did not validate, or the free allowance is spent (a reading
+ * costs one free question, like a diagnosis). The image is stored either way, so that is
  * reported as `stored` — a state the UI shows honestly, asking the engineer to
  * type the code — rather than as a failure.
  */

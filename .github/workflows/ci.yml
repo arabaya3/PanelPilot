@@ -12,7 +12,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 jobs:
   api:
@@ -27,8 +27,8 @@ jobs:
       matrix:
         check: [lint, format, typecheck, test, coverage]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -74,8 +74,8 @@ jobs:
       matrix:
         check: [lint, format, typecheck, test]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -122,7 +122,7 @@ jobs:
             file: ./apps/web/Dockerfile
             target: runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: Build ${{ matrix.image }} (target=${{ matrix.target }})
         uses: docker/build-push-action@v6
@@ -173,6 +173,17 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      # The trial rate limiter's shared store. Its sliding window is sorted-set
+      # arithmetic in a MULTI transaction, and only a real Redis says whether
+      # that holds across two clients.
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     defaults:
       run:
         working-directory: apps/api
@@ -190,35 +201,32 @@ jobs:
       OPENSEARCH_PRODUCTION_INDEX: panelpilot-ci-production
       OPENSEARCH_STAGING_INDEX: panelpilot-ci-staging
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Integration tests (real OpenSearch)
-        run: pytest app/tests/ai/retrieval -q
-      - name: Fail if the integration tests silently skipped
-        # A skip here would mean the service container was unreachable and the
-        # acceptance criterion went unverified while the job still went green.
+      - name: Apply migrations
+        run: alembic upgrade head
+      - name: Full suite against real services
+        # Everything, not a hand-picked list of files. The `api (test)` job has
+        # no database, so every test marked for one skips there; running only
+        # named files here meant the rest never ran anywhere, and four of them
+        # had been failing unseen since the code under them changed.
         run: |
           set -euo pipefail
-          pytest app/tests/ai/retrieval -q -rs 2>&1 | tee /tmp/out.txt
-          if grep -q "needs a reachable OpenSearch" /tmp/out.txt; then
-            echo "::error::integration tests skipped -- OpenSearch was not reachable"
-            exit 1
-          fi
-      - name: Concurrency tests (real Postgres)
-        run: alembic upgrade head && pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py app/tests/domain/test_feedback.py -q
-      - name: Fail if the concurrency tests silently skipped
-        # Same reasoning as above, and it matters more here: these tests are
-        # the only evidence that two verifiers cannot be handed the same item.
+          pytest -q -rs 2>&1 | tee /tmp/out.txt
+      - name: Fail if a service-backed test silently skipped
+        # A skip here means a service container was unreachable and the
+        # property it guards went unverified while the job still went green.
+        # Skips for reasons other than a missing service (the photo corpus)
+        # are expected and stay allowed.
         run: |
           set -euo pipefail
-          pytest app/tests/domain/test_verification_queue.py app/tests/domain/test_ingestion_wiring.py app/tests/domain/test_feedback.py -q -rs 2>&1 | tee /tmp/pg.txt
-          if grep -q "needs Postgres" /tmp/pg.txt; then
-            echo "::error::concurrency tests skipped -- Postgres was not reachable"
+          if grep -E "SKIPPED.*(needs a reachable OpenSearch|needs Postgres|needs a migrated Postgres|needs a reachable Redis)" /tmp/out.txt; then
+            echo "::error::service-backed tests skipped -- a service container was not reachable"
             exit 1
           fi
 
@@ -226,7 +234,7 @@ jobs:
     name: compose smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
 
       # OpenSearch refuses to start below this; the runner default (65530) is
@@ -326,8 +334,8 @@ jobs:
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -493,12 +501,12 @@ jobs:
       ANTHROPIC_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder-secret-at-least-32-bytes-long
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -543,9 +551,9 @@ jobs:
       matrix:
         target: [python, node]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: matrix.target == 'python'
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -559,7 +567,7 @@ jobs:
           pip install -e ".[dev]"
           pip-audit --skip-editable
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: matrix.target == 'node'
         with:
           node-version: ${{ env.NODE_VERSION }}

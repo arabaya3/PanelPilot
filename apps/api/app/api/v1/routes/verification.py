@@ -23,36 +23,17 @@ from app.models.schemas.verification import (
     EscalationPage,
     LabelRequest,
     LabelResponse,
-    QueueItem,
     QueuePage,
+    ResolveRequest,
 )
-from app.models.tables.ingestion import VerificationItemRow
 
 router = APIRouter()
 
 
-def _to_item(row: VerificationItemRow) -> QueueItem:
-    """Project a queue row onto its wire shape.
-
-    Args:
-        row: The database row.
-
-    Returns:
-        The item as the API presents it.
-    """
-    return QueueItem(
-        id=row.id,
-        chunk_id=row.chunk_id,
-        status=row.status,
-        assigned_at=row.assigned_at,
-    )
-
-
 @router.get("/queue/me", response_model=QueuePage)
 def my_queue(session: SessionDep, user: CurrentUserDep) -> QueuePage:
-    """Return the caller's outstanding batch."""
-    rows = queue_domain.queue_for(session=session, verifier_id=UUID(user.id))
-    return QueuePage(items=[_to_item(row) for row in rows])
+    """Return the caller's outstanding batch, with each item's text and citation."""
+    return QueuePage(items=queue_domain.review_queue(session=session, verifier_id=UUID(user.id)))
 
 
 @router.post("/items/{item_id}/label", response_model=LabelResponse)
@@ -62,33 +43,27 @@ def label_item(
     session: SessionDep,
     user: CurrentUserDep,
 ) -> LabelResponse:
-    """Record the caller's label for one item.
+    """Record the caller's label for one item; a ``correct`` label publishes it.
 
     Raises:
         HTTPException: 404 if the item does not exist, 403 if it belongs to
             another verifier, 422 if an escalating label carries no note.
+            Promotion failures surface through the shared handlers: 403 for a
+            caller without the reviewer role, 409 for a promotion refusal.
     """
     try:
-        row = queue_domain.record_label(
+        row = queue_domain.label_and_publish(
             session=session,
             item_id=item_id,
-            verifier_id=UUID(user.id),
+            verifier=user,
             label=payload.label,
             note=payload.note,
         )
     except queue_domain.QueueError as exc:
-        # Mapped by cause rather than collapsed into one code: "not yours" and
-        # "does not exist" are different problems for whoever is debugging, and
-        # a missing note is a client error the caller can fix.
-        message = str(exc)
-        if "no verification item" in message:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, message) from exc
-        if "not assigned" in message:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, message) from exc
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, message) from exc
+        raise _queue_error_to_http(exc) from exc
 
     session.commit()
-    return LabelResponse(id=row.id, status=row.status, label=row.label)
+    return LabelResponse(id=row.id, status=row.status, label=row.label, decision=row.decision)
 
 
 @router.get("/escalations", response_model=EscalationPage)
@@ -109,5 +84,53 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
             f"{user.email} does not hold the reviewer role",
         )
 
-    rows = queue_domain.escalations(session=session)
-    return EscalationPage(items=[_to_item(row) for row in rows])
+    return EscalationPage(items=queue_domain.review_escalations(session=session))
+
+
+@router.post("/escalations/{item_id}/resolve", response_model=LabelResponse)
+def resolve_escalation(
+    item_id: UUID,
+    payload: ResolveRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> LabelResponse:
+    """Decide an escalated item as a lead: publish it or keep it out.
+
+    Raises:
+        HTTPException: 404 if the item does not exist, 422 if it is not
+            escalated, carries no note, or the caller escalated it themselves.
+            The reviewer-role check and promotion refusals surface through the
+            shared handlers (403 and 409).
+    """
+    try:
+        row = queue_domain.resolve_escalation(
+            session=session,
+            item_id=item_id,
+            lead=user,
+            decision=payload.decision,
+            note=payload.note,
+        )
+    except queue_domain.QueueError as exc:
+        raise _queue_error_to_http(exc) from exc
+
+    session.commit()
+    return LabelResponse(id=row.id, status=row.status, label=row.label, decision=row.decision)
+
+
+def _queue_error_to_http(exc: queue_domain.QueueError) -> HTTPException:
+    """Map a queue refusal to a status by cause.
+
+    Args:
+        exc: The refusal.
+
+    Returns:
+        The HTTP error to raise. "Not yours" and "does not exist" are different
+        problems for whoever is debugging, and a missing note is a client error
+        the caller can fix — so they are not collapsed into one code.
+    """
+    message = str(exc)
+    if "no verification item" in message:
+        return HTTPException(status.HTTP_404_NOT_FOUND, message)
+    if "not assigned" in message:
+        return HTTPException(status.HTTP_403_FORBIDDEN, message)
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, message)

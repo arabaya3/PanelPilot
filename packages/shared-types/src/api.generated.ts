@@ -339,7 +339,7 @@ export interface paths {
     };
     /**
      * My Queue
-     * @description Return the caller's outstanding batch.
+     * @description Return the caller's outstanding batch, with each item's text and citation.
      */
     get: operations['my_queue_api_v1_verification_queue_me_get'];
     put?: never;
@@ -361,11 +361,13 @@ export interface paths {
     put?: never;
     /**
      * Label Item
-     * @description Record the caller's label for one item.
+     * @description Record the caller's label for one item; a ``correct`` label publishes it.
      *
      *     Raises:
      *         HTTPException: 404 if the item does not exist, 403 if it belongs to
      *             another verifier, 422 if an escalating label carries no note.
+     *             Promotion failures surface through the shared handlers: 403 for a
+     *             caller without the reviewer role, 409 for a promotion refusal.
      */
     post: operations['label_item_api_v1_verification_items__item_id__label_post'];
     delete?: never;
@@ -396,6 +398,32 @@ export interface paths {
     get: operations['list_escalations_api_v1_verification_escalations_get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/escalations/{item_id}/resolve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Escalation
+     * @description Decide an escalated item as a lead: publish it or keep it out.
+     *
+     *     Raises:
+     *         HTTPException: 404 if the item does not exist, 422 if it is not
+     *             escalated, carries no note, or the caller escalated it themselves.
+     *             The reviewer-role check and promotion refusals surface through the
+     *             shared handlers (403 and 409).
+     */
+    post: operations['resolve_escalation_api_v1_verification_escalations__item_id__resolve_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -463,6 +491,30 @@ export interface paths {
      * @description Validate code the caller already has.
      */
     post: operations['review_api_v1_plc_review_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/schematics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Build Schematic
+     * @description Turn a panel schedule into what the single-line diagram draws.
+     *
+     *     Authenticated but not rate-limited: it reads nothing and calls no model,
+     *     so it costs a validation pass. A schedule whose wiring is ambiguous is a
+     *     422 listing every problem.
+     */
+    post: operations['build_schematic_api_v1_schematics_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -587,6 +639,25 @@ export interface components {
       derated_ampacity_a: string;
       /** Applied Factors */
       applied_factors: components['schemas']['AppliedFactor'][];
+    };
+    /**
+     * CalculatedValue
+     * @description A quantity a tool produced.
+     *
+     *     Attributes:
+     *         display: The value as it is printed, with its unit.
+     *         source: Where it came from, citable.
+     */
+    CalculatedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'calculated';
+      /** Display */
+      display: string;
+      /** Source */
+      source: string;
     };
     /**
      * Citation
@@ -846,6 +917,29 @@ export interface components {
       response: components['schemas']['DiagnosticResponse'];
     };
     /**
+     * DinSpec
+     * @description What PD-002 needs to look up a device's rail width.
+     *
+     *     Attributes:
+     *         category: The device family, which decides the width convention.
+     *         series: Manufacturer series, where the family has more than one.
+     *         poles: Pole count; module-pitch devices scale with it.
+     */
+    DinSpec: {
+      /**
+       * Category
+       * @enum {string}
+       */
+      category: 'mcb' | 'rcbo' | 'terminal-block';
+      /** Series */
+      series?: string | null;
+      /**
+       * Poles
+       * @default 1
+       */
+      poles: number;
+    };
+    /**
      * DisplayVerdict
      * @description Whether the photo shows what the engineer thinks it shows.
      * @enum {string}
@@ -1025,6 +1119,13 @@ export interface components {
     /**
      * LabelResponse
      * @description The outcome of recording a label.
+     *
+     *     Attributes:
+     *         id: The item.
+     *         status: ``labeled``, ``escalated`` or ``resolved``.
+     *         label: The verifier's label.
+     *         decision: ``approved`` once the chunk is live in production,
+     *             ``rejected`` if a lead kept it out, otherwise ``None``.
      */
     LabelResponse: {
       /**
@@ -1036,6 +1137,8 @@ export interface components {
       status: string;
       /** Label */
       label: string | null;
+      /** Decision */
+      decision?: string | null;
     };
     /**
      * LadderBlock
@@ -1152,6 +1255,25 @@ export interface components {
       email: string;
       /** Password */
       password: string;
+    };
+    /**
+     * NotCalculatedValue
+     * @description A quantity no tool can produce yet.
+     *
+     *     Attributes:
+     *         reason: Why, in words an engineer can act on.
+     *         blocked_by: The task(s) that would unblock it, e.g. ``"AI-005"``.
+     */
+    NotCalculatedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'not_calculated';
+      /** Reason */
+      reason: string;
+      /** Blocked By */
+      blocked_by: string;
     };
     /**
      * PanelBomRequest
@@ -1292,7 +1414,23 @@ export interface components {
     };
     /**
      * QueueItem
-     * @description One chunk in a verifier's queue.
+     * @description One chunk in a verifier's queue, with what the verifier must judge.
+     *
+     *     Attributes:
+     *         id: The queue item.
+     *         chunk_id: The staged chunk it covers.
+     *         status: Its queue status.
+     *         assigned_at: When it reached this verifier.
+     *         content: The chunk's text, as it would go live.
+     *         source_url: The document it cites, for checking against.
+     *         page: The page it cites.
+     *         section: The section it cites.
+     *         brand: Manufacturer, from the chunk's metadata.
+     *         model: Equipment model, from the chunk's metadata.
+     *
+     *     The citation fields are ``None`` when the chunk is no longer in staging —
+     *     re-crawled or removed — which the reviewer must see rather than approving
+     *     an id whose text they cannot read.
      */
     QueueItem: {
       /**
@@ -1306,6 +1444,18 @@ export interface components {
       status: string;
       /** Assigned At */
       assigned_at: string | null;
+      /** Content */
+      content?: string | null;
+      /** Source Url */
+      source_url?: string | null;
+      /** Page */
+      page?: number | null;
+      /** Section */
+      section?: string | null;
+      /** Brand */
+      brand?: string | null;
+      /** Model */
+      model?: string | null;
     };
     /**
      * QueuePage
@@ -1356,6 +1506,40 @@ export interface components {
       refresh_token: string;
     };
     /**
+     * RefusedValue
+     * @description A quantity a tool declined to produce for these inputs.
+     *
+     *     Attributes:
+     *         reason: The tool's refusal, verbatim.
+     */
+    RefusedValue: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      status: 'refused';
+      /** Reason */
+      reason: string;
+    };
+    /**
+     * ResolveRequest
+     * @description A lead's decision on an escalated item.
+     *
+     *     Attributes:
+     *         decision: ``approved`` publishes the chunk; ``rejected`` keeps it in
+     *             staging only.
+     *         note: Why. Required; the domain refuses an empty one so the message
+     *             names the rule.
+     */
+    ResolveRequest: {
+      decision: components['schemas']['VerificationDecision'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
      * RetrievedPassage
      * @description One passage returned by retrieval, with its citation and score.
      */
@@ -1367,6 +1551,177 @@ export interface components {
       /** Score */
       score: number;
       citation: components['schemas']['Citation'];
+    };
+    /**
+     * ScheduleLine
+     * @description One device in the panel schedule, as the engineer states it.
+     *
+     *     Attributes:
+     *         designator: Its reference designator; unique within the schedule.
+     *         kind: The PD-006 symbol kind. An unrecognised kind is accepted and
+     *             drawn as a marked placeholder, never dropped.
+     *         rating: The device's stated rating, e.g. ``"C16"``. The engineer's
+     *             input, not a calculation, so it is printed as given.
+     *         group: The functional row it belongs to, e.g. ``"motors"``.
+     *         feeds_from: The designator directly upstream of it. ``None`` for the
+     *             incomer only — exactly one line may leave it empty.
+     *         mounting: Where it physically sits. Only rail-mounted devices take rail.
+     *         din: How to look up its rail width; omit when not rail-mounted, or
+     *             when its width is not sourced (the group's rows then say so).
+     */
+    ScheduleLine: {
+      /** Designator */
+      designator: string;
+      /** Kind */
+      kind: string;
+      /** Rating */
+      rating?: string | null;
+      /**
+       * Group
+       * @default main
+       */
+      group: string;
+      /** Feeds From */
+      feeds_from?: string | null;
+      /**
+       * Mounting
+       * @default rail
+       * @enum {string}
+       */
+      mounting: 'rail' | 'door' | 'field';
+      din?: components['schemas']['DinSpec'] | null;
+    };
+    /**
+     * SchematicComponent
+     * @description A device placed on the diagram.
+     *
+     *     Attributes:
+     *         designator: Its reference designator.
+     *         kind: Its PD-006 symbol kind, possibly one the library cannot draw.
+     *         rating: Its stated rating, if any.
+     *         group: Its functional row.
+     *         mounting: Where it sits.
+     */
+    SchematicComponent: {
+      /** Designator */
+      designator: string;
+      /** Kind */
+      kind: string;
+      /** Rating */
+      rating: string | null;
+      /** Group */
+      group: string;
+      /**
+       * Mounting
+       * @enum {string}
+       */
+      mounting: 'rail' | 'door' | 'field';
+    };
+    /**
+     * SchematicConnection
+     * @description One conductor between two devices.
+     *
+     *     Attributes:
+     *         upstream: The feeding device.
+     *         downstream: The fed device.
+     *         conductor: The conductor size — explicit when not calculated.
+     */
+    SchematicConnection: {
+      /** Upstream */
+      upstream: string;
+      /** Downstream */
+      downstream: string;
+      /** Conductor */
+      conductor:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+    };
+    /**
+     * SchematicGroup
+     * @description A functional row, in drawing order.
+     *
+     *     Attributes:
+     *         name: The group.
+     *         order: Position left to right on the diagram.
+     *         designators: Its devices, in schedule order.
+     *         rail_rows: How many rail rows it needs (PD-003).
+     */
+    SchematicGroup: {
+      /** Name */
+      name: string;
+      /** Order */
+      order: number;
+      /** Designators */
+      designators: string[];
+      /** Rail Rows */
+      rail_rows:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+    };
+    /**
+     * SchematicRequest
+     * @description A panel to draw.
+     *
+     *     Attributes:
+     *         title: Printed in the title block.
+     *         supply: The incoming supply as printed, e.g. ``"400 V 3~ 50 Hz"``.
+     *         lines: The schedule.
+     *         usable_rail_mm: Usable rail length per row, from the enclosure drawing.
+     *             Without it rail rows are reported as not calculated.
+     */
+    SchematicRequest: {
+      /** Title */
+      title: string;
+      /** Supply */
+      supply: string;
+      /** Lines */
+      lines: components['schemas']['ScheduleLine'][];
+      /** Usable Rail Mm */
+      usable_rail_mm?: number | string | null;
+    };
+    /**
+     * SchematicSpec
+     * @description Everything the renderer needs, and nothing it has to infer.
+     *
+     *     Attributes:
+     *         title: For the title block.
+     *         supply: The incoming supply.
+     *         incomer: The designator fed by the supply.
+     *         components: Every device, in schedule order.
+     *         connections: The topology, one entry per fed device.
+     *         groups: Functional rows, in drawing order.
+     *         enclosure: The enclosure selection (PD-003).
+     *         trunking: The trunking size (PD-004).
+     *         unknown_kinds: Symbol kinds the library cannot draw, so a caller can
+     *             warn before rendering rather than discover placeholders after.
+     */
+    SchematicSpec: {
+      /** Title */
+      title: string;
+      /** Supply */
+      supply: string;
+      /** Incomer */
+      incomer: string;
+      /** Components */
+      components: components['schemas']['SchematicComponent'][];
+      /** Connections */
+      connections: components['schemas']['SchematicConnection'][];
+      /** Groups */
+      groups: components['schemas']['SchematicGroup'][];
+      /** Enclosure */
+      enclosure:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+      /** Trunking */
+      trunking:
+        | components['schemas']['CalculatedValue']
+        | components['schemas']['NotCalculatedValue']
+        | components['schemas']['RefusedValue'];
+      /** Unknown Kinds */
+      unknown_kinds: string[];
     };
     /**
      * SearchFilters
@@ -2304,6 +2659,41 @@ export interface operations {
       };
     };
   };
+  resolve_escalation_api_v1_verification_escalations__item_id__resolve_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LabelResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   flag_answer_api_v1_feedback_flag_post: {
     parameters: {
       query?: never;
@@ -2390,6 +2780,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PlcValidationResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  build_schematic_api_v1_schematics_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SchematicRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SchematicSpec'];
         };
       };
       /** @description Validation Error */

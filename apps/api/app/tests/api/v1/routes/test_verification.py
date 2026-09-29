@@ -44,6 +44,7 @@ class _Row:
         chunk_id: str | None = "c1",
         status: str = "pending",
         label: str | None = None,
+        decision: str | None = None,
         assigned_at: datetime | None = NOW,
     ) -> None:
         """Build a stand-in row.
@@ -53,12 +54,14 @@ class _Row:
             chunk_id: Which chunk it covers.
             status: Its queue status.
             label: The label applied, if any.
+            decision: The approval outcome, if any.
             assigned_at: When it was assigned.
         """
         self.id = row_id
         self.chunk_id = chunk_id
         self.status = status
         self.label = label
+        self.decision = decision
         self.assigned_at = assigned_at
 
 
@@ -127,7 +130,52 @@ def _lead_client() -> Iterator[TestClient]:
     yield from _client(_lead)
 
 
+@pytest.fixture(autouse=True)
+def _no_staging_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route tests run without OpenSearch; the staging read returns nothing."""
+    monkeypatch.setattr(queue_domain, "get_staging_chunks", lambda _ids: {})
+
+
 # --- the verifier's own queue -------------------------------------------------
+
+
+def test_each_item_carries_the_text_and_citation_to_judge(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reviewer approving an id they cannot read is not a review."""
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=42))])
+    monkeypatch.setattr(
+        queue_domain,
+        "get_staging_chunks",
+        lambda _ids: {
+            "c1": {
+                "content": "F0001 OVERCURRENT: output current exceeded the trip limit.",
+                "source_url": "https://example.invalid/acs880.pdf#page=12",
+                "page": 12,
+                "section": "Fault tracing",
+                "brand": "ABB",
+                "model": "ACS880",
+            }
+        },
+    )
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["content"].startswith("F0001 OVERCURRENT")
+    assert item["source_url"] == "https://example.invalid/acs880.pdf#page=12"
+    assert item["page"] == 12
+
+
+def test_an_item_whose_chunk_left_staging_says_so_by_omission(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [_Row(row_id=uuid.UUID(int=42))])
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["chunk_id"] == "c1"
+    assert item["content"] is None
+    assert item["source_url"] is None
 
 
 def test_the_queue_returns_the_callers_items(
@@ -189,8 +237,8 @@ def test_a_label_is_recorded_and_committed(
     item_id = uuid.UUID(int=42)
     monkeypatch.setattr(
         queue_domain,
-        "record_label",
-        lambda **_: _Row(row_id=item_id, status="labeled", label="correct"),
+        "label_and_publish",
+        lambda **_: _Row(row_id=item_id, status="labeled", label="correct", decision="approved"),
     )
 
     response = client.post(
@@ -203,7 +251,31 @@ def test_a_label_is_recorded_and_committed(
         "id": str(item_id),
         "status": "labeled",
         "label": "correct",
+        "decision": "approved",
     }
+
+
+def test_the_label_is_recorded_as_the_authenticated_caller(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The caller, not a request field, is the verifier — and so the reviewer.
+
+    Promotion's role and four-eyes checks read this identity, so it must be
+    the credential's rather than anything the body could name.
+    """
+    seen: list[CurrentUser] = []
+
+    def _record(**kwargs: object) -> _Row:
+        verifier = kwargs["verifier"]
+        assert isinstance(verifier, CurrentUser)
+        seen.append(verifier)
+        return _Row(row_id=uuid.UUID(int=42), status="labeled", label="correct")
+
+    monkeypatch.setattr(queue_domain, "label_and_publish", _record)
+
+    client.post(f"/verification/items/{uuid.UUID(int=42)}/label", json={"label": "correct"})
+
+    assert [user.email for user in seen] == ["verifier@example.com"]
 
 
 def test_an_escalating_label_reports_the_escalated_status(
@@ -212,7 +284,7 @@ def test_an_escalating_label_reports_the_escalated_status(
     item_id = uuid.UUID(int=42)
     monkeypatch.setattr(
         queue_domain,
-        "record_label",
+        "label_and_publish",
         lambda **_: _Row(row_id=item_id, status="escalated", label="uncertain"),
     )
 
@@ -239,7 +311,7 @@ def test_a_missing_item_is_a_404(client: TestClient, monkeypatch: pytest.MonkeyP
     def _raise(**_: object) -> None:
         raise QueueError("no verification item 123")
 
-    monkeypatch.setattr(queue_domain, "record_label", _raise)
+    monkeypatch.setattr(queue_domain, "label_and_publish", _raise)
 
     response = client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
@@ -257,7 +329,7 @@ def test_labelling_someone_elses_item_is_a_403(
     def _raise(**_: object) -> None:
         raise QueueError("item 123 is not assigned to 456")
 
-    monkeypatch.setattr(queue_domain, "record_label", _raise)
+    monkeypatch.setattr(queue_domain, "label_and_publish", _raise)
 
     response = client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
@@ -273,7 +345,7 @@ def test_an_escalating_label_without_a_note_is_a_422(
     def _raise(**_: object) -> None:
         raise QueueError("a incorrect label requires a note")
 
-    monkeypatch.setattr(queue_domain, "record_label", _raise)
+    monkeypatch.setattr(queue_domain, "label_and_publish", _raise)
 
     response = client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
@@ -292,7 +364,7 @@ def test_a_failed_label_is_not_committed(
     def _raise(**_: object) -> None:
         raise QueueError("no verification item 123")
 
-    monkeypatch.setattr(queue_domain, "record_label", _raise)
+    monkeypatch.setattr(queue_domain, "label_and_publish", _raise)
 
     response = client.post(
         f"/verification/items/{uuid.UUID(int=42)}/label",
@@ -341,3 +413,66 @@ def test_an_ordinary_verifier_cannot_read_the_escalation_queue(
     assert response.status_code == 403
     # Refused before the query runs, not filtered afterwards.
     assert not called
+
+
+# --- resolving an escalation --------------------------------------------------
+
+
+def test_a_lead_resolution_is_committed_and_reported(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item_id = uuid.UUID(int=42)
+    calls: list[dict[str, object]] = []
+
+    def _resolve(**kwargs: object) -> _Row:
+        calls.append(kwargs)
+        return _Row(row_id=item_id, status="resolved", label="uncertain", decision="approved")
+
+    monkeypatch.setattr(queue_domain, "resolve_escalation", _resolve)
+
+    response = lead_client.post(
+        f"/verification/escalations/{item_id}/resolve",
+        json={"decision": "approved", "note": "checked against p.12"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": str(item_id),
+        "status": "resolved",
+        "label": "uncertain",
+        "decision": "approved",
+    }
+    assert calls[0]["note"] == "checked against p.12"
+
+
+def test_an_unknown_decision_is_rejected_by_the_schema(lead_client: TestClient) -> None:
+    response = lead_client.post(
+        f"/verification/escalations/{uuid.UUID(int=42)}/resolve",
+        json={"decision": "probably", "note": "x"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("no verification item 42", 404),
+        ("item 42 is labeled, not escalated", 422),
+        ("resolving an escalation requires a note", 422),
+    ],
+)
+def test_a_refused_resolution_maps_to_its_status(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch, message: str, expected: int
+) -> None:
+    def _raise(**_: object) -> None:
+        raise QueueError(message)
+
+    monkeypatch.setattr(queue_domain, "resolve_escalation", _raise)
+
+    response = lead_client.post(
+        f"/verification/escalations/{uuid.UUID(int=42)}/resolve",
+        json={"decision": "rejected", "note": ""},
+    )
+
+    assert response.status_code == expected

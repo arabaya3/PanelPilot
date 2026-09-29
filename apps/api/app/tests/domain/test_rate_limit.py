@@ -11,6 +11,8 @@ has failed, so the shared-site case is tested as carefully as the abuse case.
 from __future__ import annotations
 
 import contextlib
+import os
+import uuid
 from typing import Any
 
 import fakeredis
@@ -275,3 +277,59 @@ def test_an_unavailable_store_is_logged_without_the_address(
 
     assert [event for event, _ in logged] == ["rate_limit.store_unavailable"]
     assert _IP not in repr(logged)
+
+
+# --- against a real Redis -------------------------------------------------------
+
+
+def _real_redis() -> redis.Redis | None:
+    url = os.environ.get("REDIS_URL", "")
+    if not url:
+        return None
+    try:
+        client = redis.Redis.from_url(url, socket_connect_timeout=0.5, socket_timeout=0.5)
+        client.ping()
+    except redis.RedisError:
+        return None
+    return client
+
+
+requires_redis = pytest.mark.skipif(
+    _real_redis() is None, reason="needs a reachable Redis; CI provides one as a service container"
+)
+
+
+@requires_redis
+def test_two_workers_share_one_window_on_a_real_redis() -> None:
+    """The property fakeredis can only simulate: MULTI on a real server."""
+    client = _real_redis()
+    assert client is not None
+    key = f"trial:ip:test-{uuid.uuid4().hex}"
+    worker_a = RedisRateLimitStore(redis.Redis(connection_pool=client.connection_pool))
+    worker_b = RedisRateLimitStore(redis.Redis(connection_pool=client.connection_pool))
+    try:
+        for i in range(3):
+            worker_a.record_and_count(key, now=1000.0 + i, window_seconds=60)
+        assert worker_b.record_and_count(key, now=1003.0, window_seconds=60) == 4
+        # Everything older than the window is trimmed.
+        assert worker_b.record_and_count(key, now=1062.5, window_seconds=60) == 2
+        ttl = client.ttl(key)
+        assert isinstance(ttl, int)
+        assert 0 < ttl <= 60
+    finally:
+        client.delete(key)
+
+
+@requires_redis
+def test_a_burst_is_throttled_on_a_real_redis() -> None:
+    client = _real_redis()
+    assert client is not None
+    store = RedisRateLimitStore(client)
+    ip = f"198.51.100.{uuid.uuid4().int % 250}"
+    try:
+        for _ in range(TRIAL_REQUESTS_PER_WINDOW):
+            check_trial_rate_limit(store=store, client_ip=ip, now=5000.0)
+        with pytest.raises(RateLimitExceededError):
+            check_trial_rate_limit(store=store, client_ip=ip, now=5000.0)
+    finally:
+        client.delete(f"trial:ip:{ip}")

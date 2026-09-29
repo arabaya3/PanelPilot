@@ -145,7 +145,18 @@
     "submit": "Submit",
     "submitting": "Submitting…",
     "claimedBy": "Already claimed by {name}",
-    "submitFailed": "Could not submit. Try again."
+    "submitFailed": "Could not submit. Try again.",
+    "contentMissing": "The text of this chunk is no longer in staging. Do not approve it — it was re-crawled or removed.",
+    "citation": "Page {page} — {section}",
+    "signInHeading": "Sign in to review",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "signInFailed": "Those credentials were not accepted.",
+    "loadFailed": "The queue could not be loaded.",
+    "notReviewer": "This account does not hold the reviewer role. An operator grants it with: python -m app.worker grant-role you@example.com reviewer",
+    "signOut": "Sign out"
   },
   "landing": {
     "starting": "Starting your trial…",
@@ -160,5 +171,32 @@
     "failed": "History could not be loaded.",
     "unavailable": "History is unavailable.",
     "loadMore": "Load more"
+  },
+  "schematic": {
+    "heading": "Single-line schematic",
+    "intro": "Paste a panel schedule and draw its single-line diagram. Quantities no verified tool can size yet are marked \"not calculated\" rather than left blank.",
+    "scheduleLabel": "Panel schedule (JSON)",
+    "draw": "Draw schematic",
+    "drawing": "Drawing…",
+    "badJson": "The schedule is not valid JSON: {error}",
+    "invalid": "The schedule cannot be drawn as given: {message}",
+    "failed": "The schematic could not be built. Please try again.",
+    "unavailable": "The schematic service is not available right now.",
+    "unknownKinds": "No symbol exists for {count, plural, one {# component type} other {# component types}}, drawn as marked placeholders: {kinds}",
+    "sheetOf": "Sheet {number} of {total}",
+    "notes": "Notes",
+    "moreNotes": "+ {count} more — see the notes list",
+    "notCalculated": "not calculated",
+    "refused": "refused",
+    "conductors": "Conductor sizes",
+    "enclosure": "Enclosure",
+    "trunking": "Trunking",
+    "railRows": "Rail rows, {group}",
+    "continuedOn": "to sheet {sheet}",
+    "continuedFrom": "from {designator}, sheet {sheet}",
+    "exportPng": "Download sheet {number} (PNG)",
+    "exportFailed": "Sheet {number} could not be exported.",
+    "print": "Print or save as PDF",
+    "navLink": "Single-line schematic"
   }
 }

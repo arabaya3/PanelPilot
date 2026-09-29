@@ -4,48 +4,74 @@ An AI diagnostic and design copilot for electrical and control engineers.
 Answers are grounded in crawled manufacturer documentation and standards, with
 calculations performed by deterministic code rather than by the model.
 
-> **Status:** the diagnostic path is implemented end to end — retrieval,
-> the cite-or-refuse guardrail, structured generation, the streaming
-> orchestration endpoint, and the web client that renders it in English,
-> Arabic and Hebrew. `docker compose up` boots all five services healthy.
->
-> One backend gap remains, listed below, and it is an account setting rather
-> than code: the embedding provider's free tier is too rate-limited to ingest
-> a corpus.
+> **Status:** every path from a crawled manual to an answered question is
+> implemented and exercised locally against real Postgres, OpenSearch and
+> Redis: crawl into staging, human review, publication to production,
+> retrieval, the cite-or-refuse guardrail, structured generation, and the web
+> client in English, Arabic and Hebrew. The single-line schematic renderer
+> (PD-007/PD-008) draws panel schedules. The calculation tools remain blocked
+> on source documents — see Known gaps.
 
 ---
 
-## What works if you boot it today
+## Run it locally, end to end
 
-`docker compose up --build -d` brings up five healthy services. The web root
-serves a live chat input on an anonymous trial — no signup, no form.
+```bash
+cp .env.example .env
+# Set real keys in .env: VOYAGE_API_KEY (embeddings; needs billing enabled on
+# the Voyage account) and ANTHROPIC_API_KEY (answers and photo reading).
+docker compose up --build -d          # five services; web on :3000
+```
 
-**What you can actually exercise end to end:**
+The corpus starts empty, so every question is refused until content has been
+crawled **and** reviewed. That is cite-or-refuse working, not a fault. To get
+from nothing to an answered question:
 
-- **PLC code review** — `POST /api/v1/plc/review`, or the PLC view in the UI.
-  A real IEC 61131-3 parser: valid code passes, a typo'd tag or a missing
-  `END_IF` is flagged with a line number, and an unsupported dialect construct
-  reports `incomplete` rather than a false pass. No auth, no corpus, no model
-  call. This is the best thing to try first.
-- **Signup, login, and the trial claim** — including carrying an anonymous
-  conversation into a new account.
-- **Fault-code photo recognition** — `POST /api/v1/images`, or the camera
-  button in the chat. The photo is stored and read by the vision model; a
-  confident reading pre-fills the message, and anything less asks the engineer
-  to confirm. Needs a real `ANTHROPIC_API_KEY`; without one the upload still
-  succeeds and the UI asks for the code to be typed.
+```bash
+# 1. An account, made a reviewer. Roles are granted only from the operator
+#    CLI, never through the API, so no account can promote itself.
+curl -X POST http://localhost:3000/api/v1/auth/signup \
+  -H 'content-type: application/json' \
+  -d '{"email": "you@example.com", "password": "a-long-password"}'
+docker compose exec api python -m app.worker grant-role you@example.com reviewer
 
-**What will not work yet, and why:**
+# 2. Crawl a source into staging. With no seed URL the source's curated
+#    document list is used (app/ingestion/known_documents.py).
+docker compose exec api python -m app.worker crawl abb
 
-- **Asking a diagnostic question.** It answers with a refusal — see known
-  gap 3. The stream runs to completion (`retrieving` → `refused` → `result`)
-  and the UI renders the refusal, which is correct: the corpus is empty, so
-  cite-or-refuse has nothing to cite. This is a rate-limited embedding
-  account and an unpopulated index, not a bug in the chat surface.
-- **Anything corpus-backed.** The production index is empty — nothing has been
-  crawled, chunked, verified, or promoted. Even with embeddings working, every
-  answer would be a refusal until the corpus is populated and verified. That
-  is cite-or-refuse behaving correctly, not a defect.
+# 3. Hand the crawled chunks to reviewers (run daily in a deployment).
+docker compose exec api python -m app.worker assign-verification
+```
+
+4. Open <http://localhost:3000/verification>, sign in as the reviewer, and
+   check each chunk's text against its cited page. **Correct** publishes it to
+   the production index, with an audit row naming you; **Incorrect** and
+   **Uncertain** need a note and go to a lead, who decides them with
+   `POST /api/v1/verification/escalations/{id}/resolve`.
+5. Ask a question at <http://localhost:3000>. Only reviewed content is ever
+   searched.
+
+Other operator commands, all `python -m app.worker <job>` (`--list` shows them):
+
+| Job                          | What it does                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `revoke-role <email> <role>` | Takes a role away. Effective immediately, not at token expiry.                              |
+| `reindex-staging [source]`   | Re-embeds staging after an embedding-model change. Never touches production.                |
+| `expire-stale-sources`       | Lists live chunks whose source document changed since review. Exit 3 means "review needed". |
+
+**What else you can use straight away:**
+
+- **Single-line schematic** — <http://localhost:3000/schematic>. Paste a panel
+  schedule, get a paginated IEC-style diagram with PNG and PDF export.
+  Quantities no verified tool can size (conductors, trunking, enclosure) are
+  printed as "not calculated", with the blocking task, never left blank.
+- **PLC code review** — `POST /api/v1/plc/review`, or the PLC view. A real
+  IEC 61131-3 parser; an unsupported dialect construct reports `incomplete`
+  rather than a false pass. No corpus or model call needed.
+- **Fault-code photo recognition** — the camera button in the chat. A reading
+  costs one free question, like a diagnosis, and only when one is delivered.
+- **Signup, login, and the trial claim**, carrying an anonymous conversation
+  into a new account.
 
 ## Known gaps
 
@@ -54,8 +80,21 @@ anyone picking this up needs these before they need the history.
 
 ### Backend work between here and a usable product
 
-One thing: a vendor account setting, and it is what actually blocks the
-product being usable at all.
+No code gap remains on the path from crawl to answer. What remains is content:
+the corpus has to be crawled and reviewed, which needs the keys above.
+
+_Resolved in the same pass as this note: verified content could never reach
+production. A `correct` label never promoted anything, escalations could not be
+decided, queue items were never assigned, `promote_chunk` refused every real
+chunk id, every access token said `engineer`, no page hosted the review
+console, and the worker's crawl could not queue its chunks. Each is fixed and
+tested against the real services; the list is kept because each was invisible
+from the code alone._
+
+_Still open: `POST /api/v1/ingestion/promotions` calls a `promote_document`
+stub and returns 500. Publication goes through the review path above instead;
+that endpoint needs either implementing or removing, and was left for a
+deliberate decision._
 
 _Previously listed here and now resolved: the anonymous-trial endpoint.
 `POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
@@ -96,10 +135,10 @@ needed. The key is read from `VOYAGE_API_KEY`, named after the vendor so a
 second provider added later gets its own variable rather than overloading one
 that could silently hold the wrong account's credential.
 
-**The remaining limit is an account setting, not code.** Voyage's free tier
-allows 3 requests per minute with no payment method attached, so a crawl of
-any size will hit it. The failure surfaces correctly — `EmbeddingError`, not a
-zero vector — but a real ingestion run needs billing enabled.
+**A real crawl needs a Voyage account with billing enabled.** The free tier
+allows 3 requests per minute with no payment method attached. A limit hit
+surfaces correctly — `EmbeddingError`, not a zero vector — and
+`reindex-staging` is safe to re-run after one.
 
 Two properties worth knowing before anyone swaps model or vendor:
 
@@ -119,13 +158,22 @@ field is omitted entirely when absent rather than written as zeros.
 ### Blocked on source documents that are not in this repository
 
 **AI-005, AI-006, AI-007 — the three calculation tools.** Cable sizing, VFD
-selection, and panel load sizing each name a specific manufacturer
-engineering guide as the source for their tables and coefficients. None is
-present here. They were not attempted, and deliberately so: the numbers these
-produce end up on drawings, with cable and fire safety downstream of them, and
-a table written from general knowledge would be confident and uncitable — the
-exact failure the cite-or-refuse rule exists to prevent. Supplying the named
-guides unblocks all three.
+selection, and panel load sizing each need a manufacturer engineering guide
+with at least ten published worked examples to verify against, exactly. The
+numbers end up on drawings, with cable and fire safety downstream of them, so
+a table written from general knowledge — confident and uncitable — is the
+exact failure cite-or-refuse exists to prevent. Their endpoints refuse with a
+501 naming the blocker rather than returning a number.
+
+A search of openly published guides found fewer than ten each: the ABB
+_Electrical installation handbook_ (2006) adds three conductor-sizing and one
+derating example to EIG 2010's two; ABB hardware manuals (ACH580-01, ACS355)
+give five drive-derating examples, none heavy-duty. Every one is "All rights
+reserved", and ABB's _Technical guide No. 7_ forbids use without written
+consent, which someone should clear before its values go into code. Most
+manufacturer sites (Schneider, Siemens, Danfoss, Rittal, Legrand, Hager) were
+unreachable from the build environment, so the search is incomplete rather
+than negative.
 
 **BE-011 and FE-010 — the panel BOM.** Both consume the calc tools above, so
 both are blocked behind them. The responsive check

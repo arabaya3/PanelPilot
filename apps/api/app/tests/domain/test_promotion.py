@@ -31,15 +31,21 @@ from app.models.schemas.ingestion import VerificationDecision, VerificationVerdi
 from app.models.tables import calculations, diagnostics, user  # noqa: F401
 from app.models.tables.ingestion import PromotionAuditRow
 
-# The audit row's foreign keys are UUIDs, so ids here are real UUIDs rather
-# than slugs — the promotion path writes a database row, not just an index doc.
-CHUNK_ID = "3f7a1c2e-0b44-4d21-9a51-6c8e5d2f1a90"
+# A chunk id in the shape the chunker really produces
+# (`<document>#<ordinal>-<digest>`), NOT a UUID. The first version of these
+# tests used a UUID here, which hid that promotion parsed the chunk id as the
+# staged document's UUID and so refused every chunk a real crawl produced.
+CHUNK_ID = "abb-acs880-firmware#0003-1a2b3c4d5e6f"
+# The staged document the chunk was cut from. Promotion finds it through the
+# chunk's `content_hash`, which is the document's hash.
+STAGED_DOCUMENT_ID = "3f7a1c2e-0b44-4d21-9a51-6c8e5d2f1a90"
+DEFAULT_CONTENT = "Fault F0001 OVERCURRENT."
 REVIEWER_ID = "9c1d4e6a-2f33-4b78-8e10-5a7b3c9d2e41"
 INGESTER_ID = "1a2b3c4d-5e6f-4708-9a0b-1c2d3e4f5a6b"
 TENANT_ID = "5d6e7f80-9a1b-4c2d-8e3f-4a5b6c7d8e9f"
 
 
-def _staged_chunk(*, content: str = "Fault F0001 OVERCURRENT.", **overrides: Any) -> dict[str, Any]:
+def _staged_chunk(*, content: str = DEFAULT_CONTENT, **overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
         "brand": "ABB",
         "model": "ACS880",
@@ -138,15 +144,15 @@ def db() -> Iterator[Session]:
             "INSERT INTO crawl_jobs (id, source_id, status, created_at, updated_at) "
             "VALUES (:i, 'test', 'succeeded', now(), now()) ON CONFLICT (id) DO NOTHING"
         ),
-        {"i": CHUNK_ID},
+        {"i": STAGED_DOCUMENT_ID},
     )
     session.execute(
         text(
             "INSERT INTO staged_documents (id, crawl_job_id, source_url, content_hash, "
             "created_at, updated_at) VALUES (:i, :i, 'https://x.invalid', :h, now(), now()) "
-            "ON CONFLICT (id) DO NOTHING"
+            "ON CONFLICT (id) DO UPDATE SET content_hash = EXCLUDED.content_hash"
         ),
-        {"i": CHUNK_ID, "h": CHUNK_ID},
+        {"i": STAGED_DOCUMENT_ID, "h": f"hash-of-{DEFAULT_CONTENT}"},
     )
     session.commit()
     try:
@@ -333,6 +339,27 @@ def test_promotion_writes_an_audit_row_naming_the_reviewer(
     assert row is not None, "audit_id does not identify a real row"
     assert str(row.reviewer_id) == REVIEWER_ID
     assert row.production_document_id == CHUNK_ID
+    # Traced to the document the chunk was cut from, found by its hash.
+    assert str(row.staged_document_id) == STAGED_DOCUMENT_ID
+
+
+@requires_opensearch
+def test_a_chunk_from_no_known_staged_document_is_refused(
+    indices: tuple[str, str], db: Session
+) -> None:
+    """A live passage must trace to the crawl that fetched it.
+
+    A chunk whose document hash matches no staged document has nothing for the
+    audit row to point at, so it stays out of production rather than going
+    live unattributed.
+    """
+    staging, production = indices
+    _stage(staging, _staged_chunk(content_hash="hash-no-crawl-ever-produced"))
+
+    with pytest.raises(PromotionError, match="no staged document"):
+        promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+
+    assert _live(production) is None
 
 
 @requires_opensearch

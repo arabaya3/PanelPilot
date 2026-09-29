@@ -36,8 +36,15 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.schemas.verification import VerificationLabel, escalates
+from app.ai.retrieval.client import get_staging_chunks
+from app.core.errors import AuthorizationError
+from app.domain.promotion import promote_chunk
+from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.ingestion import VerificationDecision, VerificationVerdict
+from app.models.schemas.verification import QueueItem, VerificationLabel, escalates
 from app.models.tables.ingestion import VerificationItemRow
+from app.models.tables.user import Role as RoleRow
+from app.models.tables.user import User, user_roles
 
 logger = structlog.get_logger(__name__)
 
@@ -49,6 +56,10 @@ STATUS_LABELED = "labeled"
 
 #: Status of an item routed to lead-engineer review.
 STATUS_ESCALATED = "escalated"
+
+#: Status of an escalated item a lead has decided. The decision itself is in
+#: ``decision`` (approved or rejected); the verifier's original label is kept.
+STATUS_RESOLVED = "resolved"
 
 #: How many items one verifier is given in a day.
 #:
@@ -321,6 +332,202 @@ def record_label(
     return row
 
 
+def label_and_publish(
+    *,
+    session: Session,
+    item_id: UUID,
+    verifier: CurrentUser,
+    label: VerificationLabel,
+    note: str = "",
+) -> VerificationItemRow:
+    """Record a verifier's label and, when it clears the chunk, make it live.
+
+    The clearance handler BE-004 names as the only caller of
+    ``promote_chunk``. A ``correct`` label on a crawled chunk promotes it in
+    the same transaction as the label, so the queue can never read "verified"
+    for content that is not live, nor the reverse.
+
+    Args:
+        session: Open database session. The caller commits.
+        item_id: The item being labelled.
+        verifier: Who is labelling it. Must hold the reviewer role for a
+            ``correct`` label to publish.
+        label: Their judgement.
+        note: Their reasoning; required for an escalating label, and carried
+            onto the promotion audit row otherwise.
+
+    Returns:
+        The updated row.
+
+    Raises:
+        QueueError: As ``record_label``.
+        AuthorizationError: If a ``correct`` label comes from someone without
+            the reviewer role. Nothing is recorded: a label that says
+            "verified" on content that did not go live would be a lie in the
+            queue.
+        PromotionError: If promotion refuses — the verifier ingested the
+            chunk, or it is already live with different content. Nothing is
+            recorded either.
+        NotFoundError: If the staged chunk no longer exists.
+
+    An item from a user flag has no chunk, so a ``correct`` label on one
+    closes it without publishing anything: there is nothing to promote.
+    """
+    row = record_label(
+        session=session,
+        item_id=item_id,
+        verifier_id=UUID(verifier.id),
+        label=label,
+        note=note,
+    )
+    if row.status == STATUS_LABELED and row.chunk_id:
+        _publish(session=session, row=row, chunk_id=row.chunk_id, reviewer=verifier, note=note)
+    return row
+
+
+def resolve_escalation(
+    *,
+    session: Session,
+    item_id: UUID,
+    lead: CurrentUser,
+    decision: VerificationDecision,
+    note: str,
+) -> VerificationItemRow:
+    """Decide an escalated item: publish it, or keep it out of production.
+
+    Args:
+        session: Open database session. The caller commits.
+        item_id: The escalated item.
+        lead: The lead engineer deciding it. Must hold the reviewer role.
+        decision: Approve (publish) or reject (stay in staging).
+        note: Why. Required: a lead overruling an ``incorrect`` label with no
+            recorded reason is exactly the unexplained approval the audit row
+            exists to prevent.
+
+    Returns:
+        The resolved row.
+
+    Raises:
+        AuthorizationError: If the lead lacks the reviewer role.
+        QueueError: If the item does not exist, is not escalated, has no
+            note, or the lead is the verifier who escalated it. AI-012: an
+            incorrect or uncertain label is never resolved by the person who
+            applied it.
+        PromotionError: If an approval cannot be promoted; nothing changes.
+        NotFoundError: If the staged chunk no longer exists.
+    """
+    if not lead.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{lead.email} does not hold the reviewer role")
+
+    row = session.get(VerificationItemRow, item_id)
+    if row is None:
+        raise QueueError(f"no verification item {item_id}")
+    if row.status != STATUS_ESCALATED:
+        raise QueueError(f"item {item_id} is {row.status}, not escalated")
+    if row.assigned_to_id == UUID(lead.id):
+        raise QueueError(f"item {item_id} was escalated by this reviewer; another lead decides it")
+    if not note.strip():
+        raise QueueError("resolving an escalation requires a note")
+
+    if decision is VerificationDecision.APPROVED and row.chunk_id:
+        _publish(session=session, row=row, chunk_id=row.chunk_id, reviewer=lead, note=note)
+
+    row.decision = decision.value
+    row.status = STATUS_RESOLVED
+    # Appended, not replaced: the verifier's reasoning is what the lead
+    # overruled or upheld, and losing it loses why the item was escalated.
+    row.notes = f"{row.notes or ''}\n\n[lead] {note}".strip()
+
+    logger.info(
+        "verification_queue.resolved",
+        item_id=str(item_id),
+        decision=decision.value,
+    )
+    return row
+
+
+def _publish(
+    *,
+    session: Session,
+    row: VerificationItemRow,
+    chunk_id: str,
+    reviewer: CurrentUser,
+    note: str,
+) -> None:
+    """Promote an item's chunk and record the approval on the row.
+
+    Args:
+        session: Open database session. The caller commits.
+        row: The item being cleared.
+        chunk_id: Its chunk, passed separately because a user-flag item has
+            none and the caller has already checked.
+        reviewer: Who cleared it.
+        note: Carried onto the promotion audit row.
+    """
+    promote_chunk(
+        session=session,
+        reviewer=reviewer,
+        chunk_id=chunk_id,
+        verdict=VerificationVerdict(decision=VerificationDecision.APPROVED, notes=note),
+    )
+    row.decision = VerificationDecision.APPROVED.value
+
+
+def reviewer_ids(*, session: Session) -> list[UUID]:
+    """List the active accounts holding the reviewer role.
+
+    Args:
+        session: Open database session.
+
+    Returns:
+        Their ids, in a stable order so repeated runs distribute the same way.
+
+    The verifier pool is exactly the accounts that can promote: assigning an
+    item to someone whose ``correct`` label would be refused only moves the
+    backlog around.
+    """
+    return list(
+        session.execute(
+            select(User.id)
+            .join(user_roles, user_roles.c.user_id == User.id)
+            .join(RoleRow, RoleRow.id == user_roles.c.role_id)
+            .where(RoleRow.name == Role.REVIEWER.value, User.is_active.is_(True))
+            .order_by(User.id)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def assign_to_reviewers(
+    *,
+    session: Session,
+    batch_size: int = DAILY_BATCH_SIZE,
+    now: datetime | None = None,
+) -> dict[UUID, int]:
+    """Hand today's batches to every active reviewer.
+
+    Args:
+        session: Open database session. The caller commits.
+        batch_size: Maximum items per reviewer for this run.
+        now: Injected for tests.
+
+    Returns:
+        How many items each reviewer was assigned.
+
+    Raises:
+        QueueError: If no account holds the reviewer role. Loud rather than a
+            no-op, because a queue nobody can drain looks, from the outside,
+            exactly like a queue that is keeping up.
+    """
+    return assign_daily_batches(
+        session=session,
+        verifier_ids=reviewer_ids(session=session),
+        batch_size=batch_size,
+        now=now,
+    )
+
+
 def escalations(*, session: Session) -> list[VerificationItemRow]:
     """List every item awaiting lead-engineer review.
 
@@ -344,3 +551,61 @@ def escalations(*, session: Session) -> list[VerificationItemRow]:
         .scalars()
         .all()
     )
+
+
+def review_queue(*, session: Session, verifier_id: UUID) -> list[QueueItem]:
+    """A verifier's outstanding items, each with the text and citation to judge.
+
+    Args:
+        session: Open database session.
+        verifier_id: Whose queue.
+
+    Returns:
+        Their unlabelled items, oldest first, with staged content attached.
+    """
+    return with_content(queue_for(session=session, verifier_id=verifier_id))
+
+
+def review_escalations(*, session: Session) -> list[QueueItem]:
+    """Every escalated item, with its text and citation, for a lead.
+
+    Args:
+        session: Open database session.
+
+    Returns:
+        Escalated items, oldest first, with staged content attached.
+    """
+    return with_content(escalations(session=session))
+
+
+def with_content(rows: Sequence[VerificationItemRow]) -> list[QueueItem]:
+    """Attach each item's staged text and citation.
+
+    Args:
+        rows: Queue rows.
+
+    Returns:
+        The items as the API presents them. One staging read for the whole
+        page, not one per item. A chunk no longer in staging keeps its id and
+        loses its text, so the reviewer sees the gap instead of approving blind.
+    """
+    bodies = get_staging_chunks([row.chunk_id for row in rows if row.chunk_id])
+    items: list[QueueItem] = []
+    for row in rows:
+        body: dict[str, Any] = bodies.get(row.chunk_id or "", {})
+        page = body.get("page")
+        items.append(
+            QueueItem(
+                id=row.id,
+                chunk_id=row.chunk_id,
+                status=row.status,
+                assigned_at=row.assigned_at,
+                content=body.get("content"),
+                source_url=body.get("source_url"),
+                page=page if isinstance(page, int) else None,
+                section=body.get("section"),
+                brand=body.get("brand"),
+                model=body.get("model"),
+            )
+        )
+    return items
