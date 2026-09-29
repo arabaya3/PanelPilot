@@ -18,10 +18,15 @@ from app.api import deps
 from app.core.config import RateLimitBackend
 from app.core.errors import install_exception_handlers
 from app.domain.rate_limit import (
+    LOGIN_ACCOUNT_POLICY,
+    SIGNUP_POLICY,
     TRIAL_REQUESTS_PER_WINDOW,
+    TRIAL_START_POLICY,
     InMemoryRateLimitStore,
+    RateLimitPolicy,
     RedisRateLimitStore,
 )
+from app.models.schemas.auth_flows import LoginRequest
 
 
 @pytest.fixture
@@ -38,6 +43,26 @@ def client(store: InMemoryRateLimitStore) -> Iterator[TestClient]:
     def limited() -> dict[str, bool]:
         return {"ok": True}
 
+    @app.get("/mixed", dependencies=[Depends(deps.enforce_trial_rate_limit_on_writes)])
+    def mixed_read() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/mixed", dependencies=[Depends(deps.enforce_trial_rate_limit_on_writes)])
+    def mixed_write() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/trial", dependencies=[Depends(deps.enforce_trial_start_rate_limit)])
+    def trial() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/signup", dependencies=[Depends(deps.enforce_signup_rate_limit)])
+    def signup() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/login", dependencies=[Depends(deps.enforce_login_rate_limit)])
+    def login(payload: LoginRequest) -> dict[str, str]:
+        return {"email": payload.email}
+
     install_exception_handlers(app)
     with TestClient(app) as test_client:
         yield test_client
@@ -50,7 +75,9 @@ def test_a_normal_request_passes(client: TestClient) -> None:
 def test_a_burst_is_throttled(client: TestClient) -> None:
     for _ in range(TRIAL_REQUESTS_PER_WINDOW):
         client.get("/limited")
-    assert client.get("/limited").status_code == 422
+    response = client.get("/limited")
+    assert response.status_code == 429
+    assert int(response.headers["Retry-After"]) > 0
 
 
 def test_a_forwarded_for_header_does_not_change_the_count(client: TestClient) -> None:
@@ -66,7 +93,52 @@ def test_a_forwarded_for_header_does_not_change_the_count(client: TestClient) ->
 
     # A fresh forged address must not buy a fresh allowance.
     blocked = client.get("/limited", headers={"X-Forwarded-For": "10.0.0.254"})
-    assert blocked.status_code == 422
+    assert blocked.status_code == 429
+
+
+def test_reads_are_not_throttled_on_a_mixed_router(client: TestClient) -> None:
+    """Reloading a conversation must not spend the allowance for asking."""
+    for _ in range(TRIAL_REQUESTS_PER_WINDOW):
+        assert client.post("/mixed").status_code == 200
+    assert client.post("/mixed").status_code == 429
+    assert client.get("/mixed").status_code == 200
+
+
+def test_reads_do_not_count_towards_the_write_limit(client: TestClient) -> None:
+    for _ in range(TRIAL_REQUESTS_PER_WINDOW * 2):
+        client.get("/mixed")
+    assert client.post("/mixed").status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "policy"), [("/trial", TRIAL_START_POLICY), ("/signup", SIGNUP_POLICY)]
+)
+def test_auth_endpoints_have_their_own_limits(
+    client: TestClient, path: str, policy: RateLimitPolicy
+) -> None:
+    for _ in range(policy.limit):
+        assert client.post(path).status_code == 200
+    refused = client.post(path)
+    assert refused.status_code == 429
+    assert refused.json()["error"] == "RateLimitExceededError"
+    # Its own namespace: the trial path is untouched.
+    assert client.get("/limited").status_code == 200
+
+
+def test_login_is_limited_per_account(client: TestClient) -> None:
+    body = {"email": "victim@example.com", "password": "guess"}
+    for _ in range(LOGIN_ACCOUNT_POLICY.limit):
+        assert client.post("/login", json=body).status_code == 200
+    assert client.post("/login", json=body).status_code == 429
+    # A different account from the same address is still let through.
+    other = {"email": "someone@example.com", "password": "guess"}
+    assert client.post("/login", json=other).status_code == 200
+
+
+def test_the_login_limit_reads_the_same_body_the_route_does(client: TestClient) -> None:
+    """One body, parsed once, handed to both the dependency and the route."""
+    response = client.post("/login", json={"email": "a@example.com", "password": "p"})
+    assert response.json() == {"email": "a@example.com"}
 
 
 def _settings_with(monkeypatch: pytest.MonkeyPatch, backend: RateLimitBackend) -> None:
