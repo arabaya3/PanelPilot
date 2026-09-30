@@ -106,7 +106,7 @@ def test_derating_can_push_to_the_next_size() -> None:
 def test_what_the_catalogue_does_not_cover_is_refused() -> None:
     with pytest.raises(ValidationError, match="no ACS880-01"):
         _select("700")
-    for supply in ("230", "510", "600", "720", "NaN"):
+    for supply in ("230", "510", "620", "720", "NaN"):
         with pytest.raises(ValidationError, match="supply ranges"):
             vfd_selection.select_frame(
                 required_current_a=Decimal("10"),
@@ -138,6 +138,11 @@ def _select_at(supply: str, current: str, duty: DutyClass = DutyClass.NORMAL) ->
         # Un = 690 V, p. 238: 061A-7 is I2 61 A, IHd 49 A.
         ("690", "61", DutyClass.NORMAL, "ACS880-01-061A-7 (R6)"),
         ("660", "50", DutyClass.HEAVY, "ACS880-01-084A-7 (R6)"),
+        # Un = 575 V, UL, p. 240: 035A-7 is ILd 41 A, IHd 32 A.
+        ("575", "41", DutyClass.NORMAL, "ACS880-01-035A-7 (R5)"),
+        ("525", "33", DutyClass.HEAVY, "ACS880-01-042A-7 (R5)"),
+        # 271A-7's IHd is footnoted: nothing at 575 V carries 200 A heavy duty.
+        ("600", "192", DutyClass.HEAVY, "ACS880-01-210A-7 (R9)"),
         # 400 V stays on the -3 range.
         ("400", "52", DutyClass.NORMAL, "ACS880-01-061A-3 (R4)"),
     ],
@@ -158,13 +163,19 @@ def test_the_ratings_citation_follows_the_supply() -> None:
         vfd_selection.ratings_citation(Decimal("690")).section
         == "Electrical ratings, IEC, Un = 690 V"
     )
+    assert vfd_selection.ratings_citation(Decimal("575")).page == 240
     with pytest.raises(ValidationError):
-        vfd_selection.ratings_citation(Decimal("600"))
+        vfd_selection.ratings_citation(Decimal("630"))
 
 
 @pytest.mark.parametrize(
     "ratings",
-    [vfd_selection._RATINGS_400V, vfd_selection._RATINGS_500V, vfd_selection._RATINGS_690V],
+    [
+        vfd_selection._RATINGS_400V,
+        vfd_selection._RATINGS_500V,
+        vfd_selection._RATINGS_575V,
+        vfd_selection._RATINGS_690V,
+    ],
 )
 def test_the_catalogue_rises_with_the_type(ratings: tuple[vfd_selection._Rating, ...]) -> None:
     nominal = [Decimal(r.nominal_a) for r in ratings]

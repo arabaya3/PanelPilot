@@ -408,7 +408,7 @@
       "bom": "Panel BOM"
     },
     "vfd": {
-      "intro": "Pick an ABB ACS880-01 drive for a motor on a 380-500 V or 660-690 V supply. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
+      "intro": "Pick an ABB ACS880-01 drive for a motor on a 380-500 V, 525-600 V or 660-690 V supply. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
       "field": {
         "power": "Motor power",
         "voltage": "Supply voltage",
