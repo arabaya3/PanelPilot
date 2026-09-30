@@ -2,7 +2,9 @@
 
 Mirrors the module 1:1 — if you add a function there, add its test here.
 
-Signature-pinning only; see the note in test_cable_sizing.py.
+The heat balance is checked against the worked example in Rittal's
+*Enclosure and process cooling*, p. 39 as printed; the lines against the
+drive and cable tables' own tested selections.
 """
 
 from __future__ import annotations
@@ -12,47 +14,153 @@ from decimal import Decimal
 import pytest
 
 from app.ai.tools import panel_bom
-from app.models.schemas.calculations import EnclosureConstraints, LoadScheduleItem
+from app.core.errors import ValidationError
+from app.models.schemas.calculations import (
+    EnclosureConstraints,
+    EnclosurePlacement,
+    InstallationMethod,
+    LoadScheduleItem,
+)
 
 
-def _load() -> LoadScheduleItem:
-    return LoadScheduleItem(
-        tag="M-101",
-        description="Conveyor drive motor",
-        power_kw=Decimal("7.5"),
-        current_a=Decimal("15"),
-        dissipation_w=Decimal("120"),
+def _constraints(**overrides: object) -> EnclosureConstraints:
+    fields: dict[str, object] = {
+        "width_mm": 600,
+        "height_mm": 2000,
+        "depth_mm": 500,
+        "ingress_rating": "IP54",
+        "placement": EnclosurePlacement.SINGLE_FREE_STANDING,
+        "cable_installation_method": InstallationMethod.C,
+        "ambient_temp_c": Decimal(25),
+        "max_internal_temp_c": Decimal(35),
+    }
+    fields.update(overrides)
+    return EnclosureConstraints.model_validate(fields)
+
+
+def test_rittals_worked_example() -> None:
+    """Rittal p. 39: 600 x 2000 x 500 free-standing, 900 W, 25 -> 35 °C.
+
+    A = 1.8 x 2.0 x (0.6 + 0.5) + 1.4 x 0.6 x 0.5 = 4.38 m². The guide takes
+    Qs = 5.5 x 4.38 x 10 as 242 W (exactly 240.9) and Qe = 900 - 242 = 658 W;
+    unrounded, the heat to remove is 659.1 W.
+    """
+    area = panel_bom.effective_area_m2(
+        width_m=Decimal("0.6"),
+        height_m=Decimal("2.0"),
+        depth_m=Decimal("0.5"),
+        placement=EnclosurePlacement.SINGLE_FREE_STANDING,
     )
+    assert area == Decimal("4.38")
 
-
-def _constraints() -> EnclosureConstraints:
-    return EnclosureConstraints(
-        width_mm=800,
-        height_mm=2000,
-        depth_mm=400,
-        ingress_rating="IP54",
+    heat, cooling = panel_bom.enclosure_heat_load_w(
+        items=[LoadScheduleItem(tag="X", description="all", dissipation_w=Decimal(900))],
+        constraints=_constraints(),
     )
+    assert heat == Decimal(900)
+    assert cooling == Decimal("659.1")
 
 
-def test_build_bom_accepts_documented_arguments_and_is_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        panel_bom.build_bom(loads=[_load()], constraints=_constraints())
+@pytest.mark.parametrize(
+    ("placement", "area"),
+    [
+        # W 0.6, H 2.0, D 0.5, each formula from the guide's table, p. 24.
+        (EnclosurePlacement.SINGLE_WALL, "3.9"),  # 1.4·0.6·2.5 + 1.8·2.0·0.5
+        (EnclosurePlacement.SUITE_END_FREE_STANDING, "3.98"),  # 1.4·0.5·2.6 + 1.8·0.6·2.0
+        (EnclosurePlacement.SUITE_END_WALL, "3.5"),  # 1.4·2.0·1.1 + 1.4·0.6·0.5
+        (EnclosurePlacement.SUITE_MIDDLE_FREE_STANDING, "3.58"),  # 2.16 + 0.42 + 1.0
+        (EnclosurePlacement.SUITE_MIDDLE_WALL, "3.1"),  # 1.4·0.6·2.5 + 1.0
+        (EnclosurePlacement.SUITE_MIDDLE_WALL_COVERED_ROOF, "2.89"),  # 1.68 + 0.21 + 1.0
+    ],
+)
+def test_each_placement_uses_its_formula(placement: EnclosurePlacement, area: str) -> None:
+    assert panel_bom.effective_area_m2(
+        width_m=Decimal("0.6"), height_m=Decimal("2.0"), depth_m=Decimal("0.5"), placement=placement
+    ) == Decimal(area)
 
 
-def test_enclosure_heat_load_accepts_documented_arguments_and_is_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
+def test_a_surface_that_sheds_everything_needs_no_cooling() -> None:
+    _, cooling = panel_bom.enclosure_heat_load_w(
+        items=[LoadScheduleItem(tag="X", description="PSU", dissipation_w=Decimal(100))],
+        constraints=_constraints(),
+    )
+    assert cooling == 0
+
+
+def test_no_permitted_rise_is_refused() -> None:
+    with pytest.raises(ValidationError, match="above ambient"):
         panel_bom.enclosure_heat_load_w(
-            items=[_load()],
-            ambient_temp_c=Decimal("35"),
-            max_internal_temp_c=Decimal("50"),
+            items=[], constraints=_constraints(max_internal_temp_c=Decimal(25))
         )
 
 
-def test_enclosure_constraints_defaults_are_conservative() -> None:
-    """A real assertion, not a stub: these defaults feed a cooling calculation.
+def test_the_bom_lists_drive_cable_enclosure_and_cooling() -> None:
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="M-101",
+                description="conveyor",
+                current_a=Decimal("40"),
+                dissipation_w=Decimal("900"),
+                variable_speed=True,
+            ),
+            LoadScheduleItem(tag="H-1", description="heater", current_a=Decimal("10")),
+        ],
+        constraints=_constraints(),
+    )
+    parts = [line.part_reference for line in result.lines]
+    # 40 A at 35 °C inside the panel: 045A-3 (I2 45 A, no temperature derate).
+    assert parts[0] == "ACS880-01-045A-3"
+    # Method C, XLPE, 25 °C (k1 1.04), 2 grouped (k2 0.80): 40 / 0.832 = 48.1 A
+    # -> 6 mm² (52 A); 10 A -> 1.5 mm² (22 A).
+    assert parts[1] == "Cu XLPE 6 mm²"
+    assert parts[2] == "Cu XLPE 1.5 mm²"
+    assert parts[3] == "Enclosure 600x2000x500 IP54"
+    assert parts[4] == "Cooling 659 W"
+    assert result.cooling_required_w == Decimal("659.1")
+    assert any("Protective devices" in note for note in result.notes)
 
-    Silently defaulting max internal temperature at or below ambient would make
-    the heat-load result meaningless, so the gap is asserted here.
-    """
-    constraints = _constraints()
-    assert constraints.max_internal_temp_c > constraints.ambient_temp_c
+
+@pytest.mark.parametrize(
+    ("loads", "message"),
+    [
+        ([], "empty"),
+        (
+            [
+                LoadScheduleItem(tag="A", description="a", current_a=Decimal(1)),
+                LoadScheduleItem(tag="A", description="b", current_a=Decimal(1)),
+            ],
+            "unique",
+        ),
+        ([LoadScheduleItem(tag="M", description="m", variable_speed=True)], "nameplate"),
+        ([LoadScheduleItem(tag="M", description="m", power_kw=Decimal(5))], "nameplate"),
+        (
+            [
+                LoadScheduleItem(
+                    tag="M", description="m", current_a=Decimal(900), variable_speed=True
+                )
+            ],
+            "M: no ACS880",
+        ),
+    ],
+)
+def test_an_inconsistent_schedule_is_refused(loads: list[LoadScheduleItem], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        panel_bom.build_bom(loads=loads, constraints=_constraints())
+
+
+def test_round_numbers_are_written_plainly() -> None:
+    # Decimal.normalize() alone writes 10 as "1E+1": found on the live page as
+    # "at 1E+1 K rise". A 10 mm² cable would have read "Cu XLPE 1E+1 mm²".
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="M", description="m", current_a=Decimal(60), dissipation_w=Decimal(900)
+            )
+        ],
+        constraints=_constraints(),
+    )
+    text = " ".join(f"{line.part_reference} {line.description}" for line in result.lines)
+    assert "E+" not in text
+    assert "Cu XLPE 10 mm²" in text
+    assert "10 K rise" in text

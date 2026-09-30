@@ -5,11 +5,12 @@ import { useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { CableSizingPanel } from '@/components/cable-sizing-panel';
+import { PanelBomPanel } from '@/components/panel-bom-panel';
 import { VfdSelectionPanel } from '@/components/vfd-selection-panel';
-import type { selectVfd, sizeCable } from '@/lib/calculations';
+import type { buildBom, selectVfd, sizeCable } from '@/lib/calculations';
 import type { acquireTrial } from '@/lib/session';
 
-type Tab = 'cable' | 'vfd';
+type Tab = 'cable' | 'vfd' | 'bom';
 
 /**
  * `/calc`: the engineering calculations, one tab each.
@@ -21,10 +22,12 @@ export function CalcScreen({
   acquireImpl,
   sizeImpl,
   selectImpl,
+  buildImpl,
 }: {
   acquireImpl?: typeof acquireTrial;
   sizeImpl?: typeof sizeCable;
   selectImpl?: typeof selectVfd;
+  buildImpl?: typeof buildBom;
 }) {
   const t = useTranslations('calc');
   const [tab, setTab] = useState<Tab>('cable');
@@ -37,9 +40,9 @@ export function CalcScreen({
       <div
         role="tablist"
         aria-label={t('title')}
-        className="mb-5 flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
+        className="mb-5 flex flex-wrap gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
       >
-        {(['cable', 'vfd'] as const).map((key) => (
+        {(['cable', 'vfd', 'bom'] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -63,15 +66,22 @@ export function CalcScreen({
       </div>
 
       <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
-        {tab === 'cable' ? (
+        {tab === 'cable' && (
           <CableSizingPanel
             {...(acquireImpl ? { acquireImpl } : {})}
             {...(sizeImpl ? { sizeImpl } : {})}
           />
-        ) : (
+        )}
+        {tab === 'vfd' && (
           <VfdSelectionPanel
             {...(acquireImpl ? { acquireImpl } : {})}
             {...(selectImpl ? { selectImpl } : {})}
+          />
+        )}
+        {tab === 'bom' && (
+          <PanelBomPanel
+            {...(acquireImpl ? { acquireImpl } : {})}
+            {...(buildImpl ? { buildImpl } : {})}
           />
         )}
       </div>

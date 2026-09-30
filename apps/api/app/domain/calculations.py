@@ -13,8 +13,8 @@ from decimal import Decimal
 import structlog
 from sqlalchemy.orm import Session
 
-from app.ai.tools import cable_sizing, vfd_selection
-from app.core.errors import NotImplementedYetError, ValidationError
+from app.ai.tools import cable_sizing, panel_bom, vfd_selection
+from app.core.errors import ValidationError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
     CableSizingRequest,
@@ -40,17 +40,6 @@ def _require_positive(name: str, value: Decimal) -> None:
     """Refuse anything but a finite number above zero."""
     if not value.is_finite() or value <= 0:
         raise ValidationError(f"{name} must be a positive number, got {value}")
-
-
-# Why the panel BOM answers 501 today. The formulas and tables come from
-# named manufacturer engineering guides that are not in this repository, and
-# a table written from general knowledge would be confident and uncitable —
-# the failure cite-or-refuse exists to prevent. See the README, "Blocked on
-# source documents that are not in this repository".
-_BLOCKED_ON_SOURCES = (
-    "{tool} is not available yet: it is blocked on the manufacturer engineering "
-    "guides its tables must be cited from"
-)
 
 
 def size_cable(
@@ -168,16 +157,23 @@ def build_panel_bom(
     """Produce a bill of materials for a control panel from its load schedule.
 
     Args:
-        session: Open database session, used to persist the generated BOM.
-        user: The authenticated caller.
-        request: Load schedule, enclosure constraints, and preferred vendors.
+        session: Open database session. Unused: the result is not persisted.
+        user: The authenticated caller, for the log line.
+        request: Load schedule and enclosure constraints.
 
     Returns:
-        The itemised BOM with quantities, part references, and heat load.
+        The sourced BOM lines, heat load and required cooling, with every
+        document they came from.
 
     Raises:
-        ValidationError: If the load schedule is internally inconsistent.
-        NotImplementedYetError: Always, until the calc tools it consumes exist.
+        ValidationError: If the load schedule is inconsistent or a load falls
+            outside the tables.
     """
-    del session, user, request  # Unused until the tool exists; the signature is the contract.
-    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="Panel BOM generation"))
+    del session
+    result = panel_bom.build_bom(loads=request.loads, constraints=request.constraints)
+    logger.info("calculation.bom_built", tenant_id=user.tenant_id, lines=len(result.lines))
+    sources: list[Citation] = []
+    for line in result.lines:
+        if line.source not in sources:
+            sources.append(line.source)
+    return PanelBomResponse(result=result, sources=sources)

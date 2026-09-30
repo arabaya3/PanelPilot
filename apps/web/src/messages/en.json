@@ -399,7 +399,8 @@
     "title": "Calculations",
     "tab": {
       "cable": "Cable sizing",
-      "vfd": "Drive selection"
+      "vfd": "Drive selection",
+      "bom": "Panel BOM"
     },
     "vfd": {
       "intro": "Pick an ABB ACS880-01 drive (400 V) for a motor. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
@@ -421,6 +422,42 @@
         "drive": "Drive",
         "motorCurrent": "Motor current",
         "driveCurrent": "Drive current at this site"
+      }
+    },
+    "bom": {
+      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: an ACS880-01 drive for each variable-speed load, an outgoing cable for each load, the enclosure, and the cooling it needs by IEC 60890.",
+      "enclosure": "Enclosure",
+      "loads": "Loads",
+      "field": {
+        "width": "Width",
+        "height": "Height",
+        "depth": "Depth",
+        "ingress": "Ingress rating",
+        "placement": "Placement",
+        "method": "Cable installation method",
+        "ambient": "Room temperature",
+        "maxInternal": "Max. internal temperature",
+        "tag": "Tag",
+        "description": "Description",
+        "current": "Nameplate current",
+        "dissipation": "Heat given off",
+        "variableSpeed": "Variable speed (drive)"
+      },
+      "placement": {
+        "single_wall": "Single, against a wall",
+        "single_free_standing": "Single, free-standing",
+        "suite_end_wall": "End of a suite, against a wall",
+        "suite_end_free_standing": "End of a suite, free-standing",
+        "suite_middle_wall": "Middle of a suite, against a wall",
+        "suite_middle_free_standing": "Middle of a suite, free-standing",
+        "suite_middle_wall_covered_roof": "Middle of a suite, against a wall, roof covered"
+      },
+      "add": "Add a load",
+      "remove": "Remove",
+      "submit": "Build the BOM",
+      "result": {
+        "heat": "Heat inside the enclosure",
+        "cooling": "Cooling needed"
       }
     }
   }
