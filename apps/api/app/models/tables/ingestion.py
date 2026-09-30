@@ -150,3 +150,39 @@ class PromotionAuditRow(UUIDPrimaryKey, TimestampMixin, Base):
     production_document_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
+    """A live document whose upstream source no longer serves what was verified.
+
+    Written by the ``expire-stale-sources`` job. A flag, not a retraction: the
+    live chunks stay live until a reviewer decides, because an upstream change
+    can be a typo fix as easily as a corrected rating, and pulling a verified
+    answer on a hash change alone would trade a possibly-stale answer for a
+    certain refusal. See docs/adr/0001-staging-vs-production-index.md.
+
+    One row per source URL, kept current by each run: ``status`` goes back to
+    ``cleared`` if the source serves a verified revision again, so an open row
+    always describes the source as it was last seen.
+    """
+
+    __tablename__ = "stale_documents"
+    __table_args__ = (
+        CheckConstraint("reason IN ('superseded', 'withdrawn')", name="reason"),
+        CheckConstraint("status IN ('open', 'cleared')", name="status"),
+    )
+
+    source_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    source_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    # `superseded`: the URL serves different bytes. `withdrawn`: it answers 404
+    # or 410. A source that is merely failing is neither, and is not flagged.
+    reason: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # What production was verified against, comma-separated when more than one
+    # revision is live. Copied so the row still says what was checked after
+    # the live chunks change.
+    published_hashes: Mapped[str] = mapped_column(Text, nullable=False)
+    # What the source serves now; null when it is withdrawn.
+    upstream_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    first_flagged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

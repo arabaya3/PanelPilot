@@ -26,6 +26,8 @@ from app.ingestion import url_guard
 from app.ingestion.crawler import (
     DEFAULT_DELAY_S,
     MAX_CRAWL_DELAY_S,
+    DocumentCheck,
+    check_documents,
     content_hash,
     crawl_source,
 )
@@ -858,3 +860,86 @@ def test_the_longest_permitted_crawl_delay_is_honoured() -> None:
 
     assert slept
     assert max(slept) > MAX_CRAWL_DELAY_S - 1
+
+
+# --- check_documents: what a live document's URL serves now -----------------
+
+
+def test_check_reports_the_hash_of_what_each_url_serves_now() -> None:
+    first = "https://library.abb.com/a.pdf"
+    second = "https://library.abb.com/b.pdf"
+    routes = routes_with((first, b"revision 2"), (second, b"unchanged"))
+
+    checks = check_documents("abb", [first, second], client=client_for(routes), sleep=no_sleep)
+
+    assert checks == [
+        DocumentCheck(first, "fetched", content_hash(b"revision 2")),
+        DocumentCheck(second, "fetched", content_hash(b"unchanged")),
+    ]
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_check_tells_a_withdrawn_document_from_a_failing_source(status: int) -> None:
+    # A crawl folds every 4xx and 5xx into `unreachable`. Expiry cannot: a
+    # 404 means the manual was withdrawn, a 500 means nothing at all.
+    gone = "https://library.abb.com/gone.pdf"
+    broken = "https://library.abb.com/broken.pdf"
+    routes = routes_with()
+    routes[gone] = (status, b"")
+    routes[broken] = (503, b"")
+
+    checks = check_documents("abb", [gone, broken], client=client_for(routes), sleep=no_sleep)
+
+    assert checks == [DocumentCheck(gone, "gone"), DocumentCheck(broken, "unreachable")]
+
+
+def test_check_honours_robots_per_url_without_abandoning_the_rest() -> None:
+    allowed = "https://library.abb.com/public/a.pdf"
+    blocked = "https://library.abb.com/private/b.pdf"
+    routes = routes_with(
+        (allowed, b"body"), (blocked, b"secret"), robots="User-agent: *\nDisallow: /private/\n"
+    )
+
+    checks = check_documents("abb", [blocked, allowed], client=client_for(routes), sleep=no_sleep)
+
+    assert checks == [
+        DocumentCheck(blocked, "disallowed"),
+        DocumentCheck(allowed, "fetched", content_hash(b"body")),
+    ]
+
+
+def test_check_refuses_a_url_off_the_source_domain() -> None:
+    elsewhere = "https://attacker.example/a.pdf"
+    checks = check_documents("abb", [elsewhere], client=client_for({}), sleep=no_sleep)
+    assert checks == [DocumentCheck(elsewhere, "unsafe-url")]
+
+
+def test_check_reports_urls_past_the_budget_instead_of_dropping_them() -> None:
+    urls = [f"https://library.abb.com/{n}.pdf" for n in range(3)]
+    routes = routes_with(*((url, b"x") for url in urls))
+
+    # One request for robots.txt and one document; the rest are unchecked.
+    checks = check_documents("abb", urls, client=client_for(routes), sleep=no_sleep, max_fetches=2)
+
+    assert [c.status for c in checks] == [
+        "fetched",
+        "fetch-budget-exhausted",
+        "fetch-budget-exhausted",
+    ]
+
+
+def test_check_keeps_the_gap_between_requests_to_one_host() -> None:
+    # `pace_for` starts a fresh pacer; calling it before every URL would
+    # forget the previous request and never wait.
+    urls = [f"https://library.abb.com/{n}.pdf" for n in range(3)]
+    routes = routes_with(*((url, b"x") for url in urls))
+    slept: list[float] = []
+
+    check_documents("abb", urls, client=client_for(routes), sleep=slept.append)
+
+    assert len(slept) == len(urls) - 1
+
+
+def test_check_refuses_a_source_off_the_allow_list() -> None:
+    with pytest.raises(ValidationError):
+        check_documents("nobody", [], client=client_for({}), sleep=no_sleep)

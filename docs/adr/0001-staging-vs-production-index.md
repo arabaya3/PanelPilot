@@ -82,6 +82,18 @@ How each condition above is enforced:
 Work reaches reviewers through the worker's `assign-review-batches`, which
 hands out daily batches to every account currently holding the reviewer role.
 
+Two maintenance jobs keep the corpus honest without a second write path:
+
+- `reindex-staging [source]` re-embeds staged chunks in place from their own
+  text, after an embedding model change. Production is untouched. Re-chunking
+  is not possible in place -- the original files are not kept -- so a
+  chunking change is a fresh crawl, reviewed like any other.
+- `expire-stale-sources` re-fetches every URL production cites and records in
+  `stale_documents` any that now serve different bytes (`superseded`) or answer
+  404/410 (`withdrawn`). It flags and never retracts; a source that is merely
+  down is reported as unchecked, not stale. It exits 1 when anything is
+  flagged, so a scheduler's failure alert is the call for a reviewer.
+
 ## Consequences
 
 **What this buys us**

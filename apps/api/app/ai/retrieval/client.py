@@ -8,11 +8,14 @@ one place.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any
 
 from opensearchpy import OpenSearch
+from opensearchpy.helpers import bulk, scan
 
 from app.core.config import get_settings
 
@@ -169,3 +172,155 @@ def stage_chunk(*, chunk_id: str, document: dict[str, Any]) -> None:
             f"refusing to stage {chunk_id!r}: required fields missing or null: {', '.join(missing)}"
         )
     get_client().index(index=resolve_index(IndexTarget.STAGING), id=chunk_id, body=document)
+
+
+def iter_staged_contents(
+    *, brand: str | None = None, batch_size: int = 128
+) -> Iterator[list[tuple[str, str]]]:
+    """Read the STAGING index's chunk texts, a batch at a time.
+
+    For re-embedding in place: the text is what a vector is computed from, and
+    nothing else about a chunk changes when the embedding model does.
+
+    Args:
+        brand: Only chunks from this manufacturer; every chunk when ``None``.
+        batch_size: Chunks per yielded batch, and per scroll page.
+
+    Yields:
+        ``(chunk_id, content)`` pairs, at most ``batch_size`` at a time.
+
+    Staging only, like ``stage_chunk``, and for the same reason: a helper with
+    no production spelling cannot be pointed at the live corpus.
+    """
+    client = get_client()
+    index = resolve_index(IndexTarget.STAGING)
+    # Nothing staged yet is an empty corpus, not an error: a fresh deployment
+    # has no index until its first crawl.
+    if not client.indices.exists(index=index):
+        return
+    query: dict[str, Any] = {"term": {"brand": brand}} if brand is not None else {"match_all": {}}
+    batch: list[tuple[str, str]] = []
+    for hit in scan(
+        client,
+        index=index,
+        query={"query": query, "_source": ["content"]},
+        size=batch_size,
+    ):
+        batch.append((str(hit["_id"]), str(hit["_source"].get("content", ""))))
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def restage_vectors(vectors: dict[str, list[float]]) -> int:
+    """Replace the ``content_vector`` of staged chunks, leaving the rest as is.
+
+    A partial update rather than a re-index of the whole body: the citation
+    fields, the ingester of record and the content hash stay exactly as the
+    crawl wrote them, so re-embedding cannot disturb what promotion checks.
+
+    Args:
+        vectors: New vectors keyed by chunk id.
+
+    Returns:
+        How many chunks were updated.
+
+    Raises:
+        BulkIndexError: If any update fails; a chunk left on the old model's
+            vector would be scored against queries embedded by the new one.
+    """
+    if not vectors:
+        return 0
+    index = resolve_index(IndexTarget.STAGING)
+    updated, _errors = bulk(
+        get_client(),
+        (
+            {
+                "_op_type": "update",
+                "_index": index,
+                "_id": chunk_id,
+                "doc": {"content_vector": vector},
+            }
+            for chunk_id, vector in vectors.items()
+        ),
+        refresh=True,
+    )
+    return int(updated)
+
+
+@dataclass(frozen=True)
+class PublishedSource:
+    """One upstream document that live answers cite.
+
+    Attributes:
+        source_url: Where the document was fetched from.
+        brand: The manufacturer its chunks carry.
+        content_hashes: Every document hash its live chunks were staged under.
+            Usually one; more when revisions were promoted over time.
+    """
+
+    source_url: str
+    brand: str
+    content_hashes: frozenset[str]
+
+
+def published_sources(*, page_size: int = 500) -> list[PublishedSource]:
+    """List the upstream documents the PRODUCTION index cites.
+
+    Read-only: an aggregation over what is live, so a job can ask each source
+    whether it still serves the revision that was verified.
+
+    Args:
+        page_size: Documents per aggregation page.
+
+    Returns:
+        One entry per source URL, in URL order; empty when production does not
+        exist yet.
+    """
+    client = get_client()
+    index = resolve_index(IndexTarget.PRODUCTION)
+    # Nothing promoted yet means nothing live to go stale; the index is created
+    # by the first promotion, so its absence is an ordinary state.
+    if not client.indices.exists(index=index):
+        return []
+    found: list[PublishedSource] = []
+    after: dict[str, Any] | None = None
+    while True:
+        composite: dict[str, Any] = {
+            "size": page_size,
+            "sources": [{"url": {"terms": {"field": "source_url"}}}],
+        }
+        if after is not None:
+            composite["after"] = after
+        response = client.search(
+            index=index,
+            body={
+                "size": 0,
+                "aggs": {
+                    "documents": {
+                        "composite": composite,
+                        "aggs": {
+                            "brand": {"terms": {"field": "brand", "size": 1}},
+                            "hashes": {"terms": {"field": "content_hash", "size": 100}},
+                        },
+                    }
+                },
+            },
+        )
+        aggregation = response["aggregations"]["documents"]
+        for bucket in aggregation["buckets"]:
+            brands = bucket["brand"]["buckets"]
+            found.append(
+                PublishedSource(
+                    source_url=str(bucket["key"]["url"]),
+                    brand=str(brands[0]["key"]) if brands else "",
+                    content_hashes=frozenset(
+                        str(entry["key"]) for entry in bucket["hashes"]["buckets"]
+                    ),
+                )
+            )
+        after = aggregation.get("after_key")
+        if not aggregation["buckets"] or after is None:
+            return found
