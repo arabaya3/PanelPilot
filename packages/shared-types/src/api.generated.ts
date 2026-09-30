@@ -552,8 +552,12 @@ export interface paths {
      * Generate
      * @description Generate PLC code for a description, with its validation verdict.
      *
+     *     Signed in, as a trial or an account, and rate-limited like search: each
+     *     call is a paid model request.
+     *
      *     Raises:
      *         HTTPException: 422 if the request cannot be generated as asked.
+     *         ServiceUnavailableError: 503 if the model could not be reached.
      */
     post: operations['generate_api_v1_plc_generate_post'];
     delete?: never;
