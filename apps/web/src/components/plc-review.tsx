@@ -6,8 +6,10 @@ import { useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { CheckCircleIcon, CodeIcon } from '@/components/icons';
+import { PlcGenerate } from '@/components/plc-generate';
 import { PlcView } from '@/components/plc-view';
-import { reviewPlc } from '@/lib/plc';
+import { generatePlc, reviewPlc } from '@/lib/plc';
+import { acquireTrial } from '@/lib/session';
 
 type PlcValidationResult = components['schemas']['PlcValidationResult'];
 
@@ -28,11 +30,21 @@ type Review =
  * current contents: an edit after checking would otherwise put line 8's error
  * beside whatever line 8 has become.
  */
-export function PlcReview({ reviewImpl = reviewPlc }: { reviewImpl?: typeof reviewPlc }) {
+export function PlcReview({
+  reviewImpl = reviewPlc,
+  generateImpl = generatePlc,
+  acquireImpl = acquireTrial,
+}: {
+  reviewImpl?: typeof reviewPlc;
+  generateImpl?: typeof generatePlc;
+  acquireImpl?: typeof acquireTrial;
+}) {
   const t = useTranslations('plc');
   const [source, setSource] = useState('');
   const [review, setReview] = useState<Review>({ kind: 'idle' });
+  const [tab, setTab] = useState<'check' | 'generate'>('check');
   const fieldId = useId();
+  const tabsId = useId();
 
   async function check() {
     const submitted = source;
@@ -49,82 +61,122 @@ export function PlcReview({ reviewImpl = reviewPlc }: { reviewImpl?: typeof revi
     <AppShell>
       <div className="mb-6 flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
-        <p className="max-w-3xl text-text-muted">{t('intro')}</p>
+        <p className="max-w-3xl text-text-muted">
+          {tab === 'check' ? t('intro') : t('generateIntro')}
+        </p>
       </div>
 
-      {/* Side by side from `lg`, so a finding and the line it names are both
-          on screen; stacked below that, the code first. */}
-      <div className="grid items-start gap-5 lg:grid-cols-2">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void check();
-          }}
-          className="card flex flex-col gap-3 p-4 md:p-5"
-        >
-          <label htmlFor={fieldId} className="text-sm font-semibold">
-            {t('label')}
-          </label>
-          <textarea
-            id={fieldId}
-            value={source}
-            onChange={(event) => {
-              setSource(event.target.value);
+      <div
+        role="tablist"
+        aria-label={t('heading')}
+        className="mb-5 flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
+      >
+        {(['check', 'generate'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`${tabsId}-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`${tabsId}-panel`}
+            data-testid={`plc-tab-${key}`}
+            onClick={() => {
+              setTab(key);
             }}
-            rows={16}
-            spellCheck={false}
-            dir="ltr"
-            placeholder={t('placeholder')}
-            className="w-full rounded-md border border-border bg-surface-raised p-3 font-mono text-sm leading-relaxed text-text placeholder:text-text-muted"
-          />
-          <div>
-            <button
-              type="submit"
-              disabled={source.trim() === '' || review.kind === 'checking'}
-              className="btn btn-primary"
-            >
-              <CheckCircleIcon width="16" height="16" />
-              {review.kind === 'checking' ? t('checking') : t('check')}
-            </button>
-          </div>
-        </form>
+            className={`rounded-md px-3 py-2 text-sm transition-colors ${
+              tab === key
+                ? 'bg-accent-subtle font-semibold text-accent-hover'
+                : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
+            }`}
+          >
+            {key === 'check' ? t('tabCheck') : t('tabGenerate')}
+          </button>
+        ))}
+      </div>
 
-        <div className="flex min-w-0 flex-col gap-3">
-          {review.kind === 'reviewed' && (
-            <PlcView language="structured-text" source={review.source} validation={review.result} />
-          )}
-          {review.kind === 'rejected' && (
-            <p
-              role="alert"
-              data-testid="plc-rejected"
-              className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+        {tab === 'generate' ? (
+          <PlcGenerate generateImpl={generateImpl} acquireImpl={acquireImpl} />
+        ) : (
+          // Side by side from `lg`, so a finding and the line it names are both
+          // on screen; stacked below that, the code first.
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void check();
+              }}
+              className="card flex flex-col gap-3 p-4 md:p-5"
             >
-              {review.detail ?? t('rejected')}
-            </p>
-          )}
-          {review.kind === 'failed' && (
-            <p
-              role="alert"
-              data-testid="plc-failed"
-              className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-            >
-              {t('failed')}
-            </p>
-          )}
-          {(review.kind === 'idle' || review.kind === 'checking') && (
-            <div className="flex min-h-96 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border-subtle p-6 text-center text-sm text-text-muted">
-              {review.kind === 'checking' ? (
-                <span
-                  aria-hidden="true"
-                  className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
+              <label htmlFor={fieldId} className="text-sm font-semibold">
+                {t('label')}
+              </label>
+              <textarea
+                id={fieldId}
+                value={source}
+                onChange={(event) => {
+                  setSource(event.target.value);
+                }}
+                rows={16}
+                spellCheck={false}
+                dir="ltr"
+                placeholder={t('placeholder')}
+                className="w-full rounded-md border border-border bg-surface-raised p-3 font-mono text-sm leading-relaxed text-text placeholder:text-text-muted"
+              />
+              <div>
+                <button
+                  type="submit"
+                  disabled={source.trim() === '' || review.kind === 'checking'}
+                  className="btn btn-primary"
+                >
+                  <CheckCircleIcon width="16" height="16" />
+                  {review.kind === 'checking' ? t('checking') : t('check')}
+                </button>
+              </div>
+            </form>
+
+            <div className="flex min-w-0 flex-col gap-3">
+              {review.kind === 'reviewed' && (
+                <PlcView
+                  language="structured-text"
+                  source={review.source}
+                  validation={review.result}
                 />
-              ) : (
-                <CodeIcon width="28" height="28" className="text-accent" />
               )}
-              <p className="max-w-sm">{t('emptyResult')}</p>
+              {review.kind === 'rejected' && (
+                <p
+                  role="alert"
+                  data-testid="plc-rejected"
+                  className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+                >
+                  {review.detail ?? t('rejected')}
+                </p>
+              )}
+              {review.kind === 'failed' && (
+                <p
+                  role="alert"
+                  data-testid="plc-failed"
+                  className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
+                >
+                  {t('failed')}
+                </p>
+              )}
+              {(review.kind === 'idle' || review.kind === 'checking') && (
+                <div className="flex min-h-96 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border-subtle p-6 text-center text-sm text-text-muted">
+                  {review.kind === 'checking' ? (
+                    <span
+                      aria-hidden="true"
+                      className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
+                    />
+                  ) : (
+                    <CodeIcon width="28" height="28" className="text-accent" />
+                  )}
+                  <p className="max-w-sm">{t('emptyResult')}</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

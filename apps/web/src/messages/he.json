@@ -185,7 +185,7 @@
     "untitled": "שיחה חדשה"
   },
   "plc": {
-    "heading": "בדיקת קוד PLC",
+    "heading": "קוד PLC",
     "intro": "הדביקו קוד Structured Text לפי IEC 61131-3. הוא נבדק לשגיאות תחביר, משתנים שלא הוגדרו או שאינם בשימוש, אי-התאמות סוגים וקוד שאינו נגיש, וכל ממצא מוצג בשורה שלו. דבר אינו נשמר.",
     "label": "Structured Text",
     "placeholder": "PROGRAM Main\n  VAR\n    Start : BOOL;\n  END_VAR\n  ...\nEND_PROGRAM",
@@ -193,7 +193,36 @@
     "checking": "בודק…",
     "rejected": "לא ניתן היה לבדוק את התוכנית הזו.",
     "failed": "הבדיקה לא הופעלה. נסו שוב.",
-    "emptyResult": "הממצאים יופיעו כאן, כל אחד ליד השורה שלו."
+    "emptyResult": "הממצאים יופיעו כאן, כל אחד ליד השורה שלו.",
+    "tabCheck": "בדיקת קוד",
+    "tabGenerate": "יצירת קוד",
+    "generateIntro": "תארו מה התוכנית צריכה לעשות. המודל כותב אותה, ואותו מנתח שבודק קוד מודבק בודק אותה — התוצאה מגיעה עם הקוד.",
+    "describeLabel": "מה התוכנית צריכה לעשות?",
+    "describePlaceholder": "למשל: הפעלה/עצירה של מנוע מסוע: לחצן הפעלה, עצירה ועצירת חירום במגע סגור, החזקה עצמית, נורית פעולה.",
+    "dialect": "יעד",
+    "dialects": {
+      "iec-61131-3": "IEC 61131-3",
+      "siemens-scl": "Siemens SCL",
+      "rockwell-st": "Rockwell ST",
+      "codesys-st": "CODESYS ST"
+    },
+    "language": "פלט",
+    "languages": {
+      "structured-text": "טקסט מובנה (ST)",
+      "ladder": "סולם (Ladder)"
+    },
+    "generate": "יצירה",
+    "generating": "יוצר…",
+    "generatedNote": "נכתב על ידי מודל ונבדק על ידי המנתח. יש לעבור עליו ולבדוק אותו במצב לא מקוון לפני שהוא רץ על ציוד.",
+    "emptyGenerated": "התוכנית שנוצרה תופיע כאן, יחד עם הבדיקה שלה.",
+    "generateRejected": "לא ניתן היה ליצור את התוכנית. נסו לתאר אותה אחרת.",
+    "generateError": {
+      "session": "לא ניתן היה להתחיל הפעלה. נסו שוב.",
+      "unauthorized": "פג תוקף ההפעלה והיא חודשה. צרו שוב.",
+      "rate-limited": "יותר מדי בקשות כרגע. המתינו דקה ונסו שוב.",
+      "unavailable": "יצירת קוד אינה זמינה כרגע. נסו שוב בעוד רגע.",
+      "failed": "הבקשה לא עברה. נסו שוב."
+    }
   },
   "plcView": {
     "failed": "{count, plural, one {הבדיקה נכשלה — שגיאה אחת} other {הבדיקה נכשלה — # שגיאות}}",
@@ -204,7 +233,8 @@
     "finding": "שורה {line}: {message}",
     "ladderLabel": "{count, plural, one {דיאגרמת סולם, שלב אחד} other {דיאגרמת סולם, # שלבים}}",
     "noRungs": "אין שלבים להצגה.",
-    "noCode": "אין קוד להצגה."
+    "noCode": "אין קוד להצגה.",
+    "codeLabel": "קוד התוכנית"
   },
   "signIn": {
     "open": "כניסה",

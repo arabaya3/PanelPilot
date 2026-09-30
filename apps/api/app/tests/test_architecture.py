@@ -442,6 +442,9 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
         # Translates a request a guarded caller already decided to make; it
         # decides nothing itself. See the test below that keeps it so.
         APP_ROOT / "ai" / "openai_transport.py",
+        # Writes PLC code: no retrieved evidence, nothing to cite. Its gate is
+        # the parser-based validator `generate_plc_code` always runs.
+        APP_ROOT / "ai" / "plc" / "writer.py",
     }
 
     for module in _source_modules("domain", "ai", "api", "worker"):
@@ -490,6 +493,21 @@ def test_the_openai_transport_exemption_stays_narrow() -> None:
         assert forbidden not in source, (
             f"app/ai/openai_transport.py now references {forbidden!r}. It is exempt "
             "only as a translation layer; move any prompt or retrieval elsewhere."
+        )
+
+
+def test_the_plc_writer_exemption_stays_narrow() -> None:
+    """The PLC writer produces code; it must not answer questions or judge itself.
+
+    Exempt because the cite-or-refuse gate has no evidence to weigh for a
+    program. That holds only while it retrieves nothing and leaves the
+    verdict to the validator.
+    """
+    source = (APP_ROOT / "ai" / "plc" / "writer.py").read_text(encoding="utf-8")
+    for forbidden in ("search(", "retrieval", "validate_plc_code", "ValidationStatus"):
+        assert forbidden not in source, (
+            f"app/ai/plc/writer.py now references {forbidden!r}. It is exempt only "
+            "as a writer whose output the validator judges."
         )
 
 

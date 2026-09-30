@@ -185,7 +185,7 @@
     "untitled": "New conversation"
   },
   "plc": {
-    "heading": "Check PLC code",
+    "heading": "PLC code",
     "intro": "Paste IEC 61131-3 Structured Text. It is checked for syntax errors, undeclared or unused tags, type mismatches and unreachable code, each shown on its line. Nothing is stored.",
     "label": "Structured Text",
     "placeholder": "PROGRAM Main\n  VAR\n    Start : BOOL;\n  END_VAR\n  ...\nEND_PROGRAM",
@@ -193,7 +193,36 @@
     "checking": "Checking…",
     "rejected": "That program could not be checked.",
     "failed": "The check could not run. Try again.",
-    "emptyResult": "Findings appear here, each beside the line it is on."
+    "emptyResult": "Findings appear here, each beside the line it is on.",
+    "tabCheck": "Check code",
+    "tabGenerate": "Generate code",
+    "generateIntro": "Describe what the program should do. The model writes it, and the same parser that checks pasted code checks it — the verdict comes with the code.",
+    "describeLabel": "What should the program do?",
+    "describePlaceholder": "e.g. Start/stop a conveyor motor: start button, normally-closed stop and E-stop, seal-in, run lamp.",
+    "dialect": "Target",
+    "dialects": {
+      "iec-61131-3": "IEC 61131-3",
+      "siemens-scl": "Siemens SCL",
+      "rockwell-st": "Rockwell ST",
+      "codesys-st": "CODESYS ST"
+    },
+    "language": "Output",
+    "languages": {
+      "structured-text": "Structured Text",
+      "ladder": "Ladder"
+    },
+    "generate": "Generate",
+    "generating": "Generating…",
+    "generatedNote": "Written by a model and checked by the parser. Review it, and test it offline, before it runs on equipment.",
+    "emptyGenerated": "The generated program appears here, with its check.",
+    "generateRejected": "That program could not be generated. Try describing it differently.",
+    "generateError": {
+      "session": "A session could not be started. Try again.",
+      "unauthorized": "Your session had expired and has been renewed. Generate again.",
+      "rate-limited": "Too many requests for now. Wait a minute and try again.",
+      "unavailable": "Code generation is unavailable right now. Try again shortly.",
+      "failed": "The request did not go through. Try again."
+    }
   },
   "plcView": {
     "failed": "{count, plural, one {Validation failed — # error} other {Validation failed — # errors}}",
@@ -204,7 +233,8 @@
     "finding": "Line {line}: {message}",
     "ladderLabel": "{count, plural, one {Ladder diagram, # rung} other {Ladder diagram, # rungs}}",
     "noRungs": "No rungs to display.",
-    "noCode": "No code to display."
+    "noCode": "No code to display.",
+    "codeLabel": "Program source"
   },
   "signIn": {
     "open": "Sign in",
