@@ -221,10 +221,10 @@ def test_an_unregistered_source_is_refused() -> None:
         crawl_source(unknown, client=client_for({}), sleep=no_sleep)
 
 
-def test_the_allow_list_covers_the_three_named_sources() -> None:
+def test_the_allow_list_covers_the_named_sources() -> None:
     from app.ingestion.sources import CRAWLERS
 
-    assert set(CRAWLERS) == {"siemens", "abb", "schneider"}
+    assert set(CRAWLERS) == {"siemens", "abb", "schneider", "danfoss", "yaskawa"}
 
 
 # --- politeness --------------------------------------------------------------

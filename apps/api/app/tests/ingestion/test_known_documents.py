@@ -134,3 +134,20 @@ def test_siemens_documents_come_from_its_asset_host() -> None:
 def test_schneider_is_not_crawled_around_its_refusal() -> None:
     """Its edge answers our user agent with 403; nothing here may route around that."""
     assert urls_for("schneider") == []
+
+
+def test_danfoss_documents_come_from_its_asset_host() -> None:
+    """assets.danfoss.com serves the documents; its robots.txt allows all."""
+    urls = urls_for("danfoss")
+    assert urls, "Danfoss has no curated documents"
+    assert all(u.startswith("https://assets.danfoss.com/documents/") for u in urls)
+
+
+def test_yaskawa_documents_are_attachments_robots_allows() -> None:
+    """robots.txt disallows the download pages and cmd=docurl, not cmd=documents."""
+    urls = urls_for("yaskawa")
+    assert urls, "Yaskawa has no curated documents"
+    for url in urls:
+        assert url.startswith("https://www.yaskawa.com/delegate/getAttachment?documentId=")
+        assert "cmd=documents" in url
+        assert "cmd=docurl" not in url

@@ -227,11 +227,54 @@ class SchneiderCrawler(SourceCrawler):
         )
 
 
+class DanfossCrawler(SourceCrawler):
+    """Danfoss Drives documentation, served from ``assets.danfoss.com``."""
+
+    source_id = "danfoss"
+    host_suffix = "danfoss.com"
+    manufacturer = "Danfoss"
+
+    def listing_urls(self, seed_urls: list[str]) -> list[str]:
+        """Return the seeds unchanged; this portal paginates server-side."""
+        return list(seed_urls)
+
+    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
+        """Find PDFs linked from a listing page, on this host only."""
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
+
+
+class YaskawaCrawler(SourceCrawler):
+    """Yaskawa America's document library, served from ``www.yaskawa.com``."""
+
+    source_id = "yaskawa"
+    host_suffix = "yaskawa.com"
+    manufacturer = "Yaskawa"
+
+    def listing_urls(self, seed_urls: list[str]) -> list[str]:
+        """Return the seeds unchanged; this portal paginates server-side."""
+        return list(seed_urls)
+
+    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
+        """Find PDFs linked from a listing page, on this host only."""
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
+
+
 #: The allow-list. A source not registered here cannot be crawled, which is
 #: what makes "the source is not on the allow-list" a real check rather than a
 #: docstring promise.
 CRAWLERS: dict[str, SourceCrawler] = {
-    crawler.source_id: crawler for crawler in (SiemensCrawler(), AbbCrawler(), SchneiderCrawler())
+    crawler.source_id: crawler
+    for crawler in (
+        SiemensCrawler(),
+        AbbCrawler(),
+        SchneiderCrawler(),
+        DanfossCrawler(),
+        YaskawaCrawler(),
+    )
 }
 
 

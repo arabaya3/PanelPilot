@@ -138,6 +138,57 @@ KNOWN_DOCUMENTS: tuple[KnownDocument, ...] = (
         title="SIMATIC S7-1200 G2 System Manual",
         verified="2026-09-30",
     ),
+    # Danfoss. assets.danfoss.com's robots.txt allows everything; each opened,
+    # confirmed a PDF served to our user agent, title read off its cover.
+    KnownDocument(
+        source_id="danfoss",
+        url="https://assets.danfoss.com/documents/latest/569514/AU275636650261en-003301.pdf",
+        title="VLT AutomationDrive FC 301/FC 302 Programming Guide, software 10.00 and 49.1x",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="danfoss",
+        url="https://assets.danfoss.com/documents/latest/275726/AQ267037727118en-000101.pdf",
+        title="VLT AutomationDrive FC 301/FC 302 Operating Guide, 0.25-75 kW",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="danfoss",
+        url="https://assets.danfoss.com/documents/latest/271209/AQ276736419659en-000101.pdf",
+        title="VLT Micro Drive FC 51 Operating Guide",
+        verified="2026-09-30",
+    ),
+    # Yaskawa. www.yaskawa.com's robots.txt disallows its download *pages*
+    # (/downloads/-/document/...) and getAttachment's cmd=docurl form, not the
+    # cmd=documents attachments used here; each opened, confirmed a PDF, title
+    # read off its cover.
+    KnownDocument(
+        source_id="yaskawa",
+        url=(
+            "https://www.yaskawa.com/delegate/getAttachment?documentId=SIEPC71061752"
+            "&cmd=documents&documentName=SIEPC71061752.pdf"
+        ),
+        title="GA500 Drive Versatile Compact Type Technical Reference (SIEPC71061752)",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="yaskawa",
+        url=(
+            "https://www.yaskawa.com/delegate/getAttachment?documentId=SIEPC71061737"
+            "&cmd=documents&documentName=SIEPC71061737.pdf"
+        ),
+        title="GA800 Drive AC Drive for Industrial Applications Technical Reference (SIEPC71061737)",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="yaskawa",
+        url=(
+            "https://www.yaskawa.com/delegate/getAttachment?documentId=SIEPC71060618"
+            "&cmd=documents&documentName=SIEPC71060618.pdf"
+        ),
+        title="YASKAWA AC Drive-V1000 Compact Vector Control Drive Technical Manual",
+        verified="2026-09-30",
+    ),
 )
 
 

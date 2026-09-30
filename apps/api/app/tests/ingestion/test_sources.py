@@ -21,10 +21,12 @@ import pytest
 from app.ingestion.sources import (
     CRAWLERS,
     AbbCrawler,
+    DanfossCrawler,
     ResponseLimitError,
     SchneiderCrawler,
     SiemensCrawler,
     SourceCrawler,
+    YaskawaCrawler,
     crawler_for,
     http_client,
     read_limited,
@@ -38,8 +40,8 @@ def page(*hrefs: str) -> str:
 # --- the registry ------------------------------------------------------------
 
 
-def test_the_three_named_sources_are_registered() -> None:
-    assert set(CRAWLERS) == {"siemens", "abb", "schneider"}
+def test_the_named_sources_are_registered() -> None:
+    assert set(CRAWLERS) == {"siemens", "abb", "schneider", "danfoss", "yaskawa"}
 
 
 def test_each_crawler_is_registered_under_its_own_id() -> None:
@@ -76,6 +78,8 @@ def test_the_interface_is_abstract() -> None:
         (SiemensCrawler(), "https://support.industry.siemens.com"),
         (AbbCrawler(), "https://library.abb.com"),
         (SchneiderCrawler(), "https://www.se.com"),
+        (DanfossCrawler(), "https://assets.danfoss.com"),
+        (YaskawaCrawler(), "https://www.yaskawa.com"),
     ],
 )
 def test_a_pdf_on_the_sources_own_host_is_found(crawler: SourceCrawler, host: str) -> None:
@@ -91,6 +95,8 @@ def test_a_pdf_on_the_sources_own_host_is_found(crawler: SourceCrawler, host: st
         (SiemensCrawler(), "https://support.industry.siemens.com"),
         (AbbCrawler(), "https://library.abb.com"),
         (SchneiderCrawler(), "https://www.se.com"),
+        (DanfossCrawler(), "https://assets.danfoss.com"),
+        (YaskawaCrawler(), "https://www.yaskawa.com"),
     ],
 )
 def test_a_pdf_on_another_host_is_not_followed(crawler: SourceCrawler, host: str) -> None:
