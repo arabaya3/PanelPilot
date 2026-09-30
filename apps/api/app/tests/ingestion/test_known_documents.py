@@ -116,3 +116,15 @@ def test_abb_has_curated_documents() -> None:
     fallback has silently stopped existing.
     """
     assert urls_for("abb"), "ABB has no curated documents"
+
+
+def test_siemens_documents_come_from_its_asset_host() -> None:
+    """SIOS refuses our client; cache.industry.siemens.com/dl/files/ serves it."""
+    urls = urls_for("siemens")
+    assert urls, "Siemens has no curated documents"
+    assert all(u.startswith("https://cache.industry.siemens.com/dl/files/") for u in urls)
+
+
+def test_schneider_is_not_crawled_around_its_refusal() -> None:
+    """Its edge answers our user agent with 403; nothing here may route around that."""
+    assert urls_for("schneider") == []

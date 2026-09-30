@@ -4,8 +4,15 @@ Every manufacturer portal investigated so far fails the "real links in served
 HTML" bar that decides whether a crawler can find documents on its own:
 
 * **ABB Library** serves a 1429-byte SPA shell — no PDF hrefs at all.
-* **Siemens SIOS** returns 403 to any non-browser client, at the CDN edge.
-* **Schneider** disallows every path its documents live at, in robots.txt.
+* **Siemens SIOS** returns 403 to any non-browser client, at the CDN edge --
+  but, like ABB, its PDFs sit on a plain asset host
+  (``cache.industry.siemens.com``) whose robots.txt permits ``/dl/files/``,
+  and which serves them to our user agent. So Siemens is curated here too.
+* **Schneider** answers our user agent with 403 at the edge, for its document
+  pages on ``www.se.com`` and for ``robots.txt`` on its download host alike
+  (checked 2026-09-30). Presenting a browser's user agent to get past that
+  would be evading a refusal, not crawling, so Schneider has no entries: its
+  documents need adding by hand, from a browser, by someone entitled to.
 
 ABB is the interesting case, and the reason this module exists. Its *discovery*
 is blocked, but the PDFs themselves sit on a plain asset host
@@ -73,6 +80,63 @@ KNOWN_DOCUMENTS: tuple[KnownDocument, ...] = (
         url=("https://library.e.abb.com/public/1d1d7475e72c4a2cb0c94743b0849cec/ABCF270x_en.pdf"),
         title="ACS880 brake control program firmware manual",
         verified="2026-08-29",
+    ),
+    # Siemens. Each opened, confirmed a PDF served to our user agent, its title
+    # read off the document itself, and cache.industry.siemens.com's robots.txt
+    # checked to allow /dl/files/.
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/922/109817922/att_1133717/v1/"
+            "G120C_list_man_0223_en-US.pdf"
+        ),
+        title="SINAMICS G120C List Manual, edition 02/2023",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/919/109817919/att_1133702/v1/"
+            "G120_CU240BE-2_list_man_0223_en-US.pdf"
+        ),
+        title="SINAMICS G120 Control Units CU240B-2/CU240E-2 List Manual, edition 02/2023",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/920/109817920/att_1133705/v1/"
+            "G120_CU230P-2_List_Manual_0223_en-US.pdf"
+        ),
+        title="SINAMICS G120 CU230P-2 Control Units List Manual, edition 02/2023",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/111/109811111/att_1105033/v1/"
+            "V20_op_instr_0522_en-US.pdf"
+        ),
+        title="SINAMICS V20 Low voltage converters Operating Instructions",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/915/109977915/att_1309695/v1/"
+            "V20_cmpct_op_instr_1224_en-US.pdf"
+        ),
+        title="SINAMICS V20 Converter Compact Operating Instructions, 12/2024",
+        verified="2026-09-30",
+    ),
+    KnownDocument(
+        source_id="siemens",
+        url=(
+            "https://cache.industry.siemens.com/dl/files/293/109988293/att_1327503/v1/"
+            "S71200_G2_system_manual_en-US_en-US.pdf"
+        ),
+        title="SIMATIC S7-1200 G2 System Manual",
+        verified="2026-09-30",
     ),
 )
 

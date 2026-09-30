@@ -697,7 +697,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
 
     Raises:
         UnreadableDocumentError: If the file is not a readable PDF, has no text
-            layer, is laid out in columns this cannot read in order, has more
+            layer, is laid out in columns on every page, has more
             than ``MAX_PAGES`` pages, or takes longer than
             ``EXTRACTION_DEADLINE_S`` to read.
 
@@ -746,6 +746,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     sizes: list[float] = []
     # Index of a block in `blocks` -> the last page its content came from.
     last_page: dict[int, int] = {}
+    skipped_pages: list[int] = []
 
     # Grouped by page once, up front. Filtering the whole document's lines for
     # each page made this quadratic in document length.
@@ -774,16 +775,23 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             if not any(top <= line.top <= bottom for top, bottom in table_bands)
         ]
         if _looks_columnar(outside_tables, page_width=page_width):
-            # Reported per page rather than per line, and only when a gap band
-            # persists. The earlier check refused on a single wide gap, which
-            # a standard manual footer (document code left, page number right)
-            # produces on every page — so one footer discarded the whole
-            # manual, and `prepare_documents` recorded it as a parse failure
-            # with no hint that the cause was a heuristic.
-            raise UnreadableDocumentError(
-                f"page {page_number} appears to be laid out in columns; "
-                "reading order cannot be determined"
+            # The page's prose is dropped, not the document. Read line by
+            # line, columns interleave into sentences the manual never
+            # contained, so this page's text cannot be indexed -- but refusing
+            # the whole manual over it cost five of six Siemens manuals, each
+            # rejected for one columned page among hundreds of readable ones.
+            # Its tables were read as tables and are kept.
+            logger.warning(
+                "structure.columnar_page_skipped",
+                document_id=document_id,
+                page=page_number,
             )
+            skipped_pages.append(page_number)
+            page_lines = [
+                line
+                for line in page_lines
+                if any(top <= line.top <= bottom for top, bottom in table_bands)
+            ]
 
         for line in page_lines:
             # Any table starting above this line belongs to the section that
@@ -856,11 +864,18 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             last_page=last_page,
         )
 
+    if not blocks and skipped_pages:
+        raise UnreadableDocumentError(
+            f"every readable page is laid out in columns (pages {skipped_pages}); "
+            "reading order cannot be determined"
+        )
+
     logger.info(
         "structure.extracted",
         document_id=document_id,
         pages=page_count,
         blocks=len(blocks),
         tables=sum(len(t) for t in tables_by_page.values()),
+        columnar_pages_skipped=skipped_pages,
     )
     return StructureMap(blocks=blocks)
