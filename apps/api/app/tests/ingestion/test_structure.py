@@ -902,10 +902,21 @@ def test_a_document_at_the_page_cap_is_read(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_an_extraction_past_its_deadline_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(structure, "EXTRACTION_DEADLINE_S", -1.0)
+    monkeypatch.setattr(structure, "EXTRACTION_S_PER_PAGE", -1.0)
     data = build(lambda p: p.body("One line of body text."))
 
     with pytest.raises(UnreadableDocumentError, match="extraction passed"):
         extract_structure(data)
+
+
+@pytest.mark.parametrize(
+    ("pages", "budget"),
+    [(1, 300.0), (300, 300.0), (836, 836.0), (1132, 1132.0), (2000, 2000.0)],
+)
+def test_the_extraction_budget_grows_with_the_page_count(pages: int, budget: float) -> None:
+    # A flat 300 s refused Yaskawa's 836- and 1132-page technical references;
+    # the page cap still bounds the budget.
+    assert structure.extraction_budget_s(pages) == budget
 
 
 def test_every_page_is_released_after_it_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
