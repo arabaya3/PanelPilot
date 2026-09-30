@@ -47,12 +47,14 @@ def run_crawl(args: list[str]) -> int:
     staging index only; nothing this job does can make content live.
 
     Args:
-        args: Positional arguments, ``[source_id, seed_url, ...]``. At least
-            one seed URL is required — there is no stored source registry, so
-            the entry points come from the command line or the API caller.
+        args: ``[source_id, seed_url, ...]``. The seed URLs are optional for
+            a source with curated document URLs (``app.ingestion.
+            known_documents``): ``crawl abb`` fetches ABB's, which is what lets
+            the source be crawled on a schedule. A source with neither is
+            refused.
 
     Returns:
-        ``0`` on success, non-zero on failure.
+        ``0`` on success, ``1`` if the crawl failed, ``2`` on bad arguments.
 
     Thin by contract: open a session, call one domain function, translate the
     outcome to an exit code. The crawl itself, including every decision about
@@ -66,8 +68,8 @@ def run_crawl(args: list[str]) -> int:
     from app.domain import ingestion as ingestion_domain
     from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
 
-    if len(args) < 2:
-        print("usage: crawl <source_id> <seed_url> [seed_url ...]", file=sys.stderr)
+    if not args:
+        print("usage: crawl <source_id> [seed_url ...]", file=sys.stderr)
         return 2
 
     source_id, *seed_urls = args
@@ -83,9 +85,16 @@ def run_crawl(args: list[str]) -> int:
     # Queued like an API request, then run here and now: one path for a crawl,
     # whoever asked for it.
     with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
-        queued = ingestion_domain.create_crawl_job(
-            session=session, user=system_actor(), request=request
-        )
+        try:
+            queued = ingestion_domain.create_crawl_job(
+                session=session, user=system_actor(), request=request
+            )
+        except ValidationError as exc:
+            # A source off the allow-list, a seed off its domain, or a source
+            # with no seeds and no curated documents: the command line was
+            # wrong, so a usage error rather than a traceback.
+            print(f"crawl: {exc}", file=sys.stderr)
+            return 2
         session.commit()
         response = ingestion_domain.run_crawl_job(session=session, job_id=queued.id)
 
