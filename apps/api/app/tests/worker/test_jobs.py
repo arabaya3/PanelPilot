@@ -149,7 +149,30 @@ def test_a_failed_crawl_exits_non_zero(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_missing_arguments_are_a_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Not a crash, and not a success."""
     assert jobs.run_crawl([]) == 2
-    assert jobs.run_crawl(["abb"]) == 2
+
+
+def test_a_source_with_curated_documents_needs_no_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`crawl abb` alone: what lets the crontab schedule a source crawl."""
+    seen = _patch_crawl(monkeypatch, CrawlJobStatus.SUCCEEDED)
+
+    assert jobs.run_crawl(["abb"]) == 0
+    assert seen["request"].seed_urls == []
+
+
+def test_a_crawl_the_domain_refuses_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A source with no seeds and no curated documents, say: one line, exit 2."""
+    from app.domain import ingestion as ingestion_domain
+
+    def refuse(**_kwargs: object) -> CrawlJobResponse:
+        raise ValidationError("source 'siemens' has no seed URLs and no known document URLs")
+
+    _patch_crawl(monkeypatch, CrawlJobStatus.SUCCEEDED)
+    monkeypatch.setattr(ingestion_domain, "create_crawl_job", refuse)
+
+    assert jobs.run_crawl(["siemens"]) == 2
+    assert capsys.readouterr().err.startswith("crawl: source 'siemens'")
 
 
 def test_every_seed_url_is_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:

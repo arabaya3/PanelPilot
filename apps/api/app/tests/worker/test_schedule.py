@@ -30,6 +30,7 @@ def test_the_real_crontab_parses_and_names_only_registered_jobs() -> None:
         "crawl-queue",
         "assign-review-batches",
         "expire-stale-sources",
+        "crawl",
     ]
     for entry in entries:
         assert jobs.get_job(entry.args[0]).name == entry.args[0]
@@ -43,6 +44,15 @@ def test_queued_crawls_run_every_five_minutes() -> None:
         if entry.due(datetime(2026, 9, 30, 8, 0, tzinfo=UTC) + timedelta(minutes=m))
     ]
     assert [r.minute for r in runs] == list(range(0, 60, 5))
+
+
+def test_every_scheduled_crawl_names_a_source_it_can_crawl_unseeded() -> None:
+    """`crawl <source>` with no seed works only for a source with curated URLs."""
+    from app.ingestion.known_documents import urls_for
+
+    for entry in parse_crontab(CRONTAB.read_text(encoding="utf-8")):
+        if entry.args[0] == "crawl" and len(entry.args) == 2:
+            assert urls_for(entry.args[1]), f"{entry.args[1]} has no curated documents"
 
 
 def test_stale_sources_are_checked_weekly_on_monday() -> None:
