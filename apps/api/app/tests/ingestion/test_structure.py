@@ -997,3 +997,18 @@ def test_a_fault_code_with_a_long_title_opens_its_own_section() -> None:
         "F30001 Power unit: Overcurrent",
         "F30002 Power unit: DC link voltage overvoltage",
     ]
+
+
+def test_an_equation_set_large_is_not_a_heading() -> None:
+    # ABB's installation handbook sets its formulas large; read as headings,
+    # "I = I k k = I k" and "≤" became sections holding the text below them.
+    data = build(
+        lambda p: p.heading("Correction factor", 16)
+        .heading("I = I k k = I k", 16)
+        .body("The current carrying capacity is corrected for the ambient temperature.")
+    )
+    blocks = extract_structure(data).blocks
+    headings = [b.text for b in blocks if b.kind is BlockKind.HEADING]
+
+    assert headings == ["Correction factor"]
+    assert {b.section for b in blocks if b.kind is BlockKind.PARAGRAPH} == {"Correction factor"}

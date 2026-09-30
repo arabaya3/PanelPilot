@@ -84,6 +84,9 @@ _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?(\s+\S|$)")
 #: was filed under the one before it -- a citation to the wrong fault.
 _CODE_HEADING = re.compile(r"^[A-Z]{1,2}\d{4,5}\s+\S")
 
+#: A word of three letters or more, in any script.
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
 #: A continuation banner: "Table 3 (continued)", "cont.", and so on.
 _CONTINUED = re.compile(r"\bcont(inued)?\b", re.IGNORECASE)
 
@@ -518,6 +521,11 @@ def _is_heading(line: _Line, *, body: float) -> bool:
     # a wrapped prose line — "Check the trip circuit supervision output
     # before" — carries no full stop either, because the sentence continues on
     # the next line. Real unnumbered headings are a few words.
+    # And a heading names something in words. Found on ABB's installation
+    # handbook, whose large-set equations -- "I = I k k = I k", "≤" -- were
+    # opening sections of their own.
+    if not _WORD.search(text):
+        return False
     return len(text) <= MAX_UNNUMBERED_HEADING_CHARS and not text.endswith(
         (".", ":", ";", "!", "?", ",")
     )

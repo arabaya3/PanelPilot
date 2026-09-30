@@ -150,6 +150,74 @@ def run_ingest_files(args: list[str]) -> int:
     return 0
 
 
+def run_restage(args: list[str]) -> int:
+    """Read one source's unreviewed manuals again: ``restage <source_id>``.
+
+    After the extractor improves, staged chunks keep the old reading, and a
+    crawl will not replace them: it skips a document whose hash is known. This
+    removes the source's staged documents no reviewer has touched, then stages
+    them afresh -- by crawling, and by re-reading any folder they were
+    supplied from by hand. Reviewed or promoted documents are left alone.
+
+    Args:
+        args: ``[source_id]``.
+
+    Returns:
+        ``0`` on success, ``1`` if re-staging failed, ``2`` on bad arguments.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import corpus_maintenance
+    from app.domain import ingestion as ingestion_domain
+    from app.ingestion.known_documents import urls_for
+    from app.models.schemas.ingestion import CrawlJobRequest, CrawlJobStatus
+
+    if len(args) != 1:
+        print("usage: restage <source_id>", file=sys.stderr)
+        return 2
+    (source_id,) = args
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
+        try:
+            report = corpus_maintenance.purge_unreviewed(session=session, source_id=source_id)
+        except ValidationError as exc:
+            print(f"restage: {exc}", file=sys.stderr)
+            return 2
+        session.commit()
+        print(f"removed {len(report.purged)} unreviewed documents ({report.chunks} chunks)")
+        for url, reason in report.kept.items():
+            print(f"kept {url}: {reason}")
+
+        status = 0
+        if urls_for(source_id):
+            queued = ingestion_domain.create_crawl_job(
+                session=session,
+                user=system_actor(),
+                request=CrawlJobRequest(source_id=source_id),
+            )
+            session.commit()
+            response = ingestion_domain.run_crawl_job(session=session, job_id=queued.id)
+            print(f"crawl {response.id}: {response.status.value}")
+            if response.status is not CrawlJobStatus.SUCCEEDED:
+                status = 1
+        for folder in sorted(report.folders):
+            try:
+                staged = ingestion_domain.ingest_local_files(
+                    session=session, user=system_actor(), source_id=source_id, folder=folder
+                )
+            except PanelPilotError as exc:
+                session.rollback()
+                print(f"restage: {folder}: {exc}", file=sys.stderr)
+                status = 1
+                continue
+            session.commit()
+            print(f"staged {staged} chunks from {folder}")
+    return status
+
+
 def run_crawl_queue(args: list[str]) -> int:
     """Run the oldest crawl queued through the API, if there is one.
 
@@ -451,6 +519,11 @@ REGISTRY: dict[str, JobSpec] = {
             "ingest-files",
             "Stage manuals downloaded by hand, for a source that refuses the crawler.",
             run_ingest_files,
+        ),
+        JobSpec(
+            "restage",
+            "Read a source's unreviewed manuals again with the current extractor.",
+            run_restage,
         ),
         JobSpec(
             "backfill-titles",

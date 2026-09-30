@@ -270,6 +270,33 @@ def restage_vectors(vectors: dict[str, list[float]]) -> int:
     return int(updated)
 
 
+def unstage_document(*, content_hash: str) -> int:
+    """Remove one staged document's chunks, so it can be staged afresh.
+
+    Args:
+        content_hash: The document's hash, which every one of its chunks
+            carries.
+
+    Returns:
+        How many chunks were removed.
+
+    Staging only, like ``stage_chunk``: live chunks leave production the one
+    way anything does, a reviewed retraction.
+    """
+    client = get_client()
+    index = resolve_index(IndexTarget.STAGING)
+    if not client.indices.exists(index=index):
+        return 0
+    response = client.delete_by_query(
+        index=index,
+        body={"query": {"term": {"content_hash": content_hash}}},
+        refresh=True,
+        conflicts="proceed",
+        request_timeout=600,
+    )
+    return int(response.get("deleted", 0))
+
+
 def retitle_staged(titles: dict[str, str]) -> int:
     """Set ``document_title`` on staged chunks that lack one, by source URL.
 
