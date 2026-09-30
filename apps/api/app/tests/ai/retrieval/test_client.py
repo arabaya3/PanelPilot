@@ -11,7 +11,7 @@ import pytest
 
 from app.ai.retrieval import client as client_module
 from app.ai.retrieval.client import IndexTarget, ensure_index, index_chunk
-from app.ai.retrieval.mappings import REQUIRED_FIELDS
+from app.ai.retrieval.mappings import REQUIRED_FIELDS, index_mapping
 from app.core.config import Settings
 
 
@@ -85,6 +85,9 @@ def test_setup_registers_every_pipeline_a_query_can_name(
         def create(self, **_kwargs: Any) -> None:
             raise AssertionError("the index already exists")
 
+        def get_mapping(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"test-index": index_mapping()}
+
     class _Transport:
         def perform_request(self, _method: str, path: str, **_kwargs: Any) -> None:
             if path.startswith("/_search/pipeline/"):
@@ -104,6 +107,51 @@ def test_setup_registers_every_pipeline_a_query_can_name(
 
     for query_type in QueryType:
         assert pipeline_name_for(query_type) in registered
+
+
+def test_an_existing_index_gains_fields_added_to_the_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A field the mapping gained is added to an index created before it.
+
+    The index is `dynamic: strict`, so without this every write carrying the
+    new field would fail.
+    """
+    from app.ai.retrieval import client as client_module
+    from app.models.schemas.retrieval_config import RetrievalConfig
+
+    added: list[dict[str, Any]] = []
+    old = index_mapping()
+    del old["mappings"]["properties"]["document_title"]
+
+    class _Indices:
+        def exists(self, **_kwargs: Any) -> bool:
+            return True
+
+        def get_mapping(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"test-index": old}
+
+        def put_mapping(self, *, index: str, body: dict[str, Any]) -> None:
+            assert index == "test-index"
+            added.append(body)
+
+    class _Transport:
+        def perform_request(self, *_args: Any, **_kwargs: Any) -> None:
+            return None
+
+    class _Client:
+        transport = _Transport()
+        indices = _Indices()
+
+    monkeypatch.setattr(client_module, "get_client", lambda: _Client())
+    monkeypatch.setattr(client_module, "resolve_index", lambda _t: "test-index")
+    monkeypatch.setattr(
+        "app.ai.retrieval.hybrid_search.retrieval_config_from_settings", RetrievalConfig
+    )
+
+    ensure_index(IndexTarget.STAGING)
+
+    assert added == [{"properties": {"document_title": {"type": "text"}}}]
 
 
 # --- stage_chunk must be unable to publish -----------------------------------

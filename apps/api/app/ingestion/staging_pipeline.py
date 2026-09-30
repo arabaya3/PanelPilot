@@ -85,6 +85,7 @@ def chunk_body(
         "model": chunk.model,
         "doc_type": chunk.doc_type,
         "source_url": chunk.source_url,
+        "document_title": chunk.document_title,
         "is_atomic": chunk.is_atomic,
         "verification_status": "pending",
     }

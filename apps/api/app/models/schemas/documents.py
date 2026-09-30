@@ -54,6 +54,8 @@ class DocumentChunk(BaseModel):
     model: str
     doc_type: str
     source_url: str
+    #: The document's name, as its citation shows it.
+    document_title: str = ""
     # True when this chunk holds a table or numbered procedure. Independent of
     # size: a SMALL table is just as indivisible as a large one, and inferring
     # atomicity from oversized_reason meant every table under the band merged

@@ -84,6 +84,9 @@ def index_mapping(*, embedding_dimensions: int = EMBEDDING_DIMENSIONS) -> dict[s
                 "page": {"type": "integer"},
                 # Free text: a section heading is matched, not filtered on.
                 "section": {"type": "text"},
+                # The manual's own name, for citations. Optional: chunks
+                # indexed before it existed fall back to their section.
+                "document_title": {"type": "text"},
                 "source_url": {"type": "keyword"},
                 "verification_status": {"type": "keyword"},
                 "content": {"type": "text", "analyzer": "standard"},

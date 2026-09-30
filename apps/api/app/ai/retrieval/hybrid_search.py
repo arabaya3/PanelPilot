@@ -277,7 +277,13 @@ def _to_passages(
                 anchored=anchored,
                 citation=Citation(
                     document_id=source.get("source_url", ""),
-                    document_title=source.get("section") or source.get("model", ""),
+                    # The manual's name; chunks indexed before titles were
+                    # recorded fall back to their section, as all once did.
+                    document_title=(
+                        source.get("document_title")
+                        or source.get("section")
+                        or source.get("model", "")
+                    ),
                     manufacturer=source.get("brand", ""),
                     page=source.get("page"),
                     section=source.get("section"),

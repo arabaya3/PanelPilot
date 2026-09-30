@@ -37,6 +37,7 @@ import structlog
 from app.core.errors import ValidationError
 from app.ingestion import robots as robots_module
 from app.ingestion import url_guard
+from app.ingestion.known_documents import title_for
 from app.ingestion.sources import (
     DiscoveredDocument,
     ResponseLimitError,
@@ -706,10 +707,13 @@ def _crawl(
         outcomes.append(
             _crawl_one(
                 source=source,
-                # The filename is the only title available without opening the
-                # PDF. The curated list carries a real one, but the crawler is
-                # not the layer that knows about it.
-                document=DiscoveredDocument(url=direct_url, title=direct_url.rsplit("/", 1)[-1]),
+                # The curated title when the URL is on the list -- it is what a
+                # citation shows the engineer -- else the filename, the only
+                # title available without opening the PDF.
+                document=DiscoveredDocument(
+                    url=direct_url,
+                    title=title_for(direct_url) or direct_url.rsplit("/", 1)[-1],
+                ),
                 fetcher=fetcher,
                 known=known,
                 documents=documents,

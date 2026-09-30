@@ -248,6 +248,25 @@ def _hit(hit_id: str, content: str, vector: list[float] | None, score: float = 0
     return {"_id": hit_id, "_score": score, "_source": source}
 
 
+def test_a_citation_names_the_document_not_the_section() -> None:
+    hit = _hit("t", "x", [1.0, 0.0])
+    hit["_source"].update({"document_title": "ACS880 firmware manual", "section": "3 Faults"})
+
+    (passage,) = _passages({"hits": {"hits": [hit]}})
+
+    assert passage.citation.document_title == "ACS880 firmware manual"
+    assert passage.citation.section == "3 Faults"
+
+
+def test_a_chunk_indexed_before_titles_falls_back_to_its_section() -> None:
+    hit = _hit("t", "x", [1.0, 0.0])
+    hit["_source"]["section"] = "3 Faults"
+
+    (passage,) = _passages({"hits": {"hits": [hit]}})
+
+    assert passage.citation.document_title == "3 Faults"
+
+
 # --- unit: absolute relevance -------------------------------------------------
 
 

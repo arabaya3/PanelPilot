@@ -209,6 +209,24 @@ def run_reindex_staging(args: list[str]) -> int:
     return 0
 
 
+def run_backfill_titles(args: list[str]) -> int:
+    """Name curated manuals on staged chunks that predate titles: ``backfill-titles``.
+
+    Args:
+        args: None accepted.
+
+    Returns:
+        ``0`` on success, ``2`` on unexpected arguments.
+    """
+    from app.domain.corpus_maintenance import backfill_titles
+
+    if args:
+        print("usage: backfill-titles", file=sys.stderr)
+        return 2
+    print(f"titled {backfill_titles()} staged chunks")
+    return 0
+
+
 def run_expire_stale_sources(args: list[str]) -> int:
     """Flag live documents whose upstream source changed or was withdrawn.
 
@@ -384,6 +402,11 @@ REGISTRY: dict[str, JobSpec] = {
             "reindex-staging",
             "Re-embed the staging corpus after an embedding model change.",
             run_reindex_staging,
+        ),
+        JobSpec(
+            "backfill-titles",
+            "Name curated manuals on staged chunks staged before titles were recorded.",
+            run_backfill_titles,
         ),
         JobSpec(
             "expire-stale-sources",
