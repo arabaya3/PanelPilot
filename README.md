@@ -127,12 +127,6 @@ field is omitted entirely when absent rather than written as zeros.
 
 ### Blocked on source documents that are not in this repository
 
-**AI-007 — panel load sizing.** It names Rittal's handbook as the source
-for its tables and coefficients, and that is not present here. It was not
-attempted, and deliberately so: the numbers these produce end up on drawings, and a table
-written from general knowledge would be confident and uncitable -- the exact
-failure the cite-or-refuse rule exists to prevent.
-
 Cable sizing (AI-005) is implemented from ABB's _Electrical installation
 handbook_ Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
 tables and prints two worked sizing examples the tests check against. It
@@ -144,11 +138,11 @@ manual (3AUA0000078093): the IEC ratings at 400 V, the temperature and
 altitude deratings, and the motor current from ABB's Technical guide No. 7.
 Other ranges and voltages are refused.
 
-**BE-011 and FE-010 — the panel BOM.** Both consume the calc tools above, so
-both are blocked behind them. The responsive check
-(`apps/web/scripts/check-responsive.mjs`) already refuses a table with neither
-a scrollable container nor a stacked fallback, so the BOM table cannot merge
-later without the mobile fallback FE-013 requires.
+The panel BOM (AI-007, BE-011) builds on both: a drive for each
+variable-speed load, an outgoing cable for each load, the enclosure, and the
+heat balance from Rittal's _Enclosure and process cooling_ (IEC 60890
+effective area, k = 5.5 W/m²K). Protective devices, contactors and terminals
+have no sourced selection table and are listed as not included.
 
 ### Local development notes
 

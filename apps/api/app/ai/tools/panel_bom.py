@@ -1,17 +1,155 @@
 """Control panel bill-of-materials generation.
 
 Pure functions. Each formula cites the manufacturer guide it came from.
+
+The BOM holds only what a sourced table can size: a drive for each
+variable-speed load (ACS880-01 ratings), an outgoing cable for each load with
+a current (IEC 60364-5-52 via ABB's handbook), the enclosure as given, and
+the heat balance (IEC 60890 via Rittal). Protective devices, contactors and
+terminals have no sourced selection table here, so they are named in the
+result's notes rather than guessed.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
+from app.ai.tools import cable_sizing, vfd_selection
+from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
+    BomLine,
+    ConductorMaterial,
+    DutyClass,
     EnclosureConstraints,
+    EnclosurePlacement,
     LoadScheduleItem,
     PanelBomResult,
 )
+from app.models.schemas.search import Citation
+
+RITTAL_GUIDE_ID = "rittal-enclosure-and-process-cooling-2014"
+RITTAL_GUIDE_TITLE = "Enclosure and process cooling (Rittal technology library, 2014)"
+
+#: Heat transfer coefficient of sheet steel, W/m²K (Rittal, p. 24 as printed).
+SHEET_STEEL_K = Decimal("5.5")
+
+#: Pages of the Rittal guide, as the PDF numbers them.
+_AREA_TABLE_PAGE = 25
+_HEAT_BALANCE_PAGE = 40
+
+#: Table 5 stops at 20 grouped circuits; more are refused by the cable sizing.
+_MAX_GROUPED = 20
+
+
+def _plain(value: Decimal) -> str:
+    """Write a number without trailing zeros or an exponent: 10, not 1E+1."""
+    return format(value.normalize(), "f")
+
+
+def _rittal(page: int, section: str) -> Citation:
+    """Cite a page of the Rittal guide."""
+    return Citation(
+        document_id=RITTAL_GUIDE_ID,
+        document_title=RITTAL_GUIDE_TITLE,
+        manufacturer="Rittal",
+        page=page,
+        section=section,
+    )
+
+
+def effective_area_m2(
+    *,
+    width_m: Decimal,
+    height_m: Decimal,
+    depth_m: Decimal,
+    placement: EnclosurePlacement,
+) -> Decimal:
+    """Return the enclosure's effective heat-dissipating surface area, in m².
+
+    Source:
+        Rittal, *Enclosure and process cooling* (technology library 2014),
+        "Enclosure installation type according to IEC 60 890", p. 24 as
+        printed.
+
+    Args:
+        width_m: External width, in metres.
+        height_m: External height, in metres.
+        depth_m: External depth, in metres.
+        placement: How the enclosure stands.
+
+    Returns:
+        The effective area A.
+
+    Raises:
+        ValidationError: If a dimension is not a positive number.
+    """
+    for name, value in (("width", width_m), ("height", height_m), ("depth", depth_m)):
+        if not value.is_finite() or value <= 0:
+            raise ValidationError(f"enclosure {name} must be positive, got {value}")
+    w, h, d = width_m, height_m, depth_m
+    k18, k14, k07 = Decimal("1.8"), Decimal("1.4"), Decimal("0.7")
+    formulas = {
+        EnclosurePlacement.SINGLE_FREE_STANDING: k18 * h * (w + d) + k14 * w * d,
+        EnclosurePlacement.SINGLE_WALL: k14 * w * (h + d) + k18 * h * d,
+        EnclosurePlacement.SUITE_END_FREE_STANDING: k14 * d * (w + h) + k18 * w * h,
+        EnclosurePlacement.SUITE_END_WALL: k14 * h * (w + d) + k14 * w * d,
+        EnclosurePlacement.SUITE_MIDDLE_FREE_STANDING: k18 * w * h + k14 * w * d + h * d,
+        EnclosurePlacement.SUITE_MIDDLE_WALL: k14 * w * (h + d) + h * d,
+        EnclosurePlacement.SUITE_MIDDLE_WALL_COVERED_ROOF: k14 * w * h + k07 * w * d + h * d,
+    }
+    return formulas[placement]
+
+
+def enclosure_heat_load_w(
+    *,
+    items: list[LoadScheduleItem],
+    constraints: EnclosureConstraints,
+) -> tuple[Decimal, Decimal]:
+    """Return the heat given off inside the enclosure, and what cooling must remove.
+
+    The surface sheds k · A · ΔT, with ΔT the permitted rise from ambient to
+    the maximum internal temperature; whatever the equipment dissipates
+    beyond that needs active cooling.
+
+    Source:
+        Rittal, *Enclosure and process cooling* (technology library 2014),
+        "Active heat dissipation", worked example p. 39 as printed: Qs = k ·
+        A · (Ti - Tu), Qe = Qv - Qs; k = 5.5 W/m²K for sheet steel. Area by
+        `effective_area_m2` (IEC 60890).
+
+    Args:
+        items: The loads, with the heat each dissipates inside the enclosure.
+        constraints: Enclosure size, placement and temperatures.
+
+    Returns:
+        (Total heat load Qv, required cooling output), in watts; the second is
+        zero if the surface alone suffices.
+
+    Raises:
+        ValidationError: If the maximum internal temperature is not above
+            ambient, or a dissipation is negative.
+    """
+    rise = constraints.max_internal_temp_c - constraints.ambient_temp_c
+    if not rise.is_finite() or rise <= 0:
+        raise ValidationError(
+            "max_internal_temp_c must be above ambient_temp_c; with no permitted "
+            "rise, the enclosure surface sheds nothing and the balance is undefined"
+        )
+    heat = Decimal(0)
+    for item in items:
+        if item.dissipation_w is None:
+            continue
+        if not item.dissipation_w.is_finite() or item.dissipation_w < 0:
+            raise ValidationError(f"{item.tag}: dissipation must not be negative")
+        heat += item.dissipation_w
+    area = effective_area_m2(
+        width_m=Decimal(constraints.width_mm) / 1000,
+        height_m=Decimal(constraints.height_mm) / 1000,
+        depth_m=Decimal(constraints.depth_mm) / 1000,
+        placement=constraints.placement,
+    )
+    shed = SHEET_STEEL_K * area * rise
+    return heat, max(Decimal(0), heat - shed)
 
 
 def build_bom(
@@ -19,55 +157,130 @@ def build_bom(
     loads: list[LoadScheduleItem],
     constraints: EnclosureConstraints,
 ) -> PanelBomResult:
-    """Expand a load schedule into an itemised panel bill of materials.
+    """Expand a load schedule into the sourced lines of a panel BOM.
 
-    Each load contributes its protective device, contactor or drive, terminals,
-    and wiring; shared items (busbar, control transformer, enclosure) are sized
-    from the aggregate.
+    Each variable-speed load gets the smallest ACS880-01 carrying its current
+    at the enclosure's maximum internal temperature -- the drive stands
+    inside the panel, not in the room. Each load with a current gets an
+    outgoing copper XLPE cable sized for the room's ambient, grouped with
+    every other outgoing cable. The enclosure is listed as given, and the
+    heat balance says how much cooling it needs.
 
     Source:
-        Rittal Handbook 36, §2 "Configuring enclosures" (mounting-space and
-        component-pitch rules); protective-device coordination per Schneider
-        Electric Electrical Installation Guide 2024, §H.
+        ABB ACS880-01 hardware manual (3AUA0000078093) for drives; ABB
+        *Electrical installation handbook* Vol. 2 (1SDC010001D0204) for
+        cables; Rittal *Enclosure and process cooling* for the heat balance
+        per IEC 60890.
 
     Args:
         loads: The panel's load schedule.
-        constraints: Enclosure size, ingress rating, and vendor preferences.
+        constraints: Enclosure size and placement, supply, and temperatures.
 
     Returns:
-        The BOM with quantities, part references, and per-item sources.
+        The BOM lines, the heat load and required cooling, and notes on what
+        is not included.
 
     Raises:
-        ValidationError: If the schedule is internally inconsistent or the
-            required components cannot fit the stated enclosure.
+        ValidationError: If the schedule is empty or inconsistent, or a load
+            falls outside the drive or cable tables.
     """
-    raise NotImplementedError
+    if not loads:
+        raise ValidationError("the load schedule is empty")
+    tags = [load.tag for load in loads]
+    if len(set(tags)) != len(tags):
+        raise ValidationError("load tags must be unique")
 
+    lines: list[BomLine] = []
+    carrying = [load for load in loads if load.current_a is not None]
+    grouped = len(carrying)
+    if grouped > _MAX_GROUPED:
+        raise ValidationError(
+            f"{grouped} outgoing circuits exceed the grouping table (up to {_MAX_GROUPED})"
+        )
 
-def enclosure_heat_load_w(
-    *,
-    items: list[LoadScheduleItem],
-    ambient_temp_c: Decimal,
-    max_internal_temp_c: Decimal,
-) -> Decimal:
-    """Compute the heat the enclosure must dissipate, in watts.
+    for load in loads:
+        if load.variable_speed and load.current_a is None:
+            raise ValidationError(f"{load.tag}: a variable-speed load needs its nameplate current")
+        if load.power_kw is not None and load.current_a is None:
+            raise ValidationError(
+                f"{load.tag}: give the nameplate current; it is not inferred from power"
+            )
+        if load.current_a is None:
+            continue
+        try:
+            if load.variable_speed:
+                drive = vfd_selection.select_frame(
+                    required_current_a=load.current_a,
+                    supply_voltage_v=constraints.supply_voltage_v,
+                    duty_class=DutyClass.NORMAL,
+                    altitude_m=Decimal(0),
+                    ambient_temp_c=constraints.max_internal_temp_c,
+                )
+                lines.append(
+                    BomLine(
+                        part_reference=drive.frame_reference.split(" ")[0],
+                        description=f"{load.tag}: drive for {load.description}",
+                        quantity=1,
+                        source=vfd_selection.ratings_citation(),
+                    )
+                )
+            cable = cable_sizing.size_conductor(
+                design_current_a=load.current_a,
+                installation_method=constraints.cable_installation_method,
+                ambient_temp_c=constraints.ambient_temp_c,
+                grouped_circuits=grouped,
+                conductor_material=ConductorMaterial.COPPER,
+                insulation_rating_c=90,
+            )
+        except ValidationError as exc:
+            raise ValidationError(f"{load.tag}: {exc}") from exc
+        section = _plain(cable.cross_section_mm2)
+        lines.append(
+            BomLine(
+                part_reference=f"Cu XLPE {section} mm²",
+                description=(
+                    f"{load.tag}: outgoing cable, method "
+                    f"{constraints.cable_installation_method.value}, {grouped} grouped"
+                ),
+                quantity=1,
+                source=cable_sizing.ampacity_citation(constraints.cable_installation_method),
+            )
+        )
 
-    Sums component dissipation and subtracts passive surface loss over the
-    effective enclosure area.
+    lines.append(
+        BomLine(
+            part_reference=(
+                f"Enclosure {constraints.width_mm}x{constraints.height_mm}x"
+                f"{constraints.depth_mm} {constraints.ingress_rating}"
+            ),
+            description=f"Enclosure, {constraints.placement.value.replace('_', ' ')}",
+            quantity=1,
+            source=_rittal(_AREA_TABLE_PAGE, "Enclosure installation type to IEC 60 890"),
+        )
+    )
 
-    Source:
-        Rittal Handbook 36, §5 "Climate control", the effective-surface-area
-        method per IEC 60890.
-
-    Args:
-        items: Components mounted in the enclosure with their dissipation.
-        ambient_temp_c: Ambient temperature outside the enclosure, in °C.
-        max_internal_temp_c: Permitted internal temperature, in °C.
-
-    Returns:
-        Required cooling capacity in watts; zero if passive loss suffices.
-
-    Raises:
-        ValidationError: If ``max_internal_temp_c`` is at or below ambient.
-    """
-    raise NotImplementedError
+    heat, cooling = enclosure_heat_load_w(items=loads, constraints=constraints)
+    notes = [
+        "Protective devices, contactors and terminals are not included: no sourced "
+        "selection table for them is held here.",
+    ]
+    if cooling > 0:
+        rise = constraints.max_internal_temp_c - constraints.ambient_temp_c
+        lines.append(
+            BomLine(
+                part_reference=f"Cooling {cooling.quantize(Decimal('1'))} W",
+                description=(
+                    f"Active cooling: {cooling.quantize(Decimal('1'))} W beyond what the "
+                    f"surface sheds at {_plain(rise)} K rise; an air/air heat exchanger "
+                    f"needs {(cooling / rise).quantize(Decimal('0.1'))} W/K"
+                ),
+                quantity=1,
+                source=_rittal(_HEAT_BALANCE_PAGE, "Active heat dissipation"),
+            )
+        )
+    if any(load.dissipation_w is None for load in loads):
+        notes.append(
+            "Loads without a dissipation add no heat; the cooling figure is only as "
+            "complete as the schedule."
+        )
+    return PanelBomResult(lines=lines, heat_load_w=heat, cooling_required_w=cooling, notes=notes)

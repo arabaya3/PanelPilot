@@ -2,43 +2,34 @@
 
 Mirrors the module 1:1 — if you add a function there, add its test here.
 
-The panel BOM is blocked on manufacturer guides that are not in this
-repository (see the README). Until they land, what is tested is
-that each one says so -- a NotImplementedYetError the API answers with 501 --
-rather than an anonymous NotImplementedError that surfaced as a 500.
+The arithmetic is tested against each source's worked examples in
+`tests/ai/tools/`; these check that each service returns its result with
+every source it came from.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from decimal import Decimal
 from typing import Any, cast
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotImplementedYetError, ValidationError
+from app.core.errors import ValidationError
 from app.domain import calculations
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.calculations import (
     CableSizingRequest,
     DutyClass,
+    EnclosureConstraints,
+    EnclosurePlacement,
     InstallationMethod,
+    LoadScheduleItem,
+    PanelBomRequest,
     VfdSelectionRequest,
 )
 
 _USER = CurrentUser(id="u", email="e@example.com", tenant_id="t", roles=frozenset({Role.ENGINEER}))
-
-
-@pytest.mark.parametrize(
-    "calculate",
-    [calculations.build_panel_bom],
-)
-def test_each_calculation_says_it_is_blocked_on_its_sources(
-    calculate: Callable[..., Any],
-) -> None:
-    with pytest.raises(NotImplementedYetError, match="engineering guides"):
-        calculate(session=object(), user=_USER, request=object())
 
 
 #: `size_cable` does not touch the session.
@@ -99,3 +90,28 @@ def test_a_drive_is_selected_with_the_motor_current_and_every_source() -> None:
     assert response.motor_current_a.quantize(Decimal("0.1")) == Decimal("40.2")
     assert response.result.frame_reference == "ACS880-01-061A-3 (R4)"
     assert [s.manufacturer for s in response.sources] == ["ABB"] * 4
+
+
+def test_a_bom_is_built_with_each_source_once() -> None:
+    response = calculations.build_panel_bom(
+        session=_NO_SESSION,
+        user=_USER,
+        request=PanelBomRequest(
+            loads=[
+                LoadScheduleItem(
+                    tag="M-1", description="pump", current_a=Decimal(20), variable_speed=True
+                ),
+                LoadScheduleItem(tag="M-2", description="fan", current_a=Decimal(8)),
+            ],
+            constraints=EnclosureConstraints(
+                width_mm=800,
+                height_mm=2000,
+                depth_mm=600,
+                ingress_rating="IP54",
+                placement=EnclosurePlacement.SINGLE_WALL,
+                cable_installation_method=InstallationMethod.C,
+            ),
+        ),
+    )
+    assert response.result.lines[0].part_reference == "ACS880-01-025A-3"
+    assert [s.manufacturer for s in response.sources] == ["ABB", "ABB", "Rittal"]

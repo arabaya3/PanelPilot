@@ -124,8 +124,24 @@ class LoadScheduleItem(BaseModel):
     tag: str
     description: str
     power_kw: Decimal | None = None
+    #: Nameplate current; a load with none gets no cable or drive.
     current_a: Decimal | None = None
+    #: Heat this load's equipment gives off inside the enclosure.
     dissipation_w: Decimal | None = None
+    #: Fed through a variable speed drive, which the BOM then selects.
+    variable_speed: bool = False
+
+
+class EnclosurePlacement(StrEnum):
+    """How an enclosure stands, per IEC 60890's effective-area formulas."""
+
+    SINGLE_FREE_STANDING = "single_free_standing"
+    SINGLE_WALL = "single_wall"
+    SUITE_END_FREE_STANDING = "suite_end_free_standing"
+    SUITE_END_WALL = "suite_end_wall"
+    SUITE_MIDDLE_FREE_STANDING = "suite_middle_free_standing"
+    SUITE_MIDDLE_WALL = "suite_middle_wall"
+    SUITE_MIDDLE_WALL_COVERED_ROOF = "suite_middle_wall_covered_roof"
 
 
 class EnclosureConstraints(BaseModel):
@@ -135,6 +151,11 @@ class EnclosureConstraints(BaseModel):
     height_mm: int
     depth_mm: int
     ingress_rating: str
+    #: Required: the effective surface area, and so the cooling, depends on it.
+    placement: EnclosurePlacement
+    #: Required: the outgoing cables' capacity depends on it.
+    cable_installation_method: InstallationMethod
+    supply_voltage_v: Decimal = Decimal(400)
     preferred_vendors: list[str] = []
     ambient_temp_c: Decimal = Decimal(35)
     max_internal_temp_c: Decimal = Decimal(50)
@@ -153,7 +174,13 @@ class PanelBomResult(BaseModel):
     """Output of the pure BOM function."""
 
     lines: list[BomLine]
+    #: Total heat given off inside the enclosure.
     heat_load_w: Decimal
+    #: Heat the enclosure surface cannot shed at the permitted temperature
+    #: rise, which cooling must remove. Zero if the surface suffices.
+    cooling_required_w: Decimal
+    #: What the BOM deliberately leaves out, and why.
+    notes: list[str] = []
 
 
 class PanelBomRequest(BaseModel):

@@ -35,8 +35,27 @@ def _client() -> Iterator[TestClient]:
         yield test_client
 
 
-def test_a_blocked_calculation_answers_501_with_its_reason(client: TestClient) -> None:
-    """Not an anonymous 500: the caller learns this is known and why."""
+def test_a_bom_is_built(client: TestClient) -> None:
+    response = client.post(
+        "/calculations/panel-bom",
+        json={
+            "loads": [{"tag": "M-1", "description": "pump", "current_a": "20"}],
+            "constraints": {
+                "width_mm": 600,
+                "height_mm": 800,
+                "depth_mm": 250,
+                "ingress_rating": "IP54",
+                "placement": "single_wall",
+                "cable_installation_method": "C",
+            },
+        },
+    )
+    assert response.status_code == 200
+    # 20 A at 35 °C (k1 0.96): 20.8 A; method C XLPE 1.5 mm² carries 22 A.
+    assert response.json()["result"]["lines"][0]["part_reference"] == "Cu XLPE 1.5 mm²"
+
+
+def test_an_empty_schedule_is_a_422(client: TestClient) -> None:
     response = client.post(
         "/calculations/panel-bom",
         json={
@@ -46,12 +65,12 @@ def test_a_blocked_calculation_answers_501_with_its_reason(client: TestClient) -
                 "height_mm": 800,
                 "depth_mm": 250,
                 "ingress_rating": "IP54",
+                "placement": "single_wall",
+                "cable_installation_method": "C",
             },
         },
     )
-    assert response.status_code == 501
-    assert response.json()["error"] == "NotImplementedYetError"
-    assert "engineering guides" in response.json()["detail"]
+    assert response.status_code == 422
 
 
 def test_a_drive_is_selected(client: TestClient) -> None:

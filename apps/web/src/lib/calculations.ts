@@ -105,3 +105,53 @@ export async function selectVfd(options: {
   if (!('result' in payload) || !('motor_current_a' in payload)) return { kind: 'failed' };
   return { kind: 'selected', response: payload as VfdSelectionResponse };
 }
+
+export type PanelBomRequest = components['schemas']['PanelBomRequest'];
+export type PanelBomResponse = components['schemas']['PanelBomResponse'];
+
+export type PanelBomOutcome =
+  | { kind: 'built'; response: PanelBomResponse }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/** Build a panel BOM: `POST /api/v1/calculations/panel-bom`. A 422 is a refusal. */
+export async function buildBom(options: {
+  token: string;
+  request: PanelBomRequest;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<PanelBomOutcome> {
+  const {
+    token,
+    request,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/calculations/panel-bom',
+  } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(request),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 422) {
+    const detail = (payload as { detail?: unknown } | null)?.detail;
+    return { kind: 'refused', detail: typeof detail === 'string' ? detail : '' };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('result' in payload) || !('sources' in payload)) return { kind: 'failed' };
+  return { kind: 'built', response: payload as PanelBomResponse };
+}

@@ -1026,6 +1026,13 @@ export interface components {
       depth_mm: number;
       /** Ingress Rating */
       ingress_rating: string;
+      placement: components['schemas']['EnclosurePlacement'];
+      cable_installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Supply Voltage V
+       * @default 400
+       */
+      supply_voltage_v: number | string;
       /**
        * Preferred Vendors
        * @default []
@@ -1042,6 +1049,19 @@ export interface components {
        */
       max_internal_temp_c: number | string;
     };
+    /**
+     * EnclosurePlacement
+     * @description How an enclosure stands, per IEC 60890's effective-area formulas.
+     * @enum {string}
+     */
+    EnclosurePlacement:
+      | 'single_free_standing'
+      | 'single_wall'
+      | 'suite_end_free_standing'
+      | 'suite_end_wall'
+      | 'suite_middle_free_standing'
+      | 'suite_middle_wall'
+      | 'suite_middle_wall_covered_roof';
     /**
      * EquipmentContext
      * @description What the engineer is working on.
@@ -1307,6 +1327,11 @@ export interface components {
       current_a?: number | string | null;
       /** Dissipation W */
       dissipation_w?: number | string | null;
+      /**
+       * Variable Speed
+       * @default false
+       */
+      variable_speed: boolean;
     };
     /**
      * Locale
@@ -1358,6 +1383,13 @@ export interface components {
       lines: components['schemas']['BomLine'][];
       /** Heat Load W */
       heat_load_w: string;
+      /** Cooling Required W */
+      cooling_required_w: string;
+      /**
+       * Notes
+       * @default []
+       */
+      notes: string[];
     };
     /**
      * PlcDialect
