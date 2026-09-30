@@ -8,9 +8,13 @@ unit-tested against its manufacturer guide without a database.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+import structlog
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotImplementedYetError
+from app.ai.tools import cable_sizing
+from app.core.errors import NotImplementedYetError, ValidationError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
     CableSizingRequest,
@@ -20,8 +24,25 @@ from app.models.schemas.calculations import (
     VfdSelectionRequest,
     VfdSelectionResponse,
 )
+from app.models.schemas.search import Citation
 
-# Why every calculation answers 501 today. The formulas and tables come from
+logger = structlog.get_logger(__name__)
+
+_VOLTAGE_DROP_SOURCE = Citation(
+    document_id="schneider-eig-2010",
+    document_title="Electrical Installation Guide 2010",
+    manufacturer="Schneider Electric",
+    section="Chapter G, Fig. G28",
+)
+
+
+def _require_positive(name: str, value: Decimal) -> None:
+    """Refuse anything but a finite number above zero."""
+    if not value.is_finite() or value <= 0:
+        raise ValidationError(f"{name} must be a positive number, got {value}")
+
+
+# Why VFD selection and the panel BOM answer 501 today. The formulas and tables come from
 # named manufacturer engineering guides that are not in this repository, and
 # a table written from general knowledge would be confident and uncitable —
 # the failure cite-or-refuse exists to prevent. See the README, "Blocked on
@@ -41,22 +62,53 @@ def size_cable(
     """Size a feeder cable for the requested load and installation method.
 
     Args:
-        session: Open database session, used to persist the calculation record.
-        user: The authenticated caller.
+        session: Open database session. Unused: the result is not persisted.
+        user: The authenticated caller, for the log line.
         request: Load current, length, voltage, installation method, and
             ambient conditions.
 
     Returns:
         The selected conductor size with derating factors, voltage drop, and
-        the standard clause each step came from.
+        the table each step came from.
 
     Raises:
         ValidationError: If the inputs fall outside the supported ranges of the
             underlying tables.
-        NotImplementedYetError: Always, until the source guide is supplied.
     """
-    del session, user, request  # Unused until the tool exists; the signature is the contract.
-    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="Cable sizing"))
+    del session
+    _require_positive("supply_voltage_v", request.supply_voltage_v)
+    result = cable_sizing.size_conductor(
+        design_current_a=request.design_current_a,
+        installation_method=request.installation_method,
+        ambient_temp_c=request.ambient_temp_c,
+        grouped_circuits=request.grouped_circuits,
+        conductor_material=request.conductor_material,
+        insulation_rating_c=request.insulation_rating_c,
+        three_phase=request.three_phase,
+    )
+    drop = cable_sizing.voltage_drop(
+        current_a=request.design_current_a,
+        length_m=request.length_m,
+        cross_section_mm2=result.cross_section_mm2,
+        conductor_material=request.conductor_material,
+        power_factor=request.power_factor,
+        three_phase=request.three_phase,
+    )
+    logger.info(
+        "calculation.cable_sized",
+        tenant_id=user.tenant_id,
+        cross_section_mm2=str(result.cross_section_mm2),
+    )
+    return CableSizingResponse(
+        result=result,
+        voltage_drop_v=drop,
+        voltage_drop_percent=drop / request.supply_voltage_v * 100,
+        sources=[
+            cable_sizing.ampacity_citation(request.installation_method),
+            *(factor.source for factor in result.applied_factors),
+            _VOLTAGE_DROP_SOURCE,
+        ],
+    )
 
 
 def select_vfd(

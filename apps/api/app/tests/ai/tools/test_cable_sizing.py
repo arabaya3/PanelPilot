@@ -13,10 +13,9 @@ understanding that produced the code proves the two agree, not that either is
 right — and the spec is explicit that "close enough is not an acceptable test
 result, given real cable/fire safety is downstream of this number."
 
-`size_conductor` and `derating_factor` remain unimplemented, and their tests
-remain tripwires. See the module docstring and the tracker for why: the guide
-publishes two sizing results but no worked combined-derating example, so a
-`derating_factor` test would be one I invented.
+`size_conductor` and `derating_factor` are checked the same way, against the
+two worked sizing examples in ABB's *Electrical installation handbook* Vol. 2
+(1SDC010001D0204), pp. 52-55.
 """
 
 from __future__ import annotations
@@ -30,33 +29,128 @@ from app.ai.tools.cable_sizing import LoadType
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
 
-# --- still stubs, still tripwires ---------------------------------------------
+# --- ABB handbook worked examples ---------------------------------------------
 
 
-def test_size_conductor_accepts_documented_arguments_and_is_not_implemented() -> None:
-    # Deliberately failing the moment someone implements this without a
-    # published sizing example to check it against.
-    with pytest.raises(NotImplementedError):
-        cable_sizing.size_conductor(
-            design_current_a=Decimal("63"),
+def test_abb_example_bunched_on_a_tray_at_40_c() -> None:
+    """ABB Vol. 2 pp. 52-53: 100 A, Cu/PVC multi-core, method E, 40 °C, 7 circuits.
+
+    The handbook reads k1 = 0.87 and k2 = 0.54, so I'b = 212.85 A, and selects
+    95 mm2 (I0 238 A); Iz = 238 x 0.87 x 0.54 = 111.81 A.
+    """
+    result = cable_sizing.size_conductor(
+        design_current_a=Decimal("100"),
+        installation_method=InstallationMethod.E,
+        ambient_temp_c=Decimal("40"),
+        grouped_circuits=7,
+        conductor_material=ConductorMaterial.COPPER,
+        insulation_rating_c=70,
+    )
+
+    assert result.cross_section_mm2 == Decimal("95")
+    assert [f.value for f in result.applied_factors] == [Decimal("0.87"), Decimal("0.54")]
+    assert result.derated_ampacity_a.quantize(Decimal("0.01")) == Decimal("111.81")
+    assert all(f.source.manufacturer == "ABB" for f in result.applied_factors)
+
+
+def test_abb_example_single_circuit_at_reference_conditions() -> None:
+    """ABB Vol. 2 pp. 54-55: 115 A, Cu/PVC, method E, 30 °C, alone -> 35 mm2, 126 A."""
+    result = cable_sizing.size_conductor(
+        design_current_a=Decimal("115"),
+        installation_method=InstallationMethod.E,
+        ambient_temp_c=Decimal("30"),
+        grouped_circuits=1,
+        conductor_material=ConductorMaterial.COPPER,
+        insulation_rating_c=70,
+    )
+
+    assert result.cross_section_mm2 == Decimal("35")
+    assert result.derated_ampacity_a == Decimal("126")
+
+
+def test_the_combined_factor_is_the_handbooks_k1_times_k2() -> None:
+    # The same example's factors: 0.87 x 0.54.
+    assert cable_sizing.derating_factor(
+        ambient_temp_c=Decimal("40"), grouped_circuits=7, insulation_rating_c=70
+    ) == Decimal("0.87") * Decimal("0.54")
+
+
+def test_between_rows_the_harsher_row_is_read() -> None:
+    # 37 °C reads the 40 °C row, 10 circuits the 12 column: never interpolated,
+    # never the kinder neighbour.
+    assert cable_sizing.derating_factor(
+        ambient_temp_c=Decimal("37"), grouped_circuits=10, insulation_rating_c=90
+    ) == Decimal("0.91") * Decimal("0.45")
+
+
+def test_the_selected_section_is_the_smallest_that_carries_the_load() -> None:
+    # Method C, XLPE, three loaded: 2.5 mm2 carries 30 A, 4 mm2 40 A.
+    def size(current: str) -> Decimal:
+        return cable_sizing.size_conductor(
+            design_current_a=Decimal(current),
             installation_method=InstallationMethod.C,
-            ambient_temp_c=Decimal("35"),
-            grouped_circuits=2,
+            ambient_temp_c=Decimal("30"),
+            grouped_circuits=1,
             conductor_material=ConductorMaterial.COPPER,
             insulation_rating_c=90,
-        )
+        ).cross_section_mm2
+
+    assert size("30") == Decimal("2.5")
+    assert size("30.1") == Decimal("4")
 
 
-def test_derating_factor_accepts_documented_arguments_and_is_not_implemented() -> None:
-    # The guide tabulates k1 (Fig. G12) and k2 (Fig. G16) but prints no worked
-    # combined result, so there is nothing published to check an implementation
-    # against. Implementing it would mean writing the assertion myself.
-    with pytest.raises(NotImplementedError):
-        cable_sizing.derating_factor(
-            ambient_temp_c=Decimal("35"),
-            grouped_circuits=2,
-            insulation_rating_c=90,
-        )
+def test_single_phase_reads_the_two_loaded_column() -> None:
+    # Method C, XLPE, 2.5 mm2: 33 A with two loaded conductors, 30 A with three.
+    result = cable_sizing.size_conductor(
+        design_current_a=Decimal("33"),
+        installation_method=InstallationMethod.C,
+        ambient_temp_c=Decimal("30"),
+        grouped_circuits=1,
+        conductor_material=ConductorMaterial.COPPER,
+        insulation_rating_c=90,
+        three_phase=False,
+    )
+    assert result.cross_section_mm2 == Decimal("2.5")
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"conductor_material": ConductorMaterial.ALUMINIUM}, "copper only"),
+        ({"installation_method": InstallationMethod.D1}, "not supported"),
+        ({"insulation_rating_c": 105}, "not tabulated"),
+        ({"ambient_temp_c": Decimal("65"), "insulation_rating_c": 70}, "outside Table 4"),
+        ({"ambient_temp_c": Decimal("5")}, "outside Table 4"),
+        ({"grouped_circuits": 21}, "outside Table 5"),
+        ({"grouped_circuits": 0}, "outside Table 5"),
+        ({"design_current_a": Decimal("2000")}, "parallel conductors"),
+        ({"design_current_a": Decimal("-1")}, "positive"),
+        ({"ambient_temp_c": Decimal("NaN")}, "finite"),
+    ],
+)
+def test_what_the_tables_do_not_cover_is_refused(
+    overrides: dict[str, object], message: str
+) -> None:
+    arguments: dict[str, object] = {
+        "design_current_a": Decimal("63"),
+        "installation_method": InstallationMethod.C,
+        "ambient_temp_c": Decimal("35"),
+        "grouped_circuits": 2,
+        "conductor_material": ConductorMaterial.COPPER,
+        "insulation_rating_c": 90,
+    }
+    arguments.update(overrides)
+    with pytest.raises(ValidationError, match=message):
+        cable_sizing.size_conductor(**arguments)  # type: ignore[arg-type]
+
+
+def test_every_ampacity_column_rises_with_the_section() -> None:
+    # A transcription slip that swapped two cells would show as a column that
+    # does not increase.
+    for method, rows in cable_sizing._AMPACITY_CU.items():
+        for column in range(4):
+            values = [Decimal(row[column]) for row in rows.values()]
+            assert values == sorted(values), (method, column)
 
 
 # --- EIG §3 Example 1: 35 mm2 Cu, three-phase, 50 m ---------------------------

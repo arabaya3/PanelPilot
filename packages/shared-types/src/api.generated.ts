@@ -672,7 +672,7 @@ export interface components {
       insulation_rating_c: number;
       /**
        * Power Factor
-       * @default 0.9
+       * @default 0.8
        */
       power_factor: number | string;
       /**

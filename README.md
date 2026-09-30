@@ -127,14 +127,18 @@ field is omitted entirely when absent rather than written as zeros.
 
 ### Blocked on source documents that are not in this repository
 
-**AI-005, AI-006, AI-007 — the three calculation tools.** Cable sizing, VFD
-selection, and panel load sizing each name a specific manufacturer
-engineering guide as the source for their tables and coefficients. None is
-present here. They were not attempted, and deliberately so: the numbers these
-produce end up on drawings, with cable and fire safety downstream of them, and
-a table written from general knowledge would be confident and uncitable — the
-exact failure the cite-or-refuse rule exists to prevent. Supplying the named
-guides unblocks all three.
+**AI-006, AI-007 — VFD selection and panel load sizing.** Each names a
+specific manufacturer engineering guide as the source for its tables and
+coefficients, and neither is present here. They were not attempted, and
+deliberately so: the numbers these produce end up on drawings, and a table
+written from general knowledge would be confident and uncitable -- the exact
+failure the cite-or-refuse rule exists to prevent.
+
+Cable sizing (AI-005) is implemented from ABB's _Electrical installation
+handbook_ Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
+tables and prints two worked sizing examples the tests check against. It
+covers copper, PVC and XLPE/EPR, methods A1-C, E and F; everything else is
+refused, not guessed.
 
 **BE-011 and FE-010 — the panel BOM.** Both consume the calc tools above, so
 both are blocked behind them. The responsive check
