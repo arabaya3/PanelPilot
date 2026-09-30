@@ -643,7 +643,27 @@ export interface components {
       /** Quantity */
       quantity: number;
       source: components['schemas']['Citation'];
+      kind: components['schemas']['BomLineKind'];
+      /**
+       * Details
+       * @default {}
+       */
+      details: {
+        [key: string]: string;
+      };
     };
+    /**
+     * BomLineKind
+     * @description What a BOM line is, so a page can describe it in its own language.
+     * @enum {string}
+     */
+    BomLineKind: 'drive' | 'cable' | 'enclosure' | 'cooling';
+    /**
+     * BomNote
+     * @description What a BOM leaves out, as a key a page can translate.
+     * @enum {string}
+     */
+    BomNote: 'no_protective_devices' | 'incomplete_dissipation';
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.
@@ -1390,6 +1410,11 @@ export interface components {
        * @default []
        */
       notes: string[];
+      /**
+       * Note Keys
+       * @default []
+       */
+      note_keys: components['schemas']['BomNote'][];
     };
     /**
      * PlcDialect

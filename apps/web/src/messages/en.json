@@ -458,6 +458,16 @@
       "result": {
         "heat": "Heat inside the enclosure",
         "cooling": "Cooling needed"
+      },
+      "line": {
+        "drive": "{tag}: drive for {load}",
+        "cable": "{tag}: outgoing cable for {load}, method {method}, circuits grouped: {grouped}",
+        "enclosure": "Enclosure, {placement}",
+        "cooling": "Active cooling: {cooling} W beyond what the surface sheds at a {rise} K rise; an air/air heat exchanger needs {qw} W/K"
+      },
+      "note": {
+        "no_protective_devices": "Protective devices, contactors and terminals are not included: no sourced selection table for them is held here.",
+        "incomplete_dissipation": "Loads without a heat figure add no heat, so the cooling figure is only as complete as the schedule."
       }
     }
   }

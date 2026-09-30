@@ -31,17 +31,22 @@ const BUILT: PanelBomResponse = {
         description: 'M-101: drive for conveyor',
         quantity: 1,
         source: RITTAL,
+        kind: 'drive',
+        details: { tag: 'M-101', load: 'conveyor' },
       },
       {
         part_reference: 'Cooling 659 W',
         description: 'Active cooling',
         quantity: 1,
         source: RITTAL,
+        kind: 'cooling',
+        details: { cooling_w: '659', rise_k: '10', qw: '65.9' },
       },
     ],
     heat_load_w: '900',
     cooling_required_w: '659.1',
     notes: ['Protective devices, contactors and terminals are not included.'],
+    note_keys: ['no_protective_devices'],
   },
   sources: [RITTAL],
 };
@@ -118,6 +123,32 @@ describe('panel BOM', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
     const alert = await screen.findByTestId('bom-error');
     expect(alert.textContent).toContain('M-101: no ACS880-01');
+  });
+});
+
+describe('panel BOM in Arabic', () => {
+  it('describes each line and note in the page language, not the server English', async () => {
+    renderApp(
+      <CalcScreen
+        buildImpl={vi.fn().mockResolvedValue({ kind: 'built', response: BUILT })}
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+      />,
+      { locale: 'ar' },
+    );
+    fireEvent.click(screen.getByTestId('calc-tab-bom'));
+    const tag = screen.getByTestId('bom-load-0').querySelector('input');
+    fireEvent.change(tag as HTMLInputElement, { target: { value: 'M-101' } });
+    const submit = screen.getByRole('button', { name: 'أنشئ القائمة' });
+    await waitFor(() => {
+      expect(submit.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.click(submit);
+
+    const result = await screen.findByTestId('bom-result');
+    expect(result.textContent).toContain('M-101: محوّل لـconveyor');
+    expect(result.textContent).toContain('65.9 واط/كلفن');
+    expect(result.textContent).toContain('القواطع والكونتاكتورات');
+    expect(result.textContent).not.toContain('drive for conveyor');
   });
 });
 

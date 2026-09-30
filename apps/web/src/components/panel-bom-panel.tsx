@@ -355,6 +355,42 @@ export function PanelBomPanel({
   );
 }
 
+type BomLine = PanelBomResponse['result']['lines'][number];
+
+/**
+ * A line in the page's language, from what the line is and its values. The
+ * server's English description is the fallback for a kind this page does
+ * not know yet.
+ */
+function lineText(t: ReturnType<typeof useTranslations<'calc'>>, line: BomLine): string {
+  const d = line.details;
+  switch (line.kind) {
+    case 'drive':
+      return t('bom.line.drive', { tag: d.tag ?? '', load: d.load ?? '' });
+    case 'cable':
+      return t('bom.line.cable', {
+        tag: d.tag ?? '',
+        load: d.load ?? '',
+        method: d.method ?? '',
+        grouped: d.grouped ?? '',
+      });
+    case 'enclosure':
+      return t('bom.line.enclosure', {
+        placement: d.placement
+          ? t(`bom.placement.${d.placement}` as 'bom.placement.single_wall')
+          : '',
+      });
+    case 'cooling':
+      return t('bom.line.cooling', {
+        cooling: d.cooling_w ?? '',
+        rise: d.rise_k ?? '',
+        qw: d.qw ?? '',
+      });
+    default:
+      return line.description;
+  }
+}
+
 function BomResult({ response }: { response: PanelBomResponse }) {
   const t = useTranslations('calc');
   const { result } = response;
@@ -386,16 +422,16 @@ function BomResult({ response }: { response: PanelBomResponse }) {
               <span className="text-text-muted">×{line.quantity}</span>
             </div>
             <p dir="auto" className="mt-1">
-              {line.description}
+              {lineText(t, line)}
             </p>
           </li>
         ))}
       </ol>
 
-      {result.notes.length > 0 && (
-        <ul className="flex list-disc flex-col gap-1 ps-5 text-sm text-text-muted" dir="ltr">
-          {result.notes.map((note) => (
-            <li key={note}>{note}</li>
+      {result.note_keys.length > 0 && (
+        <ul className="flex list-disc flex-col gap-1 ps-5 text-sm text-text-muted">
+          {result.note_keys.map((key) => (
+            <li key={key}>{t(`bom.note.${key}`)}</li>
           ))}
         </ul>
       )}
