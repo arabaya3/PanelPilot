@@ -153,7 +153,15 @@
     "submitFailed": "تعذّر الإرسال. حاول مرة أخرى.",
     "contentMissing": "تعذّر تحميل نص هذا العنصر. لا تصنّفه حتى يمكن قراءته.",
     "openSource": "افتح المصدر في تبويب جديد",
-    "page": "ص. {page}"
+    "page": "ص. {page}",
+    "reported": "إجابة أبلغ عنها مهندس",
+    "reportedQuestion": "السؤال",
+    "reportedAnswer": "الإجابة التي ظهرت له",
+    "reportedReason": "ما قال إنه خطأ",
+    "reportedNoReason": "لم يذكر سبباً.",
+    "reportedPassages": "المقاطع التي بُنيت عليها الإجابة",
+    "reportedNoPassages": "لم تستشهد الإجابة بأي مقطع.",
+    "reportedContextMissing": "تعذّرت قراءة المقاطع التي بُنيت عليها هذه الإجابة. لا تضع تصنيفاً قبل أن تُقرأ."
   },
   "landing": {
     "starting": "جارٍ بدء النسخة التجريبية…",

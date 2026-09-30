@@ -22,6 +22,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.models.schemas.search import RetrievedPassage
+
 
 class VerificationLabel(StrEnum):
     """A verifier's judgement on one chunk.
@@ -75,12 +77,30 @@ def escalates(label: VerificationLabel) -> bool:
     return label in ESCALATING_LABELS
 
 
-class QueueItem(BaseModel):
-    """One chunk in a verifier's queue, with what the verifier checks it against.
+class FlaggedAnswerView(BaseModel):
+    """An answer an engineer reported as wrong, as they saw it.
 
-    ``content`` is the chunk's text and ``source_url``/``page``/``section`` say
-    where it came from. All ``None`` when the staged chunk cannot be read; the
-    console then says so rather than inviting a label on unseen text.
+    ``passages`` is ``None`` when the stored context cannot be read, which is
+    not the same as an answer built on nothing and must not be shown as one.
+    """
+
+    question: str
+    answer: str
+    reason: str | None
+    passages: list[RetrievedPassage] | None
+    flagged_at: datetime
+
+
+class QueueItem(BaseModel):
+    """One item in a verifier's queue, with what the verifier checks it against.
+
+    A crawled chunk (``origin`` ``crawl``): ``content`` is its text and
+    ``source_url``/``page``/``section`` say where it came from, all ``None``
+    when the staged chunk cannot be read; the console then says so rather than
+    inviting a label on unseen text.
+
+    A reported answer (``origin`` ``user-flag``): ``flag`` carries the
+    question, the answer, the reporter's reason and the passages behind it.
     """
 
     id: UUID
@@ -91,6 +111,8 @@ class QueueItem(BaseModel):
     source_url: str | None = None
     page: int | None = None
     section: str | None = None
+    origin: str = "crawl"
+    flag: FlaggedAnswerView | None = None
 
 
 class QueuePage(BaseModel):

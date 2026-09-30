@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 import { Labeller } from './labeller';
 
 type QueueItem = components['schemas']['QueueItem'];
+type FlaggedAnswerView = components['schemas']['FlaggedAnswerView'];
 type VerificationLabel = components['schemas']['VerificationLabel'];
 
 /**
@@ -73,6 +74,84 @@ export interface VerificationLabels {
   submitting: string;
   claimedBy: string;
   submitFailed: string;
+  /** Heading over an answer an engineer reported, in place of `proposed`. */
+  reported: string;
+  reportedQuestion: string;
+  reportedAnswer: string;
+  reportedReason: string;
+  /** Shown when the engineer gave no reason. */
+  reportedNoReason: string;
+  reportedPassages: string;
+  /** The answer was built on no passages at all. */
+  reportedNoPassages: string;
+  /** The stored passages could not be read -- not the same as none. */
+  reportedContextMissing: string;
+}
+
+/**
+ * An answer an engineer reported as wrong, as they saw it.
+ *
+ * The passages are the ones the answer was built on, captured when it was
+ * reported: judging it against a fresh search would be judging an answer
+ * nobody was given.
+ */
+function ReportedAnswer({ flag, labels }: { flag: FlaggedAnswerView; labels: VerificationLabels }) {
+  const quote =
+    'whitespace-pre-wrap rounded-md border border-border-subtle bg-surface-raised p-3 text-sm leading-relaxed text-text';
+  return (
+    <div data-testid="reported-answer" className="mb-3 space-y-3">
+      <div>
+        <h4 className="mb-1 text-sm font-semibold text-text">{labels.reportedQuestion}</h4>
+        <p dir="auto" className={quote}>
+          {flag.question}
+        </p>
+      </div>
+      <div>
+        <h4 className="mb-1 text-sm font-semibold text-text">{labels.reportedAnswer}</h4>
+        <p dir="auto" className={`${quote} max-h-96 overflow-y-auto`}>
+          {flag.answer}
+        </p>
+      </div>
+      <div>
+        <h4 className="mb-1 text-sm font-semibold text-text">{labels.reportedReason}</h4>
+        {flag.reason ? (
+          <p dir="auto" data-testid="reported-reason" className="text-sm text-text">
+            {flag.reason}
+          </p>
+        ) : (
+          <p className="text-sm text-text-muted">{labels.reportedNoReason}</p>
+        )}
+      </div>
+      <div>
+        <h4 className="mb-1 text-sm font-semibold text-text">{labels.reportedPassages}</h4>
+        {flag.passages === null ? (
+          <p data-testid="reported-context-missing" className="text-sm text-severity-warning">
+            {labels.reportedContextMissing}
+          </p>
+        ) : flag.passages.length === 0 ? (
+          <p data-testid="reported-no-passages" className="text-sm text-text-muted">
+            {labels.reportedNoPassages}
+          </p>
+        ) : (
+          <ol className="space-y-2">
+            {flag.passages.map((passage) => (
+              <li key={passage.id} data-testid="reported-passage">
+                <p className="mb-1 font-mono text-xs text-text-muted">
+                  {passage.citation.manufacturer} · {passage.citation.document_title}
+                  {typeof passage.citation.page === 'number'
+                    ? ` · ${labels.page.replace('{page}', String(passage.citation.page))}`
+                    : ''}
+                </p>
+                <blockquote dir="auto" className={`${quote} max-h-40 overflow-y-auto`}>
+                  {passage.text}
+                </blockquote>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -103,7 +182,7 @@ function ReviewPane({
     <div className="grid gap-4 md:grid-cols-2">
       <section aria-labelledby={proposedId} className="card p-4 md:p-5">
         <h3 id={proposedId} className="eyebrow mb-2">
-          {labels.proposed}
+          {item.flag ? labels.reported : labels.proposed}
         </h3>
         <p data-testid="chunk-id" className="mb-3 font-mono text-xs text-text-muted">
           {item.chunk_id ?? item.id}
@@ -114,7 +193,9 @@ function ReviewPane({
         </p>
         {/* The text being judged. The console used to show only the id above,
             which left a verifier to label content they had never seen. */}
-        {item.content ? (
+        {item.flag ? (
+          <ReportedAnswer flag={item.flag} labels={labels} />
+        ) : item.content ? (
           <blockquote
             data-testid="proposed-content"
             dir="auto"

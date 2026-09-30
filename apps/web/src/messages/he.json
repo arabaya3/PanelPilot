@@ -153,7 +153,15 @@
     "submitFailed": "השליחה נכשלה. נסה שוב.",
     "contentMissing": "לא ניתן היה לטעון את הטקסט של הפריט. אל תסמנו אותו עד שאפשר לקרוא אותו.",
     "openSource": "פתיחת המקור בכרטיסייה חדשה",
-    "page": "עמ' {page}"
+    "page": "עמ' {page}",
+    "reported": "תשובה שמהנדס דיווח עליה",
+    "reportedQuestion": "השאלה",
+    "reportedAnswer": "התשובה שהוצגה לו",
+    "reportedReason": "מה לדבריו שגוי",
+    "reportedNoReason": "לא צוינה סיבה.",
+    "reportedPassages": "הקטעים שהתשובה נבנתה עליהם",
+    "reportedNoPassages": "התשובה לא ציטטה אף קטע.",
+    "reportedContextMissing": "לא ניתן היה לקרוא את הקטעים שמאחורי התשובה. אין לסווג אותה עד שיהיה אפשר."
   },
   "landing": {
     "starting": "מתחיל את גרסת הניסיון…",

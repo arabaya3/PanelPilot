@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { components } from '@panelpilot/shared-types';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -8,6 +9,7 @@ import {
   type VerificationLabels,
 } from '@/components/verification';
 import { canSubmit, requiresNote } from '@/components/verification/labeller';
+import { sourceUrlFor } from '@/lib/verification';
 
 /**
  * Tests for the verification console.
@@ -22,6 +24,8 @@ import { canSubmit, requiresNote } from '@/components/verification/labeller';
  * and a rule that holds only in the component is one a second submit path
  * would quietly bypass.
  */
+
+type QueueItem = components['schemas']['QueueItem'];
 
 const LABELS: VerificationLabels = {
   heading: 'Verification queue',
@@ -42,6 +46,14 @@ const LABELS: VerificationLabels = {
   submitting: 'Submitting…',
   claimedBy: 'Already claimed by {name}',
   submitFailed: 'Could not submit. Try again.',
+  reported: 'Answer reported by an engineer',
+  reportedQuestion: 'They asked',
+  reportedAnswer: 'They were shown',
+  reportedReason: 'What they said was wrong',
+  reportedNoReason: 'No reason given.',
+  reportedPassages: 'Passages the answer was built on',
+  reportedNoPassages: 'The answer cited no passages.',
+  reportedContextMissing: 'The passages behind this answer could not be read.',
 };
 
 function items(count = 2) {
@@ -50,6 +62,7 @@ function items(count = 2) {
     chunk_id: `chunk-${String(index)}`,
     status: 'pending',
     assigned_at: '2026-06-01T12:00:00Z',
+    origin: 'crawl',
   }));
 }
 
@@ -393,5 +406,83 @@ describe('the source pane', () => {
     const src = screen.getByTestId('source-frame').getAttribute('src') ?? '';
     expect(src).toContain('#page=41');
     expect(src).toContain('section=3.4');
+  });
+});
+
+// --- a reported answer ---------------------------------------------------------
+
+describe('an answer an engineer reported', () => {
+  const PASSAGE = {
+    id: 'p1',
+    text: 'F0001 OVERCURRENT\nCheck parameter 23.12.',
+    score: 0.9,
+    anchored: true,
+    citation: {
+      document_id: 'https://library.abb.com/acs880.pdf',
+      document_title: 'ACS880 firmware manual',
+      manufacturer: 'ABB',
+      page: 512,
+      section: null,
+    },
+  };
+
+  function reported(flag: Partial<NonNullable<QueueItem['flag']>> = {}): QueueItem {
+    return {
+      id: 'flag-item',
+      chunk_id: null,
+      status: 'pending',
+      assigned_at: '2026-06-01T12:00:00Z',
+      origin: 'user-flag',
+      flag: {
+        question: 'Why does it trip with F0001?',
+        answer: 'The acceleration time is too short.',
+        reason: 'The manual says 23.12, not 22.12',
+        passages: [PASSAGE],
+        flagged_at: '2026-06-01T11:00:00Z',
+        ...flag,
+      },
+    };
+  }
+
+  function show(item: QueueItem) {
+    render(
+      <VerificationConsole
+        items={[item]}
+        api={api()}
+        sourceUrlFor={sourceUrlFor}
+        labels={LABELS}
+      />,
+    );
+  }
+
+  it('shows the question, the answer, the reason and the passages behind it', () => {
+    show(reported());
+
+    const pane = screen.getByTestId('reported-answer');
+    expect(pane.textContent).toContain('Why does it trip with F0001?');
+    expect(pane.textContent).toContain('The acceleration time is too short.');
+    expect(screen.getByTestId('reported-reason').textContent).toBe(
+      'The manual says 23.12, not 22.12',
+    );
+    expect(screen.getAllByTestId('reported-passage')).toHaveLength(1);
+    expect(screen.getByText('Answer reported by an engineer')).toBeTruthy();
+    // Not the "could not load this chunk" warning a crawled item without text gets.
+    expect(screen.queryByTestId('content-missing')).toBeNull();
+    // The source pane opens the document the answer leaned on, at its page.
+    expect(screen.getByTestId('source-link').getAttribute('href')).toBe(
+      'https://library.abb.com/acs880.pdf#page=512',
+    );
+  });
+
+  it('tells unreadable passages apart from none', () => {
+    show(reported({ passages: null }));
+    expect(screen.getByTestId('reported-context-missing')).toBeTruthy();
+    expect(screen.queryByTestId('source-link')).toBeNull();
+  });
+
+  it('says so when the answer cited nothing, or no reason was given', () => {
+    show(reported({ passages: [], reason: null }));
+    expect(screen.getByTestId('reported-no-passages')).toBeTruthy();
+    expect(screen.getByText('No reason given.')).toBeTruthy();
   });
 });

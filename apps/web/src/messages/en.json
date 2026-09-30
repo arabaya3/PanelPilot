@@ -153,7 +153,15 @@
     "submitFailed": "Could not submit. Try again.",
     "contentMissing": "The text of this item could not be loaded. Do not label it until it can be read.",
     "openSource": "Open the source in a new tab",
-    "page": "p. {page}"
+    "page": "p. {page}",
+    "reported": "Answer reported by an engineer",
+    "reportedQuestion": "They asked",
+    "reportedAnswer": "They were shown",
+    "reportedReason": "What they said was wrong",
+    "reportedNoReason": "No reason given.",
+    "reportedPassages": "Passages the answer was built on",
+    "reportedNoPassages": "The answer cited no passages.",
+    "reportedContextMissing": "The passages behind this answer could not be read. Do not label it until they can."
   },
   "landing": {
     "starting": "Starting your trial…",

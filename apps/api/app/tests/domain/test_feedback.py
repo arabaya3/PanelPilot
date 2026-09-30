@@ -23,6 +23,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.errors import AuthorizationError
+from app.core.tenancy import bind_tenant
 from app.domain.feedback import (
     ORIGIN_CRAWL,
     ORIGIN_USER_FLAG,
@@ -31,7 +33,9 @@ from app.domain.feedback import (
     context_for,
     flag_answer,
     flagged_items,
+    flags_for_review,
 )
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.search import Citation, RetrievedPassage
 from app.models.tables.base import Base
 from app.models.tables.diagnostics import DiagnosticSessionRow, DiagnosticTurnRow
@@ -471,3 +475,101 @@ def test_the_two_origins_are_different_strings() -> None:
     # Pinned because the whole separate-trend requirement rests on them not
     # collapsing into one value after a refactor.
     assert ORIGIN_CRAWL != ORIGIN_USER_FLAG
+
+
+# --- reading flags for review -------------------------------------------------
+
+
+def _reviewer(tenant_id: uuid.UUID, *roles: Role) -> CurrentUser:
+    return CurrentUser(
+        id=str(uuid.uuid4()),
+        email="lead@example.com",
+        tenant_id=str(tenant_id),
+        roles=frozenset(roles or {Role.REVIEWER}),
+    )
+
+
+@requires_postgres
+def test_a_reviewer_reads_another_tenants_flag_whole(engine: Engine, session: Session) -> None:
+    """Flags belong to customers; the reviewers judging them are someone else."""
+    turn = _a_turn(session)
+    flag = flag_answer(
+        session=session,
+        turn_id=turn.id,
+        tenant_id=turn.tenant_id,
+        flagged_by_id=None,
+        retrieved=[_passage("c1", "Rated 16 A at 40 C.")],
+        reason="30 C, not 40 C",
+    )
+    session.commit()
+    # A second tenant, for the reviewers. Reused across runs like the first.
+    staff = session.execute(
+        text("SELECT id FROM tenants WHERE slug = 'feedback-staff'")
+    ).scalar_one_or_none()
+    if staff is None:
+        staff_row = TenantRow(slug="feedback-staff", name="feedback-staff")
+        session.add(staff_row)
+        session.commit()
+        staff = staff_row.id
+
+    with sessionmaker(bind=engine)() as review:
+        bind_tenant(review, staff)
+        found = flags_for_review(session=review, reviewer=_reviewer(staff), flag_ids={flag.id})
+
+    view = found[flag.id]
+    assert (view.question, view.answer, view.reason) == (
+        turn.question,
+        turn.answer,
+        "30 C, not 40 C",
+    )
+    assert view.passages is not None
+    assert [p.text for p in view.passages] == ["Rated 16 A at 40 C."]
+
+
+@requires_postgres
+def test_only_a_reviewer_reads_flags(engine: Engine, session: Session) -> None:
+    turn = _a_turn(session)
+    flag = flag_answer(
+        session=session, turn_id=turn.id, tenant_id=turn.tenant_id, flagged_by_id=None, retrieved=[]
+    )
+    session.commit()
+
+    with sessionmaker(bind=engine)() as other:
+        bind_tenant(other, turn.tenant_id)
+        with pytest.raises(AuthorizationError):
+            flags_for_review(
+                session=other,
+                reviewer=_reviewer(turn.tenant_id, Role.ENGINEER),
+                flag_ids={flag.id},
+            )
+
+
+@requires_postgres
+def test_an_unreadable_flag_is_marked_not_dropped(engine: Engine, session: Session) -> None:
+    """One corrupt record must not blank the reviewer's queue, nor pass as empty."""
+    turn = _a_turn(session)
+    flag = flag_answer(
+        session=session, turn_id=turn.id, tenant_id=turn.tenant_id, flagged_by_id=None, retrieved=[]
+    )
+    flag.retrieved_context = "{not json"
+    session.commit()
+
+    with sessionmaker(bind=engine)() as review:
+        bind_tenant(review, turn.tenant_id)
+        found = flags_for_review(
+            session=review, reviewer=_reviewer(turn.tenant_id), flag_ids={flag.id}
+        )
+
+    assert found[flag.id].passages is None
+
+
+def test_no_flags_asks_nothing() -> None:
+    # An engineer's own queue with no reported answers is not a reviewer check.
+    assert (
+        flags_for_review(
+            session=None,  # type: ignore[arg-type]
+            reviewer=_reviewer(uuid.UUID(int=1), Role.ENGINEER),
+            flag_ids=set(),
+        )
+        == {}
+    )

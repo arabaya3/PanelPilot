@@ -32,10 +32,12 @@ from app.core.errors import (
     install_exception_handlers,
 )
 from app.domain import corpus_maintenance as maintenance_domain
+from app.domain import feedback as feedback_domain
 from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import QueueError
 from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.search import Citation, RetrievedPassage
 from app.models.tables.ingestion import StaleDocumentRow
 
 _TENANT_ID = str(uuid.UUID(int=7))
@@ -69,6 +71,8 @@ class _Row:
         self.status = status
         self.label = label
         self.assigned_at = assigned_at
+        self.origin = "crawl"
+        self.flagged_answer_id: uuid.UUID | None = None
 
 
 def _engineer() -> CurrentUser:
@@ -204,6 +208,52 @@ def test_each_item_carries_the_text_and_source_under_review(
     assert item["page"] == 88
     assert item["section"] == "Fault tracing"
     assert asked == [["c1"]]  # one read for the batch
+
+
+def test_a_reported_answer_carries_what_the_engineer_saw(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flagged item used to arrive as an id alone: no question, answer or passages."""
+    row = _Row(row_id=uuid.UUID(int=1), chunk_id=None)
+    row.origin = "user-flag"
+    row.flagged_answer_id = uuid.UUID(int=9)
+    monkeypatch.setattr(queue_domain, "queue_for", lambda **_: [row])
+    monkeypatch.setattr(queue_domain, "staged_chunks", lambda _ids: {})
+    passage = RetrievedPassage(
+        id="p1",
+        text="F0001 OVERCURRENT",
+        score=0.9,
+        citation=Citation(
+            document_id="https://library.abb.com/acs880.pdf",
+            document_title="ACS880",
+            manufacturer="ABB",
+            page=88,
+        ),
+    )
+    asked: list[set[uuid.UUID]] = []
+
+    def flags(**kwargs: object) -> dict[uuid.UUID, feedback_domain.FlagForReview]:
+        asked.append(kwargs["flag_ids"])  # type: ignore[arg-type]
+        return {
+            uuid.UUID(int=9): feedback_domain.FlagForReview(
+                question="Why F0001?",
+                answer="Acceleration too short.",
+                reason="wrong parameter",
+                passages=[passage],
+                flagged_at=NOW,
+            )
+        }
+
+    monkeypatch.setattr(feedback_domain, "flags_for_review", flags)
+
+    item = client.get("/verification/queue/me").json()["items"][0]
+
+    assert item["origin"] == "user-flag"
+    assert item["flag"]["question"] == "Why F0001?"
+    assert item["flag"]["answer"] == "Acceleration too short."
+    assert item["flag"]["reason"] == "wrong parameter"
+    assert [p["id"] for p in item["flag"]["passages"]] == ["p1"]
+    assert asked == [{uuid.UUID(int=9)}]  # one read for the batch
 
 
 def test_an_item_whose_chunk_cannot_be_read_says_so_by_omission(

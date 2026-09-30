@@ -1094,6 +1094,28 @@ export interface components {
       /** Queued */
       queued: boolean;
     };
+    /**
+     * FlaggedAnswerView
+     * @description An answer an engineer reported as wrong, as they saw it.
+     *
+     *     ``passages`` is ``None`` when the stored context cannot be read, which is
+     *     not the same as an answer built on nothing and must not be shown as one.
+     */
+    FlaggedAnswerView: {
+      /** Question */
+      question: string;
+      /** Answer */
+      answer: string;
+      /** Reason */
+      reason: string | null;
+      /** Passages */
+      passages: components['schemas']['RetrievedPassage'][] | null;
+      /**
+       * Flagged At
+       * Format: date-time
+       */
+      flagged_at: string;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -1392,11 +1414,15 @@ export interface components {
     };
     /**
      * QueueItem
-     * @description One chunk in a verifier's queue, with what the verifier checks it against.
+     * @description One item in a verifier's queue, with what the verifier checks it against.
      *
-     *     ``content`` is the chunk's text and ``source_url``/``page``/``section`` say
-     *     where it came from. All ``None`` when the staged chunk cannot be read; the
-     *     console then says so rather than inviting a label on unseen text.
+     *     A crawled chunk (``origin`` ``crawl``): ``content`` is its text and
+     *     ``source_url``/``page``/``section`` say where it came from, all ``None``
+     *     when the staged chunk cannot be read; the console then says so rather than
+     *     inviting a label on unseen text.
+     *
+     *     A reported answer (``origin`` ``user-flag``): ``flag`` carries the
+     *     question, the answer, the reporter's reason and the passages behind it.
      */
     QueueItem: {
       /**
@@ -1418,6 +1444,12 @@ export interface components {
       page?: number | null;
       /** Section */
       section?: string | null;
+      /**
+       * Origin
+       * @default crawl
+       */
+      origin: string;
+      flag?: components['schemas']['FlaggedAnswerView'] | null;
     };
     /**
      * QueuePage
