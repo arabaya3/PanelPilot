@@ -44,6 +44,12 @@ _TEMPLATES: dict[RefusalReason, str] = {
         "not pass validation and has been withheld rather than shown "
         "partially. Asking again will usually succeed."
     ),
+    RefusalReason.NOT_IN_SOURCES: (
+        "The documentation found is related, but it does not answer this "
+        "question. Rather than answer from general knowledge, PanelPilot is "
+        "stopping here; the nearest passage is cited so you can judge it. "
+        "Adding the manual that covers this would let it answer."
+    ),
 }
 
 

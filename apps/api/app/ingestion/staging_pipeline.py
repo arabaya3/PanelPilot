@@ -138,6 +138,15 @@ def prepare_documents(
             failures[document.id] = str(exc)
             continue
 
+        substantive = [chunk for chunk in chunks if _is_substantive(chunk)]
+        if len(substantive) < len(chunks):
+            logger.info(
+                "staging.thin_chunks_dropped",
+                document_id=document.id,
+                dropped=len(chunks) - len(substantive),
+            )
+        chunks = substantive
+
         if not chunks:
             failures[document.id] = "no chunks produced"
             continue
@@ -162,6 +171,25 @@ def prepare_documents(
         logger.info("staging.prepared", document_id=document.id, chunks=len(chunks))
 
     return StagingBatchResult(staged_document_ids=staged, failures=failures), bodies
+
+
+#: Fewest words a chunk needs to be staged. A cover page or a bare heading
+#: ("ACS880 brake control program") states nothing a claim could rest on,
+#: yet matches every question naming the product: found live, it outranked
+#: every real passage and was cited for advice it did not contain.
+MIN_CHUNK_WORDS = 8
+
+
+def _is_substantive(chunk: DocumentChunk) -> bool:
+    """Whether a chunk says enough to be cited.
+
+    Args:
+        chunk: A chunk of a document.
+
+    Returns:
+        ``True`` when it has at least ``MIN_CHUNK_WORDS`` words.
+    """
+    return len(chunk.text.split()) >= MIN_CHUNK_WORDS
 
 
 def _chunks_for(

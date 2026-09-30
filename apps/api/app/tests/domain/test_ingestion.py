@@ -173,7 +173,8 @@ def _boom(_texts: Any) -> list[list[float]]:
 def _capture_into(sink: list[list[str]]) -> Any:
     """A staging hook that records the chunk ids it was handed."""
 
-    def hook(chunk_ids: Any) -> None:
+    def hook(chunk_ids: Any, documents: Any = None) -> None:
+        del documents
         sink.append(list(chunk_ids))
 
     return hook

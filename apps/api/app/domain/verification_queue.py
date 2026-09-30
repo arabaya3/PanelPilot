@@ -26,7 +26,7 @@ labels disagree.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -81,6 +81,7 @@ def enqueue_chunks(
     session: Session,
     chunk_ids: Sequence[str],
     now: datetime | None = None,
+    documents: Mapping[str, UUID] | None = None,
 ) -> list[VerificationItemRow]:
     """Add chunks to the unassigned pool, skipping any already queued.
 
@@ -88,6 +89,9 @@ def enqueue_chunks(
         session: Open database session. The caller commits.
         chunk_ids: Chunks to queue.
         now: Injected for tests.
+        documents: The staged document each chunk came from, by chunk id.
+            Promotion refuses an item that names none, so a crawl that left
+            it out queued passages nobody could ever publish.
 
     Returns:
         The rows created, excluding chunks that were already present.
@@ -104,7 +108,11 @@ def enqueue_chunks(
     created: list[VerificationItemRow] = []
 
     for chunk_id in chunk_ids:
-        row = VerificationItemRow(chunk_id=chunk_id, status=STATUS_PENDING)
+        row = VerificationItemRow(
+            chunk_id=chunk_id,
+            status=STATUS_PENDING,
+            staged_document_id=(documents or {}).get(chunk_id),
+        )
         try:
             with session.begin_nested():
                 session.add(row)

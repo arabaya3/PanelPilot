@@ -288,10 +288,11 @@ def test_queued_chunks_are_immediately_assignable(session: Session) -> None:
     assert all(row.assigned_to_id is None for row in rows)
 
 
-def test_the_hook_signature_takes_only_chunk_ids() -> None:
+def test_the_hook_signature_takes_only_what_the_crawler_knows() -> None:
     # Pinned deliberately. The value of the seam is that the crawler side knows
     # nothing about the queue; widening this to take a session or a verifier
-    # would put that knowledge back on the wrong side of the boundary.
+    # would put that knowledge back on the wrong side of the boundary. The
+    # staged documents are the crawler's own knowledge, and promotion needs them.
     import inspect
 
     from app.domain.ingestion_wiring import StagingChunkHook
@@ -299,7 +300,7 @@ def test_the_hook_signature_takes_only_chunk_ids() -> None:
     hook = make_staging_hook(session=None)  # type: ignore[arg-type]
     parameters = list(inspect.signature(hook).parameters)
 
-    assert parameters == ["chunk_ids"]
+    assert parameters == ["chunk_ids", "documents"]
     assert StagingChunkHook is not None
 
 
@@ -347,3 +348,46 @@ def test_a_uuid_shaped_chunk_id_is_accepted() -> None:
     generated = str(uuid.uuid4())
 
     assert chunk_ids_from_bodies({"doc-1": [{"chunk_id": generated}]}) == [generated]
+
+
+@requires_postgres
+def test_each_queued_chunk_names_its_staged_document(session: Session) -> None:
+    """Found live: crawled chunks were queued with none, and promotion refused all."""
+    staged = _a_staged_document(session)
+    chunk_ids = [f"doc-a#{i:04d}-x" for i in range(3)]
+
+    populate_queue_from_staging(
+        session=session, chunk_ids=chunk_ids, documents=dict.fromkeys(chunk_ids, staged)
+    )
+    session.commit()
+
+    rows = session.query(VerificationItemRow).all()
+    assert {row.staged_document_id for row in rows} == {staged}
+
+
+@requires_postgres
+def test_a_recrawl_fills_in_a_document_an_earlier_crawl_left_out(session: Session) -> None:
+    staged = _a_staged_document(session)
+    populate_queue_from_staging(session=session, chunk_ids=["doc-a#0000-x"])
+    session.commit()
+
+    populate_queue_from_staging(
+        session=session, chunk_ids=["doc-a#0000-x"], documents={"doc-a#0000-x": staged}
+    )
+    session.commit()
+
+    assert session.query(VerificationItemRow).one().staged_document_id == staged
+
+
+def _a_staged_document(session: Session) -> uuid.UUID:
+    from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
+
+    job = CrawlJobRow(source_id="abb", status="succeeded")
+    session.add(job)
+    session.flush()
+    staged = StagedDocumentRow(
+        crawl_job_id=job.id, source_url="https://x/a.pdf", content_hash=uuid.uuid4().hex
+    )
+    session.add(staged)
+    session.flush()
+    return staged.id

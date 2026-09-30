@@ -48,6 +48,11 @@ class RefusalReason(StrEnum):
     # threshold problem would send anyone tuning the threshold after a signal
     # that has nothing to do with it.
     UNVALIDATABLE_OUTPUT = "unvalidatable_output"
+    # Retrieval cleared the threshold, but the model, reading the passages,
+    # found they do not answer the question: close in wording, not in
+    # substance. Distinct from UNVALIDATABLE_OUTPUT, whose "ask again" would
+    # send an engineer round the same loop for an answer that is not there.
+    NOT_IN_SOURCES = "not_in_sources"
 
 
 class ConfidenceDecision(BaseModel):

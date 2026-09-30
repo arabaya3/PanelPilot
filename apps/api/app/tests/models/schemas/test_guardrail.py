@@ -92,6 +92,9 @@ def test_the_refusal_vocabulary_covers_retrieval_and_calc_tools() -> None:
         # match the schema. Distinct from below_threshold so escalation rows
         # do not read a generation fault as a retrieval fault.
         "unvalidatable_output",
+        # The model, reading passages that cleared the threshold, found they
+        # do not answer the question.
+        "not_in_sources",
     }
 
 
