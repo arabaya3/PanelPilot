@@ -5,7 +5,14 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
-import { BoltIcon, ChatIcon, CheckCircleIcon, CodeIcon, SearchIcon } from '@/components/icons';
+import {
+  BoltIcon,
+  CalculatorIcon,
+  ChatIcon,
+  CheckCircleIcon,
+  CodeIcon,
+  SearchIcon,
+} from '@/components/icons';
 import { LangSwitcher } from '@/components/lang-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 
@@ -13,6 +20,7 @@ const NAV = [
   { href: '/', key: 'diagnose', Icon: ChatIcon },
   { href: '/search', key: 'search', Icon: SearchIcon },
   { href: '/plc', key: 'plc', Icon: CodeIcon },
+  { href: '/calc', key: 'calc', Icon: CalculatorIcon },
   { href: '/review', key: 'review', Icon: CheckCircleIcon },
 ] as const;
 
@@ -78,10 +86,12 @@ export function AppShell({
           </Link>
           {/* One list, reflowed: its own full-width row under the brand on a
               phone, inline beside it from `md`. Two copies would put every
-              link in the accessibility tree twice. */}
+              link in the accessibility tree twice. It wraps rather than
+              scrolls: with five links the last was cut off at 360px, with
+              nothing to say more lay beyond the edge. */}
           <nav
             aria-label={t('label')}
-            className="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto md:order-none md:mx-0 md:w-auto"
+            className="order-last -mx-1 flex w-full flex-wrap items-center gap-1 md:order-none md:mx-0 md:w-auto md:flex-nowrap"
           >
             {links}
           </nav>
