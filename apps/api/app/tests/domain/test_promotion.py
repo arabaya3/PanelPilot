@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.ai.retrieval.mappings import DocType, VerificationStatus
 from app.core.errors import AuthorizationError, NotFoundError, PromotionError
 from app.domain import promotion as promotion_module
-from app.domain.promotion import promote_chunk
+from app.domain.promotion import promote_chunk, retract_source
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import VerificationDecision, VerificationVerdict
 from app.models.schemas.verification import VerificationLabel
@@ -30,7 +30,7 @@ from app.models.schemas.verification import VerificationLabel
 # foreign keys into users and staged_documents. Importing only the row
 # under test leaves those targets unmapped.
 from app.models.tables import calculations, diagnostics, user  # noqa: F401
-from app.models.tables.ingestion import PromotionAuditRow
+from app.models.tables.ingestion import PromotionAuditRow, RetractionAuditRow
 
 # A chunk id in the shape the chunker actually produces --
 # "<document>#<ordinal>-<digest>" -- not a UUID. These tests used a UUID here,
@@ -164,6 +164,7 @@ def db() -> Iterator[Session]:
         # count staged documents, and leftovers made them fail when this ran
         # first against a reused database.
         session.execute(text("DELETE FROM promotion_audits"))
+        session.execute(text("DELETE FROM retraction_audits"))
         session.execute(
             text("DELETE FROM verification_items WHERE staged_document_id = :i"),
             {"i": STAGED_DOCUMENT_ID},
@@ -723,4 +724,134 @@ def test_only_a_reviewer_may_label() -> None:
             reviewer=engineer,
             item_id=uuid.uuid4(),
             label=VerificationLabel.CORRECT,
+        )
+
+
+# --- retraction: the audited way back out ------------------------------------
+
+SOURCE = "https://example.invalid/acs880#f0001"
+
+
+def _publish(production: str, chunk_id: str, **overrides: Any) -> None:
+    """Put a chunk straight into production, as a past promotion would have."""
+    from app.ai.retrieval.client import get_client
+
+    body = _staged_chunk(verification_status=VerificationStatus.VERIFIED.value, **overrides)
+    get_client().index(index=production, id=chunk_id, body=body, refresh=True)
+
+
+@requires_opensearch
+def test_retraction_removes_every_live_passage_of_the_document_and_nothing_else(
+    indices: tuple[str, str], db: Session
+) -> None:
+    staging, production = indices
+    _publish(production, "doc#0001", content="one")
+    _publish(production, "doc#0002", content="two")
+    _publish(production, "other#0001", source_url="https://example.invalid/other")
+    _stage(staging, _staged_chunk(), chunk_id="doc#0001")
+
+    audit = retract_source(
+        session=db, reviewer=_reviewer(), source_url=SOURCE, reason="  withdrawn by ABB  "
+    )
+    db.commit()
+
+    assert _live(production, "doc#0001") is None
+    assert _live(production, "doc#0002") is None
+    assert _live(production, "other#0001") is not None
+    # Staging keeps its copy, as it does through promotion.
+    from app.ai.retrieval.client import get_client
+
+    assert get_client().exists(index=staging, id="doc#0001")
+
+    row = db.get(RetractionAuditRow, audit.id)
+    assert row is not None
+    assert (row.source_url, str(row.reviewer_id), row.reason) == (
+        SOURCE,
+        REVIEWER_ID,
+        "withdrawn by ABB",
+    )
+    assert row.chunk_ids == ["doc#0001", "doc#0002"]
+    assert row.content_hashes == ["hash-of-one", "hash-of-two"]
+
+
+@requires_opensearch
+def test_a_retracted_revision_cannot_be_promoted_again(
+    indices: tuple[str, str], db: Session
+) -> None:
+    """Its staged copy is still there; clearing it must not republish it."""
+    staging, production = indices
+    _stage(staging, _staged_chunk())
+    promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    db.commit()
+
+    retract_source(session=db, reviewer=_reviewer(), source_url=SOURCE, reason="withdrawn")
+    db.commit()
+    _review(db)
+
+    with pytest.raises(PromotionError, match="was retracted"):
+        promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    assert _live(production) is None
+
+
+@requires_opensearch
+def test_a_new_revision_of_a_retracted_document_can_still_be_published(
+    indices: tuple[str, str], db: Session
+) -> None:
+    """The refusal is per revision: a corrected manual at the same URL may go live."""
+    staging, production = indices
+    _publish(production, "old#0001", content="old")
+    retract_source(session=db, reviewer=_reviewer(), source_url=SOURCE, reason="superseded")
+    db.commit()
+
+    _stage(staging, _staged_chunk(content="corrected"))
+    promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    assert _live(production) is not None
+
+
+@requires_opensearch
+def test_retraction_needs_a_reason_and_something_live(
+    indices: tuple[str, str], db: Session
+) -> None:
+    _, production = indices
+    with pytest.raises(NotFoundError, match="nothing live cites"):
+        retract_source(session=db, reviewer=_reviewer(), source_url=SOURCE, reason="x")
+
+    _publish(production, "doc#0001")
+    with pytest.raises(PromotionError, match="needs a reason"):
+        retract_source(session=db, reviewer=_reviewer(), source_url=SOURCE, reason="  ")
+    assert _live(production, "doc#0001") is not None
+
+
+@requires_opensearch
+def test_a_failed_delete_records_nothing(
+    indices: tuple[str, str], db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No audit row for a retraction that did not happen."""
+    _, production = indices
+    _publish(production, "doc#0001")
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("index unavailable")
+
+    monkeypatch.setattr(promotion_module, "bulk", broken)
+    with pytest.raises(RuntimeError):
+        retract_source(session=db, reviewer=_reviewer(), source_url=SOURCE, reason="withdrawn")
+
+    assert db.query(RetractionAuditRow).count() == 0
+    assert _live(production, "doc#0001") is not None
+
+
+def test_only_a_reviewer_may_retract() -> None:
+    engineer = CurrentUser(
+        id=REVIEWER_ID,
+        email="engineer@example.invalid",
+        tenant_id=TENANT_ID,
+        roles=frozenset({Role.ENGINEER}),
+    )
+    with pytest.raises(AuthorizationError):
+        retract_source(
+            session=None,  # type: ignore[arg-type]
+            reviewer=engineer,
+            source_url=SOURCE,
+            reason="withdrawn",
         )

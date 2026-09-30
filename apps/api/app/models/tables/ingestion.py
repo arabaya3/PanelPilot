@@ -152,6 +152,30 @@ class PromotionAuditRow(UUIDPrimaryKey, TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
+class RetractionAuditRow(UUIDPrimaryKey, TimestampMixin, Base):
+    """Who took a document's passages out of live answers, when, and why.
+
+    Append-only, like ``PromotionAuditRow``, and written in the same
+    transaction as the production delete: every removal traces to a named
+    human, as every publication does (ADR 0001).
+
+    ``content_hashes`` is also a standing refusal: promotion will not publish
+    a chunk of any revision retracted here, so a reviewer clearing a stale
+    staged copy cannot quietly put a withdrawn document back.
+    """
+
+    __tablename__ = "retraction_audits"
+
+    source_url: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # What was removed, copied so the record survives the index forgetting it.
+    chunk_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    content_hashes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+
+
 class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
     """A live document whose upstream source no longer serves what was verified.
 
@@ -168,16 +192,19 @@ class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
     A reviewer who has read the change and judged it harmless -- a typo fix,
     a reformatted cover page -- marks it ``dismissed``, with a note saying
     why. It stays dismissed only while the source serves that same revision:
-    a further change upstream is a new change, and reopens it.
+    a further change upstream is a new change, and reopens it. One who judges
+    it harmful retracts the live passages instead, and the row reads
+    ``retracted``; see ``RetractionAuditRow``.
     """
 
     __tablename__ = "stale_documents"
     __table_args__ = (
         CheckConstraint("reason IN ('superseded', 'withdrawn')", name="reason"),
-        CheckConstraint("status IN ('open', 'dismissed', 'cleared')", name="status"),
+        CheckConstraint("status IN ('open', 'dismissed', 'retracted', 'cleared')", name="status"),
         # A dismissal is a reviewed decision, so it records who and why.
         CheckConstraint(
-            "status <> 'dismissed' OR (reviewed_at IS NOT NULL AND review_note IS NOT NULL)",
+            "status NOT IN ('dismissed', 'retracted') "
+            "OR (reviewed_at IS NOT NULL AND review_note IS NOT NULL)",
             name="dismissal_reviewed",
         ),
     )

@@ -162,7 +162,9 @@ def _to_stale(row: StaleDocumentRow) -> StaleDocument:
 def list_stale_documents(
     session: SessionDep,
     user: CurrentUserDep,
-    state: Annotated[Literal["open", "dismissed", "cleared"], Query(alias="status")] = "open",
+    state: Annotated[
+        Literal["open", "dismissed", "retracted", "cleared"], Query(alias="status")
+    ] = "open",
 ) -> StaleDocumentPage:
     """Return live documents whose source changed or withdrew them.
 
@@ -188,6 +190,28 @@ def dismiss_stale_document(
         ValidationError: 422 if the note is blank or the flag is not open.
     """
     row = maintenance_domain.dismiss_stale_document(
+        session=session, reviewer=user, document_id=document_id, note=payload.note
+    )
+    session.commit()
+    return _to_stale(row)
+
+
+@router.post("/stale-documents/{document_id}/retract", response_model=StaleDocument)
+def retract_stale_document(
+    document_id: UUID,
+    payload: DismissStaleRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> StaleDocument:
+    """Take the flagged document's passages out of live answers, and say why.
+
+    Raises:
+        AuthorizationError: 403 unless the caller holds the reviewer role.
+        NotFoundError: 404 if there is no such flag, or nothing live cites it.
+        ValidationError: 422 if the note is blank or the flag is already closed.
+        PromotionError: 409 if the production delete failed; nothing was recorded.
+    """
+    row = maintenance_domain.retract_stale_document(
         session=session, reviewer=user, document_id=document_id, note=payload.note
     )
     session.commit()

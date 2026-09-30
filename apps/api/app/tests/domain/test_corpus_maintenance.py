@@ -22,6 +22,7 @@ from app.domain.corpus_maintenance import (
     expire_stale_sources,
     list_stale_documents,
     reindex_staging,
+    retract_stale_document,
 )
 from app.ingestion.crawler import DocumentCheck
 from app.models.schemas.auth import CurrentUser, Role
@@ -575,3 +576,92 @@ def test_only_a_reviewer_may_see_or_dismiss_flags() -> None:
 def test_an_unknown_status_is_refused(session: Session) -> None:
     with pytest.raises(ValidationError):
         list_stale_documents(session=session, reviewer=_reviewer_row(session), status="bogus")
+
+
+# --- retracting a flagged document ---------------------------------------------
+
+
+@requires_opensearch
+@requires_postgres
+def test_retracting_a_flag_removes_its_live_passages_and_records_both(
+    session: Session, indices: tuple[str, str]
+) -> None:
+    from app.ai.retrieval.client import get_client
+    from app.models.tables.ingestion import RetractionAuditRow
+
+    _, production = indices
+    client = get_client()
+    client.index(
+        index=production,
+        id="abb-1",
+        body=_chunk(brand="ABB", url=MANUAL, content_hash="h1", content="F0001"),
+        refresh=True,
+    )
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+
+    retracted = retract_stale_document(
+        session=session, reviewer=reviewer, document_id=flag.id, note=" withdrawn by ABB "
+    )
+    session.commit()
+
+    assert (retracted.status, retracted.review_note) == ("retracted", "withdrawn by ABB")
+    assert not client.exists(index=production, id="abb-1")
+    audit = session.scalars(
+        select(RetractionAuditRow).where(RetractionAuditRow.source_url == MANUAL)
+    ).one()
+    assert (audit.chunk_ids, audit.reason) == (["abb-1"], "withdrawn by ABB")
+    session.delete(audit)
+    session.commit()
+
+
+@requires_postgres
+def test_a_retraction_that_fails_leaves_the_flag_open(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.errors import PromotionError
+    from app.domain import promotion
+
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    session.commit()
+
+    def refused(**_kwargs: object) -> None:
+        raise PromotionError("retraction failed; retry it")
+
+    monkeypatch.setattr(promotion, "retract_source", refused)
+    with pytest.raises(PromotionError):
+        retract_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="x")
+    session.rollback()
+
+    assert _rows(session)[MANUAL].status == "open"
+
+
+@requires_postgres
+def test_a_dismissed_flag_can_still_be_retracted_but_a_closed_one_cannot(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import promotion
+
+    monkeypatch.setattr(promotion, "retract_source", lambda **_kw: None)
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="typo")
+
+    # Changing one's mind toward the safer decision is never refused.
+    retract_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="wrong")
+    assert flag.status == "retracted"
+    with pytest.raises(ValidationError, match="nothing to retract"):
+        retract_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="x")
+    with pytest.raises(ValidationError, match="note"):
+        retract_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note=" ")
+
+
+def test_only_a_reviewer_may_retract_a_flag() -> None:
+    with pytest.raises(AuthorizationError):
+        retract_stale_document(
+            session=None,  # type: ignore[arg-type]
+            reviewer=ENGINEER,
+            document_id=uuid.uuid4(),
+            note="x",
+        )

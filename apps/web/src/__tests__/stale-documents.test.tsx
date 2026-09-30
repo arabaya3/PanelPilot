@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ReviewScreen } from '@/components/review-screen';
 import { StaleDocuments } from '@/components/verification/stale-documents';
-import { dismissStale, fetchStale } from '@/lib/verification';
+import { dismissStale, fetchStale, retractStale } from '@/lib/verification';
 
 import { renderApp } from './helpers';
 
@@ -48,7 +48,7 @@ function respond(status: number, body: unknown = {}): typeof fetch {
 
 describe('StaleDocuments', () => {
   it('names each change and links the source as it is now', () => {
-    renderApp(<StaleDocuments items={[CHANGED, GONE]} onDismiss={vi.fn()} />);
+    renderApp(<StaleDocuments items={[CHANGED, GONE]} onDismiss={vi.fn()} onRetract={vi.fn()} />);
 
     const changed = screen.getByTestId('stale-flag-1');
     expect(within(changed).getByText('Changed upstream')).toBeTruthy();
@@ -62,17 +62,17 @@ describe('StaleDocuments', () => {
   });
 
   it('says so when nothing has changed', () => {
-    renderApp(<StaleDocuments items={[]} onDismiss={vi.fn()} />);
+    renderApp(<StaleDocuments items={[]} onDismiss={vi.fn()} onRetract={vi.fn()} />);
     expect(screen.getByTestId('stale-empty').textContent).toMatch(/No live document/);
   });
 
   it('will not dismiss without a note', () => {
     const onDismiss = vi.fn();
-    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={onDismiss} />);
+    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={onDismiss} onRetract={vi.fn()} />);
 
     const button = screen.getByRole('button', { name: 'Dismiss' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Why the change does not matter'), {
+    fireEvent.change(screen.getByLabelText('Your note (required for either decision)'), {
       target: { value: '   ' },
     });
     expect((button as HTMLButtonElement).disabled).toBe(true);
@@ -80,9 +80,9 @@ describe('StaleDocuments', () => {
 
   it('shows the server’s reason when a dismissal is refused', async () => {
     const onDismiss = vi.fn().mockRejectedValue(new Error('flag flag-1 is dismissed, not open'));
-    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={onDismiss} />);
+    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={onDismiss} onRetract={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText('Why the change does not matter'), {
+    fireEvent.change(screen.getByLabelText('Your note (required for either decision)'), {
       target: { value: ' cover page only ' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
@@ -91,6 +91,55 @@ describe('StaleDocuments', () => {
       'flag flag-1 is dismissed, not open',
     );
     expect(onDismiss).toHaveBeenCalledWith('flag-1', 'cover page only');
+  });
+});
+
+describe('retracting from the list', () => {
+  const NOTE = 'Your note (required for either decision)';
+
+  it('asks for confirmation before retracting, and a note first', async () => {
+    const onRetract = vi.fn().mockResolvedValue(undefined);
+    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={vi.fn()} onRetract={onRetract} />);
+
+    const retract = screen.getByRole('button', { name: 'Retract from live answers' });
+    expect((retract as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(NOTE), { target: { value: ' withdrawn by ABB ' } });
+    fireEvent.click(retract);
+
+    // One click only opens the confirmation; nothing is sent yet.
+    expect(onRetract).not.toHaveBeenCalled();
+    expect(screen.getByRole('group').textContent).toMatch(/leaves live answers now/);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, retract now' }));
+
+    await waitFor(() => {
+      expect(onRetract).toHaveBeenCalledWith('flag-1', 'withdrawn by ABB');
+    });
+  });
+
+  it('can be backed out of', () => {
+    const onRetract = vi.fn();
+    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={vi.fn()} onRetract={onRetract} />);
+
+    fireEvent.change(screen.getByLabelText(NOTE), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retract from live answers' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(onRetract).not.toHaveBeenCalled();
+  });
+
+  it('says so when a retraction fails, and closes the confirmation', async () => {
+    const onRetract = vi.fn().mockRejectedValue(new Error(''));
+    renderApp(<StaleDocuments items={[CHANGED]} onDismiss={vi.fn()} onRetract={onRetract} />);
+
+    fireEvent.change(screen.getByLabelText(NOTE), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retract from live answers' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, retract now' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Nothing was retracted. Try again.',
+    );
+    expect(screen.queryByRole('group')).toBeNull();
   });
 });
 
@@ -134,7 +183,7 @@ describe('the review page’s second tab', () => {
 
     fireEvent.click(await screen.findByTestId('review-tab-stale'));
     const card = screen.getByTestId('stale-flag-1');
-    fireEvent.change(within(card).getByLabelText('Why the change does not matter'), {
+    fireEvent.change(within(card).getByLabelText('Your note (required for either decision)'), {
       target: { value: 'typo fix' },
     });
     fireEvent.click(within(card).getByRole('button', { name: 'Dismiss' }));
@@ -149,6 +198,41 @@ describe('the review page’s second tab', () => {
     fireEvent.click(screen.getByTestId('review-tab-stale'));
     expect(screen.queryByTestId('stale-flag-1')).toBeNull();
     expect(screen.getByTestId('stale-flag-2')).toBeTruthy();
+  });
+
+  it('removes a retracted flag too', async () => {
+    const retractStaleImpl = vi.fn().mockResolvedValue(undefined);
+    renderApp(
+      <ReviewScreen
+        fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
+        fetchStaleImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [CHANGED, GONE] })}
+        retractStaleImpl={retractStaleImpl}
+        signInImpl={vi
+          .fn()
+          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'r@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.submit(screen.getByTestId('sign-in-form'));
+
+    fireEvent.click(await screen.findByTestId('review-tab-stale'));
+    const card = screen.getByTestId('stale-flag-2');
+    fireEvent.change(within(card).getByLabelText('Your note (required for either decision)'), {
+      target: { value: 'withdrawn by ABB' },
+    });
+    fireEvent.click(within(card).getByRole('button', { name: 'Retract from live answers' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Yes, retract now' }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('stale-flag-2')).toBeNull();
+    });
+    expect(retractStaleImpl).toHaveBeenCalledWith({
+      token: 'tok',
+      id: 'flag-2',
+      note: 'withdrawn by ABB',
+    });
+    expect(screen.getByTestId('review-tab-stale').textContent).toContain('1');
   });
 
   it('says when the flags could not be loaded, without losing the queue', async () => {
@@ -194,6 +278,16 @@ describe('the stale-document client', () => {
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer t' },
         body: JSON.stringify({ note: 'typo' }),
       },
+    );
+  });
+
+  it('posts a retraction to its own endpoint', async () => {
+    const fetchImpl = respond(200, CHANGED);
+    await retractStale({ token: 't', id: 'flag-1', note: 'withdrawn', fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/v1/verification/stale-documents/flag-1/retract',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ note: 'withdrawn' }) }),
     );
   });
 

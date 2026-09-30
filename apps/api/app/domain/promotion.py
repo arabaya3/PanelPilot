@@ -1,6 +1,8 @@
 """Staging-to-production promotion service.
 
-This module is the **only** write path into the production index. Nothing in
+This module is the **only** write path into the production index, in both
+directions: publishing a chunk (``promote_chunk``) and taking a document's
+passages back out (``retract_source``). Nothing in
 ``app.ingestion`` or ``app.domain.ingestion`` may write there. The path is
 ``clear_item`` -> ``promote_chunk``: a reviewer labels a queue item correct and
 the chunk is published in the same transaction, on the strength of that
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 
+from opensearchpy.helpers import bulk
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -36,7 +39,11 @@ from app.models.schemas.ingestion import (
     VerificationVerdict,
 )
 from app.models.schemas.verification import VerificationLabel
-from app.models.tables.ingestion import PromotionAuditRow, VerificationItemRow
+from app.models.tables.ingestion import (
+    PromotionAuditRow,
+    RetractionAuditRow,
+    VerificationItemRow,
+)
 
 
 def promote_document(
@@ -203,6 +210,17 @@ def promote_chunk(
             f"cannot promote {chunk_id!r}: {reviewer.email} is the ingester of record"
         )
 
+    # A revision a reviewer took out of live answers stays out. Its staged
+    # copy is still there -- staging keeps everything -- and clearing that copy
+    # would otherwise quietly republish exactly what was withdrawn.
+    if _retracted(
+        session, source_url=staged.get("source_url"), content_hash=staged.get("content_hash")
+    ):
+        raise PromotionError(
+            f"cannot promote {chunk_id!r}: this revision of {staged.get('source_url')} "
+            "was retracted from live answers"
+        )
+
     # Never a silent overwrite. A chunk already live whose text has changed is
     # a NEW pending item, because an engineer who trusted a citation has no way
     # to know the text moved under it. Same content is a no-op, not an error:
@@ -320,3 +338,138 @@ def clear_item(
             verdict=VerificationVerdict(decision=VerificationDecision.APPROVED, notes=note),
         )
     return row
+
+
+#: Most chunks one retraction will remove. A manual is a few hundred; a number
+#: far past this means the URL matched something it should not have.
+MAX_RETRACTED_CHUNKS = 5000
+
+
+def retract_source(
+    *,
+    session: Session,
+    reviewer: CurrentUser,
+    source_url: str,
+    reason: str,
+) -> RetractionAuditRow:
+    """Take every live passage from one source document out of production.
+
+    ADR 0001's "urgent removal": a separate, audited operation on production,
+    not a second ingestion path. Answers stop citing the document at once;
+    its staged copy is kept, as promotion keeps it, so what was removed can be
+    reasoned about afterwards.
+
+    Args:
+        session: Open database session. The audit row is flushed here and the
+            caller commits, as for ``promote_chunk``.
+        reviewer: The human deciding. Must hold the reviewer role.
+        source_url: The document's URL, exactly as its chunks cite it.
+        reason: Why it is being withdrawn. Required: the audit row is the only
+            place an engineer can later learn why a citation disappeared.
+
+    Returns:
+        The audit row, naming every chunk and revision removed.
+
+    Raises:
+        AuthorizationError: If the reviewer lacks the reviewer role.
+        PromotionError: If the reason is blank, or the URL matches more chunks
+            than any one document has.
+        NotFoundError: If nothing live cites the URL.
+
+    Four-eyes does not apply. It exists so nobody can both bring content in and
+    publish it; removing a passage makes the assistant refuse rather than
+    answer wrongly, which is the direction the system already fails safe in.
+    """
+    if not reviewer.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{reviewer.email} does not hold the reviewer role")
+    if not reason.strip():
+        raise PromotionError("a retraction needs a reason saying why the document is withdrawn")
+    reviewer_uuid = _as_uuid(reviewer.id, field="reviewer.id")
+
+    client = get_client()
+    production_index = resolve_index(IndexTarget.PRODUCTION)
+    # Refreshed first: search sees only what the last refresh made visible,
+    # so a chunk promoted a second ago would otherwise be missed and stay live
+    # after a retraction that reported success. Retraction is rare; the cost
+    # of one refresh is not.
+    client.indices.refresh(index=production_index)
+    query = {"term": {"source_url": source_url}}
+    hits = client.search(
+        index=production_index,
+        body={"query": query, "_source": ["content_hash"], "size": MAX_RETRACTED_CHUNKS + 1},
+    )["hits"]["hits"]
+    if not hits:
+        raise NotFoundError(f"nothing live cites {source_url}")
+    if len(hits) > MAX_RETRACTED_CHUNKS:
+        raise PromotionError(
+            f"refusing to retract {source_url}: it matches more than "
+            f"{MAX_RETRACTED_CHUNKS} live chunks"
+        )
+    chunk_ids = sorted(str(hit["_id"]) for hit in hits)
+    hashes = sorted({str(hit["_source"].get("content_hash")) for hit in hits} - {"None"})
+
+    # Audit first, then the index, for the reason promote_chunk gives: the
+    # reverse order can leave passages gone with nobody named for it.
+    audit = RetractionAuditRow(
+        source_url=source_url,
+        reviewer_id=reviewer_uuid,
+        reason=reason.strip(),
+        chunk_ids=chunk_ids,
+        content_hashes=hashes,
+    )
+    session.add(audit)
+    session.flush()
+
+    # By id, not by query: exactly the chunks the audit names are removed, even
+    # if another revision is promoted in between. One bulk request rather than
+    # one per chunk, so a failure is almost always all-or-nothing. It is not
+    # guaranteed to be: OpenSearch applies a bulk request item by item. A
+    # failure part-way leaves some passages gone and the audit rolled back --
+    # the safe direction (a refusal, not a wrong answer), and a retry removes
+    # the rest and records the retraction. Bounded and documented, as the
+    # equivalent window in promote_chunk is; it cannot be closed without a
+    # transactional index.
+    try:
+        _deleted, errors = bulk(
+            client,
+            (
+                {"_op_type": "delete", "_index": production_index, "_id": chunk_id}
+                for chunk_id in chunk_ids
+            ),
+            chunk_size=len(chunk_ids),
+            raise_on_error=False,
+            refresh=True,
+        )
+    except Exception:
+        session.rollback()
+        raise
+    # A chunk already gone is the goal reached, not a failure.
+    failed = [e for e in errors if e.get("delete", {}).get("status") != 404]
+    if failed:
+        session.rollback()
+        raise PromotionError(
+            f"retraction of {source_url} failed for {len(failed)} of {len(chunk_ids)} chunks; "
+            "retry it"
+        )
+    return audit
+
+
+def _retracted(session: Session, *, source_url: object, content_hash: object) -> bool:
+    """Report whether a revision of a document was retracted from live answers.
+
+    Args:
+        session: Open database session.
+        source_url: The chunk's source URL.
+        content_hash: The chunk's document hash.
+
+    Returns:
+        ``True`` if a retraction of that URL listed that revision.
+    """
+    if not isinstance(source_url, str) or not isinstance(content_hash, str):
+        return False
+    return any(
+        content_hash in row.content_hashes
+        for row in session.scalars(
+            select(RetractionAuditRow).where(RetractionAuditRow.source_url == source_url)
+        )
+    )

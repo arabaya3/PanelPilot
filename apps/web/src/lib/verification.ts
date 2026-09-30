@@ -141,6 +141,22 @@ export async function fetchStale(options: {
 }
 
 /**
+ * Take a flagged document's passages out of live answers, and say why.
+ *
+ * @throws Error when the retraction is refused or fails, carrying the
+ *   server's reason: nothing was removed and nothing recorded.
+ */
+export async function retractStale(options: {
+  token: string;
+  id: string;
+  note: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<void> {
+  await postStaleDecision({ ...options, action: 'retract' });
+}
+
+/**
  * Record that an upstream change is harmless, and why.
  *
  * @throws Error when the dismissal is refused, carrying the server's reason
@@ -153,15 +169,27 @@ export async function dismissStale(options: {
   fetchImpl?: typeof fetch;
   endpoint?: string;
 }): Promise<void> {
+  await postStaleDecision({ ...options, action: 'dismiss' });
+}
+
+async function postStaleDecision(options: {
+  token: string;
+  id: string;
+  note: string;
+  action: 'dismiss' | 'retract';
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<void> {
   const {
     token,
     id,
     note,
+    action,
     fetchImpl = fetch,
     endpoint = '/api/v1/verification/stale-documents',
   } = options;
 
-  const response = await fetchImpl(`${endpoint}/${encodeURIComponent(id)}/dismiss`, {
+  const response = await fetchImpl(`${endpoint}/${encodeURIComponent(id)}/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ note }),
@@ -174,5 +202,5 @@ export async function dismissStale(options: {
   } catch {
     // No body worth reading; the status says enough.
   }
-  throw new Error(detail || `dismissal refused: ${String(response.status)}`);
+  throw new Error(detail || `${action} refused: ${String(response.status)}`);
 }

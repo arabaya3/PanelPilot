@@ -39,6 +39,7 @@ from app.ai.retrieval.client import (
 )
 from app.ai.retrieval.embedding import embed_documents
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
+from app.domain import promotion as promotion_domain
 from app.domain.ingestion import EMBEDDING_BATCH_SIZE
 from app.ingestion.crawler import DocumentCheck, check_documents
 from app.ingestion.sources import CRAWLERS, crawler_for
@@ -50,6 +51,7 @@ logger = structlog.get_logger(__name__)
 #: ``stale_documents.status`` values.
 OPEN = "open"
 DISMISSED = "dismissed"
+RETRACTED = "retracted"
 CLEARED = "cleared"
 
 
@@ -273,7 +275,7 @@ def list_stale_documents(
     Args:
         session: Open database session.
         reviewer: The caller; must hold the reviewer role.
-        status: ``open`` (the default), ``dismissed`` or ``cleared``.
+        status: ``open`` (the default), ``dismissed``, ``retracted`` or ``cleared``.
 
     Returns:
         The rows, ordered by when each change was first seen.
@@ -282,10 +284,10 @@ def list_stale_documents(
         AuthorizationError: If the caller is not a reviewer. The list says
             which live answers may be out of date, which is a reviewer's call
             to act on, not an engineer's to read.
-        ValidationError: If ``status`` is not one of the three.
+        ValidationError: If ``status`` is not one of the four.
     """
     _require_reviewer(reviewer)
-    if status not in (OPEN, DISMISSED, CLEARED):
+    if status not in (OPEN, DISMISSED, RETRACTED, CLEARED):
         raise ValidationError(f"unknown status {status!r}")
     return list(
         session.scalars(
@@ -331,6 +333,55 @@ def dismiss_stale_document(
     if row.status != OPEN:
         raise ValidationError(f"flag {document_id} is {row.status}, not open")
     row.status = DISMISSED
+    row.reviewed_by_id = uuid.UUID(reviewer.id) if _is_uuid(reviewer.id) else None
+    row.reviewed_at = now or datetime.now(UTC)
+    row.review_note = note.strip()
+    return row
+
+
+def retract_stale_document(
+    *,
+    session: Session,
+    reviewer: CurrentUser,
+    document_id: uuid.UUID,
+    note: str,
+    now: datetime | None = None,
+) -> StaleDocumentRow:
+    """Take a stale document's live passages out of answers, and record it on the flag.
+
+    Args:
+        session: Open database session. The caller commits, so the retraction's
+            audit row and this flag's new status land together.
+        reviewer: The caller; must hold the reviewer role.
+        document_id: The flag.
+        note: Why. Recorded on the flag and, as the reason, on the retraction.
+        now: The time of the decision; the current time by default.
+
+    Returns:
+        The flag, now ``retracted``.
+
+    Raises:
+        AuthorizationError: If the caller is not a reviewer.
+        NotFoundError: If there is no such flag, or nothing live cites it.
+        ValidationError: If the note is blank, or the flag was already
+            retracted or cleared.
+        PromotionError: If the production delete fails; nothing is recorded.
+    """
+    _require_reviewer(reviewer)
+    if not note.strip():
+        raise ValidationError("a retraction needs a note saying why the document is withdrawn")
+    row = session.get(StaleDocumentRow, document_id, with_for_update=True)
+    if row is None:
+        raise NotFoundError(f"no stale-document flag {document_id}")
+    # A dismissed flag may still be retracted: a reviewer can change their
+    # mind, and the safer decision should never be the one that is refused.
+    if row.status not in (OPEN, DISMISSED):
+        raise ValidationError(f"flag {document_id} is {row.status}; nothing to retract")
+
+    promotion_domain.retract_source(
+        session=session, reviewer=reviewer, source_url=row.source_url, reason=note
+    )
+    row.status = RETRACTED
     row.reviewed_by_id = uuid.UUID(reviewer.id) if _is_uuid(reviewer.id) else None
     row.reviewed_at = now or datetime.now(UTC)
     row.review_note = note.strip()
