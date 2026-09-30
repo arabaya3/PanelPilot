@@ -110,17 +110,26 @@ def test_the_bom_lists_drive_cable_enclosure_and_cooling() -> None:
         ],
         constraints=_constraints(),
     )
-    parts = [line.part_reference for line in result.lines]
-    # 40 A at 35 °C inside the panel: 045A-3 (I2 45 A, no temperature derate).
-    assert parts[0] == "ACS880-01-045A-3"
-    # Method C, XLPE, 25 °C (k1 1.04), 2 grouped (k2 0.80): 40 / 0.832 = 48.1 A
-    # -> 6 mm² (52 A); 10 A -> 1.5 mm² (22 A).
-    assert parts[1] == "Cu XLPE 6 mm²"
-    assert parts[2] == "Cu XLPE 1.5 mm²"
-    assert parts[3] == "Enclosure 600x2000x500 IP54"
-    assert parts[4] == "Cooling 659 W"
+    parts = [(line.part_reference, line.quantity) for line in result.lines]
+    assert parts == [
+        # 40 A at 35 °C inside the panel: 045A-3 (I2 45 A, no temperature derate).
+        ("ACS880-01-045A-3", 1),
+        # Its aR input fuses, one per phase (hardware manual p. 259).
+        ("Bussmann 170M1316 80 A aR", 3),
+        # Method C, XLPE, 25 °C (k1 1.04), 2 grouped (k2 0.80): 40 / 0.832 =
+        # 48.1 A -> 6 mm² (52 A).
+        ("Cu XLPE 6 mm²", 1),
+        # 6 mm² at 40 A: the 4 mm² terminal clamps up to 6 mm² and carries 41 A.
+        ("8WH1000-0AG00", 3),
+        ("8WH1000-0CG07", 1),
+        # 10 A -> 1.5 mm² (22 A), on the 2.5 mm² terminal.
+        ("Cu XLPE 1.5 mm²", 1),
+        ("8WH1000-0AF00", 3),
+        ("8WH1000-0CF07", 1),
+        ("Enclosure 600x2000x500 IP54", 1),
+        ("Cooling 659 W", 1),
+    ]
     assert result.cooling_required_w == Decimal("659.1")
-    assert any("Terminals" in note for note in result.notes)
 
 
 def test_aluminium_cables_size_from_the_aluminium_columns() -> None:
@@ -226,23 +235,47 @@ def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
 
     assert [line.kind for line in result.lines] == [
         BomLineKind.DRIVE,
+        BomLineKind.FUSE,
         BomLineKind.CABLE,
+        BomLineKind.TERMINAL,
+        BomLineKind.TERMINAL,
         BomLineKind.CABLE,
+        BomLineKind.TERMINAL,
+        BomLineKind.TERMINAL,
         BomLineKind.ENCLOSURE,
         BomLineKind.COOLING,
     ]
     assert result.lines[0].details == {"tag": "M-101", "load": "conveyor"}
-    assert result.lines[1].details == {
+    assert result.lines[1].details == {"tag": "M-101", "amps": "80", "min_sc_a": "310"}
+    assert result.lines[2].details == {
         "tag": "M-101",
         "load": "conveyor",
         "method": "C",
         "grouped": "2",
         "material": "copper",
     }
-    assert result.lines[3].details == {"placement": "single_free_standing"}
-    assert result.lines[4].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
-    # The heater gives no dissipation, so the cooling figure is incomplete.
-    assert result.note_keys == [BomNote.NOT_INCLUDED, BomNote.INCOMPLETE_DISSIPATION]
+    assert result.lines[3].details == {"tag": "M-101", "size": "4", "max_a": "41", "role": "phase"}
+    assert result.lines[4].details["role"] == "pe"
+    assert result.lines[8].details == {"placement": "single_free_standing"}
+    assert result.lines[9].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
+    # The heater has neither drive nor starter, so it is unprotected; the drive
+    # has fuses with a minimum fault level; the heater gives no dissipation.
+    assert result.note_keys == [
+        BomNote.NOT_INCLUDED,
+        BomNote.FUSE_MIN_SHORT_CIRCUIT,
+        BomNote.INCOMPLETE_DISSIPATION,
+    ]
+
+
+def test_aluminium_cables_get_no_terminals_and_say_why() -> None:
+    from app.models.schemas.calculations import BomNote
+
+    result = panel_bom.build_bom(
+        loads=[LoadScheduleItem(tag="H-1", description="heater", current_a=Decimal("10"))],
+        constraints=_constraints(cable_material=ConductorMaterial.ALUMINIUM),
+    )
+    assert BomLineKind.TERMINAL not in [line.kind for line in result.lines]
+    assert BomNote.TERMINALS_COPPER_ONLY in result.note_keys
 
 
 def test_a_motor_started_across_the_line_gets_its_coordinated_starter() -> None:

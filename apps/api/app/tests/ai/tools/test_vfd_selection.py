@@ -201,3 +201,38 @@ def test_every_public_function_is_keyword_only() -> None:
             if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
         ]
         assert not positional, f"{name} accepts positional arguments: {positional}"
+
+
+@pytest.mark.parametrize(
+    ("type_code", "amps", "bussmann", "min_sc", "page"),
+    [
+        # Hardware manual, aR stud-mount fuses: 045A-3 p. 259, 490A-3 p. 260,
+        # 180A-5 p. 261 (printed 315 A with a 170M3018), 271A-7 p. 262.
+        ("ACS880-01-045A-3", "80", "170M1316", "310", 259),
+        ("ACS880-01-490A-3", "700", "170M5013", "4100", 260),
+        ("ACS880-01-180A-5", "315", "170M3018", "1750", 261),
+        ("ACS880-01-271A-7", "450", "170M5009", "2100", 262),
+    ],
+)
+def test_input_fuse_reads_the_ar_table(
+    type_code: str, amps: str, bussmann: str, min_sc: str, page: int
+) -> None:
+    fuse = vfd_selection.input_fuse(type_code=type_code)
+    assert (fuse.amps, fuse.bussmann, fuse.min_short_circuit_a) == (amps, bussmann, min_sc)
+    assert fuse.source.page == page
+
+
+def test_every_catalogue_drive_has_an_input_fuse() -> None:
+    for ratings in (
+        vfd_selection._RATINGS_400V,
+        vfd_selection._RATINGS_500V,
+        vfd_selection._RATINGS_575V,
+        vfd_selection._RATINGS_690V,
+    ):
+        for rating in ratings:
+            assert vfd_selection.input_fuse(type_code=rating.type_code).amps
+
+
+def test_an_unlisted_drive_has_no_fuse() -> None:
+    with pytest.raises(ValidationError, match="no input fuse"):
+        vfd_selection.input_fuse(type_code="ACS880-01-999A-3")

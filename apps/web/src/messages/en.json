@@ -430,7 +430,7 @@
       }
     },
     "bom": {
-      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: an ACS880-01 drive for each variable-speed load, an outgoing cable for each load, the enclosure, and the cooling it needs by IEC 60890.",
+      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: an ACS880-01 drive and its input fuses for each variable-speed load, a coordinated starter for each motor started across the line, an outgoing cable and its terminals for each load, the enclosure, and the cooling it needs by IEC 60890.",
       "enclosure": "Enclosure",
       "loads": "Loads",
       "field": {
@@ -475,12 +475,17 @@
         "cooling": "Active cooling: {cooling} W beyond what the surface sheds at a {rise} K rise; an air/air heat exchanger needs {qw} W/K",
         "breaker": "{tag}: circuit-breaker for {load}, magnetic trip {trip} A",
         "contactor": "{tag}: {role} contactor",
-        "overload": "{tag}: overload relay, set within {min}-{max} A"
+        "overload": "{tag}: overload relay, set within {min}-{max} A",
+        "fuse": "{tag}: drive input fuses, aR {amps} A, one per phase (needs at least {minSc} A prospective short-circuit current)",
+        "terminal": "{tag}: through-type terminal {size} mm², up to {max} A",
+        "terminalPe": "{tag}: PE terminal {size} mm²"
       },
       "note": {
         "incomplete_dissipation": "Loads without a heat figure add no heat, so the cooling figure is only as complete as the schedule.",
-        "not_included": "Terminals, and protection for drive-fed and non-motor loads, are not included: no sourced selection table for them is held here.",
-        "fault_level_assumed": "Starters are Type 2 coordinated up to 50 kA; confirm the panel's prospective short-circuit current does not exceed it."
+        "not_included": "Protection for loads with neither a drive nor a starter is not included: no sourced selection table for them is held here.",
+        "fault_level_assumed": "Starters are Type 2 coordinated up to 50 kA; confirm the panel's prospective short-circuit current does not exceed it.",
+        "fuse_min_short_circuit": "Drive input fuses operate fast enough only when the installation's prospective short-circuit current is at least the minimum on each line.",
+        "terminals_copper_only": "Terminals are selected from a copper terminal table; aluminium cables need terminals rated for aluminium, which are not listed."
       },
       "start": {
         "none": "No starter",

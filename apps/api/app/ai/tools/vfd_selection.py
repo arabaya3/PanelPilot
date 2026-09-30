@@ -207,6 +207,146 @@ _CATALOGUES: tuple[_Catalogue, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class _Fuse:
+    """One row of the ultrarapid (aR) stud-mount fuse table."""
+
+    amps: str
+    bussmann: str
+    din_size: str
+    #: The installation's minimum prospective short-circuit current, A, for
+    #: the fuse to operate fast enough (footnote 1).
+    min_short_circuit_a: str
+    page: int
+
+
+#: ACS880-01 input fuses, ultrarapid (aR) DIN 43653 stud-mount, one per phase
+#: (hardware manual pp. 258-262). The manual allows aR fuses for every frame,
+#: recommends them for R7-R9 and allows only them for R9e, so one table
+#: covers the catalogue. Values as printed -- 180A-5 is listed at 315 A with
+#: a 170M3018, which elsewhere in the table is 350 A.
+_AR_FUSES: dict[str, _Fuse] = {
+    "ACS880-01-02A4-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-03A3-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-04A0-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-05A6-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-07A2-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-09A4-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-12A6-3": _Fuse("25", "170M1311", "000", "75", 259),
+    "ACS880-01-017A-3": _Fuse("40", "170M1313", "000", "140", 259),
+    "ACS880-01-025A-3": _Fuse("40", "170M1313", "000", "140", 259),
+    "ACS880-01-032A-3": _Fuse("63", "170M1315", "000", "250", 259),
+    "ACS880-01-038A-3": _Fuse("63", "170M1315", "000", "250", 259),
+    "ACS880-01-045A-3": _Fuse("80", "170M1316", "000", "310", 259),
+    "ACS880-01-061A-3": _Fuse("100", "170M1317", "000", "450", 259),
+    "ACS880-01-072A-3": _Fuse("125", "170M1318", "000", "590", 259),
+    "ACS880-01-087A-3": _Fuse("160", "170M1319", "000", "800", 259),
+    "ACS880-01-105A-3": _Fuse("200", "170M3015", "1", "810", 259),
+    "ACS880-01-145A-3": _Fuse("250", "170M3016", "1", "1100", 260),
+    "ACS880-01-169A-3": _Fuse("315", "170M3017", "1", "1400", 260),
+    "ACS880-01-206A-3": _Fuse("350", "170M3018", "1", "1750", 260),
+    "ACS880-01-246A-3": _Fuse("450", "170M5009", "2", "2100", 260),
+    "ACS880-01-293A-3": _Fuse("500", "170M5010", "2", "2400", 260),
+    "ACS880-01-363A-3": _Fuse("630", "170M5012", "2", "3400", 260),
+    "ACS880-01-430A-3": _Fuse("700", "170M5013", "2", "4100", 260),
+    "ACS880-01-490A-3": _Fuse("700", "170M5013", "2", "4100", 260),
+    "ACS880-01-595A-3": _Fuse("1000", "170M6014", "3", "6500", 260),
+    "ACS880-01-670A-3": _Fuse("1000", "170M6014", "3", "6500", 260),
+    "ACS880-01-02A1-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-03A0-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-03A4-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-04A8-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-05A2-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-07A6-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-11A0-5": _Fuse("25", "170M1308", "000", "32", 260),
+    "ACS880-01-014A-5": _Fuse("40", "170M1313", "000", "140", 260),
+    "ACS880-01-021A-5": _Fuse("40", "170M1313", "000", "140", 260),
+    "ACS880-01-027A-5": _Fuse("63", "170M1315", "000", "250", 260),
+    "ACS880-01-034A-5": _Fuse("63", "170M1315", "000", "250", 260),
+    "ACS880-01-040A-5": _Fuse("80", "170M1316", "000", "310", 260),
+    "ACS880-01-052A-5": _Fuse("100", "170M1317", "000", "450", 260),
+    "ACS880-01-065A-5": _Fuse("125", "170M1318", "000", "590", 260),
+    "ACS880-01-077A-5": _Fuse("160", "170M1319", "000", "800", 260),
+    "ACS880-01-096A-5": _Fuse("200", "170M3015", "1", "810", 260),
+    "ACS880-01-124A-5": _Fuse("250", "170M3016", "1", "1100", 260),
+    "ACS880-01-156A-5": _Fuse("315", "170M3017", "1", "1400", 261),
+    "ACS880-01-180A-5": _Fuse("315", "170M3018", "1", "1750", 261),
+    "ACS880-01-240A-5": _Fuse("400", "170M5008", "2", "1800", 261),
+    "ACS880-01-260A-5": _Fuse("450", "170M5009", "2", "2100", 261),
+    "ACS880-01-302A-5": _Fuse("550", "170M5011", "2", "3000", 261),
+    "ACS880-01-361A-5": _Fuse("630", "170M5012", "2", "3400", 261),
+    "ACS880-01-414A-5": _Fuse("700", "170M5013", "2", "4100", 261),
+    "ACS880-01-477A-5": _Fuse("700", "170M5013", "2", "4100", 261),
+    "ACS880-01-585A-5": _Fuse("1000", "170M6014", "3", "6500", 261),
+    "ACS880-01-635A-5": _Fuse("1000", "170M6014", "3", "6500", 261),
+    "ACS880-01-07A4-7": _Fuse("16", "170M1309", "000", "45", 261),
+    "ACS880-01-09A9-7": _Fuse("20", "170M1310", "000", "59", 261),
+    "ACS880-01-14A3-7": _Fuse("32", "170M1312", "000", "105", 261),
+    "ACS880-01-019A-7": _Fuse("40", "170M1313", "000", "140", 261),
+    "ACS880-01-023A-7": _Fuse("50", "170M1314", "000", "180", 261),
+    "ACS880-01-027A-7": _Fuse("50", "170M1314", "000", "180", 261),
+    "ACS880-01-035A-7": _Fuse("63", "170M1315", "000", "250", 261),
+    "ACS880-01-042A-7": _Fuse("80", "170M1316", "000", "310", 261),
+    "ACS880-01-049A-7": _Fuse("80", "170M1316", "000", "310", 261),
+    "ACS880-01-061A-7": _Fuse("125", "170M1318", "000", "590", 261),
+    "ACS880-01-084A-7": _Fuse("160", "170M1319", "000", "800", 261),
+    "ACS880-01-098A-7": _Fuse("200", "170M3015", "1", "810", 261),
+    "ACS880-01-119A-7": _Fuse("200", "170M3015", "1", "810", 261),
+    "ACS880-01-142A-7": _Fuse("250", "170M3016", "1", "1100", 261),
+    "ACS880-01-174A-7": _Fuse("315", "170M3017", "1", "1400", 261),
+    "ACS880-01-210A-7": _Fuse("400", "170M5008", "2", "1800", 261),
+    "ACS880-01-271A-7": _Fuse("450", "170M5009", "2", "2100", 262),
+}
+
+
+@dataclass(frozen=True)
+class InputFuse:
+    """The fuses a drive's supply needs.
+
+    Attributes:
+        amps: Fuse rating, A.
+        bussmann: Bussmann type.
+        din_size: DIN 43653 size.
+        min_short_circuit_a: The installation's minimum prospective
+            short-circuit current for the fuse to operate fast enough, A.
+        source: Where the row is printed.
+    """
+
+    amps: str
+    bussmann: str
+    din_size: str
+    min_short_circuit_a: str
+    source: Citation
+
+
+def input_fuse(*, type_code: str) -> InputFuse:
+    """Return the input fuse the manual lists for a drive type.
+
+    Source:
+        ABB ACS880-01 hardware manual (3AUA0000078093), "Fuses (IEC)",
+        ultrarapid (aR) fuses DIN 43653 stud-mount, pp. 258-262.
+
+    Args:
+        type_code: The drive, as `select_frame` names it (without the frame).
+
+    Returns:
+        The fuse, one per phase.
+
+    Raises:
+        ValidationError: If the manual lists no fuse for the type.
+    """
+    row = _AR_FUSES.get(type_code)
+    if row is None:
+        raise ValidationError(f"no input fuse is listed for {type_code}")
+    return InputFuse(
+        amps=row.amps,
+        bussmann=row.bussmann,
+        din_size=row.din_size,
+        min_short_circuit_a=row.min_short_circuit_a,
+        source=_manual(row.page, "Fuses (IEC), aR fuses DIN 43653 stud-mount"),
+    )
+
+
 def _manual(page: int, section: str) -> Citation:
     """Cite a page of the ACS880-01 hardware manual."""
     return Citation(

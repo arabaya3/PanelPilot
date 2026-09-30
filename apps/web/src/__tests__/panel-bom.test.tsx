@@ -186,6 +186,55 @@ describe('panel BOM', () => {
     });
   });
 
+  it('describes drive fuses and terminals', async () => {
+    const MANUAL = { ...RITTAL, document_id: 'acs880', manufacturer: 'ABB', page: 259 };
+    const LV10 = { ...RITTAL, document_id: 'lv10', manufacturer: 'Siemens', page: 48 };
+    const response: PanelBomResponse = {
+      result: {
+        lines: [
+          {
+            part_reference: 'Bussmann 170M1316 80 A aR',
+            description: 'M-101: drive input fuses',
+            quantity: 3,
+            source: MANUAL,
+            kind: 'fuse',
+            details: { tag: 'M-101', amps: '80', min_sc_a: '310' },
+          },
+          {
+            part_reference: '8WH1000-0AG00',
+            description: 'M-101: through-type terminal',
+            quantity: 3,
+            source: LV10,
+            kind: 'terminal',
+            details: { tag: 'M-101', size: '4', max_a: '41', role: 'phase' },
+          },
+          {
+            part_reference: '8WH1000-0CG07',
+            description: 'M-101: PE terminal',
+            quantity: 1,
+            source: LV10,
+            kind: 'terminal',
+            details: { tag: 'M-101', size: '4', max_a: '41', role: 'pe' },
+          },
+        ],
+        heat_load_w: '0',
+        cooling_required_w: '0',
+        notes: [],
+        note_keys: ['fuse_min_short_circuit'],
+      },
+      sources: [MANUAL, LV10],
+    };
+    await openBomTab(vi.fn().mockResolvedValue({ kind: 'built', response }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
+
+    const result = await screen.findByTestId('bom-result');
+    expect(result.textContent).toContain('aR 80 A, one per phase');
+    expect(result.textContent).toContain('at least 310 A');
+    expect(result.textContent).toContain('through-type terminal 4 mm², up to 41 A');
+    expect(result.textContent).toContain('PE terminal 4 mm²');
+    expect(result.textContent).toContain('minimum on each line');
+  });
+
   it('adds and removes load rows, keeping at least one', async () => {
     await openBomTab(vi.fn());
     fireEvent.click(screen.getByRole('button', { name: 'Add a load' }));
@@ -228,7 +277,7 @@ describe('panel BOM in Arabic', () => {
     const result = await screen.findByTestId('bom-result');
     expect(result.textContent).toContain('M-101: محوّل لـconveyor');
     expect(result.textContent).toContain('65.9 واط/كلفن');
-    expect(result.textContent).toContain('التيرمنالات');
+    expect(result.textContent).toContain('حماية الأحمال التي ليس لها محوّل ولا مُشغّل');
     expect(result.textContent).not.toContain('drive for conveyor');
   });
 });
