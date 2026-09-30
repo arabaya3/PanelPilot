@@ -2,11 +2,11 @@
 
 Pure functions. Each formula cites the manufacturer guide it came from.
 
-The catalogue is the ACS880-01 wall-mounted range, IEC ratings, IP21: types
-...-3 on 380-415 V, ...-5 on 415-500 V (rated at Un = 500 V) and ...-7 on
-660-690 V (rated at Un = 690 V). Other ranges, voltages and enclosures have
-their own tables and derating curves and are refused rather than read from
-these.
+The catalogue is the ACS880-01 wall-mounted range, IP21: types ...-3 on
+380-415 V and ...-5 on 415-500 V (IEC ratings at Un = 400 and 500 V), and
+...-7 on 525-600 V (UL ratings at Un = 575 V) and 660-690 V (IEC ratings at
+Un = 690 V). Other ranges, voltages and enclosures have their own tables and
+derating curves and are refused rather than read from these.
 """
 
 from __future__ import annotations
@@ -139,6 +139,33 @@ _RATINGS_690V: tuple[_Rating, ...] = (
 )
 
 
+#: ACS880-01-xxxx-7, UL (NEC) ratings at Un = 575 V (hardware manual
+#: pp. 240-241): the only ratings the manual prints for a -7 drive below 690 V.
+#: They give no I2, so the nominal column holds ILd -- a continuous current
+#: that still allows 10 % overload, so it is never more than the drive
+#: delivers without overload. 271A's IHd is footnoted (30 % overload) and is
+#: not offered for heavy duty.
+_RATINGS_575V: tuple[_Rating, ...] = (
+    _Rating("ACS880-01-07A4-7", "R3", "7.0", "5.6"),
+    _Rating("ACS880-01-09A9-7", "R3", "9.4", "7.4"),
+    _Rating("ACS880-01-14A3-7", "R3", "13.6", "9.9"),
+    _Rating("ACS880-01-019A-7", "R3", "18", "14.3"),
+    _Rating("ACS880-01-023A-7", "R3", "22", "19"),
+    _Rating("ACS880-01-027A-7", "R3", "27", "23"),
+    _Rating("ACS880-01-035A-7", "R5", "41", "32"),
+    _Rating("ACS880-01-042A-7", "R5", "52", "41"),
+    _Rating("ACS880-01-049A-7", "R5", "52", "41"),
+    _Rating("ACS880-01-061A-7", "R6", "62", "52"),
+    _Rating("ACS880-01-084A-7", "R6", "77", "62"),
+    _Rating("ACS880-01-098A-7", "R7", "99", "77"),
+    _Rating("ACS880-01-119A-7", "R7", "125", "99"),
+    _Rating("ACS880-01-142A-7", "R8", "144", "125"),
+    _Rating("ACS880-01-174A-7", "R8", "180", "144"),
+    _Rating("ACS880-01-210A-7", "R9", "242", "192"),
+    _Rating("ACS880-01-271A-7", "R9", "271", None),
+)
+
+
 @dataclass(frozen=True)
 class _Catalogue:
     """One voltage range: its supply band, ratings and where they are printed."""
@@ -155,15 +182,24 @@ class _Catalogue:
 #: The supply bands, per the manual's type designation (p. 39): -3 380...415 V,
 #: -5 380...500 V, -7 525...690 V. -3 keeps 380-415 V, as before; -5 covers
 #: the rest of its range, where its I2 is the same at the two tabulated
-#: voltages. -7 is rated at Un = 690 V only, so it is offered in the 660-690 V
-#: band the manual groups with 690 V (brake chopper table, p. 348); 525-600 V
-#: is refused rather than read from the 690 V column.
+#: voltages. -7 is rated by IEC at Un = 690 V, offered in the 660-690 V band
+#: the manual groups with 690 V (brake chopper table, p. 348), and by UL at
+#: Un = 575 V, offered on 525-600 V, the band the same table groups with it.
+#: 600-660 V has neither and is refused.
 _CATALOGUES: tuple[_Catalogue, ...] = (
     _Catalogue(
         "-3", Decimal(380), Decimal(415), _RATINGS_400V, 234, "Electrical ratings, IEC, Un = 400 V"
     ),
     _Catalogue(
         "-5", Decimal(415), Decimal(500), _RATINGS_500V, 236, "Electrical ratings, IEC, Un = 500 V"
+    ),
+    _Catalogue(
+        "-7",
+        Decimal(525),
+        Decimal(600),
+        _RATINGS_575V,
+        240,
+        "Electrical ratings, UL (NEC), Un = 575 V, ILd as the normal-duty rating",
     ),
     _Catalogue(
         "-7", Decimal(660), Decimal(690), _RATINGS_690V, 237, "Electrical ratings, IEC, Un = 690 V"
@@ -324,7 +360,8 @@ def select_frame(
 
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings",
-        IEC ratings at Un = 400 V, 500 V and 690 V (pp. 234-238 as printed),
+        IEC ratings at Un = 400 V, 500 V and 690 V (pp. 234-238 as printed)
+        and UL ratings at Un = 575 V (pp. 240-241),
         with the deratings on pp. 243-244.
 
     Args:
