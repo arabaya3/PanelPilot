@@ -170,6 +170,8 @@ class EnclosureConstraints(BaseModel):
     #: Required: the outgoing cables' capacity depends on it.
     cable_installation_method: InstallationMethod
     supply_voltage_v: Decimal = Decimal(400)
+    #: The outgoing cables' conductor metal.
+    cable_material: ConductorMaterial = ConductorMaterial.COPPER
     #: Prospective short-circuit current at the panel, if known.
     fault_level_ka: Decimal | None = None
     preferred_vendors: list[str] = []

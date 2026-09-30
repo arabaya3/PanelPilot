@@ -15,6 +15,7 @@ import { acquireTrial } from '@/lib/session';
 type Constraints = PanelBomRequest['constraints'];
 type Placement = Constraints['placement'];
 type Method = Constraints['cable_installation_method'];
+type Material = NonNullable<Constraints['cable_material']>;
 
 const PLACEMENTS: Placement[] = [
   'single_wall',
@@ -62,6 +63,8 @@ type Enclosure = {
   method: Method;
   ambient: string;
   maxInternal: string;
+  voltage: string;
+  material: Material;
 };
 
 const INITIAL_ENCLOSURE: Enclosure = {
@@ -73,6 +76,8 @@ const INITIAL_ENCLOSURE: Enclosure = {
   method: 'C',
   ambient: '35',
   maxInternal: '50',
+  voltage: '400',
+  material: 'copper',
 };
 
 function blankLoad(key: number): Load {
@@ -147,7 +152,8 @@ export function PanelBomPanel({
           ingress_rating: enclosure.ingress.trim(),
           placement: enclosure.placement,
           cable_installation_method: enclosure.method,
-          supply_voltage_v: '400',
+          supply_voltage_v: enclosure.voltage.trim(),
+          cable_material: enclosure.material,
           fault_level_ka: null,
           preferred_vendors: [],
           ambient_temp_c: enclosure.ambient.trim(),
@@ -164,7 +170,7 @@ export function PanelBomPanel({
   }
 
   function enclosureField(
-    key: 'width' | 'height' | 'depth' | 'ingress' | 'ambient' | 'maxInternal',
+    key: 'width' | 'height' | 'depth' | 'ingress' | 'ambient' | 'maxInternal' | 'voltage',
     unit: string,
   ) {
     return (
@@ -234,6 +240,20 @@ export function PanelBomPanel({
           </Field>
           {enclosureField('ambient', '°C')}
           {enclosureField('maxInternal', '°C')}
+          {enclosureField('voltage', 'V')}
+          <Field id={`${id}-material`} label={t('bom.field.material')}>
+            <select
+              id={`${id}-material`}
+              value={enclosure.material}
+              onChange={(event) => {
+                setEnclosure((c) => ({ ...c, material: event.target.value as Material }));
+              }}
+              className="input w-full"
+            >
+              <option value="copper">{t('material.copper')}</option>
+              <option value="aluminium">{t('material.aluminium')}</option>
+            </select>
+          </Field>
         </fieldset>
 
         <fieldset className="card flex flex-col gap-4 p-4 md:p-5">

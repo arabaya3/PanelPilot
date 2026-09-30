@@ -1053,6 +1053,8 @@ export interface components {
        * @default 400
        */
       supply_voltage_v: number | string;
+      /** @default copper */
+      cable_material: components['schemas']['ConductorMaterial'];
       /** Fault Level Ka */
       fault_level_ka?: number | string | null;
       /**

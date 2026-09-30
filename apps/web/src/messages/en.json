@@ -448,7 +448,9 @@
         "dissipation": "Heat given off",
         "variableSpeed": "Variable speed (drive)",
         "power": "Motor power",
-        "start": "Start"
+        "start": "Start",
+        "voltage": "Supply voltage",
+        "material": "Cable conductor"
       },
       "placement": {
         "single_wall": "Single, against a wall",
