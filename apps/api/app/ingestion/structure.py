@@ -148,10 +148,17 @@ MIN_COLUMN_SIDE_CHARS = 6
 #: thousands of pages, each costing a full layout pass.
 MAX_PAGES = 2000
 
-#: Wall-clock budget for one document's extraction. Checked between pages, so
-#: a single pathological page can overrun it, but a document cannot hold the
-#: crawl job open page after page.
+#: Wall-clock budget for one document's extraction: this floor, or
+#: ``EXTRACTION_S_PER_PAGE`` for each of its pages if that is more. Checked
+#: between pages, so a single pathological page can overrun it, but a
+#: document cannot hold the crawl job open page after page.
+#:
+#: A flat 300 s contradicted ``MAX_PAGES``: Yaskawa's 836- and 1132-page
+#: technical references, dense with tables, were refused at pages 815 and
+#: 401. Scaling with the page count keeps the bound -- ``MAX_PAGES`` caps it
+#: at 2000 s -- and lets a real manual of that length through.
 EXTRACTION_DEADLINE_S = 300.0
+EXTRACTION_S_PER_PAGE = 1.0
 
 
 class UnreadableDocumentError(Exception):
@@ -735,6 +742,19 @@ def _flush_tables_above(
         last_page[len(into) - 1] = page
 
 
+def extraction_budget_s(page_count: int) -> float:
+    """Return how long a document of this many pages may take to read.
+
+    Args:
+        page_count: The document's pages, already capped at ``MAX_PAGES``.
+
+    Returns:
+        Seconds: ``EXTRACTION_DEADLINE_S``, or ``EXTRACTION_S_PER_PAGE`` per
+        page if that is more.
+    """
+    return max(EXTRACTION_DEADLINE_S, page_count * EXTRACTION_S_PER_PAGE)
+
+
 def _count_pages(document: Any) -> int:
     """Count a PDF's pages, refusing one with more than ``MAX_PAGES``.
 
@@ -817,7 +837,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
         UnreadableDocumentError: If the file is not a readable PDF, has no text
             layer, is laid out in columns on every page, has more
             than ``MAX_PAGES`` pages, or takes longer than
-            ``EXTRACTION_DEADLINE_S`` to read.
+            ``extraction_budget_s`` allows it to read.
 
     Pages are read one at a time, and each is reduced to its lines and its
     tables' rows before the next is opened, with pdfplumber's per-page caches
@@ -828,7 +848,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     # Everything pdfplumber does is inside the try, table extraction included:
     # any failure of the parser on this input is "not a readable PDF", which
     # the caller records per document rather than as a crashed run.
-    deadline = time.monotonic() + EXTRACTION_DEADLINE_S
+    started = time.monotonic()
     lines_by_page: dict[int, list[_Line]] = {}
     tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]] = {}
     widths: dict[int, float] = {}
@@ -836,10 +856,11 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     try:
         with pdfplumber.open(io.BytesIO(data)) as document:
             page_count = _count_pages(document)
+            budget = extraction_budget_s(page_count)
             for page in document.pages:
-                if time.monotonic() > deadline:
+                if time.monotonic() - started > budget:
                     raise UnreadableDocumentError(
-                        f"extraction passed {EXTRACTION_DEADLINE_S:g}s at page "
+                        f"extraction passed {budget:g}s at page "
                         f"{page.page_number} of {page_count}"
                     )
                 try:
