@@ -45,8 +45,8 @@ const BUILT: PanelBomResponse = {
     ],
     heat_load_w: '900',
     cooling_required_w: '659.1',
-    notes: ['Protective devices, contactors and terminals are not included.'],
-    note_keys: ['no_protective_devices'],
+    notes: ['Terminals are not included.'],
+    note_keys: ['not_included'],
   },
   sources: [RITTAL],
 };
@@ -84,6 +84,7 @@ describe('panel BOM', () => {
             current_a: '40',
             dissipation_w: '900',
             variable_speed: true,
+            start: null,
           },
         ],
         constraints: {
@@ -94,6 +95,7 @@ describe('panel BOM', () => {
           placement: 'single_wall',
           cable_installation_method: 'C',
           supply_voltage_v: '400',
+          fault_level_ka: null,
           preferred_vendors: [],
           ambient_temp_c: '35',
           max_internal_temp_c: '50',
@@ -103,6 +105,67 @@ describe('panel BOM', () => {
     expect(screen.getByText('ACS880-01-045A-3')).toBeTruthy();
     expect(screen.getByText('659 W')).toBeTruthy();
     expect(screen.getByTestId('bom-result').textContent).toContain('not included');
+  });
+
+  it('sends a starter and shows its breaker, contactors and overload relay', async () => {
+    const STARTER = { ...RITTAL, document_id: 'abb', manufacturer: 'ABB', page: 124 };
+    const buildImpl = vi.fn().mockResolvedValue({
+      kind: 'built',
+      response: {
+        result: {
+          lines: [
+            {
+              part_reference: 'T4S250 PR222MP In160',
+              description: 'M-102: circuit-breaker',
+              quantity: 1,
+              source: STARTER,
+              kind: 'breaker',
+              details: { tag: 'M-102', load: 'pump', start: 'dol', trip_a: '960' },
+            },
+            {
+              part_reference: 'A145',
+              description: 'M-102: line contactor',
+              quantity: 1,
+              source: STARTER,
+              kind: 'contactor',
+              details: { tag: 'M-102', role: 'line' },
+            },
+            {
+              part_reference: 'E200DU200',
+              description: 'M-102: overload relay',
+              quantity: 1,
+              source: STARTER,
+              kind: 'overload',
+              details: { tag: 'M-102', min_a: '60', max_a: '200' },
+            },
+          ],
+          heat_load_w: '0',
+          cooling_required_w: '0',
+          notes: [],
+          note_keys: ['not_included', 'fault_level_assumed'],
+        },
+        sources: [STARTER],
+      } satisfies PanelBomResponse,
+    });
+    renderApp(<CalcScreen buildImpl={buildImpl} acquireImpl={vi.fn().mockResolvedValue(READY)} />);
+    fireEvent.click(screen.getByTestId('calc-tab-bom'));
+    fireEvent.change(screen.getByLabelText('Tag'), { target: { value: 'M-102' } });
+    fireEvent.change(screen.getByLabelText(/^Motor power/), { target: { value: '55' } });
+    fireEvent.change(screen.getByLabelText(/^Nameplate current/), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Start'), { target: { value: 'dol' } });
+    const submit = screen.getByRole('button', { name: 'Build the BOM' });
+    await waitFor(() => {
+      expect(submit.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.click(submit);
+
+    const result = await screen.findByTestId('bom-result');
+    const sent = buildImpl.mock.calls[0]?.[0] as { request: { loads: Record<string, unknown>[] } };
+    expect(sent.request.loads[0]).toMatchObject({ power_kw: '55', current_a: '100', start: 'dol' });
+    expect(result.textContent).toContain('magnetic trip 960 A');
+    expect(result.textContent).toContain('M-102: line contactor');
+    expect(result.textContent).toContain('set within 60-200 A');
+    expect(result.textContent).toContain('50 kA');
   });
 
   it('adds and removes load rows, keeping at least one', async () => {
@@ -147,7 +210,7 @@ describe('panel BOM in Arabic', () => {
     const result = await screen.findByTestId('bom-result');
     expect(result.textContent).toContain('M-101: محوّل لـconveyor');
     expect(result.textContent).toContain('65.9 واط/كلفن');
-    expect(result.textContent).toContain('القواطع والكونتاكتورات');
+    expect(result.textContent).toContain('التيرمنالات');
     expect(result.textContent).not.toContain('drive for conveyor');
   });
 });

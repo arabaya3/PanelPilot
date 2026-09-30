@@ -141,8 +141,13 @@ Other ranges and voltages are refused.
 The panel BOM (AI-007, BE-011) builds on both: a drive for each
 variable-speed load, an outgoing cable for each load, the enclosure, and the
 heat balance from Rittal's _Enclosure and process cooling_ (IEC 60890
-effective area, k = 5.5 W/m²K). Protective devices, contactors and terminals
-have no sourced selection table and are listed as not included.
+effective area, k = 5.5 W/m²K). A load given a start type (direct on line,
+star-delta, or heavy-duty direct on line) also gets its circuit-breaker,
+contactors and overload relay from the ABB _Electrical installation handbook_
+Vol. 2 coordination tables (400 V, 50 kA, Type 2); a supply other than
+400 V ± 5 % or a fault level above 50 kA is refused. Terminals, and protection
+for drive-fed and non-motor loads, have no sourced selection table and are
+listed as not included.
 
 ### Local development notes
 
