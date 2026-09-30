@@ -291,7 +291,7 @@ def build_bom(
                         part_reference=drive.frame_reference.split(" ")[0],
                         description=f"{load.tag}: drive for {load.description}",
                         quantity=1,
-                        source=vfd_selection.ratings_citation(),
+                        source=vfd_selection.ratings_citation(constraints.supply_voltage_v),
                         kind=BomLineKind.DRIVE,
                         details={"tag": load.tag, "load": load.description},
                     )

@@ -89,6 +89,17 @@ describe('cable sizing', () => {
     expect(screen.getByTestId('calc-sources').textContent).toContain('Table 8, p. 43');
   });
 
+  it('sends aluminium when it is picked', async () => {
+    const sizeImpl = vi.fn().mockResolvedValue({ kind: 'sized', response: SIZED });
+    await renderReady(sizeImpl);
+    fill('Conductor', 'aluminium');
+    fireEvent.click(screen.getByRole('button', { name: 'Size the cable' }));
+
+    await screen.findByTestId('calc-result');
+    const sent = sizeImpl.mock.calls[0]?.[0] as { request: { conductor_material: string } };
+    expect(sent.request.conductor_material).toBe('aluminium');
+  });
+
   it('shows why an input was refused rather than a size', async () => {
     const sizeImpl = vi.fn().mockResolvedValue({
       kind: 'refused',

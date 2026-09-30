@@ -5,7 +5,7 @@ manufacturer guide or standard clause it came from in its docstring, so a
 reviewer can check the arithmetic against the paper source without reading the
 call site.
 
-Conductor sizing and derating come from ABB's *Electrical installation
+Conductor sizing and derating, and aluminium voltage drop, come from ABB's *Electrical installation
 handbook*, Vol. 2 "Electrical devices" (1SDC010001D0204, 4th ed. 2006), which
 republishes the IEC 60364-5-52 tables under ABB's own publication. Schneider's
 EIG, the guide first named for these, refuses our crawler; ABB publishes the
@@ -162,6 +162,86 @@ _AMPACITY_CU: dict[InstallationMethod, dict[str, tuple[str, str, str, str]]] = {
     },
 }  # fmt: skip
 
+#: Table 8, aluminium columns: I0 at 30 °C in the same column order as
+#: `_AMPACITY_CU`. The handbook tabulates aluminium from 2.5 mm² (from 25 mm²
+#: for method F). Read from the rendered pages: the PDF's text layer carries a
+#: few stale values under the printed ones (A1 2.5 mm² PVC 2-loaded prints 15
+#: over a hidden 14.5), and the printed value is the one reproduced here.
+_AMPACITY_AL: dict[InstallationMethod, dict[str, tuple[str, str, str, str]]] = {
+    InstallationMethod.A1: {
+        "2.5": ("20", "19", "15", "14"), "4": ("27", "25", "20", "18.5"),
+        "6": ("35", "32", "26", "24"), "10": ("48", "44", "36", "32"),
+        "16": ("64", "58", "48", "43"), "25": ("84", "76", "63", "57"),
+        "35": ("103", "94", "77", "70"), "50": ("125", "113", "93", "84"),
+        "70": ("158", "142", "118", "107"), "95": ("191", "171", "142", "129"),
+        "120": ("220", "197", "164", "149"), "150": ("253", "226", "189", "170"),
+        "185": ("288", "256", "215", "194"), "240": ("338", "300", "252", "227"),
+        "300": ("387", "344", "289", "261"),
+    },
+    InstallationMethod.A2: {
+        "2.5": ("19.5", "18", "14.5", "13.5"), "4": ("26", "24", "19.5", "17.5"),
+        "6": ("33", "31", "25", "23"), "10": ("45", "41", "33", "31"),
+        "16": ("60", "55", "44", "41"), "25": ("78", "71", "58", "53"),
+        "35": ("96", "87", "71", "65"), "50": ("115", "104", "86", "78"),
+        "70": ("145", "131", "108", "98"), "95": ("175", "157", "130", "118"),
+        "120": ("201", "180", "150", "135"), "150": ("230", "206", "172", "155"),
+        "185": ("262", "233", "195", "176"), "240": ("307", "273", "229", "207"),
+        "300": ("352", "313", "263", "237"),
+    },
+    InstallationMethod.B1: {
+        "2.5": ("25", "22", "18.5", "16.5"), "4": ("33", "29", "25", "22"),
+        "6": ("43", "38", "32", "28"), "10": ("59", "52", "44", "39"),
+        "16": ("79", "71", "60", "53"), "25": ("105", "93", "79", "70"),
+        "35": ("130", "116", "97", "86"), "50": ("157", "140", "118", "104"),
+        "70": ("200", "179", "150", "133"), "95": ("242", "217", "181", "161"),
+        "120": ("281", "251", "210", "186"),
+    },
+    InstallationMethod.B2: {
+        "2.5": ("23", "21", "17.5", "15.5"), "4": ("31", "28", "24", "21"),
+        "6": ("40", "35", "30", "27"), "10": ("54", "48", "41", "36"),
+        "16": ("72", "64", "54", "48"), "25": ("94", "84", "71", "62"),
+        "35": ("115", "103", "86", "77"), "50": ("138", "124", "104", "92"),
+        "70": ("175", "156", "131", "116"), "95": ("210", "188", "157", "139"),
+        "120": ("242", "216", "181", "160"),
+    },
+    InstallationMethod.C: {
+        "2.5": ("26", "24", "21", "18.5"), "4": ("35", "32", "28", "25"),
+        "6": ("45", "41", "36", "32"), "10": ("62", "57", "49", "44"),
+        "16": ("84", "76", "66", "59"), "25": ("101", "90", "83", "73"),
+        "35": ("126", "112", "103", "90"), "50": ("154", "136", "125", "110"),
+        "70": ("198", "174", "160", "140"), "95": ("241", "211", "195", "170"),
+        "120": ("280", "245", "226", "197"), "150": ("324", "283", "261", "227"),
+        "185": ("371", "323", "298", "259"), "240": ("439", "382", "352", "305"),
+        "300": ("508", "440", "406", "351"),
+    },
+    InstallationMethod.E: {
+        "2.5": ("28", "24", "23", "19.5"), "4": ("38", "32", "31", "26"),
+        "6": ("49", "42", "39", "33"), "10": ("67", "58", "54", "46"),
+        "16": ("91", "77", "73", "61"), "25": ("108", "97", "89", "78"),
+        "35": ("135", "120", "111", "96"), "50": ("164", "146", "135", "117"),
+        "70": ("211", "187", "173", "150"), "95": ("257", "227", "210", "183"),
+        "120": ("300", "263", "244", "212"), "150": ("346", "304", "282", "245"),
+        "185": ("397", "347", "322", "280"), "240": ("470", "409", "380", "330"),
+        "300": ("543", "471", "439", "381"),
+    },
+    InstallationMethod.F: {
+        "25": ("121", "103", "98", "84"), "35": ("150", "129", "122", "105"),
+        "50": ("184", "159", "149", "128"), "70": ("237", "206", "192", "166"),
+        "95": ("289", "253", "235", "203"), "120": ("337", "296", "273", "237"),
+        "150": ("389", "343", "316", "274"), "185": ("447", "395", "363", "315"),
+        "240": ("530", "471", "430", "375"), "300": ("613", "547", "497", "434"),
+        "400": ("740", "663", "600", "526"), "500": ("856", "770", "694", "610"),
+        "630": ("996", "899", "808", "711"),
+    },
+}  # fmt: skip
+
+_AMPACITY: dict[
+    ConductorMaterial, dict[InstallationMethod, dict[str, tuple[str, str, str, str]]]
+] = {
+    ConductorMaterial.COPPER: _AMPACITY_CU,
+    ConductorMaterial.ALUMINIUM: _AMPACITY_AL,
+}
+
 
 def _ambient_factor(ambient_temp_c: Decimal, insulation_rating_c: int) -> tuple[Decimal, int]:
     """Return k1 and the tabulated temperature it was read at.
@@ -240,16 +320,11 @@ def size_conductor(
         ValidationError: If no tabulated size carries the derated current, or
             if an argument falls outside the tables.
 
-    Aluminium, and methods D1, D2 and G, are refused: they are not transcribed
-    here, and a guessed column is the error this sourcing exists to prevent.
+    Methods D1, D2 and G are refused: they are not transcribed here, and a
+    guessed column is the error this sourcing exists to prevent.
     """
     _require_positive("design_current_a", design_current_a)
-    if conductor_material is not ConductorMaterial.COPPER:
-        raise ValidationError(
-            "conductor sizing is tabulated here for copper only; "
-            f"{conductor_material.value} is not supported"
-        )
-    table = _AMPACITY_CU.get(installation_method)
+    table = _AMPACITY[conductor_material].get(installation_method)
     if table is None:
         raise ValidationError(
             f"installation method {installation_method.value} is not supported; "
@@ -281,7 +356,7 @@ def size_conductor(
                 ],
             )
     raise ValidationError(
-        f"no tabulated copper section carries {required.quantize(Decimal('0.01'))} A "
+        f"no tabulated {conductor_material.value} section carries {required.quantize(Decimal('0.01'))} A "
         f"by method {installation_method.value}; use parallel conductors"
     )
 
@@ -306,9 +381,8 @@ def ampacity_citation(installation_method: InstallationMethod) -> Citation:
 #:
 #: Schneider Electric, *Electrical Installation Guide* 2010, Fig. G28. Keyed by
 #: copper cross-section; the guide's aluminium column is offset (its first row
-#: is 6 mm² Cu / 10 mm² Al) and is not reproduced here, because nothing yet
-#: calls this for aluminium and a mis-transcribed offset is exactly the kind of
-#: silent error this table must not carry.
+#: is 6 mm² Cu / 10 mm² Al) and is not reproduced here: aluminium is read from
+#: ABB's own tables below instead, which need no offset.
 #:
 #: Each tuple is (single-phase motor cos 0.8, single-phase motor cos 0.35,
 #: single-phase lighting, three-phase motor cos 0.8, three-phase motor
@@ -331,6 +405,130 @@ _VOLTAGE_DROP_MV_PER_A_KM: dict[Decimal, tuple[str, str, str, str, str, str]] = 
     Decimal("240"): ("0.24", "0.2", "0.19", "0.21", "0.17", "0.16"),
     Decimal("300"): ("0.21", "0.19", "0.15", "0.18", "0.16", "0.13"),
 }
+
+#: Specific voltage drop of aluminium cables, in V/(A·km), by power factor and
+#: cross-section.
+#:
+#: ABB, *Electrical installation handbook* Vol. 2, §2.2.2 Tables 8-12 (one per
+#: cos φ: 1, 0.9, 0.85, 0.8, 0.75), computed by the handbook from its Table 2
+#: resistance and reactance at 80 °C with formula (1). Each tuple is
+#: (single-core single-phase, single-core three-phase, two-core single-phase,
+#: three-core three-phase), the handbook's column order.
+_VOLTAGE_DROP_AL: dict[Decimal, dict[Decimal, tuple[str, str, str, str]]] = {
+    Decimal("1"): {
+        Decimal("1.5"): ("48.77", "42.23", "49.76", "43.09"),
+        Decimal("2.5"): ("29.36", "25.43", "29.92", "25.91"),
+        Decimal("4"): ("18.35", "15.89", "18.72", "16.21"),
+        Decimal("6"): ("12.22", "10.59", "12.46", "10.79"),
+        Decimal("10"): ("7.38", "6.39", "7.48", "6.48"),
+        Decimal("16"): ("4.65", "4.02", "4.71", "4.08"),
+        Decimal("25"): ("2.93", "2.54", "2.99", "2.59"),
+        Decimal("35"): ("2.11", "1.83", "2.15", "1.87"),
+        Decimal("50"): ("1.56", "1.35", "1.59", "1.38"),
+        Decimal("70"): ("1.08", "0.94", "1.10", "0.95"),
+        Decimal("95"): ("0.78", "0.67", "0.79", "0.69"),
+        Decimal("120"): ("0.62", "0.54", "0.63", "0.55"),
+        Decimal("150"): ("0.50", "0.44", "0.52", "0.45"),
+        Decimal("185"): ("0.41", "0.35", "0.41", "0.36"),
+        Decimal("240"): ("0.31", "0.27", "0.32", "0.28"),
+        Decimal("300"): ("0.25", "0.22", "0.26", "0.22"),
+    },
+    Decimal("0.9"): {
+        Decimal("1.5"): ("44.04", "38.14", "44.88", "38.87"),
+        Decimal("2.5"): ("26.56", "23.00", "27.02", "23.40"),
+        Decimal("4"): ("16.64", "14.41", "16.93", "14.66"),
+        Decimal("6"): ("11.12", "9.63", "11.29", "9.78"),
+        Decimal("10"): ("6.75", "5.84", "6.81", "5.89"),
+        Decimal("16"): ("4.28", "3.71", "4.31", "3.73"),
+        Decimal("25"): ("2.73", "2.36", "2.76", "2.39"),
+        Decimal("35"): ("1.99", "1.72", "2.01", "1.74"),
+        Decimal("50"): ("1.49", "1.29", "1.50", "1.30"),
+        Decimal("70"): ("1.06", "0.92", "1.06", "0.91"),
+        Decimal("95"): ("0.78", "0.68", "0.78", "0.68"),
+        Decimal("120"): ("0.64", "0.55", "0.63", "0.55"),
+        Decimal("150"): ("0.53", "0.46", "0.53", "0.46"),
+        Decimal("185"): ("0.44", "0.38", "0.44", "0.38"),
+        Decimal("240"): ("0.36", "0.31", "0.35", "0.30"),
+        Decimal("300"): ("0.30", "0.26", "0.30", "0.26"),
+    },
+    Decimal("0.85"): {
+        Decimal("1.5"): ("41.63", "36.05", "42.42", "36.73"),
+        Decimal("2.5"): ("25.12", "21.75", "25.55", "22.12"),
+        Decimal("4"): ("15.75", "13.64", "16.02", "13.87"),
+        Decimal("6"): ("10.53", "9.12", "10.69", "9.26"),
+        Decimal("10"): ("6.40", "5.54", "6.45", "5.58"),
+        Decimal("16"): ("4.07", "3.52", "4.09", "3.54"),
+        Decimal("25"): ("2.60", "2.25", "2.63", "2.27"),
+        Decimal("35"): ("1.90", "1.65", "1.91", "1.66"),
+        Decimal("50"): ("1.43", "1.24", "1.43", "1.24"),
+        Decimal("70"): ("1.02", "0.88", "1.01", "0.88"),
+        Decimal("95"): ("0.76", "0.66", "0.76", "0.65"),
+        Decimal("120"): ("0.63", "0.54", "0.61", "0.53"),
+        Decimal("150"): ("0.53", "0.46", "0.52", "0.45"),
+        Decimal("185"): ("0.44", "0.38", "0.43", "0.37"),
+        Decimal("240"): ("0.36", "0.31", "0.35", "0.30"),
+        Decimal("300"): ("0.31", "0.27", "0.30", "0.26"),
+    },
+    Decimal("0.8"): {
+        Decimal("1.5"): ("39.22", "33.96", "39.95", "34.59"),
+        Decimal("2.5"): ("23.67", "20.50", "24.07", "20.84"),
+        Decimal("4"): ("14.85", "12.86", "15.09", "13.07"),
+        Decimal("6"): ("9.94", "8.61", "10.08", "8.73"),
+        Decimal("10"): ("6.05", "5.24", "6.09", "5.27"),
+        Decimal("16"): ("3.85", "3.34", "3.87", "3.35"),
+        Decimal("25"): ("2.47", "2.14", "2.49", "2.16"),
+        Decimal("35"): ("1.81", "1.57", "1.82", "1.57"),
+        Decimal("50"): ("1.37", "1.18", "1.37", "1.18"),
+        Decimal("70"): ("0.98", "0.85", "0.97", "0.84"),
+        Decimal("95"): ("0.74", "0.64", "0.73", "0.63"),
+        Decimal("120"): ("0.61", "0.53", "0.59", "0.51"),
+        Decimal("150"): ("0.51", "0.45", "0.50", "0.44"),
+        Decimal("185"): ("0.43", "0.38", "0.42", "0.36"),
+        Decimal("240"): ("0.36", "0.31", "0.34", "0.30"),
+        Decimal("300"): ("0.31", "0.27", "0.30", "0.26"),
+    },
+    Decimal("0.75"): {
+        Decimal("1.5"): ("36.80", "31.87", "37.47", "32.45"),
+        Decimal("2.5"): ("22.23", "19.25", "22.58", "19.56"),
+        Decimal("4"): ("13.95", "12.08", "14.17", "12.27"),
+        Decimal("6"): ("9.35", "8.09", "9.47", "8.20"),
+        Decimal("10"): ("5.69", "4.93", "5.72", "4.96"),
+        Decimal("16"): ("3.63", "3.15", "3.64", "3.15"),
+        Decimal("25"): ("2.34", "2.02", "2.35", "2.03"),
+        Decimal("35"): ("1.72", "1.49", "1.72", "1.49"),
+        Decimal("50"): ("1.30", "1.13", "1.30", "1.12"),
+        Decimal("70"): ("0.94", "0.81", "0.92", "0.80"),
+        Decimal("95"): ("0.71", "0.62", "0.70", "0.60"),
+        Decimal("120"): ("0.59", "0.51", "0.57", "0.49"),
+        Decimal("150"): ("0.50", "0.43", "0.49", "0.42"),
+        Decimal("185"): ("0.42", "0.37", "0.41", "0.35"),
+        Decimal("240"): ("0.35", "0.31", "0.34", "0.29"),
+        Decimal("300"): ("0.31", "0.27", "0.29", "0.25"),
+    },
+}
+
+#: PDF page of each aluminium specific-voltage-drop table, by power factor.
+_VOLTAGE_DROP_AL_PAGES: dict[Decimal, tuple[int, str]] = {
+    Decimal("1"): (64, "§2.2.2 Table 8"),
+    Decimal("0.9"): (65, "§2.2.2 Table 9"),
+    Decimal("0.85"): (65, "§2.2.2 Table 10"),
+    Decimal("0.8"): (66, "§2.2.2 Table 11"),
+    Decimal("0.75"): (66, "§2.2.2 Table 12"),
+}
+
+#: Methods whose Table 8 pictures show single-core cables or insulated
+#: conductors; the rest show a multi-core cable. It picks the voltage-drop
+#: column, since a single-core formation has the higher reactance.
+_SINGLE_CORE_METHODS = frozenset(
+    {InstallationMethod.A1, InstallationMethod.B1, InstallationMethod.F}
+)
+
+_SCHNEIDER_G28 = Citation(
+    document_id="schneider-eig-2010",
+    document_title="Electrical Installation Guide 2010",
+    manufacturer="Schneider Electric",
+    section="Chapter G, Fig. G28",
+)
 
 #: The power factor the guide's "normal service" motor columns are tabulated at.
 _COS_PHI_NORMAL = Decimal("0.8")
@@ -391,6 +589,7 @@ def voltage_drop(
     power_factor: Decimal,
     three_phase: bool,
     load_type: LoadType = LoadType.MOTOR,
+    installation_method: InstallationMethod | None = None,
 ) -> Decimal:
     """Compute the line voltage drop over a cable run, in volts.
 
@@ -398,29 +597,36 @@ def voltage_drop(
     reactance is included for larger cross-sections.
 
     Source:
-        Schneider Electric, *Electrical Installation Guide* 2010, Chapter G,
-        Fig. G28 ("Phase-to-phase voltage drop ΔU for a circuit, in volts per
-        ampere per km"), with the method and worked examples from §3.
+        Copper: Schneider Electric, *Electrical Installation Guide* 2010,
+        Chapter G, Fig. G28 ("Phase-to-phase voltage drop ΔU for a circuit,
+        in volts per ampere per km"), with the method and worked examples
+        from §3. Aluminium: ABB, *Electrical installation handbook* Vol. 2
+        (1SDC010001D0204), §2.2.2 Tables 8-12, with ΔU = ΔUx Ib L.
 
     Args:
         current_a: Load current, in amperes.
         length_m: One-way run length, in metres.
         cross_section_mm2: Conductor cross-sectional area, in mm².
         conductor_material: Copper or aluminium.
-        power_factor: Load power factor. For a motor circuit this selects the
-            guide's column and must be exactly 0.8 (normal service) or 0.35
-            (start-up) — see below.
+        power_factor: Load power factor. For a copper motor circuit this
+            selects the guide's column and must be exactly 0.8 (normal
+            service) or 0.35 (start-up) — see below. For aluminium it selects
+            ABB's table and must be 1, 0.9, 0.85, 0.8 or 0.75.
         three_phase: ``True`` for three-phase, ``False`` for single-phase.
         load_type: Motor or lighting. Fig. G28 tabulates these separately and
             they differ; the guide's Example 2 uses the lighting column.
+            Aluminium is tabulated by power factor alone, so it is not used
+            there.
+        installation_method: Required for aluminium: whether the method's
+            cables are single-core picks the handbook's column.
 
     Returns:
         The phase-to-phase voltage drop in volts.
 
     Raises:
         ValidationError: If the current or length is not a finite positive
-            number, the cross-section is not tabulated, the conductor is not
-            copper, or the power factor is not one the guide tabulates.
+            number, the cross-section is not tabulated, or the power factor
+            is not one the table for the conductor tabulates.
 
     **Interpolation is refused, not performed.** Fig. G28 is a table of
     measured values at two power factors, not a curve — the relationship
@@ -443,13 +649,14 @@ def voltage_drop(
     _require_finite("cross_section_mm2", cross_section_mm2)
     _require_finite("power_factor", power_factor)
 
-    if conductor_material is not ConductorMaterial.COPPER:
-        # The guide's aluminium column is offset against the copper one and is
-        # not transcribed here. Refusing is honest; guessing the offset is the
-        # error this whole sourcing discipline exists to prevent.
-        raise ValidationError(
-            "voltage drop is tabulated here for copper only; "
-            f"{conductor_material.value} is not supported"
+    if conductor_material is ConductorMaterial.ALUMINIUM:
+        return _aluminium_drop(
+            current_a=current_a,
+            length_m=length_m,
+            cross_section_mm2=cross_section_mm2,
+            power_factor=power_factor,
+            three_phase=three_phase,
+            installation_method=installation_method,
         )
 
     row = _VOLTAGE_DROP_MV_PER_A_KM.get(cross_section_mm2)
@@ -475,6 +682,68 @@ def voltage_drop(
     per_a_km = Decimal(row[index])
     # The guide's formula: drop = (V/A/km) x current x length in km.
     return per_a_km * current_a * (length_m / Decimal("1000"))
+
+
+def _aluminium_drop(
+    *,
+    current_a: Decimal,
+    length_m: Decimal,
+    cross_section_mm2: Decimal,
+    power_factor: Decimal,
+    three_phase: bool,
+    installation_method: InstallationMethod | None,
+) -> Decimal:
+    """Voltage drop of an aluminium run from ABB's specific-drop tables.
+
+    Schneider's Fig. G28 aluminium column is offset against its copper one
+    and is not transcribed; ABB tabulates aluminium outright, per power
+    factor and cable formation, and that is what is read here. No power
+    factor between two tables is interpolated.
+    """
+    if installation_method is None:
+        raise ValidationError(
+            "aluminium voltage drop needs the installation method: the handbook "
+            "tabulates single-core and multi-core cables separately"
+        )
+    table = _VOLTAGE_DROP_AL.get(power_factor)
+    if table is None:
+        raise ValidationError(
+            f"power factor {power_factor} is not tabulated for aluminium; ABB gives "
+            f"{', '.join(str(c) for c in _VOLTAGE_DROP_AL)} and does not support "
+            "interpolation between them"
+        )
+    row = table.get(cross_section_mm2)
+    if row is None:
+        raise ValidationError(
+            f"{cross_section_mm2} mm2 is not a cross-section tabulated for aluminium "
+            "voltage drop (1.5-300 mm2)"
+        )
+    single_core = installation_method in _SINGLE_CORE_METHODS
+    index = (0 if single_core else 2) + (1 if three_phase else 0)
+    return Decimal(row[index]) * current_a * (length_m / Decimal("1000"))
+
+
+def voltage_drop_citation(conductor_material: ConductorMaterial, power_factor: Decimal) -> Citation:
+    """Cite the table a `voltage_drop` result was read from.
+
+    Source:
+        Copper: Schneider Electric, *Electrical Installation Guide* 2010,
+        Fig. G28. Aluminium: ABB, *Electrical installation handbook* Vol. 2
+        (1SDC010001D0204), §2.2.2 Tables 8-12.
+
+    Args:
+        conductor_material: The conductor `voltage_drop` was given.
+        power_factor: The power factor it was given.
+
+    Returns:
+        The citation.
+    """
+    if conductor_material is ConductorMaterial.ALUMINIUM and power_factor in (
+        _VOLTAGE_DROP_AL_PAGES
+    ):
+        page, section = _VOLTAGE_DROP_AL_PAGES[power_factor]
+        return abb_citation(page, section)
+    return _SCHNEIDER_G28
 
 
 def derating_factor(

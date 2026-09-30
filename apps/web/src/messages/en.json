@@ -348,7 +348,7 @@
   },
   "calc": {
     "heading": "Cable sizing",
-    "intro": "Size a copper feeder from the IEC 60364-5-52 tables as ABB's installation handbook publishes them. Every figure names the table and page it came from; an input the tables do not cover is refused, not guessed.",
+    "intro": "Size a copper or aluminium feeder from the IEC 60364-5-52 tables as ABB's installation handbook publishes them. Every figure names the table and page it came from; an input the tables do not cover is refused, not guessed.",
     "field": {
       "current": "Design current",
       "length": "Run length",
@@ -357,7 +357,8 @@
       "method": "Installation method",
       "grouped": "Circuits grouped together",
       "insulation": "Insulation",
-      "phases": "Supply"
+      "phases": "Supply",
+      "material": "Conductor"
     },
     "method": {
       "A1": "A1 — single-core in conduit in an insulated wall",
@@ -371,6 +372,10 @@
     "insulation": {
       "90": "XLPE / EPR (90 °C)",
       "70": "PVC (70 °C)"
+    },
+    "material": {
+      "copper": "Copper",
+      "aluminium": "Aluminium"
     },
     "phases": {
       "3": "Three-phase",
@@ -403,7 +408,7 @@
       "bom": "Panel BOM"
     },
     "vfd": {
-      "intro": "Pick an ABB ACS880-01 drive (400 V) for a motor. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
+      "intro": "Pick an ABB ACS880-01 drive for a motor on a 380-500 V or 660-690 V supply. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
       "field": {
         "power": "Motor power",
         "voltage": "Supply voltage",

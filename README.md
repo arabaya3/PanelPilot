@@ -130,13 +130,17 @@ field is omitted entirely when absent rather than written as zeros.
 Cable sizing (AI-005) is implemented from ABB's _Electrical installation
 handbook_ Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
 tables and prints two worked sizing examples the tests check against. It
-covers copper, PVC and XLPE/EPR, methods A1-C, E and F; everything else is
-refused, not guessed.
+covers copper and aluminium, PVC and XLPE/EPR, methods A1-C, E and F;
+everything else is refused, not guessed. Voltage drop is read from
+Schneider's Fig. G28 for copper and from the handbook's own §2.2.2 tables for
+aluminium (cos φ 1, 0.9, 0.85, 0.8, 0.75).
 
 VFD selection (AI-006) is implemented from the ABB ACS880-01 hardware
-manual (3AUA0000078093): the IEC ratings at 400 V, the temperature and
-altitude deratings, and the motor current from ABB's Technical guide No. 7.
-Other ranges and voltages are refused.
+manual (3AUA0000078093): the IEC ratings of the -3 types on 380-415 V, the
+-5 types on 415-500 V (rated at 500 V) and the -7 types on 660-690 V (rated
+at 690 V), the temperature and altitude deratings, and the motor current from
+ABB's Technical guide No. 7. Other ranges and voltages, 525-600 V among them,
+are refused.
 
 The panel BOM (AI-007, BE-011) builds on both: a drive for each
 variable-speed load, an outgoing cable for each load, the enclosure, and the

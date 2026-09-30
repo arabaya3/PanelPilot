@@ -21,6 +21,7 @@ two worked sizing examples in ABB's *Electrical installation handbook* Vol. 2
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -116,7 +117,6 @@ def test_single_phase_reads_the_two_loaded_column() -> None:
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"conductor_material": ConductorMaterial.ALUMINIUM}, "copper only"),
         ({"installation_method": InstallationMethod.D1}, "not supported"),
         ({"insulation_rating_c": 105}, "not tabulated"),
         ({"ambient_temp_c": Decimal("65"), "insulation_rating_c": 70}, "outside Table 4"),
@@ -319,19 +319,152 @@ def test_an_untabulated_power_factor_is_refused_rather_than_interpolated() -> No
         )
 
 
-def test_aluminium_is_refused_rather_than_guessed() -> None:
-    # The guide's aluminium column is offset against the copper one — its first
-    # row pairs 6 mm2 Cu with 10 mm2 Al. Transcribing that offset wrongly is a
-    # silent error in a safety number, so it is not transcribed at all.
-    with pytest.raises(ValidationError, match="copper only"):
-        cable_sizing.voltage_drop(
-            current_a=Decimal("100"),
-            length_m=Decimal("50"),
-            cross_section_mm2=Decimal("35"),
-            conductor_material=ConductorMaterial.ALUMINIUM,
-            power_factor=Decimal("0.8"),
-            three_phase=True,
-        )
+def test_aluminium_sizes_up_where_copper_would_not() -> None:
+    # Table 8, method C, XLPE, three loaded: 25 mm2 carries 119 A in copper
+    # but 90 A in aluminium, so 100 A needs 35 mm2 (112 A) of aluminium.
+    common: dict[str, Any] = {
+        "design_current_a": Decimal("100"),
+        "installation_method": InstallationMethod.C,
+        "ambient_temp_c": Decimal("30"),
+        "grouped_circuits": 1,
+        "insulation_rating_c": 90,
+    }
+    copper = cable_sizing.size_conductor(conductor_material=ConductorMaterial.COPPER, **common)
+    aluminium = cable_sizing.size_conductor(
+        conductor_material=ConductorMaterial.ALUMINIUM, **common
+    )
+    assert copper.cross_section_mm2 == Decimal("25")
+    assert aluminium.cross_section_mm2 == Decimal("35")
+    assert aluminium.derated_ampacity_a == Decimal("112")
+
+
+def test_aluminium_starts_at_the_handbooks_first_row() -> None:
+    # The handbook tabulates no 1.5 mm2 aluminium; a light load gets 2.5 mm2.
+    result = cable_sizing.size_conductor(
+        design_current_a=Decimal("5"),
+        installation_method=InstallationMethod.A1,
+        ambient_temp_c=Decimal("30"),
+        grouped_circuits=1,
+        conductor_material=ConductorMaterial.ALUMINIUM,
+        insulation_rating_c=70,
+    )
+    assert result.cross_section_mm2 == Decimal("2.5")
+
+
+@pytest.mark.parametrize("method", list(cable_sizing._AMPACITY_AL))
+def test_aluminium_columns_rise_and_stay_below_copper(method: InstallationMethod) -> None:
+    aluminium = cable_sizing._AMPACITY_AL[method]
+    copper = cable_sizing._AMPACITY_CU[method]
+    for column in range(4):
+        values = [Decimal(row[column]) for row in aluminium.values()]
+        assert values == sorted(values)
+    for section, row in aluminium.items():
+        for column in range(4):
+            assert Decimal(row[column]) < Decimal(copper[section][column])
+
+
+@pytest.mark.parametrize(
+    ("method", "expected"),
+    [
+        # Table 11 (cos 0.8), 120 mm2 three-phase: 0.53 V/(A.km) single-core,
+        # 0.51 three-core. 100 A over 100 m.
+        (InstallationMethod.F, Decimal("5.3")),
+        (InstallationMethod.C, Decimal("5.1")),
+    ],
+)
+def test_aluminium_voltage_drop_reads_the_formation_column(
+    method: InstallationMethod, expected: Decimal
+) -> None:
+    drop = cable_sizing.voltage_drop(
+        current_a=Decimal("100"),
+        length_m=Decimal("100"),
+        cross_section_mm2=Decimal("120"),
+        conductor_material=ConductorMaterial.ALUMINIUM,
+        power_factor=Decimal("0.8"),
+        three_phase=True,
+        installation_method=method,
+    )
+    assert drop == expected
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"installation_method": None}, "installation method"),
+        ({"power_factor": Decimal("0.35")}, "not tabulated for aluminium"),
+        ({"cross_section_mm2": Decimal("400")}, "not a cross-section"),
+    ],
+)
+def test_aluminium_voltage_drop_refuses_what_is_not_tabulated(
+    overrides: dict[str, object], message: str
+) -> None:
+    arguments: dict[str, Any] = {
+        "current_a": Decimal("100"),
+        "length_m": Decimal("50"),
+        "cross_section_mm2": Decimal("35"),
+        "conductor_material": ConductorMaterial.ALUMINIUM,
+        "power_factor": Decimal("0.8"),
+        "three_phase": True,
+        "installation_method": InstallationMethod.C,
+    } | overrides
+    with pytest.raises(ValidationError, match=message):
+        cable_sizing.voltage_drop(**arguments)
+
+
+#: ABB handbook §2.2.2 Table 2: aluminium r and x at 80 °C, in ohm/km, as
+#: (single-core r, single-core x, multi-core r, multi-core x).
+_ABB_TABLE_2 = {
+    "1.5": ("24.384", "0.168", "24.878", "0.118"),
+    "2.5": ("14.680", "0.156", "14.960", "0.109"),
+    "4": ("9.177", "0.143", "9.358", "0.101"),
+    "6": ("6.112", "0.135", "6.228", "0.0955"),
+    "10": ("3.691", "0.119", "3.740", "0.0861"),
+    "16": ("2.323", "0.112", "2.356", "0.0817"),
+    "25": ("1.465", "0.106", "1.494", "0.0813"),
+    "35": ("1.056", "0.101", "1.077", "0.0783"),
+    "50": ("0.779", "0.101", "0.796", "0.0779"),
+    "70": ("0.540", "0.0965", "0.550", "0.0751"),
+    "95": ("0.389", "0.0975", "0.397", "0.0762"),
+    "120": ("0.310", "0.0939", "0.315", "0.074"),
+    "150": ("0.252", "0.0928", "0.259", "0.0745"),
+    "185": ("0.203", "0.0908", "0.206", "0.0742"),
+    "240": ("0.155", "0.0902", "0.159", "0.0752"),
+    "300": ("0.125", "0.0895", "0.129", "0.075"),
+}
+
+
+def test_aluminium_voltage_drop_tables_agree_with_formula_1() -> None:
+    # The handbook computes Tables 8-12 from Table 2 with
+    # dU = k (r cos + x sin), k = 2 single-phase and sqrt 3 three-phase. Every
+    # transcribed cell must come back to within its printed rounding.
+    for cos, table in cable_sizing._VOLTAGE_DROP_AL.items():
+        sin = (1 - cos * cos).sqrt()
+        for section, row in table.items():
+            r1, x1, r3, x3 = (Decimal(v) for v in _ABB_TABLE_2[str(section)])
+            expected = [
+                2 * (r1 * cos + x1 * sin),
+                Decimal(3).sqrt() * (r1 * cos + x1 * sin),
+                2 * (r3 * cos + x3 * sin),
+                Decimal(3).sqrt() * (r3 * cos + x3 * sin),
+            ]
+            for printed, computed in zip(row, expected, strict=True):
+                assert abs(Decimal(printed) - computed) <= Decimal("0.011"), (
+                    cos,
+                    section,
+                    printed,
+                    computed,
+                )
+
+
+def test_voltage_drop_cites_the_table_it_read() -> None:
+    aluminium = cable_sizing.voltage_drop_citation(ConductorMaterial.ALUMINIUM, Decimal("0.8"))
+    copper = cable_sizing.voltage_drop_citation(ConductorMaterial.COPPER, Decimal("0.8"))
+    assert (aluminium.manufacturer, aluminium.page, aluminium.section) == (
+        "ABB",
+        66,
+        "§2.2.2 Table 11",
+    )
+    assert copper.manufacturer == "Schneider Electric"
 
 
 _VALID_DROP: dict[str, Decimal] = {
