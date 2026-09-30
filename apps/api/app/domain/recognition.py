@@ -23,7 +23,7 @@ from typing import Any
 
 import structlog
 
-from app.ai.anthropic_client import get_anthropic_client
+from app.ai.anthropic_client import get_llm_client
 from app.ai.recognition import recognise_fault_display
 from app.core.config import get_settings
 from app.core.observability import timed
@@ -97,7 +97,7 @@ def _recognise_or_none(
         with timed("recognition"):
             return recognise_fault_display(
                 _anthropic_client(),
-                model=get_settings().llm_model,
+                model=get_settings().generation_model,
                 data=data,
                 image_format=image_format,
             )
@@ -122,4 +122,4 @@ def _anthropic_client() -> Any:
     Returns:
         An Anthropic client.
     """
-    return get_anthropic_client()
+    return get_llm_client()

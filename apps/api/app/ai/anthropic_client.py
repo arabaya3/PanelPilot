@@ -34,6 +34,23 @@ LLM_CONNECT_TIMEOUT_S = 5.0
 LLM_MAX_RETRIES = 1
 
 
+def _anthropic_key() -> str:
+    """Return the Claude key, refusing when it is not configured.
+
+    Returns:
+        The key.
+
+    Raises:
+        ConfigurationError: If ``ANTHROPIC_API_KEY`` is not set.
+    """
+    from app.core.config import ConfigurationError
+
+    key = get_settings().anthropic_api_key
+    if key is None:
+        raise ConfigurationError("ANTHROPIC_API_KEY is not set")
+    return key.get_secret_value()
+
+
 @lru_cache(maxsize=1)
 def get_anthropic_client() -> Any:
     """Return the process-wide Claude client.
@@ -48,9 +65,60 @@ def get_anthropic_client() -> Any:
     import anthropic
 
     return anthropic.Anthropic(
-        api_key=get_settings().anthropic_api_key.get_secret_value(),
+        api_key=_anthropic_key(),
         # The SDK's own Timeout type: it vendors its HTTP client, and rejects
         # one built from the httpx package.
         timeout=anthropic.Timeout(LLM_READ_TIMEOUT_S, connect=LLM_CONNECT_TIMEOUT_S),
         max_retries=LLM_MAX_RETRIES,
     )
+
+
+@lru_cache(maxsize=1)
+def _openai_client() -> Any:
+    """Return the process-wide OpenAI client, answering the Claude request shape.
+
+    Returns:
+        An ``OpenAIMessages`` over an OpenAI client with the same bounds as the
+        Claude client above.
+
+    Raises:
+        ConfigurationError: If ``OPENAI_API_KEY`` is not set.
+    """
+    import openai
+
+    from app.ai.openai_transport import OpenAIMessages
+    from app.core.config import ConfigurationError
+
+    key = get_settings().openai_api_key
+    if key is None:
+        raise ConfigurationError("LLM_PROVIDER is 'openai' but OPENAI_API_KEY is not set")
+    return OpenAIMessages(
+        openai.OpenAI(
+            api_key=key.get_secret_value(),
+            timeout=openai.Timeout(LLM_READ_TIMEOUT_S, connect=LLM_CONNECT_TIMEOUT_S),
+            max_retries=LLM_MAX_RETRIES,
+        )
+    )
+
+
+def get_llm_client() -> Any:
+    """Return the client for the configured provider.
+
+    Both answer the same request shape, so a caller never branches on the
+    vendor. Refused rather than defaulted when the chosen provider has no
+    key: answering from the other vendor would be a configuration nobody made.
+
+    Returns:
+        The Claude client, or the OpenAI one behind the same interface.
+
+    Raises:
+        ConfigurationError: If the configured provider's key is not set.
+    """
+    from app.core.config import ConfigurationError
+
+    settings = get_settings()
+    if settings.llm_provider == "openai":
+        return _openai_client()
+    if settings.anthropic_api_key is None:
+        raise ConfigurationError("LLM_PROVIDER is 'anthropic' but ANTHROPIC_API_KEY is not set")
+    return get_anthropic_client()

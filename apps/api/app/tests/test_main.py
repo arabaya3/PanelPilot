@@ -36,7 +36,7 @@ REQUIRED_ENV = (
     "ENVIRONMENT",
     "DATABASE_URL",
     "OPENSEARCH_URL",
-    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
     "JWT_SECRET",
     "REDIS_URL",
 )
@@ -103,7 +103,7 @@ def test_startup_fails_loudly_when_a_required_variable_is_absent(
         "ENVIRONMENT": "prod",
         "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
         "OPENSEARCH_URL": "http://localhost:9200",
-        "ANTHROPIC_API_KEY": "k",
+        "OPENAI_API_KEY": "k",
         # 32+ bytes: staging and prod refuse to start with a forgeable
         # signing key, which is the point of this boot test.
         "JWT_SECRET": "x" * 48,
@@ -170,7 +170,7 @@ def test_service_boots_in_every_environment_from_env_vars_only(
         "ENVIRONMENT": env.value,
         "DATABASE_URL": "postgresql+psycopg://u:p@h:5432/d",
         "OPENSEARCH_URL": "http://localhost:9200",
-        "ANTHROPIC_API_KEY": "k",
+        "OPENAI_API_KEY": "k",
         # 32+ bytes: staging and prod refuse to start with a forgeable
         # signing key, which is the point of this boot test.
         "JWT_SECRET": "x" * 48,

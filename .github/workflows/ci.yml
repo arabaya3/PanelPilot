@@ -199,6 +199,7 @@ jobs:
       # Required by Settings; there is no default environment.
       ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
+      OPENAI_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
       # A throwaway index name so a run can never touch a real corpus.
       OPENSEARCH_PRODUCTION_INDEX: panelpilot-ci-production
@@ -353,6 +354,7 @@ jobs:
       # Required by Settings; there is no default environment.
       ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
+      OPENAI_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder
     steps:
       - uses: actions/checkout@v4
@@ -541,6 +543,7 @@ jobs:
       # Required by Settings; there is no default environment.
       ENVIRONMENT: dev
       ANTHROPIC_API_KEY: ci-placeholder
+      OPENAI_API_KEY: ci-placeholder
       JWT_SECRET: ci-placeholder-secret-at-least-32-bytes-long
     steps:
       - uses: actions/checkout@v4

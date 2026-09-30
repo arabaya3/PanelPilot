@@ -32,8 +32,9 @@ serves a live chat input on an anonymous trial — no signup, no form.
 - **Fault-code photo recognition** — `POST /api/v1/images`, or the camera
   button in the chat. The photo is stored and read by the vision model; a
   confident reading pre-fills the message, and anything less asks the engineer
-  to confirm. Needs a real `ANTHROPIC_API_KEY`; without one the upload still
-  succeeds and the UI asks for the code to be typed.
+  to confirm. Needs a real key for the configured provider (`OPENAI_API_KEY`
+  by default, or `ANTHROPIC_API_KEY` with `LLM_PROVIDER=anthropic`); without
+  one the upload still succeeds and the UI asks for the code to be typed.
 
 **What will not work yet, and why:**
 
@@ -87,6 +88,14 @@ Redis is logged and the request allowed — because failing closed would lock
 every trial user out at once, and the per-account quota still bounds spend.
 `RATE_LIMIT_BACKEND=memory` keeps the old single-process store for running
 without Redis._
+
+**Model provider.** OpenAI by default (`LLM_PROVIDER=openai`,
+`OPENAI_MODEL=gpt-4o-mini`, embeddings from `text-embedding-3-small` at 1024
+dimensions). Claude and Voyage remain available: `LLM_PROVIDER=anthropic` and
+`EMBEDDING_PROVIDER=voyage`. Every generation path speaks one request shape and
+`app/ai/openai_transport.py` translates it for OpenAI, so the guardrails and
+parsers are the same under either. Switching the embedding provider on an
+existing corpus is a re-index (`python -m app.worker reindex-staging`).
 
 **Retrieval is wired end to end, and rate-limited on the free tier.**
 Voyage is implemented, keyed and verified live: `embed_query` and

@@ -439,6 +439,9 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
         APP_ROOT / "ai" / "recognition.py",
         APP_ROOT / "domain" / "recognition.py",
         APP_ROOT / "ai" / "anthropic_client.py",
+        # Translates a request a guarded caller already decided to make; it
+        # decides nothing itself. See the test below that keeps it so.
+        APP_ROOT / "ai" / "openai_transport.py",
     }
 
     for module in _source_modules("domain", "ai", "api", "worker"):
@@ -472,6 +475,21 @@ def test_the_client_factory_exemption_stays_narrow() -> None:
             f"app/ai/anthropic_client.py now references {forbidden!r}. It is exempt "
             "from the cite-or-refuse rule only because it builds a client and calls "
             "nothing — move any model call to a module the guardrail rule covers."
+        )
+
+
+def test_the_openai_transport_exemption_stays_narrow() -> None:
+    """The OpenAI transport answers requests; it must never make one of its own.
+
+    Exempt from the cite-or-refuse rule because its only caller is a guarded
+    path's client. If it ever retrieved evidence or built a prompt, it would
+    be a generation path the rule could not see.
+    """
+    source = (APP_ROOT / "ai" / "openai_transport.py").read_text(encoding="utf-8")
+    for forbidden in ("search(", "retrieval", "app.domain", "prompts"):
+        assert forbidden not in source, (
+            f"app/ai/openai_transport.py now references {forbidden!r}. It is exempt "
+            "only as a translation layer; move any prompt or retrieval elsewhere."
         )
 
 

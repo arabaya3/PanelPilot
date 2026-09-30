@@ -89,27 +89,45 @@ class Settings(BaseSettings):
     opensearch_production_index: str = "panelpilot-production"
 
     # --- LLM provider ------------------------------------------------------
-    anthropic_api_key: SecretStr = Field(..., description="API key for the Claude API.")
+    # Which vendor answers. Every call site speaks one request shape (the
+    # Claude Messages API with forced tool use); `openai` routes it through
+    # `app.ai.openai_transport`, which translates both ways.
+    llm_provider: Literal["anthropic", "openai"] = "openai"
+    # Optional here and refused at use: a deployment on one provider need not
+    # hold the other's key. See `app.ai.anthropic_client.get_llm_client`.
+    anthropic_api_key: SecretStr | None = Field(
+        default=None, description="API key for the Claude API."
+    )
     llm_model: str = "claude-sonnet-5"
+    openai_api_key: SecretStr | None = Field(default=None, description="API key for OpenAI.")
+    openai_model: str = "gpt-4o-mini"
     llm_max_output_tokens: int = 4096
+
+    @property
+    def generation_model(self) -> str:
+        """The model id for the configured provider.
+
+        Returns:
+            ``OPENAI_MODEL`` under OpenAI, ``LLM_MODEL`` otherwise.
+        """
+        return self.openai_model if self.llm_provider == "openai" else self.llm_model
 
     # --- Embedding provider ------------------------------------------------
     # Separate from the LLM provider on purpose: Anthropic publishes no
-    # embeddings API, so the key above cannot serve retrieval's vector leg.
-    # Unset by default and refused at use rather than defaulted — a default
-    # provider would let a misconfigured deployment return vectors from a
-    # model the index was never built against.
-    embedding_provider: str = "voyage"
+    # embeddings API. `openai` reuses OPENAI_API_KEY; `voyage` reads its own.
+    # A provider missing its key is refused at use rather than substituted —
+    # vectors from a model the index was never built against fail silently.
+    embedding_provider: str = "openai"
     # Read from VOYAGE_API_KEY rather than a generic EMBEDDING_API_KEY: the key
     # is vendor-specific, and naming it after the vendor means a second
     # provider added later gets its own variable instead of overloading one
     # that could silently hold the wrong account's credential.
     embedding_api_key: SecretStr | None = Field(default=None, alias="VOYAGE_API_KEY")
-    # voyage-3.5 outputs 1024 dimensions, which is what
-    # `mappings.EMBEDDING_DIMENSIONS` pins — verified against the live API,
-    # not assumed. Changing to a model of a different width is a re-index,
-    # not a config edit.
-    embedding_model: str = "voyage-3.5"
+    # 1024 wide either way, which is what `mappings.EMBEDDING_DIMENSIONS`
+    # pins: text-embedding-3 models are asked for it (`dimensions`), and
+    # voyage-3.5 outputs it natively. Changing provider or model is a
+    # re-index, not a config edit.
+    embedding_model: str = "text-embedding-3-small"
 
     # --- Retrieval / guardrails --------------------------------------------
     # These seed RetrievalConfig, which is what the query path actually reads.
@@ -167,6 +185,22 @@ class Settings(BaseSettings):
     # --- Ingestion ---------------------------------------------------------
     ingestion_user_agent: str = "PanelPilotBot/0.1"
     ingestion_max_concurrency: int = 4
+
+    @model_validator(mode="after")
+    def _require_the_chosen_providers_key(self) -> Settings:
+        """Refuse to start without a key for the provider that will answer.
+
+        Returns:
+            The validated settings.
+
+        Raises:
+            ValueError: Naming the missing variable.
+        """
+        if self.llm_provider == "openai" and self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+        if self.llm_provider == "anthropic" and self.anthropic_api_key is None:
+            raise ValueError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
+        return self
 
     @model_validator(mode="after")
     def _reject_a_weak_signing_key(self) -> Settings:

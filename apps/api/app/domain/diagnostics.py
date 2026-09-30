@@ -40,7 +40,7 @@ import structlog
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session, aliased
 
-from app.ai.anthropic_client import get_anthropic_client
+from app.ai.anthropic_client import get_llm_client
 from app.ai.guardrails.cite_or_refuse import evaluate_confidence, verify_citations
 from app.ai.guardrails.confidence import is_publishable, score_confidence
 from app.ai.guardrails.refusal_text import render_refusal
@@ -168,7 +168,7 @@ def run_diagnosis(
     with timed("generation", locale=request.locale.value):
         diagnosis, decision = generate_localised_diagnosis(
             _anthropic_client(),
-            model=get_settings().llm_model,
+            model=get_settings().generation_model,
             system=SYSTEM_PROMPT,
             question=build_diagnostic_prompt(request=request, evidence=evidence),
             evidence_ids={passage.id for passage in evidence},
@@ -244,7 +244,7 @@ def _anthropic_client() -> object:
     Returns:
         An Anthropic client.
     """
-    return get_anthropic_client()
+    return get_llm_client()
 
 
 def _resolve_conversation(
