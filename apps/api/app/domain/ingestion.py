@@ -28,7 +28,6 @@ from app.ai.retrieval.mappings import INDEXED_FIELDS
 from app.core.errors import (
     AuthorizationError,
     NotFoundError,
-    NotImplementedYetError,
     ValidationError,
 )
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
@@ -44,7 +43,6 @@ from app.models.schemas.ingestion import (
     CrawlJobRequest,
     CrawlJobResponse,
     CrawlJobStatus,
-    VerificationQueuePage,
 )
 from app.models.schemas.structure import StructureMap
 from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
@@ -559,37 +557,3 @@ def _known_user_id(*, session: Session, user: CurrentUser) -> uuid.UUID | None:
 
     exists = session.query(UserRow.id).filter(UserRow.id == identifier).first()
     return identifier if exists is not None else None
-
-
-def list_verification_queue(
-    *,
-    session: Session,
-    user: CurrentUser,
-    limit: int,
-    cursor: str | None,
-) -> VerificationQueuePage:
-    """List staged documents awaiting human verification.
-
-    Args:
-        session: Open database session.
-        user: The authenticated caller; must hold the reviewer role.
-        limit: Maximum number of items to return.
-        cursor: Opaque pagination cursor from a previous page.
-
-    Returns:
-        A page of pending items, newest first.
-
-    Raises:
-        AuthorizationError: If the caller lacks the reviewer role.
-        NotImplementedYetError: Always, for now. The queue itself lives in
-            ``app.domain.verification_queue`` and is served by the
-            verification routes; this listing is not built. A 501 says so,
-            where a bare NotImplementedError answered 500.
-    """
-    del (
-        session,
-        user,
-        limit,
-        cursor,
-    )  # Unused until the listing exists; the signature is the contract.
-    raise NotImplementedYetError("the verification queue listing is not implemented yet")

@@ -215,7 +215,7 @@ def test_ingestion_cannot_reach_the_production_index_at_all() -> None:
         "resolve_index",
         "get_client",
         "promote_chunk",
-        "promote_document",
+        "retract_source",
         "IndexTarget",
     }
     # Modules whose members could be reached by attribute access after a

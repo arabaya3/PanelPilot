@@ -26,14 +26,12 @@ from app.ai.retrieval.mappings import VerificationStatus
 from app.core.errors import (
     AuthorizationError,
     NotFoundError,
-    NotImplementedYetError,
     PromotionError,
 )
 from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import STATUS_LABELED
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import (
-    PromotionRequest,
     PromotionResponse,
     VerificationDecision,
     VerificationVerdict,
@@ -44,47 +42,6 @@ from app.models.tables.ingestion import (
     RetractionAuditRow,
     VerificationItemRow,
 )
-
-
-def promote_document(
-    *,
-    session: Session,
-    reviewer: CurrentUser,
-    request: PromotionRequest,
-) -> PromotionResponse:
-    """Copy a verified staged document into the production index.
-
-    Preconditions, all enforced here rather than by the caller:
-
-    1. The reviewer holds the reviewer role and is not the ingester of record.
-    2. The staged document has passed automated verification checks.
-    3. The document carries a resolvable source citation.
-
-    The staged document is left in place; promotion writes a new production
-    revision and records an immutable audit entry naming the reviewer.
-
-    Args:
-        session: Open database session; the audit entry and index write commit
-            together.
-        reviewer: The human approving the promotion.
-        request: Staged document identifier and review notes.
-
-    Returns:
-        The promotion outcome, including the production revision written.
-
-    Raises:
-        AuthorizationError: If the reviewer lacks the reviewer role.
-        PromotionError: If any precondition above is unmet.
-        NotFoundError: If the staged document does not exist.
-        NotImplementedYetError: Always, for now. Whole-document promotion is
-            not built — ``promote_chunk`` is the implemented write path — and
-            a 501 that says so beats an anonymous 500.
-    """
-    del session, reviewer, request  # Unused until built; the signature is the contract.
-    raise NotImplementedYetError(
-        "whole-document promotion is not available; chunks are promoted by labelling "
-        "them correct: POST /api/v1/verification/items/{item_id}/label"
-    )
 
 
 def _as_uuid(value: str, *, field: str) -> uuid.UUID:
