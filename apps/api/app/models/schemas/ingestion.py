@@ -85,29 +85,6 @@ class VerificationVerdict(BaseModel):
     notes: str = ""
 
 
-class VerificationItem(BaseModel):
-    """A staged document awaiting or holding a review decision."""
-
-    id: str
-    staged_document_id: str
-    claimed_by: str | None = None
-    verdict: VerificationVerdict | None = None
-
-
-class VerificationQueuePage(BaseModel):
-    """A page of the verification queue."""
-
-    items: list[VerificationItem]
-    next_cursor: str | None = None
-
-
-class PromotionRequest(BaseModel):
-    """Request to make a verified staged document live."""
-
-    staged_document_id: str
-    notes: str = ""
-
-
 class PromotionResponse(BaseModel):
     """Result of a promotion, including the audit entry written."""
 

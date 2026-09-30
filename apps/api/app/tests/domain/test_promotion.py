@@ -559,23 +559,6 @@ def test_caller_rollback_leaves_live_content_unattributed(
     assert response.audit_id != retry.audit_id
 
 
-def test_whole_document_promotion_says_it_is_not_available_yet() -> None:
-    """A 501 with a reason, not the anonymous 500 of a bare NotImplementedError.
-
-    Needs neither database nor index: it refuses before touching either.
-    """
-    from app.core.errors import NotImplementedYetError
-    from app.models.schemas.ingestion import PromotionRequest
-
-    # And it says where promotion does happen, so the 501 is not a dead end.
-    with pytest.raises(NotImplementedYetError, match="labelling them correct"):
-        promotion_module.promote_document(
-            session=object(),  # type: ignore[arg-type]
-            reviewer=_reviewer(),
-            request=PromotionRequest(staged_document_id=CHUNK_ID),
-        )
-
-
 # --- promotion acts on the review queue's record, not on a claim --------------
 
 

@@ -344,40 +344,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/ingestion/verification-queue': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List Verification Queue */
-    get: operations['list_verification_queue_api_v1_ingestion_verification_queue_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/ingestion/promotions': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Promote Document */
-    post: operations['promote_document_api_v1_ingestion_promotions_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/api/v1/verification/queue/me': {
     parameters: {
       query?: never;
@@ -1413,31 +1379,6 @@ export interface components {
       checked_by: string;
     };
     /**
-     * PromotionRequest
-     * @description Request to make a verified staged document live.
-     */
-    PromotionRequest: {
-      /** Staged Document Id */
-      staged_document_id: string;
-      /**
-       * Notes
-       * @default
-       */
-      notes: string;
-    };
-    /**
-     * PromotionResponse
-     * @description Result of a promotion, including the audit entry written.
-     */
-    PromotionResponse: {
-      /** Production Document Id */
-      production_document_id: string;
-      /** Revision */
-      revision: number;
-      /** Audit Id */
-      audit_id: string;
-    };
-    /**
      * QueueItem
      * @description One chunk in a verifier's queue, with what the verifier checks it against.
      *
@@ -1800,25 +1741,6 @@ export interface components {
      */
     ValidationStatus: 'valid' | 'invalid' | 'incomplete';
     /**
-     * VerificationDecision
-     * @description A reviewer's decision on a staged document.
-     * @enum {string}
-     */
-    VerificationDecision: 'approved' | 'rejected';
-    /**
-     * VerificationItem
-     * @description A staged document awaiting or holding a review decision.
-     */
-    VerificationItem: {
-      /** Id */
-      id: string;
-      /** Staged Document Id */
-      staged_document_id: string;
-      /** Claimed By */
-      claimed_by?: string | null;
-      verdict?: components['schemas']['VerificationVerdict'] | null;
-    };
-    /**
      * VerificationLabel
      * @description A verifier's judgement on one chunk.
      *
@@ -1829,28 +1751,6 @@ export interface components {
      * @enum {string}
      */
     VerificationLabel: 'correct' | 'incorrect' | 'uncertain';
-    /**
-     * VerificationQueuePage
-     * @description A page of the verification queue.
-     */
-    VerificationQueuePage: {
-      /** Items */
-      items: components['schemas']['VerificationItem'][];
-      /** Next Cursor */
-      next_cursor?: string | null;
-    };
-    /**
-     * VerificationVerdict
-     * @description A reviewer's decision plus their notes.
-     */
-    VerificationVerdict: {
-      decision: components['schemas']['VerificationDecision'];
-      /**
-       * Notes
-       * @default
-       */
-      notes: string;
-    };
     /**
      * VerifiedAnswer
      * @description An answer whose every citation resolves to supplied evidence.
@@ -2456,71 +2356,6 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['CrawlJobResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_verification_queue_api_v1_ingestion_verification_queue_get: {
-    parameters: {
-      query?: {
-        limit?: number;
-        cursor?: string | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationQueuePage'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  promote_document_api_v1_ingestion_promotions_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PromotionRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PromotionResponse'];
         };
       };
       /** @description Validation Error */

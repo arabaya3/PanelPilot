@@ -62,8 +62,12 @@ between them.**
 The single write path is `app.domain.promotion.promote_chunk`, reached through
 `clear_item` — the handler behind `POST /verification/items/{id}/label`. A
 reviewer labelling a chunk **correct** publishes it in the same transaction as
-the label; any refusal rolls the label back too. `promote_document` (whole
-documents) is not built and answers 501.
+the label; any refusal rolls the label back too. Whole-document promotion
+(`promote_document`, and the document-level `/ingestion/promotions` and
+`/ingestion/verification-queue` endpoints that answered 501) was removed on
+2026-09-30: review is per chunk, so a document goes live one reviewed chunk at
+a time, and a path that published a whole document would publish chunks nobody
+labelled.
 
 How each condition above is enforced:
 
@@ -162,10 +166,10 @@ usual real needs are already served:
 
 - _Content needs to go live faster_ → shorten the review queue, or add
   automated checks that make review quicker. Not a new path.
-- _A bulk correction across many documents_ → apply it in staging, re-verify,
-  promote in a batch through `promote_document`.
-- _An urgent removal_ → retraction is a separate, audited operation on
-  production. Add it there; do not repurpose ingestion.
+- _A bulk correction across many documents_ → apply it in staging, re-crawl so
+  the corrected chunks re-enter review, and let reviewers clear them.
+- _An urgent removal_ → retraction, `app.domain.promotion.retract_source`, the
+  separate audited operation on production (built; see "As built").
 
 If you genuinely believe the invariant should change, supersede this ADR with a
 new one rather than editing it, and update
