@@ -64,7 +64,9 @@ class CableSizingRequest(BaseModel):
     grouped_circuits: int = 1
     conductor_material: ConductorMaterial = ConductorMaterial.COPPER
     insulation_rating_c: int = 90
-    power_factor: Decimal = Decimal("0.9")
+    # 0.8: the normal-service motor column of the voltage-drop table, which
+    # tabulates 0.8 and 0.35 only and refuses anything else.
+    power_factor: Decimal = Decimal("0.8")
     three_phase: bool = True
 
 
