@@ -207,8 +207,9 @@ def run_diagnosis(
         # its uncertainty banner on the way into history or gain one on the
         # way out.
         low_confidence=not is_publishable(confidence),
+        evidence=evidence,
     )
-    _persist_and_return(
+    response = _persist_and_return(
         session=session,
         user=user,
         conversation_id=conversation_id,
@@ -653,7 +654,7 @@ def _persist_and_return(
         response: What is being returned.
 
     Returns:
-        ``response``, unchanged.
+        ``response``, carrying the stored turn's id.
     """
     if is_new:
         session.add(DiagnosticSessionRow(id=conversation_id, tenant_id=_tenant_uuid(user)))
@@ -680,29 +681,33 @@ def _persist_and_return(
         or 0
     ) + 1
 
-    session.add(
-        DiagnosticTurnRow(
-            session_id=conversation_id,
-            tenant_id=_tenant_uuid(user),
-            position=position,
-            question=request.symptom,
-            answer=_stored_answer(response),
-            # Recorded rather than inferred at read time: whether a turn was
-            # refused is a fact about what happened, and deriving it from the
-            # stored text later would guess.
-            refused=response.diagnosis is None,
-            confidence=response.confidence.overall,
-            # What the engineer was shown, so the history sidebar can restore
-            # the context indicator instead of guessing it back from the prose.
-            equipment_model=(
-                response.diagnosis.equipment_model if response.diagnosis is not None else None
-            ),
-        )
+    turn = DiagnosticTurnRow(
+        # Assigned here rather than by the flush, so the id handed back does
+        # not depend on how the session populates defaults.
+        id=uuid.uuid4(),
+        session_id=conversation_id,
+        tenant_id=_tenant_uuid(user),
+        position=position,
+        question=request.symptom,
+        answer=_stored_answer(response),
+        # Recorded rather than inferred at read time: whether a turn was
+        # refused is a fact about what happened, and deriving it from the
+        # stored text later would guess.
+        refused=response.diagnosis is None,
+        confidence=response.confidence.overall,
+        # What the engineer was shown, so the history sidebar can restore
+        # the context indicator instead of guessing it back from the prose.
+        equipment_model=(
+            response.diagnosis.equipment_model if response.diagnosis is not None else None
+        ),
     )
+    session.add(turn)
     # The caller commits: one transaction per request, so a failure after this
     # point rolls the turn back rather than leaving a half-recorded exchange.
     session.flush()
-    return response
+    # The id is what a "report this answer" names; without it the flag
+    # endpoint had nothing a client could send.
+    return response.model_copy(update={"turn_id": str(turn.id)})
 
 
 def _stored_answer(response: DiagnosticResponse) -> str:
@@ -1034,6 +1039,7 @@ def _replay_turn(conversation_id: uuid.UUID, turn: DiagnosticTurnRow) -> Diagnos
             refusal_message=turn.answer,
             confidence=stored_confidence,
             low_confidence=True,
+            turn_id=str(turn.id),
         )
     else:
         response = DiagnosticResponse(
@@ -1046,6 +1052,7 @@ def _replay_turn(conversation_id: uuid.UUID, turn: DiagnosticTurnRow) -> Diagnos
             diagnosis=_replayed_diagnosis(turn.answer, turn.equipment_model),
             confidence=stored_confidence,
             low_confidence=turn.confidence < _REPLAY_CONFIDENT,
+            turn_id=str(turn.id),
         )
     return DiagnosticTurn(request=request, response=response)
 

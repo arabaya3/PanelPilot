@@ -1,14 +1,20 @@
 'use client';
 
+import type { components } from '@panelpilot/shared-types';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { DiagnosticCard } from '@/components/diagnostic-card';
 import { StateIcon } from '@/components/state-icon';
 import { useLocale } from '@/components/locale-provider';
+import type { FlagOutcome } from '@/lib/feedback';
+
+import { ReportAnswer } from './report-answer';
 
 import type { AssistantMessage, Message } from './state';
+
+type DiagnosticResponse = components['schemas']['DiagnosticResponse'];
 
 /**
  * The transcript.
@@ -27,13 +33,31 @@ import type { AssistantMessage, Message } from './state';
 export function MessageList({
   messages,
   onRetry,
+  onReport,
 }: {
   messages: Message[];
   onRetry: (id: string) => void;
+  /** Report an answer as wrong. Absent, answers carry no report control. */
+  onReport?: (response: DiagnosticResponse, reason: string) => Promise<FlagOutcome>;
 }) {
   const t = useTranslations('chat');
   const { direction } = useLocale();
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Kept here rather than in each turn: the list is windowed, so a turn
+  // scrolled out of view unmounts, and a report it had sent would otherwise
+  // come back as a button inviting a second one.
+  const [reported, setReported] = useState<ReadonlySet<string>>(() => new Set());
+  const report = useCallback(
+    async (response: DiagnosticResponse, reason: string): Promise<FlagOutcome> => {
+      if (!onReport || !response.turn_id) return { kind: 'failed' };
+      const turnId = response.turn_id;
+      const outcome = await onReport(response, reason);
+      if (outcome.kind === 'sent') setReported((current) => new Set(current).add(turnId));
+      return outcome;
+    },
+    [onReport],
+  );
 
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -107,7 +131,12 @@ export function MessageList({
               {message.role === 'user' ? (
                 <UserTurn text={message.text} />
               ) : (
-                <AssistantTurn message={message} onRetry={onRetry} />
+                <AssistantTurn
+                  message={message}
+                  onRetry={onRetry}
+                  {...(onReport ? { onReport: report } : {})}
+                  reported={reported}
+                />
               )}
             </div>
           );
@@ -148,9 +177,13 @@ function UserTurn({ text }: { text: string }) {
 function AssistantTurn({
   message,
   onRetry,
+  onReport,
+  reported,
 }: {
   message: AssistantMessage;
   onRetry: (id: string) => void;
+  onReport?: (response: DiagnosticResponse, reason: string) => Promise<FlagOutcome>;
+  reported: ReadonlySet<string>;
 }) {
   const t = useTranslations('chat');
 
@@ -208,6 +241,20 @@ function AssistantTurn({
     );
   }
 
-  if (!message.response) return null;
-  return <DiagnosticCard response={message.response} messageId={message.id} />;
+  const { response } = message;
+  if (!response) return null;
+  // Only a stored turn can be reported: one that failed before it was
+  // recorded has no id for a reviewer to find.
+  const turnId = response.turn_id;
+  return (
+    <div>
+      <DiagnosticCard response={response} messageId={message.id} />
+      {onReport && turnId ? (
+        <ReportAnswer
+          sent={reported.has(turnId)}
+          onReport={(reason) => onReport(response, reason)}
+        />
+      ) : null}
+    </div>
+  );
 }

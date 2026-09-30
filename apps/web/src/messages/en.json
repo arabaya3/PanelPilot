@@ -276,5 +276,19 @@
       "unavailable": "Search is unavailable right now. Try again in a moment.",
       "failed": "The search did not complete. Try again."
     }
+  },
+  "report": {
+    "open": "Report a problem with this answer",
+    "reasonLabel": "What is wrong? (optional)",
+    "reasonPlaceholder": "e.g. the parameter number does not match my manual",
+    "send": "Send report",
+    "sending": "Sending…",
+    "cancel": "Cancel",
+    "sent": "Thanks — a reviewer will check this answer against its sources.",
+    "error": {
+      "unauthorized": "Your session had expired. It has been renewed — send the report again.",
+      "not-found": "This answer can no longer be reported.",
+      "failed": "The report could not be sent. Try again."
+    }
   }
 }

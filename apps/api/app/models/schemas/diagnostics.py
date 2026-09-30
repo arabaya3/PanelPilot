@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.models.schemas.locale import Locale
 from app.models.schemas.responses import NonBlankText, StructuredDiagnosis
-from app.models.schemas.search import Citation
+from app.models.schemas.search import Citation, RetrievedPassage
 
 #: Longest question accepted. Generous — a pasted fault log is a legitimate
 #: question — but bounded: the text goes into an embedding call, a model
@@ -102,6 +102,14 @@ class DiagnosticResponse(BaseModel):
         low_confidence: Whether to show the uncertainty banner.
         refusal_message: Rendered refusal text, present exactly when
             ``diagnosis`` is absent.
+        turn_id: The stored turn, so the engineer can report this answer as
+            wrong (``POST /feedback/flag``). ``None`` only before it is stored.
+        evidence: The passages the answer was drawn from -- the ones that
+            cleared the confidence threshold and were offered for citation.
+            Sent back with a flag, so a reviewer judges the answer against the
+            text it was built on, not whatever the index returns by then.
+            Empty on a refusal, and on a turn replayed from history, whose
+            passages were not stored.
     """
 
     session_id: str
@@ -110,6 +118,8 @@ class DiagnosticResponse(BaseModel):
     confidence: ConfidenceBreakdown
     low_confidence: bool
     refusal_message: str | None = None
+    turn_id: str | None = None
+    evidence: list[RetrievedPassage] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _answers_or_refuses(self) -> DiagnosticResponse:

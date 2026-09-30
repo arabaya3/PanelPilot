@@ -856,6 +856,14 @@ export interface components {
      *         low_confidence: Whether to show the uncertainty banner.
      *         refusal_message: Rendered refusal text, present exactly when
      *             ``diagnosis`` is absent.
+     *         turn_id: The stored turn, so the engineer can report this answer as
+     *             wrong (``POST /feedback/flag``). ``None`` only before it is stored.
+     *         evidence: The passages the answer was drawn from -- the ones that
+     *             cleared the confidence threshold and were offered for citation.
+     *             Sent back with a flag, so a reviewer judges the answer against the
+     *             text it was built on, not whatever the index returns by then.
+     *             Empty on a refusal, and on a turn replayed from history, whose
+     *             passages were not stored.
      */
     DiagnosticResponse: {
       /** Session Id */
@@ -867,6 +875,10 @@ export interface components {
       low_confidence: boolean;
       /** Refusal Message */
       refusal_message?: string | null;
+      /** Turn Id */
+      turn_id?: string | null;
+      /** Evidence */
+      evidence?: components['schemas']['RetrievedPassage'][];
     };
     /**
      * DiagnosticSession
