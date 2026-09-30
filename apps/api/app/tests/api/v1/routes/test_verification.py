@@ -25,7 +25,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import verification as verification_route
-from app.core.errors import NotFoundError, ValidationError, install_exception_handlers
+from app.core.errors import (
+    NotFoundError,
+    PromotionError,
+    ValidationError,
+    install_exception_handlers,
+)
 from app.domain import corpus_maintenance as maintenance_domain
 from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
@@ -561,3 +566,48 @@ def test_a_refused_dismissal_maps_to_its_status_and_is_not_committed(
 
     assert response.status_code == code
     assert getattr(sessions[0], "committed", False) is False
+
+
+def test_a_retraction_is_committed_and_returned(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions: list[object] = []
+
+    def _retract(**kwargs: object) -> StaleDocumentRow:
+        sessions.append(kwargs["session"])
+        assert (kwargs["document_id"], kwargs["note"]) == (_FLAG_ID, "withdrawn by ABB")
+        return _stale_row(status="retracted", reviewed_at=NOW, review_note="withdrawn by ABB")
+
+    monkeypatch.setattr(maintenance_domain, "retract_stale_document", _retract)
+
+    response = lead_client.post(
+        f"/verification/stale-documents/{_FLAG_ID}/retract", json={"note": "withdrawn by ABB"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "retracted"
+    assert getattr(sessions[0], "committed", False) is True
+
+
+def test_a_failed_retraction_is_a_conflict_and_is_not_committed(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions: list[object] = []
+
+    def _retract(**kwargs: object) -> StaleDocumentRow:
+        sessions.append(kwargs["session"])
+        raise PromotionError("retraction failed; retry it")
+
+    monkeypatch.setattr(maintenance_domain, "retract_stale_document", _retract)
+
+    response = lead_client.post(
+        f"/verification/stale-documents/{_FLAG_ID}/retract", json={"note": "x"}
+    )
+
+    assert response.status_code == 409
+    assert getattr(sessions[0], "committed", False) is False
+
+
+def test_an_engineer_cannot_retract(client: TestClient) -> None:
+    response = client.post(f"/verification/stale-documents/{_FLAG_ID}/retract", json={"note": "x"})
+    assert response.status_code == 403

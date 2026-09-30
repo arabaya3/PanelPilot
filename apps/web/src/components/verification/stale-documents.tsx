@@ -12,14 +12,18 @@ type StaleDocument = components['schemas']['StaleDocument'];
  * Live documents whose source changed or withdrew them since they were verified.
  *
  * Flags, not retractions: every passage here is still being served. A
- * reviewer reads the source as it is now and either leaves the flag open,
- * for re-verification, or dismisses it with a note saying why the change does
- * not matter. The note is required -- a dismissal nobody can explain later is
- * indistinguishable from one made to empty a list.
+ * reviewer reads the source as it is now and decides, with a note either way:
+ * dismiss (the change does not matter) or retract (take the document's
+ * passages out of live answers now). The note is required -- a decision
+ * nobody can explain later is indistinguishable from one made to empty a list.
+ *
+ * Retraction asks for confirmation first. It is the one action on this page
+ * that changes what engineers are told, immediately.
  */
 export function StaleDocuments({
   items,
   onDismiss,
+  onRetract,
 }: {
   items: StaleDocument[];
   /**
@@ -28,6 +32,8 @@ export function StaleDocuments({
    * this component is remounted and the count beside the tab stays true.
    */
   onDismiss: (id: string, note: string) => Promise<void>;
+  /** The same contract, for a retraction. */
+  onRetract: (id: string, note: string) => Promise<void>;
 }) {
   const t = useTranslations('stale');
 
@@ -43,7 +49,11 @@ export function StaleDocuments({
     <ul className="flex flex-col gap-4" data-testid="stale-list">
       {items.map((item) => (
         <li key={item.id}>
-          <StaleCard item={item} onDismiss={(note) => onDismiss(item.id, note)} />
+          <StaleCard
+            item={item}
+            onDismiss={(note) => onDismiss(item.id, note)}
+            onRetract={(note) => onRetract(item.id, note)}
+          />
         </li>
       ))}
     </ul>
@@ -53,26 +63,36 @@ export function StaleDocuments({
 function StaleCard({
   item,
   onDismiss,
+  onRetract,
 }: {
   item: StaleDocument;
   onDismiss: (note: string) => Promise<void>;
+  onRetract: (note: string) => Promise<void>;
 }) {
   const t = useTranslations('stale');
   const { locale } = useLocale();
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'dismiss' | 'retract' | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noteId = useId();
+  const warningId = useId();
   const withdrawn = item.reason === 'withdrawn';
+  const noted = note.trim() !== '';
 
-  async function submit() {
-    setBusy(true);
+  async function decide(action: 'dismiss' | 'retract') {
+    setBusy(action);
     setError(null);
     try {
-      await onDismiss(note.trim());
+      await (action === 'dismiss' ? onDismiss : onRetract)(note.trim());
     } catch (exc) {
-      setError(exc instanceof Error && exc.message ? exc.message : t('dismissFailed'));
-      setBusy(false);
+      setError(
+        exc instanceof Error && exc.message
+          ? exc.message
+          : t(action === 'dismiss' ? 'dismissFailed' : 'retractFailed'),
+      );
+      setBusy(null);
+      setConfirming(false);
     }
   }
 
@@ -116,7 +136,7 @@ function StaleCard({
         className="mt-4 flex flex-col gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          void submit();
+          void decide('dismiss');
         }}
       >
         <label htmlFor={noteId} className="text-sm font-medium text-text">
@@ -137,15 +157,57 @@ function StaleCard({
             {error}
           </p>
         )}
-        <div>
-          <button
-            type="submit"
-            disabled={busy || note.trim() === ''}
-            className="btn btn-sm btn-secondary"
+        {confirming ? (
+          <div
+            role="group"
+            aria-describedby={warningId}
+            className="flex flex-col gap-3 rounded-md border border-severity-critical bg-severity-critical-surface p-3"
           >
-            {busy ? t('dismissing') : t('dismiss')}
-          </button>
-        </div>
+            <p id={warningId} className="text-sm text-severity-critical">
+              {t('retractWarning')}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy !== null || !noted}
+                onClick={() => void decide('retract')}
+                className="btn btn-sm btn-danger"
+              >
+                {busy === 'retract' ? t('retracting') : t('confirmRetract')}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => {
+                  setConfirming(false);
+                }}
+                className="btn btn-sm btn-ghost"
+              >
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              disabled={busy !== null || !noted}
+              className="btn btn-sm btn-secondary"
+            >
+              {busy === 'dismiss' ? t('dismissing') : t('dismiss')}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null || !noted}
+              onClick={() => {
+                setConfirming(true);
+              }}
+              className="btn btn-sm btn-danger"
+            >
+              {t('retract')}
+            </button>
+          </div>
+        )}
       </form>
     </article>
   );

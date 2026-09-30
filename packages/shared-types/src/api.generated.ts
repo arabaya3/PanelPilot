@@ -490,6 +490,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/verification/stale-documents/{document_id}/retract': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Retract Stale Document
+     * @description Take the flagged document's passages out of live answers, and say why.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     *         NotFoundError: 404 if there is no such flag, or nothing live cites it.
+     *         ValidationError: 422 if the note is blank or the flag is already closed.
+     *         PromotionError: 409 if the production delete failed; nothing was recorded.
+     */
+    post: operations['retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/feedback/flag': {
     parameters: {
       query?: never;
@@ -2572,7 +2598,7 @@ export interface operations {
   list_stale_documents_api_v1_verification_stale_documents_get: {
     parameters: {
       query?: {
-        status?: 'open' | 'dismissed' | 'cleared';
+        status?: 'open' | 'dismissed' | 'retracted' | 'cleared';
       };
       header?: never;
       path?: never;
@@ -2601,6 +2627,41 @@ export interface operations {
     };
   };
   dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DismissStaleRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocument'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post: {
     parameters: {
       query?: never;
       header?: never;

@@ -94,6 +94,23 @@ Two maintenance jobs keep the corpus honest without a second write path:
   down is reported as unchecked, not stale. It exits 1 when anything is
   flagged, so a scheduler's failure alert is the call for a reviewer.
 
+Retraction, the "urgent removal" this ADR anticipates, is built as the second
+operation of the same module: `app.domain.promotion.retract_source`. A reviewer
+reaches it from a stale-document flag on the review page ("Retract from live
+answers", after a confirmation). It:
+
+- requires the reviewer role and a reason. Four-eyes does not apply: removing a
+  passage makes the assistant refuse rather than answer wrongly, the direction
+  the system already fails safe in;
+- writes an append-only `retraction_audits` row naming the reviewer, the reason,
+  every chunk removed and every revision (content hash) they carried, flushed
+  before the production delete, as promotion flushes its audit first;
+- deletes exactly those chunks, by id, in one bulk request. Staging keeps its
+  copy;
+- leaves a standing refusal: `promote_chunk` will not publish a chunk of a
+  revision a retraction listed. A new revision at the same URL can still be
+  reviewed and published.
+
 ## Consequences
 
 **What this buys us**

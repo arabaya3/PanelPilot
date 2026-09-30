@@ -47,6 +47,9 @@ DELIBERATELY_UNSCOPED = {
     # Which live documents their manufacturer has since changed or withdrawn:
     # a fact about the shared corpus, the same for every customer.
     "stale_documents",
+    # Who took a document out of live answers, and why: an audit of the
+    # shared corpus, like promotion_audits.
+    "retraction_audits",
 }
 
 

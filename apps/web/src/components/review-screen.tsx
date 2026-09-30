@@ -14,6 +14,7 @@ import {
   dismissStale,
   fetchQueue,
   fetchStale,
+  retractStale,
   sourceUrlFor,
   submitLabel as submitLabelRequest,
   type QueueOutcome,
@@ -41,18 +42,37 @@ export function ReviewScreen({
   submitLabelImpl = submitLabelRequest,
   fetchStaleImpl = fetchStale,
   dismissStaleImpl = dismissStale,
+  retractStaleImpl = retractStale,
   signInImpl,
 }: {
   fetchQueueImpl?: typeof fetchQueue;
   submitLabelImpl?: typeof submitLabelRequest;
   fetchStaleImpl?: typeof fetchStale;
   dismissStaleImpl?: typeof dismissStale;
+  retractStaleImpl?: typeof retractStale;
   signInImpl?: typeof signIn;
 }) {
   const t = useTranslations('review');
   const tv = useTranslations('verification');
   const [phase, setPhase] = useState<Phase>({ kind: 'signed-out' });
   const [tab, setTab] = useState<'queue' | 'stale'>('queue');
+
+  // A decided flag leaves the open list, whichever way it was decided. The
+  // list lives here rather than in the component that shows it, so it stays
+  // true across a tab switch and in the count beside the tab.
+  const removeFlag = useCallback((id: string) => {
+    setPhase((current) =>
+      current.kind === 'loaded' && current.stale.kind === 'loaded'
+        ? {
+            ...current,
+            stale: {
+              ...current.stale,
+              items: current.stale.items.filter((item) => item.id !== id),
+            },
+          }
+        : current,
+    );
+  }, []);
   const tabsId = useId();
 
   const load = useCallback(
@@ -231,17 +251,11 @@ export function ReviewScreen({
                 items={phase.stale.items}
                 onDismiss={async (id, note) => {
                   await dismissStaleImpl({ token: phase.token, id, note });
-                  setPhase((current) =>
-                    current.kind === 'loaded' && current.stale.kind === 'loaded'
-                      ? {
-                          ...current,
-                          stale: {
-                            ...current.stale,
-                            items: current.stale.items.filter((item) => item.id !== id),
-                          },
-                        }
-                      : current,
-                  );
+                  removeFlag(id);
+                }}
+                onRetract={async (id, note) => {
+                  await retractStaleImpl({ token: phase.token, id, note });
+                  removeFlag(id);
                 }}
               />
             ) : (

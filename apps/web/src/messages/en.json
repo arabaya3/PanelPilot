@@ -237,10 +237,16 @@
     "since": "Since {date}",
     "supersededHelp": "The source now serves a different file from the one verified. Its passages are still live. Compare the two; if the change does not affect them, dismiss this with a note.",
     "withdrawnHelp": "The source no longer serves this document (404 or 410). Its passages are still live until someone retracts them.",
-    "noteLabel": "Why the change does not matter",
+    "noteLabel": "Your note (required for either decision)",
     "notePlaceholder": "e.g. Cover page and revision date only; ratings unchanged.",
     "dismiss": "Dismiss",
     "dismissing": "Dismissing…",
-    "dismissFailed": "The dismissal was not saved. Try again."
+    "dismissFailed": "The dismissal was not saved. Try again.",
+    "retract": "Retract from live answers",
+    "confirmRetract": "Yes, retract now",
+    "retracting": "Retracting…",
+    "cancel": "Cancel",
+    "retractFailed": "Nothing was retracted. Try again.",
+    "retractWarning": "Every passage from this document leaves live answers now. Engineers asking about it will be told there is no verified source, until a new revision is reviewed. This is recorded with your name and note."
   }
 }
