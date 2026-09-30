@@ -586,6 +586,56 @@ def test_ingest_files_refuses_bad_arguments(
     assert "allow-list" in capsys.readouterr().err
 
 
+def test_restage_purges_then_stages_again(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import corpus_maintenance
+    from app.domain import ingestion as ingestion_domain
+    from app.domain.corpus_maintenance import PurgeReport
+    from app.models.schemas.ingestion import CrawlJobResponse, CrawlJobStatus
+
+    class _Session:
+        def commit(self) -> None: ...
+
+        def rollback(self) -> None: ...
+
+        def close(self) -> None: ...
+
+    report = PurgeReport(
+        purged=["https://a/1.pdf"],
+        chunks=9,
+        kept={"https://a/2.pdf": "a reviewer has decided on it"},
+        folders={"/data/schneider"},
+    )
+    calls: list[str] = []
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(corpus_maintenance, "purge_unreviewed", lambda **_k: report)
+
+    def create(**_kwargs: object) -> CrawlJobResponse:
+        calls.append("crawl")
+        return CrawlJobResponse(id="j", status=CrawlJobStatus.QUEUED)
+
+    def ingest(**kwargs: object) -> int:
+        calls.append(f"files {kwargs['folder']}")
+        return 5
+
+    monkeypatch.setattr(ingestion_domain, "create_crawl_job", create)
+    monkeypatch.setattr(
+        ingestion_domain,
+        "run_crawl_job",
+        lambda **_k: CrawlJobResponse(id="j", status=CrawlJobStatus.SUCCEEDED),
+    )
+    monkeypatch.setattr(ingestion_domain, "ingest_local_files", ingest)
+
+    assert jobs.run_restage(["abb"]) == 0
+    out = capsys.readouterr().out
+    assert "removed 1 unreviewed documents (9 chunks)" in out
+    assert "kept https://a/2.pdf: a reviewer has decided on it" in out
+    assert calls == ["crawl", "files /data/schneider"]
+    assert jobs.run_restage([]) == 2
+
+
 def test_backfill_titles_reports_what_it_named(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

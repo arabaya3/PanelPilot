@@ -38,6 +38,7 @@ from app.ai.retrieval.client import (
     published_sources,
     restage_vectors,
     retitle_staged,
+    unstage_document,
 )
 from app.ai.retrieval.embedding import embed_documents
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
@@ -47,7 +48,13 @@ from app.ingestion.crawler import DocumentCheck, check_documents
 from app.ingestion.known_documents import KNOWN_DOCUMENTS
 from app.ingestion.sources import CRAWLERS, crawler_for
 from app.models.schemas.auth import CurrentUser, Role
-from app.models.tables.ingestion import StaleDocumentRow
+from app.models.tables.ingestion import (
+    CrawlJobRow,
+    PromotionAuditRow,
+    StagedDocumentRow,
+    StaleDocumentRow,
+    VerificationItemRow,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -106,6 +113,86 @@ def backfill_titles() -> int:
     count = retitle_staged({document.url: document.title for document in KNOWN_DOCUMENTS})
     logger.info("backfill_titles.done", retitled=count)
     return count
+
+
+@dataclass
+class PurgeReport:
+    """What ``purge_unreviewed`` removed, and what it left alone.
+
+    Attributes:
+        purged: Source URLs whose staged copy was removed.
+        chunks: How many staged chunks went with them.
+        kept: Source URLs left as they are, with the reason.
+        folders: Folders the removed documents were read from by hand, to be
+            read again with ``ingest-files``; a crawl cannot fetch them.
+    """
+
+    purged: list[str] = field(default_factory=list)
+    chunks: int = 0
+    kept: dict[str, str] = field(default_factory=dict)
+    folders: set[str] = field(default_factory=set)
+
+
+def purge_unreviewed(*, session: Session, source_id: str) -> PurgeReport:
+    """Remove one source's staged documents that no reviewer has touched.
+
+    So an improved extractor can read them again: a crawl skips a document
+    whose hash is already staged, and the old chunks' section paths are the
+    old extractor's. Only documents with no decision on any item and nothing
+    promoted are removed -- a reviewer's work is never discarded -- and only
+    from staging.
+
+    Args:
+        session: Open database session. The caller commits.
+        source_id: The allow-listed source.
+
+    Returns:
+        What was removed and what was kept.
+
+    Raises:
+        ValidationError: If the source is not on the allow-list.
+    """
+    if crawler_for(source_id) is None:
+        raise ValidationError(f"source {source_id!r} is not on the allow-list")
+    report = PurgeReport()
+    documents = session.execute(
+        select(StagedDocumentRow, CrawlJobRow)
+        .join(CrawlJobRow, StagedDocumentRow.crawl_job_id == CrawlJobRow.id)
+        .where(CrawlJobRow.source_id == source_id)
+    ).all()
+    for document, job in documents:
+        promoted = session.execute(
+            select(PromotionAuditRow.id).where(PromotionAuditRow.staged_document_id == document.id)
+        ).first()
+        if promoted is not None:
+            report.kept[document.source_url] = "has promoted passages"
+            continue
+        decided = session.execute(
+            select(VerificationItemRow.id).where(
+                VerificationItemRow.staged_document_id == document.id,
+                (VerificationItemRow.status != "pending")
+                | VerificationItemRow.decision.is_not(None),
+            )
+        ).first()
+        if decided is not None:
+            report.kept[document.source_url] = "a reviewer has decided on it"
+            continue
+        report.chunks += unstage_document(content_hash=document.content_hash)
+        folder = (job.request or {}).get("local_folder")
+        if folder:
+            report.folders.add(str(folder))
+        # Its queue items go with it (ON DELETE CASCADE).
+        session.delete(document)
+        report.purged.append(document.source_url)
+    session.flush()
+    logger.info(
+        "purge_unreviewed.done",
+        source_id=source_id,
+        purged=len(report.purged),
+        chunks=report.chunks,
+        kept=len(report.kept),
+    )
+    return report
 
 
 @dataclass

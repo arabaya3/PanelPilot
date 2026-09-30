@@ -22,6 +22,7 @@ from app.domain.corpus_maintenance import (
     dismiss_stale_document,
     expire_stale_sources,
     list_stale_documents,
+    purge_unreviewed,
     reindex_staging,
     retract_stale_document,
 )
@@ -268,6 +269,89 @@ def test_each_source_is_asked_about_its_own_documents(session: Session) -> None:
     assert report.unchecked == {"https://example.com/x.pdf": "not-allow-listed"}
 
 
+# --- purge_unreviewed ----------------------------------------------------------
+
+
+def _staged(session: Session, url: str, digest: str, *, local: str | None = None) -> Any:
+    from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
+
+    request: dict[str, Any] = {"source_id": "schneider"}
+    if local:
+        request["local_folder"] = local
+    job = CrawlJobRow(source_id="schneider", status="succeeded", request=request)
+    session.add(job)
+    session.flush()
+    document = StagedDocumentRow(crawl_job_id=job.id, source_url=url, content_hash=digest)
+    session.add(document)
+    session.flush()
+    return document
+
+
+def _item(session: Session, document: Any, chunk: str, **fields: Any) -> None:
+    from app.models.tables.ingestion import VerificationItemRow
+
+    session.add(VerificationItemRow(staged_document_id=document.id, chunk_id=chunk, **fields))
+    session.flush()
+
+
+@requires_postgres
+def test_only_documents_no_reviewer_touched_are_purged(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import corpus_maintenance
+    from app.models.tables.ingestion import PromotionAuditRow, StagedDocumentRow
+    from app.models.tables.user import User as UserRow
+
+    unstaged: list[str] = []
+
+    def unstage(*, content_hash: str) -> int:
+        unstaged.append(content_hash)
+        return 3
+
+    monkeypatch.setattr(corpus_maintenance, "unstage_document", unstage)
+    tag = uuid.uuid4().hex[:8]
+    fresh = _staged(session, f"https://x/{tag}/fresh.pdf", f"{tag}fresh", local="/data/s")
+    _item(session, fresh, f"{tag}-f1")
+    decided = _staged(session, f"https://x/{tag}/decided.pdf", f"{tag}decided")
+    _item(session, decided, f"{tag}-d1", status="verified", decision="approve")
+    promoted = _staged(session, f"https://x/{tag}/promoted.pdf", f"{tag}promoted")
+    from app.models.tables.tenant import TenantRow
+
+    tenant = TenantRow(slug=f"purge-{tag}", name="Purge tests")
+    session.add(tenant)
+    session.flush()
+    reviewer = UserRow(email=f"{tag}@example.com", tenant_id=tenant.id)
+    session.add(reviewer)
+    session.flush()
+    session.add(
+        PromotionAuditRow(
+            staged_document_id=promoted.id,
+            reviewer_id=reviewer.id,
+            production_document_id=f"{tag}-p1",
+            revision=1,
+        )
+    )
+    session.flush()
+
+    report = purge_unreviewed(session=session, source_id="schneider")
+
+    assert f"https://x/{tag}/fresh.pdf" in report.purged
+    assert f"{tag}fresh" in unstaged
+    assert f"{tag}decided" not in unstaged
+    assert f"{tag}promoted" not in unstaged
+    assert report.kept[f"https://x/{tag}/decided.pdf"] == "a reviewer has decided on it"
+    assert report.kept[f"https://x/{tag}/promoted.pdf"] == "has promoted passages"
+    assert "/data/s" in report.folders
+    remaining = {row.content_hash for row in session.scalars(select(StagedDocumentRow))}
+    assert f"{tag}fresh" not in remaining
+    assert {f"{tag}decided", f"{tag}promoted"} <= remaining
+
+
+def test_purging_a_source_off_the_allow_list_is_refused() -> None:
+    with pytest.raises(ValidationError, match="allow-list"):
+        purge_unreviewed(session=None, source_id="nobody")  # type: ignore[arg-type]
+
+
 # --- against a real index -----------------------------------------------------
 
 
@@ -375,6 +459,28 @@ def test_backfill_names_curated_staged_chunks_and_nothing_else(
     assert client.get(index=staging, id="titled")["_source"]["document_title"] == "Already titled"
     # Production changes only through promotion.
     assert "document_title" not in client.get(index=production, id="old")["_source"]
+
+
+@requires_opensearch
+def test_unstaging_removes_one_documents_chunks_from_staging_only(
+    indices: tuple[str, str],
+) -> None:
+    from app.ai.retrieval.client import get_client, unstage_document
+
+    staging, production = indices
+    client = get_client()
+    old = _chunk(brand="ABB", url=MANUAL, content_hash="old", content="old reading")
+    other = _chunk(brand="ABB", url=GUIDE, content_hash="other", content="other manual")
+    client.index(index=staging, id="old-1", body=old, refresh=True)
+    client.index(index=staging, id="old-2", body=old, refresh=True)
+    client.index(index=staging, id="other-1", body=other, refresh=True)
+    client.index(index=production, id="old-1", body=old, refresh=True)
+
+    assert unstage_document(content_hash="old") == 2
+
+    assert not client.exists(index=staging, id="old-1")
+    assert client.exists(index=staging, id="other-1")
+    assert client.exists(index=production, id="old-1")
 
 
 @requires_opensearch
