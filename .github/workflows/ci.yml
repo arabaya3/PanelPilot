@@ -45,7 +45,7 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+        run: scripts/install-locked.sh
 
       - name: Lint (ruff)
         if: matrix.check == 'lint'
@@ -211,7 +211,7 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+        run: scripts/install-locked.sh
       - name: Migrate
         run: alembic upgrade head
       # The whole suite, not a list of files. The `test` job above runs without
@@ -345,7 +345,7 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/requirements-dev.lock
       - name: Install
-        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+        run: scripts/install-locked.sh
 
       - name: Apply migrations
         run: alembic upgrade head
@@ -538,7 +538,7 @@ jobs:
           cache: npm
       - name: Install API
         working-directory: apps/api
-        run: pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+        run: scripts/install-locked.sh
       - name: Install workspace
         run: npm ci
       # The same command a developer runs, so the check cannot disagree with
@@ -623,7 +623,7 @@ jobs:
         # --skip-editable: panelpilot-api itself is not on PyPI and cannot be
         # audited; its dependencies are what matter here.
         run: |
-          pip install --require-hashes -r requirements-dev.lock && pip install --no-deps -e .
+          scripts/install-locked.sh
           pip-audit --skip-editable
 
       - uses: actions/setup-node@v4

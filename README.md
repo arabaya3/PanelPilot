@@ -424,7 +424,7 @@ cp .env.example .env       # fill in local values; .env is gitignored
 cd apps/api
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install --require-hashes -r requirements-dev.lock   # the exact versions CI runs
-pip install --no-deps -e .
+pip install --no-deps -e .   # or both at once, as CI does: scripts/install-locked.sh
 alembic upgrade head
 uvicorn app.main:create_app --factory --reload   # API runtime
 
