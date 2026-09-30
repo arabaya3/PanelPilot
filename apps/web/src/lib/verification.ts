@@ -94,3 +94,85 @@ export function sourceUrlFor(item: QueueItem): string | null {
     ? `${item.source_url}#page=${String(item.page)}`
     : item.source_url;
 }
+
+type StaleDocument = components['schemas']['StaleDocument'];
+
+export type StaleOutcome =
+  | { kind: 'loaded'; items: StaleDocument[] }
+  | { kind: 'forbidden' }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/**
+ * Live documents whose source now serves something other than what was
+ * verified, as flagged by the worker's `expire-stale-sources`.
+ */
+export async function fetchStale(options: {
+  token: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<StaleOutcome> {
+  const {
+    token,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/verification/stale-documents?status=open',
+  } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (response.status === 403) return { kind: 'forbidden' };
+  if (!response.ok) return { kind: 'failed' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  const { items } = payload as { items?: unknown };
+  if (!Array.isArray(items)) return { kind: 'failed' };
+  return { kind: 'loaded', items: items as StaleDocument[] };
+}
+
+/**
+ * Record that an upstream change is harmless, and why.
+ *
+ * @throws Error when the dismissal is refused, carrying the server's reason
+ *   when it gave one: a blank note, or a flag someone else already decided.
+ */
+export async function dismissStale(options: {
+  token: string;
+  id: string;
+  note: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<void> {
+  const {
+    token,
+    id,
+    note,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/verification/stale-documents',
+  } = options;
+
+  const response = await fetchImpl(`${endpoint}/${encodeURIComponent(id)}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ note }),
+  });
+  if (response.ok) return;
+  let detail = '';
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === 'string') detail = body.detail;
+  } catch {
+    // No body worth reading; the status says enough.
+  }
+  throw new Error(detail || `dismissal refused: ${String(response.status)}`);
+}

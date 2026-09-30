@@ -22,6 +22,7 @@ other.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -37,16 +38,18 @@ from app.ai.retrieval.client import (
     restage_vectors,
 )
 from app.ai.retrieval.embedding import embed_documents
-from app.core.errors import ValidationError
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.domain.ingestion import EMBEDDING_BATCH_SIZE
 from app.ingestion.crawler import DocumentCheck, check_documents
 from app.ingestion.sources import CRAWLERS, crawler_for
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.ingestion import StaleDocumentRow
 
 logger = structlog.get_logger(__name__)
 
 #: ``stale_documents.status`` values.
 OPEN = "open"
+DISMISSED = "dismissed"
 CLEARED = "cleared"
 
 
@@ -96,6 +99,8 @@ class ExpiryReport:
     Attributes:
         checked: Live documents whose source answered.
         flagged: Source URLs newly flagged or still stale, with the reason.
+        dismissed: Stale source URLs a reviewer has already judged harmless,
+            still serving the revision they judged. Not flagged again.
         cleared: Source URLs flagged before that serve a verified revision again.
         unchecked: Source URLs that could not be asked, with why. Not stale --
             a source that is down says nothing about whether it changed.
@@ -103,6 +108,7 @@ class ExpiryReport:
 
     checked: int = 0
     flagged: dict[str, str] = field(default_factory=dict)
+    dismissed: list[str] = field(default_factory=list)
     cleared: list[str] = field(default_factory=list)
     unchecked: dict[str, str] = field(default_factory=dict)
 
@@ -157,7 +163,7 @@ def expire_stale_sources(
             if result.status == "fetched" and result.content_hash in hashes:
                 report.checked += 1
                 row = existing.get(result.url)
-                if row is not None and row.status == OPEN:
+                if row is not None and row.status != CLEARED:
                     row.status = CLEARED
                     row.last_checked_at = moment
                     report.cleared.append(result.url)
@@ -171,10 +177,21 @@ def expire_stale_sources(
                 continue
 
             report.checked += 1
+            row = existing.get(result.url)
+            if (
+                row is not None
+                and row.status == DISMISSED
+                and (row.reason, row.upstream_hash) == (reason, result.content_hash)
+            ):
+                # Already read and judged harmless, and nothing has moved
+                # since. Flagging it again would make a dismissal last a day.
+                row.last_checked_at = moment
+                report.dismissed.append(result.url)
+                continue
             report.flagged[result.url] = reason
             _flag(
                 session,
-                existing.get(result.url),
+                row,
                 source_id=source_id,
                 source_url=result.url,
                 reason=reason,
@@ -187,6 +204,7 @@ def expire_stale_sources(
         "expire_stale_sources.done",
         checked=report.checked,
         flagged=len(report.flagged),
+        dismissed=len(report.dismissed),
         cleared=len(report.cleared),
         unchecked=len(report.unchecked),
     )
@@ -216,8 +234,9 @@ def _flag(
         upstream_hash: What the source serves now; ``None`` when withdrawn.
         moment: The run's timestamp.
 
-    A row that was cleared and goes stale again is re-opened with a fresh
-    ``first_flagged_at``: it is a new change upstream, not the old one.
+    A row that was cleared or dismissed and goes stale again is re-opened with
+    a fresh ``first_flagged_at``, and a dismissal's review is dropped: it is a
+    new change upstream, not the one that was judged.
     """
     published = ",".join(sorted(published_hashes))
     if row is None:
@@ -237,7 +256,112 @@ def _flag(
     if row.status != OPEN or row.upstream_hash != upstream_hash:
         row.first_flagged_at = moment
     row.status = OPEN
+    row.reviewed_by_id = None
+    row.reviewed_at = None
+    row.review_note = None
     row.reason = reason
     row.published_hashes = published
     row.upstream_hash = upstream_hash
     row.last_checked_at = moment
+
+
+def list_stale_documents(
+    *, session: Session, reviewer: CurrentUser, status: str = OPEN
+) -> list[StaleDocumentRow]:
+    """Return the stale-document flags in one status, oldest change first.
+
+    Args:
+        session: Open database session.
+        reviewer: The caller; must hold the reviewer role.
+        status: ``open`` (the default), ``dismissed`` or ``cleared``.
+
+    Returns:
+        The rows, ordered by when each change was first seen.
+
+    Raises:
+        AuthorizationError: If the caller is not a reviewer. The list says
+            which live answers may be out of date, which is a reviewer's call
+            to act on, not an engineer's to read.
+        ValidationError: If ``status`` is not one of the three.
+    """
+    _require_reviewer(reviewer)
+    if status not in (OPEN, DISMISSED, CLEARED):
+        raise ValidationError(f"unknown status {status!r}")
+    return list(
+        session.scalars(
+            select(StaleDocumentRow)
+            .where(StaleDocumentRow.status == status)
+            .order_by(StaleDocumentRow.first_flagged_at, StaleDocumentRow.source_url)
+        )
+    )
+
+
+def dismiss_stale_document(
+    *,
+    session: Session,
+    reviewer: CurrentUser,
+    document_id: uuid.UUID,
+    note: str,
+    now: datetime | None = None,
+) -> StaleDocumentRow:
+    """Record a reviewer's judgement that an upstream change is harmless.
+
+    Args:
+        session: Open database session. The caller commits.
+        reviewer: The caller; must hold the reviewer role.
+        document_id: The flag.
+        note: Why the change does not matter. Required: a dismissal nobody can
+            explain later is indistinguishable from one made to clear a list.
+        now: The time of the decision; the current time by default.
+
+    Returns:
+        The dismissed row.
+
+    Raises:
+        AuthorizationError: If the caller is not a reviewer.
+        NotFoundError: If there is no such flag.
+        ValidationError: If the note is blank, or the flag is not open.
+    """
+    _require_reviewer(reviewer)
+    if not note.strip():
+        raise ValidationError("a dismissal needs a note saying why the change does not matter")
+    row = session.get(StaleDocumentRow, document_id, with_for_update=True)
+    if row is None:
+        raise NotFoundError(f"no stale-document flag {document_id}")
+    if row.status != OPEN:
+        raise ValidationError(f"flag {document_id} is {row.status}, not open")
+    row.status = DISMISSED
+    row.reviewed_by_id = uuid.UUID(reviewer.id) if _is_uuid(reviewer.id) else None
+    row.reviewed_at = now or datetime.now(UTC)
+    row.review_note = note.strip()
+    return row
+
+
+def _require_reviewer(user: CurrentUser) -> None:
+    """Refuse anyone without the reviewer role.
+
+    Args:
+        user: The caller.
+
+    Raises:
+        AuthorizationError: If they do not hold it.
+    """
+    if not user.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{user.email} does not hold the reviewer role")
+
+
+def _is_uuid(value: str) -> bool:
+    """Report whether a subject id names a ``users`` row.
+
+    Args:
+        value: The caller's subject id.
+
+    Returns:
+        ``True`` for a UUID. A synthetic principal's id is not one, and has no
+        row for the foreign key to point at.
+    """
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True

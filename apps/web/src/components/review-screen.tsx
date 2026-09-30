@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import type { components } from '@panelpilot/shared-types';
 
 import { AppShell } from '@/components/app-shell';
@@ -9,11 +9,15 @@ import { CheckCircleIcon } from '@/components/icons';
 import { SignInForm } from '@/components/sign-in-form';
 import type { signIn } from '@/lib/auth';
 import { VerificationConsole, type VerificationLabels } from '@/components/verification';
+import { StaleDocuments } from '@/components/verification/stale-documents';
 import {
+  dismissStale,
   fetchQueue,
+  fetchStale,
   sourceUrlFor,
   submitLabel as submitLabelRequest,
   type QueueOutcome,
+  type StaleOutcome,
 } from '@/lib/verification';
 
 type QueueItem = components['schemas']['QueueItem'];
@@ -21,7 +25,7 @@ type QueueItem = components['schemas']['QueueItem'];
 type Phase =
   | { kind: 'signed-out' }
   | { kind: 'loading'; token: string }
-  | { kind: 'loaded'; token: string; items: QueueItem[] }
+  | { kind: 'loaded'; token: string; items: QueueItem[]; stale: StaleOutcome }
   | { kind: 'forbidden' }
   | { kind: 'failed'; token: string };
 
@@ -35,26 +39,38 @@ type Phase =
 export function ReviewScreen({
   fetchQueueImpl = fetchQueue,
   submitLabelImpl = submitLabelRequest,
+  fetchStaleImpl = fetchStale,
+  dismissStaleImpl = dismissStale,
   signInImpl,
 }: {
   fetchQueueImpl?: typeof fetchQueue;
   submitLabelImpl?: typeof submitLabelRequest;
+  fetchStaleImpl?: typeof fetchStale;
+  dismissStaleImpl?: typeof dismissStale;
   signInImpl?: typeof signIn;
 }) {
   const t = useTranslations('review');
   const tv = useTranslations('verification');
   const [phase, setPhase] = useState<Phase>({ kind: 'signed-out' });
+  const [tab, setTab] = useState<'queue' | 'stale'>('queue');
+  const tabsId = useId();
 
   const load = useCallback(
     async (token: string) => {
       setPhase({ kind: 'loading', token });
-      const outcome: QueueOutcome = await fetchQueueImpl({ token });
-      if (outcome.kind === 'loaded') setPhase({ kind: 'loaded', token, items: outcome.items });
+      // Together, not one after the other: the flags are a second list on
+      // the same page, and waiting for the queue first only delays both.
+      const [outcome, stale]: [QueueOutcome, StaleOutcome] = await Promise.all([
+        fetchQueueImpl({ token }),
+        fetchStaleImpl({ token }),
+      ]);
+      if (outcome.kind === 'loaded')
+        setPhase({ kind: 'loaded', token, items: outcome.items, stale });
       else if (outcome.kind === 'forbidden') setPhase({ kind: 'forbidden' });
       else if (outcome.kind === 'unauthorized') setPhase({ kind: 'signed-out' });
       else setPhase({ kind: 'failed', token });
     },
-    [fetchQueueImpl],
+    [fetchQueueImpl, fetchStaleImpl],
   );
 
   // `raw` for the three with placeholders: the console fills `{count}`,
@@ -154,15 +170,91 @@ export function ReviewScreen({
       )}
 
       {phase.kind === 'loaded' && (
-        <VerificationConsole
-          items={phase.items}
-          sourceUrlFor={sourceUrlFor}
-          labels={labels}
-          api={{
-            submitLabel: (itemId, label, note) =>
-              submitLabelImpl({ token: phase.token, itemId, label, note }),
-          }}
-        />
+        <div className="flex flex-col gap-5">
+          {/* The page's one h1 once signed in; the signed-out view has its own. */}
+          <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
+          <div
+            role="tablist"
+            aria-label={t('heading')}
+            className="flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
+          >
+            {(['queue', 'stale'] as const).map((key) => {
+              const count =
+                key === 'queue'
+                  ? phase.items.length
+                  : phase.stale.kind === 'loaded'
+                    ? phase.stale.items.length
+                    : null;
+              const selected = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  id={`${tabsId}-${key}`}
+                  aria-selected={selected}
+                  aria-controls={`${tabsId}-${key}-panel`}
+                  data-testid={`review-tab-${key}`}
+                  onClick={() => {
+                    setTab(key);
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                    selected
+                      ? 'bg-accent-subtle font-semibold text-accent-hover'
+                      : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
+                  }`}
+                >
+                  {key === 'queue' ? t('tabQueue') : t('tabStale')}
+                  {count !== null && (
+                    <span className="rounded-full bg-surface-raised px-2 text-xs text-text">
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div role="tabpanel" id={`${tabsId}-${tab}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+            {tab === 'queue' ? (
+              <VerificationConsole
+                items={phase.items}
+                sourceUrlFor={sourceUrlFor}
+                labels={labels}
+                api={{
+                  submitLabel: (itemId, label, note) =>
+                    submitLabelImpl({ token: phase.token, itemId, label, note }),
+                }}
+              />
+            ) : phase.stale.kind === 'loaded' ? (
+              <StaleDocuments
+                items={phase.stale.items}
+                onDismiss={async (id, note) => {
+                  await dismissStaleImpl({ token: phase.token, id, note });
+                  setPhase((current) =>
+                    current.kind === 'loaded' && current.stale.kind === 'loaded'
+                      ? {
+                          ...current,
+                          stale: {
+                            ...current.stale,
+                            items: current.stale.items.filter((item) => item.id !== id),
+                          },
+                        }
+                      : current,
+                  );
+                }}
+              />
+            ) : (
+              <p
+                role="alert"
+                data-testid="stale-failed"
+                className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
+              >
+                {t('staleFailed')}
+              </p>
+            )}
+          </div>
+        </div>
       )}
     </AppShell>
   );

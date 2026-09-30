@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Iterable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -10,15 +11,24 @@ from typing import Any
 import pytest
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.retrieval.client import PublishedSource
-from app.core.errors import ValidationError
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.domain import corpus_maintenance
-from app.domain.corpus_maintenance import expire_stale_sources, reindex_staging
+from app.domain.corpus_maintenance import (
+    dismiss_stale_document,
+    expire_stale_sources,
+    list_stale_documents,
+    reindex_staging,
+)
 from app.ingestion.crawler import DocumentCheck
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.base import Base
 from app.models.tables.ingestion import StaleDocumentRow
+from app.models.tables.tenant import TenantRow
+from app.models.tables.user import User
 
 # --- reindex_staging ----------------------------------------------------------
 
@@ -378,3 +388,190 @@ def test_neither_job_fails_before_the_indices_exist(indices: tuple[str, str]) ->
 
     assert published_sources() == []
     assert list(iter_staged_contents()) == []
+
+
+# --- a reviewer's view of the flags -------------------------------------------
+
+
+def _reviewer_row(session: Session) -> CurrentUser:
+    """A real account holding the reviewer role, for the dismissal's foreign key."""
+    tenant = TenantRow(slug=f"stale-{uuid.uuid4().hex[:8]}", name="Stale tests")
+    session.add(tenant)
+    session.flush()
+    user = User(tenant_id=tenant.id, email=f"reviewer-{uuid.uuid4().hex[:8]}@test.invalid")
+    session.add(user)
+    session.flush()
+    return CurrentUser(
+        id=str(user.id),
+        email=user.email,
+        tenant_id=str(tenant.id),
+        roles=frozenset({Role.ENGINEER, Role.REVIEWER}),
+    )
+
+
+ENGINEER = CurrentUser(
+    id=str(uuid.UUID(int=5)),
+    email="engineer@test.invalid",
+    tenant_id=str(uuid.UUID(int=6)),
+    roles=frozenset({Role.ENGINEER}),
+)
+
+
+def _flag_manual(session: Session, upstream: str = "h2") -> StaleDocumentRow:
+    expire_stale_sources(
+        session=session,
+        sources=_live((MANUAL, "ABB", {"h1"})),
+        check=_upstream(DocumentCheck(MANUAL, "fetched", upstream)),
+        now=NOW,
+    )
+    session.flush()
+    return _rows(session)[MANUAL]
+
+
+@requires_postgres
+def test_a_dismissal_records_who_when_and_why(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+
+    dismissed = dismiss_stale_document(
+        session=session,
+        reviewer=reviewer,
+        document_id=flag.id,
+        note="  cover page redesigned  ",
+        now=NOW + timedelta(hours=1),
+    )
+    session.commit()
+
+    assert (dismissed.status, dismissed.review_note) == ("dismissed", "cover page redesigned")
+    assert (str(dismissed.reviewed_by_id), dismissed.reviewed_at) == (
+        reviewer.id,
+        NOW + timedelta(hours=1),
+    )
+    assert list_stale_documents(session=session, reviewer=reviewer) == []
+    assert list_stale_documents(session=session, reviewer=reviewer, status="dismissed") == [
+        dismissed
+    ]
+
+
+@requires_postgres
+def test_a_dismissal_holds_while_the_source_serves_the_same_revision(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="typo")
+    session.commit()
+
+    report = expire_stale_sources(
+        session=session,
+        sources=_live((MANUAL, "ABB", {"h1"})),
+        check=_upstream(DocumentCheck(MANUAL, "fetched", "h2")),
+        now=NOW + timedelta(days=1),
+    )
+    session.commit()
+
+    # Not flagged again, so the job does not exit 1 for a decided change.
+    assert (report.flagged, report.dismissed) == ({}, [MANUAL])
+    row = _rows(session)[MANUAL]
+    assert (row.status, row.last_checked_at) == ("dismissed", NOW + timedelta(days=1))
+
+
+@requires_postgres
+def test_a_further_change_reopens_a_dismissal_and_forgets_its_review(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="typo")
+    session.commit()
+
+    report = expire_stale_sources(
+        session=session,
+        sources=_live((MANUAL, "ABB", {"h1"})),
+        check=_upstream(DocumentCheck(MANUAL, "fetched", "h3")),
+        now=NOW + timedelta(days=2),
+    )
+    session.commit()
+    session.expire_all()
+
+    assert report.flagged == {MANUAL: "superseded"}
+    row = _rows(session)[MANUAL]
+    assert (row.status, row.first_flagged_at) == ("open", NOW + timedelta(days=2))
+    assert (row.reviewed_by_id, row.reviewed_at, row.review_note) == (None, None, None)
+
+
+@requires_postgres
+def test_a_withdrawal_reopens_a_dismissed_change(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="typo")
+    session.commit()
+
+    report = expire_stale_sources(
+        session=session,
+        sources=_live((MANUAL, "ABB", {"h1"})),
+        check=_upstream(DocumentCheck(MANUAL, "gone")),
+        now=NOW + timedelta(days=3),
+    )
+
+    assert report.flagged == {MANUAL: "withdrawn"}
+    assert _rows(session)[MANUAL].status == "open"
+
+
+@requires_postgres
+def test_a_dismissed_flag_clears_when_the_verified_revision_returns(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="typo")
+    session.commit()
+
+    report = expire_stale_sources(
+        session=session,
+        sources=_live((MANUAL, "ABB", {"h1"})),
+        check=_upstream(DocumentCheck(MANUAL, "fetched", "h1")),
+        now=NOW + timedelta(days=1),
+    )
+
+    assert report.cleared == [MANUAL]
+    assert _rows(session)[MANUAL].status == "cleared"
+
+
+@requires_postgres
+def test_a_dismissal_is_refused_without_a_note_or_twice(session: Session) -> None:
+    reviewer = _reviewer_row(session)
+    flag = _flag_manual(session)
+
+    with pytest.raises(ValidationError, match="note"):
+        dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note=" ")
+    dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="ok")
+    with pytest.raises(ValidationError, match="dismissed, not open"):
+        dismiss_stale_document(session=session, reviewer=reviewer, document_id=flag.id, note="ok")
+    with pytest.raises(NotFoundError):
+        dismiss_stale_document(
+            session=session, reviewer=reviewer, document_id=uuid.uuid4(), note="ok"
+        )
+
+
+@requires_postgres
+def test_the_database_refuses_a_dismissal_without_its_review(session: Session) -> None:
+    # The constraint, not just the domain: a dismissal written some other way
+    # still has to say who and why.
+    flag = _flag_manual(session)
+    flag.status = "dismissed"
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_only_a_reviewer_may_see_or_dismiss_flags() -> None:
+    # Refused before any query, so no database is needed to prove it.
+    with pytest.raises(AuthorizationError):
+        list_stale_documents(session=None, reviewer=ENGINEER)  # type: ignore[arg-type]
+    with pytest.raises(AuthorizationError):
+        dismiss_stale_document(
+            session=None,  # type: ignore[arg-type]
+            reviewer=ENGINEER,
+            document_id=uuid.uuid4(),
+            note="x",
+        )
+
+
+@requires_postgres
+def test_an_unknown_status_is_refused(session: Session) -> None:
+    with pytest.raises(ValidationError):
+        list_stale_documents(session=session, reviewer=_reviewer_row(session), status="bogus")

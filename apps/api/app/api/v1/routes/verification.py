@@ -12,22 +12,27 @@ cannot let one person overwrite another's work.
 
 from __future__ import annotations
 
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.domain import corpus_maintenance as maintenance_domain
 from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
 from app.models.schemas.auth import Role
 from app.models.schemas.verification import (
+    DismissStaleRequest,
     EscalationPage,
     LabelRequest,
     LabelResponse,
     QueueItem,
     QueuePage,
+    StaleDocument,
+    StaleDocumentPage,
 )
-from app.models.tables.ingestion import VerificationItemRow
+from app.models.tables.ingestion import StaleDocumentRow, VerificationItemRow
 
 router = APIRouter()
 
@@ -127,3 +132,63 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
 
     rows = queue_domain.escalations(session=session)
     return EscalationPage(items=_to_items(list(rows)))
+
+
+def _to_stale(row: StaleDocumentRow) -> StaleDocument:
+    """Project a stale-document row onto its wire shape.
+
+    Args:
+        row: The database row.
+
+    Returns:
+        The flag as the API presents it.
+    """
+    return StaleDocument(
+        id=row.id,
+        source_url=row.source_url,
+        source_id=row.source_id,
+        reason=row.reason,
+        status=row.status,
+        published_hashes=[h for h in row.published_hashes.split(",") if h],
+        upstream_hash=row.upstream_hash,
+        first_flagged_at=row.first_flagged_at,
+        last_checked_at=row.last_checked_at,
+        reviewed_at=row.reviewed_at,
+        review_note=row.review_note,
+    )
+
+
+@router.get("/stale-documents", response_model=StaleDocumentPage)
+def list_stale_documents(
+    session: SessionDep,
+    user: CurrentUserDep,
+    state: Annotated[Literal["open", "dismissed", "cleared"], Query(alias="status")] = "open",
+) -> StaleDocumentPage:
+    """Return live documents whose source changed or withdrew them.
+
+    Raises:
+        AuthorizationError: 403 unless the caller holds the reviewer role.
+    """
+    rows = maintenance_domain.list_stale_documents(session=session, reviewer=user, status=state)
+    return StaleDocumentPage(items=[_to_stale(row) for row in rows])
+
+
+@router.post("/stale-documents/{document_id}/dismiss", response_model=StaleDocument)
+def dismiss_stale_document(
+    document_id: UUID,
+    payload: DismissStaleRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> StaleDocument:
+    """Record that an upstream change is harmless, and why.
+
+    Raises:
+        AuthorizationError: 403 unless the caller holds the reviewer role.
+        NotFoundError: 404 if there is no such flag.
+        ValidationError: 422 if the note is blank or the flag is not open.
+    """
+    row = maintenance_domain.dismiss_stale_document(
+        session=session, reviewer=user, document_id=document_id, note=payload.note
+    )
+    session.commit()
+    return _to_stale(row)

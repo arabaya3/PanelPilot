@@ -25,11 +25,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.routes import verification as verification_route
-from app.core.errors import install_exception_handlers
+from app.core.errors import NotFoundError, ValidationError, install_exception_handlers
+from app.domain import corpus_maintenance as maintenance_domain
 from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import QueueError
 from app.models.schemas.auth import CurrentUser, Role
+from app.models.tables.ingestion import StaleDocumentRow
 
 _TENANT_ID = str(uuid.UUID(int=7))
 _USER_ID = str(uuid.UUID(int=1))
@@ -439,3 +441,123 @@ def test_a_correct_label_publishes_the_chunk(
 
     assert response.status_code == 200
     assert published == ["doc#0001-abc"]
+
+
+# --- stale documents ----------------------------------------------------------
+
+_FLAG_ID = uuid.UUID(int=42)
+
+
+def _stale_row(**overrides: object) -> StaleDocumentRow:
+    """A stale-document flag as the domain returns it."""
+    fields: dict[str, object] = {
+        "id": _FLAG_ID,
+        "source_url": "https://library.abb.com/acs880.pdf",
+        "source_id": "abb",
+        "reason": "superseded",
+        "status": "open",
+        "published_hashes": "h1,h2",
+        "upstream_hash": "h3",
+        "first_flagged_at": NOW,
+        "last_checked_at": NOW,
+    }
+    fields.update(overrides)
+    return StaleDocumentRow(**fields)
+
+
+def test_a_reviewer_lists_open_flags_by_default(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def _list(**kwargs: object) -> list[StaleDocumentRow]:
+        asked.append(str(kwargs["status"]))
+        return [_stale_row()]
+
+    monkeypatch.setattr(maintenance_domain, "list_stale_documents", _list)
+
+    response = lead_client.get("/verification/stale-documents")
+
+    assert response.status_code == 200
+    assert asked == ["open"]
+    item = response.json()["items"][0]
+    assert item["published_hashes"] == ["h1", "h2"]
+    assert (item["reason"], item["upstream_hash"], item["review_note"]) == (
+        "superseded",
+        "h3",
+        None,
+    )
+
+
+def test_the_list_filters_by_status(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def _list(**kwargs: object) -> list[StaleDocumentRow]:
+        asked.append(str(kwargs["status"]))
+        return []
+
+    monkeypatch.setattr(maintenance_domain, "list_stale_documents", _list)
+    assert lead_client.get("/verification/stale-documents?status=dismissed").status_code == 200
+    assert lead_client.get("/verification/stale-documents?status=bogus").status_code == 422
+    assert asked == ["dismissed"]
+
+
+def test_an_engineer_cannot_read_the_stale_list(client: TestClient) -> None:
+    # The real domain function: the role check is its first act, before it
+    # touches the (stub) session.
+    response = client.get("/verification/stale-documents")
+    assert response.status_code == 403
+    assert "reviewer role" in response.json()["detail"]
+
+
+def test_a_dismissal_is_committed_and_returned(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions: list[object] = []
+
+    def _dismiss(**kwargs: object) -> StaleDocumentRow:
+        sessions.append(kwargs["session"])
+        assert (kwargs["document_id"], kwargs["note"]) == (_FLAG_ID, "cover page only")
+        return _stale_row(status="dismissed", reviewed_at=NOW, review_note="cover page only")
+
+    monkeypatch.setattr(maintenance_domain, "dismiss_stale_document", _dismiss)
+
+    response = lead_client.post(
+        f"/verification/stale-documents/{_FLAG_ID}/dismiss", json={"note": "cover page only"}
+    )
+
+    assert response.status_code == 200
+    assert (response.json()["status"], response.json()["review_note"]) == (
+        "dismissed",
+        "cover page only",
+    )
+    assert getattr(sessions[0], "committed", False) is True
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (NotFoundError("no stale-document flag"), 404),
+        (ValidationError("a dismissal needs a note"), 422),
+    ],
+)
+def test_a_refused_dismissal_maps_to_its_status_and_is_not_committed(
+    lead_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    code: int,
+) -> None:
+    sessions: list[object] = []
+
+    def _dismiss(**kwargs: object) -> StaleDocumentRow:
+        sessions.append(kwargs["session"])
+        raise error
+
+    monkeypatch.setattr(maintenance_domain, "dismiss_stale_document", _dismiss)
+
+    response = lead_client.post(f"/verification/stale-documents/{_FLAG_ID}/dismiss", json={})
+
+    assert response.status_code == code
+    assert getattr(sessions[0], "committed", False) is False

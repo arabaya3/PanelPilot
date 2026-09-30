@@ -164,12 +164,22 @@ class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
     One row per source URL, kept current by each run: ``status`` goes back to
     ``cleared`` if the source serves a verified revision again, so an open row
     always describes the source as it was last seen.
+
+    A reviewer who has read the change and judged it harmless -- a typo fix,
+    a reformatted cover page -- marks it ``dismissed``, with a note saying
+    why. It stays dismissed only while the source serves that same revision:
+    a further change upstream is a new change, and reopens it.
     """
 
     __tablename__ = "stale_documents"
     __table_args__ = (
         CheckConstraint("reason IN ('superseded', 'withdrawn')", name="reason"),
-        CheckConstraint("status IN ('open', 'cleared')", name="status"),
+        CheckConstraint("status IN ('open', 'dismissed', 'cleared')", name="status"),
+        # A dismissal is a reviewed decision, so it records who and why.
+        CheckConstraint(
+            "status <> 'dismissed' OR (reviewed_at IS NOT NULL AND review_note IS NOT NULL)",
+            name="dismissal_reviewed",
+        ),
     )
 
     source_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
@@ -186,3 +196,10 @@ class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
     upstream_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     first_flagged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Who dismissed it, when, and why. SET NULL rather than RESTRICT on the
+    # account: the note and the time still say a person decided.
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)

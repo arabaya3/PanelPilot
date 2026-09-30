@@ -233,7 +233,8 @@ def run_expire_stale_sources(args: list[str]) -> int:
         print(f"unchecked ({why}): {url}", file=sys.stderr)
     print(
         f"checked {report.checked} live documents: {len(report.flagged)} stale, "
-        f"{len(report.cleared)} cleared, {len(report.unchecked)} could not be checked"
+        f"{len(report.dismissed)} dismissed by a reviewer, {len(report.cleared)} cleared, "
+        f"{len(report.unchecked)} could not be checked"
     )
     return 1 if report.flagged else 0
 
