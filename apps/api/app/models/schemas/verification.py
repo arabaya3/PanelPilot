@@ -120,3 +120,37 @@ class EscalationPage(BaseModel):
     """Items awaiting lead-engineer review."""
 
     items: list[QueueItem]
+
+
+class StaleDocument(BaseModel):
+    """A live document whose source now serves something other than what was verified.
+
+    ``upstream_hash`` is ``None`` when the source withdrew it. The review
+    fields are set only on a dismissed flag.
+    """
+
+    id: UUID
+    source_url: str
+    source_id: str
+    reason: str
+    status: str
+    published_hashes: list[str]
+    upstream_hash: str | None
+    first_flagged_at: datetime
+    last_checked_at: datetime
+    reviewed_at: datetime | None = None
+    review_note: str | None = None
+
+
+class StaleDocumentPage(BaseModel):
+    """Stale-document flags in one status."""
+
+    items: list[StaleDocument]
+
+
+class DismissStaleRequest(BaseModel):
+    """A reviewer's reason for dismissing a stale-document flag."""
+
+    # Required in practice; the domain refuses a blank one so the message
+    # names the rule, as for an escalating label's note.
+    note: str = ""

@@ -442,6 +442,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/verification/stale-documents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Stale Documents
+     * @description Return live documents whose source changed or withdrew them.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     */
+    get: operations['list_stale_documents_api_v1_verification_stale_documents_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/stale-documents/{document_id}/dismiss': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dismiss Stale Document
+     * @description Record that an upstream change is harmless, and why.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     *         NotFoundError: 404 if there is no such flag.
+     *         ValidationError: 422 if the note is blank or the flag is not open.
+     */
+    post: operations['dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/feedback/flag': {
     parameters: {
       query?: never;
@@ -898,6 +946,17 @@ export interface components {
     DiagnosticTurn: {
       request: components['schemas']['DiagnosticRequest'];
       response: components['schemas']['DiagnosticResponse'];
+    };
+    /**
+     * DismissStaleRequest
+     * @description A reviewer's reason for dismissing a stale-document flag.
+     */
+    DismissStaleRequest: {
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /**
      * DisplayVerdict
@@ -1507,6 +1566,54 @@ export interface components {
       claim_session_id?: string | null;
       /** Claim Secret */
       claim_secret?: string | null;
+    };
+    /**
+     * StaleDocument
+     * @description A live document whose source now serves something other than what was verified.
+     *
+     *     ``upstream_hash`` is ``None`` when the source withdrew it. The review
+     *     fields are set only on a dismissed flag.
+     */
+    StaleDocument: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Source Url */
+      source_url: string;
+      /** Source Id */
+      source_id: string;
+      /** Reason */
+      reason: string;
+      /** Status */
+      status: string;
+      /** Published Hashes */
+      published_hashes: string[];
+      /** Upstream Hash */
+      upstream_hash: string | null;
+      /**
+       * First Flagged At
+       * Format: date-time
+       */
+      first_flagged_at: string;
+      /**
+       * Last Checked At
+       * Format: date-time
+       */
+      last_checked_at: string;
+      /** Reviewed At */
+      reviewed_at?: string | null;
+      /** Review Note */
+      review_note?: string | null;
+    };
+    /**
+     * StaleDocumentPage
+     * @description Stale-document flags in one status.
+     */
+    StaleDocumentPage: {
+      /** Items */
+      items: components['schemas']['StaleDocument'][];
     };
     /**
      * StructuredDiagnosis
@@ -2458,6 +2565,72 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EscalationPage'];
+        };
+      };
+    };
+  };
+  list_stale_documents_api_v1_verification_stale_documents_get: {
+    parameters: {
+      query?: {
+        status?: 'open' | 'dismissed' | 'cleared';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocumentPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DismissStaleRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocument'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };
