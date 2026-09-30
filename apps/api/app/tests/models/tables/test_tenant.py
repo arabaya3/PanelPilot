@@ -50,6 +50,9 @@ DELIBERATELY_UNSCOPED = {
     # Who took a document out of live answers, and why: an audit of the
     # shared corpus, like promotion_audits.
     "retraction_audits",
+    # How a lead settled an escalated item: an audit of the shared corpus's
+    # review, like the queue it resolves.
+    "escalation_resolutions",
 }
 
 

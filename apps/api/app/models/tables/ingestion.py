@@ -176,6 +176,32 @@ class RetractionAuditRow(UUIDPrimaryKey, TimestampMixin, Base):
     content_hashes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
 
 
+class EscalationResolutionRow(UUIDPrimaryKey, TimestampMixin, Base):
+    """How a lead resolved one escalated item, and on whose escalation.
+
+    Append-only. The escalation itself -- who raised it, with which label and
+    note -- is copied here, because resolving by taking the item over puts it
+    back into the queue, where the next label overwrites the row's own.
+    """
+
+    __tablename__ = "escalation_resolutions"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("verification_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    # `upheld` or `taken-over`; see `verification_queue.resolve_escalation`.
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    escalated_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    escalated_label: Mapped[str] = mapped_column(String(20), nullable=False)
+    escalated_note: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class StaleDocumentRow(UUIDPrimaryKey, TimestampMixin, Base):
     """A live document whose upstream source no longer serves what was verified.
 

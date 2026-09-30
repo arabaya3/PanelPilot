@@ -416,6 +416,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/verification/escalations/{item_id}/resolve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Escalation
+     * @description Settle an escalated item: uphold it, or take it over to judge again.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller is a reviewer other than
+     *             whoever escalated the item.
+     *         NotFoundError: 404 if there is no such item.
+     *         ValidationError: 422 if the note is blank or the item is not escalated.
+     */
+    post: operations['resolve_escalation_api_v1_verification_escalations__item_id__resolve_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/verification/stale-documents': {
     parameters: {
       query?: never;
@@ -1450,6 +1476,15 @@ export interface components {
        */
       origin: string;
       flag?: components['schemas']['FlaggedAnswerView'] | null;
+      /** Label */
+      label?: string | null;
+      /** Note */
+      note?: string | null;
+      /**
+       * Assigned To You
+       * @default false
+       */
+      assigned_to_you: boolean;
     };
     /**
      * QueuePage
@@ -1498,6 +1533,22 @@ export interface components {
     RefreshRequest: {
       /** Refresh Token */
       refresh_token: string;
+    };
+    /**
+     * ResolveEscalationRequest
+     * @description A lead's resolution of one escalated item.
+     *
+     *     ``upheld``: the escalation stands. ``taken-over``: the lead judges the
+     *     item again themselves, from their own queue.
+     */
+    ResolveEscalationRequest: {
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: 'upheld' | 'taken-over';
+      /** Note */
+      note: string;
     };
     /**
      * RetrievedPassage
@@ -2484,6 +2535,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['EscalationPage'];
+        };
+      };
+    };
+  };
+  resolve_escalation_api_v1_verification_escalations__item_id__resolve_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveEscalationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QueueItem'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

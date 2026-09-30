@@ -97,6 +97,18 @@ The two escalate for different reasons, which is why they stay separate labels:
   this document. Escalations of this kind are read back into revising it — see
   below.
 
+A lead resolves an escalation from the **Escalated** tab on `/review`, with a
+note, in one of two ways:
+
+- **Uphold** — the verifier was right. The item closes as `upheld`: a crawled
+  passage stays out of live answers, and a reported answer is confirmed wrong.
+- **Take it over** — the lead labels it again, from their own queue. Nothing is
+  published by the resolution itself; a `correct` label from the lead goes
+  through the same promotion checks as anyone's.
+
+Whoever escalated an item cannot resolve it. Each resolution is recorded in
+`escalation_resolutions` with the escalation it settled.
+
 ## When a `correct` label turns out to be wrong
 
 It happens, and it is not treated as one person's mistake to correct quietly.

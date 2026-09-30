@@ -63,6 +63,7 @@ function items(count = 2) {
     status: 'pending',
     assigned_at: '2026-06-01T12:00:00Z',
     origin: 'crawl',
+    assigned_to_you: false,
   }));
 }
 
@@ -433,6 +434,7 @@ describe('an answer an engineer reported', () => {
       status: 'pending',
       assigned_at: '2026-06-01T12:00:00Z',
       origin: 'user-flag',
+      assigned_to_you: false,
       flag: {
         question: 'Why does it trip with F0001?',
         answer: 'The acceleration time is too short.',

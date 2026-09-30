@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -113,6 +114,13 @@ class QueueItem(BaseModel):
     section: str | None = None
     origin: str = "crawl"
     flag: FlaggedAnswerView | None = None
+    # The verifier's label and note. Shown on an escalation, where they are
+    # what the lead is resolving.
+    label: str | None = None
+    note: str | None = None
+    # Whether the caller is who the item is assigned to -- on an escalation,
+    # who raised it, and so who may not resolve it.
+    assigned_to_you: bool = False
 
 
 class QueuePage(BaseModel):
@@ -176,3 +184,14 @@ class DismissStaleRequest(BaseModel):
     # Required in practice; the domain refuses a blank one so the message
     # names the rule, as for an escalating label's note.
     note: str = ""
+
+
+class ResolveEscalationRequest(BaseModel):
+    """A lead's resolution of one escalated item.
+
+    ``upheld``: the escalation stands. ``taken-over``: the lead judges the
+    item again themselves, from their own queue.
+    """
+
+    outcome: Literal["upheld", "taken-over"]
+    note: str

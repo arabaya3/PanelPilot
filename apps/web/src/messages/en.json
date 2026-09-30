@@ -230,7 +230,9 @@
     "retry": "Try again",
     "tabQueue": "Queue",
     "tabStale": "Changed upstream",
-    "staleFailed": "The list of changed documents could not be loaded."
+    "staleFailed": "The list of changed documents could not be loaded.",
+    "tabEscalations": "Escalated",
+    "escalationsFailed": "The escalated items could not be loaded."
   },
   "nav": {
     "label": "Main",
@@ -298,5 +300,19 @@
       "not-found": "This answer can no longer be reported.",
       "failed": "The report could not be sent. Try again."
     }
+  },
+  "escalations": {
+    "empty": "Nothing is waiting for a lead.",
+    "originCrawl": "Crawled passage",
+    "originFlag": "Reported answer",
+    "verifierNote": "The verifier's note",
+    "noteLabel": "Your resolution (required)",
+    "help": "Uphold keeps it out of live answers, or confirms the report. Take it over to label it yourself from your queue; publishing still goes through that label.",
+    "uphold": "Uphold",
+    "takeOver": "Take it over",
+    "working": "Saving…",
+    "yours": "You escalated this, so another lead must resolve it.",
+    "failed": "The resolution could not be saved. Try again.",
+    "heading": "Escalated items"
   }
 }
