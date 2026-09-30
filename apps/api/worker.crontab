@@ -22,9 +22,9 @@
 # reviewer. Manufacturer documentation changes on a scale of months.
 30 3 * * 1    expire-stale-sources
 
-# Re-crawl ABB's curated manuals (app/ingestion/known_documents.py). Unchanged
+# Re-crawl the curated manuals (app/ingestion/known_documents.py). Unchanged
 # files hash the same and stage nothing, so a quiet week costs a few requests;
-# a revised manual is staged and queued for review. Siemens and Schneider block
-# discovery and have no curated list yet, so a crawl of either needs its seed
-# URLs on the line: `crawl siemens https://...`.
+# a revised manual is staged and queued for review. Schneider refuses our
+# crawler at its edge and has no curated list; its documents are added by hand.
 0 2 * * 0     crawl abb
+30 2 * * 0    crawl siemens

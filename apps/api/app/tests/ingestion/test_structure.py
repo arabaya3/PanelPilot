@@ -107,9 +107,11 @@ def test_heading_depth_follows_relative_size_not_absolute() -> None:
     # not. An absolute threshold would find headings in one and none in the
     # other.
     data = build(
-        lambda p: p.heading("3 Fault tracing", 20)
-        .heading("3.2 Overcurrent", 13)
-        .body("Check the motor cable.")
+        lambda p: (
+            p.heading("3 Fault tracing", 20)
+            .heading("3.2 Overcurrent", 13)
+            .body("Check the motor cable.")
+        )
     )
     headings = [b for b in extract_structure(data).blocks if b.kind is BlockKind.HEADING]
 
@@ -123,9 +125,11 @@ def test_the_section_path_nests_and_then_unwinds() -> None:
     # The path is what makes a citation resolvable, so a subsection under the
     # wrong parent is a citation pointing at the wrong part of the manual.
     data = build(
-        lambda p: p.heading("3 Fault tracing", 20)
-        .heading("3.2 Overcurrent", 13)
-        .body("Check the motor cable."),
+        lambda p: (
+            p.heading("3 Fault tracing", 20)
+            .heading("3.2 Overcurrent", 13)
+            .body("Check the motor cable.")
+        ),
         lambda p: p.heading("4 Maintenance", 20).body("Replace the fans every five years."),
     )
     blocks = extract_structure(data).blocks
@@ -188,9 +192,11 @@ def test_a_tables_rows_are_not_also_emitted_as_paragraphs() -> None:
 
 def test_a_table_carries_the_section_it_sits_under() -> None:
     data = build(
-        lambda p: p.heading("3 Fault tracing", 18)
-        .heading("3.2 Overcurrent", 13)
-        .ruled_table([["Code", "Action"], ["F0001", "Check cable"]])
+        lambda p: (
+            p.heading("3 Fault tracing", 18)
+            .heading("3.2 Overcurrent", 13)
+            .ruled_table([["Code", "Action"], ["F0001", "Check cable"]])
+        )
     )
     table = next(b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE)
 
@@ -203,9 +209,11 @@ def test_a_borderless_table_is_not_reported_as_a_table() -> None:
     # the table and emitted empty rows. A half-right table is worse than none,
     # because it becomes an atomic block silently missing rows.
     data = build(
-        lambda p: p.heading("4 Parameters", 16)
-        .body("30.17    Current limit    200 %")
-        .body("21.03    Stop mode        Coast")
+        lambda p: (
+            p.heading("4 Parameters", 16)
+            .body("30.17    Current limit    200 %")
+            .body("21.03    Stop mode        Coast")
+        )
     )
     blocks = extract_structure(data).blocks
 
@@ -215,28 +223,46 @@ def test_a_borderless_table_is_not_reported_as_a_table() -> None:
 # --- what it refuses to read -------------------------------------------------
 
 
-def test_a_two_column_page_is_refused_rather_than_interleaved() -> None:
-    # Read line-by-line, two columns merge into sentences the manual never
-    # contained. Indexing that would put invented text behind a real page
-    # number, which is precisely what the citation rules exist to prevent.
-    data = build(
-        lambda p: p.heading("5 Commissioning", 16).columns(
-            [
-                "Set the motor data first.",
-                "Then run the ID run.",
-                "Check the direction of rotation.",
-                "Confirm the encoder feedback.",
-                "Save the parameter set.",
-            ],
-            [
-                "Verify the encoder wiring.",
-                "Tune the speed controller.",
-                "Record the commissioning date.",
-                "Hand over the documentation.",
-                "Close the cubicle door.",
-            ],
-        )
+def _two_column_page(p: Page) -> object:
+    return p.heading("5 Commissioning", 16).columns(
+        [
+            "Set the motor data first.",
+            "Then run the ID run.",
+            "Check the direction of rotation.",
+            "Confirm the encoder feedback.",
+            "Save the parameter set.",
+        ],
+        [
+            "Verify the encoder wiring.",
+            "Tune the speed controller.",
+            "Record the commissioning date.",
+            "Hand over the documentation.",
+            "Close the cubicle door.",
+        ],
     )
+
+
+def test_a_columned_page_is_skipped_not_the_whole_manual() -> None:
+    # Found live: five of six Siemens manuals were rejected outright, each
+    # for one columned page. The readable pages are kept; the columned one
+    # contributes nothing, so no interleaved sentence is indexed.
+    data = build(
+        lambda p: p.heading("4 Installation", 16).body(
+            "Mount the drive vertically in the cabinet."
+        ),
+        _two_column_page,
+    )
+
+    blocks = extract_structure(data).blocks
+
+    assert "Mount the drive vertically in the cabinet." in " ".join(b.text for b in blocks)
+    assert all(b.page != 2 for b in blocks)
+
+
+def test_a_manual_columned_on_every_page_is_refused() -> None:
+    # Read line-by-line, two columns merge into sentences the manual never
+    # contained. With nothing else readable, there is nothing to index.
+    data = build(_two_column_page)
 
     with pytest.raises(UnreadableDocumentError, match="columns"):
         extract_structure(data)
@@ -315,9 +341,11 @@ def test_it_feeds_chunk_document_end_to_end() -> None:
     from app.models.schemas.documents import SourceDocument
 
     data = build(
-        lambda p: p.heading("3 Fault tracing", 18)
-        .body("The drive trips on overcurrent when the limit is exceeded.")
-        .ruled_table([["Code", "Action"], ["F0001", "Check motor cable"]])
+        lambda p: (
+            p.heading("3 Fault tracing", 18)
+            .body("The drive trips on overcurrent when the limit is exceeded.")
+            .ruled_table([["Code", "Action"], ["F0001", "Check motor cable"]])
+        )
     )
     structure = extract_structure(data)
 
@@ -347,10 +375,12 @@ def test_a_table_is_filed_under_the_heading_above_it_not_the_one_below() -> None
     # position, this one is filed under "3.3 Earth faults" — a citation
     # pointing at the section *after* the one the table is actually in.
     data = build(
-        lambda p: p.heading("3.2 Overcurrent", 16)
-        .ruled_table([["Code", "Action"], ["F0001", "Check motor cable"]])
-        .heading("3.3 Earth faults", 16)
-        .body("Measure insulation resistance.")
+        lambda p: (
+            p.heading("3.2 Overcurrent", 16)
+            .ruled_table([["Code", "Action"], ["F0001", "Check motor cable"]])
+            .heading("3.3 Earth faults", 16)
+            .body("Measure insulation resistance.")
+        )
     )
     table = next(b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE)
 
