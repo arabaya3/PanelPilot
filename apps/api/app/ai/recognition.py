@@ -22,6 +22,7 @@ and a low-confidence code becomes a confirm-back rather than an answer.
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -36,6 +37,10 @@ from app.models.schemas.recognition import (
 )
 
 RECOGNITION_TOOL_NAME = "report_display"
+
+#: A decimal number, alone: an operating reading ("60.00", "0.0", "-12.5"), not
+#: a fault code. Manufacturers' codes carry letters or are whole numbers.
+_MEASURED_VALUE = re.compile(r"^[+-]?\d*\.\d+\s*(Hz|A|V|%|rpm|kW)?$", re.IGNORECASE)
 
 # Below this a field is not used without asking the engineer to confirm it.
 # Deliberately high: the cost of a wrong code is a wasted call-out or a
@@ -54,6 +59,15 @@ If the photograph does not show a fault or alarm display, say so and report no
 fault code. If it shows one you cannot read — glare, blur, angle, a screen
 that is off — say that instead, which is a different problem for the engineer
 to fix.
+
+A drive or controller that is running normally is NOT a fault display, even
+though its screen shows numbers. An output frequency, speed, current or voltage
+reading ("60.00", "50.0 Hz", "0.00", "12.5 A"), a parameter menu or a set-up
+screen shows no fault: report it as not a fault display, with no fault code.
+A fault display names a fault or alarm — a code such as F0001, F30001, A14,
+OCF, SLF1, E.OC or 2310, often beside FAULT, ALARM, ERR or a fault LED — and
+you report the code exactly as it is printed there. Never report a code that
+is not visible on the screen, and never report a measured value as a code.
 
 A code you are unsure of is worth far less than saying you are unsure. An
 invented code looks exactly like a real one and will send someone to the wrong
@@ -212,6 +226,13 @@ def confirmed_context(
     )
     for name, field in fields:
         if field.value is None:
+            continue
+        if name == "fault_code" and _MEASURED_VALUE.match(field.value):
+            # A decimal reading is a measurement, not a code, whatever the
+            # model's confidence. Found live: a drive running at 60.00 Hz was
+            # reported as fault "60.00" at confidence 1.0. The engineer
+            # confirms it, rather than being sent to a fault that is not there.
+            unsure.append(name)
             continue
         if field.trusted_at(threshold):
             trusted[name] = field.value

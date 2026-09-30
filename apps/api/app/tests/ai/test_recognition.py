@@ -420,3 +420,83 @@ def test_every_off_topic_photo_is_rejected() -> None:
         ), f"{entry['file']} is not a fault display but was read as one"
         trusted, _ = recognition.confirmed_context(result)
         assert trusted == {}, f"{entry['file']} yielded fields despite being off-topic"
+
+
+# --- found on real photographs of drives (Wikimedia Commons) -------------------
+#
+# Of seven real photographs of drives and machine panels, none showing a fault,
+# the first was refused outright and two came back with an invented code at
+# confidence 1.0: a Mitsubishi drive running at 60.00 Hz read as fault "60.00",
+# and a parameter menu read as fault "E01".
+
+
+def test_a_field_sent_as_null_is_a_field_not_read() -> None:
+    # The model sent `"model": null` for a model it could not see, and the
+    # whole report was refused: an error instead of a verdict.
+    result = recognition.parse_recognition(
+        {"verdict": "not_a_fault_display", "fault_code": None, "brand": None, "model": None}
+    )
+    assert result.model.value is None
+    assert result.fault_code.value is None
+
+
+@pytest.mark.parametrize("reading", ["60.00", "0.00", "50.0 Hz", "12.5A", "-3.2"])
+def test_a_measured_value_is_never_trusted_as_a_fault_code(reading: str) -> None:
+    result = recognition.parse_recognition(
+        {"verdict": "fault_display", "fault_code": {"value": reading, "confidence": 1.0}}
+    )
+    trusted, unsure = recognition.confirmed_context(result)
+
+    assert "fault_code" not in trusted
+    assert unsure == ["fault_code"]
+
+
+@pytest.mark.parametrize("code", ["F0001", "2310", "OCF", "A14", "E.OC", "F30001"])
+def test_real_codes_are_still_trusted(code: str) -> None:
+    result = recognition.parse_recognition(
+        {"verdict": "fault_display", "fault_code": {"value": code, "confidence": 0.95}}
+    )
+    trusted, _ = recognition.confirmed_context(result)
+
+    assert trusted == {"fault_code": code}
+
+
+def test_the_prompt_says_a_running_drive_is_not_a_fault() -> None:
+    prompt = recognition.SYSTEM_PROMPT
+    assert "running normally is NOT a fault display" in prompt
+    assert "never report a measured value as a code" in prompt
+
+
+_NEGATIVES = Path(__file__).resolve().parents[3] / "tests" / "photo-corpus-negatives"
+
+
+def test_the_negative_photographs_are_attributed() -> None:
+    entries = json.loads((_NEGATIVES / "manifest.json").read_text(encoding="utf-8"))
+    assert len(entries) >= 7
+    for entry in entries:
+        assert (_NEGATIVES / entry["file"]).is_file()
+        assert entry["verdict"] == DisplayVerdict.NOT_A_FAULT_DISPLAY.value
+        for field in ("license", "author", "source_url"):
+            assert entry[field], f"{entry['file']} has no {field}"
+
+
+@requires_live_model
+def test_no_negative_photograph_yields_a_fault_code() -> None:
+    """Real drives running, idle or in a menu: none may produce a code."""
+    from app.ai.anthropic_client import get_llm_client
+    from app.core.config import get_settings
+    from app.domain.images import sniff_format
+
+    settings = get_settings()
+    client = get_llm_client()
+    invented: list[str] = []
+    for entry in json.loads((_NEGATIVES / "manifest.json").read_text(encoding="utf-8")):
+        data = (_NEGATIVES / entry["file"]).read_bytes()
+        result = recognition.recognise_fault_display(
+            client, model=settings.generation_model, data=data, image_format=sniff_format(data)
+        )
+        trusted, _ = recognition.confirmed_context(result)
+        if "fault_code" in trusted:
+            invented.append(f"{entry['file']}: {trusted['fault_code']}")
+
+    assert not invented, "codes invented from photographs with no fault:\n" + "\n".join(invented)

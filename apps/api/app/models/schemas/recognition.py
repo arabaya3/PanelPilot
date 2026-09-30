@@ -18,7 +18,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 # A recognised value is a short token off a screen, not prose.
 ReadValue = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
@@ -102,6 +102,25 @@ class FaultRecognitionResult(BaseModel):
     brand: RecognisedField = Field(default_factory=RecognisedField)
     model: RecognisedField = Field(default_factory=RecognisedField)
     note: str | None = None
+
+    @field_validator("fault_code", "brand", "model", mode="before")
+    @classmethod
+    def _null_is_not_read(cls, value: object) -> object:
+        """Read a field sent as ``null`` as a field that was not read.
+
+        Found live on a real photograph of a drive keypad: asked for the
+        model it could not see, the model sent ``"model": null`` rather than
+        an empty field, and the whole report was refused -- the engineer got
+        an error instead of a verdict. An empty field is never trusted, so
+        this relaxes nothing that matters.
+
+        Args:
+            value: The raw field.
+
+        Returns:
+            An empty field for ``None``; anything else unchanged.
+        """
+        return {} if value is None else value
 
     @model_validator(mode="after")
     def _a_rejected_photo_reads_nothing(self) -> FaultRecognitionResult:
