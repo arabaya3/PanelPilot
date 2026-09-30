@@ -1,0 +1,65 @@
+[
+  {
+    "file": "press_brake_hmi.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A machine HMI showing settings, no fault",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Control_panel_displays_settings_and_data_on_a_machine.jpg",
+    "license": "CC BY 2.0",
+    "author": "Shixart1985",
+    "title": "Control panel displays settings and data on a machine.jpg"
+  },
+  {
+    "file": "machine_control_panel.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A machine control panel with a dark screen",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Control_panel_with_buttons_and_display_used_for_machinery_operation.jpg",
+    "license": "CC BY 2.0",
+    "author": "Shixart1985",
+    "title": "Control panel with buttons and display used for machinery operation.jpg"
+  },
+  {
+    "file": "drive_running_60hz_mitsubishi.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A Mitsubishi drive running: 60.00 Hz output frequency, no fault",
+    "source_url": "https://commons.wikimedia.org/wiki/File:MITSUBISHI_ELECTRIC_INVERTER.jpg",
+    "license": "CC BY-SA 4.0",
+    "author": "Afandrf",
+    "title": "MITSUBISHI ELECTRIC INVERTER.jpg"
+  },
+  {
+    "file": "drive_idle_siemens.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A Siemens drive keypad showing 0.00, no fault",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Siemens_VFD.jpg",
+    "license": "CC BY-SA 4.0",
+    "author": "Sarah Adrita",
+    "title": "Siemens VFD.jpg"
+  },
+  {
+    "file": "drive_running_60hz_small.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A small drive's LED display showing 60.0, no fault",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Small_variable-frequency_drive.jpg",
+    "license": "CC BY-SA 3.0",
+    "author": "C J Cowie",
+    "title": "Small variable-frequency drive.jpg"
+  },
+  {
+    "file": "drive_display_off.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "A drive with its keypad display dark",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Variable_Frequency_Drive_(VFD)_-_3.jpeg",
+    "license": "CC BY-SA 4.0",
+    "author": "Suyash.dwivedi",
+    "title": "Variable Frequency Drive (VFD) - 3.jpeg"
+  },
+  {
+    "file": "drive_parameter_menu_lcd.jpg",
+    "verdict": "not_a_fault_display",
+    "description": "An LS iS5 drive showing a parameter menu, no fault",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Variable_frequency_drive.jpg",
+    "license": "CC BY-SA 4.0",
+    "author": "Rahat",
+    "title": "Variable frequency drive.jpg"
+  }
+]
