@@ -127,10 +127,9 @@ field is omitted entirely when absent rather than written as zeros.
 
 ### Blocked on source documents that are not in this repository
 
-**AI-006, AI-007 — VFD selection and panel load sizing.** Each names a
-specific manufacturer engineering guide as the source for its tables and
-coefficients, and neither is present here. They were not attempted, and
-deliberately so: the numbers these produce end up on drawings, and a table
+**AI-007 — panel load sizing.** It names Rittal's handbook as the source
+for its tables and coefficients, and that is not present here. It was not
+attempted, and deliberately so: the numbers these produce end up on drawings, and a table
 written from general knowledge would be confident and uncitable -- the exact
 failure the cite-or-refuse rule exists to prevent.
 
@@ -139,6 +138,11 @@ handbook_ Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
 tables and prints two worked sizing examples the tests check against. It
 covers copper, PVC and XLPE/EPR, methods A1-C, E and F; everything else is
 refused, not guessed.
+
+VFD selection (AI-006) is implemented from the ABB ACS880-01 hardware
+manual (3AUA0000078093): the IEC ratings at 400 V, the temperature and
+altitude deratings, and the motor current from ABB's Technical guide No. 7.
+Other ranges and voltages are refused.
 
 **BE-011 and FE-010 — the panel BOM.** Both consume the calc tools above, so
 both are blocked behind them. The responsive check

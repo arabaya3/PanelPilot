@@ -13,7 +13,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy.orm import Session
 
-from app.ai.tools import cable_sizing
+from app.ai.tools import cable_sizing, vfd_selection
 from app.core.errors import NotImplementedYetError, ValidationError
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
@@ -42,7 +42,7 @@ def _require_positive(name: str, value: Decimal) -> None:
         raise ValidationError(f"{name} must be a positive number, got {value}")
 
 
-# Why VFD selection and the panel BOM answer 501 today. The formulas and tables come from
+# Why the panel BOM answers 501 today. The formulas and tables come from
 # named manufacturer engineering guides that are not in this repository, and
 # a table written from general knowledge would be confident and uncitable —
 # the failure cite-or-refuse exists to prevent. See the README, "Blocked on
@@ -117,22 +117,46 @@ def select_vfd(
     user: CurrentUser,
     request: VfdSelectionRequest,
 ) -> VfdSelectionResponse:
-    """Select a variable frequency drive frame for a motor and duty profile.
+    """Select a variable frequency drive for a motor and duty profile.
 
     Args:
-        session: Open database session, used to persist the calculation record.
-        user: The authenticated caller.
-        request: Motor rating, supply voltage, duty class, and altitude.
+        session: Open database session. Unused: the result is not persisted.
+        user: The authenticated caller, for the log line.
+        request: Motor rating, supply voltage, duty class, and site.
 
     Returns:
-        The recommended drive rating with applied derates and cited sources.
+        The recommended drive with its derated current, the factors applied,
+        and every source.
 
     Raises:
-        ValidationError: If no catalogue frame covers the requested duty.
-        NotImplementedYetError: Always, until the source guide is supplied.
+        ValidationError: If an input is outside the tables, or no catalogue
+            drive covers the duty.
     """
-    del session, user, request  # Unused until the tool exists; the signature is the contract.
-    raise NotImplementedYetError(_BLOCKED_ON_SOURCES.format(tool="VFD selection"))
+    del session
+    required = vfd_selection.required_drive_current_a(
+        motor_power_kw=request.motor_power_kw,
+        supply_voltage_v=request.supply_voltage_v,
+        motor_efficiency=request.motor_efficiency,
+        motor_power_factor=request.motor_power_factor,
+        duty_class=request.duty_class,
+    )
+    result = vfd_selection.select_frame(
+        required_current_a=required,
+        supply_voltage_v=request.supply_voltage_v,
+        duty_class=request.duty_class,
+        altitude_m=request.altitude_m,
+        ambient_temp_c=request.ambient_temp_c,
+    )
+    logger.info("calculation.vfd_selected", tenant_id=user.tenant_id, drive=result.frame_reference)
+    return VfdSelectionResponse(
+        result=result,
+        motor_current_a=required,
+        sources=[
+            vfd_selection.motor_current_citation(),
+            vfd_selection.ratings_citation(),
+            *(factor.source for factor in result.applied_factors),
+        ],
+    )
 
 
 def build_panel_bom(

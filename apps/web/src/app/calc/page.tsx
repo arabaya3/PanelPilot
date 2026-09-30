@@ -1,6 +1,6 @@
-import { CableSizingScreen } from '@/components/cable-sizing-screen';
+import { CalcScreen } from '@/components/calc-screen';
 
-/** `/calc`: engineering calculations. See `CableSizingScreen`. */
+/** `/calc`: engineering calculations. See `CalcScreen`. */
 export default function CalcPage() {
-  return <CableSizingScreen />;
+  return <CalcScreen />;
 }

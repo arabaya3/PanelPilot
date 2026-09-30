@@ -3,7 +3,6 @@
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 
-import { AppShell } from '@/components/app-shell';
 import {
   sizeCable,
   type CableSizingOutcome,
@@ -51,14 +50,14 @@ const INITIAL: Form = {
 };
 
 /**
- * `/calc`: size a copper feeder cable.
+ * The cable-sizing tab of `/calc`: size a copper feeder cable.
  *
  * Every number the result shows names the table it came from and the page,
  * so an engineer can check it against the handbook before it goes on a
  * drawing. An input the tables do not cover is refused with the reason, not
  * rounded into a guess.
  */
-export function CableSizingScreen({
+export function CableSizingPanel({
   acquireImpl = acquireTrial,
   sizeImpl = sizeCable,
 }: {
@@ -131,11 +130,8 @@ export function CableSizingScreen({
   }
 
   return (
-    <AppShell>
-      <div className="mb-6 flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
-        <p className="max-w-3xl text-text-muted">{t('intro')}</p>
-      </div>
+    <>
+      <p className="mb-5 max-w-3xl text-text-muted">{t('intro')}</p>
 
       <form
         onSubmit={(event) => {
@@ -231,11 +227,11 @@ export function CableSizingScreen({
       )}
 
       {result.kind === 'sized' && <CableResult response={result.response} />}
-    </AppShell>
+    </>
   );
 }
 
-function Field({
+export function Field({
   id,
   label,
   unit,
@@ -258,7 +254,7 @@ function Field({
 }
 
 /** Trim a decimal string for display: "111.8124" -> "111.81", "95" -> "95". */
-function round(value: string | number, places = 2): string {
+export function round(value: string | number, places = 2): string {
   const number = Number(value);
   return Number.isFinite(number) ? String(Number(number.toFixed(places))) : String(value);
 }
@@ -278,40 +274,57 @@ function CableResult({ response }: { response: CableSizingResponse }) {
         />
       </div>
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('result.factors')}</h2>
-        <ul className="flex flex-col gap-1 text-sm" dir="ltr">
-          {result.applied_factors.map((factor) => (
-            <li key={factor.name}>
-              <span className="font-mono">{factor.name}</span> = {round(factor.value, 3)}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('result.sources')}</h2>
-        <ul className="flex flex-col gap-1 text-sm" data-testid="calc-sources">
-          {response.sources.map((source, index) => (
-            <li key={index} dir="ltr">
-              {source.manufacturer} — <cite>{source.document_title}</cite>
-              {source.section ? `, ${source.section}` : ''}
-              {typeof source.page === 'number' ? `, p. ${String(source.page)}` : ''}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <Factors factors={result.applied_factors} />
+      <Sources sources={response.sources} />
     </section>
   );
 }
 
-function Figure({ label, value }: { label: string; value: string }) {
+export function Figure({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-xs text-text-muted">{label}</span>
       <span dir="ltr" className="text-start text-xl font-bold tabular-nums">
         {value}
       </span>
+    </div>
+  );
+}
+
+type AppliedFactor = CableSizingResponse['result']['applied_factors'][number];
+
+/** Each correction factor applied, as the tables name it. */
+export function Factors({ factors }: { factors: AppliedFactor[] }) {
+  const t = useTranslations('calc');
+  return (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('result.factors')}</h2>
+      <ul className="flex flex-col gap-1 text-sm" dir="ltr">
+        {factors.map((factor) => (
+          <li key={factor.name}>
+            <span className="font-mono">{factor.name}</span> = {round(factor.value, 3)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Every document a result came from, with its table and page. */
+export function Sources({ sources }: { sources: AppliedFactor['source'][] }) {
+  const t = useTranslations('calc');
+  return (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('result.sources')}</h2>
+      <ul className="flex flex-col gap-1 text-sm" data-testid="calc-sources">
+        {sources.map((source, index) => (
+          <li key={index} dir="ltr">
+            {source.manufacturer} — <cite>{source.document_title}</cite>
+            {source.section ? `, ${source.section}` : ''}
+            {typeof source.page === 'number' ? `, p. ${String(source.page)}` : ''}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

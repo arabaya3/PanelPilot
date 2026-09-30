@@ -38,6 +38,24 @@ def _client() -> Iterator[TestClient]:
 def test_a_blocked_calculation_answers_501_with_its_reason(client: TestClient) -> None:
     """Not an anonymous 500: the caller learns this is known and why."""
     response = client.post(
+        "/calculations/panel-bom",
+        json={
+            "loads": [],
+            "constraints": {
+                "width_mm": 600,
+                "height_mm": 800,
+                "depth_mm": 250,
+                "ingress_rating": "IP54",
+            },
+        },
+    )
+    assert response.status_code == 501
+    assert response.json()["error"] == "NotImplementedYetError"
+    assert "engineering guides" in response.json()["detail"]
+
+
+def test_a_drive_is_selected(client: TestClient) -> None:
+    response = client.post(
         "/calculations/vfd-selection",
         json={
             "motor_power_kw": "7.5",
@@ -46,9 +64,9 @@ def test_a_blocked_calculation_answers_501_with_its_reason(client: TestClient) -
             "motor_power_factor": "0.85",
         },
     )
-    assert response.status_code == 501
-    assert response.json()["error"] == "NotImplementedYetError"
-    assert "engineering guides" in response.json()["detail"]
+    assert response.status_code == 200
+    # 7.5 kW draws 14.2 A; 017A-3 is the first with I2 >= that.
+    assert response.json()["result"]["frame_reference"] == "ACS880-01-017A-3 (R2)"
 
 
 def test_a_cable_is_sized_with_its_sources(client: TestClient) -> None:

@@ -55,3 +55,53 @@ export async function sizeCable(options: {
   if (!('result' in payload) || !('sources' in payload)) return { kind: 'failed' };
   return { kind: 'sized', response: payload as CableSizingResponse };
 }
+
+export type VfdSelectionRequest = components['schemas']['VfdSelectionRequest'];
+export type VfdSelectionResponse = components['schemas']['VfdSelectionResponse'];
+
+export type VfdSelectionOutcome =
+  | { kind: 'selected'; response: VfdSelectionResponse }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/** Select a drive: `POST /api/v1/calculations/vfd-selection`. A 422 is a refusal. */
+export async function selectVfd(options: {
+  token: string;
+  request: VfdSelectionRequest;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<VfdSelectionOutcome> {
+  const {
+    token,
+    request,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/calculations/vfd-selection',
+  } = options;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(request),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 422) {
+    const detail = (payload as { detail?: unknown } | null)?.detail;
+    return { kind: 'refused', detail: typeof detail === 'string' ? detail : '' };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('result' in payload) || !('motor_current_a' in payload)) return { kind: 'failed' };
+  return { kind: 'selected', response: payload as VfdSelectionResponse };
+}
