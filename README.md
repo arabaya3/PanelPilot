@@ -134,8 +134,8 @@ deliberately so: the numbers these produce end up on drawings, and a table
 written from general knowledge would be confident and uncitable -- the exact
 failure the cite-or-refuse rule exists to prevent.
 
-Cable sizing (AI-005) is implemented from ABB's *Electrical installation
-handbook* Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
+Cable sizing (AI-005) is implemented from ABB's _Electrical installation
+handbook_ Vol. 2 (1SDC010001D0204), which republishes the IEC 60364-5-52
 tables and prints two worked sizing examples the tests check against. It
 covers copper, PVC and XLPE/EPR, methods A1-C, E and F; everything else is
 refused, not guessed.
