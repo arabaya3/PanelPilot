@@ -23,6 +23,7 @@ def settings() -> Settings:
         database_url="postgresql+psycopg://test:test@localhost:5432/test",
         opensearch_url="http://localhost:9200",
         anthropic_api_key="test-key",
+        openai_api_key="test-key",
         jwt_secret="test-secret",
         redis_url="redis://localhost:6379/0",
     )

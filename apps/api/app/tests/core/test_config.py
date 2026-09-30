@@ -27,6 +27,7 @@ def _settings(**overrides: Any) -> Settings:
         "database_url": "postgresql+psycopg://u:p@h:5432/d",
         "opensearch_url": "http://localhost:9200",
         "anthropic_api_key": "k",
+        "openai_api_key": "k",
         "jwt_secret": _STRONG_SECRET,
         "redis_url": "redis://localhost:6379/0",
     }
@@ -51,6 +52,7 @@ def test_environment_has_no_default() -> None:
         "database_url": "postgresql+psycopg://u:p@h:5432/d",
         "opensearch_url": "http://localhost:9200",
         "anthropic_api_key": "k",
+        "openai_api_key": "k",
         "jwt_secret": "x",
         "redis_url": "redis://localhost:6379/0",
     }

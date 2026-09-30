@@ -54,6 +54,7 @@ def client() -> Iterator[TestClient]:
         database_url=os.environ["DATABASE_URL"],
         opensearch_url=os.environ.get("OPENSEARCH_URL", "http://localhost:9200"),
         anthropic_api_key="test-key",
+        openai_api_key="test-key",
         jwt_secret="x" * 48,
         redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
     )
@@ -303,6 +304,7 @@ def test_resume_has_its_own_budget() -> None:
         database_url="postgresql+psycopg://test:test@localhost:5432/test",
         opensearch_url="http://localhost:9200",
         anthropic_api_key="test-key",
+        openai_api_key="test-key",
         jwt_secret="x" * 48,
         redis_url="redis://localhost:6379/0",
     )

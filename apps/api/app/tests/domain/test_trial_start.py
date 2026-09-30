@@ -63,6 +63,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://test:test@localhost:5432/test")
     monkeypatch.setenv("OPENSEARCH_URL", "http://localhost:9200")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long-ok")
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 

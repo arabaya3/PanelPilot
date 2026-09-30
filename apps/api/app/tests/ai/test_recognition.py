@@ -327,7 +327,7 @@ requires_live_model = pytest.mark.skipif(
     os.environ.get("PANELPILOT_LIVE_MODEL_TESTS") != "1",
     reason=(
         "calls the model with every photograph; set PANELPILOT_LIVE_MODEL_TESTS=1 "
-        "with a real ANTHROPIC_API_KEY to run it"
+        "with a real key for the configured provider to run it"
     ),
 )
 
