@@ -18,6 +18,8 @@ from app.ai.tools import cable_sizing, vfd_selection
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
     BomLine,
+    BomLineKind,
+    BomNote,
     ConductorMaterial,
     DutyClass,
     EnclosureConstraints,
@@ -222,6 +224,8 @@ def build_bom(
                         description=f"{load.tag}: drive for {load.description}",
                         quantity=1,
                         source=vfd_selection.ratings_citation(),
+                        kind=BomLineKind.DRIVE,
+                        details={"tag": load.tag, "load": load.description},
                     )
                 )
             cable = cable_sizing.size_conductor(
@@ -244,6 +248,13 @@ def build_bom(
                 ),
                 quantity=1,
                 source=cable_sizing.ampacity_citation(constraints.cable_installation_method),
+                kind=BomLineKind.CABLE,
+                details={
+                    "tag": load.tag,
+                    "load": load.description,
+                    "method": constraints.cable_installation_method.value,
+                    "grouped": str(grouped),
+                },
             )
         )
 
@@ -256,6 +267,8 @@ def build_bom(
             description=f"Enclosure, {constraints.placement.value.replace('_', ' ')}",
             quantity=1,
             source=_rittal(_AREA_TABLE_PAGE, "Enclosure installation type to IEC 60 890"),
+            kind=BomLineKind.ENCLOSURE,
+            details={"placement": constraints.placement.value},
         )
     )
 
@@ -264,6 +277,7 @@ def build_bom(
         "Protective devices, contactors and terminals are not included: no sourced "
         "selection table for them is held here.",
     ]
+    note_keys = [BomNote.NO_PROTECTIVE_DEVICES]
     if cooling > 0:
         rise = constraints.max_internal_temp_c - constraints.ambient_temp_c
         lines.append(
@@ -276,6 +290,12 @@ def build_bom(
                 ),
                 quantity=1,
                 source=_rittal(_HEAT_BALANCE_PAGE, "Active heat dissipation"),
+                kind=BomLineKind.COOLING,
+                details={
+                    "cooling_w": _plain(cooling.quantize(Decimal("1"))),
+                    "rise_k": _plain(rise),
+                    "qw": _plain((cooling / rise).quantize(Decimal("0.1"))),
+                },
             )
         )
     if any(load.dissipation_w is None for load in loads):
@@ -283,4 +303,11 @@ def build_bom(
             "Loads without a dissipation add no heat; the cooling figure is only as "
             "complete as the schedule."
         )
-    return PanelBomResult(lines=lines, heat_load_w=heat, cooling_required_w=cooling, notes=notes)
+        note_keys.append(BomNote.INCOMPLETE_DISSIPATION)
+    return PanelBomResult(
+        lines=lines,
+        heat_load_w=heat,
+        cooling_required_w=cooling,
+        notes=notes,
+        note_keys=note_keys,
+    )

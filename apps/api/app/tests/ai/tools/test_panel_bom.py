@@ -164,3 +164,40 @@ def test_round_numbers_are_written_plainly() -> None:
     assert "E+" not in text
     assert "Cu XLPE 10 mm²" in text
     assert "10 K rise" in text
+
+
+def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
+    from app.models.schemas.calculations import BomLineKind, BomNote
+
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="M-101",
+                description="conveyor",
+                current_a=Decimal("40"),
+                dissipation_w=Decimal("900"),
+                variable_speed=True,
+            ),
+            LoadScheduleItem(tag="H-1", description="heater", current_a=Decimal("10")),
+        ],
+        constraints=_constraints(),
+    )
+
+    assert [line.kind for line in result.lines] == [
+        BomLineKind.DRIVE,
+        BomLineKind.CABLE,
+        BomLineKind.CABLE,
+        BomLineKind.ENCLOSURE,
+        BomLineKind.COOLING,
+    ]
+    assert result.lines[0].details == {"tag": "M-101", "load": "conveyor"}
+    assert result.lines[1].details == {
+        "tag": "M-101",
+        "load": "conveyor",
+        "method": "C",
+        "grouped": "2",
+    }
+    assert result.lines[3].details == {"placement": "single_free_standing"}
+    assert result.lines[4].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
+    # The heater gives no dissipation, so the cooling figure is incomplete.
+    assert result.note_keys == [BomNote.NO_PROTECTIVE_DEVICES, BomNote.INCOMPLETE_DISSIPATION]

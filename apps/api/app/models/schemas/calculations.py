@@ -161,13 +161,35 @@ class EnclosureConstraints(BaseModel):
     max_internal_temp_c: Decimal = Decimal(50)
 
 
+class BomLineKind(StrEnum):
+    """What a BOM line is, so a page can describe it in its own language."""
+
+    DRIVE = "drive"
+    CABLE = "cable"
+    ENCLOSURE = "enclosure"
+    COOLING = "cooling"
+
+
+class BomNote(StrEnum):
+    """What a BOM leaves out, as a key a page can translate."""
+
+    NO_PROTECTIVE_DEVICES = "no_protective_devices"
+    INCOMPLETE_DISSIPATION = "incomplete_dissipation"
+
+
 class BomLine(BaseModel):
     """One line of a bill of materials."""
 
     part_reference: str
+    #: English, for anything that shows the line without translating it.
     description: str
     quantity: int
     source: Citation
+    kind: BomLineKind
+    #: The values ``description`` is written from, for translation: ``tag``,
+    #: ``load``, ``method``, ``grouped``, ``placement``, ``cooling_w``,
+    #: ``rise_k`` and ``qw`` as each kind has them.
+    details: dict[str, str] = {}
 
 
 class PanelBomResult(BaseModel):
@@ -179,8 +201,10 @@ class PanelBomResult(BaseModel):
     #: Heat the enclosure surface cannot shed at the permitted temperature
     #: rise, which cooling must remove. Zero if the surface suffices.
     cooling_required_w: Decimal
-    #: What the BOM deliberately leaves out, and why.
+    #: What the BOM deliberately leaves out, and why, in English.
     notes: list[str] = []
+    #: The same, as keys a page translates.
+    note_keys: list[BomNote] = []
 
 
 class PanelBomRequest(BaseModel):
