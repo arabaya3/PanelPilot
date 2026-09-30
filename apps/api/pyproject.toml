@@ -18,6 +18,9 @@ dependencies = [
     "opensearch-py>=2.7",
     "structlog>=24.4",
     "anthropic>=0.40",
+    # The alternative model provider (LLM_PROVIDER=openai), and its
+    # embeddings (EMBEDDING_PROVIDER=openai). Apache-2.0.
+    "openai>=1.50",
     "httpcore>=1.0",
     "httpx>=0.27",
     # PDF layout extraction for the ingestion pipeline (BE-005). MIT, and

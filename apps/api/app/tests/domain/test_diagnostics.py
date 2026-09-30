@@ -231,6 +231,7 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> _CountingClient:
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        generation_model = "claude-sonnet-5"
         llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
@@ -363,6 +364,7 @@ def test_unparseable_output_becomes_a_refusal_not_an_error(monkeypatch: pytest.M
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        generation_model = "claude-sonnet-5"
         llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)
@@ -423,6 +425,7 @@ def test_unparseable_output_is_not_charged(monkeypatch: pytest.MonkeyPatch) -> N
 
     class _Settings:
         llm_model = "claude-sonnet-5"
+        generation_model = "claude-sonnet-5"
         llm_max_output_tokens = 4096
 
     monkeypatch.setattr(diagnostics_domain, "get_settings", _Settings)

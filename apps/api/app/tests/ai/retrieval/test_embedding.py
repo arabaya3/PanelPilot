@@ -229,3 +229,62 @@ def test_the_voyage_client_is_bounded_and_reused(monkeypatch: pytest.MonkeyPatch
     assert len(built) == 1
     assert built[0]["timeout"] == embedding.EMBEDDING_TIMEOUT_S
     assert built[0]["max_retries"] == embedding.EMBEDDING_MAX_RETRIES
+
+
+def test_openai_embeds_at_the_index_width_in_input_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`dimensions` keeps the existing mapping; results are re-sorted by index."""
+    calls: list[dict[str, object]] = []
+    built: list[dict[str, object]] = []
+
+    class _Embeddings:
+        def create(self, **kwargs: object) -> object:
+            calls.append(kwargs)
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(index=1, embedding=[1.0]),
+                    SimpleNamespace(index=0, embedding=[0.0]),
+                ]
+            )
+
+    class _Client:
+        def __init__(self, **kwargs: object) -> None:
+            built.append(kwargs)
+            self.embeddings = _Embeddings()
+
+    monkeypatch.setattr("openai.OpenAI", _Client)
+    embedding._openai_embedder.cache_clear()
+    try:
+        embed = embedding._openai_embedder("key", "text-embedding-3-small")
+        assert embed(["a", "b"], "query") == [[0.0], [1.0]]
+    finally:
+        embedding._openai_embedder.cache_clear()
+
+    assert calls[0]["dimensions"] == EMBEDDING_DIMENSIONS
+    assert calls[0]["model"] == "text-embedding-3-small"
+    assert built[0]["timeout"] == embedding.EMBEDDING_TIMEOUT_S
+
+
+def test_openai_embeddings_need_a_v3_model_and_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from app.core import config
+    from app.core.config import ConfigurationError
+
+    def settings(**overrides: object) -> object:
+        base: dict[str, object] = {
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "openai_api_key": SimpleNamespace(get_secret_value=lambda: "sk"),
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    monkeypatch.setattr(config, "get_settings", lambda: settings(openai_api_key=None))
+    with pytest.raises(ConfigurationError, match="OPENAI_API_KEY"):
+        embedding.get_embedder()
+
+    monkeypatch.setattr(config, "get_settings", lambda: settings(embedding_model="voyage-3.5"))
+    with pytest.raises(ConfigurationError, match="text-embedding-3"):
+        embedding.get_embedder()

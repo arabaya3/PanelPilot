@@ -52,6 +52,7 @@ _REPORT = FaultRecognitionResult.model_validate(
 
 class _Settings:
     llm_model = "test-model"
+    generation_model = "test-model"
 
 
 @pytest.fixture

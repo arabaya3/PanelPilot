@@ -361,13 +361,12 @@ def test_the_corpus_is_large_and_varied_enough_to_mean_anything() -> None:
 @requires_live_model
 def test_every_good_photo_is_read_correctly() -> None:
     """The acceptance criterion, when the data exists to run it."""
-    import anthropic
-
+    from app.ai.anthropic_client import get_llm_client
     from app.core.config import get_settings
     from app.domain.images import sniff_format
 
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+    client = get_llm_client()
 
     failures: list[str] = []
     for entry in _load_manifest():
@@ -376,7 +375,7 @@ def test_every_good_photo_is_read_correctly() -> None:
         data = (_CORPUS_ROOT / entry["file"]).read_bytes()
         result = recognition.recognise_fault_display(
             client,
-            model=settings.llm_model,
+            model=settings.generation_model,
             data=data,
             image_format=sniff_format(data),
         )
@@ -399,13 +398,12 @@ def test_every_off_topic_photo_is_rejected() -> None:
     almost any image, and a fabricated code sends an engineer to a real
     procedure for a fault they do not have.
     """
-    import anthropic
-
+    from app.ai.anthropic_client import get_llm_client
     from app.core.config import get_settings
     from app.domain.images import sniff_format
 
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+    client = get_llm_client()
 
     for entry in _load_manifest():
         if entry.get("verdict") == DisplayVerdict.FAULT_DISPLAY.value:
@@ -413,7 +411,7 @@ def test_every_off_topic_photo_is_rejected() -> None:
         data = (_CORPUS_ROOT / entry["file"]).read_bytes()
         result = recognition.recognise_fault_display(
             client,
-            model=settings.llm_model,
+            model=settings.generation_model,
             data=data,
             image_format=sniff_format(data),
         )

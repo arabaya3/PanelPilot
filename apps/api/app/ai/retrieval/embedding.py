@@ -124,6 +124,48 @@ def _voyage_embedder(api_key: str, model: str) -> Embedder:
     return embed
 
 
+@lru_cache(maxsize=4)
+def _openai_embedder(api_key: str, model: str) -> Embedder:
+    """Build an embedder backed by OpenAI, at the index's width.
+
+    Args:
+        api_key: The OpenAI API key.
+        model: A ``text-embedding-3`` model id.
+
+    Returns:
+        A callable embedding batches of text.
+
+    ``dimensions`` asks the model for ``EMBEDDING_DIMENSIONS`` directly --
+    the v3 models are trained to be truncated -- so the index mapping stays
+    as it is. OpenAI encodes documents and queries alike, so ``input_type``
+    has nothing to select.
+    """
+    import openai
+
+    client = openai.OpenAI(
+        api_key=api_key, timeout=EMBEDDING_TIMEOUT_S, max_retries=EMBEDDING_MAX_RETRIES
+    )
+
+    def embed(texts: Sequence[str], input_type: InputType) -> list[list[float]]:
+        """Embed a batch through OpenAI.
+
+        Args:
+            texts: The texts to embed.
+            input_type: Unused; see above.
+
+        Returns:
+            One vector per input text, in order.
+        """
+        del input_type
+        result = client.embeddings.create(
+            model=model, input=list(texts), dimensions=EMBEDDING_DIMENSIONS
+        )
+        ordered = sorted(result.data, key=lambda item: item.index)
+        return [list(item.embedding) for item in ordered]
+
+    return embed
+
+
 def get_embedder() -> Embedder:
     """Return the configured embedder.
 
@@ -150,10 +192,23 @@ def get_embedder() -> Embedder:
             "See the embedding section of .env.example."
         )
 
+    if provider == "openai":
+        openai_key = settings.openai_api_key
+        if openai_key is None:
+            raise ConfigurationError("EMBEDDING_PROVIDER is 'openai' but OPENAI_API_KEY is not set")
+        # Only the v3 models take `dimensions`; any other would return its
+        # native width, which the check in `embed_texts` would then refuse.
+        if not settings.embedding_model.startswith("text-embedding-3"):
+            raise ConfigurationError(
+                f"EMBEDDING_MODEL {settings.embedding_model!r} is not an OpenAI "
+                "text-embedding-3 model; set EMBEDDING_MODEL=text-embedding-3-small"
+            )
+        return _openai_embedder(openai_key.get_secret_value(), settings.embedding_model)
+
     if provider != "voyage":
         raise ConfigurationError(
             f"EMBEDDING_PROVIDER {provider!r} is not supported; "
-            "the only implemented provider is 'voyage'"
+            "the implemented providers are 'voyage' and 'openai'"
         )
 
     key = settings.embedding_api_key

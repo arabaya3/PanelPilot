@@ -47,7 +47,7 @@ def _settings(monkeypatch: pytest.MonkeyPatch, tmp_path: object) -> Iterator[Non
         "ENVIRONMENT": "dev",
         "DATABASE_URL": "postgresql+psycopg://test:test@localhost:5432/test",
         "OPENSEARCH_URL": "http://localhost:9200",
-        "ANTHROPIC_API_KEY": "test-key",
+        "OPENAI_API_KEY": "test-key",
         "JWT_SECRET": _SECRET,
         "REDIS_URL": "redis://localhost:6379/0",
     }.items():

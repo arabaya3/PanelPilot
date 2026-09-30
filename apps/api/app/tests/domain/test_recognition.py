@@ -67,6 +67,7 @@ class _FakeClient:
 
 class _Settings:
     llm_model = "test-model"
+    generation_model = "test-model"
 
 
 @pytest.fixture
