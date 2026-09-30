@@ -19,12 +19,14 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.domain import corpus_maintenance as maintenance_domain
+from app.domain import feedback as feedback_domain
 from app.domain import promotion as promotion_domain
 from app.domain import verification_queue as queue_domain
-from app.models.schemas.auth import Role
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.verification import (
     DismissStaleRequest,
     EscalationPage,
+    FlaggedAnswerView,
     LabelRequest,
     LabelResponse,
     QueueItem,
@@ -37,21 +39,31 @@ from app.models.tables.ingestion import StaleDocumentRow, VerificationItemRow
 router = APIRouter()
 
 
-def _to_items(rows: list[VerificationItemRow]) -> list[QueueItem]:
-    """Project queue rows onto their wire shape, with the text under review.
+def _to_items(
+    session: SessionDep, user: CurrentUser, rows: list[VerificationItemRow]
+) -> list[QueueItem]:
+    """Project queue rows onto their wire shape, with what is under review.
 
     Args:
+        session: The request's session, for reading reported answers.
+        user: The caller, who must be a reviewer to read reported answers.
         rows: The database rows.
 
     Returns:
         The items as the API presents them. The staged chunks are read in one
-        request for the whole batch, not one per item.
+        request for the whole batch, and the reported answers in one query.
     """
     chunks = queue_domain.staged_chunks([row.chunk_id for row in rows if row.chunk_id])
+    flags = feedback_domain.flags_for_review(
+        session=session,
+        reviewer=user,
+        flag_ids={row.flagged_answer_id for row in rows if row.flagged_answer_id},
+    )
     items = []
     for row in rows:
         chunk = chunks.get(row.chunk_id or "", {})
         page = chunk.get("page")
+        flag = flags.get(row.flagged_answer_id) if row.flagged_answer_id else None
         items.append(
             QueueItem(
                 id=row.id,
@@ -62,6 +74,18 @@ def _to_items(rows: list[VerificationItemRow]) -> list[QueueItem]:
                 source_url=chunk.get("source_url"),
                 page=page if isinstance(page, int) else None,
                 section=chunk.get("section"),
+                origin=row.origin,
+                flag=(
+                    FlaggedAnswerView(
+                        question=flag.question,
+                        answer=flag.answer,
+                        reason=flag.reason,
+                        passages=flag.passages,
+                        flagged_at=flag.flagged_at,
+                    )
+                    if flag is not None
+                    else None
+                ),
             )
         )
     return items
@@ -71,7 +95,7 @@ def _to_items(rows: list[VerificationItemRow]) -> list[QueueItem]:
 def my_queue(session: SessionDep, user: CurrentUserDep) -> QueuePage:
     """Return the caller's outstanding batch."""
     rows = queue_domain.queue_for(session=session, verifier_id=UUID(user.id))
-    return QueuePage(items=_to_items(list(rows)))
+    return QueuePage(items=_to_items(session, user, list(rows)))
 
 
 @router.post("/items/{item_id}/label", response_model=LabelResponse)
@@ -131,7 +155,7 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
         )
 
     rows = queue_domain.escalations(session=session)
-    return EscalationPage(items=_to_items(list(rows)))
+    return EscalationPage(items=_to_items(session, user, list(rows)))
 
 
 def _to_stale(row: StaleDocumentRow) -> StaleDocument:

@@ -115,6 +115,14 @@ export function ReviewScreen({
     submitting: tv('submitting'),
     claimedBy: tv.raw('claimedBy') as string,
     submitFailed: tv('submitFailed'),
+    reported: tv('reported'),
+    reportedQuestion: tv('reportedQuestion'),
+    reportedAnswer: tv('reportedAnswer'),
+    reportedReason: tv('reportedReason'),
+    reportedNoReason: tv('reportedNoReason'),
+    reportedPassages: tv('reportedPassages'),
+    reportedNoPassages: tv('reportedNoPassages'),
+    reportedContextMissing: tv('reportedContextMissing'),
   };
 
   return (

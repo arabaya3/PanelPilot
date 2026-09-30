@@ -89,6 +89,16 @@ export async function submitLabel(options: {
  * understand it ignores it and shows the document from the start.
  */
 export function sourceUrlFor(item: QueueItem): string | null {
+  // A reported answer has no chunk of its own; its first passage is the
+  // document it leaned on most.
+  const passage = item.flag?.passages?.[0];
+  if (passage) {
+    const url = passage.citation.document_id;
+    if (!url) return null;
+    return typeof passage.citation.page === 'number'
+      ? `${url}#page=${String(passage.citation.page)}`
+      : url;
+  }
   if (!item.source_url) return null;
   return typeof item.page === 'number'
     ? `${item.source_url}#page=${String(item.page)}`

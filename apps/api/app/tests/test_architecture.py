@@ -525,6 +525,9 @@ CROSS_TENANT_ALLOWED = {
     APP_ROOT / "domain" / "auth.py",
     # A system job acts for no tenant.
     APP_ROOT / "worker" / "jobs.py",
+    # Reviewers judge flagged answers from every tenant; `flags_for_review`
+    # only, gated on the reviewer role.
+    APP_ROOT / "domain" / "feedback.py",
 }
 
 

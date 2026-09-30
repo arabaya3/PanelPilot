@@ -17,17 +17,20 @@ written down as they stood, and nothing later reconstructs them.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
 import structlog
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotFoundError, PanelPilotError
-from app.core.tenancy import bind_tenant
+from app.core.errors import AuthorizationError, NotFoundError, PanelPilotError
+from app.core.tenancy import bind_tenant, cross_tenant
 from app.domain.auth import known_user_id
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.search import RetrievedPassage
 from app.models.tables.diagnostics import DiagnosticTurnRow
 from app.models.tables.escalation import FlaggedAnswerRow
@@ -220,3 +223,76 @@ def flagged_items(*, session: Session) -> list[VerificationItemRow]:
         .scalars()
         .all()
     )
+
+
+@dataclass(frozen=True)
+class FlagForReview:
+    """What a reviewer needs to judge a flagged answer, copied out of its row.
+
+    A plain value rather than the row: the row is read across tenants, and a
+    bound session evicts such rows once the cross-tenant block ends.
+
+    Attributes:
+        question: What the engineer asked.
+        answer: What they were shown.
+        reason: What they said was wrong, if anything.
+        passages: The passages the answer was built on, as captured. ``None``
+            when the stored context cannot be read -- which is not the same as
+            an answer that had no passages, and must not be shown as one.
+        flagged_at: When it was reported.
+    """
+
+    question: str
+    answer: str
+    reason: str | None
+    passages: list[RetrievedPassage] | None
+    flagged_at: datetime
+
+
+def flags_for_review(
+    *, session: Session, reviewer: CurrentUser, flag_ids: Collection[UUID]
+) -> dict[UUID, FlagForReview]:
+    """Read flagged answers for the reviewers who judge them.
+
+    Args:
+        session: Open database session.
+        reviewer: Who is reading; must hold the reviewer role.
+        flag_ids: The flags to read.
+
+    Returns:
+        Each flag found, by id.
+
+    Raises:
+        AuthorizationError: If the caller is not a reviewer.
+
+    Across tenants, and only here: a flag belongs to the customer who raised
+    it, while the reviewers who judge it work every customer's queue. Without
+    this a flagged item reached a verifier as an id with no question, answer
+    or passages -- nothing to judge.
+    """
+    if not flag_ids:
+        return {}
+    if not reviewer.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{reviewer.email} does not hold the reviewer role")
+
+    found: dict[UUID, FlagForReview] = {}
+    with cross_tenant(session, reason="reviewers judge flagged answers from every tenant"):
+        rows = session.execute(
+            select(FlaggedAnswerRow).where(FlaggedAnswerRow.id.in_(list(flag_ids)))
+        ).scalars()
+        for row in rows:
+            try:
+                passages: list[RetrievedPassage] | None = context_for(row)
+            except (FeedbackError, PydanticValidationError):
+                # One unreadable record must not hide a reviewer's whole
+                # queue; it is shown as unreadable instead.
+                logger.warning("feedback.unreadable_context", flag_id=str(row.id))
+                passages = None
+            found[row.id] = FlagForReview(
+                question=row.question,
+                answer=row.answer,
+                reason=row.reason,
+                passages=passages,
+                flagged_at=row.created_at,
+            )
+    return found
