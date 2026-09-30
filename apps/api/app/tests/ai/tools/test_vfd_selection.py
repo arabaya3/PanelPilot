@@ -106,22 +106,72 @@ def test_derating_can_push_to_the_next_size() -> None:
 def test_what_the_catalogue_does_not_cover_is_refused() -> None:
     with pytest.raises(ValidationError, match="no ACS880-01"):
         _select("700")
-    with pytest.raises(ValidationError, match="380-415"):
-        vfd_selection.select_frame(
-            required_current_a=Decimal("10"),
-            supply_voltage_v=Decimal("690"),
-            duty_class=DutyClass.NORMAL,
-            altitude_m=Decimal(0),
-            ambient_temp_c=Decimal(40),
-        )
+    for supply in ("230", "510", "600", "720", "NaN"):
+        with pytest.raises(ValidationError, match="supply ranges"):
+            vfd_selection.select_frame(
+                required_current_a=Decimal("10"),
+                supply_voltage_v=Decimal(supply),
+                duty_class=DutyClass.NORMAL,
+                altitude_m=Decimal(0),
+                ambient_temp_c=Decimal(40),
+            )
 
 
-def test_the_catalogue_rises_with_the_type() -> None:
-    nominal = [Decimal(r.nominal_a) for r in vfd_selection._RATINGS_400V]
-    heavy = [Decimal(r.heavy_duty_a) for r in vfd_selection._RATINGS_400V if r.heavy_duty_a]
+def _select_at(supply: str, current: str, duty: DutyClass = DutyClass.NORMAL) -> str:
+    return vfd_selection.select_frame(
+        required_current_a=Decimal(current),
+        supply_voltage_v=Decimal(supply),
+        duty_class=duty,
+        altitude_m=Decimal(0),
+        ambient_temp_c=Decimal(40),
+    ).frame_reference
+
+
+@pytest.mark.parametrize(
+    ("supply", "current", "duty", "expected"),
+    [
+        # Un = 500 V, p. 237: 052A-5 is I2 52 A, IHd 40 A.
+        ("500", "52", DutyClass.NORMAL, "ACS880-01-052A-5 (R4)"),
+        ("480", "41", DutyClass.HEAVY, "ACS880-01-065A-5 (R5)"),
+        # 260A-5's IHd is footnoted (30 % overload): heavy duty skips to 361A-5.
+        ("500", "200", DutyClass.HEAVY, "ACS880-01-361A-5 (R9)"),
+        # Un = 690 V, p. 238: 061A-7 is I2 61 A, IHd 49 A.
+        ("690", "61", DutyClass.NORMAL, "ACS880-01-061A-7 (R6)"),
+        ("660", "50", DutyClass.HEAVY, "ACS880-01-084A-7 (R6)"),
+        # 400 V stays on the -3 range.
+        ("400", "52", DutyClass.NORMAL, "ACS880-01-061A-3 (R4)"),
+    ],
+)
+def test_the_supply_picks_the_range(
+    supply: str, current: str, duty: DutyClass, expected: str
+) -> None:
+    assert _select_at(supply, current, duty) == expected
+
+
+def test_the_ratings_citation_follows_the_supply() -> None:
+    assert vfd_selection.ratings_citation(Decimal("400")).page == 234
+    assert (
+        vfd_selection.ratings_citation(Decimal("500")).section
+        == "Electrical ratings, IEC, Un = 500 V"
+    )
+    assert (
+        vfd_selection.ratings_citation(Decimal("690")).section
+        == "Electrical ratings, IEC, Un = 690 V"
+    )
+    with pytest.raises(ValidationError):
+        vfd_selection.ratings_citation(Decimal("600"))
+
+
+@pytest.mark.parametrize(
+    "ratings",
+    [vfd_selection._RATINGS_400V, vfd_selection._RATINGS_500V, vfd_selection._RATINGS_690V],
+)
+def test_the_catalogue_rises_with_the_type(ratings: tuple[vfd_selection._Rating, ...]) -> None:
+    nominal = [Decimal(r.nominal_a) for r in ratings]
+    heavy = [Decimal(r.heavy_duty_a) for r in ratings if r.heavy_duty_a]
     assert nominal == sorted(nominal)
     assert heavy == sorted(heavy)
-    for rating in vfd_selection._RATINGS_400V:
+    for rating in ratings:
         if rating.heavy_duty_a is not None:
             assert Decimal(rating.heavy_duty_a) < Decimal(rating.nominal_a), rating.type_code
 

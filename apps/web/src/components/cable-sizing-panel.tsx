@@ -35,6 +35,7 @@ type Form = {
   ambient: string;
   grouped: string;
   insulation: '70' | '90';
+  material: 'copper' | 'aluminium';
   phases: '3' | '1';
 };
 
@@ -46,11 +47,12 @@ const INITIAL: Form = {
   ambient: '30',
   grouped: '1',
   insulation: '90',
+  material: 'copper',
   phases: '3',
 };
 
 /**
- * The cable-sizing tab of `/calc`: size a copper feeder cable.
+ * The cable-sizing tab of `/calc`: size a copper or aluminium feeder cable.
  *
  * Every number the result shows names the table it came from and the page,
  * so an engineer can check it against the handbook before it goes on a
@@ -96,7 +98,7 @@ export function CableSizingPanel({
       installation_method: form.method,
       ambient_temp_c: form.ambient.trim(),
       grouped_circuits: Number(form.grouped),
-      conductor_material: 'copper',
+      conductor_material: form.material,
       insulation_rating_c: Number(form.insulation),
       // The normal-service motor column: the drop table tabulates 0.8 and
       // 0.35 only.
@@ -172,6 +174,19 @@ export function CableSizingPanel({
           >
             <option value="90">{t('insulation.90')}</option>
             <option value="70">{t('insulation.70')}</option>
+          </select>
+        </Field>
+        <Field id={`${id}-material`} label={t('field.material')}>
+          <select
+            id={`${id}-material`}
+            value={form.material}
+            onChange={(event) => {
+              set('material', event.target.value as Form['material']);
+            }}
+            className="input w-full"
+          >
+            <option value="copper">{t('material.copper')}</option>
+            <option value="aluminium">{t('material.aluminium')}</option>
           </select>
         </Field>
         <Field id={`${id}-phases`} label={t('field.phases')}>

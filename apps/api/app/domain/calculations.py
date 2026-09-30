@@ -28,13 +28,6 @@ from app.models.schemas.search import Citation
 
 logger = structlog.get_logger(__name__)
 
-_VOLTAGE_DROP_SOURCE = Citation(
-    document_id="schneider-eig-2010",
-    document_title="Electrical Installation Guide 2010",
-    manufacturer="Schneider Electric",
-    section="Chapter G, Fig. G28",
-)
-
 
 def _require_positive(name: str, value: Decimal) -> None:
     """Refuse anything but a finite number above zero."""
@@ -82,6 +75,7 @@ def size_cable(
         conductor_material=request.conductor_material,
         power_factor=request.power_factor,
         three_phase=request.three_phase,
+        installation_method=request.installation_method,
     )
     logger.info(
         "calculation.cable_sized",
@@ -95,7 +89,7 @@ def size_cable(
         sources=[
             cable_sizing.ampacity_citation(request.installation_method),
             *(factor.source for factor in result.applied_factors),
-            _VOLTAGE_DROP_SOURCE,
+            cable_sizing.voltage_drop_citation(request.conductor_material, request.power_factor),
         ],
     )
 
@@ -142,7 +136,7 @@ def select_vfd(
         motor_current_a=required,
         sources=[
             vfd_selection.motor_current_citation(),
-            vfd_selection.ratings_citation(),
+            vfd_selection.ratings_citation(request.supply_voltage_v),
             *(factor.source for factor in result.applied_factors),
         ],
     )

@@ -2,9 +2,11 @@
 
 Pure functions. Each formula cites the manufacturer guide it came from.
 
-The catalogue is the ACS880-01 wall-mounted range at 400 V (types ...-3), IEC
-ratings, IP21. Other ranges, voltages and enclosures have their own tables
-and derating curves and are refused rather than read from these.
+The catalogue is the ACS880-01 wall-mounted range, IEC ratings, IP21: types
+...-3 on 380-415 V, ...-5 on 415-500 V (rated at Un = 500 V) and ...-7 on
+660-690 V (rated at Un = 690 V). Other ranges, voltages and enclosures have
+their own tables and derating curves and are refused rather than read from
+these.
 """
 
 from __future__ import annotations
@@ -21,12 +23,8 @@ HARDWARE_MANUAL_TITLE = "ACS880-01 drives hardware manual"
 GUIDE_7_ID = "abb-3AFE64362569"
 GUIDE_7_TITLE = "Technical guide No. 7: Dimensioning of a drive system"
 
-#: PDF pages of the hardware manual's tables.
-_RATINGS_PAGES = (234, 235)
+#: PDF pages of the hardware manual's derating sections.
 _DERATING_PAGES = (243, 244)
-
-#: The -3 range's supply: 380...415 V (hardware manual, technical data).
-_SUPPLY_V = (Decimal(380), Decimal(415))
 
 #: Ambient limits for full current and for derated current, °C.
 _FULL_CURRENT_UP_TO_C = Decimal(40)
@@ -86,6 +84,92 @@ _RATINGS_400V: tuple[_Rating, ...] = (
     _Rating("ACS880-01-670A-3", "R9e", "670", "595"),
 )
 
+#: ACS880-01-xxxx-5, Un = 500 V, IEC ratings (hardware manual pp. 236-237).
+#: The manual tabulates these types at Un = 400 V too, with the same I2 and
+#: IHd. 260A, 414A and 477A carry footnoted heavy-duty currents (30 %, 25 %
+#: and 40 % overload) and are not offered for heavy duty.
+_RATINGS_500V: tuple[_Rating, ...] = (
+    _Rating("ACS880-01-02A1-5", "R1", "2.1", "1.7"),
+    _Rating("ACS880-01-03A0-5", "R1", "3.0", "2.1"),
+    _Rating("ACS880-01-03A4-5", "R1", "3.4", "3.0"),
+    _Rating("ACS880-01-04A8-5", "R1", "4.8", "3.4"),
+    _Rating("ACS880-01-05A2-5", "R1", "5.2", "4.8"),
+    _Rating("ACS880-01-07A6-5", "R1", "7.6", "5.2"),
+    _Rating("ACS880-01-11A0-5", "R1", "11.0", "7.6"),
+    _Rating("ACS880-01-014A-5", "R2", "14", "11"),
+    _Rating("ACS880-01-021A-5", "R2", "21", "14"),
+    _Rating("ACS880-01-027A-5", "R3", "27", "21"),
+    _Rating("ACS880-01-034A-5", "R3", "34", "27"),
+    _Rating("ACS880-01-040A-5", "R4", "40", "34"),
+    _Rating("ACS880-01-052A-5", "R4", "52", "40"),
+    _Rating("ACS880-01-065A-5", "R5", "65", "52"),
+    _Rating("ACS880-01-077A-5", "R5", "77", "65"),
+    _Rating("ACS880-01-096A-5", "R6", "96", "77"),
+    _Rating("ACS880-01-124A-5", "R6", "124", "96"),
+    _Rating("ACS880-01-156A-5", "R7", "156", "124"),
+    _Rating("ACS880-01-180A-5", "R7", "180", "156"),
+    _Rating("ACS880-01-240A-5", "R8", "240", "180"),
+    _Rating("ACS880-01-260A-5", "R8", "260", None),
+    _Rating("ACS880-01-361A-5", "R9", "361", "302"),
+    _Rating("ACS880-01-414A-5", "R9", "414", None),
+    _Rating("ACS880-01-477A-5", "R9", "477", None),
+    _Rating("ACS880-01-585A-5", "R9e", "585", "505"),
+    _Rating("ACS880-01-635A-5", "R9e", "635", "585"),
+)
+
+#: ACS880-01-xxxx-7, Un = 690 V, IEC ratings (hardware manual pp. 237-238).
+_RATINGS_690V: tuple[_Rating, ...] = (
+    _Rating("ACS880-01-07A4-7", "R3", "7.4", "5.6"),
+    _Rating("ACS880-01-09A9-7", "R3", "9.9", "7.4"),
+    _Rating("ACS880-01-14A3-7", "R3", "14.3", "9.9"),
+    _Rating("ACS880-01-019A-7", "R3", "19", "14.3"),
+    _Rating("ACS880-01-023A-7", "R3", "23", "19"),
+    _Rating("ACS880-01-027A-7", "R3", "27", "23"),
+    _Rating("ACS880-01-035A-7", "R5", "35", "26"),
+    _Rating("ACS880-01-042A-7", "R5", "42", "35"),
+    _Rating("ACS880-01-049A-7", "R5", "49", "42"),
+    _Rating("ACS880-01-061A-7", "R6", "61", "49"),
+    _Rating("ACS880-01-084A-7", "R6", "84", "61"),
+    _Rating("ACS880-01-098A-7", "R7", "98", "84"),
+    _Rating("ACS880-01-119A-7", "R7", "119", "98"),
+    _Rating("ACS880-01-142A-7", "R8", "142", "119"),
+    _Rating("ACS880-01-174A-7", "R8", "174", "142"),
+    _Rating("ACS880-01-210A-7", "R9", "210", "174"),
+    _Rating("ACS880-01-271A-7", "R9", "271", "210"),
+)
+
+
+@dataclass(frozen=True)
+class _Catalogue:
+    """One voltage range: its supply band, ratings and where they are printed."""
+
+    #: The type-code suffix, as the manual's type designation gives it.
+    suffix: str
+    low_v: Decimal
+    high_v: Decimal
+    ratings: tuple[_Rating, ...]
+    page: int
+    section: str
+
+
+#: The supply bands, per the manual's type designation (p. 39): -3 380...415 V,
+#: -5 380...500 V, -7 525...690 V. -3 keeps 380-415 V, as before; -5 covers
+#: the rest of its range, where its I2 is the same at the two tabulated
+#: voltages. -7 is rated at Un = 690 V only, so it is offered in the 660-690 V
+#: band the manual groups with 690 V (brake chopper table, p. 348); 525-600 V
+#: is refused rather than read from the 690 V column.
+_CATALOGUES: tuple[_Catalogue, ...] = (
+    _Catalogue(
+        "-3", Decimal(380), Decimal(415), _RATINGS_400V, 234, "Electrical ratings, IEC, Un = 400 V"
+    ),
+    _Catalogue(
+        "-5", Decimal(415), Decimal(500), _RATINGS_500V, 236, "Electrical ratings, IEC, Un = 500 V"
+    ),
+    _Catalogue(
+        "-7", Decimal(660), Decimal(690), _RATINGS_690V, 237, "Electrical ratings, IEC, Un = 690 V"
+    ),
+)
+
 
 def _manual(page: int, section: str) -> Citation:
     """Cite a page of the ACS880-01 hardware manual."""
@@ -104,14 +188,17 @@ def _require_fraction(name: str, value: Decimal) -> None:
         raise ValidationError(f"{name} must be in (0, 1], got {value}")
 
 
-def _require_supply(supply_voltage_v: Decimal) -> None:
-    """Refuse a supply the 400 V range is not rated for."""
-    low, high = _SUPPLY_V
-    if not supply_voltage_v.is_finite() or not low <= supply_voltage_v <= high:
-        raise ValidationError(
-            f"{supply_voltage_v} V is outside the ACS880-01-xxxx-3 supply range "
-            f"({low}-{high} V); other voltages are not tabulated here"
-        )
+def _catalogue(supply_voltage_v: Decimal) -> _Catalogue:
+    """Return the range rated for a supply, or refuse one no range is."""
+    if supply_voltage_v.is_finite():
+        for catalogue in _CATALOGUES:
+            if catalogue.low_v <= supply_voltage_v <= catalogue.high_v:
+                return catalogue
+    bands = ", ".join(f"{c.low_v}-{c.high_v} V ({c.suffix})" for c in _CATALOGUES)
+    raise ValidationError(
+        f"{supply_voltage_v} V is outside the ACS880-01 supply ranges tabulated here: "
+        f"{bands}; other voltages are not tabulated here"
+    )
 
 
 def required_drive_current_a(
@@ -237,8 +324,8 @@ def select_frame(
 
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings",
-        IEC ratings at Un = 400 V (pp. 234-235 as printed), with the
-        deratings on pp. 243-244.
+        IEC ratings at Un = 400 V, 500 V and 690 V (pp. 234-238 as printed),
+        with the deratings on pp. 243-244.
 
     Args:
         required_current_a: Continuous current the motor demands, in amperes.
@@ -251,17 +338,17 @@ def select_frame(
         The selected type with its derated current and every factor applied.
 
     Raises:
-        ValidationError: If the supply is outside 380-415 V, the site is off
+        ValidationError: If no range is rated for the supply, the site is off
             the derating curves, or no catalogue type covers the demand.
     """
     if not required_current_a.is_finite() or required_current_a <= 0:
         raise ValidationError(f"required_current_a must be positive, got {required_current_a}")
-    _require_supply(supply_voltage_v)
+    catalogue = _catalogue(supply_voltage_v)
     k_temp = temperature_derate(ambient_temp_c=ambient_temp_c)
     k_alt = altitude_derate(altitude_m=altitude_m)
     factor = k_temp * k_alt
 
-    for rating in _RATINGS_400V:
+    for rating in catalogue.ratings:
         rated = rating.nominal_a if duty_class is DutyClass.NORMAL else rating.heavy_duty_a
         if rated is None:
             continue
@@ -284,21 +371,28 @@ def select_frame(
                 ],
             )
     raise ValidationError(
-        f"no ACS880-01 400 V type supplies {required_current_a.quantize(Decimal('0.1'))} A "
+        f"no ACS880-01-xxxx{catalogue.suffix} type supplies {required_current_a.quantize(Decimal('0.1'))} A "
         f"for {duty_class.value} duty at this site; consider a cabinet-built ACS880"
     )
 
 
-def ratings_citation() -> Citation:
-    """Cite the ratings table.
+def ratings_citation(supply_voltage_v: Decimal) -> Citation:
+    """Cite the ratings table for a supply.
 
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings".
 
+    Args:
+        supply_voltage_v: The supply `select_frame` was given.
+
     Returns:
         The citation.
+
+    Raises:
+        ValidationError: If no range is rated for the supply.
     """
-    return _manual(_RATINGS_PAGES[0], "Electrical ratings, IEC, Un = 400 V")
+    catalogue = _catalogue(supply_voltage_v)
+    return _manual(catalogue.page, catalogue.section)
 
 
 def motor_current_citation() -> Citation:
