@@ -274,6 +274,34 @@ def test_the_answer_and_the_card_agree(
     assert response.answer.text == response.diagnosis.summary
 
 
+def test_an_answer_names_its_stored_turn_and_its_evidence(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """What a "report this answer" sends: the turn, and the text it was built on."""
+    passage = _passage()
+    _retrieving(monkeypatch, [passage])
+    db = _FakeSession()
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, db), user=_user(), request=_request()
+    )
+
+    (turn,) = [row for row in db.added if isinstance(row, DiagnosticTurnRow)]
+    assert response.turn_id == str(turn.id)
+    assert [p.id for p in response.evidence] == [passage.id]
+
+
+def test_a_refusal_names_its_turn_and_carries_no_evidence(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    _retrieving(monkeypatch, [])
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+    assert response.turn_id is not None
+    assert uuid.UUID(response.turn_id)
+    assert response.evidence == []
+
+
 # --- (b) a no-match query makes ZERO generation calls -----------------------
 
 
@@ -613,6 +641,7 @@ def test_a_new_conversation_persists(
     assert len(stored) == 1
     assert stored[0].position == 1
     assert stored[0].refused is False
+    assert response.turn_id == str(stored[0].id)
 
 
 @requires_db
@@ -635,6 +664,9 @@ def test_an_answered_turn_replays_as_an_answer(
     assert replayed.refusal_message is None, "an answered turn replayed as a refusal"
     assert replayed.answer is not None
     assert replayed.answer.text
+    # Still reportable from history; its passages were not stored.
+    assert replayed.turn_id == created.turn_id
+    assert replayed.evidence == []
 
 
 @requires_db

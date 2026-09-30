@@ -5,6 +5,7 @@ import type { components } from '@panelpilot/shared-types';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import { useLocale } from '@/components/locale-provider';
+import { flagAnswer } from '@/lib/feedback';
 import { streamDiagnosis, type StreamEvent, type StreamOptions } from '@/lib/diagnosis-stream';
 import { fetchSession, listSessions } from '@/lib/sessions';
 import type { uploadImage } from '@/lib/recognition';
@@ -20,6 +21,7 @@ import { MessageList } from './message-list';
 import { chatReducer, INITIAL_STATE } from './state';
 
 type EquipmentContext = components['schemas']['EquipmentContext'];
+type DiagnosticResponse = components['schemas']['DiagnosticResponse'];
 
 /**
  * The chat surface.
@@ -63,6 +65,8 @@ export function Chat(props: {
   fetchSessionImpl?: typeof fetchSession;
   /** Injected the same way, for the quota check after each answer. */
   quotaImpl?: typeof fetchQuota;
+  /** Injected the same way, for reporting an answer as wrong. */
+  flagImpl?: typeof flagAnswer;
 }) {
   return (
     <ChecklistProvider>
@@ -90,6 +94,7 @@ function ChatSurface({
   listImpl = listSessions,
   fetchSessionImpl = fetchSession,
   quotaImpl = fetchQuota,
+  flagImpl = flagAnswer,
 }: {
   token: string;
   streamImpl?: (options: StreamOptions) => AsyncGenerator<StreamEvent>;
@@ -102,6 +107,7 @@ function ChatSurface({
   listImpl?: typeof listSessions;
   fetchSessionImpl?: typeof fetchSession;
   quotaImpl?: typeof fetchQuota;
+  flagImpl?: typeof flagAnswer;
 }) {
   const [state, dispatch] = useReducer(chatReducer, INITIAL_STATE);
   const checklist = useChecklist();
@@ -325,6 +331,21 @@ function ChatSurface({
     void openSession(conversationId);
   }, [conversationId, openSession]);
 
+  const report = useCallback(
+    async (response: DiagnosticResponse, reason: string) => {
+      if (!response.turn_id) return { kind: 'failed' as const };
+      const outcome = await flagImpl({
+        token,
+        turnId: response.turn_id,
+        reason,
+        evidence: response.evidence ?? [],
+      });
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      return outcome;
+    },
+    [flagImpl, onUnauthorized, token],
+  );
+
   // The limit modal appears only once the free questions are gone *and* no
   // turn is in flight. The spec is explicit that it must never interrupt an
   // answer, and the reason is easy to underrate: cutting off a diagnosis to
@@ -355,7 +376,7 @@ function ChatSurface({
         <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
           <ContextChip context={context} onChange={setContext} />
         </header>
-        <MessageList messages={state.messages} onRetry={retry} />
+        <MessageList messages={state.messages} onRetry={retry} onReport={report} />
         <div className="flex flex-col gap-2 border-t border-border-subtle p-3 md:p-4">
           <ImageCapture
             token={token}
