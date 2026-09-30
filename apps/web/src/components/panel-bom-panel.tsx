@@ -40,13 +40,17 @@ type Result =
   | { kind: 'built'; response: PanelBomResponse }
   | { kind: 'error'; outcome: Exclude<PanelBomOutcome, { kind: 'built' }> };
 
+type Start = '' | 'dol' | 'star_delta' | 'dol_heavy';
+
 type Load = {
   key: number;
   tag: string;
   description: string;
+  power: string;
   current: string;
   dissipation: string;
   variableSpeed: boolean;
+  start: Start;
 };
 
 type Enclosure = {
@@ -72,7 +76,16 @@ const INITIAL_ENCLOSURE: Enclosure = {
 };
 
 function blankLoad(key: number): Load {
-  return { key, tag: '', description: '', current: '', dissipation: '', variableSpeed: false };
+  return {
+    key,
+    tag: '',
+    description: '',
+    power: '',
+    current: '',
+    dissipation: '',
+    variableSpeed: false,
+    start: '',
+  };
 }
 
 /**
@@ -121,10 +134,11 @@ export function PanelBomPanel({
         loads: loads.map((load) => ({
           tag: load.tag.trim(),
           description: load.description.trim(),
-          power_kw: null,
+          power_kw: load.power.trim() === '' ? null : load.power.trim(),
           current_a: load.current.trim() === '' ? null : load.current.trim(),
           dissipation_w: load.dissipation.trim() === '' ? null : load.dissipation.trim(),
           variable_speed: load.variableSpeed,
+          start: load.start === '' ? null : load.start,
         })),
         constraints: {
           width_mm: Number(enclosure.width),
@@ -134,6 +148,7 @@ export function PanelBomPanel({
           placement: enclosure.placement,
           cable_installation_method: enclosure.method,
           supply_voltage_v: '400',
+          fault_level_ka: null,
           preferred_vendors: [],
           ambient_temp_c: enclosure.ambient.trim(),
           max_internal_temp_c: enclosure.maxInternal.trim(),
@@ -227,7 +242,7 @@ export function PanelBomPanel({
             <div
               key={load.key}
               data-testid={`bom-load-${String(index)}`}
-              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-6 lg:items-end"
+              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
             >
               <Field id={`${id}-tag-${String(load.key)}`} label={t('bom.field.tag')}>
                 <input
@@ -246,6 +261,18 @@ export function PanelBomPanel({
                   value={load.description}
                   onChange={(event) => {
                     updateLoad(load.key, { description: event.target.value });
+                  }}
+                  className="input w-full"
+                />
+              </Field>
+              <Field id={`${id}-pow-${String(load.key)}`} label={t('bom.field.power')} unit="kW">
+                <input
+                  id={`${id}-pow-${String(load.key)}`}
+                  inputMode="decimal"
+                  dir="ltr"
+                  value={load.power}
+                  onChange={(event) => {
+                    updateLoad(load.key, { power: event.target.value });
                   }}
                   className="input w-full"
                 />
@@ -277,6 +304,22 @@ export function PanelBomPanel({
                   }}
                   className="input w-full"
                 />
+              </Field>
+              <Field id={`${id}-start-${String(load.key)}`} label={t('bom.field.start')}>
+                <select
+                  id={`${id}-start-${String(load.key)}`}
+                  value={load.start}
+                  onChange={(event) => {
+                    updateLoad(load.key, { start: event.target.value as Start });
+                  }}
+                  className="input w-full"
+                >
+                  {(['', 'dol', 'star_delta', 'dol_heavy'] as const).map((start) => (
+                    <option key={start} value={start}>
+                      {t(`bom.start.${start === '' ? 'none' : start}`)}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <label className="flex items-center gap-2 py-2 text-sm">
                 <input
@@ -374,6 +417,15 @@ function lineText(t: ReturnType<typeof useTranslations<'calc'>>, line: BomLine):
         method: d.method ?? '',
         grouped: d.grouped ?? '',
       });
+    case 'breaker':
+      return t('bom.line.breaker', { tag: d.tag ?? '', load: d.load ?? '', trip: d.trip_a ?? '' });
+    case 'contactor':
+      return t('bom.line.contactor', {
+        tag: d.tag ?? '',
+        role: t(`bom.role.${d.role ?? 'line'}` as 'bom.role.line'),
+      });
+    case 'overload':
+      return t('bom.line.overload', { tag: d.tag ?? '', min: d.min_a ?? '', max: d.max_a ?? '' });
     case 'enclosure':
       return t('bom.line.enclosure', {
         placement: d.placement

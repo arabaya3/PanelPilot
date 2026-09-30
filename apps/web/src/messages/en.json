@@ -441,7 +441,9 @@
         "description": "Description",
         "current": "Nameplate current",
         "dissipation": "Heat given off",
-        "variableSpeed": "Variable speed (drive)"
+        "variableSpeed": "Variable speed (drive)",
+        "power": "Motor power",
+        "start": "Start"
       },
       "placement": {
         "single_wall": "Single, against a wall",
@@ -463,11 +465,26 @@
         "drive": "{tag}: drive for {load}",
         "cable": "{tag}: outgoing cable for {load}, method {method}, circuits grouped: {grouped}",
         "enclosure": "Enclosure, {placement}",
-        "cooling": "Active cooling: {cooling} W beyond what the surface sheds at a {rise} K rise; an air/air heat exchanger needs {qw} W/K"
+        "cooling": "Active cooling: {cooling} W beyond what the surface sheds at a {rise} K rise; an air/air heat exchanger needs {qw} W/K",
+        "breaker": "{tag}: circuit-breaker for {load}, magnetic trip {trip} A",
+        "contactor": "{tag}: {role} contactor",
+        "overload": "{tag}: overload relay, set within {min}-{max} A"
       },
       "note": {
-        "no_protective_devices": "Protective devices, contactors and terminals are not included: no sourced selection table for them is held here.",
-        "incomplete_dissipation": "Loads without a heat figure add no heat, so the cooling figure is only as complete as the schedule."
+        "incomplete_dissipation": "Loads without a heat figure add no heat, so the cooling figure is only as complete as the schedule.",
+        "not_included": "Terminals, and protection for drive-fed and non-motor loads, are not included: no sourced selection table for them is held here.",
+        "fault_level_assumed": "Starters are Type 2 coordinated up to 50 kA; confirm the panel's prospective short-circuit current does not exceed it."
+      },
+      "start": {
+        "none": "No starter",
+        "dol": "Direct on line",
+        "star_delta": "Star-delta",
+        "dol_heavy": "Direct on line, heavy duty"
+      },
+      "role": {
+        "line": "line",
+        "delta": "delta",
+        "star": "star"
       }
     }
   }

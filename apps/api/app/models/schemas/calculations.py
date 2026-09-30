@@ -118,6 +118,17 @@ class VfdSelectionResponse(BaseModel):
 
 
 # --- Panel BOM -------------------------------------------------------------
+class StartType(StrEnum):
+    """How a motor is started, which picks its coordination table."""
+
+    #: Direct on line, normal start.
+    DOL = "dol"
+    #: Star-delta, normal start.
+    STAR_DELTA = "star_delta"
+    #: Direct on line, heavy-duty start.
+    DOL_HEAVY = "dol_heavy"
+
+
 class LoadScheduleItem(BaseModel):
     """One load on a panel's schedule."""
 
@@ -130,6 +141,9 @@ class LoadScheduleItem(BaseModel):
     dissipation_w: Decimal | None = None
     #: Fed through a variable speed drive, which the BOM then selects.
     variable_speed: bool = False
+    #: A motor started across the line; the BOM selects its breaker,
+    #: contactor and overload relay. Needs ``power_kw`` and ``current_a``.
+    start: StartType | None = None
 
 
 class EnclosurePlacement(StrEnum):
@@ -156,6 +170,8 @@ class EnclosureConstraints(BaseModel):
     #: Required: the outgoing cables' capacity depends on it.
     cable_installation_method: InstallationMethod
     supply_voltage_v: Decimal = Decimal(400)
+    #: Prospective short-circuit current at the panel, if known.
+    fault_level_ka: Decimal | None = None
     preferred_vendors: list[str] = []
     ambient_temp_c: Decimal = Decimal(35)
     max_internal_temp_c: Decimal = Decimal(50)
@@ -165,6 +181,9 @@ class BomLineKind(StrEnum):
     """What a BOM line is, so a page can describe it in its own language."""
 
     DRIVE = "drive"
+    BREAKER = "breaker"
+    CONTACTOR = "contactor"
+    OVERLOAD = "overload"
     CABLE = "cable"
     ENCLOSURE = "enclosure"
     COOLING = "cooling"
@@ -173,8 +192,11 @@ class BomLineKind(StrEnum):
 class BomNote(StrEnum):
     """What a BOM leaves out, as a key a page can translate."""
 
-    NO_PROTECTIVE_DEVICES = "no_protective_devices"
+    #: Terminals, and protection for drive-fed and non-motor loads.
+    NOT_INCLUDED = "not_included"
     INCOMPLETE_DISSIPATION = "incomplete_dissipation"
+    #: Starters are coordinated to 50 kA and no fault level was given.
+    FAULT_LEVEL_ASSUMED = "fault_level_assumed"
 
 
 class BomLine(BaseModel):

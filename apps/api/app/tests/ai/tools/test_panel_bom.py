@@ -118,7 +118,7 @@ def test_the_bom_lists_drive_cable_enclosure_and_cooling() -> None:
     assert parts[3] == "Enclosure 600x2000x500 IP54"
     assert parts[4] == "Cooling 659 W"
     assert result.cooling_required_w == Decimal("659.1")
-    assert any("Protective devices" in note for note in result.notes)
+    assert any("Terminals" in note for note in result.notes)
 
 
 @pytest.mark.parametrize(
@@ -200,4 +200,76 @@ def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
     assert result.lines[3].details == {"placement": "single_free_standing"}
     assert result.lines[4].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
     # The heater gives no dissipation, so the cooling figure is incomplete.
-    assert result.note_keys == [BomNote.NO_PROTECTIVE_DEVICES, BomNote.INCOMPLETE_DISSIPATION]
+    assert result.note_keys == [BomNote.NOT_INCLUDED, BomNote.INCOMPLETE_DISSIPATION]
+
+
+def test_a_motor_started_across_the_line_gets_its_coordinated_starter() -> None:
+    from app.models.schemas.calculations import BomLineKind, BomNote, StartType
+
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="P-1",
+                description="pump",
+                power_kw=Decimal("55"),
+                current_a=Decimal("98"),
+                start=StartType.DOL_HEAVY,
+            ),
+            LoadScheduleItem(
+                tag="F-1",
+                description="fan",
+                power_kw=Decimal("200"),
+                current_a=Decimal("349"),
+                start=StartType.STAR_DELTA,
+            ),
+        ],
+        constraints=_constraints(cable_installation_method=InstallationMethod.F),
+    )
+    starter = [
+        (line.kind, line.part_reference)
+        for line in result.lines
+        if line.kind in (BomLineKind.BREAKER, BomLineKind.CONTACTOR, BomLineKind.OVERLOAD)
+    ]
+
+    # ABB's worked examples, p. 134: the same devices, now in the BOM.
+    assert starter == [
+        (BomLineKind.BREAKER, "T4S250 PR222MP In160"),
+        (BomLineKind.CONTACTOR, "A145"),
+        (BomLineKind.BREAKER, "T5S630 PR221-I In630"),
+        (BomLineKind.CONTACTOR, "A210"),
+        (BomLineKind.CONTACTOR, "A210"),
+        (BomLineKind.CONTACTOR, "A185"),
+        (BomLineKind.OVERLOAD, "E320DU320"),
+    ]
+    roles = [
+        line.details.get("role") for line in result.lines if line.kind is BomLineKind.CONTACTOR
+    ]
+    assert roles == ["line", "line", "delta", "star"]
+    assert BomNote.FAULT_LEVEL_ASSUMED in result.note_keys
+
+
+@pytest.mark.parametrize(
+    ("load", "message"),
+    [
+        (
+            LoadScheduleItem(
+                tag="M",
+                description="m",
+                power_kw=Decimal(5),
+                current_a=Decimal(11),
+                variable_speed=True,
+                start="dol",
+            ),
+            "not both",
+        ),
+        (
+            LoadScheduleItem(tag="M", description="m", current_a=Decimal(11), start="dol"),
+            "power and nameplate current",
+        ),
+    ],
+)
+def test_a_starter_needs_a_motor_it_can_be_selected_for(
+    load: LoadScheduleItem, message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        panel_bom.build_bom(loads=[load], constraints=_constraints())

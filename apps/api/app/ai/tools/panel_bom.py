@@ -5,8 +5,10 @@ Pure functions. Each formula cites the manufacturer guide it came from.
 The BOM holds only what a sourced table can size: a drive for each
 variable-speed load (ACS880-01 ratings), an outgoing cable for each load with
 a current (IEC 60364-5-52 via ABB's handbook), the enclosure as given, and
-the heat balance (IEC 60890 via Rittal). Protective devices, contactors and
-terminals have no sourced selection table here, so they are named in the
+the heat balance (IEC 60890 via Rittal), and for each motor started across
+the line its Type 2 coordinated breaker, contactor and overload relay (ABB's
+coordination tables). Terminals, and protection for drive-fed and non-motor
+loads, have no sourced selection table here, so they are named in the
 result's notes rather than guessed.
 """
 
@@ -14,7 +16,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.ai.tools import cable_sizing, vfd_selection
+from app.ai.tools import cable_sizing, motor_starter, vfd_selection
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
     BomLine,
@@ -26,6 +28,7 @@ from app.models.schemas.calculations import (
     EnclosurePlacement,
     LoadScheduleItem,
     PanelBomResult,
+    StartType,
 )
 from app.models.schemas.search import Citation
 
@@ -154,6 +157,61 @@ def enclosure_heat_load_w(
     return heat, max(Decimal(0), heat - shed)
 
 
+def _starter_lines(
+    load: LoadScheduleItem,
+    constraints: EnclosureConstraints,
+    *,
+    start: StartType,
+    power_kw: Decimal,
+    current_a: Decimal,
+) -> list[BomLine]:
+    """The breaker, contactor(s) and overload relay one motor's starter needs."""
+    selection = motor_starter.select_starter(
+        motor_power_kw=power_kw,
+        motor_current_a=current_a,
+        start=start,
+        supply_voltage_v=constraints.supply_voltage_v,
+        fault_level_ka=constraints.fault_level_ka,
+    )
+    row = selection.row
+    base = {"tag": load.tag, "load": load.description, "start": start.value}
+    lines = [
+        BomLine(
+            part_reference=row.breaker,
+            description=f"{load.tag}: circuit-breaker, magnetic trip {row.magnetic_trip_a} A",
+            quantity=1,
+            source=selection.source,
+            kind=BomLineKind.BREAKER,
+            details={**base, "trip_a": row.magnetic_trip_a},
+        )
+    ]
+    roles = ("line", "delta", "star") if len(row.contactors) == 3 else ("line",)
+    for role, contactor in zip(roles, row.contactors, strict=True):
+        lines.append(
+            BomLine(
+                part_reference=contactor,
+                description=f"{load.tag}: {role} contactor",
+                quantity=1,
+                source=selection.source,
+                kind=BomLineKind.CONTACTOR,
+                details={**base, "role": role},
+            )
+        )
+    if row.overload is not None and row.overload_range_a is not None:
+        low, high = row.overload_range_a
+        lines.append(
+            BomLine(
+                part_reference=row.overload,
+                description=f"{load.tag}: overload relay, {low}-{high} A",
+                quantity=1,
+                source=selection.source,
+                kind=BomLineKind.OVERLOAD,
+                details={**base, "min_a": low, "max_a": high},
+            )
+        )
+    return lines
+
+
 def build_bom(
     *,
     loads: list[LoadScheduleItem],
@@ -171,7 +229,7 @@ def build_bom(
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093) for drives; ABB
         *Electrical installation handbook* Vol. 2 (1SDC010001D0204) for
-        cables; Rittal *Enclosure and process cooling* for the heat balance
+        cables and for motor starters (Tables 3, 5 and 6); Rittal *Enclosure and process cooling* for the heat balance
         per IEC 60890.
 
     Args:
@@ -200,7 +258,17 @@ def build_bom(
             f"{grouped} outgoing circuits exceed the grouping table (up to {_MAX_GROUPED})"
         )
 
+    starters = 0
     for load in loads:
+        if load.start is not None and load.variable_speed:
+            raise ValidationError(
+                f"{load.tag}: a drive-fed motor has no across-the-line starter; "
+                "choose variable speed or a start type, not both"
+            )
+        if load.start is not None and (load.power_kw is None or load.current_a is None):
+            raise ValidationError(
+                f"{load.tag}: a starter is selected from the motor's power and nameplate current"
+            )
         if load.variable_speed and load.current_a is None:
             raise ValidationError(f"{load.tag}: a variable-speed load needs its nameplate current")
         if load.power_kw is not None and load.current_a is None:
@@ -228,6 +296,17 @@ def build_bom(
                         details={"tag": load.tag, "load": load.description},
                     )
                 )
+            if load.start is not None and load.power_kw is not None:
+                lines.extend(
+                    _starter_lines(
+                        load,
+                        constraints,
+                        start=load.start,
+                        power_kw=load.power_kw,
+                        current_a=load.current_a,
+                    )
+                )
+                starters += 1
             cable = cable_sizing.size_conductor(
                 design_current_a=load.current_a,
                 installation_method=constraints.cable_installation_method,
@@ -274,10 +353,16 @@ def build_bom(
 
     heat, cooling = enclosure_heat_load_w(items=loads, constraints=constraints)
     notes = [
-        "Protective devices, contactors and terminals are not included: no sourced "
-        "selection table for them is held here.",
+        "Terminals, and protection for drive-fed and non-motor loads, are not "
+        "included: no sourced selection table for them is held here.",
     ]
-    note_keys = [BomNote.NO_PROTECTIVE_DEVICES]
+    note_keys = [BomNote.NOT_INCLUDED]
+    if starters and constraints.fault_level_ka is None:
+        notes.append(
+            "Starters are Type 2 coordinated up to 50 kA; confirm the panel's "
+            "prospective short-circuit current does not exceed it."
+        )
+        note_keys.append(BomNote.FAULT_LEVEL_ASSUMED)
     if cooling > 0:
         rise = constraints.max_internal_temp_c - constraints.ambient_temp_c
         lines.append(

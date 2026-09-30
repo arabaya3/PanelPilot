@@ -657,13 +657,13 @@ export interface components {
      * @description What a BOM line is, so a page can describe it in its own language.
      * @enum {string}
      */
-    BomLineKind: 'drive' | 'cable' | 'enclosure' | 'cooling';
+    BomLineKind: 'drive' | 'breaker' | 'contactor' | 'overload' | 'cable' | 'enclosure' | 'cooling';
     /**
      * BomNote
      * @description What a BOM leaves out, as a key a page can translate.
      * @enum {string}
      */
-    BomNote: 'no_protective_devices' | 'incomplete_dissipation';
+    BomNote: 'not_included' | 'incomplete_dissipation' | 'fault_level_assumed';
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.
@@ -1053,6 +1053,8 @@ export interface components {
        * @default 400
        */
       supply_voltage_v: number | string;
+      /** Fault Level Ka */
+      fault_level_ka?: number | string | null;
       /**
        * Preferred Vendors
        * @default []
@@ -1352,6 +1354,7 @@ export interface components {
        * @default false
        */
       variable_speed: boolean;
+      start?: components['schemas']['StartType'] | null;
     };
     /**
      * Locale
@@ -1753,6 +1756,12 @@ export interface components {
       /** Items */
       items: components['schemas']['StaleDocument'][];
     };
+    /**
+     * StartType
+     * @description How a motor is started, which picks its coordination table.
+     * @enum {string}
+     */
+    StartType: 'dol' | 'star_delta' | 'dol_heavy';
     /**
      * StructuredDiagnosis
      * @description A complete diagnostic response, as constrained at generation time.
