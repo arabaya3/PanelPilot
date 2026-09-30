@@ -41,8 +41,15 @@ DIAGNOSIS_TOOL_NAME = "emit_diagnosis"
 TOOL_DESCRIPTION = (
     "Return the diagnosis as structured data. Every claim must cite a passage "
     "id drawn from the supplied evidence; never cite an id that was not given "
-    "to you."
+    "to you. If the passages do not answer the question, set "
+    "evidence_answers_question to false instead of writing general advice."
 )
+
+#: The model's own way out. The tool forces a call, so without it a model
+#: whose passages did not answer the question wrote that fact *as* the
+#: diagnosis -- found live: "no specific information is available", shown as
+#: an answer at 0.84 confidence, citing a title page.
+ANSWERS_FIELD = "evidence_answers_question"
 
 
 def _inline_refs(node: Any, defs: dict[str, Any]) -> Any:
@@ -153,7 +160,16 @@ def diagnosis_input_schema() -> dict[str, Any]:
     Returns:
         A self-contained JSON Schema object with no ``$defs`` or ``$ref``.
     """
-    return input_schema_for(StructuredDiagnosis)
+    schema = input_schema_for(StructuredDiagnosis)
+    schema.setdefault("properties", {})[ANSWERS_FIELD] = {
+        "type": "boolean",
+        "description": (
+            "True only if the passages actually answer the question. False when "
+            "they are about something else or only mention the product."
+        ),
+    }
+    schema["required"] = [*schema.get("required", []), ANSWERS_FIELD]
+    return schema
 
 
 def diagnosis_tool_definition() -> dict[str, Any]:
@@ -263,6 +279,14 @@ def structured_or_refuse(
     if payload is None:
         return None, _to_refusal(decision, "the model returned no structured output")
 
+    payload = dict(payload)
+    if payload.pop(ANSWERS_FIELD, True) is False:
+        return None, _to_refusal(
+            decision,
+            "the supplied passages do not answer this question",
+            reason=RefusalReason.NOT_IN_SOURCES,
+        )
+
     try:
         return parse_tool_output(payload, evidence_ids=evidence_ids), decision
     except (ValidationError, ValueError) as exc:
@@ -271,12 +295,19 @@ def structured_or_refuse(
         return None, _to_refusal(decision, str(exc))
 
 
-def _to_refusal(decision: ConfidenceDecision, detail: str) -> ConfidenceDecision:
+def _to_refusal(
+    decision: ConfidenceDecision,
+    detail: str,
+    *,
+    reason: RefusalReason = RefusalReason.UNVALIDATABLE_OUTPUT,
+) -> ConfidenceDecision:
     """Convert a permitting decision into a refusal carrying the failure.
 
     Args:
         decision: The decision that permitted generation.
         detail: What went wrong, for the refusal template.
+        reason: Why; ``NOT_IN_SOURCES`` when the model declined because the
+            passages do not answer the question.
 
     Returns:
         A refusal preserving the original score and threshold, so the turn can
@@ -290,11 +321,15 @@ def _to_refusal(decision: ConfidenceDecision, detail: str) -> ConfidenceDecision
         outcome=DecisionOutcome.UNCERTAIN,
         score=decision.score,
         threshold=decision.threshold,
-        reason=RefusalReason.UNVALIDATABLE_OUTPUT,
+        reason=reason,
         # The closest match only. An answer's full citation list would present
         # this refusal as though all of them still supported it.
         citations=decision.citations[:1],
-        detail=f"structured output could not be validated: {detail}",
+        detail=(
+            detail
+            if reason is RefusalReason.NOT_IN_SOURCES
+            else f"structured output could not be validated: {detail}"
+        ),
     )
 
 

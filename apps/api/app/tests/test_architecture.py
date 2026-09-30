@@ -445,6 +445,9 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
         # Writes PLC code: no retrieved evidence, nothing to cite. Its gate is
         # the parser-based validator `generate_plc_code` always runs.
         APP_ROOT / "ai" / "plc" / "writer.py",
+        # Turns a question into an English search query: answers nothing,
+        # cites nothing. See the test below that keeps it so.
+        APP_ROOT / "ai" / "query_translation.py",
     }
 
     for module in _source_modules("domain", "ai", "api", "worker"):
@@ -508,6 +511,16 @@ def test_the_plc_writer_exemption_stays_narrow() -> None:
         assert forbidden not in source, (
             f"app/ai/plc/writer.py now references {forbidden!r}. It is exempt only "
             "as a writer whose output the validator judges."
+        )
+
+
+def test_the_query_translation_exemption_stays_narrow() -> None:
+    """The query translator must not grow into an answering path."""
+    source = (APP_ROOT / "ai" / "query_translation.py").read_text(encoding="utf-8")
+    for forbidden in ("search(", "retrieval.", "StructuredDiagnosis", "passage"):
+        assert forbidden not in source.split('"""', 2)[2], (
+            f"app/ai/query_translation.py now references {forbidden!r}. It is exempt "
+            "only as a translator of the search query."
         )
 
 

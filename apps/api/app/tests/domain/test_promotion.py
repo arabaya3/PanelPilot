@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from typing import Any, cast
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.retrieval.mappings import DocType, VerificationStatus
@@ -30,7 +31,7 @@ from app.models.schemas.verification import VerificationLabel
 # foreign keys into users and staged_documents. Importing only the row
 # under test leaves those targets unmapped.
 from app.models.tables import calculations, diagnostics, user  # noqa: F401
-from app.models.tables.ingestion import PromotionAuditRow, RetractionAuditRow
+from app.models.tables.ingestion import PromotionAuditRow, RetractionAuditRow, VerificationItemRow
 
 # A chunk id in the shape the chunker actually produces --
 # "<document>#<ordinal>-<digest>" -- not a UUID. These tests used a UUID here,
@@ -838,3 +839,48 @@ def test_only_a_reviewer_may_retract() -> None:
             source_url=SOURCE,
             reason="withdrawn",
         )
+
+
+# --- a queue item that names no staged document -----------------------------------
+
+
+def _forget_document(session: Session) -> None:
+    from sqlalchemy import text
+
+    session.execute(
+        text("UPDATE verification_items SET staged_document_id = NULL WHERE chunk_id = :c"),
+        {"c": CHUNK_ID},
+    )
+    session.commit()
+
+
+@requires_opensearch
+def test_an_item_without_its_document_recovers_it_from_the_chunk_hash(
+    indices: tuple[str, str], db: Session
+) -> None:
+    """Found live: every crawled chunk was queued without one, and none could be published."""
+    staging, production = indices
+    _forget_document(db)
+    # The chunk carries its document's hash, which is unique on staged_documents.
+    _stage(staging, _staged_chunk(content_hash=STAGED_DOCUMENT_ID))
+
+    promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+
+    assert _live(production) is not None
+    row = db.execute(
+        select(VerificationItemRow).where(VerificationItemRow.chunk_id == CHUNK_ID)
+    ).scalar_one()
+    assert str(row.staged_document_id) == STAGED_DOCUMENT_ID
+
+
+@requires_opensearch
+def test_an_item_whose_document_cannot_be_recovered_is_still_refused(
+    indices: tuple[str, str], db: Session
+) -> None:
+    staging, production = indices
+    _forget_document(db)
+    _stage(staging, _staged_chunk(content_hash="matches-no-staged-document"))
+
+    with pytest.raises(PromotionError, match="names no staged document"):
+        promote_chunk(session=db, reviewer=_reviewer(), chunk_id=CHUNK_ID, verdict=APPROVED)
+    assert _live(production) is None

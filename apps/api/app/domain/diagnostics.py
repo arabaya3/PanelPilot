@@ -46,6 +46,7 @@ from app.ai.guardrails.confidence import is_publishable, score_confidence
 from app.ai.guardrails.refusal_text import render_refusal
 from app.ai.localisation import generate_localised_diagnosis
 from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
+from app.ai.query_translation import english_search_query
 from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
@@ -66,6 +67,7 @@ from app.models.schemas.diagnostics import (
     VerifiedAnswer,
 )
 from app.models.schemas.guardrail import ConfidenceDecision
+from app.models.schemas.locale import Locale
 from app.models.schemas.responses import DiagnosisStep, Severity, StructuredDiagnosis
 from app.models.schemas.search import RetrievedPassage
 from app.models.schemas.streaming import DiagnosisEvent
@@ -135,9 +137,20 @@ def run_diagnosis(
 
     # Production only. `search` exposes no index argument, so this cannot be
     # pointed at unverified staging content by passing an argument.
+    # The manuals are English. A question in another language is searched as
+    # its English equivalent -- the keyword leg matches nothing otherwise --
+    # while the answer is still composed in the engineer's language. A small
+    # call, not charged to the month: the turn's charge is its answer.
+    query = request.symptom
+    if request.locale is not Locale.ENGLISH:
+        with timed("query_translation"):
+            query = english_search_query(
+                request.symptom, client=_anthropic_client(), model=get_settings().generation_model
+            )
+
     with timed("retrieval"):
         passages = search(
-            request.symptom,
+            query,
             brand=request.equipment.manufacturer if request.equipment else None,
             model=request.equipment.model if request.equipment else None,
         )

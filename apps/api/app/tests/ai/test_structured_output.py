@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from app.ai.structured_output import (
+    ANSWERS_FIELD,
     DIAGNOSIS_TOOL_NAME,
     diagnosis_input_schema,
     diagnosis_tool_definition,
@@ -96,7 +97,9 @@ def test_the_tool_schema_tracks_the_response_model() -> None:
     """
     definition = diagnosis_tool_definition()
     assert definition["name"] == DIAGNOSIS_TOOL_NAME
-    assert set(definition["input_schema"]["properties"]) == set(StructuredDiagnosis.model_fields)
+    assert set(definition["input_schema"]["properties"]) == set(
+        StructuredDiagnosis.model_fields
+    ) | {ANSWERS_FIELD}
 
 
 def test_the_schema_marks_every_rendered_field_required() -> None:
@@ -106,7 +109,7 @@ def test_the_schema_marks_every_rendered_field_required() -> None:
     otherwise have that read as the least alarming value.
     """
     required = set(diagnosis_input_schema()["required"])
-    assert required == {"summary", "summary_citation_ids", "steps", "severity"}
+    assert required == {"summary", "summary_citation_ids", "steps", "severity", ANSWERS_FIELD}
 
 
 def test_the_schema_carries_no_refs_the_api_might_mishandle() -> None:
@@ -580,4 +583,30 @@ def test_a_normally_finished_answer_is_not_refused_for_its_stop_reason() -> None
 
     diagnosis, _decision = _generate(client)
 
+    assert diagnosis is not None
+
+
+# --- the model's way out ----------------------------------------------------
+
+
+def test_passages_that_do_not_answer_become_a_refusal_not_an_answer() -> None:
+    """Found live: 'no specific information is available' shown as an answer."""
+    payload = {**_valid_payload(), ANSWERS_FIELD: False}
+
+    diagnosis, decision = structured_or_refuse(
+        payload, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision()
+    )
+
+    assert diagnosis is None
+    assert not decision.may_generate
+    assert decision.detail is not None
+    assert "do not answer" in decision.detail
+    assert decision.reason is RefusalReason.NOT_IN_SOURCES
+
+
+def test_passages_that_answer_are_parsed_as_before() -> None:
+    payload = {**_valid_payload(), ANSWERS_FIELD: True}
+    diagnosis, _decision = structured_or_refuse(
+        payload, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision()
+    )
     assert diagnosis is not None

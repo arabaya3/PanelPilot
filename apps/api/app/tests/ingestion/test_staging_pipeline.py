@@ -205,3 +205,28 @@ def test_the_brand_defaults_to_the_source_when_not_supplied() -> None:
     bodies = prepared[doc.id]
 
     assert all(body["brand"] == "abb" for body in bodies)
+
+
+# --- thin chunks -----------------------------------------------------------------
+
+
+def test_a_chunk_too_short_to_cite_is_not_staged() -> None:
+    """Found live: a cover page naming the product outranked every real passage."""
+    from app.ingestion.staging_pipeline import MIN_CHUNK_WORDS, _is_substantive
+    from app.models.schemas.documents import DocumentChunk
+
+    def chunk(text: str) -> DocumentChunk:
+        return DocumentChunk(
+            id="d#0000-x",
+            document_id="d",
+            text=text,
+            page=1,
+            section="Cover",
+            brand="ABB",
+            model="unknown",
+            doc_type="manual",
+            source_url="https://x/a.pdf",
+        )
+
+    assert not _is_substantive(chunk("ACS880 brake control program"))
+    assert _is_substantive(chunk(" ".join(["word"] * MIN_CHUNK_WORDS)))

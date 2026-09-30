@@ -32,6 +32,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.domain import diagnostics as diagnostics_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.diagnostics import DiagnosticRequest, EquipmentContext
+from app.models.schemas.locale import Locale
 from app.models.schemas.search import Citation, RetrievedPassage
 from app.models.tables import calculations, escalation, ingestion  # noqa: F401
 from app.models.tables.diagnostics import DiagnosticSessionRow, DiagnosticTurnRow
@@ -2235,3 +2236,55 @@ def test_listing_sessions_costs_the_same_for_one_row_as_for_many(
     many = _listing_cost()
 
     assert one == many == 1
+
+
+# --- questions in other languages ----------------------------------------------
+
+
+def test_a_question_in_another_language_is_searched_in_english(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The manuals are English; the keyword leg matched nothing in Arabic."""
+    searched: list[str] = []
+
+    def _search(query: str, **_kw: object) -> list[RetrievedPassage]:
+        searched.append(query)
+        return [_passage()]
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
+    monkeypatch.setattr(
+        diagnostics_domain,
+        "english_search_query",
+        lambda question, **_kw: f"EN({question})",
+    )
+
+    diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()),
+        user=_user(),
+        request=_request().model_copy(update={"locale": Locale.ARABIC}),
+    )
+
+    assert searched == [f"EN({_request().symptom})"]
+
+
+def test_an_english_question_is_searched_as_asked(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    searched: list[str] = []
+
+    def _search(query: str, **_kw: object) -> list[RetrievedPassage]:
+        searched.append(query)
+        return [_passage()]
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
+
+    def _never(*_a: object, **_kw: object) -> str:
+        raise AssertionError("an English question was translated")
+
+    monkeypatch.setattr(diagnostics_domain, "english_search_query", _never)
+
+    diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+
+    assert searched == [_request().symptom]

@@ -411,12 +411,30 @@ def _run_crawl_into_staging(
             failures=batch.failures,
         )
 
-    staged = _stage_bodies(session=session, user=user, job=job, result=result, bodies=bodies)
+    staged_documents: dict[str, uuid.UUID] = {}
+    staged = _stage_bodies(
+        session=session,
+        user=user,
+        job=job,
+        result=result,
+        bodies=bodies,
+        staged_documents=staged_documents,
+    )
 
     # The AI-013 seam. Called with every chunk this run produced, after they
     # are in the index -- a queue item pointing at a chunk that is not staged
-    # yet is an item a reviewer opens to nothing.
-    make_staging_hook(session=session)(chunk_ids_from_bodies(bodies))
+    # yet is an item a reviewer opens to nothing. Each chunk carries its staged
+    # document: promotion refuses an item that names none, and without it no
+    # crawled passage could ever be published.
+    make_staging_hook(session=session)(
+        chunk_ids_from_bodies(bodies),
+        {
+            str(body["chunk_id"]): staged_documents[document_id]
+            for document_id, chunks in bodies.items()
+            if document_id in staged_documents
+            for body in chunks
+        },
+    )
     return staged
 
 
@@ -427,6 +445,7 @@ def _stage_bodies(
     job: CrawlJobRow,
     result: CrawlResult,
     bodies: dict[str, list[dict[str, object]]],
+    staged_documents: dict[str, uuid.UUID] | None = None,
 ) -> int:
     """Embed and write one run's chunk bodies to the staging index.
 
@@ -436,6 +455,8 @@ def _stage_bodies(
         job: The job row these documents belong to.
         result: The crawl result, for each document's source URL and hash.
         bodies: Chunk bodies keyed by document id.
+        staged_documents: Filled with each staged document's row id, keyed
+            by document id.
 
     Returns:
         How many chunks were written.
@@ -477,8 +498,12 @@ def _stage_bodies(
         for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
             vectors.extend(embed_documents(texts[start : start + EMBEDDING_BATCH_SIZE]))
 
+        staged_id = uuid.uuid4()
+        if staged_documents is not None:
+            staged_documents[document_id] = staged_id
         session.add(
             StagedDocumentRow(
+                id=staged_id,
                 crawl_job_id=job.id,
                 source_url=document.url,
                 content_hash=document.content_hash,

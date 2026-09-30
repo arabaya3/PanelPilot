@@ -40,6 +40,7 @@ from app.models.schemas.verification import VerificationLabel
 from app.models.tables.ingestion import (
     PromotionAuditRow,
     RetractionAuditRow,
+    StagedDocumentRow,
     VerificationItemRow,
 )
 
@@ -143,15 +144,27 @@ def promote_chunk(
             f"cannot promote {chunk_id!r}: it has not been labelled correct by this "
             "reviewer in the verification queue"
         )
-    if item.staged_document_id is None:
-        raise PromotionError(f"cannot promote {chunk_id!r}: it names no staged document")
-
     client = get_client()
     staging_index = resolve_index(IndexTarget.STAGING)
     if not client.exists(index=staging_index, id=chunk_id):
         raise NotFoundError(f"no staged chunk {chunk_id!r}")
 
     staged = client.get(index=staging_index, id=chunk_id)["_source"]
+
+    if item.staged_document_id is None:
+        # Crawls queued their chunks without the staged document, and a
+        # re-crawl of an unchanged manual never re-queues them to fill it in.
+        # The chunk carries its document's hash, which is unique on
+        # `staged_documents`, so the record is recovered exactly -- or, when
+        # nothing matches, promotion still refuses rather than publishing
+        # content whose origin it cannot audit.
+        item.staged_document_id = session.execute(
+            select(StagedDocumentRow.id).where(
+                StagedDocumentRow.content_hash == staged.get("content_hash")
+            )
+        ).scalar_one_or_none()
+    if item.staged_document_id is None:
+        raise PromotionError(f"cannot promote {chunk_id!r}: it names no staged document")
 
     # Four-eyes: whoever brought the content in cannot also bless it. Failing
     # closed: a chunk with no ingester of record used to skip the comparison

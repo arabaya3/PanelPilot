@@ -21,8 +21,10 @@ happens next is this module's decision, not the crawler's.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import uuid
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import Protocol
 
 import structlog
 from sqlalchemy import select
@@ -47,8 +49,15 @@ logger = structlog.get_logger(__name__)
 #: ``enqueue_chunks`` is idempotent, so nothing is lost by deferring it.
 MAX_CHUNKS_PER_RUN = 500
 
+
 #: Called with the chunk ids one staging write produced.
-StagingChunkHook = Callable[[Sequence[str]], None]
+class StagingChunkHook(Protocol):
+    """What a staging run calls with the chunks it produced."""
+
+    def __call__(
+        self, chunk_ids: Sequence[str], documents: Mapping[str, uuid.UUID] | None = None, /
+    ) -> None:
+        """Queue the chunks, each with its staged document when known."""
 
 
 class QueuePopulationResult:
@@ -89,6 +98,7 @@ def populate_queue_from_staging(
     chunk_ids: Sequence[str],
     max_per_run: int = MAX_CHUNKS_PER_RUN,
     now: datetime | None = None,
+    documents: Mapping[str, uuid.UUID] | None = None,
 ) -> QueuePopulationResult:
     """Add a staging run's chunks to the verification queue.
 
@@ -97,6 +107,9 @@ def populate_queue_from_staging(
         chunk_ids: Every chunk the run produced, in the order produced.
         max_per_run: Most chunks this run may contribute.
         now: Injected for tests.
+        documents: The staged document each chunk came from, by chunk id.
+            Recorded on new items, and filled in on items already queued
+            without one -- which a crawl before this fix left behind.
 
     Returns:
         What was queued, what was already there, and what was deferred.
@@ -119,7 +132,9 @@ def populate_queue_from_staging(
     accepted = outstanding[:max_per_run]
     deferred = outstanding[max_per_run:]
 
-    created = enqueue_chunks(session=session, chunk_ids=accepted, now=now)
+    created = enqueue_chunks(session=session, chunk_ids=accepted, now=now, documents=documents)
+    if documents and already_queued:
+        _backfill_documents(session=session, chunk_ids=already_queued, documents=documents)
     created_ids = [row.chunk_id for row in created if row.chunk_id is not None]
 
     if deferred:
@@ -177,6 +192,27 @@ def _already_queued(*, session: Session, chunk_ids: Sequence[str]) -> set[str]:
     return {chunk_id for chunk_id in rows if chunk_id is not None}
 
 
+def _backfill_documents(
+    *, session: Session, chunk_ids: set[str], documents: Mapping[str, uuid.UUID]
+) -> None:
+    """Name the staged document on queued items that lack one.
+
+    Args:
+        session: Open database session. The caller commits.
+        chunk_ids: Chunks already in the queue.
+        documents: The staged document each chunk came from.
+    """
+    rows = session.execute(
+        select(VerificationItemRow).where(
+            VerificationItemRow.chunk_id.in_(list(chunk_ids)),
+            VerificationItemRow.staged_document_id.is_(None),
+        )
+    ).scalars()
+    for row in rows:
+        if row.chunk_id is not None and row.chunk_id in documents:
+            row.staged_document_id = documents[row.chunk_id]
+
+
 def make_staging_hook(
     *,
     session: Session,
@@ -197,16 +233,18 @@ def make_staging_hook(
     this function and nothing upstream of it.
     """
 
-    def hook(chunk_ids: Sequence[str]) -> None:
+    def hook(chunk_ids: Sequence[str], documents: Mapping[str, uuid.UUID] | None = None) -> None:
         """Queue one staging run's chunks for verification.
 
         Args:
             chunk_ids: Every chunk the run produced.
+            documents: The staged document each chunk came from.
         """
         populate_queue_from_staging(
             session=session,
             chunk_ids=chunk_ids,
             max_per_run=max_per_run,
+            documents=documents,
         )
 
     return hook
