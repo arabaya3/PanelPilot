@@ -183,6 +183,35 @@ services:
     networks: [panelpilot]
 
   # ---------------------------------------------------------------------------
+  # Worker — the scheduled jobs, same image as the API (ADR 0002).
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ./apps/api
+      target: dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot
+      OPENSEARCH_URL: http://opensearch:9200
+      REDIS_URL: redis://redis:6379/0
+    # DEV ONLY. Runs apps/api/worker.crontab -- the same file production hands
+    # to its platform scheduler -- with a stand-in scheduler, because compose
+    # has no cron. Without it a crawl queued through the API waited forever and
+    # no reviewer was ever assigned a batch. Each job still runs once, as its
+    # own process, and exits; see app/worker/schedule.py.
+    command: ['python', '-m', 'app.worker.schedule', 'worker.crontab']
+    volumes:
+      - ./apps/api:/app
+      - /app/.venv
+    depends_on:
+      # Healthy api means migrations and the index bootstrap have run: the
+      # jobs read tables and indices the api's start-up creates.
+      api: { condition: service_healthy }
+    networks: [panelpilot]
+
+  # ---------------------------------------------------------------------------
   # Web — next dev with hot reload. The production standalone image is the
   # `runner` target in apps/web/Dockerfile; it is what ships, not what runs here.
   # ---------------------------------------------------------------------------

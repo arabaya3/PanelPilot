@@ -43,3 +43,21 @@ Three constraints that outlive whichever tool we pick:
 3. **The worker is scheduled, not long-running.** Each invocation runs one job
    and exits. Configure retries and timeouts on the scheduler; do not add a
    loop to the worker to work around a missing scheduler feature.
+
+## The worker schedule
+
+[`apps/api/worker.crontab`](../apps/api/worker.crontab) is the schedule, in
+cron syntax, UTC: when `crawl-queue`, `assign-review-batches` and
+`expire-stale-sources` run, and why each cadence. Hand its lines to the
+platform scheduler as `panelpilot-worker <args>`. Two settings the file cannot
+carry:
+
+- **No overlap.** A job still running when it is next due must be skipped, not
+  started twice (Kubernetes `concurrencyPolicy: Forbid`, ECS/EventBridge a
+  single running task).
+- **Exit 1 from `expire-stale-sources` is not a crash.** It means a live
+  document changed upstream and a reviewer is needed; route its failure alert
+  to reviewers, not on-call.
+
+`docker compose` runs the same file with `python -m app.worker.schedule`, a
+development stand-in with those same rules; it is not a production scheduler.
