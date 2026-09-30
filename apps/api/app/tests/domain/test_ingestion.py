@@ -287,14 +287,14 @@ def test_a_source_with_no_seed_urls_is_refused(db_session: Session) -> None:
     `crawl_source` would raise on this too, but only after the job had been
     recorded as RUNNING — which reads afterwards like the source went down.
 
-    Siemens rather than the default ABB: ABB has curated document URLs, so an
-    ABB request without seeds is valid and would start a real crawl.
+    Schneider rather than ABB or Siemens: both have curated document URLs, so
+    a request for either without seeds is valid and would start a real crawl.
     """
     with pytest.raises(ValidationError, match="seed URL"):
         ingestion_domain.create_crawl_job(
             session=db_session,
             user=_user(),
-            request=_request(source_id="siemens", seed_urls=[]),
+            request=_request(source_id="schneider", seed_urls=[]),
         )
 
 
