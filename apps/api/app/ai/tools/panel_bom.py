@@ -42,6 +42,9 @@ SHEET_STEEL_K = Decimal("5.5")
 _AREA_TABLE_PAGE = 25
 _HEAT_BALANCE_PAGE = 40
 
+#: The conductor's chemical symbol, as a cable's designation writes it.
+_METAL = {ConductorMaterial.COPPER: "Cu", ConductorMaterial.ALUMINIUM: "Al"}
+
 #: Table 5 stops at 20 grouped circuits; more are refused by the cable sizing.
 _MAX_GROUPED = 20
 
@@ -222,8 +225,8 @@ def build_bom(
     Each variable-speed load gets the smallest ACS880-01 carrying its current
     at the enclosure's maximum internal temperature -- the drive stands
     inside the panel, not in the room. Each load with a current gets an
-    outgoing copper XLPE cable sized for the room's ambient, grouped with
-    every other outgoing cable. The enclosure is listed as given, and the
+    outgoing XLPE cable, copper or aluminium as the constraints say, sized
+    for the room's ambient, grouped with every other outgoing cable. The enclosure is listed as given, and the
     heat balance says how much cooling it needs.
 
     Source:
@@ -312,7 +315,7 @@ def build_bom(
                 installation_method=constraints.cable_installation_method,
                 ambient_temp_c=constraints.ambient_temp_c,
                 grouped_circuits=grouped,
-                conductor_material=ConductorMaterial.COPPER,
+                conductor_material=constraints.cable_material,
                 insulation_rating_c=90,
             )
         except ValidationError as exc:
@@ -320,7 +323,7 @@ def build_bom(
         section = _plain(cable.cross_section_mm2)
         lines.append(
             BomLine(
-                part_reference=f"Cu XLPE {section} mm²",
+                part_reference=f"{_METAL[constraints.cable_material]} XLPE {section} mm²",
                 description=(
                     f"{load.tag}: outgoing cable, method "
                     f"{constraints.cable_installation_method.value}, {grouped} grouped"
@@ -333,6 +336,7 @@ def build_bom(
                     "load": load.description,
                     "method": constraints.cable_installation_method.value,
                     "grouped": str(grouped),
+                    "material": constraints.cable_material.value,
                 },
             )
         )

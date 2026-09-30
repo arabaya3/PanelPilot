@@ -16,6 +16,8 @@ import pytest
 from app.ai.tools import panel_bom
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
+    BomLineKind,
+    ConductorMaterial,
     EnclosureConstraints,
     EnclosurePlacement,
     InstallationMethod,
@@ -121,6 +123,45 @@ def test_the_bom_lists_drive_cable_enclosure_and_cooling() -> None:
     assert any("Terminals" in note for note in result.notes)
 
 
+def test_aluminium_cables_size_from_the_aluminium_columns() -> None:
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(tag="M-101", description="conveyor", current_a=Decimal("40")),
+            LoadScheduleItem(tag="H-1", description="heater", current_a=Decimal("10")),
+        ],
+        constraints=_constraints(cable_material=ConductorMaterial.ALUMINIUM),
+    )
+    cables = [line for line in result.lines if line.kind is BomLineKind.CABLE]
+    # Same 48.1 A and 12.0 A as the copper case; Table 8 Al, method C, XLPE,
+    # three loaded: 6 mm² carries 41 A, 10 mm² 57 A; 2.5 mm² (the first Al
+    # row) 24 A.
+    assert [line.part_reference for line in cables] == ["Al XLPE 10 mm²", "Al XLPE 2.5 mm²"]
+    assert cables[0].details["material"] == "aluminium"
+
+
+@pytest.mark.parametrize(
+    ("supply", "drive"),
+    [
+        # 40 A at 35 °C: -5 at Un = 500 V (040A-5, I2 40 A); -7 at 690 V
+        # (042A-7, I2 42 A); -7 at 575 V, UL ILd (035A-7, 41 A).
+        ("500", "ACS880-01-040A-5"),
+        ("690", "ACS880-01-042A-7"),
+        ("575", "ACS880-01-035A-7"),
+    ],
+)
+def test_the_supply_voltage_picks_the_drive_range(supply: str, drive: str) -> None:
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="M-101", description="conveyor", current_a=Decimal("40"), variable_speed=True
+            )
+        ],
+        constraints=_constraints(supply_voltage_v=Decimal(supply)),
+    )
+    assert result.lines[0].part_reference == drive
+    assert result.lines[0].source.page in (236, 237, 240)
+
+
 @pytest.mark.parametrize(
     ("loads", "message"),
     [
@@ -196,6 +237,7 @@ def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
         "load": "conveyor",
         "method": "C",
         "grouped": "2",
+        "material": "copper",
     }
     assert result.lines[3].details == {"placement": "single_free_standing"}
     assert result.lines[4].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}

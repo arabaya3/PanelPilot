@@ -448,7 +448,9 @@
         "dissipation": "חום נפלט",
         "variableSpeed": "מהירות משתנה (ממיר)",
         "power": "הספק מנוע",
-        "start": "אופן התנעה"
+        "start": "אופן התנעה",
+        "voltage": "מתח אספקה",
+        "material": "מוליך הכבלים"
       },
       "placement": {
         "single_wall": "בודד, צמוד לקיר",

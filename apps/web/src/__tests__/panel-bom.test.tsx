@@ -95,6 +95,7 @@ describe('panel BOM', () => {
           placement: 'single_wall',
           cable_installation_method: 'C',
           supply_voltage_v: '400',
+          cable_material: 'copper',
           fault_level_ka: null,
           preferred_vendors: [],
           ambient_temp_c: '35',
@@ -168,6 +169,23 @@ describe('panel BOM', () => {
     expect(result.textContent).toContain('50 kA');
   });
 
+  it('sends the supply voltage and cable conductor it is given', async () => {
+    const buildImpl = vi.fn().mockResolvedValue({ kind: 'built', response: BUILT });
+    await openBomTab(buildImpl);
+    fireEvent.change(screen.getByLabelText(/^Supply voltage/), { target: { value: '690' } });
+    fireEvent.change(screen.getByLabelText('Cable conductor'), { target: { value: 'aluminium' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
+
+    await screen.findByTestId('bom-result');
+    const sent = buildImpl.mock.calls[0]?.[0] as {
+      request: { constraints: Record<string, unknown> };
+    };
+    expect(sent.request.constraints).toMatchObject({
+      supply_voltage_v: '690',
+      cable_material: 'aluminium',
+    });
+  });
+
   it('adds and removes load rows, keeping at least one', async () => {
     await openBomTab(vi.fn());
     fireEvent.click(screen.getByRole('button', { name: 'Add a load' }));
@@ -232,6 +250,7 @@ describe('buildBom', () => {
           placement: 'single_wall',
           cable_installation_method: 'C',
           supply_voltage_v: '400',
+          cable_material: 'copper',
           preferred_vendors: [],
           ambient_temp_c: '35',
           max_internal_temp_c: '50',

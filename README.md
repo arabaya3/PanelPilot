@@ -144,7 +144,8 @@ the motor current from ABB's Technical guide No. 7. Other ranges and
 voltages, 600-660 V among them, are refused.
 
 The panel BOM (AI-007, BE-011) builds on both: a drive for each
-variable-speed load, an outgoing cable for each load, the enclosure, and the
+variable-speed load in the range the supply voltage selects, an outgoing
+copper or aluminium cable for each load, the enclosure, and the
 heat balance from Rittal's _Enclosure and process cooling_ (IEC 60890
 effective area, k = 5.5 W/m²K). A load given a start type (direct on line,
 star-delta, or heavy-duty direct on line) also gets its circuit-breaker,
