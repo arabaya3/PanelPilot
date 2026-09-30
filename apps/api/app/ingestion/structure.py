@@ -554,7 +554,10 @@ def _rows_of(table: Any) -> list[list[str]]:
         One list of cells per row that carries any content.
     """
     rows: list[list[str]] = []
-    for row in table.extract():
+    # The same gap rule as body text. pdfplumber's default is a fixed 3 pt, so
+    # a manual that positions words 2.5 pt apart instead of emitting spaces --
+    # Schneider's framed safety messages -- read "LOSSOFCONTROL".
+    for row in table.extract(x_tolerance_ratio=WORD_GAP_RATIO):
         cells = [(cell or "").replace("\n", " ").strip() for cell in row]
         if any(cells):
             rows.append(cells)
