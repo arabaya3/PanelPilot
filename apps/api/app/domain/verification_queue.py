@@ -36,9 +36,10 @@ from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.schemas.auth import Role
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.verification import VerificationLabel, escalates
-from app.models.tables.ingestion import VerificationItemRow
+from app.models.tables.ingestion import EscalationResolutionRow, VerificationItemRow
 
 logger = structlog.get_logger(__name__)
 
@@ -50,6 +51,16 @@ STATUS_LABELED = "labeled"
 
 #: Status of an item routed to lead-engineer review.
 STATUS_ESCALATED = "escalated"
+
+#: Status of an escalated item a lead agreed with: it stays out of live
+#: answers, or, for a reported answer, the report is confirmed.
+STATUS_UPHELD = "upheld"
+
+#: A lead agreed with the escalation.
+OUTCOME_UPHELD = "upheld"
+
+#: A lead took the item over, to judge it again themselves.
+OUTCOME_TAKEN_OVER = "taken-over"
 
 #: How many items one verifier is given in a day.
 #:
@@ -471,3 +482,88 @@ def escalations(*, session: Session) -> list[VerificationItemRow]:
         .scalars()
         .all()
     )
+
+
+def resolve_escalation(
+    *,
+    session: Session,
+    lead: CurrentUser,
+    item_id: UUID,
+    outcome: str,
+    note: str,
+) -> VerificationItemRow:
+    """Settle an escalated item, as a lead other than whoever escalated it.
+
+    Args:
+        session: Open database session. The caller commits.
+        lead: Who is resolving it; must hold the reviewer role.
+        item_id: The escalated item.
+        outcome: ``upheld`` -- the escalation stands, and the item closes as
+            ``upheld`` -- or ``taken-over`` -- the item goes back to pending in
+            the lead's own queue, to be labelled afresh.
+        note: Why. Required: a resolution nobody can explain later is the
+            unilateral call AI-012 exists to prevent.
+
+    Returns:
+        The item as resolved.
+
+    Raises:
+        AuthorizationError: If the caller is not a reviewer, or escalated the
+            item themselves.
+        NotFoundError: If there is no such item.
+        ValidationError: If the outcome is unknown, the note is blank, or the
+            item is not escalated.
+
+    Taking an item over does not publish it. Publication stays the one path
+    it always was -- a ``correct`` label from the reviewer the item is
+    assigned to, checked by promotion -- so a lead overruling a verifier goes
+    through the same four-eyes and citation checks as anyone.
+    """
+    if not lead.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{lead.email} does not hold the reviewer role")
+    if outcome not in (OUTCOME_UPHELD, OUTCOME_TAKEN_OVER):
+        raise ValidationError(f"unknown outcome {outcome!r}")
+    if not note.strip():
+        raise ValidationError("a resolution requires a note")
+
+    lead_id = UUID(lead.id)
+    # Locked: two leads resolving one item must not both succeed.
+    row = session.execute(
+        select(VerificationItemRow).where(VerificationItemRow.id == item_id).with_for_update()
+    ).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError(f"no verification item {item_id}")
+    if row.status != STATUS_ESCALATED:
+        raise ValidationError(f"item {item_id} is {row.status}, not escalated")
+    if row.assigned_to_id == lead_id:
+        raise AuthorizationError(
+            f"{lead.email} escalated this item and cannot resolve it; another lead must"
+        )
+
+    session.add(
+        EscalationResolutionRow(
+            item_id=row.id,
+            lead_id=lead_id,
+            outcome=outcome,
+            note=note.strip(),
+            escalated_by_id=row.assigned_to_id,
+            escalated_label=row.label or "",
+            escalated_note=row.notes or "",
+        )
+    )
+    if outcome == OUTCOME_UPHELD:
+        row.status = STATUS_UPHELD
+    else:
+        row.status = STATUS_PENDING
+        row.assigned_to_id = lead_id
+        row.assigned_at = datetime.now(UTC)
+        row.label = None
+        row.notes = None
+    session.flush()
+
+    logger.info(
+        "verification_queue.escalation_resolved",
+        item_id=str(item_id),
+        outcome=outcome,
+    )
+    return row

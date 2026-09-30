@@ -33,12 +33,16 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.core.tenancy import cross_tenant_info
 from app.domain import verification_queue as queue_domain
 from app.domain.verification_queue import (
+    OUTCOME_TAKEN_OVER,
+    OUTCOME_UPHELD,
     STATUS_ESCALATED,
     STATUS_LABELED,
     STATUS_PENDING,
+    STATUS_UPHELD,
     QueueError,
     assign_daily_batches,
     claim_item,
@@ -46,7 +50,9 @@ from app.domain.verification_queue import (
     escalations,
     queue_for,
     record_label,
+    resolve_escalation,
 )
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.verification import VerificationLabel
 
 # Imported for their side effect on `Base.metadata`, not for direct use.
@@ -61,7 +67,7 @@ from app.models.tables import session as _session_tables  # noqa: F401
 from app.models.tables import tenant as _tenant  # noqa: F401
 from app.models.tables import user as _user  # noqa: F401
 from app.models.tables.base import Base
-from app.models.tables.ingestion import VerificationItemRow
+from app.models.tables.ingestion import EscalationResolutionRow, VerificationItemRow
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 
@@ -99,7 +105,7 @@ def _session(engine: Engine) -> Iterator[Session]:
     with sessionmaker(
         bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
     )() as session:
-        session.execute(text("TRUNCATE verification_items CASCADE"))
+        session.execute(text("TRUNCATE verification_items, escalation_resolutions CASCADE"))
         session.commit()
         yield session
         session.rollback()
@@ -821,3 +827,143 @@ def test_an_unreachable_index_degrades_to_nothing_rather_than_failing(
     _with_search(monkeypatch, _FakeSearch(ConnectionError("down")))
 
     assert queue_domain.staged_chunks(["a"]) == {}
+
+
+# --- a lead resolving an escalation ---------------------------------------------
+
+
+def _lead(user_id: uuid.UUID, *roles: Role) -> CurrentUser:
+    return CurrentUser(
+        id=str(user_id),
+        email=f"{user_id}@queue-tests.invalid",
+        tenant_id=str(uuid.UUID(int=1)),
+        roles=frozenset(roles or {Role.REVIEWER}),
+    )
+
+
+def _escalated(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> tuple[VerificationItemRow, uuid.UUID, uuid.UUID]:
+    item, verifier = _one_assigned_item(session, verifier_pool)
+    record_label(
+        session=session,
+        item_id=item.id,
+        verifier_id=verifier,
+        label=VerificationLabel.INCORRECT,
+        note="cited section gives 63 A, chunk says 80 A",
+    )
+    session.commit()
+    lead = _verifiers(verifier_pool, 2)[1]
+    return item, verifier, lead
+
+
+@requires_postgres
+def test_upholding_closes_the_escalation_and_records_whose_it_was(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    item, verifier, lead = _escalated(session, verifier_pool)
+
+    resolved = resolve_escalation(
+        session=session,
+        lead=_lead(lead),
+        item_id=item.id,
+        outcome=OUTCOME_UPHELD,
+        note="  Agreed: the table says 63 A.  ",
+    )
+    session.commit()
+
+    assert resolved.status == STATUS_UPHELD
+    assert escalations(session=session) == []
+    record = session.execute(select(EscalationResolutionRow)).scalar_one()
+    assert (record.lead_id, record.escalated_by_id) == (lead, verifier)
+    assert (record.escalated_label, record.escalated_note) == (
+        "incorrect",
+        "cited section gives 63 A, chunk says 80 A",
+    )
+    assert record.note == "Agreed: the table says 63 A."
+
+
+@requires_postgres
+def test_taking_over_puts_it_in_the_leads_queue_to_judge_afresh(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    """Not a publication: that stays the one labelled, four-eyes-checked path."""
+    item, _verifier, lead = _escalated(session, verifier_pool)
+
+    resolve_escalation(
+        session=session,
+        lead=_lead(lead),
+        item_id=item.id,
+        outcome=OUTCOME_TAKEN_OVER,
+        note="The verifier read the 30 C column.",
+    )
+    session.commit()
+
+    assert [row.id for row in queue_for(session=session, verifier_id=lead)] == [item.id]
+    session.expire_all()
+    stored = session.get(VerificationItemRow, item.id)
+    assert stored is not None
+    assert (stored.status, stored.label, stored.notes) == (STATUS_PENDING, None, None)
+    # The escalation it settled survives the relabel that follows.
+    record_label(
+        session=session, item_id=item.id, verifier_id=lead, label=VerificationLabel.CORRECT
+    )
+    session.commit()
+    record = session.execute(select(EscalationResolutionRow)).scalar_one()
+    assert record.escalated_label == "incorrect"
+
+
+@requires_postgres
+def test_whoever_escalated_it_cannot_resolve_it(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    item, verifier, _lead_id = _escalated(session, verifier_pool)
+    with pytest.raises(AuthorizationError, match="another lead must"):
+        resolve_escalation(
+            session=session,
+            lead=_lead(verifier),
+            item_id=item.id,
+            outcome=OUTCOME_UPHELD,
+            note="I stand by it",
+        )
+
+
+@requires_postgres
+def test_a_resolution_needs_a_note_a_reviewer_and_an_escalation(
+    session: Session, verifier_pool: list[uuid.UUID]
+) -> None:
+    item, _verifier, lead = _escalated(session, verifier_pool)
+
+    with pytest.raises(ValidationError, match="note"):
+        resolve_escalation(
+            session=session, lead=_lead(lead), item_id=item.id, outcome=OUTCOME_UPHELD, note="  "
+        )
+    with pytest.raises(AuthorizationError):
+        resolve_escalation(
+            session=session,
+            lead=_lead(lead, Role.ENGINEER),
+            item_id=item.id,
+            outcome=OUTCOME_UPHELD,
+            note="n",
+        )
+    with pytest.raises(NotFoundError):
+        resolve_escalation(
+            session=session,
+            lead=_lead(lead),
+            item_id=uuid.uuid4(),
+            outcome=OUTCOME_UPHELD,
+            note="n",
+        )
+    with pytest.raises(ValidationError, match="unknown outcome"):
+        resolve_escalation(
+            session=session, lead=_lead(lead), item_id=item.id, outcome="publish", note="n"
+        )
+
+    resolve_escalation(
+        session=session, lead=_lead(lead), item_id=item.id, outcome=OUTCOME_UPHELD, note="n"
+    )
+    session.commit()
+    with pytest.raises(ValidationError, match="not escalated"):
+        resolve_escalation(
+            session=session, lead=_lead(lead), item_id=item.id, outcome=OUTCOME_UPHELD, note="n"
+        )

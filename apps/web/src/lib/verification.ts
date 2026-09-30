@@ -214,3 +214,57 @@ async function postStaleDecision(options: {
   }
   throw new Error(detail || `${action} refused: ${String(response.status)}`);
 }
+
+/**
+ * Every escalated item, for a lead: `GET /verification/escalations`.
+ *
+ * The same shape as a queue; the verifier's label and note are what the lead
+ * resolves.
+ */
+export function fetchEscalations(options: {
+  token: string;
+  fetchImpl?: typeof fetch;
+}): Promise<QueueOutcome> {
+  return fetchQueue({ ...options, endpoint: '/api/v1/verification/escalations' });
+}
+
+export type EscalationDecision = 'upheld' | 'taken-over';
+
+/**
+ * Settle an escalation: uphold it, or take it over to judge again.
+ *
+ * @throws Error when the resolution is refused, carrying the server's reason:
+ *   a blank note, an item already resolved, or one the caller escalated.
+ */
+export async function resolveEscalation(options: {
+  token: string;
+  id: string;
+  outcome: EscalationDecision;
+  note: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<void> {
+  const {
+    token,
+    id,
+    outcome,
+    note,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/verification/escalations',
+  } = options;
+
+  const response = await fetchImpl(`${endpoint}/${encodeURIComponent(id)}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ outcome, note }),
+  });
+  if (response.ok) return;
+  let detail = '';
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === 'string') detail = body.detail;
+  } catch {
+    // No body worth reading; the status says enough.
+  }
+  throw new Error(detail || `resolution refused: ${String(response.status)}`);
+}

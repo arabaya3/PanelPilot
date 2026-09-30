@@ -35,6 +35,7 @@ const ITEM = {
   id: 'item-1',
   chunk_id: 'doc#0001', // allow-hardcoded-colour (a chunk id, not a colour)
   origin: 'crawl',
+  assigned_to_you: false,
   status: 'pending',
   assigned_at: '2026-09-29T00:00:00Z',
   content: 'F0001 OVERCURRENT: check the motor cable insulation.',

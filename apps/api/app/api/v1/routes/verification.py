@@ -31,6 +31,7 @@ from app.models.schemas.verification import (
     LabelResponse,
     QueueItem,
     QueuePage,
+    ResolveEscalationRequest,
     StaleDocument,
     StaleDocumentPage,
 )
@@ -85,6 +86,11 @@ def _to_items(
                     )
                     if flag is not None
                     else None
+                ),
+                label=row.label,
+                note=row.notes,
+                assigned_to_you=(
+                    row.assigned_to_id is not None and str(row.assigned_to_id) == user.id
                 ),
             )
         )
@@ -156,6 +162,28 @@ def list_escalations(session: SessionDep, user: CurrentUserDep) -> EscalationPag
 
     rows = queue_domain.escalations(session=session)
     return EscalationPage(items=_to_items(session, user, list(rows)))
+
+
+@router.post("/escalations/{item_id}/resolve", response_model=QueueItem)
+def resolve_escalation(
+    item_id: UUID,
+    payload: ResolveEscalationRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> QueueItem:
+    """Settle an escalated item: uphold it, or take it over to judge again.
+
+    Raises:
+        AuthorizationError: 403 unless the caller is a reviewer other than
+            whoever escalated the item.
+        NotFoundError: 404 if there is no such item.
+        ValidationError: 422 if the note is blank or the item is not escalated.
+    """
+    row = queue_domain.resolve_escalation(
+        session=session, lead=user, item_id=item_id, outcome=payload.outcome, note=payload.note
+    )
+    session.commit()
+    return _to_items(session, user, [row])[0]
 
 
 def _to_stale(row: StaleDocumentRow) -> StaleDocument:

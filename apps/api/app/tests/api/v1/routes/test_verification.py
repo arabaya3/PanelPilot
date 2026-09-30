@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.routes import verification as verification_route
 from app.core.errors import (
+    AuthorizationError,
     NotFoundError,
     PromotionError,
     ValidationError,
@@ -73,6 +74,8 @@ class _Row:
         self.assigned_at = assigned_at
         self.origin = "crawl"
         self.flagged_answer_id: uuid.UUID | None = None
+        self.notes: str | None = None
+        self.assigned_to_id: uuid.UUID | None = None
 
 
 def _engineer() -> CurrentUser:
@@ -661,3 +664,94 @@ def test_a_failed_retraction_is_a_conflict_and_is_not_committed(
 def test_an_engineer_cannot_retract(client: TestClient) -> None:
     response = client.post(f"/verification/stale-documents/{_FLAG_ID}/retract", json={"note": "x"})
     assert response.status_code == 403
+
+
+# --- resolving an escalation ----------------------------------------------------
+
+
+def test_a_resolution_is_committed_and_returns_the_item(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions: list[object] = []
+
+    def _resolve(**kwargs: object) -> _Row:
+        sessions.append(kwargs["session"])
+        assert (kwargs["item_id"], kwargs["outcome"], kwargs["note"]) == (
+            uuid.UUID(int=3),
+            "upheld",
+            "the table says 63 A",
+        )
+        row = _Row(row_id=uuid.UUID(int=3), status="upheld", label="incorrect")
+        row.notes = "chunk says 80 A"
+        return row
+
+    monkeypatch.setattr(queue_domain, "resolve_escalation", _resolve)
+    monkeypatch.setattr(queue_domain, "staged_chunks", lambda _ids: {})
+
+    response = lead_client.post(
+        f"/verification/escalations/{uuid.UUID(int=3)}/resolve",
+        json={"outcome": "upheld", "note": "the table says 63 A"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["status"], body["label"], body["note"]) == (
+        "upheld",
+        "incorrect",
+        "chunk says 80 A",
+    )
+    assert getattr(sessions[0], "committed", False) is True
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (AuthorizationError("escalated this item"), 403),
+        (NotFoundError("no verification item"), 404),
+        (ValidationError("a resolution requires a note"), 422),
+    ],
+)
+def test_a_refused_resolution_maps_to_its_status_and_is_not_committed(
+    lead_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    code: int,
+) -> None:
+    sessions: list[object] = []
+
+    def _resolve(**kwargs: object) -> _Row:
+        sessions.append(kwargs["session"])
+        raise error
+
+    monkeypatch.setattr(queue_domain, "resolve_escalation", _resolve)
+
+    response = lead_client.post(
+        f"/verification/escalations/{uuid.UUID(int=3)}/resolve",
+        json={"outcome": "taken-over", "note": ""},
+    )
+
+    assert response.status_code == code
+    assert getattr(sessions[0], "committed", False) is False
+
+
+def test_an_unknown_outcome_is_refused_before_the_domain(lead_client: TestClient) -> None:
+    response = lead_client.post(
+        f"/verification/escalations/{uuid.UUID(int=3)}/resolve",
+        json={"outcome": "publish", "note": "n"},
+    )
+    assert response.status_code == 422
+
+
+def test_an_escalation_says_whether_the_caller_raised_it(
+    lead_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mine = _Row(row_id=uuid.UUID(int=1), status="escalated", label="uncertain")
+    mine.assigned_to_id = uuid.UUID(_USER_ID)
+    theirs = _Row(row_id=uuid.UUID(int=2), status="escalated", label="incorrect")
+    theirs.assigned_to_id = uuid.UUID(int=99)
+    monkeypatch.setattr(queue_domain, "escalations", lambda **_: [mine, theirs])
+    monkeypatch.setattr(queue_domain, "staged_chunks", lambda _ids: {})
+
+    items = lead_client.get("/verification/escalations").json()["items"]
+
+    assert [i["assigned_to_you"] for i in items] == [True, False]

@@ -95,7 +95,13 @@ export interface VerificationLabels {
  * reported: judging it against a fresh search would be judging an answer
  * nobody was given.
  */
-function ReportedAnswer({ flag, labels }: { flag: FlaggedAnswerView; labels: VerificationLabels }) {
+export function ReportedAnswer({
+  flag,
+  labels,
+}: {
+  flag: FlaggedAnswerView;
+  labels: VerificationLabels;
+}) {
   const quote =
     'whitespace-pre-wrap rounded-md border border-border-subtle bg-surface-raised p-3 text-sm leading-relaxed text-text';
   return (

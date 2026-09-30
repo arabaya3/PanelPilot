@@ -9,11 +9,14 @@ import { CheckCircleIcon } from '@/components/icons';
 import { SignInForm } from '@/components/sign-in-form';
 import type { signIn } from '@/lib/auth';
 import { VerificationConsole, type VerificationLabels } from '@/components/verification';
+import { Escalations } from '@/components/verification/escalations';
 import { StaleDocuments } from '@/components/verification/stale-documents';
 import {
   dismissStale,
+  fetchEscalations,
   fetchQueue,
   fetchStale,
+  resolveEscalation,
   retractStale,
   sourceUrlFor,
   submitLabel as submitLabelRequest,
@@ -26,7 +29,13 @@ type QueueItem = components['schemas']['QueueItem'];
 type Phase =
   | { kind: 'signed-out' }
   | { kind: 'loading'; token: string }
-  | { kind: 'loaded'; token: string; items: QueueItem[]; stale: StaleOutcome }
+  | {
+      kind: 'loaded';
+      token: string;
+      items: QueueItem[];
+      stale: StaleOutcome;
+      escalations: QueueOutcome;
+    }
   | { kind: 'forbidden' }
   | { kind: 'failed'; token: string };
 
@@ -43,6 +52,8 @@ export function ReviewScreen({
   fetchStaleImpl = fetchStale,
   dismissStaleImpl = dismissStale,
   retractStaleImpl = retractStale,
+  fetchEscalationsImpl = fetchEscalations,
+  resolveEscalationImpl = resolveEscalation,
   signInImpl,
 }: {
   fetchQueueImpl?: typeof fetchQueue;
@@ -50,12 +61,14 @@ export function ReviewScreen({
   fetchStaleImpl?: typeof fetchStale;
   dismissStaleImpl?: typeof dismissStale;
   retractStaleImpl?: typeof retractStale;
+  fetchEscalationsImpl?: typeof fetchEscalations;
+  resolveEscalationImpl?: typeof resolveEscalation;
   signInImpl?: typeof signIn;
 }) {
   const t = useTranslations('review');
   const tv = useTranslations('verification');
   const [phase, setPhase] = useState<Phase>({ kind: 'signed-out' });
-  const [tab, setTab] = useState<'queue' | 'stale'>('queue');
+  const [tab, setTab] = useState<'queue' | 'stale' | 'escalations'>('queue');
 
   // A decided flag leaves the open list, whichever way it was decided. The
   // list lives here rather than in the component that shows it, so it stays
@@ -73,6 +86,19 @@ export function ReviewScreen({
         : current,
     );
   }, []);
+  const removeEscalation = useCallback((id: string) => {
+    setPhase((current) =>
+      current.kind === 'loaded' && current.escalations.kind === 'loaded'
+        ? {
+            ...current,
+            escalations: {
+              ...current.escalations,
+              items: current.escalations.items.filter((item) => item.id !== id),
+            },
+          }
+        : current,
+    );
+  }, []);
   const tabsId = useId();
 
   const load = useCallback(
@@ -80,17 +106,19 @@ export function ReviewScreen({
       setPhase({ kind: 'loading', token });
       // Together, not one after the other: the flags are a second list on
       // the same page, and waiting for the queue first only delays both.
-      const [outcome, stale]: [QueueOutcome, StaleOutcome] = await Promise.all([
-        fetchQueueImpl({ token }),
-        fetchStaleImpl({ token }),
-      ]);
+      const [outcome, stale, escalations]: [QueueOutcome, StaleOutcome, QueueOutcome] =
+        await Promise.all([
+          fetchQueueImpl({ token }),
+          fetchStaleImpl({ token }),
+          fetchEscalationsImpl({ token }),
+        ]);
       if (outcome.kind === 'loaded')
-        setPhase({ kind: 'loaded', token, items: outcome.items, stale });
+        setPhase({ kind: 'loaded', token, items: outcome.items, stale, escalations });
       else if (outcome.kind === 'forbidden') setPhase({ kind: 'forbidden' });
       else if (outcome.kind === 'unauthorized') setPhase({ kind: 'signed-out' });
       else setPhase({ kind: 'failed', token });
     },
-    [fetchQueueImpl, fetchStaleImpl],
+    [fetchQueueImpl, fetchStaleImpl, fetchEscalationsImpl],
   );
 
   // `raw` for the three with placeholders: the console fills `{count}`,
@@ -206,12 +234,13 @@ export function ReviewScreen({
             aria-label={t('heading')}
             className="flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
           >
-            {(['queue', 'stale'] as const).map((key) => {
+            {(['queue', 'stale', 'escalations'] as const).map((key) => {
+              const list = key === 'stale' ? phase.stale : phase.escalations;
               const count =
                 key === 'queue'
                   ? phase.items.length
-                  : phase.stale.kind === 'loaded'
-                    ? phase.stale.items.length
+                  : list.kind === 'loaded'
+                    ? list.items.length
                     : null;
               const selected = tab === key;
               return (
@@ -232,7 +261,11 @@ export function ReviewScreen({
                       : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
                   }`}
                 >
-                  {key === 'queue' ? t('tabQueue') : t('tabStale')}
+                  {key === 'queue'
+                    ? t('tabQueue')
+                    : key === 'stale'
+                      ? t('tabStale')
+                      : t('tabEscalations')}
                   {count !== null && (
                     <span className="rounded-full bg-surface-raised px-2 text-xs text-text">
                       {count}
@@ -254,6 +287,37 @@ export function ReviewScreen({
                     submitLabelImpl({ token: phase.token, itemId, label, note }),
                 }}
               />
+            ) : tab === 'escalations' ? (
+              phase.escalations.kind === 'loaded' ? (
+                <Escalations
+                  items={phase.escalations.items}
+                  labels={labels}
+                  sourceUrlFor={sourceUrlFor}
+                  onResolve={async (id, outcome, note) => {
+                    await resolveEscalationImpl({ token: phase.token, id, outcome, note });
+                    removeEscalation(id);
+                    // Taken over lands in this lead's own queue.
+                    if (outcome === 'taken-over') {
+                      const refreshed = await fetchQueueImpl({ token: phase.token });
+                      if (refreshed.kind === 'loaded') {
+                        setPhase((current) =>
+                          current.kind === 'loaded'
+                            ? { ...current, items: refreshed.items }
+                            : current,
+                        );
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <p
+                  role="alert"
+                  data-testid="escalations-failed"
+                  className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
+                >
+                  {t('escalationsFailed')}
+                </p>
+              )
             ) : phase.stale.kind === 'loaded' ? (
               <StaleDocuments
                 items={phase.stale.items}
