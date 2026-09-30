@@ -22,12 +22,14 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from sqlalchemy.orm import Session
 
 from app.ai.anthropic_client import get_llm_client
 from app.ai.recognition import recognise_fault_display
 from app.core.config import get_settings
 from app.core.observability import timed
 from app.domain import images as images_domain
+from app.domain.model_budget import charge_model_call
 from app.domain.storage import ObjectStore
 from app.models.schemas.images import ImageFormat, ImageUploadResponse
 from app.models.schemas.recognition import FaultRecognitionResult
@@ -40,6 +42,7 @@ def upload_and_recognise(
     store: ObjectStore,
     tenant_id: str,
     data: bytes,
+    session: Session | None = None,
 ) -> ImageUploadResponse:
     """Store a photo, then read what it shows.
 
@@ -47,6 +50,8 @@ def upload_and_recognise(
         store: Where the bytes go.
         tenant_id: The uploading tenant.
         data: The uploaded bytes.
+        session: Where the model call is charged against the tenant's
+            month. The caller commits. Without one nothing is charged.
 
     Returns:
         The stored image's id, with the recogniser's report attached when one
@@ -70,6 +75,7 @@ def upload_and_recognise(
         image_format=image_format,
         tenant_id=tenant_id,
         image_id=stored.image_id,
+        session=session,
     )
     return ImageUploadResponse(image_id=stored.image_id, recognition=recognition)
 
@@ -80,6 +86,7 @@ def _recognise_or_none(
     image_format: ImageFormat,
     tenant_id: str,
     image_id: str,
+    session: Session | None = None,
 ) -> FaultRecognitionResult | None:
     """Run the recogniser, degrading to no report if it fails.
 
@@ -88,12 +95,17 @@ def _recognise_or_none(
         image_format: Its sniffed format.
         tenant_id: For the log line only.
         image_id: For the log line only.
+        session: Where the call is charged; nothing is charged without one.
 
     Returns:
         The report, or ``None`` if the model could not be reached or returned
         something that did not validate.
     """
     try:
+        if session is not None:
+            # A spent month degrades like an outage: the photo is kept and
+            # the engineer types the code.
+            charge_model_call(session=session, tenant_id=tenant_id)
         with timed("recognition"):
             return recognise_fault_display(
                 _anthropic_client(),

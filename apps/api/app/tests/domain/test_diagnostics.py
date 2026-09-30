@@ -209,6 +209,12 @@ def _request(**overrides: Any) -> DiagnosticRequest:
     return DiagnosticRequest.model_validate(payload)
 
 
+@pytest.fixture(autouse=True)
+def _budget_has_room(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The monthly model budget is its own tested module; here it has room."""
+    monkeypatch.setattr(diagnostics_domain, "charge_model_call", lambda **_kw: 1)
+
+
 @pytest.fixture
 def wired(monkeypatch: pytest.MonkeyPatch) -> _CountingClient:
     """Wire the domain to fakes, returning the generation client.

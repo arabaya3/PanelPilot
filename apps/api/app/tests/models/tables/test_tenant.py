@@ -31,6 +31,8 @@ TENANT_SCOPED = {
     # were shown, which is as confidential as any other turn. See AI-014.
     "flagged_answers",
     "diagnostic_turns",
+    # A customer's own spend on model calls.
+    "model_usage",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would

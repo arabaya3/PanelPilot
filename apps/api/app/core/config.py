@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = Field(default=None, description="API key for OpenAI.")
     openai_model: str = "gpt-4o-mini"
     llm_max_output_tokens: int = 4096
+    # Model calls one tenant may make per UTC calendar month, across
+    # diagnosis, photo recognition and PLC generation. Unset for no ceiling.
+    model_calls_per_month: int | None = Field(default=1000, ge=1)
 
     @property
     def generation_model(self) -> str:

@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from app.api.deps import CurrentUserDep, ObjectStoreDep
+from app.api.deps import CurrentUserDep, ObjectStoreDep, SessionDep
 from app.domain import images as images_domain
 from app.domain import recognition as recognition_domain
 from app.models.schemas.images import ImageUploadResponse
@@ -23,6 +23,7 @@ router = APIRouter()
 @router.post("", response_model=ImageUploadResponse)
 async def upload_image(
     user: CurrentUserDep,
+    session: SessionDep,
     store: ObjectStoreDep,
     file: Annotated[UploadFile, File()],
 ) -> ImageUploadResponse:
@@ -38,9 +39,13 @@ async def upload_image(
     data = await file.read(images_domain.MAX_IMAGE_BYTES + 1)
     # The recogniser is a blocking model call of several seconds; run on the
     # threadpool so it does not stall the event loop for every other request.
-    return await run_in_threadpool(
+    response = await run_in_threadpool(
         recognition_domain.upload_and_recognise,
         store=store,
         tenant_id=user.tenant_id,
         data=data,
+        session=session,
     )
+    # The model call is charged to the tenant's month.
+    await run_in_threadpool(session.commit)
+    return response

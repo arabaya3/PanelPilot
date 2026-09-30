@@ -71,17 +71,28 @@ def recognised(monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
     monkeypatch.setattr(recognition_domain, "recognise_fault_display", _recognise)
     monkeypatch.setattr(recognition_domain, "_anthropic_client", lambda: object())
     monkeypatch.setattr(recognition_domain, "get_settings", _Settings)
+    # The monthly budget is its own tested module; here it always has room.
+    monkeypatch.setattr(recognition_domain, "charge_model_call", lambda **_kwargs: 1)
     return seen
+
+
+class _Session:
+    committed = False
+
+    def commit(self) -> None:
+        self.committed = True
 
 
 @pytest.fixture
 def client(store: FilesystemObjectStore, recognised: list[bytes]) -> Iterator[TestClient]:
     from app.api import deps
+    from app.core.db import get_session
 
     app = FastAPI()
     app.include_router(images_route.router, prefix="/images")
     app.dependency_overrides[deps.get_current_user] = _user
     app.dependency_overrides[deps.get_object_store] = lambda: store
+    app.dependency_overrides[get_session] = _Session
 
     from app.core.errors import install_exception_handlers
 

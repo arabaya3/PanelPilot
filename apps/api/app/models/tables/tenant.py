@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -59,3 +59,21 @@ class TenantScopedMixin:
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+
+
+class ModelUsageRow(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
+    """How many model calls one tenant made in one calendar month.
+
+    The cost ceiling behind ``MODEL_CALLS_PER_MONTH``. The free-question
+    count bounds a trial's diagnoses; this bounds every paid call -- a
+    diagnosis, a photo read, a PLC program -- for any account, by month.
+    One row per tenant per month, charged under a row lock, so concurrent
+    requests cannot all read "one left" and all spend it.
+    """
+
+    __tablename__ = "model_usage"
+    __table_args__ = (UniqueConstraint("tenant_id", "period"),)
+
+    #: The UTC calendar month, as ``YYYY-MM``.
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

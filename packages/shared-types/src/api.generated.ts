@@ -558,6 +558,7 @@ export interface paths {
      *     Raises:
      *         HTTPException: 422 if the request cannot be generated as asked.
      *         ServiceUnavailableError: 503 if the model could not be reached.
+     *         ModelBudgetExceededError: 429 if the month's model calls are spent.
      */
     post: operations['generate_api_v1_plc_generate_post'];
     delete?: never;
