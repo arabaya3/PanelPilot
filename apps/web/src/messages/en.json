@@ -269,7 +269,8 @@
     "diagnose": "Diagnose",
     "plc": "PLC check",
     "review": "Review",
-    "search": "Search"
+    "search": "Search",
+    "calc": "Calculations"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -344,5 +345,56 @@
     "yours": "You escalated this, so another lead must resolve it.",
     "failed": "The resolution could not be saved. Try again.",
     "heading": "Escalated items"
+  },
+  "calc": {
+    "heading": "Cable sizing",
+    "intro": "Size a copper feeder from the IEC 60364-5-52 tables as ABB's installation handbook publishes them. Every figure names the table and page it came from; an input the tables do not cover is refused, not guessed.",
+    "field": {
+      "current": "Design current",
+      "length": "Run length",
+      "voltage": "Supply voltage",
+      "ambient": "Ambient temperature",
+      "method": "Installation method",
+      "grouped": "Circuits grouped together",
+      "insulation": "Insulation",
+      "phases": "Supply"
+    },
+    "method": {
+      "A1": "A1 — single-core in conduit in an insulated wall",
+      "A2": "A2 — multi-core in conduit in an insulated wall",
+      "B1": "B1 — single-core in conduit on a wall",
+      "B2": "B2 — multi-core in conduit on a wall",
+      "C": "C — clipped direct to a wall",
+      "E": "E — multi-core in free air / on a tray",
+      "F": "F — single-core in free air / on a tray"
+    },
+    "insulation": {
+      "90": "XLPE / EPR (90 °C)",
+      "70": "PVC (70 °C)"
+    },
+    "phases": {
+      "3": "Three-phase",
+      "1": "Single-phase"
+    },
+    "submit": "Size the cable",
+    "working": "Calculating…",
+    "retry": "Try again",
+    "result": {
+      "section": "Conductor",
+      "ampacity": "Capacity as installed",
+      "drop": "Voltage drop",
+      "factors": "Correction factors applied",
+      "sources": "Sources"
+    },
+    "session": {
+      "unavailable": "Calculations are unavailable right now. Please try again shortly.",
+      "rate-limited": "Too many sessions have been started from this network. Wait a few minutes and try again.",
+      "failed": "Could not connect. Check the connection and try again."
+    },
+    "error": {
+      "refused": "The tables do not cover this input, so no size is given.",
+      "unauthorized": "Your session expired. Calculate again.",
+      "failed": "The calculation did not complete. Try again."
+    }
   }
 }
