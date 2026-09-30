@@ -14,7 +14,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import CurrentUserDep, enforce_trial_rate_limit
+from app.api.deps import CurrentUserDep, SessionDep, enforce_trial_rate_limit
+from app.domain import model_budget
 from app.domain import plc as plc_domain
 from app.models.schemas.plc import (
     PlcGenerationRequest,
@@ -31,7 +32,9 @@ router = APIRouter()
     response_model=PlcGenerationResult,
     dependencies=[Depends(enforce_trial_rate_limit)],
 )
-def generate(payload: PlcGenerationRequest, user: CurrentUserDep) -> PlcGenerationResult:
+def generate(
+    payload: PlcGenerationRequest, user: CurrentUserDep, session: SessionDep
+) -> PlcGenerationResult:
     """Generate PLC code for a description, with its validation verdict.
 
     Signed in, as a trial or an account, and rate-limited like search: each
@@ -40,12 +43,15 @@ def generate(payload: PlcGenerationRequest, user: CurrentUserDep) -> PlcGenerati
     Raises:
         HTTPException: 422 if the request cannot be generated as asked.
         ServiceUnavailableError: 503 if the model could not be reached.
+        ModelBudgetExceededError: 429 if the month's model calls are spent.
     """
-    del user
+    model_budget.charge_model_call(session=session, tenant_id=user.tenant_id)
     try:
-        return plc_domain.generate_code(payload)
+        result = plc_domain.generate_code(payload)
     except plc_domain.PlcError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    session.commit()
+    return result
 
 
 @router.post("/review", response_model=PlcValidationResult)

@@ -52,6 +52,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.core.observability import record_latency, timed
 from app.core.tenancy import bind_tenant
 from app.domain.auth import check_free_question_allowed, consume_free_question
+from app.domain.model_budget import ModelBudgetExceededError, charge_model_call
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.diagnostics import (
     ConfidenceBreakdown,
@@ -164,6 +165,10 @@ def run_diagnosis(
     # The prompt, the allowed ids, citation checking and scoring must all see
     # the same set, or one of them is judging a different answer.
     evidence = [passage for passage in passages if passage.score >= decision.threshold]
+
+    # Charged before the call is made, against the month's ceiling; refused
+    # here, nothing reaches the model. Rolled back with the turn if it fails.
+    charge_model_call(session=session, tenant_id=user.tenant_id)
 
     with timed("generation", locale=request.locale.value):
         diagnosis, decision = generate_localised_diagnosis(
@@ -379,6 +384,11 @@ def stream_diagnosis(
 
     try:
         response = run_diagnosis(session=session, user=user, request=request, charge=False)
+    except ModelBudgetExceededError as exc:
+        # Said as what it is: a spent allowance, not an outage to retry.
+        session.rollback()
+        yield from _refusal_frames(request, str(exc))
+        return
     except Exception:
         # Broad because the alternative is silence. Retrieval reaches
         # OpenSearch, generation reaches Anthropic, and embedding reaches

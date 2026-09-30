@@ -24,7 +24,9 @@ from app.ai.plc import writer as plc_writer
 from app.ai.plc.generation import GenerationError
 from app.api import deps
 from app.api.v1.routes import plc as plc_route
+from app.core.db import get_session
 from app.core.errors import install_exception_handlers
+from app.domain import model_budget
 from app.domain import plc as plc_domain
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.plc import LadderContact, LadderRung, PlcDialect, ValidationStatus
@@ -65,6 +67,26 @@ END_VAR
 END_PROGRAM"""
 
 
+class _Session:
+    """Records whether the request committed its charge."""
+
+    def commit(self) -> None:
+        """Accept the commit."""
+
+
+@pytest.fixture(name="budget", autouse=True)
+def _budget(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The monthly budget is its own tested module; here it records charges."""
+    charged: list[str] = []
+
+    def _charge(**kwargs: str) -> int:
+        charged.append(kwargs["tenant_id"])
+        return len(charged)
+
+    monkeypatch.setattr(model_budget, "charge_model_call", _charge)
+    return charged
+
+
 @pytest.fixture(name="client")
 def _client() -> Iterator[TestClient]:
     """A client bound to just this router, signed in.
@@ -78,6 +100,7 @@ def _client() -> Iterator[TestClient]:
         id="u", email="e@example.com", tenant_id="t", roles=frozenset({Role.ENGINEER})
     )
     app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None
+    app.dependency_overrides[get_session] = _Session
     install_exception_handlers(app)
 
     with TestClient(app) as test_client:
@@ -334,3 +357,28 @@ def test_an_unknown_dialect_is_rejected_by_the_schema(client: TestClient) -> Non
     )
 
     assert response.status_code == 422
+
+
+def test_each_generation_is_charged_to_the_tenants_month(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, budget: list[str]
+) -> None:
+    monkeypatch.setattr(plc_writer, "write_source", lambda _request: VALID_ST)
+    client.post("/plc/generate", json={"description": "start a motor"})
+    assert budget == ["t"]
+
+
+def test_a_spent_month_is_429_and_reaches_no_model(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    written: list[object] = []
+
+    def _spent(**_kwargs: object) -> int:
+        raise model_budget.ModelBudgetExceededError("used its 1000 model calls")
+
+    monkeypatch.setattr(model_budget, "charge_model_call", _spent)
+    monkeypatch.setattr(plc_writer, "write_source", lambda request: written.append(request))
+
+    response = client.post("/plc/generate", json={"description": "start a motor"})
+
+    assert response.status_code == 429
+    assert written == []
