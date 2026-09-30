@@ -1,0 +1,27 @@
+# PanelPilot worker schedule. UTC. One job per line: five cron fields, then the
+# `panelpilot-worker` arguments.
+#
+# The single source of truth for when the worker runs. Production hands these
+# lines to the platform scheduler (see infra/README.md); `docker compose` runs
+# them through `python -m app.worker.schedule`, a development stand-in. Either
+# way each run is its own process, running one job and exiting (ADR 0002).
+#
+# Supported syntax: `*`, `*/n`, a number, a range `a-b`, and comma lists of
+# those. Day of week is 0-6 from Sunday (7 is Sunday too).
+
+# Run crawls queued through POST /api/v1/ingestion/crawl-jobs. The API only
+# queues; without this nothing it queues ever runs.
+*/5 * * * *   crawl-queue
+
+# Hand each reviewer the day's verification batch. Without it nothing is
+# assigned, so nothing is labelled, so nothing is ever promoted.
+0 6 * * *     assign-review-batches
+
+# Ask each source whether it still serves what production verified. Exits 1
+# when something is stale: the scheduler's failure alert is the call for a
+# reviewer. Manufacturer documentation changes on a scale of months.
+30 3 * * 1    expire-stale-sources
+
+# Scheduled crawls of each source need their seed URLs, which are not stored
+# anywhere yet; add one line per source once they are, e.g.
+# 0 2 * * 0   crawl abb https://library.abb.com/...

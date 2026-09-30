@@ -294,6 +294,23 @@ jobs:
       - name: Assert the web app serves a page
         run: curl -fsS -o /dev/null -w 'web HTTP %{http_code}\n' http://localhost:3000
 
+      # The worker has no healthcheck -- it is a scheduler, not a server -- so
+      # it is asserted by what it says: it read the crontab and is waiting on
+      # it. A broken crontab exits 2 and never prints this.
+      - name: Assert the worker is running the schedule
+        run: |
+          set -uo pipefail
+          for _ in $(seq 1 30); do
+            if docker compose logs worker 2>&1 | grep -q 'schedule: [0-9]* jobs from worker.crontab'; then
+              docker compose logs worker | tail -5
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the worker never loaded worker.crontab"
+          docker compose logs worker
+          exit 1
+
       - name: Dump logs on failure
         if: failure()
         run: |
