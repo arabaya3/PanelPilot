@@ -5,18 +5,20 @@ Pure functions. Each formula cites the manufacturer guide it came from.
 The BOM holds only what a sourced table can size: a drive for each
 variable-speed load (ACS880-01 ratings), an outgoing cable for each load with
 a current (IEC 60364-5-52 via ABB's handbook), the enclosure as given, and
-the heat balance (IEC 60890 via Rittal), and for each motor started across
-the line its Type 2 coordinated breaker, contactor and overload relay (ABB's
-coordination tables). Terminals, and protection for drive-fed and non-motor
-loads, have no sourced selection table here, so they are named in the
-result's notes rather than guessed.
+the heat balance (IEC 60890 via Rittal), for each motor started across the
+line its Type 2 coordinated breaker, contactor and overload relay (ABB's
+coordination tables), for each drive its aR input fuses (ACS880-01 hardware
+manual), and for each copper outgoing cable its terminals (Siemens LV 10).
+Protection for loads with neither a drive nor a starter has no sourced
+selection table here, so it is named in the result's notes rather than
+guessed.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
-from app.ai.tools import cable_sizing, motor_starter, vfd_selection
+from app.ai.tools import cable_sizing, motor_starter, terminal_blocks, vfd_selection
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
     BomLine,
@@ -215,6 +217,48 @@ def _starter_lines(
     return lines
 
 
+def _terminal_lines(
+    load: LoadScheduleItem, cross_section_mm2: Decimal, current_a: Decimal
+) -> list[BomLine]:
+    """Return a load's outgoing terminals: three phase and, where listed, one PE.
+
+    Raises:
+        ValidationError: If no terminal clamps the cable and carries its current.
+    """
+    try:
+        terminal = terminal_blocks.select_terminal(
+            cross_section_mm2=cross_section_mm2, current_a=current_a
+        )
+    except ValidationError as exc:
+        raise ValidationError(f"{load.tag}: {exc}") from exc
+    base = {"tag": load.tag, "size": terminal.size_mm2, "max_a": terminal.max_current_a}
+    lines = [
+        BomLine(
+            part_reference=terminal.article,
+            description=(
+                f"{load.tag}: through-type terminal {terminal.size_mm2} mm², "
+                f"up to {terminal.max_current_a} A"
+            ),
+            quantity=3,
+            source=terminal.source,
+            kind=BomLineKind.TERMINAL,
+            details={**base, "role": "phase"},
+        )
+    ]
+    if terminal.pe_article is not None:
+        lines.append(
+            BomLine(
+                part_reference=terminal.pe_article,
+                description=f"{load.tag}: PE terminal {terminal.size_mm2} mm²",
+                quantity=1,
+                source=terminal.source,
+                kind=BomLineKind.TERMINAL,
+                details={**base, "role": "pe"},
+            )
+        )
+    return lines
+
+
 def build_bom(
     *,
     loads: list[LoadScheduleItem],
@@ -230,7 +274,8 @@ def build_bom(
     heat balance says how much cooling it needs.
 
     Source:
-        ABB ACS880-01 hardware manual (3AUA0000078093) for drives; ABB
+        ABB ACS880-01 hardware manual (3AUA0000078093) for drives and their
+        input fuses; Siemens Catalog LV 10 (10/2022) for terminals; ABB
         *Electrical installation handbook* Vol. 2 (1SDC010001D0204) for
         cables and for motor starters (Tables 3, 5 and 6); Rittal *Enclosure and process cooling* for the heat balance
         per IEC 60890.
@@ -262,6 +307,8 @@ def build_bom(
         )
 
     starters = 0
+    drives = 0
+    unprotected = 0
     for load in loads:
         if load.start is not None and load.variable_speed:
             raise ValidationError(
@@ -280,6 +327,8 @@ def build_bom(
             )
         if load.current_a is None:
             continue
+        if not load.variable_speed and load.start is None:
+            unprotected += 1
         try:
             if load.variable_speed:
                 drive = vfd_selection.select_frame(
@@ -289,9 +338,11 @@ def build_bom(
                     altitude_m=Decimal(0),
                     ambient_temp_c=constraints.max_internal_temp_c,
                 )
+                type_code = drive.frame_reference.split(" ")[0]
+                fuse = vfd_selection.input_fuse(type_code=type_code)
                 lines.append(
                     BomLine(
-                        part_reference=drive.frame_reference.split(" ")[0],
+                        part_reference=type_code,
                         description=f"{load.tag}: drive for {load.description}",
                         quantity=1,
                         source=vfd_selection.ratings_citation(constraints.supply_voltage_v),
@@ -299,6 +350,25 @@ def build_bom(
                         details={"tag": load.tag, "load": load.description},
                     )
                 )
+                lines.append(
+                    BomLine(
+                        part_reference=f"Bussmann {fuse.bussmann} {fuse.amps} A aR",
+                        description=(
+                            f"{load.tag}: drive input fuses, aR {fuse.amps} A, one per phase; "
+                            f"needs at least {fuse.min_short_circuit_a} A prospective "
+                            "short-circuit current"
+                        ),
+                        quantity=3,
+                        source=fuse.source,
+                        kind=BomLineKind.FUSE,
+                        details={
+                            "tag": load.tag,
+                            "amps": fuse.amps,
+                            "min_sc_a": fuse.min_short_circuit_a,
+                        },
+                    )
+                )
+                drives += 1
             if load.start is not None and load.power_kw is not None:
                 lines.extend(
                     _starter_lines(
@@ -340,6 +410,8 @@ def build_bom(
                 },
             )
         )
+        if constraints.cable_material is ConductorMaterial.COPPER:
+            lines.extend(_terminal_lines(load, cable.cross_section_mm2, load.current_a))
 
     lines.append(
         BomLine(
@@ -356,11 +428,26 @@ def build_bom(
     )
 
     heat, cooling = enclosure_heat_load_w(items=loads, constraints=constraints)
-    notes = [
-        "Terminals, and protection for drive-fed and non-motor loads, are not "
-        "included: no sourced selection table for them is held here.",
-    ]
-    note_keys = [BomNote.NOT_INCLUDED]
+    notes: list[str] = []
+    note_keys: list[BomNote] = []
+    if unprotected:
+        notes.append(
+            "Protection for loads with neither a drive nor a starter is not included: "
+            "no sourced selection table for them is held here."
+        )
+        note_keys.append(BomNote.NOT_INCLUDED)
+    if drives:
+        notes.append(
+            "Drive input fuses operate fast enough only when the installation's "
+            "prospective short-circuit current is at least the minimum on each line."
+        )
+        note_keys.append(BomNote.FUSE_MIN_SHORT_CIRCUIT)
+    if constraints.cable_material is ConductorMaterial.ALUMINIUM:
+        notes.append(
+            "Terminals are selected from a copper terminal table; aluminium cables "
+            "need terminals rated for aluminium, which are not listed."
+        )
+        note_keys.append(BomNote.TERMINALS_COPPER_ONLY)
     if starters and constraints.fault_level_ka is None:
         notes.append(
             "Starters are Type 2 coordinated up to 50 kA; confirm the panel's "

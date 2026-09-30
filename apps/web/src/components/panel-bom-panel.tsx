@@ -446,6 +446,14 @@ function lineText(t: ReturnType<typeof useTranslations<'calc'>>, line: BomLine):
       });
     case 'overload':
       return t('bom.line.overload', { tag: d.tag ?? '', min: d.min_a ?? '', max: d.max_a ?? '' });
+    case 'fuse':
+      return t('bom.line.fuse', { tag: d.tag ?? '', amps: d.amps ?? '', minSc: d.min_sc_a ?? '' });
+    case 'terminal':
+      return t(d.role === 'pe' ? 'bom.line.terminalPe' : 'bom.line.terminal', {
+        tag: d.tag ?? '',
+        size: d.size ?? '',
+        max: d.max_a ?? '',
+      });
     case 'enclosure':
       return t('bom.line.enclosure', {
         placement: d.placement

@@ -151,9 +151,13 @@ effective area, k = 5.5 W/m²K). A load given a start type (direct on line,
 star-delta, or heavy-duty direct on line) also gets its circuit-breaker,
 contactors and overload relay from the ABB _Electrical installation handbook_
 Vol. 2 coordination tables (400 V, 50 kA, Type 2); a supply other than
-400 V ± 5 % or a fault level above 50 kA is refused. Terminals, and protection
-for drive-fed and non-motor loads, have no sourced selection table and are
-listed as not included.
+400 V ± 5 % or a fault level above 50 kA is refused. Each drive gets its
+ultrarapid (aR) input fuses from the ACS880-01 hardware manual, with the
+minimum prospective short-circuit current they need, and each copper outgoing
+cable its Siemens 8WH1 through-type terminals (Catalog LV 10, 10/2022) chosen
+to clamp the cable and carry its current. Protection for loads with neither a
+drive nor a starter, and terminals for aluminium cables, have no sourced
+selection table and are listed as not included.
 
 ### Local development notes
 

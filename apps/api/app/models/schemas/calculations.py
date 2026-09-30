@@ -186,7 +186,9 @@ class BomLineKind(StrEnum):
     BREAKER = "breaker"
     CONTACTOR = "contactor"
     OVERLOAD = "overload"
+    FUSE = "fuse"
     CABLE = "cable"
+    TERMINAL = "terminal"
     ENCLOSURE = "enclosure"
     COOLING = "cooling"
 
@@ -194,8 +196,12 @@ class BomLineKind(StrEnum):
 class BomNote(StrEnum):
     """What a BOM leaves out, as a key a page can translate."""
 
-    #: Terminals, and protection for drive-fed and non-motor loads.
+    #: Protection for loads with neither a drive nor a starter.
     NOT_INCLUDED = "not_included"
+    #: Drive input fuses operate fast enough only above a minimum fault level.
+    FUSE_MIN_SHORT_CIRCUIT = "fuse_min_short_circuit"
+    #: The terminal table is for copper; aluminium cables get no terminals.
+    TERMINALS_COPPER_ONLY = "terminals_copper_only"
     INCOMPLETE_DISSIPATION = "incomplete_dissipation"
     #: Starters are coordinated to 50 kA and no fault level was given.
     FAULT_LEVEL_ASSUMED = "fault_level_assumed"

@@ -657,13 +657,27 @@ export interface components {
      * @description What a BOM line is, so a page can describe it in its own language.
      * @enum {string}
      */
-    BomLineKind: 'drive' | 'breaker' | 'contactor' | 'overload' | 'cable' | 'enclosure' | 'cooling';
+    BomLineKind:
+      | 'drive'
+      | 'breaker'
+      | 'contactor'
+      | 'overload'
+      | 'fuse'
+      | 'cable'
+      | 'terminal'
+      | 'enclosure'
+      | 'cooling';
     /**
      * BomNote
      * @description What a BOM leaves out, as a key a page can translate.
      * @enum {string}
      */
-    BomNote: 'not_included' | 'incomplete_dissipation' | 'fault_level_assumed';
+    BomNote:
+      | 'not_included'
+      | 'fuse_min_short_circuit'
+      | 'terminals_copper_only'
+      | 'incomplete_dissipation'
+      | 'fault_level_assumed';
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.
