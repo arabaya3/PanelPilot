@@ -434,6 +434,8 @@ python -m app.worker crawl abb https://library.abb.com/...   # queue and run one
 python -m app.worker crawl-queue   # run the oldest crawl queued via POST /ingestion/crawl-jobs
 python -m app.worker assign-review-batches   # daily: hand staged chunks to reviewers
 python -m app.worker calibrate-relevance eval.json   # recommend RETRIEVAL_MIN_SIMILARITY
+python -m app.worker expire-stale-sources   # weekly: flag live documents changed upstream (exit 1 = review needed)
+python -m app.worker reindex-staging [abb]   # after an embedding model change: re-embed staging in place
 
 # `POST /api/v1/ingestion/crawl-jobs` only queues (202); schedule `crawl-queue`
 # every few minutes to run what it queued. Poll GET .../crawl-jobs/{id}.

@@ -15,7 +15,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import NotFoundError, PanelPilotError, ValidationError
 from app.models.schemas.auth import CurrentUser, Role
 
 #: The principal unattended jobs act as. Fixed so a staged document always
@@ -166,62 +166,76 @@ def run_assign_review_batches(args: list[str]) -> int:
 
 
 def run_reindex_staging(args: list[str]) -> int:
-    """Re-chunk and re-embed the staging corpus in place.
+    """Re-embed the staging corpus in place: ``reindex-staging [source_id]``.
 
-    Run this after a chunking or embedding change. Production is untouched:
-    re-verification and promotion follow separately. See
+    Run this after changing the embedding model. Production is untouched; its
+    chunks are re-embedded on their way through promotion. A chunking change
+    needs a fresh crawl instead -- the original files are not kept. See
     docs/adr/0001-staging-vs-production-index.md.
 
     Args:
-        args: Positional arguments, optionally ``[source_id]`` to limit scope.
+        args: Optionally ``[source_id]`` to limit the run to one source.
 
     Returns:
-        ``3``: not built yet. Said and exited rather than raised, so a
-        scheduler sees a clear failure instead of a traceback.
+        ``0`` on success, ``1`` if embedding is misconfigured or fails, ``2`` on
+        bad arguments or an unknown source.
     """
-    del args
-    return _not_built(
-        "reindex-staging",
-        "re-chunking and re-embedding staging is not implemented; re-crawl the "
-        "source instead (`crawl <source> <seed_url>`)",
-    )
+    from app.core.config import ConfigurationError
+    from app.domain.corpus_maintenance import reindex_staging
+
+    if len(args) > 1:
+        print("usage: reindex-staging [source_id]", file=sys.stderr)
+        return 2
+    try:
+        count = reindex_staging(source_id=args[0] if args else None)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except (ConfigurationError, PanelPilotError) as exc:
+        # No embedding key, or the provider refused: an operator's problem to
+        # fix, said in one line rather than a traceback in the scheduler log.
+        print(f"reindex-staging: {exc}", file=sys.stderr)
+        return 1
+    print(f"re-embedded {count} staged chunks")
+    return 0
 
 
 def run_expire_stale_sources(args: list[str]) -> int:
-    """Flag production documents whose upstream source has been superseded.
+    """Flag live documents whose upstream source changed or was withdrawn.
 
-    Flags only — retraction is a reviewed operation, not an automated one.
+    Flags only, into ``stale_documents``: retraction is a reviewed operation,
+    not an automated one. Schedule it daily or weekly; manufacturer documents
+    change on a scale of months.
 
     Args:
         args: Unused; accepted for a uniform handler signature.
 
     Returns:
-        ``3``: not built yet, for the reason ``reindex-staging`` gives.
+        ``0`` when nothing live is stale, ``1`` when something is -- so a
+        scheduler's failure alert is the notification that a reviewer is needed.
     """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.domain.corpus_maintenance import expire_stale_sources
+
     del args
-    return _not_built(
-        "expire-stale-sources",
-        "detecting a superseded upstream document is not implemented",
+    session = next(get_session())
+    with closing(session):
+        report = expire_stale_sources(session=session)
+        session.commit()
+
+    for url, reason in sorted(report.flagged.items()):
+        print(f"{reason}: {url}")
+    for url in report.cleared:
+        print(f"cleared: {url}")
+    for url, why in sorted(report.unchecked.items()):
+        print(f"unchecked ({why}): {url}", file=sys.stderr)
+    print(
+        f"checked {report.checked} live documents: {len(report.flagged)} stale, "
+        f"{len(report.cleared)} cleared, {len(report.unchecked)} could not be checked"
     )
-
-
-#: The exit code of a registered job that has no implementation yet. Distinct
-#: from 1 (the job ran and failed) and 2 (bad arguments).
-NOT_BUILT = 3
-
-
-def _not_built(name: str, reason: str) -> int:
-    """Report a registered job with no implementation, without a traceback.
-
-    Args:
-        name: The job.
-        reason: What is missing, and what to do instead.
-
-    Returns:
-        ``NOT_BUILT``.
-    """
-    print(f"{name}: not built yet -- {reason}", file=sys.stderr)
-    return NOT_BUILT
+    return 1 if report.flagged else 0
 
 
 def run_grant_role(args: list[str]) -> int:
@@ -358,12 +372,12 @@ REGISTRY: dict[str, JobSpec] = {
         ),
         JobSpec(
             "reindex-staging",
-            "(not built yet) Re-chunk and re-embed the staging corpus.",
+            "Re-embed the staging corpus after an embedding model change.",
             run_reindex_staging,
         ),
         JobSpec(
             "expire-stale-sources",
-            "(not built yet) Flag documents whose upstream source was superseded.",
+            "Flag live documents whose upstream source changed or was withdrawn.",
             run_expire_stale_sources,
         ),
         JobSpec(

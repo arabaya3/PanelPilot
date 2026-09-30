@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from urllib.parse import urlparse
 
 import httpx
@@ -185,6 +186,11 @@ class _Fetcher:
         # floor until then.
         self.pacer = _Pacer(DEFAULT_DELAY_S, sleep=sleep)
         self._sleep = sleep
+        # The status of the last refused response, so a caller that must tell
+        # "gone" (404, 410) from "failing" (500, a timeout) can. `get` folds
+        # both into `unreachable`, which is right for a crawl and wrong for
+        # deciding whether a live document was withdrawn.
+        self.last_status: int | None = None
 
     def pace_for(self, policy: robots_module.RobotsPolicy) -> None:
         """Set the gap between requests from the source's robots policy.
@@ -318,6 +324,7 @@ class _Fetcher:
         """
         deadline = time.monotonic() + DOCUMENT_DEADLINE_S
         target = url
+        self.last_status = None
         for hop in range(MAX_REDIRECTS + 1):
             if hop:
                 refusal = self._refuse_redirect(target)
@@ -351,6 +358,7 @@ class _Fetcher:
                         target = str(response.url.join(response.headers["Location"]))
                         continue
                     if response.status_code >= 400:
+                        self.last_status = response.status_code
                         logger.warning(
                             "crawl.fetch_status", url=target, status_code=response.status_code
                         )
@@ -452,6 +460,142 @@ def crawl_source(
     finally:
         if owns_client:
             active.close()
+
+
+#: HTTP statuses that mean the source withdrew a document, rather than failed
+#: to serve it. A 500 or a timeout says nothing about whether it still exists.
+GONE_STATUSES = frozenset({404, 410})
+
+
+@dataclass(frozen=True)
+class DocumentCheck:
+    """What one source URL serves now, for the caller to compare with what is live.
+
+    Attributes:
+        url: The URL asked about.
+        status: ``fetched`` (``content_hash`` is set), ``gone`` (the source
+            answered 404 or 410), or why it could not be checked:
+            ``unreachable``, ``disallowed``, ``unsafe-url``,
+            ``robots-unavailable``, ``fetch-budget-exhausted`` and the other
+            ``get`` reasons.
+        content_hash: The hash of what the URL serves now, when fetched.
+    """
+
+    url: str
+    status: str
+    content_hash: str | None = None
+
+
+def check_documents(
+    source_id: str,
+    urls: Iterable[str],
+    *,
+    client: httpx.Client | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    resolve: url_guard.Resolver | None = None,
+    max_fetches: int = MAX_FETCHES_PER_RUN,
+) -> list[DocumentCheck]:
+    """Fetch known document URLs again and report what each serves now.
+
+    The expiry check's half of the crawler: the same robots, pacing, redirect
+    and private-address rules as a crawl, but no listing pages and no staging.
+    Nothing here decides whether a document is stale -- that needs the hashes
+    that are live, which the crawler has no business knowing.
+
+    Args:
+        source_id: The allow-listed source the URLs belong to.
+        urls: Document URLs to check, in order.
+        client: HTTP client; injected by tests, as for ``crawl_source``.
+        sleep: Injected so a test does not wait out the pacer.
+        resolve: Hostname resolver for the private-address check.
+        max_fetches: Most requests this run may make. URLs past the budget are
+            reported ``fetch-budget-exhausted`` rather than skipped silently.
+
+    Returns:
+        One ``DocumentCheck`` per URL, in the order given.
+
+    Raises:
+        ValidationError: If the source is not on the allow-list.
+    """
+    crawler = crawler_for(source_id)
+    if crawler is None:
+        raise ValidationError(f"source {source_id!r} is not on the allow-list")
+
+    resolver = resolve if resolve is not None else url_guard.system_resolver
+    owns_client = client is None
+    active = (
+        client
+        if client is not None
+        else http_client(user_agent=robots_module.USER_AGENT, resolve=resolver)
+    )
+    fetcher = _Fetcher(
+        source_id=source_id,
+        host_suffix=crawler.host_suffix,
+        client=active,
+        resolve=resolver,
+        sleep=sleep,
+        max_fetches=max_fetches,
+    )
+    checks: list[DocumentCheck] = []
+    pending = list(urls)
+    # Hosts whose robots delay the pacer already honours. Set once per host,
+    # not per URL: `pace_for` starts a fresh pacer, and a fresh pacer has no
+    # memory of the last request, so re-setting it before every fetch would
+    # quietly remove the gap it exists to keep.
+    paced: set[str] = set()
+    try:
+        for index, url in enumerate(pending):
+            try:
+                checks.append(_check_one(fetcher, url, paced=paced))
+            except _FetchBudgetExhaustedError:
+                checks.extend(
+                    DocumentCheck(rest, "fetch-budget-exhausted") for rest in pending[index:]
+                )
+                break
+    finally:
+        if owns_client:
+            active.close()
+    return checks
+
+
+def _check_one(fetcher: _Fetcher, url: str, *, paced: set[str]) -> DocumentCheck:
+    """Check one URL; see ``check_documents``.
+
+    Args:
+        fetcher: The run's fetcher, carrying robots policies and the budget.
+        url: The document URL.
+        paced: Hosts whose crawl delay is already applied; updated here.
+
+    Returns:
+        What the URL serves now, or why that is unknown.
+
+    Raises:
+        _FetchBudgetExhaustedError: If the run has no requests left.
+
+    Every refusal is a per-URL outcome rather than a failed run: one document
+    whose host now disallows us says nothing about the others, and an expiry
+    check that stops at the first one checks nothing after it.
+    """
+    try:
+        url_guard.require_source_url(url, host_suffix=fetcher.host_suffix)
+        policy = fetcher.policy_for(url)
+    except url_guard.UnsafeUrlError:
+        return DocumentCheck(url, "unsafe-url")
+    except (robots_module.RobotsUnavailableError, robots_module.CrawlDelayTooLongError):
+        return DocumentCheck(url, "robots-unavailable")
+    if not policy.allows(url):
+        return DocumentCheck(url, "disallowed")
+
+    host = _host_of(url)
+    if host not in paced:
+        fetcher.pace_for(policy)
+        paced.add(host)
+    body, reason = fetcher.get(url)
+    if body is not None:
+        return DocumentCheck(url, "fetched", content_hash(body))
+    if fetcher.last_status in GONE_STATUSES:
+        return DocumentCheck(url, "gone")
+    return DocumentCheck(url, reason or "unreachable")
 
 
 def _run(

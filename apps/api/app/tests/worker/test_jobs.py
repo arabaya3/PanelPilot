@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from app.core.errors import NotFoundError
+from app.core.errors import NotFoundError, ValidationError
 from app.models.schemas.auth import Role
 from app.models.schemas.ingestion import CrawlJobResponse, CrawlJobStatus
 from app.worker import jobs
@@ -487,11 +487,91 @@ def test_granting_to_an_unknown_email_is_a_message_not_a_traceback(
     assert "no account with that email" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("job", ["reindex-staging", "expire-stale-sources"])
-def test_an_unbuilt_job_says_so_and_exits_distinctly(
-    job: str, capsys: pytest.CaptureFixture[str]
+def test_reindex_staging_reports_what_it_re_embedded(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """It raised NotImplementedError: a traceback in the scheduler's log."""
-    assert jobs.get_job(job).handler([]) == jobs.NOT_BUILT
-    assert "not built yet" in capsys.readouterr().err
-    assert jobs.get_job(job).description.startswith("(not built yet)")
+    from app.domain import corpus_maintenance
+
+    asked: list[str | None] = []
+
+    def reindex(*, source_id: str | None) -> int:
+        asked.append(source_id)
+        return 7
+
+    monkeypatch.setattr(corpus_maintenance, "reindex_staging", reindex)
+
+    assert jobs.run_reindex_staging([]) == 0
+    assert jobs.run_reindex_staging(["abb"]) == 0
+    assert asked == [None, "abb"]
+    assert "re-embedded 7 staged chunks" in capsys.readouterr().out
+
+
+def test_reindex_staging_refuses_bad_arguments(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import corpus_maintenance
+
+    def unknown(*, source_id: str | None) -> int:
+        raise ValidationError(f"source {source_id!r} is not on the allow-list")
+
+    monkeypatch.setattr(corpus_maintenance, "reindex_staging", unknown)
+
+    assert jobs.run_reindex_staging(["a", "b"]) == 2
+    assert jobs.run_reindex_staging(["nobody"]) == 2
+    assert "allow-list" in capsys.readouterr().err
+
+
+def test_reindex_staging_says_why_embedding_failed_in_one_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A missing embedding key was a traceback in the scheduler's log."""
+    from app.core.config import ConfigurationError
+    from app.domain import corpus_maintenance
+
+    def unconfigured(*, source_id: str | None) -> int:
+        raise ConfigurationError("EMBEDDING_API_KEY is not set")
+
+    monkeypatch.setattr(corpus_maintenance, "reindex_staging", unconfigured)
+
+    assert jobs.run_reindex_staging([]) == 1
+    assert capsys.readouterr().err == "reindex-staging: EMBEDDING_API_KEY is not set\n"
+
+
+@pytest.mark.parametrize(("flagged", "code"), [({}, 0), ({"https://x/a.pdf": "withdrawn"}, 1)])
+def test_expire_stale_sources_exits_non_zero_when_a_reviewer_is_needed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flagged: dict[str, str],
+    code: int,
+) -> None:
+    """A scheduler's failure alert is the notification that something is stale."""
+    from app.domain import corpus_maintenance
+
+    committed: list[bool] = []
+
+    class _Session:
+        def commit(self) -> None:
+            committed.append(True)
+
+        def close(self) -> None:
+            pass
+
+    def expire(*, session: object) -> corpus_maintenance.ExpiryReport:
+        return corpus_maintenance.ExpiryReport(
+            checked=2, flagged=flagged, unchecked={"https://x/b.pdf": "unreachable"}
+        )
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    monkeypatch.setattr(corpus_maintenance, "expire_stale_sources", expire)
+
+    assert jobs.run_expire_stale_sources([]) == code
+    assert committed == [True]
+    captured = capsys.readouterr()
+    assert "unchecked (unreachable): https://x/b.pdf" in captured.err
+    for url, reason in flagged.items():
+        assert f"{reason}: {url}" in captured.out
+
+
+def test_no_registered_job_is_a_placeholder() -> None:
+    """Both of these once answered "not built yet"; none may again."""
+    assert not [s.name for s in jobs.REGISTRY.values() if "not built" in s.description]

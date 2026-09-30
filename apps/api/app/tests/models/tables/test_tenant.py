@@ -44,6 +44,9 @@ DELIBERATELY_UNSCOPED = {
     "verification_items",
     "promotion_audits",
     "source_health",
+    # Which live documents their manufacturer has since changed or withdrawn:
+    # a fact about the shared corpus, the same for every customer.
+    "stale_documents",
 }
 
 
