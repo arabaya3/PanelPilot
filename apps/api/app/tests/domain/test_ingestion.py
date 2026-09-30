@@ -25,6 +25,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -471,6 +472,57 @@ def test_a_staged_document_row_is_written(
     assert len(rows) == 1
     assert rows[0].source_url == _PDF
     assert rows[0].content_hash
+
+
+@requires_db
+def test_manuals_supplied_as_files_take_the_crawls_road(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """For a source that refuses the crawler: staged, queued, and titled."""
+    from app.models.tables.ingestion import CrawlJobRow, StagedDocumentRow
+
+    recorder = _wire(monkeypatch)
+    queued: list[list[str]] = []
+    monkeypatch.setattr(ingestion_domain, "make_staging_hook", lambda **_kw: _capture_into(queued))
+    page = "https://www.se.com/us/en/download/document/NVE41295/"
+    (tmp_path / "atv320.pdf").write_bytes(b"%PDF-1.7 ATV320")
+    (tmp_path / "sources.csv").write_text(
+        "filename,title,document_reference,revision,direct_download_url,product_page_url\n"
+        f"atv320.pdf,ATV320 Programming Manual,NVE41295,06,,{page}\n",
+        encoding="utf-8",
+    )
+
+    staged = ingestion_domain.ingest_local_files(
+        session=db_session, user=_user(), source_id="schneider", folder=str(tmp_path)
+    )
+
+    assert staged > 0
+    assert queued
+    assert queued[0]
+    bodies = list(recorder.staged.values())
+    assert {body["document_title"] for body in bodies} == {"ATV320 Programming Manual"}
+    assert {body["brand"] for body in bodies} == {"Schneider Electric"}
+    assert db_session.query(StagedDocumentRow).filter_by(source_url=page).count() == 1
+    job = db_session.query(CrawlJobRow).filter(CrawlJobRow.source_id == "schneider").one()
+    assert job.status == CrawlJobStatus.SUCCEEDED.value
+    assert job.request == {"source_id": "schneider", "local_folder": str(tmp_path)}
+
+    # The same folder again stages nothing: the file is known by its hash.
+    again = ingestion_domain.ingest_local_files(
+        session=db_session, user=_user(), source_id="schneider", folder=str(tmp_path)
+    )
+    assert again == 0
+
+
+def test_a_folder_off_the_allow_list_or_empty_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="allow-list"):
+        ingestion_domain.ingest_local_files(
+            session=None, user=_user(), source_id="nobody", folder=str(tmp_path)  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValidationError, match="not a folder"):
+        ingestion_domain.ingest_local_files(
+            session=None, user=_user(), source_id="schneider", folder=str(tmp_path / "missing")  # type: ignore[arg-type]
+        )
 
 
 # --- production must stay untouched -------------------------------------------

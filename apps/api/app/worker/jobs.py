@@ -106,6 +106,50 @@ def run_crawl(args: list[str]) -> int:
     return 0 if response.status is CrawlJobStatus.SUCCEEDED else 1
 
 
+def run_ingest_files(args: list[str]) -> int:
+    """Stage manuals supplied as files: ``ingest-files <source_id> <folder>``.
+
+    For a source that refuses the crawler: someone downloads the manuals in a
+    browser into a folder, with a ``sources.csv`` naming each one's title and
+    URL (``app.ingestion.local_files``). The files then take the crawl's road
+    to the review queue; nothing becomes live without a reviewer.
+
+    Args:
+        args: ``[source_id, folder]``.
+
+    Returns:
+        ``0`` on success, ``1`` if staging failed, ``2`` on bad arguments, an
+        unknown source, or a folder with nothing readable.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import ingestion as ingestion_domain
+
+    if len(args) != 2:
+        print("usage: ingest-files <source_id> <folder>", file=sys.stderr)
+        return 2
+    source_id, folder = args
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="a system job acts for no tenant"):
+        try:
+            staged = ingestion_domain.ingest_local_files(
+                session=session, user=system_actor(), source_id=source_id, folder=folder
+            )
+        except ValidationError as exc:
+            print(f"ingest-files: {exc}", file=sys.stderr)
+            return 2
+        except PanelPilotError as exc:
+            session.rollback()
+            print(f"ingest-files: {exc}", file=sys.stderr)
+            return 1
+        session.commit()
+    print(f"staged {staged} chunks from {folder}")
+    return 0
+
+
 def run_crawl_queue(args: list[str]) -> int:
     """Run the oldest crawl queued through the API, if there is one.
 
@@ -402,6 +446,11 @@ REGISTRY: dict[str, JobSpec] = {
             "reindex-staging",
             "Re-embed the staging corpus after an embedding model change.",
             run_reindex_staging,
+        ),
+        JobSpec(
+            "ingest-files",
+            "Stage manuals downloaded by hand, for a source that refuses the crawler.",
+            run_ingest_files,
         ),
         JobSpec(
             "backfill-titles",

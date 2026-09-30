@@ -36,3 +36,6 @@ apps/api/var/
 
 # Claude Code's local git worktrees
 .claude/worktrees/
+
+# Manuals downloaded by hand for `ingest-files`; only their list is committed.
+apps/api/data/*/*.pdf

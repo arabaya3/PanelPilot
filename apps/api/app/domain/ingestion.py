@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import structlog
 from sqlalchemy import select, update
@@ -33,6 +34,7 @@ from app.core.errors import (
 from app.domain.ingestion_wiring import chunk_ids_from_bodies, make_staging_hook
 from app.ingestion.crawler import crawl_source
 from app.ingestion.known_documents import urls_for
+from app.ingestion.local_files import read_folder
 from app.ingestion.sources import crawler_for
 from app.ingestion.staging_pipeline import prepare_documents
 from app.ingestion.structure import UnreadableDocumentError, extract_structure
@@ -374,6 +376,43 @@ def _run_crawl_into_staging(
         payloads=payloads,
     )
 
+    return _stage_crawl_result(
+        session=session,
+        user=user,
+        job=job,
+        result=result,
+        payloads=payloads,
+        brand=source.manufacturer,
+    )
+
+
+def _stage_crawl_result(
+    *,
+    session: Session,
+    user: CurrentUser,
+    job: CrawlJobRow,
+    result: CrawlResult,
+    payloads: dict[str, bytes],
+    brand: str,
+) -> int:
+    """Parse, embed, stage and queue the documents a run produced.
+
+    Shared by a crawl and by files supplied by hand, so both take one road
+    from bytes to the review queue.
+
+    Args:
+        session: Open database session. The caller commits.
+        user: The ingester of record.
+        job: The job row this run belongs to.
+        result: The documents, shaped as a crawl's.
+        payloads: Each document's original bytes, keyed by document id.
+        brand: The manufacturer recorded on every chunk.
+
+    Returns:
+        How many chunks were written to staging.
+    """
+    request_source_id = result.source_id
+
     def structure_for(document: SourceDocument) -> StructureMap:
         """Extract one crawled document's structure from its original bytes.
 
@@ -398,7 +437,7 @@ def _run_crawl_into_staging(
     batch, bodies = prepare_documents(
         result,
         extract_structure=structure_for,
-        brand=source.manufacturer,
+        brand=brand,
     )
 
     if batch.failures:
@@ -407,7 +446,7 @@ def _run_crawl_into_staging(
         # discard nineteen good ones.
         logger.warning(
             "crawl.documents_failed",
-            source_id=request.source_id,
+            source_id=request_source_id,
             failures=batch.failures,
         )
 
@@ -434,6 +473,73 @@ def _run_crawl_into_staging(
             if document_id in staged_documents
             for body in chunks
         },
+    )
+    return staged
+
+
+def ingest_local_files(*, session: Session, user: CurrentUser, source_id: str, folder: str) -> int:
+    """Stage manuals supplied as files, for a source that refuses the crawler.
+
+    The files take the crawl's road from here: structure, chunks, staging,
+    the review queue. Nothing becomes live without a reviewer.
+
+    Args:
+        session: Open database session. The caller commits.
+        user: The ingester of record.
+        source_id: The allow-listed source the manuals belong to.
+        folder: The folder holding the PDFs and their ``sources.csv``.
+
+    Returns:
+        How many chunks were written to staging.
+
+    Raises:
+        ValidationError: If the source is not on the allow-list, the folder
+            does not exist, or no file in it could be read.
+    """
+    crawler = crawler_for(source_id)
+    if crawler is None:
+        raise ValidationError(f"source {source_id!r} is not on the allow-list")
+    path = Path(folder)
+    if not path.is_dir():
+        raise ValidationError(f"{folder} is not a folder")
+
+    known = {
+        row.content_hash
+        for row in session.query(StagedDocumentRow.content_hash).distinct()
+        if row.content_hash
+    }
+    batch = read_folder(path, source_id=source_id, known_hashes=known)
+    for name, reason in batch.refused.items():
+        logger.warning("ingest_files.refused", source_id=source_id, file=name, reason=reason)
+    if not batch.result.documents and not batch.result.outcomes:
+        raise ValidationError(f"no readable manual in {folder}: {batch.refused or 'no PDFs'}")
+
+    now = datetime.now(UTC)
+    job = CrawlJobRow(
+        source_id=source_id,
+        status=CrawlJobStatus.RUNNING.value,
+        request={"source_id": source_id, "local_folder": str(path)},
+        requested_by=user.id,
+        started_at=now,
+    )
+    session.add(job)
+    session.flush()
+    staged = _stage_crawl_result(
+        session=session,
+        user=user,
+        job=job,
+        result=batch.result,
+        payloads=batch.payloads,
+        brand=crawler.manufacturer,
+    )
+    job.status = CrawlJobStatus.SUCCEEDED.value
+    job.finished_at = datetime.now(UTC)
+    logger.info(
+        "ingest_files.staged",
+        source_id=source_id,
+        documents=len(batch.result.documents),
+        refused=len(batch.refused),
+        staged_chunks=staged,
     )
     return staged
 

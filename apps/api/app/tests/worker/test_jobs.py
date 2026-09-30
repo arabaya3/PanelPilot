@@ -529,6 +529,63 @@ def test_reindex_staging_reports_what_it_re_embedded(
     assert "re-embedded 7 staged chunks" in capsys.readouterr().out
 
 
+def _null() -> Any:
+    from contextlib import nullcontext
+
+    return nullcontext()
+
+
+def test_ingest_files_reports_what_it_staged(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import ingestion as ingestion_domain
+
+    class _Session:
+        def commit(self) -> None: ...
+
+        def rollback(self) -> None: ...
+
+        def close(self) -> None: ...
+
+    asked: list[tuple[str, str]] = []
+
+    def ingest(*, session: object, user: object, source_id: str, folder: str) -> int:
+        asked.append((source_id, folder))
+        return 42
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(ingestion_domain, "ingest_local_files", ingest)
+
+    assert jobs.run_ingest_files(["schneider", "/data/schneider"]) == 0
+    assert asked == [("schneider", "/data/schneider")]
+    assert "staged 42 chunks" in capsys.readouterr().out
+
+
+def test_ingest_files_refuses_bad_arguments(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import ingestion as ingestion_domain
+
+    class _Session:
+        def commit(self) -> None: ...
+
+        def rollback(self) -> None: ...
+
+        def close(self) -> None: ...
+
+    def refuse(**_kwargs: object) -> int:
+        raise ValidationError("source 'nobody' is not on the allow-list")
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(ingestion_domain, "ingest_local_files", refuse)
+
+    assert jobs.run_ingest_files(["only-one"]) == 2
+    assert jobs.run_ingest_files(["nobody", "/x"]) == 2
+    assert "allow-list" in capsys.readouterr().err
+
+
 def test_backfill_titles_reports_what_it_named(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
