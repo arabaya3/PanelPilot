@@ -89,3 +89,14 @@ def test_rungs_that_do_not_fit_are_a_refusal(payload: Any) -> None:
     client = _Client(name=writer.LADDER_TOOL_NAME, payload=payload)
     with pytest.raises(GenerationError):
         writer.write_ladder(REQUEST, client=client)
+
+
+def test_the_ladder_schema_resolves_every_reference_from_its_root() -> None:
+    """Nested `$defs` with root `$ref`s: found live, the model invented a shape."""
+    import json
+
+    schema = writer._ladder_tool()["input_schema"]
+    rendered = json.dumps(schema)
+    for ref in {part.split('"')[0] for part in rendered.split('"$ref": "')[1:]}:
+        assert ref.startswith("#/$defs/")
+        assert ref.removeprefix("#/$defs/") in schema["$defs"], ref

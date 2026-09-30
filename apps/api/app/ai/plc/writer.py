@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.ai.anthropic_client import get_llm_client
 from app.ai.plc.generation import GenerationError
@@ -43,14 +43,43 @@ _DIALECT_NAMES = {
 
 _RUNGS = TypeAdapter(list[LadderRung])
 
+
+class _LadderOutput(BaseModel):
+    """The ladder tool's input, as one model so its schema is self-contained.
+
+    Built from a model rather than by nesting the rung list's schema under a
+    property: that left ``$defs`` under ``properties.rungs`` while every
+    ``$ref`` pointed at the root, and a model given the broken schema invented
+    its own shape (found live: ``contacts``/``outputs``/``name``).
+    """
+
+    rungs: list[LadderRung]
+
+
 SYSTEM_PROMPT = """You write PLC programs for industrial control engineers.
 
 Rules:
 - Write exactly what the description asks for, no more. Do not invent I/O the
   description does not imply; name every tag clearly.
-- Declare every variable you use.
-- Stops, emergency stops and interlocks are normally-closed and fail safe:
-  losing the signal must stop the output.
+- Structured Text is one complete unit: PROGRAM <Name>, its VAR ... END_VAR
+  declarations, the logic, END_PROGRAM. Declare every variable you use.
+- Ladder rungs list their elements left to right: a contact is
+  {"tag": "Start", "kind": "no"} or kind "nc"; a parallel branch is
+  {"paths": [[...], [...]]}; the output is {"tag": "Motor", "kind": "coil"}.
+- Stops, emergency stops and interlocks are normally-closed and fail safe: the
+  input reads TRUE while healthy and FALSE when pressed, tripped or broken, and
+  the output must drop whenever any of them reads FALSE. Use them un-negated:
+  Run := (Start OR Run) AND Stop AND EStop.
+- A seal-in (latch, hold, self-holding) keeps the output on through a path in
+  parallel with the start: in Structured Text (Start OR Output). In ladder the
+  rung starts with that branch, then every permissive and stop in series, then
+  the coil -- and a coil only ever appears as the rung's output. For
+  "start, NC stop, seal-in" the rung is:
+  {"comment": "Run with seal-in",
+   "elements": [{"paths": [[{"tag": "Start", "kind": "no"}],
+                           [{"tag": "Run", "kind": "no"}]]},
+                {"tag": "Stop", "kind": "nc"}],
+   "output": {"tag": "Run", "kind": "coil"}}
 - Keep one program unit. No explanation outside the tool call; comments in
   the code are welcome.
 """
@@ -80,11 +109,7 @@ def _ladder_tool() -> dict[str, Any]:
             "Return the rungs, left to right. Contacts are kind 'no' or 'nc'; "
             "the output is kind 'coil'. A parallel branch is a list of paths."
         ),
-        "input_schema": {
-            "type": "object",
-            "properties": {"rungs": _RUNGS.json_schema()},
-            "required": ["rungs"],
-        },
+        "input_schema": _LadderOutput.model_json_schema(),
     }
 
 
