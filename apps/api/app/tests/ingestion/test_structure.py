@@ -979,3 +979,21 @@ def test_a_number_alone_is_never_a_heading() -> None:
     headings = [b.text for b in extract_structure(data).blocks if b.kind is BlockKind.HEADING]
 
     assert headings == ["Table of contents"]
+
+
+def test_a_fault_code_with_a_long_title_opens_its_own_section() -> None:
+    # "F30002 Power unit: DC link voltage overvoltage" is longer than an
+    # unnumbered heading may be, and was filed under F30001 -- the reader of
+    # that citation would look up the wrong fault.
+    data = build(
+        lambda p: p.heading("F30001 Power unit: Overcurrent", 12)
+        .body("Cause: the power unit has detected an overcurrent condition.")
+        .heading("F30002 Power unit: DC link voltage overvoltage", 12)
+        .body("Cause: the power unit has detected overvoltage in the DC link.")
+    )
+    sections = [b.section for b in extract_structure(data).blocks if b.kind is BlockKind.PARAGRAPH]
+
+    assert sections == [
+        "F30001 Power unit: Overcurrent",
+        "F30002 Power unit: DC link voltage overvoltage",
+    ]

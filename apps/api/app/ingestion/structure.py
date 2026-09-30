@@ -78,6 +78,12 @@ COLUMN_GAP_RATIO = 0.12
 #: this is the single most reliable signal available here.
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?(\s+\S|$)")
 
+#: A fault or alarm code opening a line: Siemens' "F30002", "A08757". A list
+#: manual is a heading per code; titled at more than a few words, as most
+#: are, they failed the unnumbered-heading length check and every such fault
+#: was filed under the one before it -- a citation to the wrong fault.
+_CODE_HEADING = re.compile(r"^[A-Z]{1,2}\d{4,5}\s+\S")
+
 #: A continuation banner: "Table 3 (continued)", "cont.", and so on.
 _CONTINUED = re.compile(r"\bcont(inued)?\b", re.IGNORECASE)
 
@@ -504,7 +510,7 @@ def _is_heading(line: _Line, *, body: float) -> bool:
     if not prominent:
         return False
 
-    if _NUMBERED_HEADING.match(text):
+    if _NUMBERED_HEADING.match(text) or _CODE_HEADING.match(text):
         return True
 
     # Unnumbered headings exist ("Contents", "Safety", "Fault tracing"), and
