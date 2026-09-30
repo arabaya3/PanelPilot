@@ -294,7 +294,15 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Search Documents */
+    /**
+     * Search Documents
+     * @description Search the documentation corpus.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 if a non-reviewer asks for staging.
+     *         ValidationError: 422 on a blank query.
+     *         ServiceUnavailableError: 503 if retrieval fails.
+     */
     post: operations['search_documents_api_v1_search_post'];
     delete?: never;
     options?: never;
@@ -1554,6 +1562,12 @@ export interface components {
       filters?: components['schemas']['SearchFilters'] | null;
       /** Top K */
       top_k?: number | null;
+      /**
+       * Corpus
+       * @default production
+       * @enum {string}
+       */
+      corpus: 'production' | 'staging';
     };
     /**
      * SearchResponse
