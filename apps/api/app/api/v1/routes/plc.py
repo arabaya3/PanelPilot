@@ -12,8 +12,9 @@ any caller that is not an HTTP request.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import CurrentUserDep, enforce_trial_rate_limit
 from app.domain import plc as plc_domain
 from app.models.schemas.plc import (
     PlcGenerationRequest,
@@ -25,13 +26,22 @@ from app.models.schemas.plc import (
 router = APIRouter()
 
 
-@router.post("/generate", response_model=PlcGenerationResult)
-def generate(payload: PlcGenerationRequest) -> PlcGenerationResult:
+@router.post(
+    "/generate",
+    response_model=PlcGenerationResult,
+    dependencies=[Depends(enforce_trial_rate_limit)],
+)
+def generate(payload: PlcGenerationRequest, user: CurrentUserDep) -> PlcGenerationResult:
     """Generate PLC code for a description, with its validation verdict.
+
+    Signed in, as a trial or an account, and rate-limited like search: each
+    call is a paid model request.
 
     Raises:
         HTTPException: 422 if the request cannot be generated as asked.
+        ServiceUnavailableError: 503 if the model could not be reached.
     """
+    del user
     try:
         return plc_domain.generate_code(payload)
     except plc_domain.PlcError as exc:

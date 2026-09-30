@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import structlog
 
+from app.ai.plc import writer as plc_writer
 from app.ai.plc.generation import GenerationError, generate_plc_code
 from app.ai.plc.validation import validate_plc_code
+from app.core.errors import ServiceUnavailableError
 from app.models.schemas.plc import (
     FindingSeverity,
     LadderRung,
@@ -122,7 +124,7 @@ def safe_validate(source: str, dialect: PlcDialect) -> PlcValidationResult:
 
 
 def _write_source(request: PlcGenerationRequest) -> str:
-    """Produce Structured Text for a request.
+    """Produce Structured Text for a request, through the configured model.
 
     Args:
         request: What to generate.
@@ -131,23 +133,22 @@ def _write_source(request: PlcGenerationRequest) -> str:
         The generated source.
 
     Raises:
-        GenerationError: Always, for now.
-
-    **Not implemented.** The model call belongs here, and wiring one in is a
-    separate piece of work from the endpoint and the validation path this task
-    delivers. It raises rather than returning a plausible stub: a stub would
-    make the endpoint look finished, and would hand a caller a program no
-    model wrote and no requirement described — wearing whatever verdict the
-    validator happened to give it.
+        GenerationError: If the model returned no usable program.
+        ServiceUnavailableError: If the model could not be reached.
     """
-    del request
-    raise GenerationError(
-        "code generation is not yet wired to a model; /plc/review validates existing code today"
-    )
+    try:
+        return plc_writer.write_source(request)
+    except GenerationError:
+        raise
+    except Exception as exc:
+        # Broad: a provider client raises its own types, and every one of them
+        # means the same thing to the caller -- try again later.
+        logger.exception("plc.generation_unavailable")
+        raise ServiceUnavailableError("code generation is unavailable; try again") from exc
 
 
 def _write_ladder(request: PlcGenerationRequest) -> list[LadderRung]:
-    """Produce ladder rungs for a request.
+    """Produce ladder rungs for a request, through the configured model.
 
     Args:
         request: What to generate.
@@ -156,9 +157,13 @@ def _write_ladder(request: PlcGenerationRequest) -> list[LadderRung]:
         The generated rungs.
 
     Raises:
-        GenerationError: Always, for now. See ``_write_source``.
+        GenerationError: If the model returned no usable rungs.
+        ServiceUnavailableError: If the model could not be reached.
     """
-    del request
-    raise GenerationError(
-        "ladder generation is not yet wired to a model; /plc/review validates existing code today"
-    )
+    try:
+        return plc_writer.write_ladder(request)
+    except GenerationError:
+        raise
+    except Exception as exc:
+        logger.exception("plc.generation_unavailable")
+        raise ServiceUnavailableError("code generation is unavailable; try again") from exc

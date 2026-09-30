@@ -20,9 +20,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.ai.plc import writer as plc_writer
+from app.ai.plc.generation import GenerationError
+from app.api import deps
 from app.api.v1.routes import plc as plc_route
+from app.core.errors import install_exception_handlers
 from app.domain import plc as plc_domain
-from app.models.schemas.plc import PlcDialect, ValidationStatus
+from app.models.schemas.auth import CurrentUser, Role
+from app.models.schemas.plc import LadderContact, LadderRung, PlcDialect, ValidationStatus
 
 VALID_ST = """PROGRAM MotorStart
 VAR_INPUT
@@ -62,13 +67,18 @@ END_PROGRAM"""
 
 @pytest.fixture(name="client")
 def _client() -> Iterator[TestClient]:
-    """A client bound to just this router.
+    """A client bound to just this router, signed in.
 
-    No auth override: these endpoints take no user, so binding one would test
-    a dependency the routes do not declare.
+    Review takes no user; generation does, and is rate-limited -- the limit is
+    its own tested dependency and not the subject here.
     """
     app = FastAPI()
     app.include_router(plc_route.router, prefix="/plc")
+    app.dependency_overrides[deps.get_current_user] = lambda: CurrentUser(
+        id="u", email="e@example.com", tenant_id="t", roles=frozenset({Role.ENGINEER})
+    )
+    app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None
+    install_exception_handlers(app)
 
     with TestClient(app) as test_client:
         yield test_client
@@ -227,27 +237,60 @@ def test_a_validator_that_raises_still_blocks_ready(
 # --- generate -----------------------------------------------------------------
 
 
-def test_generation_reports_that_it_is_not_wired_yet(client: TestClient) -> None:
-    # Refused rather than stubbed. A plausible stub would make the endpoint
-    # look finished and hand a caller code no model wrote.
+def test_generation_returns_the_writers_code_with_the_validators_verdict(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(plc_writer, "write_source", lambda _request: VALID_ST)
+
+    response = client.post("/plc/generate", json={"description": "start a motor"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == VALID_ST
+    assert body["validation"]["status"] == ValidationStatus.VALID.value
+
+
+def test_generation_needs_a_session_and_is_rate_limited() -> None:
+    """Every call is a paid model request; the trial session carries the limit.
+
+    Read off the route rather than exercised: the client fixture overrides
+    both dependencies, and resolving them for real needs a database.
+    """
+    route = next(r for r in plc_route.router.routes if getattr(r, "path", None) == "/generate")
+    calls = {dep.call for dep in route.dependant.dependencies}  # type: ignore[attr-defined]
+    assert deps.get_current_user in calls
+    assert deps.enforce_trial_rate_limit in calls
+
+    review = next(r for r in plc_route.router.routes if getattr(r, "path", None) == "/review")
+    assert deps.get_current_user not in {
+        dep.call for dep in review.dependant.dependencies  # type: ignore[attr-defined]
+    }
+
+
+def test_a_program_the_model_could_not_write_is_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _nothing(_request: object) -> str:
+        raise GenerationError("the model returned no program")
+
+    monkeypatch.setattr(plc_writer, "write_source", _nothing)
+
     response = client.post("/plc/generate", json={"description": "start a motor"})
 
     assert response.status_code == 422
-    assert "not yet wired" in response.json()["detail"]
+    assert "no program" in response.json()["detail"]
+    assert "source" not in response.json()
 
 
-def test_generation_never_returns_code_no_model_wrote(client: TestClient) -> None:
-    # The property, not just the message. A stub returning plausible-looking
-    # ST would satisfy a test that only checks the refusal text, and would
-    # hand a caller a program that no model produced and no requirement
-    # described — wearing whatever verdict the validator gave it.
-    #
-    # Mutation-checked: replacing the writer with a canned valid program is
-    # caught here and nowhere else.
+def test_an_unreachable_model_is_503(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _down(_request: object) -> str:
+        raise ConnectionError("provider down")
+
+    monkeypatch.setattr(plc_writer, "write_source", _down)
+
     response = client.post("/plc/generate", json={"description": "start a motor"})
 
-    assert response.status_code != 200
-    assert "source" not in response.json()
+    assert response.status_code == 503
 
 
 def test_generation_validates_the_request_shape(client: TestClient) -> None:
@@ -256,16 +299,23 @@ def test_generation_validates_the_request_shape(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_generation_accepts_the_documented_languages(client: TestClient) -> None:
-    # Reaches the unwired writer rather than being rejected as an unknown
-    # language, which is what proves the routing is right.
+def test_generation_accepts_the_documented_languages(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rung = LadderRung(
+        comment="Run",
+        elements=[LadderContact(tag="Start", kind="no"), LadderContact(tag="Stop", kind="nc")],
+        output=LadderContact(tag="Motor", kind="coil"),
+    )
+    monkeypatch.setattr(plc_writer, "write_ladder", lambda _request: [rung])
+
     response = client.post(
         "/plc/generate",
         json={"description": "start a motor", "language": "ladder"},
     )
 
-    assert response.status_code == 422
-    assert "ladder generation is not yet wired" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["rungs"][0]["output"]["tag"] == "Motor"
 
 
 def test_an_unknown_language_is_rejected_by_the_schema(client: TestClient) -> None:

@@ -266,7 +266,15 @@ export function PlcView({
 
       {language === 'ladder' ? (
         rungs !== undefined && rungs.length > 0 ? (
-          <div className="overflow-x-auto">
+          // Left to right like the code below, and for the same reason: a rung
+          // is read from the left rail, and an RTL page mirrored its comment
+          // text into ".-in". Focusable, because it scrolls on a phone.
+          <div
+            dir="ltr"
+            tabIndex={0}
+            aria-label={t('ladderLabel', { count: rungs.length })}
+            className="overflow-x-auto rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+          >
             <LadderDiagram rungs={rungs} label={t('ladderLabel', { count: rungs.length })} />
           </div>
         ) : (
@@ -276,9 +284,12 @@ export function PlcView({
         // Left to right whatever the page: code reads that way in every
         // locale, and inheriting an Arabic or Hebrew page's direction moved
         // each line's trailing semicolon to its start.
+        // Focusable so a keyboard can scroll a long line on a phone.
         <div
           dir="ltr"
-          className="overflow-x-auto rounded-md border border-border-subtle bg-surface-raised py-2"
+          tabIndex={0}
+          aria-label={t('codeLabel')}
+          className="overflow-x-auto rounded-md border border-border-subtle bg-surface-raised py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
         >
           {tokeniseProgram(source).map((tokens, index) => (
             <CodeLine

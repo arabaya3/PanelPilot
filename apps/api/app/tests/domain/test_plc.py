@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.ai.plc import writer as plc_writer
+from app.ai.plc.generation import GenerationError
+from app.core.errors import ServiceUnavailableError
 from app.domain import plc as plc_domain
 from app.domain.plc import (
     VALIDATION_UNAVAILABLE,
@@ -167,18 +170,35 @@ def test_the_non_verdict_is_a_warning_not_an_error(
 # --- generation ---------------------------------------------------------------
 
 
-def test_generation_refuses_rather_than_inventing_output() -> None:
-    # Not wired to a model yet, and it says so. A plausible stub would make the
-    # feature look finished and hand a caller a program no model wrote.
-    with pytest.raises(PlcError, match="not yet wired"):
+def test_generation_runs_the_writer_and_the_validator(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model writes; the parser judges. Both, every time."""
+    monkeypatch.setattr(plc_writer, "write_source", lambda _request: VALID_ST)
+
+    result = generate_code(PlcGenerationRequest(description="start a motor"))
+
+    assert result.source == VALID_ST
+    assert result.validation.checked_by != plc_domain.VALIDATION_UNAVAILABLE
+
+
+def test_a_writer_that_produced_nothing_usable_is_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _nothing(_request: PlcGenerationRequest) -> str:
+        raise GenerationError("the model returned no program")
+
+    monkeypatch.setattr(plc_writer, "write_source", _nothing)
+    with pytest.raises(PlcError, match="no program"):
         generate_code(PlcGenerationRequest(description="start a motor"))
 
 
-def test_ladder_generation_refuses_too() -> None:
-    with pytest.raises(PlcError, match="ladder generation is not yet wired"):
+def test_an_unreachable_model_is_unavailable_not_a_bad_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _down(_request: PlcGenerationRequest) -> list[object]:
+        raise ConnectionError("provider down")
+
+    monkeypatch.setattr(plc_writer, "write_ladder", _down)
+    with pytest.raises(ServiceUnavailableError):
         generate_code(
-            PlcGenerationRequest(
-                description="start a motor",
-                language=PlcLanguage.LADDER,
-            )
+            PlcGenerationRequest(description="start a motor", language=PlcLanguage.LADDER)
         )
