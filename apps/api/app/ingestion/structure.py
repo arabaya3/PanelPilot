@@ -781,6 +781,9 @@ def _read_page(
     page, and so to its entire parsed layout.
     """
     page_number = int(page.page_number)
+    # Some manuals fake bold by printing each glyph twice at the same spot;
+    # read as-is, "CHS" comes out "CCHHSS" in the heading a citation shows.
+    page = page.dedupe_chars()
     chars = page.chars
     if len(chars) < MIN_CHARS_PER_PAGE:
         # A scan. Skipped rather than failed: a manual with one scanned

@@ -102,6 +102,23 @@ def test_a_larger_line_becomes_a_heading() -> None:
     assert blocks[1].kind is BlockKind.PARAGRAPH
 
 
+def _overprinted_heading(page: Page) -> None:
+    # Fake bold, as Schneider's ATV320 manual draws it: every glyph printed
+    # twice at the same spot.
+    page.pdf.setFont("Helvetica-Bold", 18)
+    for _ in range(2):
+        page.pdf.drawString(60, page.y, "[High Speed Switching] CHS")
+    page.y -= 36
+    page.body("Parameters described below.")
+
+
+def test_an_overprinted_heading_reads_once() -> None:
+    blocks = extract_structure(build(_overprinted_heading)).blocks
+
+    assert blocks[0].kind is BlockKind.HEADING
+    assert blocks[0].text == "[High Speed Switching] CHS"
+
+
 def test_heading_depth_follows_relative_size_not_absolute() -> None:
     # A manual typeset at 8pt body has 12pt headings; one at 12pt body does
     # not. An absolute threshold would find headings in one and none in the
