@@ -119,6 +119,33 @@ def test_an_overprinted_heading_reads_once() -> None:
     assert blocks[0].text == "[High Speed Switching] CHS"
 
 
+def _framed_message_with_positioned_words(page: Page) -> None:
+    # A ruled two-row frame -- a "WARNING" banner over the message -- whose
+    # words are placed 2.5 pt apart with no space glyph between them, as
+    # Schneider sets its safety messages.
+    top, left, width, row = page.y, 60.0, 300.0, 24.0
+    for y in (top, top - row, top - 2 * row):
+        page.pdf.line(left, y, left + width, y)
+    for x in (left, left + width):
+        page.pdf.line(x, top, x, top - 2 * row)
+    page.pdf.setFont("Helvetica", 10)
+    page.pdf.drawString(left + 4, top - 16, "WARNING")
+    x = left + 4
+    for word in ("LOSS", "OF", "CONTROL"):
+        page.pdf.drawString(x, top - row - 16, word)
+        x += page.pdf.stringWidth(word, "Helvetica", 10) + 2.5
+    page.y = top - 2 * row - 20
+    page.body("Failure to follow these instructions can result in death.")
+
+
+def test_words_positioned_apart_in_a_table_keep_their_spaces() -> None:
+    blocks = extract_structure(build(_framed_message_with_positioned_words)).blocks
+
+    tables = [b for b in blocks if b.kind is BlockKind.TABLE]
+    assert tables, [b.kind for b in blocks]
+    assert "LOSS OF CONTROL" in tables[0].text
+
+
 def test_heading_depth_follows_relative_size_not_absolute() -> None:
     # A manual typeset at 8pt body has 12pt headings; one at 12pt body does
     # not. An absolute threshold would find headings in one and none in the
