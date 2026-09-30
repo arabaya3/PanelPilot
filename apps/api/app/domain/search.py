@@ -6,36 +6,77 @@ mechanics live in ``app.ai.retrieval``.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+
+import structlog
 
 from app.ai.retrieval import hybrid_search, relevance
-from app.core.errors import NotImplementedYetError
-from app.models.schemas.auth import CurrentUser
+from app.core.errors import (
+    AuthorizationError,
+    PanelPilotError,
+    ServiceUnavailableError,
+    ValidationError,
+)
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.evaluation import EvalEntry
-from app.models.schemas.search import SearchRequest, SearchResponse
+from app.models.schemas.search import RetrievedPassage, SearchRequest, SearchResponse
+
+logger = structlog.get_logger(__name__)
 
 
-def search_documents(*, user: CurrentUser, request: SearchRequest) -> SearchResponse:
+def search_documents(
+    *,
+    user: CurrentUser,
+    request: SearchRequest,
+    search: Callable[..., list[RetrievedPassage]] | None = None,
+    search_staging: Callable[..., list[RetrievedPassage]] | None = None,
+) -> SearchResponse:
     """Run a hybrid search on behalf of a caller.
 
-    Ordinary callers are restricted to the production index. Only reviewers may
-    target staging, and never through the same code path that serves answers.
+    Ordinary callers search production, the corpus answers cite. Only
+    reviewers may search staging, and only through ``search_staging`` -- the
+    separately named function that answer generation never calls -- so a
+    wrong argument here cannot put unverified content in front of an engineer.
 
     Args:
         user: The authenticated caller.
-        request: Query text, filters, and pagination.
+        request: Query text, filters, corpus and result count.
+        search: The production search; ``hybrid_search.search`` by default,
+            looked up at call time so a test can replace it there.
+        search_staging: The staging search; ``hybrid_search.search_staging``
+            by default, likewise.
 
     Returns:
-        Ranked passages with their source documents.
+        Ranked passages with their citations. ``total`` is how many were
+        returned: retrieval ranks the best ``top_k`` and does not count the rest.
 
     Raises:
-        AuthorizationError: If a non-reviewer requests the staging index.
-        NotImplementedYetError: Always, for now. Retrieval serves the
-            diagnosis path; a standalone search endpoint over it has not been
-            built, and saying so beats an anonymous 500.
+        AuthorizationError: If a non-reviewer asks for staging.
+        ValidationError: If the query is blank.
+        ServiceUnavailableError: If the index or the embedding provider fails.
     """
-    del user, request  # Unused until search exists; the signature is the contract.
-    raise NotImplementedYetError("document search is not available yet")
+    query = request.query.strip()
+    if not query:
+        raise ValidationError("a search needs a query")
+    if request.corpus == "staging" and not user.has_role(Role.REVIEWER):
+        raise AuthorizationError(f"{user.email} does not hold the reviewer role")
+
+    run = (
+        (search_staging or hybrid_search.search_staging)
+        if request.corpus == "staging"
+        else (search or hybrid_search.search)
+    )
+    try:
+        passages = run(query, filters=request.filters, top_k=request.top_k)
+    except PanelPilotError:
+        raise
+    except Exception as exc:
+        # The index and the embedding provider fail in ways this layer cannot
+        # enumerate. The query itself was fine, so it is a 503 -- try again --
+        # and never the text of the underlying error, which can name hosts.
+        logger.exception("search.failed", corpus=request.corpus)
+        raise ServiceUnavailableError("search is unavailable right now; try again") from exc
+    return SearchResponse(passages=passages, total=len(passages))
 
 
 def calibrate_relevance(entries: Sequence[EvalEntry]) -> relevance.Calibration:

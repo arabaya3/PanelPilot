@@ -5,12 +5,13 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
-import { BoltIcon, ChatIcon, CheckCircleIcon, CodeIcon } from '@/components/icons';
+import { BoltIcon, ChatIcon, CheckCircleIcon, CodeIcon, SearchIcon } from '@/components/icons';
 import { LangSwitcher } from '@/components/lang-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 const NAV = [
   { href: '/', key: 'diagnose', Icon: ChatIcon },
+  { href: '/search', key: 'search', Icon: SearchIcon },
   { href: '/plc', key: 'plc', Icon: CodeIcon },
   { href: '/review', key: 'review', Icon: CheckCircleIcon },
 ] as const;
@@ -48,13 +49,15 @@ export function AppShell({
         key={href}
         href={href}
         aria-current={current ? 'page' : undefined}
-        className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors ${
+        className={`inline-flex items-center gap-2 whitespace-nowrap rounded-md px-2 py-2 text-sm transition-colors sm:px-3 ${
           current
             ? 'bg-accent-subtle font-semibold text-accent-hover'
             : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
         }`}
       >
-        <Icon width="16" height="16" />
+        {/* Text only on a phone: four links with icons do not fit 360px,
+            and the last one scrolled out of sight with nothing to say so. */}
+        <Icon width="16" height="16" className="max-sm:hidden" />
         {t(key)}
       </Link>
     );

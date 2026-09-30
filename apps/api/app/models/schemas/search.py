@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -37,6 +39,9 @@ class SearchFilters(BaseModel):
 
     manufacturers: list[str] = []
     document_types: list[str] = []
+    # Accepted for the contract but not applied: the index carries no
+    # publication date to filter on. A search naming it is not refused, and is
+    # not narrowed either.
     published_after: str | None = None
 
 
@@ -48,6 +53,9 @@ class SearchRequest(BaseModel):
     query: str = Field(max_length=4000)
     filters: SearchFilters | None = None
     top_k: int | None = Field(default=None, ge=1, le=50)
+    #: Which corpus to search. ``staging`` -- content no reviewer has verified
+    #: yet -- is for reviewers only; everyone else searches what answers cite.
+    corpus: Literal["production", "staging"] = "production"
 
 
 class SearchResponse(BaseModel):

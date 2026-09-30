@@ -228,7 +228,8 @@
     "label": "Main",
     "diagnose": "Diagnose",
     "plc": "PLC check",
-    "review": "Review"
+    "review": "Review",
+    "search": "Search"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -248,5 +249,32 @@
     "cancel": "Cancel",
     "retractFailed": "Nothing was retracted. Try again.",
     "retractWarning": "Every passage from this document leaves live answers now. Engineers asking about it will be told there is no verified source, until a new revision is reviewed. This is recorded with your name and note."
+  },
+  "search": {
+    "heading": "Search the manuals",
+    "intro": "Look up a fault code, a parameter or a wiring detail directly. Every result is a passage a reviewer verified, with a link to the page it came from.",
+    "label": "What are you looking for?",
+    "placeholder": "e.g. F0001, P1120 ramp-up time, STO wiring",
+    "manufacturer": "Manufacturer",
+    "anyManufacturer": "Any manufacturer",
+    "submit": "Search",
+    "searching": "Searching…",
+    "count": "{count} results for “{query}”",
+    "empty": "Nothing verified matches that. Try the fault code alone, or a different wording.",
+    "page": "page {page}",
+    "openSource": "Open the page in the manual",
+    "retry": "Try again",
+    "session": {
+      "unavailable": "Search is unavailable right now. Please try again shortly.",
+      "rate-limited": "Too many sessions have been started from this network. Wait a few minutes and try again.",
+      "failed": "Could not connect. Check the connection and try again."
+    },
+    "error": {
+      "unauthorized": "Your session expired. Search again.",
+      "forbidden": "That corpus is for reviewers only.",
+      "rate-limited": "Too many searches from this network. Wait a minute and try again.",
+      "unavailable": "Search is unavailable right now. Try again in a moment.",
+      "failed": "The search did not complete. Try again."
+    }
   }
 }

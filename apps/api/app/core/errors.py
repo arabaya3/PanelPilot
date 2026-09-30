@@ -65,6 +65,14 @@ class TooManyRequestsError(PanelPilotError):
         self.retry_after_seconds = retry_after_seconds
 
 
+class ServiceUnavailableError(PanelPilotError):
+    """A dependency the request needs -- the index, an embedding provider -- failed.
+
+    503 rather than 500: the request was sound and may succeed if repeated,
+    which is what a client (and an engineer reading the message) needs to know.
+    """
+
+
 class NotImplementedYetError(PanelPilotError):
     """The endpoint exists in the contract but its behaviour does not yet.
 
@@ -84,6 +92,7 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     InsufficientEvidenceError: HTTPStatus.UNPROCESSABLE_ENTITY,
     PromotionError: HTTPStatus.CONFLICT,
     TooManyRequestsError: HTTPStatus.TOO_MANY_REQUESTS,
+    ServiceUnavailableError: HTTPStatus.SERVICE_UNAVAILABLE,
     NotImplementedYetError: HTTPStatus.NOT_IMPLEMENTED,
 }
 
