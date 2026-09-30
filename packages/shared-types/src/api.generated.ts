@@ -1898,6 +1898,8 @@ export interface components {
      */
     VfdSelectionResponse: {
       result: components['schemas']['VfdSelectionResult'];
+      /** Motor Current A */
+      motor_current_a: string;
       /** Sources */
       sources: components['schemas']['Citation'][];
     };

@@ -395,6 +395,33 @@
       "refused": "The tables do not cover this input, so no size is given.",
       "unauthorized": "Your session expired. Calculate again.",
       "failed": "The calculation did not complete. Try again."
+    },
+    "title": "Calculations",
+    "tab": {
+      "cable": "Cable sizing",
+      "vfd": "Drive selection"
+    },
+    "vfd": {
+      "intro": "Pick an ABB ACS880-01 drive (400 V) for a motor. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
+      "field": {
+        "power": "Motor power",
+        "voltage": "Supply voltage",
+        "efficiency": "Motor efficiency",
+        "powerFactor": "Motor power factor",
+        "duty": "Duty",
+        "altitude": "Altitude",
+        "ambient": "Ambient temperature"
+      },
+      "duty": {
+        "normal": "Normal (no overload)",
+        "heavy": "Heavy (150 % overload)"
+      },
+      "submit": "Select the drive",
+      "result": {
+        "drive": "Drive",
+        "motorCurrent": "Motor current",
+        "driveCurrent": "Drive current at this site"
+      }
     }
   }
 }

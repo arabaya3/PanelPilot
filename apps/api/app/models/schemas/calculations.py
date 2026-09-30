@@ -112,6 +112,8 @@ class VfdSelectionResponse(BaseModel):
     """Drive selection as returned to the caller."""
 
     result: VfdSelectionResult
+    #: The motor current the drive was sized for.
+    motor_current_a: Decimal
     sources: list[Citation]
 
 

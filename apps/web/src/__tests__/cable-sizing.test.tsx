@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CableSizingScreen } from '@/components/cable-sizing-screen';
+import { CableSizingPanel } from '@/components/cable-sizing-panel';
 import { sizeCable, type CableSizingResponse } from '@/lib/calculations';
 
 import { renderApp } from './helpers';
@@ -46,7 +46,7 @@ function fill(label: string, value: string) {
 
 async function renderReady(sizeImpl: typeof sizeCable) {
   renderApp(
-    <CableSizingScreen sizeImpl={sizeImpl} acquireImpl={vi.fn().mockResolvedValue(READY)} />,
+    <CableSizingPanel sizeImpl={sizeImpl} acquireImpl={vi.fn().mockResolvedValue(READY)} />,
   );
   fill('Design current', '100');
   fill('Run length', '50');
@@ -105,7 +105,7 @@ describe('cable sizing', () => {
 
   it('will not calculate without a current and a length', async () => {
     renderApp(
-      <CableSizingScreen sizeImpl={vi.fn()} acquireImpl={vi.fn().mockResolvedValue(READY)} />,
+      <CableSizingPanel sizeImpl={vi.fn()} acquireImpl={vi.fn().mockResolvedValue(READY)} />,
     );
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Size the cable' }).hasAttribute('disabled')).toBe(

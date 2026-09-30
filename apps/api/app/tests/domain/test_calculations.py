@@ -2,8 +2,8 @@
 
 Mirrors the module 1:1 — if you add a function there, add its test here.
 
-VFD selection and the panel BOM are blocked on manufacturer guides that are
-not in this repository (see the README). Until they land, what is tested is
+The panel BOM is blocked on manufacturer guides that are not in this
+repository (see the README). Until they land, what is tested is
 that each one says so -- a NotImplementedYetError the API answers with 501 --
 rather than an anonymous NotImplementedError that surfaced as a 500.
 """
@@ -20,14 +20,19 @@ from sqlalchemy.orm import Session
 from app.core.errors import NotImplementedYetError, ValidationError
 from app.domain import calculations
 from app.models.schemas.auth import CurrentUser, Role
-from app.models.schemas.calculations import CableSizingRequest, InstallationMethod
+from app.models.schemas.calculations import (
+    CableSizingRequest,
+    DutyClass,
+    InstallationMethod,
+    VfdSelectionRequest,
+)
 
 _USER = CurrentUser(id="u", email="e@example.com", tenant_id="t", roles=frozenset({Role.ENGINEER}))
 
 
 @pytest.mark.parametrize(
     "calculate",
-    [calculations.select_vfd, calculations.build_panel_bom],
+    [calculations.build_panel_bom],
 )
 def test_each_calculation_says_it_is_blocked_on_its_sources(
     calculate: Callable[..., Any],
@@ -75,3 +80,22 @@ def test_a_non_positive_supply_voltage_is_refused() -> None:
         calculations.size_cable(
             session=_NO_SESSION, user=_USER, request=_cable_request(supply_voltage_v=Decimal(0))
         )
+
+
+def test_a_drive_is_selected_with_the_motor_current_and_every_source() -> None:
+    # 22 kW, 400 V, η 0.93, cos 0.85: 22000 / (√3 x 400 x 0.93 x 0.85) = 40.2 A.
+    # Heavy duty: 061A-3 (IHd 45 A) is the first to carry it.
+    response = calculations.select_vfd(
+        session=_NO_SESSION,
+        user=_USER,
+        request=VfdSelectionRequest(
+            motor_power_kw=Decimal("22"),
+            supply_voltage_v=Decimal("400"),
+            motor_efficiency=Decimal("0.93"),
+            motor_power_factor=Decimal("0.85"),
+            duty_class=DutyClass.HEAVY,
+        ),
+    )
+    assert response.motor_current_a.quantize(Decimal("0.1")) == Decimal("40.2")
+    assert response.result.frame_reference == "ACS880-01-061A-3 (R4)"
+    assert [s.manufacturer for s in response.sources] == ["ABB"] * 4
