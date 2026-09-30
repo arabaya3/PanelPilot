@@ -39,3 +39,4 @@ apps/api/var/
 
 # Manuals downloaded by hand for `ingest-files`; only their list is committed.
 apps/api/data/*/*.pdf
+apps/api/data/*/*.zip
