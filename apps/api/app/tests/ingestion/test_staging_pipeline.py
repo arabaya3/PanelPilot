@@ -198,6 +198,15 @@ def test_the_model_is_recorded_as_unknown_rather_than_guessed() -> None:
     assert all(body["model"] == "unknown" for body in bodies)
 
 
+def test_each_chunk_carries_its_documents_title() -> None:
+    # What a citation shows the engineer: the manual, not the section heading.
+    data = manual_pdf()
+    doc = document(data=data)
+    _, prepared = prepare_documents(crawl(doc), extract_structure=extractor_for({doc.id: data}))
+
+    assert {body["document_title"] for body in prepared[doc.id]} == {"ACS880 Firmware Manual"}
+
+
 def test_the_brand_defaults_to_the_source_when_not_supplied() -> None:
     data = manual_pdf()
     doc = document(data=data)

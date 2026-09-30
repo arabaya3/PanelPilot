@@ -31,6 +31,7 @@ from app.ingestion.crawler import (
     content_hash,
     crawl_source,
 )
+from app.ingestion.known_documents import KNOWN_DOCUMENTS
 from app.ingestion.robots import (
     CrawlDelayTooLongError,
     RobotsDisallowedError,
@@ -369,6 +370,25 @@ def test_a_directly_supplied_document_is_fetched() -> None:
     assert [document.url for document in result.documents] == [
         "https://library.e.abb.com/public/a/manual.pdf"
     ]
+    # Not on the curated list: the filename is all there is.
+    assert result.documents[0].title == "manual.pdf"
+
+
+def test_a_curated_document_keeps_its_curated_title() -> None:
+    """The title a citation shows, rather than the PDF's filename."""
+    known = KNOWN_DOCUMENTS[0]
+    host = known.url.split("/")[2]
+    routes = {
+        f"https://{host}/robots.txt": (200, b"User-agent: *\nAllow: /\n"),
+        known.url: (200, b"%PDF-1.4 curated"),
+    }
+    source = SourceDefinition(
+        id=known.source_id, manufacturer="ABB", seed_urls=[], document_urls=[known.url]
+    )
+
+    result = crawl_source(source, client=client_for(routes), sleep=lambda _s: None)
+
+    assert result.documents[0].title == known.title
 
 
 def test_a_directly_supplied_document_is_still_checked_against_robots() -> None:

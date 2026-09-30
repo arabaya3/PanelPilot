@@ -18,6 +18,7 @@ from app.ai.retrieval.client import PublishedSource
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.domain import corpus_maintenance
 from app.domain.corpus_maintenance import (
+    backfill_titles,
     dismiss_stale_document,
     expire_stale_sources,
     list_stale_documents,
@@ -346,6 +347,34 @@ def test_reindex_replaces_only_the_vector_of_one_brands_chunks(
     assert client.get(index=staging, id="siemens-1")["_source"]["content_vector"][0] == 0.5
     # And production was never touched.
     assert client.get(index=production, id="abb-1")["_source"]["content_vector"][0] == 0.5
+
+
+@requires_opensearch
+def test_backfill_names_curated_staged_chunks_and_nothing_else(
+    indices: tuple[str, str],
+) -> None:
+    from app.ai.retrieval.client import get_client
+    from app.ingestion.known_documents import KNOWN_DOCUMENTS
+
+    staging, production = indices
+    client = get_client()
+    curated = KNOWN_DOCUMENTS[0]
+    old = _chunk(brand="ABB", url=curated.url, content_hash="h1", content="F0001")
+    stranger = _chunk(brand="ABB", url="https://x/not-curated.pdf", content_hash="x", content="x")
+    titled = {**old, "document_title": "Already titled"}
+    client.index(index=staging, id="old", body=old, refresh=True)
+    client.index(index=staging, id="stranger", body=stranger, refresh=True)
+    client.index(index=staging, id="titled", body=titled, refresh=True)
+    client.index(index=production, id="old", body=old, refresh=True)
+
+    assert backfill_titles() == 1
+
+    assert client.get(index=staging, id="old")["_source"]["document_title"] == curated.title
+    assert "document_title" not in client.get(index=staging, id="stranger")["_source"]
+    # A title already there is not overwritten.
+    assert client.get(index=staging, id="titled")["_source"]["document_title"] == "Already titled"
+    # Production changes only through promotion.
+    assert "document_title" not in client.get(index=production, id="old")["_source"]
 
 
 @requires_opensearch

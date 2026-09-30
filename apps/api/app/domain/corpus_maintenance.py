@@ -1,6 +1,7 @@
 """Keeping the corpus current: re-embedding staging, and noticing stale sources.
 
-Two scheduled jobs that ADR 0001 relies on and nothing did:
+Two scheduled jobs that ADR 0001 relies on and nothing did, and a one-off
+title backfill:
 
 - **Re-embedding staging.** An embedding model change leaves every staged
   vector scored in a space that queries no longer use. ``reindex_staging``
@@ -36,12 +37,14 @@ from app.ai.retrieval.client import (
     iter_staged_contents,
     published_sources,
     restage_vectors,
+    retitle_staged,
 )
 from app.ai.retrieval.embedding import embed_documents
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.domain import promotion as promotion_domain
 from app.domain.ingestion import EMBEDDING_BATCH_SIZE
 from app.ingestion.crawler import DocumentCheck, check_documents
+from app.ingestion.known_documents import KNOWN_DOCUMENTS
 from app.ingestion.sources import CRAWLERS, crawler_for
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.ingestion import StaleDocumentRow
@@ -92,6 +95,17 @@ def reindex_staging(
         )
         logger.info("reindex_staging.batch", source_id=source_id, reembedded=total)
     return total
+
+
+def backfill_titles() -> int:
+    """Name the curated manuals on staged chunks staged before titles existed.
+
+    Returns:
+        How many chunks gained a title.
+    """
+    count = retitle_staged({document.url: document.title for document in KNOWN_DOCUMENTS})
+    logger.info("backfill_titles.done", retitled=count)
+    return count
 
 
 @dataclass

@@ -153,6 +153,21 @@ def documents_for(source_id: str) -> tuple[KnownDocument, ...]:
     return tuple(doc for doc in KNOWN_DOCUMENTS if doc.source_id == source_id)
 
 
+def title_for(url: str) -> str | None:
+    """Return a curated document's title, if the URL is one.
+
+    Args:
+        url: A document URL.
+
+    Returns:
+        Its curated title, or ``None`` for a URL not on the list.
+    """
+    for document in KNOWN_DOCUMENTS:
+        if document.url == url:
+            return document.title
+    return None
+
+
 def urls_for(source_id: str) -> list[str]:
     """Return just the URLs for one source, ready to pass to a crawl.
 

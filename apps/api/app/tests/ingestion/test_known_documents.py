@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from app.ingestion.known_documents import KNOWN_DOCUMENTS, documents_for, urls_for
+from app.ingestion.known_documents import KNOWN_DOCUMENTS, documents_for, title_for, urls_for
 from app.ingestion.sources import CRAWLERS
 
 
@@ -116,6 +116,12 @@ def test_abb_has_curated_documents() -> None:
     fallback has silently stopped existing.
     """
     assert urls_for("abb"), "ABB has no curated documents"
+
+
+def test_a_curated_url_resolves_to_its_title() -> None:
+    first = KNOWN_DOCUMENTS[0]
+    assert title_for(first.url) == first.title
+    assert title_for("https://example.com/not-curated.pdf") is None
 
 
 def test_siemens_documents_come_from_its_asset_host() -> None:

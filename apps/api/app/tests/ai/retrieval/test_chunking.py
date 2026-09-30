@@ -286,6 +286,11 @@ def test_no_metadata_field_is_left_empty(manual: str) -> None:
             assert str(getattr(chunk, field)).strip(), f"{manual}: {field} is empty"
 
 
+def test_each_chunk_names_its_document() -> None:
+    doc, structure, _ = MANUALS[sorted(MANUALS)[0]]()
+    assert {chunk.document_title for chunk in _chunk(doc, structure)} == {"Sample manual"}
+
+
 # --- band and boundary behaviour --------------------------------------------
 
 

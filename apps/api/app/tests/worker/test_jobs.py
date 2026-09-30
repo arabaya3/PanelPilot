@@ -529,6 +529,18 @@ def test_reindex_staging_reports_what_it_re_embedded(
     assert "re-embedded 7 staged chunks" in capsys.readouterr().out
 
 
+def test_backfill_titles_reports_what_it_named(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import corpus_maintenance
+
+    monkeypatch.setattr(corpus_maintenance, "backfill_titles", lambda: 12)
+
+    assert jobs.run_backfill_titles([]) == 0
+    assert "titled 12 staged chunks" in capsys.readouterr().out
+    assert jobs.run_backfill_titles(["extra"]) == 2
+
+
 def test_reindex_staging_refuses_bad_arguments(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -148,6 +148,7 @@ def _flush(
         model=model,
         doc_type=doc_type,
         source_url=document.url,
+        document_title=document.title,
         is_atomic=bool(atomic),
         oversized_reason=reason,
     )

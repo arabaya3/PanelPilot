@@ -14,10 +14,13 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Any
 
+import structlog
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import bulk, scan
 
 from app.core.config import get_settings
+
+logger = structlog.get_logger(__name__)
 
 
 class IndexTarget(StrEnum):
@@ -111,7 +114,24 @@ def ensure_index(target: IndexTarget, *, recreate: bool = False) -> str:
         client.indices.delete(index=name)
     if not client.indices.exists(index=name):
         client.indices.create(index=name, body=index_mapping())
+    else:
+        _add_missing_fields(client, name, index_mapping()["mappings"]["properties"])
     return name
+
+
+def _add_missing_fields(client: Any, name: str, wanted: dict[str, Any]) -> None:
+    """Add fields the mapping declares but an existing index lacks.
+
+    Adding a field is the one mapping change OpenSearch allows in place, and
+    the index is `dynamic: strict`: without this, a field added to the
+    mapping made every write to an index created before it fail. Changing an
+    existing field is not attempted -- that is a re-index.
+    """
+    current = client.indices.get_mapping(index=name)[name]["mappings"].get("properties", {})
+    missing = {field: spec for field, spec in wanted.items() if field not in current}
+    if missing:
+        client.indices.put_mapping(index=name, body={"properties": missing})
+        logger.info("opensearch.mapping_extended", index=name, fields=sorted(missing))
 
 
 def index_chunk(target: IndexTarget, *, chunk_id: str, document: dict[str, Any]) -> None:
@@ -248,6 +268,52 @@ def restage_vectors(vectors: dict[str, list[float]]) -> int:
         refresh=True,
     )
     return int(updated)
+
+
+def retitle_staged(titles: dict[str, str]) -> int:
+    """Set ``document_title`` on staged chunks that lack one, by source URL.
+
+    For chunks staged before titles were recorded: a curated document's title
+    is known from its URL, so it can be filled in without a re-crawl -- which
+    would skip the document anyway, its content being unchanged.
+
+    Args:
+        titles: Title keyed by source URL.
+
+    Returns:
+        How many chunks were updated.
+
+    Staging only, like ``stage_chunk``. Live chunks gain their title the one
+    way anything reaches production: promotion, which copies the staged body.
+    """
+    if not titles:
+        return 0
+    client = get_client()
+    index = resolve_index(IndexTarget.STAGING)
+    if not client.indices.exists(index=index):
+        return 0
+    response = client.update_by_query(
+        index=index,
+        body={
+            "query": {
+                "bool": {
+                    "filter": [{"terms": {"source_url": sorted(titles)}}],
+                    "must_not": [{"exists": {"field": "document_title"}}],
+                }
+            },
+            "script": {
+                "lang": "painless",
+                "source": "ctx._source.document_title = params.titles[ctx._source.source_url]",
+                "params": {"titles": titles},
+            },
+        },
+        refresh=True,
+        conflicts="proceed",
+        # One call over a whole corpus: thousands of chunks outlast the
+        # client's default ten seconds, which was found live on 5,000.
+        request_timeout=600,
+    )
+    return int(response.get("updated", 0))
 
 
 @dataclass(frozen=True)
