@@ -78,8 +78,31 @@ COLUMN_GAP_RATIO = 0.12
 #: this is the single most reliable signal available here.
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+)*\.?(\s+\S|$)")
 
+#: A fault or alarm code opening a line: Siemens' "F30002", "A08757". A list
+#: manual is a heading per code; titled at more than a few words, as most
+#: are, they failed the unnumbered-heading length check and every such fault
+#: was filed under the one before it -- a citation to the wrong fault.
+_CODE_HEADING = re.compile(r"^[A-Z]{1,2}\d{4,5}\s+\S")
+
 #: A continuation banner: "Table 3 (continued)", "cont.", and so on.
 _CONTINUED = re.compile(r"\bcont(inued)?\b", re.IGNORECASE)
+
+#: Characters further apart than this share of the font size are separate
+#: words. Many PDFs position words rather than emit a space glyph between
+#: them; joined without one, Siemens' "4.2 List of faults and alarms" read
+#: "4.2List of faults and alarms" in every section path.
+WORD_GAP_RATIO = 0.2
+
+#: Page furniture -- running headers and footers -- sits in this share of the
+#: page at the top and at the bottom.
+FURNITURE_MARGIN_RATIO = 0.12
+
+#: A margin line repeated verbatim at the same height on this many pages is
+#: furniture, not content. Siemens repeats the chapter and section titles at
+#: the top of every page; read as headings, they re-opened the section on
+#: each page and nested it under itself: "4.2List of faults and alarms >
+#: 4.2List of faults and alarms".
+MIN_FURNITURE_PAGES = 3
 
 #: Below this, a page is treated as having no usable text layer.
 MIN_CHARS_PER_PAGE = 2
@@ -166,6 +189,80 @@ class _Line:
     split_at_gap: tuple[str, str]
 
 
+def _join(chars: Sequence[dict[str, Any]]) -> str:
+    """Join a line's characters, restoring the spaces their positions imply.
+
+    Args:
+        chars: One line's characters, left to right.
+
+    Returns:
+        The text, with a space wherever a gap wider than ``WORD_GAP_RATIO`` of
+        the font size separates two non-space characters.
+    """
+    parts: list[str] = []
+    previous: dict[str, Any] | None = None
+    for char in chars:
+        text = str(char["text"])
+        if previous is not None and not text.isspace() and not str(previous["text"]).isspace():
+            gap = float(char["x0"]) - float(previous["x1"])
+            if gap > WORD_GAP_RATIO * float(char.get("size", 0.0) or 0.0):
+                parts.append(" ")
+        parts.append(text)
+        previous = char
+    return "".join(parts)
+
+
+def _drop_furniture(lines_by_page: dict[int, list[_Line]], heights: dict[int, float]) -> None:
+    """Remove running headers and footers from every page, in place.
+
+    Args:
+        lines_by_page: Each page's lines.
+        heights: Each page's height.
+
+    A line is furniture when the same text sits at the same height within
+    the top or bottom margin of at least ``MIN_FURNITURE_PAGES`` pages that
+    carry other content too. A
+    real heading appears once; a page number changes from page to page; only
+    furniture repeats verbatim in the margin.
+    """
+
+    def in_margin(line: _Line) -> bool:
+        height = heights.get(line.page)
+        if not height:
+            return False
+        margin = height * FURNITURE_MARGIN_RATIO
+        return not margin < line.top < height - margin
+
+    def key(line: _Line) -> tuple[str, int] | None:
+        if not in_margin(line):
+            return None
+        return (line.text, round(line.top / 2))
+
+    def page_number(line: _Line) -> bool:
+        # A bare number in the margin. It changes every page, so it never
+        # repeats, but it matches the section-number pattern: "726" became a
+        # heading and filed the next page's content under it.
+        return in_margin(line) and line.text.isdigit()
+
+    pages: dict[tuple[str, int], set[int]] = {}
+    for page, lines in lines_by_page.items():
+        # Furniture frames content. A page whose only line is the repeated
+        # one has nothing else to frame, and dropping it would drop the page.
+        if len(lines) < 2:
+            continue
+        for line in lines:
+            k = key(line)
+            if k is not None:
+                pages.setdefault(k, set()).add(page)
+    furniture = {k for k, seen in pages.items() if len(seen) >= MIN_FURNITURE_PAGES}
+    for page, lines in lines_by_page.items():
+        if len(lines) < 2:
+            continue
+        lines_by_page[page] = [
+            line for line in lines if key(line) not in furniture and not page_number(line)
+        ]
+
+
 def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Line]:
     """Group a page's characters into visual lines.
 
@@ -190,7 +287,7 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
     lines: list[_Line] = []
     for key in sorted(buckets):
         row = sorted(buckets[key], key=lambda c: float(c["x0"]))
-        text = "".join(str(c["text"]) for c in row).strip()
+        text = _join(row).strip()
         if not text:
             continue
 
@@ -214,10 +311,7 @@ def _group_lines(chars: Sequence[dict[str, Any]], page_number: int) -> list[_Lin
                 bold=sum("bold" in f.lower() for f in fonts) > len(fonts) / 2,
                 max_gap=gap,
                 gap_start=gap_start,
-                split_at_gap=(
-                    "".join(str(c["text"]) for c in row[:gap_index]),
-                    "".join(str(c["text"]) for c in row[gap_index:]),
-                ),
+                split_at_gap=(_join(row[:gap_index]), _join(row[gap_index:])),
             )
         )
     return lines
@@ -406,12 +500,17 @@ def _is_heading(line: _Line, *, body: float) -> bool:
     text = line.text.strip()
     if not text or len(text) > MAX_HEADING_CHARS:
         return False
+    # A number alone names nothing: a page number in a contents list, or a
+    # chapter numeral set on its own line above its title. As headings they
+    # gave section paths like "Table of contents > 234".
+    if text.replace(".", "").isdigit():
+        return False
 
     prominent = line.size >= body * HEADING_SIZE_RATIO or (line.bold and line.size >= body)
     if not prominent:
         return False
 
-    if _NUMBERED_HEADING.match(text):
+    if _NUMBERED_HEADING.match(text) or _CODE_HEADING.match(text):
         return True
 
     # Unnumbered headings exist ("Contents", "Safety", "Fault tracing"), and
@@ -655,6 +754,7 @@ def _read_page(
     tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]],
     widths: dict[int, float],
     document_id: str,
+    heights: dict[int, float] | None = None,
 ) -> None:
     """Reduce one page to the small records the block pass needs.
 
@@ -665,6 +765,8 @@ def _read_page(
             ``(top, bottom, rows)``, keyed by page number.
         widths: Filled with the page's width, keyed by page number.
         document_id: For log lines.
+        heights: Filled with the page's height, keyed by page number, when
+            given; the furniture pass needs it.
 
     Table rows are extracted here, while the page is open, rather than later
     from retained pdfplumber table objects: those hold a reference to their
@@ -683,6 +785,8 @@ def _read_page(
         for table in page.find_tables()
     ]
     widths[page_number] = float(page.width)
+    if heights is not None:
+        heights[page_number] = float(page.height)
 
 
 def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
@@ -714,6 +818,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     lines_by_page: dict[int, list[_Line]] = {}
     tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]] = {}
     widths: dict[int, float] = {}
+    heights: dict[int, float] = {}
     try:
         with pdfplumber.open(io.BytesIO(data)) as document:
             page_count = _count_pages(document)
@@ -724,7 +829,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
                         f"{page.page_number} of {page_count}"
                     )
                 try:
-                    _read_page(page, lines_by_page, tables_by_page, widths, document_id)
+                    _read_page(page, lines_by_page, tables_by_page, widths, document_id, heights)
                 finally:
                     # Released whether or not the page was usable: the layout
                     # is the expensive part, and nothing below needs it.
@@ -734,6 +839,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     except Exception as exc:
         raise UnreadableDocumentError(f"could not open PDF: {exc}") from exc
 
+    _drop_furniture(lines_by_page, heights)
     all_lines = list(itertools.chain.from_iterable(lines_by_page.values()))
     if not all_lines:
         raise UnreadableDocumentError("no text layer in any page")
@@ -812,6 +918,12 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
                 continue
 
             is_heading = _is_heading(line, body=body)
+            if is_heading and line.text in stack:
+                # A heading already open is being repeated, not reopened: a
+                # running header on a section too short for the furniture
+                # pass to catch. Nesting it under itself gave paths like
+                # "1.3 Security information > 1.3 Security information".
+                continue
             if is_heading:
                 level = _heading_level(line.size, body)
                 # Clamped so a heading can never descend more than one level

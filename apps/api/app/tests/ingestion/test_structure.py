@@ -892,3 +892,108 @@ def test_every_page_is_released_after_it_is_read(monkeypatch: pytest.MonkeyPatch
 
     assert len(seen) == 4
     assert still_held == []
+
+
+# --- found on Siemens' G120C list manual ---------------------------------------
+#
+# Every section path in it read "4.2List of faults and alarms > 4.2List of
+# faults and alarms > ...": no space after the number, the section nested
+# under itself, and a page number filed as a section heading.
+
+
+def _running_header(page: Page, *titles: str) -> Page:
+    """Siemens' layout: the chapter and section repeated at the top of the page."""
+    page.pdf.setFont("Helvetica", 10)
+    for i, title in enumerate(titles):
+        page.pdf.drawString(60, HEIGHT - 40 - i * 15, title)
+    page.y = HEIGHT - 110
+    return page
+
+
+def _page_number(page: Page, number: int) -> Page:
+    page.pdf.setFont("Helvetica", 10)
+    page.pdf.drawString(WIDTH - 80, 30, str(number))
+    return page
+
+
+def _positioned(page: Page, x: float, *words: str, size: float = 10) -> Page:
+    """Draw words at explicit positions, with no space glyph between them."""
+    page.pdf.setFont("Helvetica-Bold", size)
+    for word in words:
+        page.pdf.drawString(x, page.y, word)
+        x += page.pdf.stringWidth(word, "Helvetica-Bold", size) + size * 0.6
+    page.y -= size * 2
+    return page
+
+
+def test_words_positioned_apart_are_read_with_a_space() -> None:
+    # The PDF places "4.2" and "List" apart and emits no space between them.
+    data = build(
+        lambda p: _positioned(p, 60, "4.2", "List", "of", "faults", size=16).body(
+            "Every fault the drive reports is listed here."
+        )
+    )
+    headings = [b.text for b in extract_structure(data).blocks if b.kind is BlockKind.HEADING]
+
+    assert headings == ["4.2 List of faults"]
+
+
+def test_a_running_header_is_not_a_section() -> None:
+    def page(n: int, code: str) -> Callable[[Page], object]:
+        return lambda p: _page_number(
+            _running_header(p, "4 Faults and alarms", "4.2 List of faults and alarms")
+            .heading(f"{code} Power unit fault", 14)
+            .body(f"Cause and remedy for {code}, as the drive reports it."),
+            n,
+        )
+
+    data = build(page(725, "F30001"), page(726, "F30002"), page(727, "F30003"))
+    sections = {b.section for b in extract_structure(data).blocks if b.kind is BlockKind.PARAGRAPH}
+
+    # One level each, no header re-opened on every page, no page number.
+    assert sections == {
+        "F30001 Power unit fault",
+        "F30002 Power unit fault",
+        "F30003 Power unit fault",
+    }
+
+
+def test_a_heading_repeated_on_the_next_page_is_not_nested_under_itself() -> None:
+    # Two pages: too few for the furniture pass, so the rule has to hold on
+    # its own.
+    data = build(
+        lambda p: p.heading("1.3 Security information", 16).body("Protect the drive network."),
+        # Repeated smaller, as a running header is: read as a heading it opens
+        # one level down, a child of itself.
+        lambda p: p.heading("1.3 Security information", 12).body("Use strong passwords only."),
+    )
+    sections = {b.section for b in extract_structure(data).blocks if b.kind is BlockKind.PARAGRAPH}
+
+    assert sections == {"1.3 Security information"}
+
+
+def test_a_number_alone_is_never_a_heading() -> None:
+    data = build(
+        lambda p: p.heading("Table of contents", 16).heading("234", 16).body("Index entries.")
+    )
+    headings = [b.text for b in extract_structure(data).blocks if b.kind is BlockKind.HEADING]
+
+    assert headings == ["Table of contents"]
+
+
+def test_a_fault_code_with_a_long_title_opens_its_own_section() -> None:
+    # "F30002 Power unit: DC link voltage overvoltage" is longer than an
+    # unnumbered heading may be, and was filed under F30001 -- the reader of
+    # that citation would look up the wrong fault.
+    data = build(
+        lambda p: p.heading("F30001 Power unit: Overcurrent", 12)
+        .body("Cause: the power unit has detected an overcurrent condition.")
+        .heading("F30002 Power unit: DC link voltage overvoltage", 12)
+        .body("Cause: the power unit has detected overvoltage in the DC link.")
+    )
+    sections = [b.section for b in extract_structure(data).blocks if b.kind is BlockKind.PARAGRAPH]
+
+    assert sections == [
+        "F30001 Power unit: Overcurrent",
+        "F30002 Power unit: DC link voltage overvoltage",
+    ]
