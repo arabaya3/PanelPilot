@@ -204,12 +204,16 @@ validator as `POST /api/v1/plc/review` on it before answering. A validator
 that fails returns an explicit `INCOMPLETE` verdict rather than none, so
 generated code is never handed over looking checked when it was not.
 
-**The PDF structure extractor cannot stitch a headerless table continuation.**
+**A headerless table continuation is stitched only on matching evidence.**
 A table continued across a page break with neither a repeated header nor a
-"(continued)" banner stays two blocks rather than one. Geometry was measured
-as a candidate signal and rejected — it does not separate the two cases. The
-consequence is a table fragment presented as a complete table, which is why it
-is recorded rather than left to be discovered.
+"(continued)" banner is joined when nothing comes between the two halves,
+their column widths agree to 1.5 pt, and the last row before the break has
+the same shape (empty, number, code or text per cell) as the first row after
+it. Text beside empty cells is not joined: that is a framed page layout, not
+data. Checked on the PowerFlex 520, WJ200, MS300, FC 302 and ATV630 manuals.
+A continuation that fails any of these stays two blocks, so a fragment can
+still be presented as a complete table; a new table opening on the same grid
+with a data row would be wrongly joined.
 
 **BE-015 is partially satisfied.** Required checks, `enforce_admins`, and
 no-force-push are live and correct on `main`. The required-approval count and
