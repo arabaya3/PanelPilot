@@ -162,6 +162,47 @@ def enclosure_heat_load_w(
     return heat, max(Decimal(0), heat - shed)
 
 
+def _drive_range(constraints: EnclosureConstraints) -> str:
+    """Choose the drive range: the one asked for, else the first preferred vendor's.
+
+    A preferred vendor's range is used only where it is rated for the
+    supply; with none, the default range (ABB ACS880-01).
+    """
+    if constraints.drive_range:
+        return constraints.drive_range
+    supply = constraints.supply_voltage_v
+    for vendor in constraints.preferred_vendors:
+        wanted = vendor.strip().lower()
+        if not wanted:
+            continue
+        for summary in vfd_selection.available_ranges():
+            if wanted in summary.manufacturer.lower() and any(
+                low <= supply <= high for low, high in summary.bands
+            ):
+                return summary.key
+    return vfd_selection.DEFAULT_RANGE
+
+
+def _fuse_line(load: LoadScheduleItem, fuse: vfd_selection.InputFuse) -> BomLine:
+    """The input fuses a drive's manual lists for it, one per phase."""
+    return BomLine(
+        part_reference=f"Bussmann {fuse.bussmann} {fuse.amps} A aR",
+        description=(
+            f"{load.tag}: drive input fuses, aR {fuse.amps} A, one per phase; "
+            f"needs at least {fuse.min_short_circuit_a} A prospective "
+            "short-circuit current"
+        ),
+        quantity=3,
+        source=fuse.source,
+        kind=BomLineKind.FUSE,
+        details={
+            "tag": load.tag,
+            "amps": fuse.amps,
+            "min_sc_a": fuse.min_short_circuit_a,
+        },
+    )
+
+
 def _starter_lines(
     load: LoadScheduleItem,
     constraints: EnclosureConstraints,
@@ -308,7 +349,9 @@ def build_bom(
 
     starters = 0
     drives = 0
+    unfused_drives = 0
     unprotected = 0
+    drive_range = _drive_range(constraints)
     for load in loads:
         if load.start is not None and load.variable_speed:
             raise ValidationError(
@@ -337,38 +380,26 @@ def build_bom(
                     duty_class=DutyClass.NORMAL,
                     altitude_m=Decimal(0),
                     ambient_temp_c=constraints.max_internal_temp_c,
+                    drive_range=drive_range,
                 )
-                type_code = drive.frame_reference.split(" ")[0]
-                fuse = vfd_selection.input_fuse(type_code=type_code)
+                type_code = drive.frame_reference.rsplit(" (", 1)[0]
                 lines.append(
                     BomLine(
                         part_reference=type_code,
                         description=f"{load.tag}: drive for {load.description}",
                         quantity=1,
-                        source=vfd_selection.ratings_citation(constraints.supply_voltage_v),
+                        source=vfd_selection.ratings_citation(
+                            constraints.supply_voltage_v, drive_range
+                        ),
                         kind=BomLineKind.DRIVE,
                         details={"tag": load.tag, "load": load.description},
                     )
                 )
-                lines.append(
-                    BomLine(
-                        part_reference=f"Bussmann {fuse.bussmann} {fuse.amps} A aR",
-                        description=(
-                            f"{load.tag}: drive input fuses, aR {fuse.amps} A, one per phase; "
-                            f"needs at least {fuse.min_short_circuit_a} A prospective "
-                            "short-circuit current"
-                        ),
-                        quantity=3,
-                        source=fuse.source,
-                        kind=BomLineKind.FUSE,
-                        details={
-                            "tag": load.tag,
-                            "amps": fuse.amps,
-                            "min_sc_a": fuse.min_short_circuit_a,
-                        },
-                    )
-                )
-                drives += 1
+                if drive_range == vfd_selection.DEFAULT_RANGE:
+                    lines.append(_fuse_line(load, vfd_selection.input_fuse(type_code=type_code)))
+                    drives += 1
+                else:
+                    unfused_drives += 1
             if load.start is not None and load.power_kw is not None:
                 lines.extend(
                     _starter_lines(
@@ -442,6 +473,12 @@ def build_bom(
             "prospective short-circuit current is at least the minimum on each line."
         )
         note_keys.append(BomNote.FUSE_MIN_SHORT_CIRCUIT)
+    if unfused_drives:
+        notes.append(
+            "Drive input fuses are listed only for the ABB ACS880-01; for the drives "
+            "chosen here, take the fuses from the drive manual cited on each drive line."
+        )
+        note_keys.append(BomNote.DRIVE_FUSES_NOT_LISTED)
     if constraints.cable_material is ConductorMaterial.ALUMINIUM:
         notes.append(
             "Terminals are selected from a copper terminal table; aluminium cables "

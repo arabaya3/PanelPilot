@@ -92,6 +92,34 @@ def test_a_drive_is_selected_with_the_motor_current_and_every_source() -> None:
     assert [s.manufacturer for s in response.sources] == ["ABB"] * 4
 
 
+def test_a_drive_is_selected_from_the_range_asked_for() -> None:
+    # 7.5 kW, 400 V, η 0.9, cos 0.85: 14.2 A. Siemens V20 (OI p. 24): 7.5 kW
+    # is 16.5 A, the first to carry it; every source names Siemens.
+    response = calculations.select_vfd(
+        session=_NO_SESSION,
+        user=_USER,
+        request=VfdSelectionRequest(
+            motor_power_kw=Decimal("7.5"),
+            supply_voltage_v=Decimal("400"),
+            motor_efficiency=Decimal("0.9"),
+            motor_power_factor=Decimal("0.85"),
+            drive_range="siemens-v20",
+        ),
+    )
+    assert response.result.drive_range == "siemens-v20"
+    assert response.result.manufacturer == "Siemens"
+    assert response.result.frame_reference.startswith("6SL3210-5BE27-5")
+    # The motor-current formula is ABB's guide; the ratings and deratings are Siemens'.
+    assert [s.manufacturer for s in response.sources[1:]] == ["Siemens"] * 3
+
+
+def test_every_range_is_listed_the_default_first() -> None:
+    ranges = calculations.drive_ranges()
+    assert ranges[0].key == "abb-acs880-01"
+    assert {r.manufacturer for r in ranges} >= {"ABB", "Danfoss", "Delta", "Siemens"}
+    assert all(r.bands and r.source.page for r in ranges)
+
+
 def test_a_bom_is_built_with_each_source_once() -> None:
     response = calculations.build_panel_bom(
         session=_NO_SESSION,

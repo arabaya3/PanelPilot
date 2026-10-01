@@ -251,6 +251,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/calculations/drive-ranges': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Drive Ranges */
+    get: operations['list_drive_ranges_api_v1_calculations_drive_ranges_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/calculations/vfd-selection': {
     parameters: {
       query?: never;
@@ -677,7 +694,8 @@ export interface components {
       | 'fuse_min_short_circuit'
       | 'terminals_copper_only'
       | 'incomplete_dissipation'
-      | 'fault_level_assumed';
+      | 'fault_level_assumed'
+      | 'drive_fuses_not_listed';
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.
@@ -1042,6 +1060,23 @@ export interface components {
      */
     DisplayVerdict: 'fault_display' | 'not_a_fault_display' | 'unreadable';
     /**
+     * DriveRangeSummary
+     * @description A drive series selection can choose from.
+     */
+    DriveRangeSummary: {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Series */
+      series: string;
+      /** Bands */
+      bands: components['schemas']['SupplyBand'][];
+      /** Heavy Duty */
+      heavy_duty: boolean;
+      source: components['schemas']['Citation'];
+    };
+    /**
      * DutyClass
      * @description Drive duty rating.
      * @enum {string}
@@ -1076,6 +1111,8 @@ export interface components {
        * @default []
        */
       preferred_vendors: string[];
+      /** Drive Range */
+      drive_range?: string | null;
       /**
        * Ambient Temp C
        * @default 35
@@ -1805,6 +1842,16 @@ export interface components {
       equipment_model?: string | null;
     };
     /**
+     * SupplyBand
+     * @description A supply voltage band a range is rated for.
+     */
+    SupplyBand: {
+      /** Low V */
+      low_v: string;
+      /** High V */
+      high_v: string;
+    };
+    /**
      * TokenPair
      * @description A short-lived access token and the refresh token that renews it.
      */
@@ -1973,6 +2020,8 @@ export interface components {
        * @default 40
        */
       ambient_temp_c: number | string;
+      /** Drive Range */
+      drive_range?: string | null;
     };
     /**
      * VfdSelectionResponse
@@ -1996,6 +2045,21 @@ export interface components {
       rated_output_current_a: string;
       /** Applied Factors */
       applied_factors: components['schemas']['AppliedFactor'][];
+      /**
+       * Drive Range
+       * @default abb-acs880-01
+       */
+      drive_range: string;
+      /**
+       * Manufacturer
+       * @default ABB
+       */
+      manufacturer: string;
+      /**
+       * Series
+       * @default ACS880-01
+       */
+      series: string;
     };
   };
   responses: never;
@@ -2386,6 +2450,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_drive_ranges_api_v1_calculations_drive_ranges_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DriveRangeSummary'][];
         };
       };
     };

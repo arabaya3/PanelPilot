@@ -98,6 +98,9 @@ class VfdSelectionRequest(BaseModel):
     duty_class: DutyClass = DutyClass.NORMAL
     altitude_m: Decimal = Decimal(0)
     ambient_temp_c: Decimal = Decimal(40)
+    #: Which series to choose from (``GET .../drive-ranges``); the ABB
+    #: ACS880-01 when omitted.
+    drive_range: str | None = None
 
 
 class VfdSelectionResult(BaseModel):
@@ -106,6 +109,29 @@ class VfdSelectionResult(BaseModel):
     frame_reference: str
     rated_output_current_a: Decimal
     applied_factors: list[AppliedFactor]
+    #: The range the type was chosen from.
+    drive_range: str = "abb-acs880-01"
+    manufacturer: str = "ABB"
+    series: str = "ACS880-01"
+
+
+class SupplyBand(BaseModel):
+    """A supply voltage band a range is rated for."""
+
+    low_v: Decimal
+    high_v: Decimal
+
+
+class DriveRangeSummary(BaseModel):
+    """A drive series selection can choose from."""
+
+    key: str
+    manufacturer: str
+    series: str
+    bands: list[SupplyBand]
+    #: Whether any type carries a heavy-duty (150 % for 60 s) rating.
+    heavy_duty: bool
+    source: Citation
 
 
 class VfdSelectionResponse(BaseModel):
@@ -174,7 +200,11 @@ class EnclosureConstraints(BaseModel):
     cable_material: ConductorMaterial = ConductorMaterial.COPPER
     #: Prospective short-circuit current at the panel, if known.
     fault_level_ka: Decimal | None = None
+    #: Manufacturers to prefer, in order. The drives come from the first
+    #: one with a range rated for the supply; ABB's ACS880-01 otherwise.
     preferred_vendors: list[str] = []
+    #: A drive range to use, overriding ``preferred_vendors``.
+    drive_range: str | None = None
     ambient_temp_c: Decimal = Decimal(35)
     max_internal_temp_c: Decimal = Decimal(50)
 
@@ -205,6 +235,8 @@ class BomNote(StrEnum):
     INCOMPLETE_DISSIPATION = "incomplete_dissipation"
     #: Starters are coordinated to 50 kA and no fault level was given.
     FAULT_LEVEL_ASSUMED = "fault_level_assumed"
+    #: The drives' manual has no fuse table held here.
+    DRIVE_FUSES_NOT_LISTED = "drive_fuses_not_listed"
 
 
 class BomLine(BaseModel):

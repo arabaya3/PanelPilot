@@ -13,6 +13,7 @@ from app.domain import calculations as calculations_domain
 from app.models.schemas.calculations import (
     CableSizingRequest,
     CableSizingResponse,
+    DriveRangeSummary,
     PanelBomRequest,
     PanelBomResponse,
     VfdSelectionRequest,
@@ -29,6 +30,12 @@ def size_cable(
     user: CurrentUserDep,
 ) -> CableSizingResponse:
     return calculations_domain.size_cable(session=session, user=user, request=payload)
+
+
+@router.get("/drive-ranges", response_model=list[DriveRangeSummary])
+def list_drive_ranges(user: CurrentUserDep) -> list[DriveRangeSummary]:
+    del user
+    return calculations_domain.drive_ranges()
 
 
 @router.post("/vfd-selection", response_model=VfdSelectionResponse)
