@@ -30,8 +30,8 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotFoundError, ValidationError
-from app.models.schemas.auth import Role
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.user import Role as RoleRow
 from app.models.tables.user import User
 
@@ -125,6 +125,33 @@ def revoke_role(*, session: Session, email: str, role: Role) -> bool:
     session.flush()
     logger.info("roles.revoked", user_id=str(user.id), role=role.value)
     return True
+
+
+def reviewer_by_email(*, session: Session, email: str) -> CurrentUser:
+    """Load an account that holds the reviewer role, as the principal it acts as.
+
+    For an operator command that clears review items in a named person's
+    name: the roles come from the stored grants, never from the command line.
+
+    Args:
+        session: A session able to see every tenant's accounts.
+        email: The reviewer's address.
+
+    Returns:
+        The reviewer.
+
+    Raises:
+        NotFoundError: If there is no such account.
+        AuthorizationError: If it does not hold the reviewer role, or is
+            deactivated.
+    """
+    user = _account(session=session, email=email)
+    roles = roles_of(user)
+    if not user.is_active or Role.REVIEWER not in roles:
+        raise AuthorizationError(f"{user.email} is not an active reviewer")
+    return CurrentUser(
+        id=str(user.id), email=user.email, tenant_id=str(user.tenant_id), roles=roles
+    )
 
 
 def _account(*, session: Session, email: str) -> User:

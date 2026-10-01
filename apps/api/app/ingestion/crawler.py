@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import httpx
@@ -480,11 +480,14 @@ class DocumentCheck:
             ``robots-unavailable``, ``fetch-budget-exhausted`` and the other
             ``get`` reasons.
         content_hash: The hash of what the URL serves now, when fetched.
+        body: What it served, when fetched: for a caller that needs the
+            document itself, such as the source check reading its pages.
     """
 
     url: str
     status: str
     content_hash: str | None = None
+    body: bytes | None = field(default=None, repr=False, compare=False)
 
 
 def check_documents(
@@ -593,7 +596,7 @@ def _check_one(fetcher: _Fetcher, url: str, *, paced: set[str]) -> DocumentCheck
         paced.add(host)
     body, reason = fetcher.get(url)
     if body is not None:
-        return DocumentCheck(url, "fetched", content_hash(body))
+        return DocumentCheck(url, "fetched", content_hash(body), body)
     if fetcher.last_status in GONE_STATUSES:
         return DocumentCheck(url, "gone")
     return DocumentCheck(url, reason or "unreachable")

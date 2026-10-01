@@ -314,3 +314,47 @@ def test_holders_are_the_active_accounts_granted_the_role(db: Session) -> None:
 def test_asking_who_holds_the_implicit_role_is_refused() -> None:
     with pytest.raises(ValidationError):
         roles.holders_of(session=cast(Session, None), role=Role.ENGINEER)
+
+
+# --- acting as a named reviewer -------------------------------------------------
+
+
+@requires_db
+def test_a_reviewer_is_loaded_with_their_stored_roles(db: Session) -> None:
+    email, _ = _account(db)
+    roles.grant_role(session=db, email=email, role=Role.REVIEWER)
+    db.commit()
+
+    reviewer = roles.reviewer_by_email(session=db, email=email.upper())
+
+    assert reviewer.email == email
+    assert reviewer.roles == frozenset({Role.ENGINEER, Role.REVIEWER})
+
+
+@requires_db
+def test_an_account_without_the_reviewer_role_is_refused(db: Session) -> None:
+    from app.core.errors import AuthorizationError
+
+    email, _ = _account(db)
+
+    with pytest.raises(AuthorizationError, match="not an active reviewer"):
+        roles.reviewer_by_email(session=db, email=email)
+
+
+@requires_db
+def test_a_deactivated_reviewer_is_refused(db: Session) -> None:
+    from app.core.errors import AuthorizationError
+
+    email, _ = _account(db)
+    roles.grant_role(session=db, email=email, role=Role.REVIEWER)
+    db.query(User).filter(User.email == email).one().is_active = False
+    db.commit()
+
+    with pytest.raises(AuthorizationError):
+        roles.reviewer_by_email(session=db, email=email)
+
+
+@requires_db
+def test_no_account_is_not_found(db: Session) -> None:
+    with pytest.raises(NotFoundError):
+        roles.reviewer_by_email(session=db, email=_email())

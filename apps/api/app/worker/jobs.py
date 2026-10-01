@@ -15,7 +15,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.core.errors import NotFoundError, PanelPilotError, ValidationError
+from app.core.errors import AuthorizationError, NotFoundError, PanelPilotError, ValidationError
 from app.models.schemas.auth import CurrentUser, Role
 
 #: The principal unattended jobs act as. Fixed so a staged document always
@@ -378,6 +378,73 @@ def run_expire_stale_sources(args: list[str]) -> int:
     return 1 if report.flagged else 0
 
 
+def run_review_staged(args: list[str]) -> int:
+    """Check pending chunks against their PDFs and clear the grounded ones.
+
+    ``review-staged <reviewer_email> [--dry-run] [--no-fetch] [pdf_folder ...]``.
+    Run by a person, as a named reviewer, never on a schedule: every
+    clearance it makes is recorded under that reviewer's account, as if made
+    in the console. The folders default to ``data``, where ``ingest-files``
+    reads manuals from. A crawled manual found in none of them is fetched
+    again into ``data/_fetched`` and kept there, unless ``--no-fetch``.
+
+    Args:
+        args: The reviewer's email, then the options.
+
+    Returns:
+        ``0`` on success, ``1`` if any clearance failed, ``2`` on bad
+        arguments, an unknown account, or one without the reviewer role.
+    """
+    from collections import Counter
+    from contextlib import closing
+    from pathlib import Path
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import roles as roles_domain
+    from app.domain import source_check
+
+    options = [a for a in args if a.startswith("--")]
+    positional = [a for a in args if not a.startswith("--")]
+    if not positional or set(options) - {"--dry-run", "--no-fetch"}:
+        print(
+            "usage: review-staged <reviewer_email> [--dry-run] [--no-fetch] [pdf_folder ...]",
+            file=sys.stderr,
+        )
+        return 2
+    email, *folders = positional
+
+    def progress(title: str, counts: Counter[source_check.Verdict]) -> None:
+        tally = ", ".join(f"{verdict.value} {n}" for verdict, n in counts.most_common())
+        print(f"checked {title[:60]}: {tally}", flush=True)
+
+    sessions = get_session()
+    session = next(sessions)
+    # The queue spans tenants, and the reviewer is found by email before any
+    # tenant is known (ADR 0003).
+    with closing(session), cross_tenant(session, reason="reviewers work every tenant's queue"):
+        try:
+            reviewer = roles_domain.reviewer_by_email(session=session, email=email)
+            report = source_check.review_staged(
+                session=session,
+                reviewer=reviewer,
+                pdf_folders=[Path(f) for f in folders or ["data"]],
+                dry_run="--dry-run" in options,
+                fetch_into=None if "--no-fetch" in options else Path("data") / "_fetched",
+                progress=progress,
+            )
+        except (NotFoundError, ValidationError, AuthorizationError) as exc:
+            print(f"review-staged: {exc}", file=sys.stderr)
+            return 2
+
+    tally = ", ".join(f"{verdict.value} {n}" for verdict, n in report.totals().most_common())
+    print(f"verdicts: {tally or 'nothing pending'}")
+    print(f"cleared: {report.cleared}")
+    for reason, count in report.failed.items():
+        print(f"failed ({count}): {reason}", file=sys.stderr)
+    return 1 if report.failed else 0
+
+
 def run_grant_role(args: list[str]) -> int:
     """Give an account a role: ``grant-role <email> <role>``.
 
@@ -534,6 +601,11 @@ REGISTRY: dict[str, JobSpec] = {
             "expire-stale-sources",
             "Flag live documents whose upstream source changed or was withdrawn.",
             run_expire_stale_sources,
+        ),
+        JobSpec(
+            "review-staged",
+            "Check pending chunks against their PDFs; clear the grounded ones as a reviewer.",
+            run_review_staged,
         ),
         JobSpec(
             "grant-role", "Give an account a role (reviewer, ingestion, admin).", run_grant_role

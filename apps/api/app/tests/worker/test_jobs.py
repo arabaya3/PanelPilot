@@ -13,12 +13,13 @@ nothing else would notice.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import pytest
 
-from app.core.errors import NotFoundError, ValidationError
-from app.models.schemas.auth import Role
+from app.core.errors import AuthorizationError, NotFoundError, ValidationError
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.ingestion import CrawlJobResponse, CrawlJobStatus
 from app.worker import jobs
 
@@ -717,3 +718,113 @@ def test_expire_stale_sources_exits_non_zero_when_a_reviewer_is_needed(
 def test_no_registered_job_is_a_placeholder() -> None:
     """Both of these once answered "not built yet"; none may again."""
     assert not [s.name for s in jobs.REGISTRY.values() if "not built" in s.description]
+
+
+# --- review-staged ---------------------------------------------------------------
+
+
+def _review_session() -> Any:
+    class _Session:
+        def commit(self) -> None: ...
+
+        def rollback(self) -> None: ...
+
+        def close(self) -> None: ...
+
+    return _Session()
+
+
+def test_review_staged_checks_as_the_named_reviewer(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from collections import Counter
+    from pathlib import Path
+
+    from app.domain import roles as roles_domain
+    from app.domain import source_check
+
+    reviewer = CurrentUser(
+        id=str(uuid.uuid4()),
+        email="lead@example.com",
+        tenant_id=str(uuid.uuid4()),
+        roles=frozenset({Role.REVIEWER}),
+    )
+    asked: dict[str, Any] = {}
+
+    def review(**kwargs: Any) -> source_check.SourceCheckReport:
+        asked.update(kwargs)
+        kwargs["progress"]("ACS880 manual", Counter({source_check.Verdict.GROUNDED: 2}))
+        report = source_check.SourceCheckReport()
+        report.verdicts = {"a": source_check.Verdict.GROUNDED, "b": source_check.Verdict.WEAK}
+        report.cleared = 1
+        return report
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_review_session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(roles_domain, "reviewer_by_email", lambda **_k: reviewer)
+    monkeypatch.setattr(source_check, "review_staged", review)
+
+    assert jobs.run_review_staged(["lead@example.com", "--dry-run", "/manuals"]) == 0
+    assert asked["reviewer"] is reviewer
+    assert asked["dry_run"] is True
+    assert asked["pdf_folders"] == [Path("/manuals")]
+    out = capsys.readouterr().out
+    assert "checked ACS880 manual: grounded 2" in out
+    assert "cleared: 1" in out
+
+
+def test_review_staged_reads_data_by_default_and_fails_on_a_refused_clearance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pathlib import Path
+
+    from app.domain import roles as roles_domain
+    from app.domain import source_check
+
+    asked: dict[str, Any] = {}
+
+    def review(**kwargs: Any) -> source_check.SourceCheckReport:
+        asked.update(kwargs)
+        report = source_check.SourceCheckReport()
+        report.failed["PromotionError: four-eyes"] = 1
+        return report
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_review_session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(roles_domain, "reviewer_by_email", lambda **_k: jobs.system_actor())
+    monkeypatch.setattr(source_check, "review_staged", review)
+
+    assert jobs.run_review_staged(["lead@example.com"]) == 1
+    assert asked["pdf_folders"] == [Path("data")]
+    assert asked["dry_run"] is False
+
+
+def test_review_staged_refuses_bad_arguments_and_non_reviewers(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import roles as roles_domain
+
+    def refuse(**_k: Any) -> CurrentUser:
+        raise AuthorizationError("someone@example.com is not an active reviewer")
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_review_session()]))
+    monkeypatch.setattr("app.core.tenancy.cross_tenant", lambda *_a, **_k: _null())
+    monkeypatch.setattr(roles_domain, "reviewer_by_email", refuse)
+
+    assert jobs.run_review_staged([]) == 2
+    assert jobs.run_review_staged(["a@example.com", "--force"]) == 2
+    assert jobs.run_review_staged(["someone@example.com"]) == 2
+    assert "not an active reviewer" in capsys.readouterr().err
+
+
+def test_review_staged_is_never_scheduled() -> None:
+    """It clears in a person's name, so a person runs it."""
+    from pathlib import Path
+
+    from app.worker.schedule import parse_crontab
+
+    crontab = Path(__file__).resolve().parents[3] / "worker.crontab"
+    entries = parse_crontab(crontab.read_text(encoding="utf-8"))
+
+    assert "review-staged" in jobs.REGISTRY
+    assert all(entry.args[0] != "review-staged" for entry in entries)
