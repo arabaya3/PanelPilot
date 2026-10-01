@@ -8,6 +8,10 @@ HTML" bar that decides whether a crawler can find documents on its own:
   but, like ABB, its PDFs sit on a plain asset host
   (``cache.industry.siemens.com``) whose robots.txt permits ``/dl/files/``,
   and which serves them to our user agent. So Siemens is curated here too.
+* **Invertek** (admin.invertekdrives.com disallows everything), **Lenze**
+  (download.lenze.com answers robots.txt with 403), and **Phoenix
+  Contact**, **Weidmüller** and **B&R** (403 to our client) have no entries
+  either; their manuals go in by hand.
 * **Delta** serves its download center as a JavaScript application with no
   document links in the HTML, and its robots.txt disallows the ``/api/``
   that application reads from; like Schneider, it has no entries here.
@@ -258,6 +262,103 @@ KNOWN_DOCUMENTS: tuple[KnownDocument, ...] = (
         source_id="omron",
         url="https://files.omron.eu/downloads/latest/manual/en/w578_nx-series_nx1p2_cpu_unit_hardware_users_manual_en.pdf",
         title="NX-series NX1P2 CPU Unit Hardware User's Manual (W578)",
+        verified="2026-10-01",
+    ),
+    # LS Electric. www.ls-electric.com disallows only its Korean upload and
+    # download paths; sol.ls-electric.com allows all.
+    KnownDocument(
+        source_id="lselectric",
+        url=(
+            "https://www.ls-electric.com/upload/customer/download/"
+            "925da566-373d-4a8d-bf96-06eece71148b/S100_E.pdf"
+        ),
+        title="LSLV S100 High-Performance Standard Drive Manual",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="lselectric",
+        url=(
+            "https://www.ls-electric.com/upload/customer/download/"
+            "45cf9cc9-e4b9-4dc1-b0ca-d9ea3c51d82f/iG5A_simple%20manual.pdf"
+        ),
+        title="SV-iG5A Inverter Manual",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="lselectric",
+        url=(
+            "https://sol.ls-electric.com/uploads/document/16407659210700/"
+            "iG5A%20Troubleshooting%20manual_ENG_Rev1.0_150417.pdf"
+        ),
+        title="iG5A 0.4-22 kW AC Variable Speed Drive Troubleshooting Manual, Rev 1.0",
+        verified="2026-10-01",
+    ),
+    # Inovance. www.inovance.eu's robots.txt does not cover /fileadmin/downloads/.
+    KnownDocument(
+        source_id="inovance",
+        url=(
+            "https://www.inovance.eu/fileadmin/downloads/Manuals/EN/MD500-PLUS/"
+            "MD500-PLUS_Software_Guide_EN_A04_19011580.pdf"
+        ),
+        title="MD500-PLUS Series AC Drive Software Guide, A04",
+        verified="2026-10-01",
+    ),
+    # Hitachi. www.hitachi-iesa.com disallows only CMS internals.
+    KnownDocument(
+        source_id="hitachi",
+        url=(
+            "https://www.hitachi-iesa.com/sites/default/files/supportdocs/"
+            "WJ200_Instruction_NT325X.pdf"
+        ),
+        title="WJ200 Series Inverter Instruction Manual (NT325X)",
+        verified="2026-10-01",
+    ),
+    # Fuji Electric. americas.fujielectric.com disallows its admin and dated
+    # archive paths, not /wp-content/uploads/.
+    KnownDocument(
+        source_id="fuji",
+        url=(
+            "https://americas.fujielectric.com/wp-content/uploads/2017/02/"
+            "FRENIC-Ace-Instruction-Manual-INR-SI47-1733f-E.pdf"
+        ),
+        title="FRENIC-Ace High Performance Inverter Instruction Manual (INR-SI47-1733f-E)",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="fuji",
+        url=(
+            "https://americas.fujielectric.com/wp-content/uploads/2017/01/" "INR-SI47-1729b-E.pdf"
+        ),
+        title="FRENIC-Mini (C2) Compact Inverter Instruction Manual (INR-SI47-1729b-E)",
+        verified="2026-10-01",
+    ),
+    # Nidec / Control Techniques. moen.nidec.com's robots.txt has no rules.
+    KnownDocument(
+        source_id="nidec",
+        url=(
+            "https://moen.nidec.com/drives/-/media/Project/Nidec/ControlTechniques/"
+            "Documents/Technical/Control-Getting-Started-Guides/Unidrive-M/"
+            "M700-701-HS70-71/"
+            "Unidrive-M700-M701-and-HS70-71-Control-Getting-Started-Guide-EN.pdf"
+        ),
+        title="Unidrive M700/M701 and HS70/HS71 Control Getting Started Guide, Issue 4",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="nidec",
+        url=(
+            "https://moen.nidec.com/drives/-/media/Project/Nidec/ControlTechniques/"
+            "Documents/Technical/Short-Form-Guides/Unidrive-M/"
+            "Unidrive-M700-M701-HS70-HS71-Short-Form-Guide-EN.pdf"
+        ),
+        title="Unidrive M700/M701/HS70/HS71 Short Form Guide, Frame 3 to 11",
+        verified="2026-10-01",
+    ),
+    # SEW-EURODRIVE. download.sew-eurodrive.com has no robots.txt (404).
+    KnownDocument(
+        source_id="sew",
+        url="https://download.sew-eurodrive.com/download/pdf/20045344.pdf",
+        title="MOVITRAC LTE-B Operating Instructions, Edition 11/2012",
         verified="2026-10-01",
     ),
 )

@@ -271,6 +271,94 @@ class DeltaCrawler(_PdfLinksCrawler):
     manufacturer = "Delta Electronics"
 
 
+class LsElectricCrawler(_PdfLinksCrawler):
+    """LS Electric documents (``ls-electric.com``, ``sol.ls-electric.com``)."""
+
+    source_id = "lselectric"
+    host_suffix = "ls-electric.com"
+    manufacturer = "LS Electric"
+
+
+class InovanceCrawler(_PdfLinksCrawler):
+    """Inovance Europe downloads (``www.inovance.eu``)."""
+
+    source_id = "inovance"
+    host_suffix = "inovance.eu"
+    manufacturer = "Inovance"
+
+
+class HitachiCrawler(_PdfLinksCrawler):
+    """Hitachi Industrial Equipment Systems Americas (``www.hitachi-iesa.com``)."""
+
+    source_id = "hitachi"
+    host_suffix = "hitachi-iesa.com"
+    manufacturer = "Hitachi"
+
+
+class FujiCrawler(_PdfLinksCrawler):
+    """Fuji Electric (``fujielectric.com``, ``americas.fujielectric.com``)."""
+
+    source_id = "fuji"
+    host_suffix = "fujielectric.com"
+    manufacturer = "Fuji Electric"
+
+
+class NidecCrawler(_PdfLinksCrawler):
+    """Nidec / Control Techniques drives (``moen.nidec.com``)."""
+
+    source_id = "nidec"
+    host_suffix = "nidec.com"
+    manufacturer = "Nidec Control Techniques"
+
+
+class SewCrawler(_PdfLinksCrawler):
+    """SEW-EURODRIVE documentation (``download.sew-eurodrive.com``)."""
+
+    source_id = "sew"
+    host_suffix = "sew-eurodrive.com"
+    manufacturer = "SEW-EURODRIVE"
+
+
+class InvertekCrawler(_PdfLinksCrawler):
+    """Invertek Drives (``invertekdrives.com``); its file host disallows crawling."""
+
+    source_id = "invertek"
+    host_suffix = "invertekdrives.com"
+    manufacturer = "Invertek Drives"
+
+
+class LenzeCrawler(_PdfLinksCrawler):
+    """Lenze (``lenze.com``); its download host refuses our robots.txt request."""
+
+    source_id = "lenze"
+    host_suffix = "lenze.com"
+    manufacturer = "Lenze"
+
+
+class PhoenixContactCrawler(_PdfLinksCrawler):
+    """Phoenix Contact (``phoenixcontact.com``); it refuses our requests."""
+
+    source_id = "phoenixcontact"
+    host_suffix = "phoenixcontact.com"
+    manufacturer = "Phoenix Contact"
+
+
+class WeidmuellerCrawler(_PdfLinksCrawler):
+    """Weidmüller (``weidmueller.com``); it refuses our requests."""
+
+    source_id = "weidmueller"
+    host_suffix = "weidmueller.com"
+    manufacturer = "Weidmüller"
+
+
+class BrCrawler(_PdfLinksCrawler):
+    """B&R Industrial Automation (``br-automation.com``); it refuses our requests."""
+
+    source_id = "br"
+    host_suffix = "br-automation.com"
+    manufacturer = "B&R"
+
+
 #: The allow-list. A source not registered here cannot be crawled, which is
 #: what makes "the source is not on the allow-list" a real check rather than a
 #: docstring promise.
@@ -287,6 +375,17 @@ CRAWLERS: dict[str, SourceCrawler] = {
         WegCrawler(),
         OmronCrawler(),
         DeltaCrawler(),
+        LsElectricCrawler(),
+        InovanceCrawler(),
+        HitachiCrawler(),
+        FujiCrawler(),
+        NidecCrawler(),
+        SewCrawler(),
+        InvertekCrawler(),
+        LenzeCrawler(),
+        PhoenixContactCrawler(),
+        WeidmuellerCrawler(),
+        BrCrawler(),
     )
 }
 

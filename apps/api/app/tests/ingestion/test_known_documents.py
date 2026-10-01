@@ -162,6 +162,18 @@ def test_yaskawa_documents_are_attachments_robots_allows() -> None:
         ("mitsubishi", ("https://dl.mitsubishielectric.com/dl/fa/document/manual/",)),
         ("weg", ("https://static.weg.net/medias/downloadcenter/",)),
         ("omron", ("https://assets.omron.eu/downloads/", "https://files.omron.eu/downloads/")),
+        (
+            "lselectric",
+            (
+                "https://www.ls-electric.com/upload/customer/download/",
+                "https://sol.ls-electric.com/uploads/document/",
+            ),
+        ),
+        ("inovance", ("https://www.inovance.eu/fileadmin/downloads/",)),
+        ("hitachi", ("https://www.hitachi-iesa.com/sites/default/files/",)),
+        ("fuji", ("https://americas.fujielectric.com/wp-content/uploads/",)),
+        ("nidec", ("https://moen.nidec.com/drives/-/media/",)),
+        ("sew", ("https://download.sew-eurodrive.com/download/pdf/",)),
     ],
 )
 def test_new_sources_come_from_their_own_document_hosts(
@@ -172,6 +184,9 @@ def test_new_sources_come_from_their_own_document_hosts(
     assert all(u.startswith(prefixes) for u in urls)
 
 
-def test_delta_is_not_scraped_through_its_disallowed_api() -> None:
-    """Its download center is a JavaScript app over a robots-disallowed /api/."""
-    assert urls_for("delta") == []
+@pytest.mark.parametrize(
+    "source_id", ["delta", "invertek", "lenze", "phoenixcontact", "weidmueller", "br"]
+)
+def test_sources_that_refuse_the_crawler_have_no_curated_urls(source_id: str) -> None:
+    """Their manuals go in by hand, as Schneider's do; nothing routes around a refusal."""
+    assert urls_for(source_id) == []

@@ -235,6 +235,17 @@ def test_the_allow_list_covers_the_named_sources() -> None:
         "weg",
         "omron",
         "delta",
+        "lselectric",
+        "inovance",
+        "hitachi",
+        "fuji",
+        "nidec",
+        "sew",
+        "invertek",
+        "lenze",
+        "phoenixcontact",
+        "weidmueller",
+        "br",
     }
 
 
