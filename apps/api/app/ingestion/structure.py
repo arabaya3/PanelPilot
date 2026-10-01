@@ -611,7 +611,9 @@ def _continues(
       followed by a data row is a list going on; a data row followed by a row
       of labels is a new table's header. That is what separated PowerFlex's
       new table from Delta's parameter lists and Hitachi's glossary, which do
-      continue.
+      continue. Text beside empty cells does not count: that is a framed
+      page layout, and Delta's MS300 keypad procedures on facing pages share
+      one exactly.
 
     The caller has already established that nothing came between the two:
     the earlier table is the last block on its page and the later one the
@@ -644,7 +646,14 @@ def _continues(
     ):
         return False
     before, after = _row_shape(previous[-1]), _row_shape(following[0])
-    return before == after and any(kind != "" for kind in before)
+    if before != after:
+        return False
+    # Text beside empty cells is a framed page layout, not a row of data:
+    # Delta's MS300 manual sets its keypad procedures as text in a ruled box
+    # beside an empty picture column, and unrelated procedures on facing
+    # pages share that box exactly. Data has a number or a code in it; a
+    # glossary has text in every cell.
+    return any(kind in ("n", "c") for kind in before) or all(kind == "t" for kind in before)
 
 
 #: Column widths of two halves of one table agree to well under a point; this

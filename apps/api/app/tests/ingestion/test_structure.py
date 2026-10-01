@@ -1153,6 +1153,37 @@ def test_a_new_table_on_the_same_grid_is_not_stitched() -> None:
     assert len(tables) == 2
 
 
+def test_a_framed_text_layout_is_not_stitched() -> None:
+    # Delta MS300 keypad pages: procedures set as text in a ruled box beside
+    # an empty picture column. Facing pages share the box, not the procedure.
+    data = build(
+        lambda p: p.heading("10 Keypad", 14).ruled_table(
+            [["", "Speed tracking during start-up"], ["", "Press MODE to return"]],
+            widths=[90, 300],
+        ),
+        lambda p: p.ruled_table(
+            [["", "To delete or correct a value"], ["", "Press ENTER"]], widths=[90, 300]
+        ),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2
+
+
+def test_a_glossary_continuation_is_stitched() -> None:
+    # Hitachi's glossary: text in every cell, continued onto the next page.
+    data = build(
+        lambda p: p.heading("Glossary", 14).ruled_table(
+            [["Term", "Meaning"], ["Carrier frequency", "The switching rate"]],
+            widths=[120, 260],
+        ),
+        lambda p: p.ruled_table([["Dynamic braking", "Energy into a resistor"]], widths=[120, 260]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+
+
 def test_a_different_grid_is_not_stitched() -> None:
     data = build(
         lambda p: p.heading("4 Parameters", 14).ruled_table(
