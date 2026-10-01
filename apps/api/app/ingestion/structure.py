@@ -572,12 +572,20 @@ def _rows_of(table: Any) -> list[list[str]]:
     return rows
 
 
-def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
+def _continues(
+    previous: list[list[str]],
+    following: list[list[str]],
+    *,
+    previous_columns: tuple[float, ...] | None = None,
+    following_columns: tuple[float, ...] | None = None,
+) -> bool:
     """Report whether one page's table continues onto the next.
 
     Args:
         previous: Rows of the table ending the earlier page.
         following: Rows of the table opening the later page.
+        previous_columns: The earlier table's column widths, where known.
+        following_columns: The later table's column widths, where known.
 
     Returns:
         ``True`` when the two are one table split by a page break.
@@ -588,19 +596,28 @@ def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
     leaving a fragment presenting itself as a complete table, which is the
     failure this whole mechanism exists to prevent.
 
-    **A continuation carrying no header at all is not stitched**, and that is
-    a deliberate limit rather than an oversight. Geometry looked like the
-    remaining evidence — a table beginning at the top of a page is where a
-    break lands — but measurement killed it: an unrelated table opening the
-    next page starts at exactly the same position, so the signal does not
-    separate the two cases. Requiring the continuation to carry no header of
-    its own does not rescue it either, because recognising a header in an
-    all-text table is the same undecidable problem.
+    **A continuation carrying no header** is stitched only on two signals
+    together, because neither is enough alone. Measured on seven manuals:
 
-    So that layout stays two blocks. It is the wrong answer for one real
-    case, and it is the safe direction: two fragments of one table are
-    visibly two blocks, whereas fusing two different tables presents rows
-    under a heading they never appeared under.
+    * The column widths agree to within ``_COLUMN_TOLERANCE``. Widths, not
+      positions: a book-layout manual mirrors its margins on facing pages, so
+      one table's columns move by 11 pt from page to page while keeping their
+      widths. Where a table *starts* on the page says nothing — an unrelated
+      table opening the next page starts at the same place — and widths alone
+      are not enough either: PowerFlex 520's p. 174 opens a new table on
+      exactly the previous one's grid.
+    * The last row before the break and the first row after it have the same
+      shape: each column empty, a number, a code or text alike. A data row
+      followed by a data row is a list going on; a data row followed by a row
+      of labels is a new table's header. That is what separated PowerFlex's
+      new table from Delta's parameter lists and Hitachi's glossary, which do
+      continue.
+
+    The caller has already established that nothing came between the two:
+    the earlier table is the last block on its page and the later one the
+    first on its own, since a heading or paragraph would be a block of its
+    own in between. A single-column table is never stitched this way: one
+    column has no grid to compare.
 
     The column count must match in every case: a different shape is a
     different table.
@@ -614,7 +631,65 @@ def _continues(previous: list[list[str]], following: list[list[str]]) -> bool:
     # Repeated at the top, or one row down behind a banner.
     if following[0] == header or (len(following) > 1 and following[1] == header):
         return True
-    return any(_CONTINUED.search(cell) for cell in following[0])
+    if any(_CONTINUED.search(cell) for cell in following[0]):
+        return True
+
+    if previous_columns is None or following_columns is None:
+        return False
+    if len(previous_columns) < 2 or len(previous_columns) != len(following_columns):
+        return False
+    if any(
+        abs(a - b) > _COLUMN_TOLERANCE
+        for a, b in zip(previous_columns, following_columns, strict=True)
+    ):
+        return False
+    before, after = _row_shape(previous[-1]), _row_shape(following[0])
+    return before == after and any(kind != "" for kind in before)
+
+
+#: Column widths of two halves of one table agree to well under a point; this
+#: allows for rounding in how each page's rules were drawn.
+_COLUMN_TOLERANCE = 1.5
+
+_NUMBER = re.compile(r"^[-+]?\d+(?:[.,]\d+)?\s*(?:%|A|V|W|kW|kVA|Hz|kHz|°C|mm²?|s)?$")
+
+
+def _row_shape(cells: Sequence[str]) -> tuple[str, ...]:
+    """Describe a row by what each cell holds: empty, number, code or text.
+
+    Args:
+        cells: The row.
+
+    Returns:
+        One of ``""``, ``"n"``, ``"c"`` or ``"t"`` per cell.
+    """
+
+    def kind(cell: str) -> str:
+        cell = cell.strip()
+        if not cell:
+            return ""
+        if _NUMBER.match(cell):
+            return "n"
+        if " " not in cell and any(c.isdigit() for c in cell):
+            return "c"
+        return "t"
+
+    return tuple(kind(cell) for cell in cells)
+
+
+def _column_widths(table: Any) -> tuple[float, ...]:
+    """Read a detected table's column widths from its cell edges.
+
+    Args:
+        table: A pdfplumber table.
+
+    Returns:
+        The width of each column, left to right, in points.
+    """
+    edges = sorted(
+        {round(float(c[0]), 1) for c in table.cells} | {round(float(c[2]), 1) for c in table.cells}
+    )
+    return tuple(round(b - a, 1) for a, b in itertools.pairwise(edges))
 
 
 def _looks_like_header(row: list[str], body: list[list[str]]) -> bool:
@@ -677,13 +752,14 @@ def _table_rows(table: Any) -> str:
 
 
 def _flush_tables_above(
-    pending: list[tuple[float, list[list[str]]]],
+    pending: list[tuple[float, list[list[str]], tuple[float, ...]]],
     *,
     limit: float,
     page: int,
     stack: Sequence[str],
     into: list[StructuralBlock],
     last_page: dict[int, int],
+    shapes: dict[int, tuple[float, ...]],
 ) -> None:
     """Emit any pending table that starts above a point on the page.
 
@@ -694,8 +770,9 @@ def _flush_tables_above(
     final page's section, silently.
 
     Args:
-        pending: Remaining ``(top, rows)`` pairs for this page, ascending,
-            with each table's rows already extracted. Consumed in place.
+        pending: Remaining ``(top, rows, column widths)`` for this page,
+            ascending, with each table's rows already extracted. Consumed in
+            place.
         limit: Emit tables starting at or above this vertical position.
         page: 1-indexed page number.
         stack: The heading stack as it stands at this point in the page.
@@ -706,9 +783,10 @@ def _flush_tables_above(
             it. Comparing against `previous.page` meant a three-page table
             merged pages 1 and 2 and then compared `1 == 2` for page 3,
             leaving an 11-row fragment presenting itself as a whole table.
+        shapes: Maps a table block's index to its column widths; updated.
     """
     while pending and pending[0][0] <= limit:
-        _, rows = pending.pop(0)
+        _, rows, columns = pending.pop(0)
         if not rows:
             continue
 
@@ -723,7 +801,12 @@ def _flush_tables_above(
             previous is not None
             and previous.kind is BlockKind.TABLE
             and last_page.get(len(into) - 1, previous.page) == page - 1
-            and _continues(_split_rows(previous.text), rows)
+            and _continues(
+                _split_rows(previous.text),
+                rows,
+                previous_columns=shapes.get(len(into) - 1),
+                following_columns=columns,
+            )
         ):
             carried = rows[1:] if rows[0] == _split_rows(previous.text)[0] else rows
             into[-1] = previous.model_copy(
@@ -741,6 +824,7 @@ def _flush_tables_above(
             )
         )
         last_page[len(into) - 1] = page
+        shapes[len(into) - 1] = columns
 
 
 def extraction_budget_s(page_count: int) -> float:
@@ -780,10 +864,14 @@ def _count_pages(document: Any) -> int:
     return counted
 
 
+#: A detected table as one page records it: top, bottom, rows, column widths.
+_PageTable = tuple[float, float, list[list[str]], tuple[float, ...]]
+
+
 def _read_page(
     page: Any,
     lines_by_page: dict[int, list[_Line]],
-    tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]],
+    tables_by_page: dict[int, list[_PageTable]],
     widths: dict[int, float],
     document_id: str,
     heights: dict[int, float] | None = None,
@@ -794,7 +882,7 @@ def _read_page(
         page: A pdfplumber page.
         lines_by_page: Filled with the page's lines, keyed by page number.
         tables_by_page: Filled with each detected table's
-            ``(top, bottom, rows)``, keyed by page number.
+            ``(top, bottom, rows, column widths)``, keyed by page number.
         widths: Filled with the page's width, keyed by page number.
         document_id: For log lines.
         heights: Filled with the page's height, keyed by page number, when
@@ -816,7 +904,7 @@ def _read_page(
         return
     lines_by_page[page_number] = _group_lines(chars, page_number)
     tables_by_page[page_number] = [
-        (float(table.bbox[1]), float(table.bbox[3]), _rows_of(table))
+        (float(table.bbox[1]), float(table.bbox[3]), _rows_of(table), _column_widths(table))
         for table in page.find_tables()
     ]
     widths[page_number] = float(page.width)
@@ -879,7 +967,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     # the caller records per document rather than as a crashed run.
     started = time.monotonic()
     lines_by_page: dict[int, list[_Line]] = {}
-    tables_by_page: dict[int, list[tuple[float, float, list[list[str]]]]] = {}
+    tables_by_page: dict[int, list[_PageTable]] = {}
     widths: dict[int, float] = {}
     heights: dict[int, float] = {}
     try:
@@ -916,6 +1004,8 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
     sizes: list[float] = []
     # Index of a block in `blocks` -> the last page its content came from.
     last_page: dict[int, int] = {}
+    # Index of a table block -> its column widths, for continuation checks.
+    shapes: dict[int, tuple[float, ...]] = {}
     skipped_pages: list[int] = []
 
     # Grouped by page once, up front. Filtering the whole document's lines for
@@ -931,8 +1021,11 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
         # "Front matter", which is a citation pointing at the wrong part of
         # the manual.
         page_tables = tables_by_page.get(page_number, [])
-        table_bands = [(top, bottom) for top, bottom, _ in page_tables]
-        pending = sorted(((top, rows) for top, _, rows in page_tables), key=lambda pair: pair[0])
+        table_bands = [(top, bottom) for top, bottom, _, _ in page_tables]
+        pending = sorted(
+            ((top, rows, columns) for top, _, rows, columns in page_tables),
+            key=lambda entry: entry[0],
+        )
 
         # Lines inside a detected table are excluded: a wide two-column table
         # has a gap at the same x on every row, which is a corridor by any
@@ -973,6 +1066,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
                 stack=stack,
                 into=blocks,
                 last_page=last_page,
+                shapes=shapes,
             )
 
             # Lines inside a detected table were already emitted as part of it;
@@ -1038,6 +1132,7 @@ def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
             stack=stack,
             into=blocks,
             last_page=last_page,
+            shapes=shapes,
         )
 
     if not blocks and skipped_pages:

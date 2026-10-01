@@ -51,17 +51,26 @@ class Page:
         self.y -= size * 1.6
         return self
 
-    def ruled_table(self, rows: list[list[str]], *, col_w: float = 120) -> Page:
-        top, left, row_h = self.y, 60.0, 20.0
+    def ruled_table(
+        self,
+        rows: list[list[str]],
+        *,
+        col_w: float = 120,
+        widths: list[float] | None = None,
+        left: float = 60.0,
+    ) -> Page:
+        top, row_h = self.y, 20.0
         cols = len(rows[0])
+        sizes = widths or [col_w] * cols
+        xs = [left + sum(sizes[:c]) for c in range(cols + 1)]
         for r in range(len(rows) + 1):
-            self.pdf.line(left, top - r * row_h, left + col_w * cols, top - r * row_h)
-        for c in range(cols + 1):
-            self.pdf.line(left + c * col_w, top, left + c * col_w, top - len(rows) * row_h)
+            self.pdf.line(xs[0], top - r * row_h, xs[-1], top - r * row_h)
+        for x in xs:
+            self.pdf.line(x, top, x, top - len(rows) * row_h)
         self.pdf.setFont("Helvetica", 9)
         for r, row in enumerate(rows):
             for c, text in enumerate(row):
-                self.pdf.drawString(left + c * col_w + 4, top - r * row_h - 14, text)
+                self.pdf.drawString(xs[c] + 4, top - r * row_h - 14, text)
         self.y = top - (len(rows) + 1) * row_h
         return self
 
@@ -1086,3 +1095,94 @@ def test_page_texts_reads_only_the_pages_asked_for(tmp_path: Any) -> None:
     assert set(texts) == {1, 3}
     assert "wiring" in texts[1]
     assert "cooling" in texts[3]
+
+
+# --- continuations with no header: column widths and row shape ----------------
+#
+# Measured on seven manuals before this was written. Neither signal separates
+# a continuation from a new table alone; together they did on every pair.
+
+
+def _parameters(first: int, count: int) -> list[list[str]]:
+    return [[f"01-{first + i:02d}", f"Acceleration time {first + i}"] for i in range(count)]
+
+
+def test_a_headerless_continuation_on_the_same_grid_is_stitched() -> None:
+    # Delta's parameter lists: "01-19 | Deceleration Time" ends a page and
+    # "01-20 | JOG Acceleration" opens the next, with no header repeated.
+    data = build(
+        lambda p: p.heading("4 Parameters", 14).ruled_table(
+            [["Pr.", "Name"], *_parameters(1, 5)], widths=[70, 200]
+        ),
+        lambda p: p.ruled_table(_parameters(6, 4), widths=[70, 200]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+    assert "01-09" in tables[0].text
+    assert tables[0].page == 1
+
+
+def test_mirrored_margins_do_not_hide_a_continuation() -> None:
+    # A book layout moves the table 11 pt on the facing page; its widths stay.
+    data = build(
+        lambda p: p.heading("4 Parameters", 14).ruled_table(
+            [["Pr.", "Name"], *_parameters(1, 5)], widths=[70, 200], left=71.4
+        ),
+        lambda p: p.ruled_table(_parameters(6, 4), widths=[70, 200], left=60),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 1
+
+
+def test_a_new_table_on_the_same_grid_is_not_stitched() -> None:
+    # PowerFlex 520 p. 173-174: a ratings table ends with a data row and the
+    # next page opens a different table, on the same grid, with its labels.
+    data = build(
+        lambda p: p.heading("B Ratings", 14).ruled_table(
+            [["Catalog", "ND A"], ["25B-D017", "17.0"], ["25B-D030", "30.0"]],
+            widths=[90, 90],
+        ),
+        lambda p: p.ruled_table(
+            [["PowerFlex 525", "Output current"], ["25B-E0P9", "0.9"]], widths=[90, 90]
+        ),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2
+
+
+def test_a_different_grid_is_not_stitched() -> None:
+    data = build(
+        lambda p: p.heading("4 Parameters", 14).ruled_table(
+            [["Pr.", "Name"], *_parameters(1, 5)], widths=[70, 200]
+        ),
+        lambda p: p.ruled_table(_parameters(6, 4), widths=[90, 180]),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2
+
+
+def test_a_heading_between_the_pages_keeps_them_apart() -> None:
+    data = build(
+        lambda p: p.heading("4 Parameters", 14).ruled_table(
+            [["Pr.", "Name"], *_parameters(1, 5)], widths=[70, 200]
+        ),
+        lambda p: p.heading("5 Other parameters", 14).ruled_table(
+            _parameters(6, 4), widths=[70, 200]
+        ),
+    )
+    tables = [b for b in extract_structure(data).blocks if b.kind is BlockKind.TABLE]
+
+    assert len(tables) == 2
+
+
+def test_row_shapes() -> None:
+    assert structure._row_shape(["01-20", "JOG Acceleration Time", "", "10.5 A"]) == (
+        "c",
+        "t",
+        "",
+        "n",
+    )
