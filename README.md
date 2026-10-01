@@ -469,7 +469,11 @@ and PDF extraction, and well under a dollar of OpenAI embeddings for the
 
 **1. Configure and boot.** In `.env`, set `OPENAI_API_KEY` (embeddings and
 answers) on an account with billing enabled; the free tier's rate limit
-cannot embed a corpus. Then `docker compose up --build -d`.
+cannot embed a corpus. Then `docker compose up --build -d`; the `api` service
+creates both indices with their vector mapping before it starts. Outside
+compose, run `python -m app.ai.retrieval.bootstrap` first: compose's OpenSearch
+refuses writes to an index that does not exist, but another cluster may create
+one from the first document, with no vector mapping.
 
 **2. Make yourself a reviewer.** Sign up at <http://localhost:3000>, then:
 
