@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+import pytest
+
 from app.ingestion.known_documents import KNOWN_DOCUMENTS, documents_for, title_for, urls_for
 from app.ingestion.sources import CRAWLERS
 
@@ -151,3 +153,25 @@ def test_yaskawa_documents_are_attachments_robots_allows() -> None:
         assert url.startswith("https://www.yaskawa.com/delegate/getAttachment?documentId=")
         assert "cmd=documents" in url
         assert "cmd=docurl" not in url
+
+
+@pytest.mark.parametrize(
+    ("source_id", "prefixes"),
+    [
+        ("rockwell", ("https://literature.rockwellautomation.com/idc/groups/literature/",)),
+        ("mitsubishi", ("https://dl.mitsubishielectric.com/dl/fa/document/manual/",)),
+        ("weg", ("https://static.weg.net/medias/downloadcenter/",)),
+        ("omron", ("https://assets.omron.eu/downloads/", "https://files.omron.eu/downloads/")),
+    ],
+)
+def test_new_sources_come_from_their_own_document_hosts(
+    source_id: str, prefixes: tuple[str, ...]
+) -> None:
+    urls = urls_for(source_id)
+    assert urls, f"{source_id} has no curated documents"
+    assert all(u.startswith(prefixes) for u in urls)
+
+
+def test_delta_is_not_scraped_through_its_disallowed_api() -> None:
+    """Its download center is a JavaScript app over a robots-disallowed /api/."""
+    assert urls_for("delta") == []

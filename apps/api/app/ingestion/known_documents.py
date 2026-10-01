@@ -8,6 +8,9 @@ HTML" bar that decides whether a crawler can find documents on its own:
   but, like ABB, its PDFs sit on a plain asset host
   (``cache.industry.siemens.com``) whose robots.txt permits ``/dl/files/``,
   and which serves them to our user agent. So Siemens is curated here too.
+* **Delta** serves its download center as a JavaScript application with no
+  document links in the HTML, and its robots.txt disallows the ``/api/``
+  that application reads from; like Schneider, it has no entries here.
 * **Schneider** answers our user agent with 403 at the edge, for its document
   pages on ``www.se.com`` and for ``robots.txt`` on its download host alike
   (checked 2026-09-30). Presenting a browser's user agent to get past that
@@ -188,6 +191,74 @@ KNOWN_DOCUMENTS: tuple[KnownDocument, ...] = (
         ),
         title="YASKAWA AC Drive-V1000 Compact Vector Control Drive Technical Manual",
         verified="2026-09-30",
+    ),
+    # Rockwell Automation. literature.rockwellautomation.com's robots.txt redirects
+    # to an ordinary page on www.rockwellautomation.com, which states no rules;
+    # each opened, confirmed a PDF served to our user agent, titled from its cover.
+    KnownDocument(
+        source_id="rockwell",
+        url="https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+        title="PowerFlex 520-series Adjustable Frequency AC Drive User Manual (520-UM001)",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="rockwell",
+        url="https://literature.rockwellautomation.com/idc/groups/literature/documents/pm/750-pm001_-en-p.pdf",
+        title="PowerFlex 750-Series AC Drives Programming Manual (750-PM001)",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="rockwell",
+        url="https://literature.rockwellautomation.com/idc/groups/literature/documents/um/1769-um021_-en-p.pdf",
+        title="CompactLogix 5370 Controllers User Manual (1769-UM021)",
+        verified="2026-10-01",
+    ),
+    # Mitsubishi Electric. dl.mitsubishielectric.com's robots.txt redirects to
+    # www.mitsubishielectric.com's, which disallows only two unrelated pages.
+    KnownDocument(
+        source_id="mitsubishi",
+        url="https://dl.mitsubishielectric.com/dl/fa/document/manual/inv/ib0600868eng/ib0600868engu.pdf",
+        title="FR-E800 Instruction Manual (Function), IB-0600868ENG-U",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="mitsubishi",
+        url="https://dl.mitsubishielectric.com/dl/fa/document/manual/inv/ib0600874eng/ib0600874engn.pdf",
+        title="FR-E800 Instruction Manual (Maintenance), IB-0600874ENG-N",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="mitsubishi",
+        url="https://dl.mitsubishielectric.com/dl/fa/document/manual/inv/ib0600503eng/ib0600503engp.pdf",
+        title="FR-A800 Instruction Manual (Detailed), IB-0600503ENG-P",
+        verified="2026-10-01",
+    ),
+    # WEG. static.weg.net has no robots.txt (404), which RFC 9309 reads as no
+    # restrictions.
+    KnownDocument(
+        source_id="weg",
+        url="https://static.weg.net/medias/downloadcenter/hb7/h52/WEG-CFW500-programming-manual-10006739425-en.pdf",
+        title="Frequency Inverter CFW500 V4.1X Programming Manual",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="weg",
+        url="https://static.weg.net/medias/downloadcenter/h73/ha4/WEG-CFW500-modbus-rtu-manual-10002253377-en.pdf",
+        title="CFW500 Modbus RTU User's Guide",
+        verified="2026-10-01",
+    ),
+    # Omron. assets.omron.eu and files.omron.eu both allow everything.
+    KnownDocument(
+        source_id="omron",
+        url="https://assets.omron.eu/downloads/latest/manual/en/i570_mx2_users_manual_en.pdf",
+        title="MX2 Inverter User's Manual (I570)",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="omron",
+        url="https://files.omron.eu/downloads/latest/manual/en/w578_nx-series_nx1p2_cpu_unit_hardware_users_manual_en.pdf",
+        title="NX-series NX1P2 CPU Unit Hardware User's Manual (W578)",
+        verified="2026-10-01",
     ),
 )
 
