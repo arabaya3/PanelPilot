@@ -191,6 +191,24 @@ does differently; everything else is the default profile's. The default
 profile's circuit rules are this software's defaults, not any engineer's, and
 stay marked unconfirmed until a company names who confirmed its own.
 
+A **distribution board** is designed from its load schedule
+(`app/design/distribution.py`):
+- Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
+- Its breaker is the company's fixed rating for that kind of load, or the
+  smallest curve C rating at or above Ib.
+- Its cable is sized to carry In as installed, so Ib ≤ In ≤ Iz holds by
+  construction.
+- Loads the company puts under a residual current device are grouped by
+  sensitivity, up to the company's limit per device. Each group is fed
+  through a group breaker, since an RCCB has no overcurrent protection of its
+  own (handbook §5.7).
+- Single-phase loads are spread over L1–L3 largest first, and the imbalance
+  is checked against the company's limit.
+
+What the design assumed is listed on the board: the power factor, the fault
+level, the cable conditions, and whether the rules were confirmed. Devices
+carry ratings, not articles, until a catalogue is chosen.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The
