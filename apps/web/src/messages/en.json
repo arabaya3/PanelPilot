@@ -434,7 +434,7 @@
       }
     },
     "bom": {
-      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: a drive for each variable-speed load from the series chosen (ABB ACS880-01, with its input fuses, by default), a coordinated starter for each motor started across the line, an outgoing cable and its terminals for each load, the enclosure, and the cooling it needs by IEC 60890.",
+      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: a drive for each variable-speed load from the series chosen (ABB ACS880-01, with its input fuses, by default), a Type 2 coordinated starter for each motor started across the line (400, 440, 500 or 690 V), a curve C breaker for each other load, an outgoing cable and its terminals for each load, the enclosure, and the cooling it needs by IEC 60890.",
       "enclosure": "Enclosure",
       "loads": "Loads",
       "field": {
@@ -482,15 +482,18 @@
         "overload": "{tag}: overload relay, set within {min}-{max} A",
         "fuse": "{tag}: drive input fuses, aR {amps} A, one per phase (needs at least {minSc} A prospective short-circuit current)",
         "terminal": "{tag}: through-type terminal {size} mm², up to {max} A",
-        "terminalPe": "{tag}: PE terminal {size} mm²"
+        "terminalPe": "{tag}: PE terminal {size} mm²",
+        "feeder": "{tag}: miniature circuit-breaker for {load}, curve {curve}, In {rated} A",
+        "overloadCt": "{tag}: overload relay, set within {min}-{max} A, fed through current transformer {ct}"
       },
       "note": {
         "incomplete_dissipation": "Loads without a heat figure add no heat, so the cooling figure is only as complete as the schedule.",
-        "not_included": "Protection for loads with neither a drive nor a starter is not included: no sourced selection table for them is held here.",
+        "not_included": "Protection is not included for a load with neither a drive nor a starter whose current no curve C rating fits between the load and its cable.",
         "fault_level_assumed": "Starters are Type 2 coordinated up to 50 kA; confirm the panel's prospective short-circuit current does not exceed it.",
         "fuse_min_short_circuit": "Drive input fuses operate fast enough only when the installation's prospective short-circuit current is at least the minimum on each line.",
         "terminals_copper_only": "Terminals are selected from a copper terminal table; aluminium cables need terminals rated for aluminium, which are not listed.",
-        "drive_fuses_not_listed": "Drive input fuses are listed only for the ABB ACS880-01; for the drives chosen here, take the fuses from the drive manual cited on each drive line."
+        "drive_fuses_not_listed": "Drive input fuses are listed only for the ABB ACS880-01; for the drives chosen here, take the fuses from the drive manual cited on each drive line.",
+        "feeder_breaking_capacity": "Feeder breakers are chosen for overload (Ib ≤ In ≤ Iz); confirm their breaking capacity reaches the panel's prospective short-circuit current."
       },
       "start": {
         "none": "No starter",

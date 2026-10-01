@@ -23,6 +23,7 @@ from app.models.schemas.calculations import (
     EnclosurePlacement,
     InstallationMethod,
     LoadScheduleItem,
+    StartType,
 )
 
 
@@ -125,6 +126,8 @@ def test_the_bom_lists_drive_cable_enclosure_and_cooling() -> None:
         ("8WH1000-0CG07", 1),
         # 10 A -> 1.5 mm² (22 A), on the 2.5 mm² terminal.
         ("Cu XLPE 1.5 mm²", 1),
+        # The heater has neither drive nor starter: Ib 10 A <= In 10 A <= Iz.
+        ("MCB 3P C10", 1),
         ("8WH1000-0AF00", 3),
         ("8WH1000-0CF07", 1),
         ("Enclosure 600x2000x500 IP54", 1),
@@ -241,6 +244,7 @@ def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
         BomLineKind.TERMINAL,
         BomLineKind.TERMINAL,
         BomLineKind.CABLE,
+        BomLineKind.BREAKER,
         BomLineKind.TERMINAL,
         BomLineKind.TERMINAL,
         BomLineKind.ENCLOSURE,
@@ -257,12 +261,18 @@ def test_each_line_says_what_it_is_so_a_page_can_translate_it() -> None:
     }
     assert result.lines[3].details == {"tag": "M-101", "size": "4", "max_a": "41", "role": "phase"}
     assert result.lines[4].details["role"] == "pe"
-    assert result.lines[8].details == {"placement": "single_free_standing"}
-    assert result.lines[9].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
-    # The heater has neither drive nor starter, so it is unprotected; the drive
-    # has fuses with a minimum fault level; the heater gives no dissipation.
+    assert result.lines[6].details == {
+        "tag": "H-1",
+        "load": "heater",
+        "rated_a": "10",
+        "curve": "C",
+    }
+    assert result.lines[9].details == {"placement": "single_free_standing"}
+    assert result.lines[10].details == {"cooling_w": "659", "rise_k": "10", "qw": "65.9"}
+    # The drive has fuses with a minimum fault level; the heater's breaker is
+    # chosen for overload only; the heater gives no dissipation.
     assert result.note_keys == [
-        BomNote.NOT_INCLUDED,
+        BomNote.FEEDER_BREAKING_CAPACITY,
         BomNote.FUSE_MIN_SHORT_CIRCUIT,
         BomNote.INCOMPLETE_DISSIPATION,
     ]
@@ -390,3 +400,35 @@ def test_a_named_drive_range_overrides_the_vendors() -> None:
     drive = next(line for line in result.lines if line.kind is BomLineKind.DRIVE)
     assert drive.part_reference.startswith("FC-302")
     assert drive.source.manufacturer == "Danfoss"
+
+
+def test_a_feeder_no_curve_c_rating_fits_is_left_out_and_said_so() -> None:
+    from app.models.schemas.calculations import BomNote
+
+    # 130 A is past the largest curve C rating held (125 A).
+    result = panel_bom.build_bom(
+        loads=[LoadScheduleItem(tag="H-2", description="furnace", current_a=Decimal("130"))],
+        constraints=_constraints(),
+    )
+    assert not [line for line in result.lines if line.kind is BomLineKind.BREAKER]
+    assert BomNote.NOT_INCLUDED in result.note_keys
+
+
+def test_a_690_v_starter_lists_its_current_transformer() -> None:
+    result = panel_bom.build_bom(
+        loads=[
+            LoadScheduleItem(
+                tag="M-7",
+                description="pump",
+                power_kw=Decimal("11"),
+                current_a=Decimal("13"),
+                start=StartType.DOL,
+            )
+        ],
+        constraints=_constraints(supply_voltage_v=Decimal(690)),
+    )
+    overload = next(line for line in result.lines if line.kind is BomLineKind.OVERLOAD)
+    # Table 15 (p. 130 as printed): 11 kW, TA25DU2.4 through a 4L185R/4, 7 turns.
+    assert overload.part_reference == "TA25DU2.4 + KORC 4L185R/4"
+    assert "7 primary turns" in overload.description
+    assert overload.source.page == 133

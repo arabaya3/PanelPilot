@@ -18,7 +18,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.ai.tools import cable_sizing, motor_starter, terminal_blocks, vfd_selection
+from app.ai.tools import (
+    cable_sizing,
+    feeder_protection,
+    motor_starter,
+    terminal_blocks,
+    vfd_selection,
+)
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
     BomLine,
@@ -245,14 +251,28 @@ def _starter_lines(
         )
     if row.overload is not None and row.overload_range_a is not None:
         low, high = row.overload_range_a
+        through = (
+            f", through current transformer {row.current_transformer}"
+            if row.current_transformer
+            else ""
+        )
         lines.append(
             BomLine(
-                part_reference=row.overload,
-                description=f"{load.tag}: overload relay, {low}-{high} A",
+                part_reference=(
+                    f"{row.overload} + KORC {row.current_transformer.split(',')[0]}"
+                    if row.current_transformer
+                    else row.overload
+                ),
+                description=f"{load.tag}: overload relay, {low}-{high} A{through}",
                 quantity=1,
                 source=selection.source,
                 kind=BomLineKind.OVERLOAD,
-                details={**base, "min_a": low, "max_a": high},
+                details={
+                    **base,
+                    "min_a": low,
+                    "max_a": high,
+                    **({"ct": row.current_transformer} if row.current_transformer else {}),
+                },
             )
         )
     return lines
@@ -351,6 +371,7 @@ def build_bom(
     drives = 0
     unfused_drives = 0
     unprotected = 0
+    feeders = 0
     drive_range = _drive_range(constraints)
     for load in loads:
         if load.start is not None and load.variable_speed:
@@ -370,8 +391,7 @@ def build_bom(
             )
         if load.current_a is None:
             continue
-        if not load.variable_speed and load.start is None:
-            unprotected += 1
+        plain_feeder = not load.variable_speed and load.start is None
         try:
             if load.variable_speed:
                 drive = vfd_selection.select_frame(
@@ -441,6 +461,34 @@ def build_bom(
                 },
             )
         )
+        if plain_feeder:
+            try:
+                breaker = feeder_protection.select_feeder_breaker(
+                    design_current_a=load.current_a,
+                    cable_ampacity_a=cable.derated_ampacity_a,
+                )
+            except ValidationError:
+                unprotected += 1
+            else:
+                feeders += 1
+                lines.append(
+                    BomLine(
+                        part_reference=f"MCB 3P C{breaker.rated_current_a}",
+                        description=(
+                            f"{load.tag}: miniature circuit-breaker, curve C, "
+                            f"In {breaker.rated_current_a} A (Ib <= In <= Iz)"
+                        ),
+                        quantity=1,
+                        source=breaker.source,
+                        kind=BomLineKind.BREAKER,
+                        details={
+                            "tag": load.tag,
+                            "load": load.description,
+                            "rated_a": breaker.rated_current_a,
+                            "curve": breaker.curve,
+                        },
+                    )
+                )
         if constraints.cable_material is ConductorMaterial.COPPER:
             lines.extend(_terminal_lines(load, cable.cross_section_mm2, load.current_a))
 
@@ -463,10 +511,16 @@ def build_bom(
     note_keys: list[BomNote] = []
     if unprotected:
         notes.append(
-            "Protection for loads with neither a drive nor a starter is not included: "
-            "no sourced selection table for them is held here."
+            "Protection is not included for a load with neither a drive nor a starter "
+            "whose current no curve C rating fits between the load and its cable."
         )
         note_keys.append(BomNote.NOT_INCLUDED)
+    if feeders:
+        notes.append(
+            "Feeder breakers are chosen for overload (Ib <= In <= Iz); confirm their "
+            "breaking capacity reaches the panel's prospective short-circuit current."
+        )
+        note_keys.append(BomNote.FEEDER_BREAKING_CAPACITY)
     if drives:
         notes.append(
             "Drive input fuses operate fast enough only when the installation's "
