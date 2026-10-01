@@ -19,7 +19,7 @@ FORBIDDEN_IN_DOMAIN_AND_AI = ("fastapi", "starlette")
 # The worker is a runtime of its own; pulling in the web framework means
 # someone put request-shaped logic in a batch job. See ADR 0002.
 FORBIDDEN_IN_WORKER = ("fastapi", "starlette", "opensearchpy", "app.ai")
-DOCSTRING_REQUIRED_DIRS = ("domain", "ai")
+DOCSTRING_REQUIRED_DIRS = ("domain", "ai", "design")
 
 
 def _source_modules(*relative_dirs: str) -> list[Path]:
@@ -68,7 +68,7 @@ def test_route_modules_stay_thin(module: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("module", _source_modules("domain", "ai"), ids=str)
+@pytest.mark.parametrize("module", _source_modules("domain", "ai", "design"), ids=str)
 def test_domain_and_ai_are_framework_agnostic(module: Path) -> None:
     """Business logic must not depend on the web framework."""
     offenders = [
@@ -98,6 +98,23 @@ def test_worker_jobs_stay_thin(module: Path) -> None:
         f"{module.relative_to(APP_ROOT)} imports {offenders}. "
         "Background jobs call one app.domain function; move this there."
     )
+
+
+@pytest.mark.parametrize("module", _source_modules("design"), ids=str)
+def test_design_is_pure(module: Path) -> None:
+    """Design turns a project model into outputs; it never reaches storage.
+
+    A drawing generated from what a database or index happened to hold at
+    the time could not be regenerated from the project file alone.
+    """
+    offenders = [
+        name
+        for name in _imported_names(module)
+        if any(
+            name.startswith(forbidden) for forbidden in ("sqlalchemy", "opensearchpy", "app.domain")
+        )
+    ]
+    assert not offenders, f"{module.relative_to(APP_ROOT)} imports {offenders}"
 
 
 @pytest.mark.parametrize("module", _source_modules(*DOCSTRING_REQUIRED_DIRS), ids=str)
@@ -135,7 +152,7 @@ def test_calc_tools_cite_their_source(module: Path) -> None:
 
 @pytest.mark.parametrize(
     "module",
-    _source_modules("core", "api", "domain", "ai", "ingestion", "models", "worker"),
+    _source_modules("core", "api", "domain", "ai", "design", "ingestion", "models", "worker"),
     ids=str,
 )
 def test_every_module_has_a_mirrored_test_file(module: Path) -> None:

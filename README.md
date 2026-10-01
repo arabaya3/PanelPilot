@@ -174,6 +174,23 @@ outgoing cable gets its Siemens 8WH1 through-type terminals (Catalog LV 10,
 aluminium cables have no sourced selection table and are listed as not
 included.
 
+### Panel design projects
+
+`app/design` and `app/models/schemas/design.py` hold one tool-neutral model of
+a panel design, from which every output is generated: the drawing set, the
+parts, terminal and cable lists, and each ECAD tool's import file. No ECAD
+tool reads another's project, and the one neutral standard several import
+(AutomationML AR APC) carries devices and PLC I/O but no schematic pages, so
+the model is the common ground and each tool gets an exporter of its own.
+
+Devices are named with IEC 81346-1 reference designations (`=DB1+HALL-Q12`),
+assigned from a **company profile** rather than typed into a design, so one
+design can be issued under any company's letters and numbering, title block,
+page order, preferred brands and design rules. A company states only what it
+does differently; everything else is the default profile's. The default
+profile's circuit rules are this software's defaults, not any engineer's, and
+stay marked unconfirmed until a company names who confirmed its own.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The
