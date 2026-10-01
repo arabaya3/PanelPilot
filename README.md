@@ -228,6 +228,22 @@ The profile decides which of these pages appear and in what order, and what
 the title block shows. Symbols follow IEC 60617 single-line conventions.
 Drawing text is in English for now.
 
+**Exports** from the same model:
+
+- **CSV lists**: devices, parts, cables and the circuit schedule. These are
+  what EPLAN, AutoCAD Electrical, SEE Electrical, WSCAD and PC|SCHEMATIC
+  import from a spreadsheet, and Excel opens directly.
+- **DXF (R12)**: the drawing set's geometry, for any CAD tool. It is a
+  drawing only, with no device data.
+- **QElectroTech (`.qet`)**: an editable schematic, with its symbols
+  embedded. It was checked by opening it in QElectroTech 0.9.
+- **AutomationML (CAEX 3.0)**: the device hierarchy, ratings and power
+  links. These are the parts of AutomationML that EPLAN and E3.series
+  import.
+
+There are no EPLAN or AutoCAD Electrical project exporters yet: their
+formats are undocumented and need testing against a real installation.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The
