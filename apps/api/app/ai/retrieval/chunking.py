@@ -16,6 +16,7 @@ here re-derives structure from the raw text.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable, Iterator
 
 from app.models.schemas.documents import DocumentChunk, SourceDocument
 from app.models.schemas.structure import BlockKind, StructuralBlock, StructureMap
@@ -44,6 +45,17 @@ _DENSE_RATIO = 0.25
 # embedding noise and carries no answer. They are merged forward instead.
 TARGET_MIN_TOKENS = 200
 
+# The one limit an atomic block does not override. The embedding model refuses
+# any input over 8192 real tokens, and one refused chunk fails its whole
+# document: Delta's DVP-ES2 manual opens with a 17,000-character revision
+# table. Set well under the model's limit because the estimate is rough --
+# private-use glyphs in particular cost more than one token each.
+HARD_MAX_TOKENS = 2000
+
+# A part this long estimates at HARD_MAX_TOKENS even at the dense rate, so a
+# split never has to re-measure what it cut.
+_HARD_MAX_CHARS = int(HARD_MAX_TOKENS * _CHARS_PER_TOKEN_DENSE)
+
 
 def estimate_tokens(text: str) -> int:
     """Approximate the token count of a string.
@@ -62,6 +74,41 @@ def estimate_tokens(text: str) -> int:
         _CHARS_PER_TOKEN_DENSE if dense / len(stripped) >= _DENSE_RATIO else _CHARS_PER_TOKEN_PROSE
     )
     return max(1, int(len(stripped) / rate))
+
+
+def _split_text(text: str) -> list[str]:
+    """Cut text into parts of at most ``_HARD_MAX_CHARS`` characters.
+
+    Rows first, so a table is cut between rows; a single row longer than the
+    limit is cut between words, and a single word between characters.
+
+    Args:
+        text: The text to cut.
+
+    Returns:
+        The parts in order, none empty.
+    """
+    pieces: list[str] = []
+    for line in text.splitlines():
+        while len(line) > _HARD_MAX_CHARS:
+            cut = line.rfind(" ", 0, _HARD_MAX_CHARS)
+            if cut <= 0:
+                cut = _HARD_MAX_CHARS
+            pieces.append(line[:cut])
+            line = line[cut:].lstrip(" ")
+        pieces.append(line)
+
+    parts: list[str] = []
+    current = ""
+    for piece in pieces:
+        candidate = f"{current}\n{piece}" if current else piece
+        if current and len(candidate) > _HARD_MAX_CHARS:
+            parts.append(current)
+            candidate = piece
+        current = candidate
+    if current:
+        parts.append(current)
+    return [part for part in parts if part.strip()]
 
 
 def _chunk_id(document_id: str, ordinal: int, text: str) -> str:
@@ -179,7 +226,10 @@ def chunk_document(
 
     * **An atomic block is never split.** A table or numbered procedure becomes
       its own chunk whole, even at three times the target size. Half a table is
-      not a smaller citation, it is a wrong one.
+      not a smaller citation, it is a wrong one. The one exception is a block
+      over ``HARD_MAX_TOKENS``, which the embedding model would refuse: it is
+      cut between rows into parts, each alone in a chunk, linked as
+      continuations and carrying an ``oversized_reason`` that says so.
     * **A heading starts a new chunk.** The heading is what the section path is
       derived from, so keeping it with the content beneath it is what makes the
       citation resolvable. A heading directly preceding an atomic block travels
@@ -225,7 +275,7 @@ def chunk_document(
         pending = []
         pending_tokens = 0
 
-    for block in structure_map.blocks:
+    for block, part in _bounded(structure_map.blocks):
         block_tokens = estimate_tokens(block.text)
 
         if block.kind.is_atomic:
@@ -243,6 +293,15 @@ def chunk_document(
             pending = [block]
             pending_tokens = block_tokens
             emit()
+            if part is not None:
+                # Each part carries the reason, so a reviewer reading one
+                # knows the rest of the table is in the linked neighbours.
+                chunks[-1] = chunks[-1].model_copy(
+                    update={
+                        "oversized_reason": f"part {part} of a {block.kind.value} split at "
+                        f"the embedding limit of {HARD_MAX_TOKENS} tokens"
+                    }
+                )
             continue
 
         # A heading starts a new chunk — and so does any change of section,
@@ -261,6 +320,27 @@ def chunk_document(
 
     emit()
     return _link_continuations(_merge_undersized(chunks))
+
+
+def _bounded(
+    blocks: Iterable[StructuralBlock],
+) -> Iterator[tuple[StructuralBlock, str | None]]:
+    """Yield the blocks, cutting any over ``HARD_MAX_TOKENS`` into parts.
+
+    Args:
+        blocks: Structural blocks in reading order.
+
+    Yields:
+        Each block with ``None``, or each part of a cut block with its
+        position, e.g. ``"2/3"``.
+    """
+    for block in blocks:
+        if estimate_tokens(block.text) <= HARD_MAX_TOKENS:
+            yield block, None
+            continue
+        parts = _split_text(block.text)
+        for index, text in enumerate(parts, start=1):
+            yield block.model_copy(update={"text": text}), f"{index}/{len(parts)}"
 
 
 def _merge_undersized(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
