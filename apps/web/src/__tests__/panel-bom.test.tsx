@@ -169,6 +169,56 @@ describe('panel BOM', () => {
     expect(result.textContent).toContain('50 kA');
   });
 
+  it('shows a feeder breaker by its rating and a relay fed through a CT', async () => {
+    const HANDBOOK = { ...RITTAL, document_id: 'abb', manufacturer: 'ABB', page: 70 };
+    const buildImpl = vi.fn().mockResolvedValue({
+      kind: 'built',
+      response: {
+        result: {
+          lines: [
+            {
+              part_reference: 'MCB 3P C16',
+              description: 'H-1: miniature circuit-breaker',
+              quantity: 1,
+              source: HANDBOOK,
+              kind: 'breaker',
+              details: { tag: 'H-1', load: 'heater', rated_a: '16', curve: 'C' },
+            },
+            {
+              part_reference: 'TA25DU2.4 + KORC 4L185R/4',
+              description: 'M-7: overload relay',
+              quantity: 1,
+              source: { ...HANDBOOK, page: 133 },
+              kind: 'overload',
+              details: {
+                tag: 'M-7',
+                min_a: '11.2',
+                max_a: '15.9',
+                ct: '4L185R/4, 7 primary turns',
+              },
+            },
+          ],
+          heat_load_w: '0',
+          cooling_required_w: '0',
+          notes: [],
+          note_keys: ['feeder_breaking_capacity'],
+        },
+        sources: [HANDBOOK],
+      } satisfies PanelBomResponse,
+    });
+    await openBomTab(buildImpl);
+    fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
+
+    const result = await screen.findByTestId('bom-result');
+    expect(result.textContent).toContain(
+      'H-1: miniature circuit-breaker for heater, curve C, In 16 A',
+    );
+    expect(result.textContent).toContain(
+      'fed through current transformer 4L185R/4, 7 primary turns',
+    );
+    expect(result.textContent).toContain('breaking capacity');
+  });
+
   it('sends the supply voltage and cable conductor it is given', async () => {
     const buildImpl = vi.fn().mockResolvedValue({ kind: 'built', response: BUILT });
     await openBomTab(buildImpl);
@@ -277,7 +327,7 @@ describe('panel BOM in Arabic', () => {
     const result = await screen.findByTestId('bom-result');
     expect(result.textContent).toContain('M-101: محوّل لـconveyor');
     expect(result.textContent).toContain('65.9 واط/كلفن');
-    expect(result.textContent).toContain('حماية الأحمال التي ليس لها محوّل ولا مُشغّل');
+    expect(result.textContent).toContain('لا تُضاف الحماية لحمل بلا محوّل ولا مشغّل');
     expect(result.textContent).not.toContain('drive for conveyor');
   });
 });

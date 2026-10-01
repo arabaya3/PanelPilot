@@ -695,7 +695,8 @@ export interface components {
       | 'terminals_copper_only'
       | 'incomplete_dissipation'
       | 'fault_level_assumed'
-      | 'drive_fuses_not_listed';
+      | 'drive_fuses_not_listed'
+      | 'feeder_breaking_capacity';
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.

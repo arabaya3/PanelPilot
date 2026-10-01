@@ -72,14 +72,25 @@ def test_dol_rows_from_table_3() -> None:
 def test_between_rows_the_larger_is_taken() -> None:
     # 6 kW sits between 5.5 and 7.5 kW; a 5.5 kW motor drawing 13 A exceeds
     # its row's 11.5 A. Both go up a row, never down.
-    assert _select("6", "12", StartType.DOL).power_kw == "7.5"
+    assert _select("6", "14", StartType.DOL).power_kw == "7.5"
     assert _select("5.5", "13", StartType.DOL).power_kw == "7.5"
+
+
+def test_a_larger_row_whose_relay_cannot_be_set_down_to_the_motor_is_refused() -> None:
+    # 6 kW at 12 A goes up to the 7.5 kW row, whose TA25DU19 sets 13-19 A:
+    # it would never trip on this motor's overload.
+    with pytest.raises(ValidationError, match="below the TA25DU19 setting range"):
+        _select("6", "12", StartType.DOL)
+    # A motor's own row is kept as printed: Table 3 gives 15 kW at 28.5 A a
+    # 29-42 A relay.
+    assert _select("15", "28.5", StartType.DOL).overload == "TA75DU42"
 
 
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"supply_voltage_v": Decimal(690)}, "400 V only"),
+        ({"supply_voltage_v": Decimal(600)}, "400 V, 440 V, 500 V, 690 V"),
+        ({"supply_voltage_v": Decimal(230)}, "tables held"),
         ({"fault_level_ka": Decimal(65)}, "50 kA"),
     ],
 )
@@ -98,9 +109,13 @@ def test_a_motor_past_the_table_or_below_star_delta_is_refused() -> None:
         _select("0", "1", StartType.DOL)
 
 
-@pytest.mark.parametrize("start", list(StartType))
-def test_every_table_rises_with_the_motor(start: StartType) -> None:
-    rows, _page, _section = motor_starter._TABLES[start]
+@pytest.mark.parametrize(
+    ("voltage", "start"),
+    [(v, s) for v in motor_starter._TABLES for s in StartType],
+    ids=str,
+)
+def test_every_table_rises_with_the_motor(voltage: Decimal, start: StartType) -> None:
+    rows, _page, _section = motor_starter._TABLES[voltage][start]
     powers = [Decimal(r.power_kw) for r in rows]
     currents = [Decimal(r.current_a) for r in rows]
     trips = [Decimal(r.magnetic_trip_a) for r in rows]
@@ -114,3 +129,74 @@ def test_every_table_rises_with_the_motor(start: StartType) -> None:
     # Not asserted: that each DOL row's Ir lies inside its relay's range. The
     # table itself prints 15 kW at 28.5 A with a 29-42 A relay; the source is
     # transcribed as printed, not corrected.
+
+
+@pytest.mark.parametrize(
+    ("supply", "kw", "amps", "start", "breaker", "contactors", "overload"),
+    [
+        # Table 7 (440 V, p. 124 as printed): 7.5 kW, 13.5 A.
+        ("440", "7.5", "13.5", StartType.DOL, "T2H160 MA 20", ("A30",), "TA25DU19"),
+        # Table 11 (500 V, p. 127 as printed): 55 kW.
+        ("500", "55", "80", StartType.DOL, None, None, None),
+        # Table 17 (690 V, p. 132 as printed): 200 kW star-delta, 202 A.
+        (
+            "690",
+            "200",
+            "202",
+            StartType.STAR_DELTA,
+            "T4L320 PR221-I In320",
+            ("A185", "A185", "A110"),
+            "TA200DU135",
+        ),
+        # Table 18 (690 V, p. 133 as printed): 90 kW heavy duty, MP release.
+        ("690", "90", "95", StartType.DOL_HEAVY, "T4L250 PR222MP In160", ("A145",), None),
+    ],
+)
+def test_the_supply_picks_its_voltages_table(
+    supply: str,
+    kw: str,
+    amps: str,
+    start: StartType,
+    breaker: str | None,
+    contactors: tuple[str, ...] | None,
+    overload: str | None,
+) -> None:
+    row = _select(kw, amps, start, supply_voltage_v=Decimal(supply))
+    if breaker is not None:
+        assert row.breaker == breaker
+        assert row.contactors == contactors
+        assert row.overload == overload
+    else:
+        assert row.power_kw == kw
+
+
+def test_a_supply_takes_the_nearest_tables_voltage() -> None:
+    # 415 V is within 5 % of both 400 and 440 V: the nearer (400 V) is used.
+    near_400 = motor_starter.select_starter(
+        motor_power_kw=Decimal("7.5"),
+        motor_current_a=Decimal("15"),
+        start=StartType.DOL,
+        supply_voltage_v=Decimal(415),
+    )
+    assert near_400.source.section == "Table 3: 400 V 50 kA DOL Normal Type 2"
+    near_440 = motor_starter.select_starter(
+        motor_power_kw=Decimal("7.5"),
+        motor_current_a=Decimal("13.5"),
+        start=StartType.DOL,
+        supply_voltage_v=Decimal(425),
+    )
+    assert near_440.source.page == 127
+
+
+def test_690_v_type_1_rows_are_not_offered() -> None:
+    """Table 15 marks 2.2-4 kW (and one 5.5 kW option) Type 1 only.
+
+    A 3 kW motor would go up to the 5.5 kW Type 2 row, whose relay (fed through
+    a current transformer) sets 6-8.5 A: too high for 3.8 A, so it is refused.
+    """
+    with pytest.raises(ValidationError, match=r"below the TA25DU2\.4 setting range"):
+        _select("3", "3.8", StartType.DOL, supply_voltage_v=Decimal(690))
+    row = _select("5.5", "6.5", StartType.DOL, supply_voltage_v=Decimal(690))
+    assert row.breaker == "T4L250 PR221-I In100"
+    assert row.current_transformer == "4L185R/4, 13 primary turns"
+    assert row.overload_range_a == ("6", "8.5")

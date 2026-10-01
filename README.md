@@ -153,20 +153,26 @@ The panel BOM takes its drives from the first preferred vendor with a range
 for the supply; input fuses are listed only for the ACS880-01.
 
 The panel BOM (AI-007, BE-011) builds on both: a drive for each
-variable-speed load in the range the supply voltage selects, an outgoing
-copper or aluminium cable for each load, the enclosure, and the
-heat balance from Rittal's _Enclosure and process cooling_ (IEC 60890
-effective area, k = 5.5 W/m²K). A load given a start type (direct on line,
-star-delta, or heavy-duty direct on line) also gets its circuit-breaker,
-contactors and overload relay from the ABB _Electrical installation handbook_
-Vol. 2 coordination tables (400 V, 50 kA, Type 2); a supply other than
-400 V ± 5 % or a fault level above 50 kA is refused. Each drive gets its
-ultrarapid (aR) input fuses from the ACS880-01 hardware manual, with the
-minimum prospective short-circuit current they need, and each copper outgoing
-cable its Siemens 8WH1 through-type terminals (Catalog LV 10, 10/2022) chosen
-to clamp the cable and carry its current. Protection for loads with neither a
-drive nor a starter, and terminals for aluminium cables, have no sourced
-selection table and are listed as not included.
+variable-speed load from the range chosen, an outgoing copper or aluminium
+cable for each load, the enclosure, and the heat balance from Rittal's
+_Enclosure and process cooling_ (IEC 60890 effective area, k = 5.5 W/m²K). A
+load given a start type (direct on line, star-delta, or heavy-duty direct on
+line) also gets its circuit-breaker, contactors and overload relay from the
+ABB _Electrical installation handbook_ Vol. 2 coordination tables (Type 2,
+50 kA) at 400, 440, 500 or 690 V; the 690 V rows the handbook marks Type 1
+only are left out, a relay fed through a current transformer is listed with
+it, and a larger row whose relay cannot be set down to the motor's current is
+refused rather than offered. A supply more than 5 % from those voltages, or a
+fault level above 50 kA, is refused. Each ACS880-01 drive gets its ultrarapid
+(aR) input fuses from its hardware manual, with the minimum prospective
+short-circuit current they need. Every other load gets a curve C miniature
+circuit-breaker chosen by the handbook's overload rule Ib ≤ In ≤ Iz against
+its cable, from the rated currents of its Table 2.3 (3-125 A); its breaking
+capacity is left to be confirmed against the panel's fault level. Each copper
+outgoing cable gets its Siemens 8WH1 through-type terminals (Catalog LV 10,
+10/2022), chosen to clamp the cable and carry its current. Terminals for
+aluminium cables have no sourced selection table and are listed as not
+included.
 
 ### Local development notes
 

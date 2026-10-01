@@ -226,7 +226,7 @@ class BomLineKind(StrEnum):
 class BomNote(StrEnum):
     """What a BOM leaves out, as a key a page can translate."""
 
-    #: Protection for loads with neither a drive nor a starter.
+    #: Protection for a plain feeder no curve C rating fits.
     NOT_INCLUDED = "not_included"
     #: Drive input fuses operate fast enough only above a minimum fault level.
     FUSE_MIN_SHORT_CIRCUIT = "fuse_min_short_circuit"
@@ -237,6 +237,8 @@ class BomNote(StrEnum):
     FAULT_LEVEL_ASSUMED = "fault_level_assumed"
     #: The drives' manual has no fuse table held here.
     DRIVE_FUSES_NOT_LISTED = "drive_fuses_not_listed"
+    #: Feeder breakers are chosen for overload; breaking capacity is not checked.
+    FEEDER_BREAKING_CAPACITY = "feeder_breaking_capacity"
 
 
 class BomLine(BaseModel):

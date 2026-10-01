@@ -478,14 +478,28 @@ function lineText(t: ReturnType<typeof useTranslations<'calc'>>, line: BomLine):
         grouped: d.grouped ?? '',
       });
     case 'breaker':
-      return t('bom.line.breaker', { tag: d.tag ?? '', load: d.load ?? '', trip: d.trip_a ?? '' });
+      return d.rated_a !== undefined
+        ? t('bom.line.feeder', {
+            tag: d.tag ?? '',
+            load: d.load ?? '',
+            rated: d.rated_a,
+            curve: d.curve ?? '',
+          })
+        : t('bom.line.breaker', { tag: d.tag ?? '', load: d.load ?? '', trip: d.trip_a ?? '' });
     case 'contactor':
       return t('bom.line.contactor', {
         tag: d.tag ?? '',
         role: t(`bom.role.${d.role ?? 'line'}` as 'bom.role.line'),
       });
     case 'overload':
-      return t('bom.line.overload', { tag: d.tag ?? '', min: d.min_a ?? '', max: d.max_a ?? '' });
+      return d.ct !== undefined
+        ? t('bom.line.overloadCt', {
+            tag: d.tag ?? '',
+            min: d.min_a ?? '',
+            max: d.max_a ?? '',
+            ct: d.ct,
+          })
+        : t('bom.line.overload', { tag: d.tag ?? '', min: d.min_a ?? '', max: d.max_a ?? '' });
     case 'fuse':
       return t('bom.line.fuse', { tag: d.tag ?? '', amps: d.amps ?? '', minSc: d.min_sc_a ?? '' });
     case 'terminal':

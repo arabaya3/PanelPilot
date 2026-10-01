@@ -143,11 +143,13 @@ def test_a_bom_is_built_with_each_source_once() -> None:
     )
     assert response.result.lines[0].part_reference == "ACS880-01-025A-3"
     # Drive ratings and its fuses (ACS880 manual), the cables (ABB handbook),
-    # both cables' terminals (one Siemens page), the enclosure (Rittal).
+    # both cables' terminals (one Siemens page), the fan's feeder breaker (ABB
+    # handbook, §2.3), the enclosure (Rittal).
     assert [s.manufacturer for s in response.sources] == [
         "ABB",
         "ABB",
         "ABB",
         "Siemens",
+        "ABB",
         "Rittal",
     ]
