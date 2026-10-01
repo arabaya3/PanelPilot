@@ -9,9 +9,8 @@ calculations performed by deterministic code rather than by the model.
 > orchestration endpoint, and the web client that renders it in English,
 > Arabic and Hebrew. `docker compose up` boots all five services healthy.
 >
-> One backend gap remains, listed below, and it is an account setting rather
-> than code: the embedding provider's free tier is too rate-limited to ingest
-> a corpus.
+> The corpus is not in the repository: an OpenAI account with billing
+> enabled embeds it, and "Building the corpus from scratch" below rebuilds it.
 
 ---
 
@@ -55,8 +54,8 @@ anyone picking this up needs these before they need the history.
 
 ### Backend work between here and a usable product
 
-One thing: a vendor account setting, and it is what actually blocks the
-product being usable at all.
+Nothing in code. A usable deployment needs an OpenAI account with billing
+enabled (embeddings and answers), and a corpus built with it.
 
 _Previously listed here and now resolved: the anonymous-trial endpoint.
 `POST /api/v1/auth/trial` issues a trial session, its one-time claim secret,
@@ -97,18 +96,13 @@ dimensions). Claude and Voyage remain available: `LLM_PROVIDER=anthropic` and
 parsers are the same under either. Switching the embedding provider on an
 existing corpus is a re-index (`python -m app.worker reindex-staging`).
 
-**Retrieval is wired end to end, and rate-limited on the free tier.**
-Voyage is implemented, keyed and verified live: `embed_query` and
-`embed_documents` both return 1024-dimension vectors from `voyage-3.5`, which
-is exactly what `mappings.EMBEDDING_DIMENSIONS` pins — so no re-index was
-needed. The key is read from `VOYAGE_API_KEY`, named after the vendor so a
-second provider added later gets its own variable rather than overloading one
-that could silently hold the wrong account's credential.
-
-**The remaining limit is an account setting, not code.** Voyage's free tier
-allows 3 requests per minute with no payment method attached, so a crawl of
-any size will hit it. The failure surfaces correctly — `EmbeddingError`, not a
-zero vector — but a real ingestion run needs billing enabled.
+**Retrieval is wired end to end.** Both embedding providers return
+1024-dimension vectors, which is what `mappings.EMBEDDING_DIMENSIONS` pins.
+Each provider's key has its own variable (`OPENAI_API_KEY`, `VOYAGE_API_KEY`),
+so a second account's credential never lands in the first one's slot. A free
+tier is too rate-limited to embed a corpus: Voyage's allows 3 requests a
+minute without a payment method. The failure surfaces as `EmbeddingError`,
+never as a zero vector.
 
 Two properties worth knowing before anyone swaps model or vendor:
 
@@ -183,12 +177,11 @@ build time, which sent the production image's API traffic to its own
 
 ### Deliberate incompletenesses in merged work
 
-**PLC generation is not wired to a model.** `POST /api/v1/plc/generate`
-refuses with an explicit message; `POST /api/v1/plc/review` is fully working
-and validates code an engineer supplies. Refusing rather than stubbing was the
-point: a plausible stub would make the endpoint look finished and hand a
-caller a program no model wrote, wearing whatever verdict the validator gave
-it.
+**PLC generation returns code with its verdict, never code alone.**
+`POST /api/v1/plc/generate` asks the model for the program and runs the same
+validator as `POST /api/v1/plc/review` on it before answering. A validator
+that fails returns an explicit `INCOMPLETE` verdict rather than none, so
+generated code is never handed over looking checked when it was not.
 
 **The PDF structure extractor cannot stitch a headerless table continuation.**
 A table continued across a page break with neither a repeated header nor a
