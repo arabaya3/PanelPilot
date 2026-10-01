@@ -1664,6 +1664,68 @@ _MITSUBISHI_FR_A800 = DriveRange(
 )  # fmt: skip
 
 
+#: FR-E800 Instruction Manual (Connection), IB-0600865ENG-T.
+_MITSUBISHI_FR_E800 = DriveRange(
+    key="mitsubishi-fr-e800",
+    manufacturer="Mitsubishi Electric",
+    series="FR-E800",
+    document_id="mitsubishi-IB-0600865ENG-T",
+    document_title="FR-E800 Instruction Manual (Connection), IB-0600865ENG-T",
+    catalogues=(
+        _Catalogue(
+            "",
+            Decimal(200),
+            Decimal(240),
+            (
+                _Rating("FR-E820-0008(0.1K)", None, "1.3", "0.8", 169),
+                _Rating("FR-E820-0015(0.2K)", None, "2.0", "1.5", 169),
+                _Rating("FR-E820-0030(0.4K)", None, "3.5", "3.0", 169),
+                _Rating("FR-E820-0050(0.75K)", None, "6.0", "5.0", 169),
+                _Rating("FR-E820-0080(1.5K)", None, "9.6", "8.0", 169),
+                _Rating("FR-E820-0110(2.2K)", None, "12.0", "11.0", 169),
+                _Rating("FR-E820-0175(3.7K)", None, "19.6", "17.5", 169),
+                _Rating("FR-E820-0240(5.5K)", None, "30.0", "24.0", 169),
+                _Rating("FR-E820-0330(7.5K)", None, "40.0", "33.0", 169),
+                _Rating("FR-E820-0470(11K)", None, "56.0", "47.0", 169),
+                _Rating("FR-E820-0600(15K)", None, "69.0", "60.0", 169),
+                _Rating("FR-E820-0760(18.5K)", None, "88.0", "76.0", 169),
+                _Rating("FR-E820-0900(22K)", None, "115.0", "90.0", 169),
+            ),
+            169,
+            "4.1 Inverter rating - Three-phase 200 V power supply",
+        ),
+        _Catalogue(
+            "",
+            Decimal(380),
+            Decimal(480),
+            (
+                _Rating("FR-E840-0016(0.4K)", None, "2.1", "1.6", 171),
+                _Rating("FR-E840-0026(0.75K)", None, "3.5", "2.6", 171),
+                _Rating("FR-E840-0040(1.5K)", None, "5.5", "4.0", 171),
+                _Rating("FR-E840-0060(2.2K)", None, "6.9", "6.0", 171),
+                _Rating("FR-E840-0095(3.7K)", None, "11.1", "9.5", 171),
+                _Rating("FR-E840-0120(5.5K)", None, "17.5", "12.0", 171),
+                _Rating("FR-E840-0170(7.5K)", None, "23.0", "17.0", 171),
+                _Rating("FR-E840-0230(11K)", None, "35.0", "23.0", 171),
+                _Rating("FR-E840-0300(15K)", None, "41.0", "30.0", 171),
+                _Rating("FR-E840-0380(18.5K)", None, "45.0", "38.0", 171),
+                _Rating("FR-E840-0440(22K)", None, "60.0", "44.0", 171),
+            ),
+            171,
+            "4.1 Inverter rating - Three-phase 400 V power supply",
+        ),
+    ),
+    temperature=_Derating(Decimal(50), None, Decimal(1), Decimal(60), Decimal(-20), 48, "Surrounding air temperature: rated current reduced above 50 °C per model table"),
+    altitude=_Derating(Decimal(1000), Decimal("0.6"), Decimal(100), Decimal(2000), Decimal(0), 44, "Altitude: 3 % reduction in rated current per 500 m above 1000 m"),
+    notes=(
+        "Normal duty is the LD rating (120 % for 60 s at 50 °C); heavy duty the ND rating (150 % for 60 s), the factory setting.",
+        "Above 50 °C the reduction is a per-model table (1.0-3.0 %/°C): refused here.",
+        "The altitude reduction of 3 % per 500 m is applied pro rata, to 2000 m.",
+        "The bracketed currents apply only to low-acoustic-noise operation above 40 °C.",
+    ),
+)  # fmt: skip
+
+
 #: MX2 Inverter User's Manual (I570) (Cat. No. I570-E2-02F).
 _OMRON_MX2 = DriveRange(
     key="omron-mx2",
@@ -2602,6 +2664,7 @@ RANGES: tuple[DriveRange, ...] = (
     _LSELECTRIC_IG5A,
     _LSELECTRIC_S100,
     _MITSUBISHI_FR_A800,
+    _MITSUBISHI_FR_E800,
     _OMRON_MX2,
     _ROCKWELL_POWERFLEX520,
     _SCHNEIDER_ATV12,

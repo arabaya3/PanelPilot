@@ -142,12 +142,12 @@ its own manual in the corpus with the page of every table and derating rule
 (`app/ai/tools/drive_ranges.py`, listed by `GET /calculations/drive-ranges`):
 Danfoss FC 302 and FC 51, Delta C2000 Plus, MS300, ME300 and VFD-EL-W, Fuji
 FRENIC-Mini (C2), Hitachi WJ200, Invertek Optidrive E3 and P2, Lenze i550,
-LS Electric S100 and iG5A, Mitsubishi FR-A800, Omron MX2, Rockwell PowerFlex
+LS Electric S100 and iG5A, Mitsubishi FR-A800 and FR-E800, Omron MX2, Rockwell PowerFlex
 523/525, Schneider ATV12, ATV320, ATV630 and ATV650, SEW MOVITRAC LTE-B and
 Siemens SINAMICS V20, and Yaskawa GA500, GA800 and V1000. Where a manual's derating differs by enclosure the most
 conservative is held, and where it is a curve rather than a rate the range is
 offered only where it carries full current. The FRENIC-Ace, Unidrive M700,
-FR-E800, CFW500 and 8400 StateLine manuals in the corpus print no rating
+CFW500 and 8400 StateLine manuals in the corpus print no rating
 table (each refers to another document), so those series are not offered.
 The panel BOM takes its drives from the first preferred vendor with a range
 for the supply; input fuses are listed only for the ACS880-01.

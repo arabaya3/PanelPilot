@@ -122,6 +122,11 @@ def _select(key: str, supply: str, current: str, duty: DutyClass = DutyClass.NOR
         # so 520 A normal duty needs the next size.
         ("yaskawa-ga800", "400", "515", DutyClass.NORMAL, "CIPR-GA80U4568"),
         ("yaskawa-ga800", "400", "520", DutyClass.NORMAL, "CIPR-GA80U4605"),
+        # Mitsubishi FR-E800 Connection manual, p. 171: FR-E840-0095 LD 11.1 A,
+        # ND 9.5 A; 11.2 A normal duty needs the next size.
+        ("mitsubishi-fr-e800", "400", "11.1", DutyClass.NORMAL, "FR-E840-0095(3.7K)"),
+        ("mitsubishi-fr-e800", "400", "9.5", DutyClass.HEAVY, "FR-E840-0095(3.7K)"),
+        ("mitsubishi-fr-e800", "400", "11.2", DutyClass.NORMAL, "FR-E840-0120(5.5K)"),
         # Siemens V20 OI, p. 24: FSB 3.0 kW, 7.3 A.
         ("siemens-v20", "400", "7.3", DutyClass.NORMAL, "6SL3210-5BE23-0UV0 (FSB)"),
     ],

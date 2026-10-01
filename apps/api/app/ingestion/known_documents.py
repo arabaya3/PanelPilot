@@ -221,6 +221,12 @@ KNOWN_DOCUMENTS: tuple[KnownDocument, ...] = (
     # www.mitsubishielectric.com's, which disallows only two unrelated pages.
     KnownDocument(
         source_id="mitsubishi",
+        url="https://dl.mitsubishielectric.com/dl/fa/document/manual/inv/ib0600865eng/ib0600865engt.pdf",
+        title="FR-E800 Instruction Manual (Connection), IB-0600865ENG-T",
+        verified="2026-10-01",
+    ),
+    KnownDocument(
+        source_id="mitsubishi",
         url="https://dl.mitsubishielectric.com/dl/fa/document/manual/inv/ib0600868eng/ib0600868engu.pdf",
         title="FR-E800 Instruction Manual (Function), IB-0600868ENG-U",
         verified="2026-10-01",
