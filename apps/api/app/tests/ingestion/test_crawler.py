@@ -918,6 +918,8 @@ def test_check_reports_the_hash_of_what_each_url_serves_now() -> None:
         DocumentCheck(first, "fetched", content_hash(b"revision 2")),
         DocumentCheck(second, "fetched", content_hash(b"unchanged")),
     ]
+    # The bytes come back too, for a caller that reads the document.
+    assert [check.body for check in checks] == [b"revision 2", b"unchanged"]
 
 
 @pytest.mark.parametrize("status", [404, 410])

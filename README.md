@@ -441,6 +441,71 @@ client on your own machine, the API is published on loopback only, at
 > ship are the `runtime` (api) and `runner` (web) targets — non-root, no build
 > or dev tooling, and for web no `node_modules` at all.
 
+## Building the corpus from scratch
+
+A fresh checkout has empty indices: answers come only from manuals that were
+crawled, checked and promoted. The corpus is not in this repository; these
+steps rebuild it. Expect a few hours, mostly the crawler's politeness delays
+and PDF extraction, and well under a dollar of OpenAI embeddings for the
+~60,000 passages. Every command runs inside the `api` container.
+
+**1. Configure and boot.** In `.env`, set `OPENAI_API_KEY` (embeddings and
+answers) on an account with billing enabled; the free tier's rate limit
+cannot embed a corpus. Then `docker compose up --build -d`.
+
+**2. Make yourself a reviewer.** Sign up at <http://localhost:3000>, then:
+
+```bash
+docker compose exec api python -m app.worker grant-role you@example.com reviewer
+```
+
+**3. Crawl the sources that allow it.** Each has curated manual URLs
+(`app/ingestion/known_documents.py`), so no seed is needed:
+
+```bash
+for source in siemens abb danfoss yaskawa rockwell mitsubishi weg omron \
+              lselectric inovance hitachi fuji nidec sew; do
+  docker compose exec api python -m app.worker crawl "$source"
+done
+```
+
+**4. Stage the manuals supplied by hand.** Schneider, Delta, Invertek, Lenze,
+Phoenix Contact, Weidmüller and B&R refuse the crawler, so their PDFs are
+downloaded in a browser. Each folder's `sources.csv` names every file and
+where it came from; put the PDFs next to it under `apps/api/data/<source>/`
+(they are gitignored), then:
+
+```bash
+for source in schneider delta invertek lenze phoenixcontact weidmueller br; do
+  docker compose exec api python -m app.worker ingest-files "$source" "data/$source"
+done
+```
+
+Everything is now in **staging**, queued for review. Nothing is live yet.
+
+**5. Check against the PDFs and promote.** `review-staged` reads the page
+of the original PDF that each pending passage cites, and clears it as you
+only when its citation is complete, it is not a contents list or an index,
+and at least 90% of its words are on that page or the two after it:
+
+```bash
+docker compose exec api python -m app.worker review-staged you@example.com --dry-run
+docker compose exec api python -m app.worker review-staged you@example.com
+```
+
+The dry run prints each manual's verdicts and clears nothing. The real run
+clears through the same path as the review console: four-eyes check, audit
+row and production write, committed one passage at a time, so running it
+again after an interruption picks up where it stopped.
+Manuals supplied by hand are read from `data/`; crawled ones are fetched
+again through the crawler into `data/_fetched/`, and are kept only if they
+are byte-for-byte the file that was staged (`--no-fetch` skips this). The
+command is never scheduled, because it clears in a person's name.
+
+**6. Read what is left.** Passages that fail the check (weak or no match on
+their page, navigation) stay pending, so a person decides on them in the
+review console. The corpus answers questions without them.
+
 ## Getting started without Docker
 
 ```bash
@@ -462,6 +527,7 @@ python -m app.worker assign-review-batches   # daily: hand staged chunks to revi
 python -m app.worker calibrate-relevance eval.json   # recommend RETRIEVAL_MIN_SIMILARITY
 python -m app.worker expire-stale-sources   # weekly: flag live documents changed upstream (exit 1 = review needed)
 python -m app.worker reindex-staging [abb]   # after an embedding model change: re-embed staging in place
+python -m app.worker review-staged you@example.com [--dry-run]   # check pending passages against their PDFs; clear the grounded ones as you
 
 # `POST /api/v1/ingestion/crawl-jobs` only queues (202); schedule `crawl-queue`
 # every few minutes to run what it queued. Poll GET .../crawl-jobs/{id}.

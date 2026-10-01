@@ -1067,3 +1067,22 @@ def test_an_equation_set_large_is_not_a_heading() -> None:
 
     assert headings == ["Correction factor"]
     assert {b.section for b in blocks if b.kind is BlockKind.PARAGRAPH} == {"Correction factor"}
+
+
+def test_page_texts_reads_only_the_pages_asked_for(tmp_path: Any) -> None:
+    """For checking a chunk against the page it cites, one page at a time."""
+    path = tmp_path / "manual.pdf"
+    path.write_bytes(
+        build(
+            lambda p: p.body("First page about wiring."),
+            lambda p: p.body("Second page about fault codes."),
+            lambda p: p.body("Third page about cooling."),
+        )
+    )
+
+    texts, total = structure.page_texts(path, [3, 1, 9])
+
+    assert total == 3
+    assert set(texts) == {1, 3}
+    assert "wiring" in texts[1]
+    assert "cooling" in texts[3]

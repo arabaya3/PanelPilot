@@ -42,8 +42,9 @@ import io
 import itertools
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pdfplumber
@@ -821,6 +822,34 @@ def _read_page(
     widths[page_number] = float(page.width)
     if heights is not None:
         heights[page_number] = float(page.height)
+
+
+def page_texts(path: str | Path, pages: Iterable[int]) -> tuple[dict[int, str], int]:
+    """Read the plain text of some pages of a PDF, as extraction reads them.
+
+    For checking a staged chunk against the page it cites: overprinted glyphs
+    are dropped and words are split at ``WORD_GAP_RATIO``, as they were when
+    the chunk was cut, so the two compare like for like. Each page is read
+    once and released; a 1,000-page manual is never held whole.
+
+    Args:
+        path: The PDF.
+        pages: 1-based page numbers wanted; ones past the end are skipped.
+
+    Returns:
+        The text of each page read, and the PDF's page count.
+    """
+    found: dict[int, str] = {}
+    with pdfplumber.open(path) as document:
+        total = len(document.pages)
+        for number in sorted(set(pages)):
+            if 1 <= number <= total:
+                page = document.pages[number - 1]
+                found[number] = (
+                    page.dedupe_chars().extract_text(x_tolerance_ratio=WORD_GAP_RATIO) or ""
+                )
+                page.close()
+    return found, total
 
 
 def extract_structure(data: bytes, *, document_id: str = "") -> StructureMap:
