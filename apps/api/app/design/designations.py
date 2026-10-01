@@ -22,15 +22,19 @@ from app.models.schemas.design import (
 def _drawing_order(board: Board) -> list[str]:
     """Device ids in the order they are drawn.
 
-    Incomers, then each circuit's upstream device and its own devices, then
-    anything not yet reached.
+    Incomers, then each circuit's upstream devices (what feeds a device
+    first) and its own devices, then anything not yet reached.
     """
     order: list[str] = []
     seen: set[str] = set()
 
+    upstream = {d.id: d.upstream_id for d in board.devices}
+
     def visit(device_id: str | None) -> None:
         if device_id is not None and device_id not in seen:
             seen.add(device_id)
+            # What feeds a device is drawn before it.
+            visit(upstream.get(device_id))
             order.append(device_id)
 
     for device_id in board.incomer_ids:

@@ -23,6 +23,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
+
 
 class DeviceKind(StrEnum):
     """What a device does, which decides its designation letter."""
@@ -140,6 +142,8 @@ class Device(BaseModel):
         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
         breaking_capacity_ka: Rated short-circuit breaking capacity.
         description: A short function text for the drawing.
+        upstream_id: The device that feeds this one (a group breaker feeding
+            a residual current device, say); ``None`` for the busbar.
     """
 
     id: str
@@ -152,6 +156,7 @@ class Device(BaseModel):
     curve: str | None = None
     breaking_capacity_ka: Decimal | None = None
     description: str = ""
+    upstream_id: str | None = None
 
 
 class Cable(BaseModel):
@@ -263,6 +268,9 @@ class Board(BaseModel):
         circuit_ids = [c.id for c in self.circuits]
         if len(set(circuit_ids)) != len(circuit_ids):
             raise ValueError(f"board {self.id}: circuit ids are not unique")
+        for device in self.devices:
+            if device.upstream_id is not None and device.upstream_id not in device_ids:
+                raise ValueError(f"device {device.id}: {device.upstream_id} is not a device")
         for incomer in self.incomer_ids:
             if incomer not in device_ids:
                 raise ValueError(f"board {self.id}: incomer {incomer} is not a device")
@@ -490,3 +498,64 @@ class CompanyProfile(BaseModel):
         if missing:
             raise ValueError(f"profile {self.key}: no letter for {missing}")
         return self
+
+
+class LoadInput(BaseModel):
+    """One line of a distribution board's load schedule.
+
+    Attributes:
+        description: What it feeds ("Sockets - hall east").
+        load: The kind of load, which picks the company's rule for it.
+        power_kw: Installed active power.
+        phases: 1 or 3.
+        power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
+            load-current table is drawn up for, and the board says so.
+    """
+
+    description: str = Field(min_length=1)
+    load: LoadKind
+    power_kw: Decimal = Field(gt=0)
+    phases: int = Field(default=1)
+    power_factor: Decimal | None = Field(default=None, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _one_or_three(self) -> LoadInput:
+        if self.phases not in (1, 3):
+            raise ValueError("phases must be 1 or 3")
+        return self
+
+
+class InstallationConditions(BaseModel):
+    """How the outgoing cables are run, for their sizing.
+
+    Attributes:
+        installation_method: IEC 60364-5-52 reference method.
+        ambient_temp_c: Air temperature around the cables.
+        grouped_circuits: Loaded circuits run together.
+        conductor_material: Copper or aluminium.
+        insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
+    """
+
+    installation_method: InstallationMethod = InstallationMethod.B1
+    ambient_temp_c: Decimal = Decimal(30)
+    grouped_circuits: int = Field(default=1, ge=1)
+    conductor_material: ConductorMaterial = ConductorMaterial.COPPER
+    insulation_rating_c: int = 70
+
+
+class DistributionBoardRequest(BaseModel):
+    """What a distribution board is designed from.
+
+    Attributes:
+        name: The board's name ("DBG-HALL").
+        location: Its IEC 81346 location aspect, where given.
+        supply: The incoming supply.
+        loads: The load schedule, in the order the circuits are drawn.
+        conditions: How the outgoing cables are run.
+    """
+
+    name: str = Field(min_length=1)
+    location: str | None = None
+    supply: Supply = Field(default_factory=Supply)
+    loads: list[LoadInput] = Field(min_length=1)
+    conditions: InstallationConditions = Field(default_factory=InstallationConditions)
