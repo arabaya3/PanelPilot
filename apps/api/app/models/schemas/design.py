@@ -1,0 +1,492 @@
+"""The design project: one tool-neutral description of a panel design.
+
+Every output -- the drawing set, the parts and terminal lists, and each ECAD
+tool's import file -- is generated from this one model. Nothing here knows
+about pages, coordinates or any tool's file format: a model that did would
+tie every company to one tool's way of drawing.
+
+Structure follows IEC 81346-1 reference designations, which EPLAN, E3.series
+and AutoCAD Electrical all understand: a function aspect (``=``), a location
+aspect (``+``) and a product aspect (``-``). A device's product designation
+("Q12") is assigned from the company profile, never typed into a design, so
+the same design can be issued under any company's conventions.
+
+Every physical quantity carries its unit in the field name and is a
+``Decimal``, as in the calculation schemas, because these numbers end up on
+drawings.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from enum import StrEnum
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class DeviceKind(StrEnum):
+    """What a device does, which decides its designation letter."""
+
+    CIRCUIT_BREAKER = "circuit_breaker"
+    RESIDUAL_CURRENT_DEVICE = "residual_current_device"
+    SWITCH_DISCONNECTOR = "switch_disconnector"
+    CONTACTOR = "contactor"
+    OVERLOAD_RELAY = "overload_relay"
+    FUSE = "fuse"
+    SURGE_PROTECTOR = "surge_protector"
+    DRIVE = "drive"
+    MOTOR = "motor"
+    RELAY = "relay"
+    BUS_ACTUATOR = "bus_actuator"
+    POWER_SUPPLY = "power_supply"
+    METER = "meter"
+    INDICATOR_LAMP = "indicator_lamp"
+    TERMINAL_STRIP = "terminal_strip"
+    CABLE = "cable"
+    BUSBAR = "busbar"
+    OTHER = "other"
+
+
+class LoadKind(StrEnum):
+    """What a circuit feeds.
+
+    Company rules (breaker size, residual current sensitivity) are set per
+    kind in the profile.
+    """
+
+    LIGHTING = "lighting"
+    SOCKET = "socket"
+    AIR_CONDITIONING = "air_conditioning"
+    WATER_HEATER = "water_heater"
+    MOTOR = "motor"
+    FAN = "fan"
+    KITCHEN = "kitchen"
+    LIFT = "lift"
+    SUB_BOARD = "sub_board"
+    CONTROL = "control"
+    DATA = "data"
+    SPARE = "spare"
+    OTHER = "other"
+
+
+class Phase(StrEnum):
+    """A line conductor, or all three."""
+
+    L1 = "L1"
+    L2 = "L2"
+    L3 = "L3"
+    THREE_PHASE = "L1L2L3"
+
+
+class Designation(BaseModel):
+    """An IEC 81346-1 reference designation.
+
+    Attributes:
+        function: The function aspect, without its ``=`` prefix ("DB1").
+        location: The location aspect, without its ``+`` prefix ("HALL").
+        product: The product aspect, without its ``-`` prefix ("Q12").
+    """
+
+    function: str | None = None
+    location: str | None = None
+    product: str
+
+    def __str__(self) -> str:
+        """Print the designation as IEC 81346-1 writes it: ``=DB1+HALL-Q12``."""
+        parts = []
+        if self.function:
+            parts.append(f"={self.function}")
+        if self.location:
+            parts.append(f"+{self.location}")
+        parts.append(f"-{self.product}")
+        return "".join(parts)
+
+
+class Part(BaseModel):
+    """An orderable article.
+
+    Attributes:
+        key: Unique within the project; how devices refer to the part.
+        manufacturer: As the manufacturer names itself.
+        type_number: The manufacturer's type designation.
+        order_number: The number an order is placed with, where it differs.
+        description: What it is, in the catalogue's words.
+        source: Where the data came from (catalogue, page), so a reviewer
+            can check it.
+        width_mm: Mounting width, for layout. ``None`` when not known.
+    """
+
+    key: str
+    manufacturer: str
+    type_number: str
+    order_number: str | None = None
+    description: str
+    source: str | None = None
+    width_mm: Decimal | None = None
+
+
+class Device(BaseModel):
+    """One device in a board.
+
+    Attributes:
+        id: Stable identifier within the project; connections refer to it.
+        kind: What the device does.
+        designation: Assigned from the company profile; ``None`` until then.
+        part_key: The part it is built from; ``None`` for a device whose part
+            has not been selected yet (it is listed as such, never guessed).
+        poles: Number of poles, where it has any.
+        rated_current_a: In, for switching and protective devices.
+        residual_current_ma: IΔn, for a residual current device.
+        curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
+        breaking_capacity_ka: Rated short-circuit breaking capacity.
+        description: A short function text for the drawing.
+    """
+
+    id: str
+    kind: DeviceKind
+    designation: Designation | None = None
+    part_key: str | None = None
+    poles: int | None = Field(default=None, ge=1, le=4)
+    rated_current_a: Decimal | None = None
+    residual_current_ma: Decimal | None = None
+    curve: str | None = None
+    breaking_capacity_ka: Decimal | None = None
+    description: str = ""
+
+
+class Cable(BaseModel):
+    """An outgoing cable.
+
+    Attributes:
+        id: Stable identifier within the project.
+        designation: Assigned from the company profile.
+        cores: Number of cores, protective conductor included.
+        cross_section_mm2: Of each line conductor.
+        material: "Cu" or "Al".
+        insulation: "PVC" or "XLPE".
+        length_m: Where known.
+        part_key: The cable type, where selected.
+    """
+
+    id: str
+    designation: Designation | None = None
+    cores: int = Field(ge=1)
+    cross_section_mm2: Decimal
+    material: str = "Cu"
+    insulation: str = "PVC"
+    length_m: Decimal | None = None
+    part_key: str | None = None
+
+
+class Circuit(BaseModel):
+    """An outgoing circuit.
+
+    A load, the devices that switch and protect it, and the cable feeding it.
+
+    Attributes:
+        id: Stable identifier within the board.
+        description: What it feeds, as the load schedule names it.
+        load: The kind of load.
+        power_kw: Installed power.
+        design_current_a: Ib.
+        phase: The line conductor(s) it is connected to.
+        upstream_id: The device this circuit is fed from (a residual current
+            device, say); ``None`` when it hangs off the busbar directly.
+        device_ids: The circuit's own devices, in order from the busbar.
+        cable_id: Its outgoing cable, where it has one.
+    """
+
+    id: str
+    description: str
+    load: LoadKind
+    power_kw: Decimal
+    design_current_a: Decimal
+    phase: Phase
+    upstream_id: str | None = None
+    device_ids: list[str] = Field(default_factory=list)
+    cable_id: str | None = None
+
+
+class Supply(BaseModel):
+    """The board's incoming supply.
+
+    Attributes:
+        voltage_v: Line-to-line voltage.
+        phases: 1 or 3.
+        frequency_hz: 50 or 60.
+        earthing: The system earthing ("TN-S", "TN-C-S", "TT").
+        fault_level_ka: Prospective short-circuit current at the board.
+    """
+
+    voltage_v: Decimal = Decimal(400)
+    phases: int = Field(default=3, ge=1, le=3)
+    frequency_hz: Decimal = Decimal(50)
+    earthing: str = "TN-S"
+    fault_level_ka: Decimal | None = None
+
+
+class Board(BaseModel):
+    """One panel or distribution board.
+
+    Attributes:
+        id: Stable identifier within the project.
+        name: As the project names it ("DBG-HALL").
+        function: Its IEC 81346 function aspect; defaults to the name.
+        location: Its IEC 81346 location aspect, where given.
+        supply: The incoming supply.
+        incomer_ids: The incoming devices, in order from the supply.
+        devices: Every device in the board.
+        cables: Every outgoing cable.
+        circuits: The outgoing circuits, in the order they are drawn.
+        notes: What the design could not settle, for the reviewer.
+    """
+
+    id: str
+    name: str
+    function: str | None = None
+    location: str | None = None
+    supply: Supply = Field(default_factory=Supply)
+    incomer_ids: list[str] = Field(default_factory=list)
+    devices: list[Device] = Field(default_factory=list)
+    cables: list[Cable] = Field(default_factory=list)
+    circuits: list[Circuit] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _references_resolve(self) -> Board:
+        device_ids = {d.id for d in self.devices}
+        if len(device_ids) != len(self.devices):
+            raise ValueError(f"board {self.id}: device ids are not unique")
+        cable_ids = {c.id for c in self.cables}
+        if len(cable_ids) != len(self.cables):
+            raise ValueError(f"board {self.id}: cable ids are not unique")
+        circuit_ids = [c.id for c in self.circuits]
+        if len(set(circuit_ids)) != len(circuit_ids):
+            raise ValueError(f"board {self.id}: circuit ids are not unique")
+        for incomer in self.incomer_ids:
+            if incomer not in device_ids:
+                raise ValueError(f"board {self.id}: incomer {incomer} is not a device")
+        for circuit in self.circuits:
+            for ref in [*circuit.device_ids, circuit.upstream_id]:
+                if ref is not None and ref not in device_ids:
+                    raise ValueError(f"circuit {circuit.id}: {ref} is not a device")
+            if circuit.cable_id is not None and circuit.cable_id not in cable_ids:
+                raise ValueError(f"circuit {circuit.id}: {circuit.cable_id} is not a cable")
+        return self
+
+    def device(self, device_id: str) -> Device:
+        """Return a device by id.
+
+        Raises:
+            KeyError: If the board has no such device.
+        """
+        for device in self.devices:
+            if device.id == device_id:
+                return device
+        raise KeyError(device_id)
+
+    def cable(self, cable_id: str) -> Cable:
+        """Return a cable by id.
+
+        Raises:
+            KeyError: If the board has no such cable.
+        """
+        for cable in self.cables:
+            if cable.id == cable_id:
+                return cable
+        raise KeyError(cable_id)
+
+
+class Revision(BaseModel):
+    """One issue of the drawing set.
+
+    Attributes:
+        index: "01", "A", as the company numbers them.
+        date: ISO date.
+        description: What changed.
+        drawn_by: Initials or name.
+        checked_by: Initials or name.
+        approved_by: Initials or name.
+    """
+
+    index: str
+    date: str
+    description: str = ""
+    drawn_by: str = ""
+    checked_by: str = ""
+    approved_by: str = ""
+
+
+class ProjectInfo(BaseModel):
+    """What the title block prints.
+
+    Attributes:
+        name: Project name.
+        number: The company's job number.
+        customer: Owner or customer.
+        consultant: Consultant, where there is one.
+        contractor: Contractor, where there is one.
+        revisions: Issues of the drawing set, oldest first.
+    """
+
+    name: str
+    number: str = ""
+    customer: str = ""
+    consultant: str = ""
+    contractor: str = ""
+    revisions: list[Revision] = Field(default_factory=list)
+
+
+class DesignProject(BaseModel):
+    """A whole design: what every output is generated from.
+
+    Attributes:
+        info: Title-block data.
+        profile: The key of the company profile the project is issued under.
+        boards: The boards, in the order they are drawn.
+        parts: Every part any device or cable refers to.
+    """
+
+    info: ProjectInfo
+    profile: str = "iec-default"
+    boards: list[Board] = Field(default_factory=list)
+    parts: list[Part] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _parts_resolve(self) -> DesignProject:
+        keys = [p.key for p in self.parts]
+        if len(set(keys)) != len(keys):
+            raise ValueError("part keys are not unique")
+        known = set(keys)
+        for board in self.boards:
+            references = [(d.id, d.part_key) for d in board.devices]
+            references += [(c.id, c.part_key) for c in board.cables]
+            for item_id, part_key in references:
+                if part_key is not None and part_key not in known:
+                    raise ValueError(f"{item_id}: part {part_key} is not in the project")
+        board_ids = [b.id for b in self.boards]
+        if len(set(board_ids)) != len(board_ids):
+            raise ValueError("board ids are not unique")
+        return self
+
+    def part(self, key: str) -> Part:
+        """Return a part by key.
+
+        Raises:
+            KeyError: If the project has no such part.
+        """
+        for part in self.parts:
+            if part.key == key:
+                return part
+        raise KeyError(key)
+
+
+class TitleField(StrEnum):
+    """A field a title block can print."""
+
+    PROJECT_NAME = "project_name"
+    PROJECT_NUMBER = "project_number"
+    BOARD_NAME = "board_name"
+    CUSTOMER = "customer"
+    CONSULTANT = "consultant"
+    CONTRACTOR = "contractor"
+    PAGE_TITLE = "page_title"
+    PAGE_NUMBER = "page_number"
+    REVISION = "revision"
+    DRAWN_BY = "drawn_by"
+    CHECKED_BY = "checked_by"
+    APPROVED_BY = "approved_by"
+    DATE = "date"
+    COMPANY = "company"
+
+
+class PageKind(StrEnum):
+    """A kind of page in a drawing set."""
+
+    TITLE = "title"
+    SAFETY = "safety"
+    CONTENTS = "contents"
+    LAYOUT = "layout"
+    SINGLE_LINE = "single_line"
+    DISTRIBUTION = "distribution"
+    TERMINALS = "terminals"
+    CABLES = "cables"
+    PARTS = "parts"
+
+
+class WireNumbering(StrEnum):
+    """How wires are numbered."""
+
+    POTENTIAL = "potential"
+    SEQUENTIAL = "sequential"
+    SOURCE_TARGET = "source_target"
+
+
+class CircuitRule(BaseModel):
+    """A company's rule for one kind of load.
+
+    Attributes:
+        breaker_a: The circuit-breaker rating used for this kind of load,
+            where the company fixes one rather than sizing from the load.
+        curve: The tripping characteristic.
+        residual_current_ma: The residual current device sensitivity this
+            kind of load is grouped under; ``None`` for none.
+        cable_mm2: The minimum cable cross-section for this kind of load.
+    """
+
+    breaker_a: Decimal | None = None
+    curve: str = "C"
+    residual_current_ma: Decimal | None = None
+    cable_mm2: Decimal | None = None
+
+
+class CompanyProfile(BaseModel):
+    """How one company issues a design.
+
+    Naming, numbering, title block, page order, brands and design rules. A
+    project is designed once; issuing it under another profile changes only
+    what this model governs.
+
+    Attributes:
+        key: Unique identifier.
+        name: The company's name, as the title block prints it.
+        language: Drawing language ("en", "ar").
+        letters: The product-aspect letter for each kind of device.
+        start_number: The first number of each letter's sequence.
+        title_fields: The title block's fields, in order.
+        page_order: The drawing set's pages, in order.
+        wire_numbering: How wires are numbered.
+        preferred_manufacturers: For each device kind, the manufacturers to
+            choose from, most preferred first.
+        circuit_rules: The company's rule for each kind of load.
+        max_circuits_per_rcd: How many outgoing circuits one residual current
+            device may protect.
+        spare_ways_percent: Spare outgoing ways to leave, as a share of the
+            circuits.
+        max_phase_imbalance_percent: The largest difference between the most
+            and least loaded line conductors, as a share of the most loaded.
+        rules_confirmed_by: Who confirmed the design rules. Empty while they
+            are this software's defaults, which the drawing then says.
+    """
+
+    key: str
+    name: str
+    language: str = "en"
+    letters: dict[DeviceKind, str]
+    start_number: int = Field(default=1, ge=0)
+    title_fields: list[TitleField]
+    page_order: list[PageKind]
+    wire_numbering: WireNumbering = WireNumbering.POTENTIAL
+    preferred_manufacturers: dict[DeviceKind, list[str]] = Field(default_factory=dict)
+    circuit_rules: dict[LoadKind, CircuitRule] = Field(default_factory=dict)
+    max_circuits_per_rcd: int = Field(default=6, ge=1)
+    spare_ways_percent: Decimal = Decimal(20)
+    max_phase_imbalance_percent: Decimal = Decimal(10)
+    rules_confirmed_by: str = ""
+
+    @model_validator(mode="after")
+    def _every_kind_has_a_letter(self) -> CompanyProfile:
+        missing = [kind for kind in DeviceKind if kind not in self.letters]
+        if missing:
+            raise ValueError(f"profile {self.key}: no letter for {missing}")
+        return self
