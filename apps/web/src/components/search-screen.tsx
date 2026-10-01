@@ -26,6 +26,17 @@ const MANUFACTURERS = [
   'WEG',
   'Omron',
   'Delta Electronics',
+  'LS Electric',
+  'Inovance',
+  'Hitachi',
+  'Fuji Electric',
+  'Nidec Control Techniques',
+  'SEW-EURODRIVE',
+  'Invertek Drives',
+  'Lenze',
+  'Phoenix Contact',
+  'Weidmüller',
+  'B&R',
 ] as const;
 
 type Session =

@@ -57,6 +57,17 @@ def test_the_named_sources_are_registered() -> None:
         "weg",
         "omron",
         "delta",
+        "lselectric",
+        "inovance",
+        "hitachi",
+        "fuji",
+        "nidec",
+        "sew",
+        "invertek",
+        "lenze",
+        "phoenixcontact",
+        "weidmueller",
+        "br",
     }
 
 
