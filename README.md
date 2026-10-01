@@ -193,6 +193,7 @@ stay marked unconfirmed until a company names who confirmed its own.
 
 A **distribution board** is designed from its load schedule
 (`app/design/distribution.py`):
+
 - Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
 - Its breaker is the company's fixed rating for that kind of load, or the
   smallest curve C rating at or above Ib.
