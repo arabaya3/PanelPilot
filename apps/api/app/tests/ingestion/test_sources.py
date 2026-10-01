@@ -22,10 +22,15 @@ from app.ingestion.sources import (
     CRAWLERS,
     AbbCrawler,
     DanfossCrawler,
+    DeltaCrawler,
+    MitsubishiCrawler,
+    OmronCrawler,
     ResponseLimitError,
+    RockwellCrawler,
     SchneiderCrawler,
     SiemensCrawler,
     SourceCrawler,
+    WegCrawler,
     YaskawaCrawler,
     crawler_for,
     http_client,
@@ -41,7 +46,18 @@ def page(*hrefs: str) -> str:
 
 
 def test_the_named_sources_are_registered() -> None:
-    assert set(CRAWLERS) == {"siemens", "abb", "schneider", "danfoss", "yaskawa"}
+    assert set(CRAWLERS) == {
+        "siemens",
+        "abb",
+        "schneider",
+        "danfoss",
+        "yaskawa",
+        "rockwell",
+        "mitsubishi",
+        "weg",
+        "omron",
+        "delta",
+    }
 
 
 def test_each_crawler_is_registered_under_its_own_id() -> None:
@@ -80,6 +96,11 @@ def test_the_interface_is_abstract() -> None:
         (SchneiderCrawler(), "https://www.se.com"),
         (DanfossCrawler(), "https://assets.danfoss.com"),
         (YaskawaCrawler(), "https://www.yaskawa.com"),
+        (RockwellCrawler(), "https://literature.rockwellautomation.com"),
+        (MitsubishiCrawler(), "https://dl.mitsubishielectric.com"),
+        (WegCrawler(), "https://static.weg.net"),
+        (OmronCrawler(), "https://assets.omron.eu"),
+        (DeltaCrawler(), "https://downloadcenter.deltaww.com"),
     ],
 )
 def test_a_pdf_on_the_sources_own_host_is_found(crawler: SourceCrawler, host: str) -> None:
@@ -97,6 +118,11 @@ def test_a_pdf_on_the_sources_own_host_is_found(crawler: SourceCrawler, host: st
         (SchneiderCrawler(), "https://www.se.com"),
         (DanfossCrawler(), "https://assets.danfoss.com"),
         (YaskawaCrawler(), "https://www.yaskawa.com"),
+        (RockwellCrawler(), "https://literature.rockwellautomation.com"),
+        (MitsubishiCrawler(), "https://dl.mitsubishielectric.com"),
+        (WegCrawler(), "https://static.weg.net"),
+        (OmronCrawler(), "https://assets.omron.eu"),
+        (DeltaCrawler(), "https://downloadcenter.deltaww.com"),
     ],
 )
 def test_a_pdf_on_another_host_is_not_followed(crawler: SourceCrawler, host: str) -> None:

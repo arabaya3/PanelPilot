@@ -4,7 +4,7 @@ The task asks for "one function per source implementing a shared
 ``SourceCrawler`` interface, so adding a fourth brand later means implementing
 one new class, not touching shared pipeline code". That is the whole design
 constraint here, and it is worth taking literally: everything that differs
-between Siemens, ABB and Schneider lives in a subclass, and everything that is
+between the manufacturers lives in a subclass, and everything that is
 the same — robots, rate limiting, hashing, change detection — lives in the
 crawler that drives them.
 
@@ -173,94 +173,102 @@ def _documents_from_links(
     return documents
 
 
-class SiemensCrawler(SourceCrawler):
+class _PdfLinksCrawler(SourceCrawler):
+    """A source whose listings are plain pages of PDF links on its own host.
+
+    True of every source registered so far, so each is just its identity --
+    id, host and manufacturer -- on top of this.
+    """
+
+    def listing_urls(self, seed_urls: list[str]) -> list[str]:
+        """Return the seeds unchanged; these portals paginate server-side."""
+        return list(seed_urls)
+
+    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
+        """Find PDFs linked from a listing page, on this host only."""
+        return _documents_from_links(
+            listing_url=listing_url, html=html, host_suffix=self.host_suffix
+        )
+
+
+class SiemensCrawler(_PdfLinksCrawler):
     """Siemens Industry Online Support / SiePortal."""
 
     source_id = "siemens"
     host_suffix = "siemens.com"
     manufacturer = "Siemens"
 
-    def listing_urls(self, seed_urls: list[str]) -> list[str]:
-        """Return the seeds unchanged; this portal paginates server-side."""
-        return list(seed_urls)
 
-    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
-        """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(
-            listing_url=listing_url, html=html, host_suffix=self.host_suffix
-        )
-
-
-class AbbCrawler(SourceCrawler):
+class AbbCrawler(_PdfLinksCrawler):
     """ABB Library."""
 
     source_id = "abb"
     host_suffix = "abb.com"
     manufacturer = "ABB"
 
-    def listing_urls(self, seed_urls: list[str]) -> list[str]:
-        """Return the seeds unchanged; this portal paginates server-side."""
-        return list(seed_urls)
 
-    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
-        """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(
-            listing_url=listing_url, html=html, host_suffix=self.host_suffix
-        )
-
-
-class SchneiderCrawler(SourceCrawler):
+class SchneiderCrawler(_PdfLinksCrawler):
     """Schneider Electric Download Center."""
 
     source_id = "schneider"
     host_suffix = "se.com"
     manufacturer = "Schneider Electric"
 
-    def listing_urls(self, seed_urls: list[str]) -> list[str]:
-        """Return the seeds unchanged; this portal paginates server-side."""
-        return list(seed_urls)
 
-    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
-        """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(
-            listing_url=listing_url, html=html, host_suffix=self.host_suffix
-        )
-
-
-class DanfossCrawler(SourceCrawler):
+class DanfossCrawler(_PdfLinksCrawler):
     """Danfoss Drives documentation, served from ``assets.danfoss.com``."""
 
     source_id = "danfoss"
     host_suffix = "danfoss.com"
     manufacturer = "Danfoss"
 
-    def listing_urls(self, seed_urls: list[str]) -> list[str]:
-        """Return the seeds unchanged; this portal paginates server-side."""
-        return list(seed_urls)
 
-    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
-        """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(
-            listing_url=listing_url, html=html, host_suffix=self.host_suffix
-        )
-
-
-class YaskawaCrawler(SourceCrawler):
+class YaskawaCrawler(_PdfLinksCrawler):
     """Yaskawa America's document library, served from ``www.yaskawa.com``."""
 
     source_id = "yaskawa"
     host_suffix = "yaskawa.com"
     manufacturer = "Yaskawa"
 
-    def listing_urls(self, seed_urls: list[str]) -> list[str]:
-        """Return the seeds unchanged; this portal paginates server-side."""
-        return list(seed_urls)
 
-    def extract_documents(self, *, listing_url: str, html: str) -> list[DiscoveredDocument]:
-        """Find PDFs linked from a listing page, on this host only."""
-        return _documents_from_links(
-            listing_url=listing_url, html=html, host_suffix=self.host_suffix
-        )
+class RockwellCrawler(_PdfLinksCrawler):
+    """Rockwell Automation Literature Library (``literature.rockwellautomation.com``)."""
+
+    source_id = "rockwell"
+    host_suffix = "rockwellautomation.com"
+    manufacturer = "Rockwell Automation"
+
+
+class MitsubishiCrawler(_PdfLinksCrawler):
+    """Mitsubishi Electric FA manuals (``dl.mitsubishielectric.com``)."""
+
+    source_id = "mitsubishi"
+    host_suffix = "mitsubishielectric.com"
+    manufacturer = "Mitsubishi Electric"
+
+
+class WegCrawler(_PdfLinksCrawler):
+    """WEG download center files (``static.weg.net``)."""
+
+    source_id = "weg"
+    host_suffix = "weg.net"
+    manufacturer = "WEG"
+
+
+class OmronCrawler(_PdfLinksCrawler):
+    """Omron Europe manuals (``assets.omron.eu``, ``files.omron.eu``)."""
+
+    source_id = "omron"
+    host_suffix = "omron.eu"
+    manufacturer = "Omron"
+
+
+class DeltaCrawler(_PdfLinksCrawler):
+    """Delta Electronics download center (``deltaww.com``)."""
+
+    source_id = "delta"
+    host_suffix = "deltaww.com"
+    manufacturer = "Delta Electronics"
 
 
 #: The allow-list. A source not registered here cannot be crawled, which is
@@ -274,6 +282,11 @@ CRAWLERS: dict[str, SourceCrawler] = {
         SchneiderCrawler(),
         DanfossCrawler(),
         YaskawaCrawler(),
+        RockwellCrawler(),
+        MitsubishiCrawler(),
+        WegCrawler(),
+        OmronCrawler(),
+        DeltaCrawler(),
     )
 }
 

@@ -15,7 +15,18 @@ type RetrievedPassage = components['schemas']['RetrievedPassage'];
  * The manufacturers the corpus is crawled from, as their chunks name them.
  * Mirrors the crawler allow-list; a name not here would match nothing.
  */
-const MANUFACTURERS = ['ABB', 'Siemens', 'Schneider Electric', 'Danfoss', 'Yaskawa'] as const;
+const MANUFACTURERS = [
+  'ABB',
+  'Siemens',
+  'Schneider Electric',
+  'Danfoss',
+  'Yaskawa',
+  'Rockwell Automation',
+  'Mitsubishi Electric',
+  'WEG',
+  'Omron',
+  'Delta Electronics',
+] as const;
 
 type Session =
   | { kind: 'starting' }
