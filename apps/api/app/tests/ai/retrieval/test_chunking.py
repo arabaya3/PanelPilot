@@ -13,9 +13,12 @@ does proves only that the code is self-consistent.
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from app.ai.retrieval.chunking import (
+    HARD_MAX_TOKENS,
     TARGET_MAX_TOKENS,
     chunk_document,
     estimate_tokens,
@@ -626,3 +629,64 @@ def test_atomicity_is_marked_independently_of_size() -> None:
     chunk = _chunk(doc, StructureMap(blocks=blocks))[0]
     assert chunk.is_atomic, "a small table is still atomic"
     assert chunk.oversized_reason is None, "and it is not oversized"
+
+
+def test_a_table_past_the_embedding_limit_is_cut_between_rows() -> None:
+    """Regression: Delta's DVP-ES2 manual opens with a 17,000-character table.
+
+    Kept whole, it was one chunk the embedding model refused, and the refusal
+    failed every chunk of the manual. Cut between rows, each part embeds, and
+    the links and reason tell a reader the table continues.
+    """
+    doc = _doc("long-table", "https://example.invalid/lt")
+    rows = [
+        f"{n} edition | Revised chapter {n}, parameters {n}-{n + 9} | 2010/{n % 12 + 1:02d}"
+        for n in range(400)
+    ]
+    table = "\n".join(rows)
+    assert estimate_tokens(table) > HARD_MAX_TOKENS
+    chunks = _chunk(
+        doc,
+        StructureMap(
+            blocks=[StructuralBlock(kind=BlockKind.TABLE, text=table, page=2, section="Revisions")]
+        ),
+    )
+    assert len(chunks) > 1
+    assert [row for c in chunks for row in c.text.splitlines()] == rows
+    for index, chunk in enumerate(chunks):
+        assert estimate_tokens(chunk.text) <= HARD_MAX_TOKENS
+        assert chunk.is_atomic
+        assert chunk.page == 2
+        assert chunk.oversized_reason == (
+            f"part {index + 1}/{len(chunks)} of a table split at the embedding limit "
+            f"of {HARD_MAX_TOKENS} tokens"
+        )
+    for current, following in itertools.pairwise(chunks):
+        assert current.continues_into == following.id
+        assert following.continues_from == current.id
+
+
+def test_a_single_row_past_the_embedding_limit_is_cut_between_words() -> None:
+    doc = _doc("long-row", "https://example.invalid/lr")
+    row = " ".join(f"{n}.{n}" for n in range(3000))
+    chunks = _chunk(
+        doc,
+        StructureMap(blocks=[StructuralBlock(kind=BlockKind.TABLE, text=row, page=1, section="1")]),
+    )
+    assert len(chunks) > 1
+    assert " ".join(c.text for c in chunks) == row
+    assert all(estimate_tokens(c.text) <= HARD_MAX_TOKENS for c in chunks)
+
+
+def test_prose_past_the_embedding_limit_is_cut_too() -> None:
+    doc = _doc("long-paragraph", "https://example.invalid/lp")
+    paragraph = _PROSE * 60
+    chunks = _chunk(
+        doc,
+        StructureMap(
+            blocks=[StructuralBlock(kind=BlockKind.PARAGRAPH, text=paragraph, page=1, section="1")]
+        ),
+    )
+    assert len(chunks) > 1
+    assert all(estimate_tokens(c.text) <= HARD_MAX_TOKENS for c in chunks)
+    assert all(c.oversized_reason is None for c in chunks)
