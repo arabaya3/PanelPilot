@@ -19,8 +19,10 @@ from app.models.schemas.auth import CurrentUser
 from app.models.schemas.calculations import (
     CableSizingRequest,
     CableSizingResponse,
+    DriveRangeSummary,
     PanelBomRequest,
     PanelBomResponse,
+    SupplyBand,
     VfdSelectionRequest,
     VfdSelectionResponse,
 )
@@ -129,6 +131,7 @@ def select_vfd(
         duty_class=request.duty_class,
         altitude_m=request.altitude_m,
         ambient_temp_c=request.ambient_temp_c,
+        drive_range=request.drive_range,
     )
     logger.info("calculation.vfd_selected", tenant_id=user.tenant_id, drive=result.frame_reference)
     return VfdSelectionResponse(
@@ -136,10 +139,30 @@ def select_vfd(
         motor_current_a=required,
         sources=[
             vfd_selection.motor_current_citation(),
-            vfd_selection.ratings_citation(request.supply_voltage_v),
+            vfd_selection.ratings_citation(request.supply_voltage_v, request.drive_range),
             *(factor.source for factor in result.applied_factors),
         ],
     )
+
+
+def drive_ranges() -> list[DriveRangeSummary]:
+    """List the drive series VFD selection can choose from.
+
+    Returns:
+        Each range with its supply bands and the manual it is read from,
+        the default (ABB ACS880-01) first.
+    """
+    return [
+        DriveRangeSummary(
+            key=summary.key,
+            manufacturer=summary.manufacturer,
+            series=summary.series,
+            bands=[SupplyBand(low_v=low, high_v=high) for low, high in summary.bands],
+            heavy_duty=summary.heavy_duty,
+            source=summary.source,
+        )
+        for summary in vfd_selection.available_ranges()
+    ]
 
 
 def build_panel_bom(

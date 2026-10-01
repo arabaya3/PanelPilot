@@ -17,6 +17,7 @@ from app.ai.tools import panel_bom
 from app.core.errors import ValidationError
 from app.models.schemas.calculations import (
     BomLineKind,
+    BomNote,
     ConductorMaterial,
     EnclosureConstraints,
     EnclosurePlacement,
@@ -348,3 +349,44 @@ def test_a_starter_needs_a_motor_it_can_be_selected_for(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         panel_bom.build_bom(loads=[load], constraints=_constraints())
+
+
+def _drive_load() -> LoadScheduleItem:
+    return LoadScheduleItem(
+        tag="M-101", description="conveyor", current_a=Decimal("40"), variable_speed=True
+    )
+
+
+def test_a_preferred_vendor_with_a_range_for_the_supply_supplies_the_drives() -> None:
+    result = panel_bom.build_bom(
+        loads=[_drive_load()],
+        constraints=_constraints(preferred_vendors=["Hammond", "schneider"]),
+    )
+    drive = next(line for line in result.lines if line.kind is BomLineKind.DRIVE)
+    assert drive.part_reference.startswith("ATV")
+    assert drive.source.manufacturer == "Schneider Electric"
+    # Fuses are tabulated only for the ACS880-01; the BOM says so instead.
+    assert not [line for line in result.lines if line.kind is BomLineKind.FUSE]
+    assert BomNote.DRIVE_FUSES_NOT_LISTED in result.note_keys
+    assert BomNote.FUSE_MIN_SHORT_CIRCUIT not in result.note_keys
+
+
+def test_a_vendor_without_a_range_for_the_supply_falls_back_to_the_default() -> None:
+    # Siemens' V20 range is 380-480 V only.
+    result = panel_bom.build_bom(
+        loads=[_drive_load()],
+        constraints=_constraints(supply_voltage_v=Decimal(690), preferred_vendors=["Siemens"]),
+    )
+    drive = next(line for line in result.lines if line.kind is BomLineKind.DRIVE)
+    assert drive.part_reference.startswith("ACS880-01-")
+    assert [line for line in result.lines if line.kind is BomLineKind.FUSE]
+
+
+def test_a_named_drive_range_overrides_the_vendors() -> None:
+    result = panel_bom.build_bom(
+        loads=[_drive_load()],
+        constraints=_constraints(preferred_vendors=["schneider"], drive_range="danfoss-fc302"),
+    )
+    drive = next(line for line in result.lines if line.kind is BomLineKind.DRIVE)
+    assert drive.part_reference.startswith("FC-302")
+    assert drive.source.manufacturer == "Danfoss"

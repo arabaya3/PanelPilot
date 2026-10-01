@@ -4,7 +4,13 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Factors, Field, Figure, round, Sources } from '@/components/cable-sizing-panel';
-import { selectVfd, type VfdSelectionOutcome, type VfdSelectionResponse } from '@/lib/calculations';
+import {
+  listDriveRanges,
+  selectVfd,
+  type DriveRangeSummary,
+  type VfdSelectionOutcome,
+  type VfdSelectionResponse,
+} from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
 
 type Session =
@@ -28,6 +34,8 @@ type Form = {
   duty: 'normal' | 'heavy';
   altitude: string;
   ambient: string;
+  /** A drive range key; empty for the default (ABB ACS880-01). */
+  range: string;
 };
 
 const INITIAL: Form = {
@@ -38,9 +46,10 @@ const INITIAL: Form = {
   duty: 'normal',
   altitude: '0',
   ambient: '40',
+  range: '',
 };
 
-type NumberKey = Exclude<keyof Form, 'duty'>;
+type NumberKey = Exclude<keyof Form, 'duty' | 'range'>;
 
 const UNITS: Record<NumberKey, string> = {
   power: 'kW',
@@ -52,22 +61,27 @@ const UNITS: Record<NumberKey, string> = {
 };
 
 /**
- * The drive tab of `/calc`: pick an ACS880-01 for a motor.
+ * The drive tab of `/calc`: pick a drive for a motor, from the series chosen.
  *
  * The motor current is worked out from its rating, and the smallest drive
- * whose rating for the duty -- derated for the site -- carries it is chosen.
+ * whose rating for the duty -- derated for the site by its own manual -- carries
+ * it is chosen. The series list comes from the API; until it arrives, or if it
+ * cannot be read, only the default (ABB ACS880-01) is offered.
  */
 export function VfdSelectionPanel({
   acquireImpl = acquireTrial,
   selectImpl = selectVfd,
+  listImpl = listDriveRanges,
 }: {
   acquireImpl?: typeof acquireTrial;
   selectImpl?: typeof selectVfd;
+  listImpl?: typeof listDriveRanges;
 }) {
   const t = useTranslations('calc');
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [form, setForm] = useState<Form>(INITIAL);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
+  const [ranges, setRanges] = useState<DriveRangeSummary[]>([]);
   const id = useId();
 
   const connect = useCallback(async () => {
@@ -79,6 +93,18 @@ export function VfdSelectionPanel({
   useEffect(() => {
     void connect();
   }, [connect]);
+
+  const token = session.kind === 'ready' ? session.token : null;
+  useEffect(() => {
+    if (token === null) return;
+    let live = true;
+    void listImpl({ token }).then((outcome) => {
+      if (live && outcome.kind === 'listed') setRanges(outcome.ranges);
+    });
+    return () => {
+      live = false;
+    };
+  }, [token, listImpl]);
 
   const complete = form.power.trim() !== '';
 
@@ -95,6 +121,7 @@ export function VfdSelectionPanel({
         duty_class: form.duty,
         altitude_m: form.altitude.trim(),
         ambient_temp_c: form.ambient.trim(),
+        ...(form.range !== '' ? { drive_range: form.range } : {}),
       },
     });
     if (outcome.kind === 'selected') {
@@ -133,6 +160,25 @@ export function VfdSelectionPanel({
         }}
         className="card mb-6 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-4"
       >
+        <Field id={`${id}-range`} label={t('vfd.field.range')}>
+          <select
+            id={`${id}-range`}
+            value={form.range}
+            onChange={(event) => {
+              setForm((current) => ({ ...current, range: event.target.value }));
+            }}
+            className="input w-full"
+          >
+            <option value="">{t('vfd.range.default')}</option>
+            {ranges
+              .filter((range) => range.key !== 'abb-acs880-01')
+              .map((range) => (
+                <option key={range.key} value={range.key}>
+                  {`${range.manufacturer} ${range.series}`}
+                </option>
+              ))}
+          </select>
+        </Field>
         {field('power')}
         {field('voltage')}
         {field('efficiency')}
@@ -193,7 +239,10 @@ export function VfdSelectionPanel({
       {result.kind === 'selected' && (
         <section className="card flex flex-col gap-5 p-4 md:p-5" data-testid="vfd-result">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Figure label={t('vfd.result.drive')} value={result.response.result.frame_reference} />
+            <Figure
+              label={t('vfd.result.drive')}
+              value={`${result.response.result.manufacturer} ${result.response.result.frame_reference}`}
+            />
             <Figure
               label={t('vfd.result.motorCurrent')}
               value={`${round(result.response.motor_current_a, 1)} A`}

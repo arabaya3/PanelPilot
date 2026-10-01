@@ -7,7 +7,7 @@ import { AppShell } from '@/components/app-shell';
 import { CableSizingPanel } from '@/components/cable-sizing-panel';
 import { PanelBomPanel } from '@/components/panel-bom-panel';
 import { VfdSelectionPanel } from '@/components/vfd-selection-panel';
-import type { buildBom, selectVfd, sizeCable } from '@/lib/calculations';
+import type { buildBom, listDriveRanges, selectVfd, sizeCable } from '@/lib/calculations';
 import type { acquireTrial } from '@/lib/session';
 
 type Tab = 'cable' | 'vfd' | 'bom';
@@ -22,11 +22,13 @@ export function CalcScreen({
   acquireImpl,
   sizeImpl,
   selectImpl,
+  listImpl,
   buildImpl,
 }: {
   acquireImpl?: typeof acquireTrial;
   sizeImpl?: typeof sizeCable;
   selectImpl?: typeof selectVfd;
+  listImpl?: typeof listDriveRanges;
   buildImpl?: typeof buildBom;
 }) {
   const t = useTranslations('calc');
@@ -76,12 +78,14 @@ export function CalcScreen({
           <VfdSelectionPanel
             {...(acquireImpl ? { acquireImpl } : {})}
             {...(selectImpl ? { selectImpl } : {})}
+            {...(listImpl ? { listImpl } : {})}
           />
         )}
         {tab === 'bom' && (
           <PanelBomPanel
             {...(acquireImpl ? { acquireImpl } : {})}
             {...(buildImpl ? { buildImpl } : {})}
+            {...(listImpl ? { listImpl } : {})}
           />
         )}
       </div>

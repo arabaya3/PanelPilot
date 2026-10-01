@@ -106,6 +106,36 @@ export async function selectVfd(options: {
   return { kind: 'selected', response: payload as VfdSelectionResponse };
 }
 
+export type DriveRangeSummary = components['schemas']['DriveRangeSummary'];
+
+export type DriveRangesOutcome =
+  { kind: 'listed'; ranges: DriveRangeSummary[] } | { kind: 'unauthorized' } | { kind: 'failed' };
+
+/** The drive series selection can choose from: `GET /api/v1/calculations/drive-ranges`. */
+export async function listDriveRanges(options: {
+  token: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<DriveRangesOutcome> {
+  const { token, fetchImpl = fetch, endpoint = '/api/v1/calculations/drive-ranges' } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (!response.ok) return { kind: 'failed' };
+  try {
+    const payload: unknown = await response.json();
+    return Array.isArray(payload)
+      ? { kind: 'listed', ranges: payload as DriveRangeSummary[] }
+      : { kind: 'failed' };
+  } catch {
+    return { kind: 'failed' };
+  }
+}
+
 export type PanelBomRequest = components['schemas']['PanelBomRequest'];
 export type PanelBomResponse = components['schemas']['PanelBomResponse'];
 

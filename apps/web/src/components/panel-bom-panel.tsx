@@ -6,6 +6,8 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { Field, round, Sources } from '@/components/cable-sizing-panel';
 import {
   buildBom,
+  listDriveRanges,
+  type DriveRangeSummary,
   type PanelBomOutcome,
   type PanelBomRequest,
   type PanelBomResponse,
@@ -65,6 +67,8 @@ type Enclosure = {
   maxInternal: string;
   voltage: string;
   material: Material;
+  /** A drive range key; empty for the default (ABB ACS880-01). */
+  range: string;
 };
 
 const INITIAL_ENCLOSURE: Enclosure = {
@@ -78,6 +82,7 @@ const INITIAL_ENCLOSURE: Enclosure = {
   maxInternal: '50',
   voltage: '400',
   material: 'copper',
+  range: '',
 };
 
 function blankLoad(key: number): Load {
@@ -102,9 +107,11 @@ function blankLoad(key: number): Load {
 export function PanelBomPanel({
   acquireImpl = acquireTrial,
   buildImpl = buildBom,
+  listImpl = listDriveRanges,
 }: {
   acquireImpl?: typeof acquireTrial;
   buildImpl?: typeof buildBom;
+  listImpl?: typeof listDriveRanges;
 }) {
   const t = useTranslations('calc');
   const [session, setSession] = useState<Session>({ kind: 'starting' });
@@ -112,6 +119,7 @@ export function PanelBomPanel({
   const [loads, setLoads] = useState<Load[]>([blankLoad(0)]);
   const [nextKey, setNextKey] = useState(1);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
+  const [ranges, setRanges] = useState<DriveRangeSummary[]>([]);
   const id = useId();
 
   const connect = useCallback(async () => {
@@ -123,6 +131,18 @@ export function PanelBomPanel({
   useEffect(() => {
     void connect();
   }, [connect]);
+
+  const token = session.kind === 'ready' ? session.token : null;
+  useEffect(() => {
+    if (token === null) return;
+    let live = true;
+    void listImpl({ token }).then((outcome) => {
+      if (live && outcome.kind === 'listed') setRanges(outcome.ranges);
+    });
+    return () => {
+      live = false;
+    };
+  }, [token, listImpl]);
 
   function updateLoad(key: number, patch: Partial<Load>) {
     setLoads((current) => current.map((load) => (load.key === key ? { ...load, ...patch } : load)));
@@ -156,6 +176,7 @@ export function PanelBomPanel({
           cable_material: enclosure.material,
           fault_level_ka: null,
           preferred_vendors: [],
+          ...(enclosure.range !== '' ? { drive_range: enclosure.range } : {}),
           ambient_temp_c: enclosure.ambient.trim(),
           max_internal_temp_c: enclosure.maxInternal.trim(),
         },
@@ -252,6 +273,25 @@ export function PanelBomPanel({
             >
               <option value="copper">{t('material.copper')}</option>
               <option value="aluminium">{t('material.aluminium')}</option>
+            </select>
+          </Field>
+          <Field id={`${id}-range`} label={t('vfd.field.range')}>
+            <select
+              id={`${id}-range`}
+              value={enclosure.range}
+              onChange={(event) => {
+                setEnclosure((c) => ({ ...c, range: event.target.value }));
+              }}
+              className="input w-full"
+            >
+              <option value="">{t('vfd.range.default')}</option>
+              {ranges
+                .filter((range) => range.key !== 'abb-acs880-01')
+                .map((range) => (
+                  <option key={range.key} value={range.key}>
+                    {`${range.manufacturer} ${range.series}`}
+                  </option>
+                ))}
             </select>
           </Field>
         </fieldset>

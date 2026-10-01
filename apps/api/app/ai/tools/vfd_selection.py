@@ -2,16 +2,20 @@
 
 Pure functions. Each formula cites the manufacturer guide it came from.
 
-The catalogue is the ACS880-01 wall-mounted range, IP21: types ...-3 on
-380-415 V and ...-5 on 415-500 V (IEC ratings at Un = 400 and 500 V), and
-...-7 on 525-600 V (UL ratings at Un = 575 V) and 660-690 V (IEC ratings at
-Un = 690 V). Other ranges, voltages and enclosures have their own tables and
-derating curves and are refused rather than read from these.
+A drive range is one series as its own manual tabulates it: the output
+current of each type for each supply band, and the ambient and altitude
+deratings. The default is the ABB ACS880-01 wall-mounted range, IP21: types
+...-3 on 380-415 V and ...-5 on 415-500 V (IEC ratings at Un = 400 and
+500 V), and ...-7 on 525-600 V (UL ratings at Un = 575 V) and 660-690 V (IEC
+ratings at Un = 690 V). The other manufacturers' ranges are in
+``drive_ranges``, each transcribed from its manual with page citations. A
+voltage, site or current a range's manual does not tabulate is refused for
+that range rather than read from another one.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from app.core.errors import ValidationError
@@ -40,15 +44,18 @@ _SQRT_3 = Decimal(3).sqrt()
 
 @dataclass(frozen=True)
 class _Rating:
-    """One row of the IEC ratings table."""
+    """One row of a ratings table."""
 
     type_code: str
-    frame: str
-    #: I2: nominal output current, continuous with no overload.
+    frame: str | None
+    #: Continuous output current for normal (light-overload) duty; ABB's I2.
     nominal_a: str
-    #: IHd: continuous current allowing 50 % overload for 1 min every 5 min;
-    #: ``None`` where the manual footnotes a smaller overload for this type.
+    #: Continuous current allowing 150 % for 60 s (ABB's IHd: 50 % overload
+    #: for 1 min every 5 min); ``None`` where the manual gives no such
+    #: rating for this type.
     heavy_duty_a: str | None
+    #: PDF page of the row, where the table runs over several pages.
+    page: int | None = None
 
 
 #: ACS880-01, Un = 400 V, IEC ratings (hardware manual pp. 234-235). The
@@ -167,6 +174,25 @@ _RATINGS_575V: tuple[_Rating, ...] = (
 
 
 @dataclass(frozen=True)
+class _Derating:
+    """A linear output-current derating, as a manual states it.
+
+    Full current up to ``full_up_to``, then ``percent_per_step`` percent per
+    ``step`` to ``limit``. A manual that prints a curve or per-type table
+    instead has ``percent_per_step`` ``None``: the range is then offered only
+    where it carries full current, rather than read off a curve.
+    """
+
+    full_up_to: Decimal
+    percent_per_step: Decimal | None
+    step: Decimal
+    limit: Decimal
+    floor: Decimal
+    page: int
+    section: str
+
+
+@dataclass(frozen=True)
 class _Catalogue:
     """One voltage range: its supply band, ratings and where they are printed."""
 
@@ -205,6 +231,128 @@ _CATALOGUES: tuple[_Catalogue, ...] = (
         "-7", Decimal(660), Decimal(690), _RATINGS_690V, 237, "Electrical ratings, IEC, Un = 690 V"
     ),
 )
+
+
+@dataclass(frozen=True)
+class DriveRange:
+    """One drive series, as its manual tabulates it.
+
+    Attributes:
+        key: Stable identifier, e.g. ``abb-acs880-01``.
+        manufacturer: As the manufacturer names itself.
+        series: The series name.
+        document_id: The manual's reference.
+        document_title: The manual's title.
+        catalogues: Ratings per supply band.
+        temperature: Surrounding-air derating, °C.
+        altitude: Altitude derating, m.
+        notes: What the transcription leaves out, for a reader of the code.
+    """
+
+    key: str
+    manufacturer: str
+    series: str
+    document_id: str
+    document_title: str
+    catalogues: tuple[_Catalogue, ...]
+    temperature: _Derating
+    altitude: _Derating
+    notes: tuple[str, ...] = field(default=())
+
+
+#: The default range. Its deratings: 1 % per °C above +40 °C to +55 °C for
+#: IP21 frames R1-R9e (p. 243 as printed), and 1 percentage point per 100 m
+#: above 1000 m to 4000 m (p. 244).
+ACS880_01 = DriveRange(
+    key="abb-acs880-01",
+    manufacturer="ABB",
+    series="ACS880-01",
+    document_id=HARDWARE_MANUAL_ID,
+    document_title=HARDWARE_MANUAL_TITLE,
+    catalogues=_CATALOGUES,
+    temperature=_Derating(
+        _FULL_CURRENT_UP_TO_C,
+        Decimal(1),
+        Decimal(1),
+        _MAX_AMBIENT_C,
+        _MIN_AMBIENT_C,
+        _DERATING_PAGES[0],
+        "Surrounding air temperature",
+    ),
+    altitude=_Derating(
+        _FULL_CURRENT_UP_TO_M,
+        Decimal(1),
+        Decimal(100),
+        _MAX_ALTITUDE_M,
+        Decimal(0),
+        _DERATING_PAGES[1],
+        "Altitude derating",
+    ),
+)
+
+DEFAULT_RANGE = ACS880_01.key
+
+
+def _ranges() -> dict[str, DriveRange]:
+    """Every range, the default first."""
+    from app.ai.tools.drive_ranges import RANGES
+
+    return {ACS880_01.key: ACS880_01, **{r.key: r for r in RANGES}}
+
+
+def _range(key: str | None) -> DriveRange:
+    """Look up a range, refusing an unknown key."""
+    ranges = _ranges()
+    found = ranges.get(key or DEFAULT_RANGE)
+    if found is None:
+        raise ValidationError(f"no drive range {key!r}; known ranges: {', '.join(sorted(ranges))}")
+    return found
+
+
+@dataclass(frozen=True)
+class RangeSummary:
+    """What a page needs to offer a range.
+
+    Attributes:
+        key: As ``select_frame`` takes it.
+        manufacturer: The manufacturer.
+        series: The series.
+        bands: Supply bands, as ``(low_v, high_v)``.
+        heavy_duty: Whether any type has a heavy-duty rating.
+        source: The manual.
+    """
+
+    key: str
+    manufacturer: str
+    series: str
+    bands: tuple[tuple[Decimal, Decimal], ...]
+    heavy_duty: bool
+    source: Citation
+
+
+def available_ranges() -> list[RangeSummary]:
+    """List the drive ranges selection can choose from.
+
+    Source:
+        Each range's own manual: the ABB ACS880-01 hardware manual
+        (3AUA0000078093) and the manuals named in ``drive_ranges``.
+
+    Returns:
+        One summary per range, the default first, then by manufacturer.
+    """
+    ranges = list(_ranges().values())
+    ordered = [ranges[0], *sorted(ranges[1:], key=lambda r: (r.manufacturer, r.series))]
+    return [
+        RangeSummary(
+            key=r.key,
+            manufacturer=r.manufacturer,
+            series=r.series,
+            bands=tuple((c.low_v, c.high_v) for c in r.catalogues),
+            heavy_duty=any(x.heavy_duty_a for c in r.catalogues for x in c.ratings),
+            source=_cite(r, r.catalogues[0].page, r.catalogues[0].section),
+        )
+        for r in ordered
+    ]
 
 
 @dataclass(frozen=True)
@@ -349,10 +497,15 @@ def input_fuse(*, type_code: str) -> InputFuse:
 
 def _manual(page: int, section: str) -> Citation:
     """Cite a page of the ACS880-01 hardware manual."""
+    return _cite(ACS880_01, page, section)
+
+
+def _cite(drive_range: DriveRange, page: int, section: str) -> Citation:
+    """Cite a page of a range's manual."""
     return Citation(
-        document_id=HARDWARE_MANUAL_ID,
-        document_title=HARDWARE_MANUAL_TITLE,
-        manufacturer="ABB",
+        document_id=drive_range.document_id,
+        document_title=drive_range.document_title,
+        manufacturer=drive_range.manufacturer,
         page=page,
         section=section,
     )
@@ -364,17 +517,32 @@ def _require_fraction(name: str, value: Decimal) -> None:
         raise ValidationError(f"{name} must be in (0, 1], got {value}")
 
 
-def _catalogue(supply_voltage_v: Decimal) -> _Catalogue:
-    """Return the range rated for a supply, or refuse one no range is."""
+def _catalogue(supply_voltage_v: Decimal, drive_range: DriveRange = ACS880_01) -> _Catalogue:
+    """Return the band rated for a supply, or refuse one no band is."""
     if supply_voltage_v.is_finite():
-        for catalogue in _CATALOGUES:
+        for catalogue in drive_range.catalogues:
             if catalogue.low_v <= supply_voltage_v <= catalogue.high_v:
                 return catalogue
-    bands = ", ".join(f"{c.low_v}-{c.high_v} V ({c.suffix})" for c in _CATALOGUES)
-    raise ValidationError(
-        f"{supply_voltage_v} V is outside the ACS880-01 supply ranges tabulated here: "
-        f"{bands}; other voltages are not tabulated here"
+    bands = ", ".join(
+        f"{c.low_v}-{c.high_v} V" + (f" ({c.suffix})" if c.suffix else "")
+        for c in drive_range.catalogues
     )
+    raise ValidationError(
+        f"{supply_voltage_v} V is outside the {drive_range.series} supply ranges tabulated "
+        f"here: {bands}; other voltages are not tabulated here"
+    )
+
+
+def _derate(value: Decimal, rule: _Derating, *, what: str, unit: str) -> Decimal:
+    """Apply one linear derating to a value already checked against its limits."""
+    if value <= rule.full_up_to:
+        return Decimal(1)
+    if rule.percent_per_step is None:
+        raise ValidationError(
+            f"{what} {value} {unit} is above {rule.full_up_to} {unit}, where the manual's "
+            "derating is a curve rather than a rate; it is not read off here"
+        )
+    return 1 - (value - rule.full_up_to) / rule.step * rule.percent_per_step / Decimal(100)
 
 
 def required_drive_current_a(
@@ -422,66 +590,66 @@ def required_drive_current_a(
     )
 
 
-def altitude_derate(*, altitude_m: Decimal) -> Decimal:
+def altitude_derate(*, altitude_m: Decimal, drive_range: str | None = None) -> Decimal:
     """Return the output-current derating factor for installation altitude.
 
-    Unity to 1000 m, then one percentage point per 100 m. The manual allows
-    the derating to be reduced below 40 °C ambient; that relief is not
-    applied, so the factor is never kinder than the manual's.
+    For the default range: unity to 1000 m, then one percentage point per
+    100 m. The manual allows the derating to be reduced below 40 °C ambient;
+    that relief is not applied, so the factor is never kinder than the
+    manual's. Other ranges apply their own manual's rule.
 
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093), "Altitude derating",
-        p. 244 as printed; maximum installation altitude 4000 m.
+        p. 244 as printed; maximum installation altitude 4000 m. Other
+        ranges: the page their ``altitude`` rule cites.
 
     Args:
         altitude_m: Installation altitude above sea level, in metres.
+        drive_range: The range; the default when ``None``.
 
     Returns:
         The derating factor, in the range (0, 1].
 
     Raises:
-        ValidationError: If the altitude is negative or above 4000 m.
+        ValidationError: If the altitude is off the range's rule.
     """
-    if not altitude_m.is_finite() or altitude_m < 0 or altitude_m > _MAX_ALTITUDE_M:
+    rule = _range(drive_range).altitude
+    if not altitude_m.is_finite() or altitude_m < rule.floor or altitude_m > rule.limit:
         raise ValidationError(
-            f"altitude {altitude_m} m is outside 0-{_MAX_ALTITUDE_M} m, the maximum "
+            f"altitude {altitude_m} m is outside {rule.floor}-{rule.limit} m, the maximum "
             "permitted installation altitude"
         )
-    if altitude_m <= _FULL_CURRENT_UP_TO_M:
-        return Decimal(1)
-    return 1 - (altitude_m - _FULL_CURRENT_UP_TO_M) / Decimal(100) / Decimal(100)
+    return _derate(altitude_m, rule, what="altitude", unit="m")
 
 
-def temperature_derate(*, ambient_temp_c: Decimal) -> Decimal:
+def temperature_derate(*, ambient_temp_c: Decimal, drive_range: str | None = None) -> Decimal:
     """Return the output-current derating factor for surrounding air temperature.
 
-    Unity to +40 °C, then 1 % per added degree to +55 °C.
+    For the default range: unity to +40 °C, then 1 % per added degree to
+    +55 °C. Other ranges apply their own manual's rule.
 
     Source:
         ABB ACS880-01 hardware manual (3AUA0000078093), "Surrounding air
         temperature derating", p. 243 as printed, for IP21 frames R1-R9e.
+        Other ranges: the page their ``temperature`` rule cites.
 
     Args:
         ambient_temp_c: Surrounding air temperature, in °C.
+        drive_range: The range; the default when ``None``.
 
     Returns:
-        The derating factor, 0.85 to 1.
+        The derating factor.
 
     Raises:
-        ValidationError: If the temperature is outside -15...+55 °C.
+        ValidationError: If the temperature is off the range's rule.
     """
-    if (
-        not ambient_temp_c.is_finite()
-        or ambient_temp_c < _MIN_AMBIENT_C
-        or ambient_temp_c > _MAX_AMBIENT_C
-    ):
+    rule = _range(drive_range).temperature
+    if not ambient_temp_c.is_finite() or ambient_temp_c < rule.floor or ambient_temp_c > rule.limit:
         raise ValidationError(
             f"ambient {ambient_temp_c} °C is outside the drive's range "
-            f"({_MIN_AMBIENT_C}...+{_MAX_AMBIENT_C} °C)"
+            f"({rule.floor}...+{rule.limit} °C)"
         )
-    if ambient_temp_c <= _FULL_CURRENT_UP_TO_C:
-        return Decimal(1)
-    return 1 - (ambient_temp_c - _FULL_CURRENT_UP_TO_C) / Decimal(100)
+    return _derate(ambient_temp_c, rule, what="ambient", unit="°C")
 
 
 def select_frame(
@@ -491,6 +659,7 @@ def select_frame(
     duty_class: DutyClass,
     altitude_m: Decimal,
     ambient_temp_c: Decimal,
+    drive_range: str | None = None,
 ) -> VfdSelectionResult:
     """Select the smallest catalogue drive whose derated current meets the demand.
 
@@ -502,7 +671,8 @@ def select_frame(
         ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings",
         IEC ratings at Un = 400 V, 500 V and 690 V (pp. 234-238 as printed)
         and UL ratings at Un = 575 V (pp. 240-241),
-        with the deratings on pp. 243-244.
+        with the deratings on pp. 243-244. Other ranges: their manual's
+        ratings tables and derating pages, as ``drive_ranges`` cites them.
 
     Args:
         required_current_a: Continuous current the motor demands, in amperes.
@@ -510,6 +680,7 @@ def select_frame(
         duty_class: Normal or heavy duty.
         altitude_m: Installation altitude, in metres.
         ambient_temp_c: Ambient temperature at the drive, in °C.
+        drive_range: The range to choose from; the default when ``None``.
 
     Returns:
         The selected type with its derated current and every factor applied.
@@ -520,56 +691,77 @@ def select_frame(
     """
     if not required_current_a.is_finite() or required_current_a <= 0:
         raise ValidationError(f"required_current_a must be positive, got {required_current_a}")
-    catalogue = _catalogue(supply_voltage_v)
-    k_temp = temperature_derate(ambient_temp_c=ambient_temp_c)
-    k_alt = altitude_derate(altitude_m=altitude_m)
+    chosen = _range(drive_range)
+    catalogue = _catalogue(supply_voltage_v, chosen)
+    k_temp = temperature_derate(ambient_temp_c=ambient_temp_c, drive_range=chosen.key)
+    k_alt = altitude_derate(altitude_m=altitude_m, drive_range=chosen.key)
     factor = k_temp * k_alt
 
+    # The smallest rating that carries the demand, not the first in the
+    # table: a manual's heavy-duty column need not rise with its normal one.
+    best: tuple[Decimal, _Rating] | None = None
     for rating in catalogue.ratings:
         rated = rating.nominal_a if duty_class is DutyClass.NORMAL else rating.heavy_duty_a
         if rated is None:
             continue
         derated = Decimal(rated) * factor
-        if derated >= required_current_a:
-            return VfdSelectionResult(
-                frame_reference=f"{rating.type_code} ({rating.frame})",
-                rated_output_current_a=derated,
-                applied_factors=[
-                    AppliedFactor(
-                        name=f"temperature {ambient_temp_c} °C",
-                        value=k_temp,
-                        source=_manual(_DERATING_PAGES[0], "Surrounding air temperature"),
-                    ),
-                    AppliedFactor(
-                        name=f"altitude {altitude_m} m",
-                        value=k_alt,
-                        source=_manual(_DERATING_PAGES[1], "Altitude derating"),
-                    ),
-                ],
-            )
+        if derated >= required_current_a and (best is None or derated < best[0]):
+            best = (derated, rating)
+    if best is not None:
+        derated, rating = best
+        return VfdSelectionResult(
+            frame_reference=(
+                f"{rating.type_code} ({rating.frame})" if rating.frame else rating.type_code
+            ),
+            rated_output_current_a=derated,
+            applied_factors=[
+                AppliedFactor(
+                    name=f"temperature {ambient_temp_c} °C",
+                    value=k_temp,
+                    source=_cite(chosen, chosen.temperature.page, chosen.temperature.section),
+                ),
+                AppliedFactor(
+                    name=f"altitude {altitude_m} m",
+                    value=k_alt,
+                    source=_cite(chosen, chosen.altitude.page, chosen.altitude.section),
+                ),
+            ],
+            drive_range=chosen.key,
+            manufacturer=chosen.manufacturer,
+            series=chosen.series,
+        )
+    needed = required_current_a.quantize(Decimal("0.1"))
+    if chosen is ACS880_01:
+        raise ValidationError(
+            f"no ACS880-01-xxxx{catalogue.suffix} type supplies {needed} A "
+            f"for {duty_class.value} duty at this site; consider a cabinet-built ACS880"
+        )
     raise ValidationError(
-        f"no ACS880-01-xxxx{catalogue.suffix} type supplies {required_current_a.quantize(Decimal('0.1'))} A "
-        f"for {duty_class.value} duty at this site; consider a cabinet-built ACS880"
+        f"no {chosen.manufacturer} {chosen.series} type supplies {needed} A for "
+        f"{duty_class.value} duty at {supply_voltage_v} V on this site"
     )
 
 
-def ratings_citation(supply_voltage_v: Decimal) -> Citation:
+def ratings_citation(supply_voltage_v: Decimal, drive_range: str | None = None) -> Citation:
     """Cite the ratings table for a supply.
 
     Source:
-        ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings".
+        ABB ACS880-01 hardware manual (3AUA0000078093), "Electrical ratings",
+        or the ratings table of the range's own manual.
 
     Args:
         supply_voltage_v: The supply `select_frame` was given.
+        drive_range: The range; the default when ``None``.
 
     Returns:
         The citation.
 
     Raises:
-        ValidationError: If no range is rated for the supply.
+        ValidationError: If the range is not rated for the supply.
     """
-    catalogue = _catalogue(supply_voltage_v)
-    return _manual(catalogue.page, catalogue.section)
+    chosen = _range(drive_range)
+    catalogue = _catalogue(supply_voltage_v, chosen)
+    return _cite(chosen, catalogue.page, catalogue.section)
 
 
 def motor_current_citation() -> Citation:

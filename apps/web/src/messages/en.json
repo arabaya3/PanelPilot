@@ -408,7 +408,7 @@
       "bom": "Panel BOM"
     },
     "vfd": {
-      "intro": "Pick an ABB ACS880-01 drive for a motor on a 380-500 V, 525-600 V or 660-690 V supply. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude, carries it is chosen.",
+      "intro": "Pick a drive for a motor from a manufacturer's range: ABB ACS880-01 by default, or any series listed. The motor current is worked out from its rating, and the smallest drive whose rating for the duty, derated for temperature and altitude by its own manual, carries it is chosen.",
       "field": {
         "power": "Motor power",
         "voltage": "Supply voltage",
@@ -416,21 +416,25 @@
         "powerFactor": "Motor power factor",
         "duty": "Duty",
         "altitude": "Altitude",
-        "ambient": "Ambient temperature"
+        "ambient": "Ambient temperature",
+        "range": "Drive series"
       },
       "duty": {
-        "normal": "Normal (no overload)",
-        "heavy": "Heavy (150 % overload)"
+        "normal": "Normal",
+        "heavy": "Heavy (150 % for 60 s)"
       },
       "submit": "Select the drive",
       "result": {
         "drive": "Drive",
         "motorCurrent": "Motor current",
         "driveCurrent": "Drive current at this site"
+      },
+      "range": {
+        "default": "ABB ACS880-01 (default)"
       }
     },
     "bom": {
-      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: an ACS880-01 drive and its input fuses for each variable-speed load, a coordinated starter for each motor started across the line, an outgoing cable and its terminals for each load, the enclosure, and the cooling it needs by IEC 60890.",
+      "intro": "List the panel's loads and describe the enclosure. The BOM holds what a sourced table can size: a drive for each variable-speed load from the series chosen (ABB ACS880-01, with its input fuses, by default), a coordinated starter for each motor started across the line, an outgoing cable and its terminals for each load, the enclosure, and the cooling it needs by IEC 60890.",
       "enclosure": "Enclosure",
       "loads": "Loads",
       "field": {
@@ -485,7 +489,8 @@
         "not_included": "Protection for loads with neither a drive nor a starter is not included: no sourced selection table for them is held here.",
         "fault_level_assumed": "Starters are Type 2 coordinated up to 50 kA; confirm the panel's prospective short-circuit current does not exceed it.",
         "fuse_min_short_circuit": "Drive input fuses operate fast enough only when the installation's prospective short-circuit current is at least the minimum on each line.",
-        "terminals_copper_only": "Terminals are selected from a copper terminal table; aluminium cables need terminals rated for aluminium, which are not listed."
+        "terminals_copper_only": "Terminals are selected from a copper terminal table; aluminium cables need terminals rated for aluminium, which are not listed.",
+        "drive_fuses_not_listed": "Drive input fuses are listed only for the ABB ACS880-01; for the drives chosen here, take the fuses from the drive manual cited on each drive line."
       },
       "start": {
         "none": "No starter",

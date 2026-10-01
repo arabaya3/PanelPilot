@@ -88,6 +88,29 @@ def test_a_drive_is_selected(client: TestClient) -> None:
     assert response.json()["result"]["frame_reference"] == "ACS880-01-017A-3 (R2)"
 
 
+def test_the_drive_ranges_are_listed(client: TestClient) -> None:
+    response = client.get("/calculations/drive-ranges")
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["key"] == "abb-acs880-01"
+    assert all({"key", "manufacturer", "series", "bands", "source"} <= set(r) for r in body)
+
+
+def test_an_unknown_drive_range_is_refused(client: TestClient) -> None:
+    response = client.post(
+        "/calculations/vfd-selection",
+        json={
+            "motor_power_kw": "7.5",
+            "supply_voltage_v": "400",
+            "motor_efficiency": "0.9",
+            "motor_power_factor": "0.85",
+            "drive_range": "nobody-x1",
+        },
+    )
+    assert response.status_code == 422
+    assert "no drive range" in response.json()["detail"]
+
+
 def test_a_cable_is_sized_with_its_sources(client: TestClient) -> None:
     response = client.post(
         "/calculations/cable-sizing",

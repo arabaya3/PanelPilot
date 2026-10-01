@@ -135,7 +135,22 @@ manual (3AUA0000078093): the IEC ratings of the -3 types on 380-415 V, the
 manual's UL ratings at 575 V, taking ILd as the normal-duty rating) and on
 660-690 V (IEC, rated at 690 V); the temperature and altitude deratings; and
 the motor current from ABB's Technical guide No. 7. Other ranges and
-voltages, 600-660 V among them, are refused.
+voltages, 600-660 V among them, are refused for the ACS880-01.
+
+The same selection runs on other manufacturers' ranges, each transcribed from
+its own manual in the corpus with the page of every table and derating rule
+(`app/ai/tools/drive_ranges.py`, listed by `GET /calculations/drive-ranges`):
+Danfoss FC 302 and FC 51, Delta C2000 Plus, MS300, ME300 and VFD-EL-W, Fuji
+FRENIC-Mini (C2), Hitachi WJ200, Invertek Optidrive E3 and P2, Lenze i550,
+LS Electric S100 and iG5A, Mitsubishi FR-A800, Omron MX2, Rockwell PowerFlex
+523/525, Schneider ATV12, ATV320, ATV630 and ATV650, SEW MOVITRAC LTE-B and
+Siemens SINAMICS V20, and Yaskawa GA500, GA800 and V1000. Where a manual's derating differs by enclosure the most
+conservative is held, and where it is a curve rather than a rate the range is
+offered only where it carries full current. The FRENIC-Ace, Unidrive M700,
+FR-E800, CFW500 and 8400 StateLine manuals in the corpus print no rating
+table (each refers to another document), so those series are not offered.
+The panel BOM takes its drives from the first preferred vendor with a range
+for the supply; input fuses are listed only for the ACS880-01.
 
 The panel BOM (AI-007, BE-011) builds on both: a drive for each
 variable-speed load in the range the supply voltage selects, an outgoing
