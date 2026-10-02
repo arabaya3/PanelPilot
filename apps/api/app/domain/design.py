@@ -7,11 +7,13 @@ edits between the two are what gets exported.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
@@ -23,6 +25,7 @@ from app.design import (
     export_dxf,
     export_lists,
     export_qet,
+    markups,
     motors,
     pages,
     plc_program,
@@ -45,6 +48,8 @@ from app.models.schemas.design import (
     ExportFormat,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    MarkupItem,
+    MarkupReport,
     PlcIoPoint,
     PlcProgramRequest,
     PlcProgramResponse,
@@ -238,6 +243,62 @@ def export_design(
         content=content,
         media_type=media_type,
         filename=f"{_slug(project.info.name)}.{extension}",
+    )
+
+
+#: The largest reviewed drawing set read for markups.
+MAX_MARKUP_BYTES = 5 * 1024 * 1024
+
+
+def read_markups(
+    *,
+    user: CurrentUser,
+    data: bytes,
+    project_json: str | None = None,
+    profile_json: str | None = None,
+) -> MarkupReport:
+    """Read a reviewer's marks off a drawing set PDF.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        data: The PDF's bytes.
+        project_json: This project as designed, to place each mark on its
+            board and nearest label; ``None`` to read the marks alone.
+        profile_json: The company settings the drawing set was issued under,
+            as JSON, so its pages are laid out as the PDF's were.
+
+    Returns:
+        The marks, and whether the PDF matched the project's drawing set.
+
+    Raises:
+        ValidationError: If the file is too large or not a readable PDF, the
+            project is malformed, or the profile is.
+    """
+    if len(data) > MAX_MARKUP_BYTES:
+        raise ValidationError(
+            "the PDF is larger than the 5 MB read for markups", code="markups_too_large"
+        )
+    sheets = None
+    if project_json:
+        try:
+            designed = DesignProject.model_validate_json(project_json)
+        except PydanticValidationError as exc:
+            raise ValidationError("the project sent is not one this service issued") from exc
+        try:
+            settings = json.loads(profile_json) if profile_json else None
+        except json.JSONDecodeError as exc:
+            raise ValidationError("the company settings are not JSON") from exc
+        if settings is not None and not isinstance(settings, dict):
+            raise ValidationError("the company settings are not a JSON object")
+        company = _profile(settings)
+        sheets = pages.build_drawing_set(designations.designate_project(designed, company), company)
+    found, matched = markups.read_markups(data, sheets)
+    logger.info(
+        "design.markups_read", tenant_id=user.tenant_id, markups=len(found), matched=matched
+    )
+    return MarkupReport(
+        markups=[MarkupItem(**vars(markup)) for markup in found],
+        matched=matched,
     )
 
 

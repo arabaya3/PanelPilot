@@ -521,6 +521,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/markups': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Read Markups
+     * @description Read a reviewer's marks off a drawing set PDF, placed on this project's drawings.
+     */
+    post: operations['read_markups_api_v1_design_markups_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -981,6 +1001,15 @@ export interface components {
     Body_import_price_list_api_v1_design_price_list_import_post: {
       /** File */
       file: string;
+    };
+    /** Body_read_markups_api_v1_design_markups_post */
+    Body_read_markups_api_v1_design_markups_post: {
+      /** File */
+      file: string;
+      /** Project */
+      project?: string | null;
+      /** Profile */
+      profile?: string | null;
     };
     /** Body_upload_image_api_v1_images_post */
     Body_upload_image_api_v1_images_post: {
@@ -2580,6 +2609,50 @@ export interface components {
       email: string;
       /** Password */
       password: string;
+    };
+    /**
+     * MarkupItem
+     * @description One reviewer's mark read off a drawing set PDF.
+     *
+     *     Attributes:
+     *         page: Its page, from 1.
+     *         kind: The PDF annotation type.
+     *         author: Who made it, where the PDF says.
+     *         text: What it says.
+     *         sheet: The page's title, where the PDF is this project's drawing set.
+     *         board: The board the page draws, likewise.
+     *         near: The label nearest the mark, likewise.
+     */
+    MarkupItem: {
+      /** Page */
+      page: number;
+      /** Kind */
+      kind: string;
+      /** Author */
+      author: string;
+      /** Text */
+      text: string;
+      /** Sheet */
+      sheet: string;
+      /** Board */
+      board: string;
+      /** Near */
+      near: string;
+    };
+    /**
+     * MarkupReport
+     * @description The marks on a reviewed drawing set.
+     *
+     *     Attributes:
+     *         markups: Every mark with text, in page order.
+     *         matched: Whether the PDF's pages are this project's drawing set, so
+     *             each mark could be placed on its board and label.
+     */
+    MarkupReport: {
+      /** Markups */
+      markups: components['schemas']['MarkupItem'][];
+      /** Matched */
+      matched: boolean;
     };
     /**
      * MotorStarter
@@ -4776,6 +4849,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  read_markups_api_v1_design_markups_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_read_markups_api_v1_design_markups_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MarkupReport'];
         };
       };
       /** @description Validation Error */

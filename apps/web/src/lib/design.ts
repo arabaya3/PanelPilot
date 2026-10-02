@@ -18,6 +18,7 @@ export type PlcProgram = components['schemas']['PlcProgramResponse'];
 export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
+export type MarkupReport = components['schemas']['MarkupReport'];
 
 /**
  * How every design call can end besides success. A 400 or 422 is the design
@@ -46,6 +47,7 @@ export type PlcOutcome = { kind: 'written'; program: PlcProgram } | Failure;
 export type ProjectOutcome = { kind: 'saved'; project: SavedProject } | Failure;
 export type ProjectListOutcome = { kind: 'listed'; page: ProjectPage } | Failure;
 export type DeleteOutcome = { kind: 'deleted' } | Failure;
+export type MarkupOutcome = { kind: 'read'; report: MarkupReport } | Failure;
 
 /** Options every call takes, so tests can stand in for the network. */
 type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
@@ -337,5 +339,25 @@ export function deleteProject(options: Transport & { id: string }): Promise<Dele
     () => null,
     (response) => (response.status === 204 ? { kind: 'deleted' } : null),
     'DELETE',
+  );
+}
+
+/**
+ * Read a reviewer's marks off a drawing set PDF, placed on this project's
+ * drawings: `POST /api/v1/design/markups`.
+ */
+export function readMarkups(
+  options: Transport & {
+    file: Blob;
+    filename: string;
+    project: DesignProject;
+    profile?: Record<string, unknown> | null;
+  },
+): Promise<MarkupOutcome> {
+  const body = upload(options.file, options.filename);
+  body.append('project', JSON.stringify(options.project));
+  if (options.profile) body.append('profile', JSON.stringify(options.profile));
+  return call(options, '/api/v1/design/markups', body, (payload) =>
+    has(payload, 'markups', 'matched') ? { kind: 'read', report: payload as MarkupReport } : null,
   );
 }

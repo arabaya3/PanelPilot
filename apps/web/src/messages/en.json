@@ -758,7 +758,10 @@
       "revision_not_found": "That revision of the project is not there.",
       "project_revisions_full": "This project already has {limit} revisions; save it as a new project.",
       "projects_full": "You have {limit} saved projects; delete some to save more.",
-      "bad_cursor": "The project list could not be continued; reload it."
+      "bad_cursor": "The project list could not be continued; reload it.",
+      "markups_unreadable": "The file could not be read as a PDF.",
+      "markups_too_large": "The PDF is larger than the 5 MB read for markups.",
+      "markups_too_long": "The PDF has more than {limit} pages."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -778,6 +781,16 @@
       "open": "Open",
       "delete": "Delete",
       "confirmDelete": "Delete for good?"
+    },
+    "markups": {
+      "title": "Review markups",
+      "upload": "Reviewed drawing set (PDF)",
+      "help": "The PDF the consultant returned with comments. Each comment is listed with the board and label it sits on; nothing is changed.",
+      "none": "No comments with text were found in the PDF.",
+      "found": "{count, plural, one {# comment} other {# comments}}, each placed on its drawing.",
+      "foundUnmatched": "{count, plural, one {# comment} other {# comments}}. The PDF is not this project's drawing set as designed now, so they are listed by page only.",
+      "page": "Page {page}",
+      "near": "near {label}"
     }
   },
   "files": {

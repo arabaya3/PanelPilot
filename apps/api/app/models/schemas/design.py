@@ -1033,3 +1033,38 @@ class SavedProject(BaseModel):
     revisions: list[RevisionSummary]
     revision: int
     request: ProjectDesignRequest
+
+
+class MarkupItem(BaseModel):
+    """One reviewer's mark read off a drawing set PDF.
+
+    Attributes:
+        page: Its page, from 1.
+        kind: The PDF annotation type.
+        author: Who made it, where the PDF says.
+        text: What it says.
+        sheet: The page's title, where the PDF is this project's drawing set.
+        board: The board the page draws, likewise.
+        near: The label nearest the mark, likewise.
+    """
+
+    page: int
+    kind: str
+    author: str
+    text: str
+    sheet: str
+    board: str
+    near: str
+
+
+class MarkupReport(BaseModel):
+    """The marks on a reviewed drawing set.
+
+    Attributes:
+        markups: Every mark with text, in page order.
+        matched: Whether the PDF's pages are this project's drawing set, so
+            each mark could be placed on its board and label.
+    """
+
+    markups: list[MarkupItem]
+    matched: bool

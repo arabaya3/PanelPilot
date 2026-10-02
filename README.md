@@ -416,6 +416,15 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
 - **Where they appear:** in the drawing set (a Terminals page per board), in
   `terminals_csv`, and counted in the parts list.
 
+**Review markups** (`POST /design/markups`, `app/design/markups.py`):
+
+- **Reading:** the consultant's returned PDF is read for every comment with
+  text: notes, text boxes, clouds or highlights with a note.
+- **Placing:** where the PDF is this project's drawing set, each comment is
+  placed on its page's board and the drawing label nearest it ("near -Q3").
+- **No changes:** the list is for the engineer, who makes and signs the
+  changes. Nothing is applied automatically.
+
 **Saved projects** (`/design/projects`, `app/domain/design_projects.py`):
 
 - **What is kept:** a project is saved as what the engineer entered, not as

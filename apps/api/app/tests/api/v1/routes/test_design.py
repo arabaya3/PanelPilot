@@ -271,3 +271,28 @@ def test_project_routes_call_the_domain(
 def test_a_project_needs_a_name(client: TestClient) -> None:
     body = {"name": "", "request": {"info": {"name": "Pocket"}, "boards": [BOARD["board"]]}}
     assert client.post("/design/projects", json=body).status_code == 422
+
+
+def test_markups_are_read_from_an_upload(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import design as design_domain
+    from app.models.schemas.design import MarkupReport
+
+    seen: dict[str, object] = {}
+
+    def read(**kwargs: object) -> MarkupReport:
+        seen.update(kwargs)
+        return MarkupReport(markups=[], matched=False)
+
+    monkeypatch.setattr(design_domain, "read_markups", read)
+    response = client.post(
+        "/design/markups",
+        files={"file": ("set.pdf", b"%PDF", "application/pdf")},
+        data={"project": "{}", "profile": '{"key": "acme"}'},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"markups": [], "matched": False}
+    assert seen["data"] == b"%PDF"
+    assert seen["project_json"] == "{}"
+    assert seen["profile_json"] == '{"key": "acme"}'

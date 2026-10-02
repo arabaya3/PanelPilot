@@ -308,3 +308,49 @@ def test_a_motor_project_carries_its_articles_and_prices_by_them() -> None:
     line = next(line for line in priced.lines if line.key == "A30")
     assert line.total == Decimal("40.00")
     assert line.description == "ABB A30"
+
+
+def test_markups_are_placed_on_the_project_they_review() -> None:
+    import io
+
+    from reportlab.pdfgen.canvas import Canvas
+
+    from app.design import pages, profile
+    from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH
+    from app.models.schemas.design import ProjectDesignRequest
+
+    request = ProjectDesignRequest.model_validate(
+        {
+            "info": {"name": "Tower"},
+            "boards": [
+                {
+                    "name": "MDB",
+                    "loads": [{"description": "Lights", "load": "lighting", "power_kw": "1"}],
+                }
+            ],
+        }
+    )
+    designed = design.design_project(session=None, user=USER, request=request)  # type: ignore[arg-type]
+    count = len(pages.build_drawing_set(designed.project, profile.default_profile()))
+    buffer = io.BytesIO()
+    canvas = Canvas(buffer, pagesize=(SHEET_WIDTH * 72 / 25.4, SHEET_HEIGHT * 72 / 25.4))
+    for page in range(count):
+        if page == 2:
+            canvas.textAnnotation("Check this breaker", Rect=(300, 500, 320, 520))
+        canvas.showPage()
+    canvas.save()
+
+    report = design.read_markups(
+        user=USER, data=buffer.getvalue(), project_json=designed.project.model_dump_json()
+    )
+    assert report.matched
+    (mark,) = report.markups
+    assert (mark.page, mark.board, mark.text) == (3, "MDB", "Check this breaker")
+    assert mark.near
+
+    alone = design.read_markups(user=USER, data=buffer.getvalue())
+    assert not alone.matched
+    with pytest.raises(ValidationError):
+        design.read_markups(user=USER, data=b"x" * (design.MAX_MARKUP_BYTES + 1))
+    with pytest.raises(ValidationError):
+        design.read_markups(user=USER, data=buffer.getvalue(), project_json="{}")
