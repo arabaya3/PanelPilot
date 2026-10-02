@@ -47,6 +47,8 @@ def test_cable_list_and_unicode(hall_project: DesignProject) -> None:
     cafe = next(r for r in rows if r["To"] == "Café, east wall")
     assert cafe["Cores"] == "3"
     assert cafe["From"].startswith("'=DBG-HALL+HALL-Q")
+    # No length was given, so no drop was checked.
+    assert cafe["Length m"] == cafe["Voltage drop %"] == ""
 
 
 def test_circuit_schedule(hall_project: DesignProject) -> None:

@@ -192,6 +192,7 @@ def _cable_rows(board: Board) -> list[list[str]]:
                 cable.material,
                 cable.insulation,
                 _plain(cable.length_m),
+                _plain(circuit.voltage_drop_percent),
             ]
         )
     return rows
@@ -218,6 +219,7 @@ def cable_list(project: DesignProject) -> str:
             "Material",
             "Insulation",
             "Length m",
+            "Voltage drop %",
         ],
         rows,
     )

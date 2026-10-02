@@ -113,3 +113,19 @@ def test_feeder_load() -> None:
     assert load.feeds == "DB-1"
     assert load.power_factor == 1
     assert load.phases == 3
+
+
+def test_voltage_drop_adds_up_from_the_origin() -> None:
+    sub = _board("DB-1", fed_from="MDB", kw="9").model_copy(update={"feeder_length_m": Decimal(80)})
+    main, designed = project.design_boards([_board("MDB"), sub], profile.default_profile())
+    feeder = next(c for c in main.circuits if c.feeds == "DB-1")
+    assert feeder.voltage_drop_percent is not None
+    # The feeder is held to the strictest load below it: the sub-board's lights, 3 %.
+    assert 0 < feeder.voltage_drop_percent <= 3
+    (upstream,) = [n for n in designed.notes if n.code == "voltage_drop_upstream"]
+    assert upstream.params["percent"] == str(feeder.voltage_drop_percent.normalize())
+
+
+def test_feeder_load_carries_its_length() -> None:
+    (board,) = project.design_boards([_board("DB-1")], profile.default_profile())
+    assert project.feeder_load(board, Decimal(25)).length_m == 25

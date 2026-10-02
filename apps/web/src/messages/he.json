@@ -534,7 +534,9 @@
       "powerFactor": "מקדם הספק",
       "controlled": "מבוקר PLC",
       "fedFrom": "מוזן מ",
-      "starter": "מתנע"
+      "starter": "מתנע",
+      "length": "אורך כבל",
+      "feederLength": "אורך כבל ההזנה"
     },
     "kind": {
       "lighting": "תאורה",
@@ -567,7 +569,8 @@
       "current": "Ib",
       "breaker": "מפסק",
       "rcd": "ממסר פחת",
-      "cable": "כבל"
+      "cable": "כבל",
+      "drop": "מפל מתח"
     },
     "notes": "הנחות התכנון",
     "downloads": "הורדה",
@@ -690,7 +693,12 @@
       "import_pf_out_of_range": "שורה {row} ({load}): מקדם הספק {value} מחוץ לטווח; התעלמנו ממנו.",
       "import_kva_only": "שורה {row} ({load}): ניתן רק kVA; נלקח כ-kW, כלומר cos φ 1.",
       "split_points": "{load}: {points} × {watts} W = {power} kW. {source, select, given {מהתיאור} other {ערך אופייני}}",
-      "text": "{text}"
+      "text": "{text}",
+      "voltage_drop_upsized": "{load}: הכבל הוגדל מ-{sized} ל-{section} mm² בגלל מפל מתח לאורך {length} m: {total}% מנקודת ההזנה, בתוך הגבול של {limit}%.",
+      "voltage_drop_exceeded": "{load}: מפל המתח מנקודת ההזנה {total}% ({own}% בכבל עצמו, {upstream}% לפני הלוח) חורג מהגבול של {limit}%, ואין חתך בטבלאות שמביא אותו לגבול; נשאר {section} mm². יש לקצר את התוואי, להניח כבלים במקביל או להגדיל את כבלי ההזנה.",
+      "voltage_drop_untabulated": "{load}: {section} mm² מעבר לטבלאות מפל המתח (עד 300 mm²); המפל שלו לא נבדק.",
+      "voltage_drop_unchecked": "{count, plural, one {למעגל אחד אין אורך כבל; מפל המתח שלו לא נבדק.} other {ל-# מעגלים אין אורך כבל; מפל המתח שלהם לא נבדק.}}",
+      "voltage_drop_upstream": "{percent}% יורדים בכבלי ההזנה לפני הלוח הזה, ומנוכים מהגבול של כל מעגל."
     },
     "errors": {
       "ambient_out_of_table": "טמפרטורת סביבה {ambient} °C מחוץ לטבלת הכבלים לבידוד {insulation} °C ({low}–{high} °C); יש לפנות ליצרן הכבל.",

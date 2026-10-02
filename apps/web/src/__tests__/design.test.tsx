@@ -143,6 +143,7 @@ describe('board design', () => {
         power_factor: null,
         controlled: true,
         starter: null,
+        length_m: null,
       },
     ]);
     expect(call?.request.profile).toBeNull();

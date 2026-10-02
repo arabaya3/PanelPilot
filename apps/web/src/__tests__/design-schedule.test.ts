@@ -38,6 +38,18 @@ describe('design schedule helpers', () => {
     expect(request.boards[1]?.supply?.fault_level_ka).toBe('6');
   });
 
+  it('sends cable lengths, and a feeder length only for a fed board', () => {
+    const main = blankBoard(0, 1, 'MDB');
+    main.loads = [{ ...blankLoad(1), description: 'Pump', power: '5', length: ' 45 ' }];
+    main.feederLength = '30';
+    const sub = { ...blankBoard(2, 3, 'DB2', 'MDB'), feederLength: '80' };
+    const request = toRequest(INFO, [main, sub], null);
+    expect(request.boards[0]?.loads[0]?.length_m).toBe('45');
+    expect(request.boards[0]?.feeder_length_m).toBeNull();
+    expect(request.boards[1]?.feeder_length_m).toBe('80');
+    expect(request.boards[1]?.loads[0]?.length_m).toBeNull();
+  });
+
   it('is complete only when every board names itself and fills every row', () => {
     const main = blankBoard(0, 1, 'MDB');
     expect(isComplete(INFO, [main])).toBe(false);
@@ -72,6 +84,7 @@ describe('design schedule helpers', () => {
         powerFactor: '0.85',
         controlled: false,
         starter: '',
+        length: '',
       },
     ]);
   });

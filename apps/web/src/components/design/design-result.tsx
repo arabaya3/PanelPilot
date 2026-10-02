@@ -56,6 +56,7 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
               <th className="p-2 text-start">{t('col.breaker')}</th>
               <th className="p-2 text-start">{t('col.rcd')}</th>
               <th className="p-2 text-start">{t('col.cable')}</th>
+              <th className="p-2 text-start">{t('col.drop')}</th>
             </tr>
           </thead>
           <tbody>
@@ -80,6 +81,11 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
                     {cable
                       ? `${String(cable.cores)}G${round(cable.cross_section_mm2)} ${cable.material}`
                       : ''}
+                  </td>
+                  <td className="p-2" data-testid="circuit-drop">
+                    {circuit.voltage_drop_percent != null
+                      ? `${round(circuit.voltage_drop_percent)} %`
+                      : '—'}
                   </td>
                 </tr>
               );

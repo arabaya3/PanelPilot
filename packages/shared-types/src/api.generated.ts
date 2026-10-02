@@ -1123,6 +1123,8 @@ export interface components {
      *         cable_id: Its outgoing cable, where it has one.
      *         feeds: The board it supplies, for a feeder to a sub-board.
      *         starter: How the motor it feeds is started, for a motor circuit.
+     *         voltage_drop_percent: The drop along its own cable, where its length
+     *             is known; the board's notes add what feeds the board.
      */
     'Circuit-Input': {
       /** Id */
@@ -1144,6 +1146,8 @@ export interface components {
       /** Feeds */
       feeds?: string | null;
       starter?: components['schemas']['MotorStarter'] | null;
+      /** Voltage Drop Percent */
+      voltage_drop_percent?: number | string | null;
     };
     /**
      * Circuit
@@ -1164,6 +1168,8 @@ export interface components {
      *         cable_id: Its outgoing cable, where it has one.
      *         feeds: The board it supplies, for a feeder to a sub-board.
      *         starter: How the motor it feeds is started, for a motor circuit.
+     *         voltage_drop_percent: The drop along its own cable, where its length
+     *             is known; the board's notes add what feeds the board.
      */
     'Circuit-Output': {
       /** Id */
@@ -1185,6 +1191,8 @@ export interface components {
       /** Feeds */
       feeds?: string | null;
       starter?: components['schemas']['MotorStarter'] | null;
+      /** Voltage Drop Percent */
+      voltage_drop_percent?: string | null;
     };
     /**
      * CircuitRule
@@ -1257,6 +1265,11 @@ export interface components {
      *             circuits.
      *         max_phase_imbalance_percent: The largest difference between the most
      *             and least loaded line conductors, as a share of the most loaded.
+     *         max_voltage_drop_percent: The largest voltage drop from the origin of
+     *             the installation to a load, by kind of load; a kind not listed
+     *             takes ``default_max_voltage_drop_percent``. The defaults are IEC
+     *             60364-5-52 Annex G (Table G.52.1) for a public LV supply.
+     *         default_max_voltage_drop_percent: The limit for any other load.
      *         rules_confirmed_by: Who confirmed the design rules. Empty while they
      *             are this software's defaults, which the drawing then says.
      */
@@ -1316,6 +1329,15 @@ export interface components {
        * @default 10
        */
       max_phase_imbalance_percent: string;
+      /** Max Voltage Drop Percent */
+      max_voltage_drop_percent?: {
+        [key: string]: string;
+      };
+      /**
+       * Default Max Voltage Drop Percent
+       * @default 5
+       */
+      default_max_voltage_drop_percent: string;
       /**
        * Rules Confirmed By
        * @default
@@ -1832,6 +1854,8 @@ export interface components {
      *         fed_from: The board whose feeder supplies this one; ``None`` for a
      *             board fed from the utility or a main switchboard outside the
      *             project.
+     *         feeder_length_m: The route length of the cable feeding this board
+     *             from ``fed_from``, for that feeder's voltage drop.
      */
     DistributionBoardRequest: {
       /** Name */
@@ -1844,6 +1868,8 @@ export interface components {
       conditions?: components['schemas']['InstallationConditions'];
       /** Fed From */
       fed_from?: string | null;
+      /** Feeder Length M */
+      feeder_length_m?: number | string | null;
     };
     /**
      * DriveRangeSummary
@@ -2241,6 +2267,8 @@ export interface components {
      *             set by the project design, not typed in.
      *         starter: For a three-phase motor, how it is started; its
      *             ``power_kw`` is then the motor's shaft power.
+     *         length_m: The cable's route length, one way. Given, the cable is
+     *             checked (and if need be enlarged) for voltage drop.
      */
     'LoadInput-Input': {
       /** Description */
@@ -2263,6 +2291,8 @@ export interface components {
       /** Feeds */
       feeds?: string | null;
       starter?: components['schemas']['MotorStarter'] | null;
+      /** Length M */
+      length_m?: number | string | null;
     };
     /**
      * LoadInput
@@ -2281,6 +2311,8 @@ export interface components {
      *             set by the project design, not typed in.
      *         starter: For a three-phase motor, how it is started; its
      *             ``power_kw`` is then the motor's shaft power.
+     *         length_m: The cable's route length, one way. Given, the cable is
+     *             checked (and if need be enlarged) for voltage drop.
      */
     'LoadInput-Output': {
       /** Description */
@@ -2303,6 +2335,8 @@ export interface components {
       /** Feeds */
       feeds?: string | null;
       starter?: components['schemas']['MotorStarter'] | null;
+      /** Length M */
+      length_m?: string | null;
     };
     /**
      * LoadKind
