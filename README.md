@@ -210,7 +210,11 @@ A **distribution board** is designed from its load schedule
   is checked against the company's limit.
 
 What the design assumed is listed on the board: the power factor, the fault
-level, the cable conditions, and whether the rules were confirmed. Devices
+level, the cable conditions, and whether the rules were confirmed. Every
+note, import warning and suggestion note is a code with its values
+(`app/design/notes.py`). The page renders it in the reader's language
+(en/ar/he), and a test keeps the catalogues in step with the codes. The
+drawing set prints the English text, since its frame fonts are Latin-only. Devices
 carry ratings, not articles, until a catalogue is chosen.
 
 The **drawing set** (`app/design/pages.py`, `render_pdf.py`) is laid out once

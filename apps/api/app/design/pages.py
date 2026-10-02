@@ -286,7 +286,7 @@ def _plan(project: DesignProject, profile: CompanyProfile) -> list[_Plan]:
         elif kind is PageKind.NOTES:
             for board in project.boards:
                 if board.notes:
-                    plans.append(_Plan(kind, "Design notes", board, list(board.notes)))
+                    plans.append(_Plan(kind, "Design notes", board, [n.text for n in board.notes]))
         elif kind is PageKind.CABLES:
             rows = _cable_rows(project)
             if rows:

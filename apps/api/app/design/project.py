@@ -23,6 +23,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.core.errors import ValidationError
 from app.design import distribution
+from app.design.notes import note
 from app.models.schemas.design import (
     Board,
     CompanyProfile,
@@ -156,11 +157,8 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
         )
         if request.fed_from is not None:
             feeders[request.fed_from].append(feeder_load(board))
-            board.notes.append(f"Fed from {request.fed_from}.")
+            board.notes.append(note("fed_from", board=request.fed_from))
         if feeders[request.name]:
-            board.notes.append(
-                "Discrimination between each sub-board feeder and the incomer it supplies "
-                "is not checked."
-            )
+            board.notes.append(note("feeder_discrimination"))
         designed[request.name] = board
     return [designed[request.name] for request in requests]

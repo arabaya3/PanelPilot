@@ -81,7 +81,13 @@ def test_a_schedule_is_uploaded(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["loads"][0]["load"] == "motor"
-    assert body["warnings"] == ["Row 2 (Pump): taken as motor from its description."]
+    assert body["warnings"] == [
+        {
+            "code": "import_kind_inferred",
+            "params": {"row": "2", "load": "Pump", "kind": "motor"},
+            "text": "Row 2 (Pump): taken as motor from its description.",
+        }
+    ]
 
 
 def test_an_unreadable_schedule_is_a_client_error(client: TestClient) -> None:
@@ -99,7 +105,7 @@ def test_a_suggestion_is_charged_to_the_month(
 
     from app.domain import design as design_domain
     from app.domain import model_budget
-    from app.models.schemas.design import LoadScheduleSuggestion
+    from app.models.schemas.design import DesignNote, LoadScheduleSuggestion
 
     charged: list[str] = []
     committed: list[bool] = []
@@ -109,7 +115,9 @@ def test_a_suggestion_is_charged_to_the_month(
 
     def suggest(**kwargs: object) -> LoadScheduleSuggestion:
         del kwargs
-        return LoadScheduleSuggestion(loads=[], assumptions=["x"])
+        return LoadScheduleSuggestion(
+            loads=[], assumptions=[DesignNote(code="text", params={"text": "x"}, text="x")]
+        )
 
     monkeypatch.setattr(model_budget, "charge_model_call", charge)
     monkeypatch.setattr(design_domain, "suggest_load_schedule", suggest)
@@ -120,7 +128,10 @@ def test_a_suggestion_is_charged_to_the_month(
     )
     response = client.post("/design/load-schedule/suggest", json={"description": "a hall"})
     assert response.status_code == 200
-    assert response.json() == {"loads": [], "assumptions": ["x"]}
+    assert response.json() == {
+        "loads": [],
+        "assumptions": [{"code": "text", "params": {"text": "x"}, "text": "x"}],
+    }
     assert charged == ["t"]
     assert committed == [True]
 

@@ -34,12 +34,14 @@ from decimal import ROUND_CEILING, Decimal
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
 from app.design import motors
+from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
     Board,
     Cable,
     Circuit,
     CompanyProfile,
+    DesignNote,
     Device,
     DeviceKind,
     DistributionBoardRequest,
@@ -95,7 +97,7 @@ def _size(
     profile: CompanyProfile,
     load: LoadInput,
     index: int,
-    notes: list[str],
+    notes: list[DesignNote],
 ) -> _Sized:
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
@@ -122,15 +124,17 @@ def _size(
             # the miniature-breaker table does not hold: left unselected,
             # as the incomer is, rather than refusing the whole board.
             rated, selected = current, False
-            notes.append(
-                f"{load.description}: Ib {_plain(current)} A is above the largest miniature "
-                "breaker held (125 A); a moulded-case breaker is needed and none is "
-                "selected here. The cable is sized for Ib; check it against the breaker's In."
-            )
+            notes.append(note("mccb_needed", load=load.description, current=_plain(current)))
         if fixed is not None and selected:
             notes.append(
-                f"{load.description}: Ib {_plain(current)} A exceeds the company's "
-                f"{_plain(fixed)} A for {load.load.value}; rated {_plain(rated)} A instead."
+                note(
+                    "above_company_rating",
+                    load=load.description,
+                    current=_plain(current),
+                    fixed=_plain(fixed),
+                    kind=load.load.value,
+                    rated=_plain(rated),
+                )
             )
     conditions = request.conditions
     try:
@@ -294,7 +298,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
         ValidationError: If a load cannot be protected or cabled from the
             tables held, naming the load.
     """
-    notes: list[str] = []
+    notes: list[DesignNote] = []
     sized = [_size(request, profile, load, i, notes) for i, load in enumerate(request.loads)]
     single_phase_supply = request.supply.phases == 1
     if single_phase_supply:
@@ -408,8 +412,11 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
             rating = next((r for r in CONTACTOR_RATINGS if r >= item.rated_a), None)
             if rating is None:
                 notes.append(
-                    f"{item.load.description}: no modular contactor rating carries "
-                    f"{_plain(item.rated_a)} A; the contactor is left unselected."
+                    note(
+                        "contactor_unselected",
+                        load=item.load.description,
+                        current=_plain(item.rated_a),
+                    )
                 )
             contactor = Device(
                 id=f"c{item.index + 1}-contactor",
@@ -449,18 +456,17 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
         imbalance = (most - least) / most * 100
         if imbalance > profile.max_phase_imbalance_percent:
             notes.append(
-                f"Phase imbalance {_plain(imbalance.quantize(Decimal('0.1')))} % exceeds the "
-                f"company's {_plain(profile.max_phase_imbalance_percent)} %: the loads cannot be "
-                "spread more evenly as given."
+                note(
+                    "phase_imbalance",
+                    imbalance=_plain(imbalance.quantize(Decimal("0.1"))),
+                    limit=_plain(profile.max_phase_imbalance_percent),
+                )
             )
     try:
         incomer_rated = Decimal(feeder_protection.smallest_rating(most))
     except ValidationError:
         incomer_rated = None
-        notes.append(
-            f"Incomer: {_plain(most)} A on the most loaded conductor exceeds 125 A; a moulded-case "
-            "breaker is needed and none is selected here."
-        )
+        notes.append(note("incomer_mccb", current=_plain(most)))
     incomer = Device(
         id="incomer",
         kind=DeviceKind.CIRCUIT_BREAKER,
@@ -474,33 +480,28 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
 
     spare = (len(circuits) * profile.spare_ways_percent / 100).to_integral_value(ROUND_CEILING)
     notes.append(
-        f"Leave {_plain(spare)} spare outgoing ways ({_plain(profile.spare_ways_percent)} %)."
+        note("spare_ways", count=_plain(spare), percent=_plain(profile.spare_ways_percent))
     )
-    if any(s.load.power_factor is None for s in sized):
-        notes.append("Loads without a power factor were taken at cos phi 0.9.")
+    if any(s.load.power_factor is None and s.motor is None for s in sized):
+        notes.append(note("default_power_factor"))
     if any(load.controlled for load in request.loads):
-        notes.append(
-            "Contactors are rated at least their breaker's current (AC-1); confirm the "
-            "utilisation category against the catalogue for motor or lamp loads."
-        )
+        notes.append(note("contactor_ac1"))
     if groups:
-        notes.append(
-            "Discrimination between each group breaker and its outgoing breakers is not checked."
-        )
+        notes.append(note("group_discrimination"))
     if request.supply.fault_level_ka is None:
-        notes.append(
-            "No fault level given: every breaker's breaking capacity is left to be confirmed."
-        )
+        notes.append(note("no_fault_level"))
     conditions = request.conditions
     notes.append(
-        f"Cables sized for method {conditions.installation_method.value}, "
-        f"{_plain(conditions.ambient_temp_c)} °C, {conditions.grouped_circuits} grouped circuit(s), "
-        f"{conditions.insulation_rating_c} °C insulation."
+        note(
+            "cable_conditions",
+            method=conditions.installation_method.value,
+            ambient=_plain(conditions.ambient_temp_c),
+            grouped=conditions.grouped_circuits,
+            insulation=conditions.insulation_rating_c,
+        )
     )
     if not profile.rules_confirmed_by:
-        notes.append(
-            "Circuit rules are this software's defaults, not confirmed by the company's engineers."
-        )
+        notes.append(note("rules_unconfirmed"))
     return Board(
         id=request.name,
         name=request.name,

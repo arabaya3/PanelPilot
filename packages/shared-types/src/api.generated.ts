@@ -830,7 +830,7 @@ export interface components {
       /** Circuits */
       circuits?: components['schemas']['Circuit-Input'][];
       /** Notes */
-      notes?: string[];
+      notes?: components['schemas']['DesignNote'][];
       /** Fed From */
       fed_from?: string | null;
     };
@@ -870,7 +870,7 @@ export interface components {
       /** Circuits */
       circuits?: components['schemas']['Circuit-Output'][];
       /** Notes */
-      notes?: string[];
+      notes?: components['schemas']['DesignNote'][];
       /** Fed From */
       fed_from?: string | null;
     };
@@ -1432,6 +1432,26 @@ export interface components {
       } | null;
       format: components['schemas']['ExportFormat'];
       pricing?: components['schemas']['PricingSettings'] | null;
+    };
+    /**
+     * DesignNote
+     * @description Something the design tells its reviewer.
+     *
+     *     Attributes:
+     *         code: Stable identifier, which the page renders in the reader's
+     *             language (``app.design.notes``).
+     *         params: The values the note names, as text.
+     *         text: The note in English, for the drawing set and as a fallback.
+     */
+    DesignNote: {
+      /** Code */
+      code: string;
+      /** Params */
+      params?: {
+        [key: string]: string;
+      };
+      /** Text */
+      text: string;
     };
     /**
      * DesignProject
@@ -2319,7 +2339,7 @@ export interface components {
       /** Loads */
       loads: components['schemas']['LoadInput-Output'][];
       /** Warnings */
-      warnings: string[];
+      warnings: components['schemas']['DesignNote'][];
       /** Rows Read */
       rows_read: number;
     };
@@ -2357,7 +2377,7 @@ export interface components {
       /** Loads */
       loads: components['schemas']['LoadInput-Output'][];
       /** Assumptions */
-      assumptions: string[];
+      assumptions: components['schemas']['DesignNote'][];
     };
     /**
      * Locale

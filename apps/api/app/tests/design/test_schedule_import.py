@@ -59,8 +59,9 @@ def test_an_excel_schedule_is_read() -> None:
     assert result.loads[2].power_factor == Decimal("0.85")
     assert result.rows_read == 4
     # The light's type was inferred, and the spare left out: both said.
-    assert any("Lighting zone 1" in w and "from its description" in w for w in result.warnings)
-    assert any("Spare" in w and "spare way" in w for w in result.warnings)
+    codes = {(w.code, w.params.get("load")) for w in result.warnings}
+    assert ("import_kind_inferred", "Lighting zone 1") in codes
+    assert ("import_spare", "Spare") in codes
 
 
 def test_an_arabic_csv_in_watts() -> None:
@@ -81,7 +82,7 @@ def test_an_arabic_csv_in_watts() -> None:
         (LoadKind.MOTOR, Decimal("0.75"), 3),
         (LoadKind.OTHER, Decimal("0.1"), 1),
     ]
-    assert any("not recognised" in w for w in result.warnings)
+    assert any("not recognised" in w.text for w in result.warnings)
 
 
 def test_a_pdf_table_is_read() -> None:
@@ -121,14 +122,14 @@ def test_kva_only_is_read_and_said() -> None:
     data = b"Description,kVA\nPump,5.5\n"
     result = schedule_import.import_schedule(data)
     assert result.loads[0].power_kw == Decimal("5.5")
-    assert any("only kVA" in w for w in result.warnings)
+    assert any("only kVA" in w.text for w in result.warnings)
 
 
 def test_rows_it_cannot_read_are_reported() -> None:
     data = b"Description,kW,PF,Phase\n,2,,1\nSockets,abc,,1\nLights,1,1.4,x\n"
     result = schedule_import.import_schedule(data)
     assert len(result.loads) == 1
-    joined = " ".join(result.warnings)
+    joined = " ".join(w.text for w in result.warnings)
     assert "Row 2: no description" in joined
     assert "Row 3 (Sockets): no power given" in joined
     assert "power factor 1.4 is out of range" in joined

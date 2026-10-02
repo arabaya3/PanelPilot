@@ -34,6 +34,7 @@ from app.design import (
     schedule_import,
     schedule_split,
 )
+from app.design.notes import note
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     BoardDesignRequest,
@@ -283,13 +284,11 @@ def suggest_load_schedule(
     company = _profile(request.profile)
     drafted = schedule_writer.write_schedule(request)
     loads, notes = schedule_split.split_points(
-        drafted.items,
-        company,
-        supply_phases=request.supply_phases,
-        language=schedule_writer.description_language(request.description),
+        drafted.items, company, supply_phases=request.supply_phases
     )
+    overall = [note("text", text=text) for text in drafted.assumptions]
     logger.info("design.schedule_suggested", tenant_id=user.tenant_id, loads=len(loads))
-    return LoadScheduleSuggestion(loads=loads, assumptions=[*drafted.assumptions, *notes])
+    return LoadScheduleSuggestion(loads=loads, assumptions=[*overall, *notes])
 
 
 def price_design(*, user: CurrentUser, request: QuotationRequest) -> Quotation:

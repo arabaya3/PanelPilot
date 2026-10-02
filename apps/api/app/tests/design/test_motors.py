@@ -42,16 +42,17 @@ def test_motor_current_prefers_the_nameplate_then_the_table_then_the_formula() -
         _motor("7.5", MotorStarter.DIRECT_ON_LINE, power_factor=Decimal("0.8")), SUPPLY
     )
     assert current == Decimal("15.04")
-    assert "efficiency 0.9" in basis
-    assert "cos phi" not in basis
+    assert basis.code == "motor_current_formula"
+    assert basis.params["power_factor"] == "0.8"
     # No power factor, a row for exactly this power: the table's Ir.
     current, basis = motors.motor_current(_motor("7.5", MotorStarter.DIRECT_ON_LINE), SUPPLY)
     assert current == Decimal("15.2")
-    assert "typical Ir" in basis
+    assert basis.code == "motor_current_table"
     # A drive, or a power with no row: the formula at the assumed values.
     current, basis = motors.motor_current(_motor("8", MotorStarter.DRIVE), SUPPLY)
     assert current == Decimal("15.09")
-    assert "cos phi 0.85" in basis
+    assert basis.params["power_factor"] == "0.85"
+    assert basis.params["efficiency"] == "0.9"
 
 
 def test_a_direct_on_line_starter_is_a_coordinated_set() -> None:
@@ -68,7 +69,7 @@ def test_a_direct_on_line_starter_is_a_coordinated_set() -> None:
     assert relay.part_key == "ABB/TA25DU19"
     assert relay.rated_current_a == Decimal("15.2")
     assert (circuit.cable_cores, circuit.cable_current_a) == (4, Decimal("15.2"))
-    assert any("Table 3" in note for note in circuit.notes)
+    assert any("Table 3" in note.text for note in circuit.notes)
 
 
 def test_a_star_delta_relay_is_set_to_the_phase_current() -> None:
@@ -81,8 +82,8 @@ def test_a_star_delta_relay_is_set_to_the_phase_current() -> None:
     assert relay.rated_current_a == Decimal("32.33")  # 56 A / sqrt(3)
     assert circuit.cable_cores == 7
     assert circuit.cable_current_a == Decimal("32.33")
-    assert any("mechanical interlock" in note for note in circuit.notes)
-    assert not any("Δ" in note for note in circuit.notes)
+    assert any("mechanical interlock" in note.text for note in circuit.notes)
+    assert not any("Δ" in note.text for note in circuit.notes)
 
 
 def test_a_drive_is_chosen_with_its_input_fuses() -> None:
@@ -96,7 +97,7 @@ def test_a_drive_is_chosen_with_its_input_fuses() -> None:
     assert drive.part_key == "ABB/ACS880-01-032A-3"
     assert drive.rated_current_a is not None
     assert drive.rated_current_a >= circuit.current_a
-    assert any("screened" in note for note in circuit.notes)
+    assert any("screened" in note.text for note in circuit.notes)
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { round } from '@/components/cable-sizing-panel';
+import { useNoteText } from '@/components/design/note-text';
 import type { BoardDesignResponse, ExportFormat } from '@/lib/design';
 
 const FORMATS: ExportFormat[] = [
@@ -30,6 +31,7 @@ function protectionText(device: Device): string {
 
 function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
   const t = useTranslations('design');
+  const noteText = useNoteText();
   const devices = new Map((board.devices ?? []).map((device) => [device.id, device]));
   const cables = new Map((board.cables ?? []).map((cable) => [cable.id, cable]));
   return (
@@ -88,9 +90,9 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
       {(board.notes ?? []).length > 0 && (
         <div>
           <h3 className="mb-2 text-sm font-semibold text-text-muted">{t('notes')}</h3>
-          <ul className="list-disc ps-5 text-sm" dir="ltr" data-testid="design-notes">
+          <ul className="list-disc ps-5 text-sm" data-testid="design-notes">
             {(board.notes ?? []).map((note, index) => (
-              <li key={index}>{note}</li>
+              <li key={index}>{noteText(note)}</li>
             ))}
           </ul>
         </div>
