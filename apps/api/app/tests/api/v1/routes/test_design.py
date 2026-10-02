@@ -71,3 +71,22 @@ def test_an_unknown_format_is_refused(client: TestClient) -> None:
     assert (
         client.post("/design/export", json={"project": project, "format": "dwg"}).status_code == 422
     )
+
+
+def test_a_schedule_is_uploaded(client: TestClient) -> None:
+    response = client.post(
+        "/design/load-schedule/import",
+        files={"file": ("schedule.csv", b"Description,kW\nPump,2.2\n", "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["loads"][0]["load"] == "motor"
+    assert body["warnings"] == ["Row 2 (Pump): taken as motor from its description."]
+
+
+def test_an_unreadable_schedule_is_a_client_error(client: TestClient) -> None:
+    response = client.post(
+        "/design/load-schedule/import",
+        files={"file": ("x.csv", b"Name,Colour\n", "text/csv")},
+    )
+    assert response.status_code in (400, 422)

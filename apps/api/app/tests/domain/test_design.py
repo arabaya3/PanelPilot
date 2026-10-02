@@ -102,3 +102,12 @@ def test_an_edited_project_is_renumbered_on_export() -> None:
         request=DesignExportRequest(project=edited, format=ExportFormat.JSON),
     )
     assert b'"product": "Q1"' in exported.content
+
+
+def test_a_schedule_file_is_imported() -> None:
+    result = design.import_load_schedule(
+        user=USER, data=b"Description,kW,Phase\nSockets hall,1.5,1\nLights,0.6,1\n"
+    )
+    assert [load.description for load in result.loads] == ["Sockets hall", "Lights"]
+    assert result.rows_read == 2
+    assert design.MAX_SCHEDULE_BYTES == 5 * 1024 * 1024

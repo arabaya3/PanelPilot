@@ -616,3 +616,17 @@ class DesignExportRequest(BaseModel):
     project: DesignProject
     profile: dict[str, Any] | None = None
     format: ExportFormat
+
+
+class LoadScheduleImport(BaseModel):
+    """A load schedule read from a consultant's file.
+
+    Attributes:
+        loads: The loads read, in the schedule's order.
+        warnings: Every row skipped and every assumption made, by row.
+        rows_read: Data rows found below the header.
+    """
+
+    loads: list[LoadInput]
+    warnings: list[str]
+    rows_read: int

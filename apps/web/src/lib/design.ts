@@ -125,3 +125,56 @@ export async function exportDesign(options: {
     return { kind: 'failed' };
   }
 }
+
+export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
+
+export type ImportOutcome =
+  | { kind: 'imported'; result: LoadScheduleImport }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/**
+ * Read a consultant's load schedule (.xlsx, .csv or .pdf):
+ * `POST /api/v1/design/load-schedule/import`.
+ */
+export async function importSchedule(options: {
+  token: string;
+  file: Blob;
+  filename: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<ImportOutcome> {
+  const {
+    token,
+    file,
+    filename,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/design/load-schedule/import',
+  } = options;
+  const body = new FormData();
+  body.append('file', file, filename);
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 400 || response.status === 422) {
+    return { kind: 'refused', detail: detailOf(payload) };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('loads' in payload) || !('warnings' in payload)) return { kind: 'failed' };
+  return { kind: 'imported', result: payload as LoadScheduleImport };
+}

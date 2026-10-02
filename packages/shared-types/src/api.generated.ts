@@ -336,6 +336,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/load-schedule/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Load Schedule
+     * @description Read a consultant's load schedule (.xlsx, .csv or .pdf) into loads.
+     */
+    post: operations['import_load_schedule_api_v1_design_load_schedule_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -780,6 +800,11 @@ export interface components {
     BoardDesignResponse: {
       project: components['schemas']['DesignProject-Output'];
       profile: components['schemas']['CompanyProfile'];
+    };
+    /** Body_import_load_schedule_api_v1_design_load_schedule_import_post */
+    Body_import_load_schedule_api_v1_design_load_schedule_import_post: {
+      /** File */
+      file: string;
     };
     /** Body_upload_image_api_v1_images_post */
     Body_upload_image_api_v1_images_post: {
@@ -1660,7 +1685,7 @@ export interface components {
       location?: string | null;
       supply?: components['schemas']['Supply-Input'];
       /** Loads */
-      loads: components['schemas']['LoadInput'][];
+      loads: components['schemas']['LoadInput-Input'][];
       conditions?: components['schemas']['InstallationConditions'];
     };
     /**
@@ -2050,7 +2075,7 @@ export interface components {
      *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
      *             load-current table is drawn up for, and the board says so.
      */
-    LoadInput: {
+    'LoadInput-Input': {
       /** Description */
       description: string;
       load: components['schemas']['LoadKind'];
@@ -2063,6 +2088,32 @@ export interface components {
       phases: number;
       /** Power Factor */
       power_factor?: number | string | null;
+    };
+    /**
+     * LoadInput
+     * @description One line of a distribution board's load schedule.
+     *
+     *     Attributes:
+     *         description: What it feeds ("Sockets - hall east").
+     *         load: The kind of load, which picks the company's rule for it.
+     *         power_kw: Installed active power.
+     *         phases: 1 or 3.
+     *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
+     *             load-current table is drawn up for, and the board says so.
+     */
+    'LoadInput-Output': {
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: string;
+      /**
+       * Phases
+       * @default 1
+       */
+      phases: number;
+      /** Power Factor */
+      power_factor?: string | null;
     };
     /**
      * LoadKind
@@ -2086,6 +2137,23 @@ export interface components {
       | 'data'
       | 'spare'
       | 'other';
+    /**
+     * LoadScheduleImport
+     * @description A load schedule read from a consultant's file.
+     *
+     *     Attributes:
+     *         loads: The loads read, in the schedule's order.
+     *         warnings: Every row skipped and every assumption made, by row.
+     *         rows_read: Data rows found below the header.
+     */
+    LoadScheduleImport: {
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      /** Warnings */
+      warnings: string[];
+      /** Rows Read */
+      rows_read: number;
+    };
     /**
      * LoadScheduleItem
      * @description One load on a panel's schedule.
@@ -3546,6 +3614,39 @@ export interface operations {
         };
         content: {
           'application/octet-stream': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  import_load_schedule_api_v1_design_load_schedule_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_import_load_schedule_api_v1_design_load_schedule_import_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LoadScheduleImport'];
         };
       };
       /** @description Validation Error */

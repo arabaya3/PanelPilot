@@ -32,6 +32,9 @@ dependencies = [
     # the structure extractor's fixture PDFs: a real PDF is the only honest
     # fixture there, since the extractor's whole job is reading layout.
     "reportlab>=4.2",
+    # Reads a consultant's load schedule from Excel (app/design/
+    # schedule_import.py), the form most of them arrive in. MIT.
+    "openpyxl>=3.1",
     # IEC 61131-3 Structured Text parsing for PLC validation (AI-009). MIT.
     #
     # A general parser toolkit rather than a PLC library, deliberately. The
@@ -148,7 +151,7 @@ plugins = ["pydantic.mypy"]
 exclude = "^alembic/"
 
 [[tool.mypy.overrides]]
-module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*", "voyageai.*"]
+module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*", "voyageai.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
