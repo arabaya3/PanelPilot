@@ -403,6 +403,21 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Panel layout** (`app/design/layout.py`):
+
+- **Rows:** each board's DIN rails follow the single-line diagram: the
+  incomer, each residual current group, the circuits off the busbar, then
+  the terminal strip. There is a Layout page per board in the drawing set.
+- **Widths:** a device's width is the company's figure a pole for its kind
+  (`rail_widths_mm`) times its poles.
+  - The default holds only what is sourced: ABB S200 modular breakers, 17.5
+    mm a pole, up to 63 A.
+  - A device with no width, including any with a selected article (a motor
+    starter's breaker), is drawn dashed and counted separately. It is never
+    added to the rail length as a guess.
+- **Rail length:** with `usable_rail_mm`, a row longer than the enclosure's
+  rail continues on the next.
+
 **Terminal strips** (`app/design/terminals.py`):
 
 - **Numbering:** every outgoing cable lands on the board's `-X1`, numbered in

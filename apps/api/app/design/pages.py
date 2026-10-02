@@ -32,7 +32,7 @@ import textwrap
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.design import rtl, symbols, terminals
+from app.design import layout, rtl, symbols, terminals
 from app.design.drawing_text import Words
 from app.design.sheet import (
     AREA_BOTTOM,
@@ -333,6 +333,10 @@ def _plan(project: DesignProject, profile: CompanyProfile, say: Words) -> list[_
                     plans.append(
                         _Plan(kind, say("Design notes"), board, [say.note(n) for n in board.notes])
                     )
+        elif kind is PageKind.LAYOUT:
+            for board in project.boards:
+                for chunk in _chunks(list(layout.rails(board, profile)), RAILS_PER_PAGE):
+                    plans.append(_Plan(kind, say("Layout"), board, chunk))
         elif kind is PageKind.TERMINALS:
             for board in project.boards:
                 strip_rows = _terminal_rows(board, say)
@@ -784,6 +788,74 @@ def _draw_notes(sheet: Sheet, plan: _Plan, say: Words) -> None:
     _table(sheet, AREA_TOP + 6, [(say("No."), 15.0), (say("Note"), 340.0)], rows, size=2.6)
 
 
+#: DIN rails drawn on one layout page.
+RAILS_PER_PAGE = 5
+
+#: How a slot with no width is drawn: a module a pole, or a terminal's width.
+_PLACEHOLDER_MM = Decimal(18)
+_TERMINAL_PLACEHOLDER_MM = Decimal(6)
+
+
+def _row_name(name: str, say: Words) -> str:
+    kind = name.split(":", 1)[0]
+    return {
+        "incomer": say("Incomer"),
+        "group": say("Residual current group"),
+        "busbar": say("Busbar"),
+        "terminals": say("Terminals"),
+    }.get(kind, kind)
+
+
+def _draw_layout(sheet: Sheet, rails: list[layout.Rail], say: Words) -> None:
+    """Draw rails as rows of device outlines, scaled to fit the page."""
+
+    def drawn(slot: layout.Slot) -> Decimal:
+        if slot.width_mm is not None:
+            return slot.width_mm
+        return _TERMINAL_PLACEHOLDER_MM if not slot.device_id else _PLACEHOLDER_MM
+
+    longest = max((sum((drawn(s) for s in r.slots), Decimal(0)) for r in rails), default=Decimal(1))
+    room = Decimal(str(AREA_RIGHT - AREA_LEFT - 20.0))
+    scale = float(min(Decimal(1), room / max(longest, Decimal(1))))
+    left = AREA_LEFT + 10.0
+    y = AREA_TOP + 14.0
+    for rail in rails:
+        unknown = rail.unknown
+        summary = say("{known} mm of rail", known=_plain(rail.known_mm))
+        if unknown:
+            summary += "; " + say("{count} without a width", count=unknown)
+        sheet.add(
+            Text(left, y - 6.0, f"{_row_name(rail.name, say)}: {summary}", size=2.4, bold=True)
+        )
+        rail_end = left + max(float(sum((drawn(s) for s in rail.slots), Decimal(0))) * scale, 10.0)
+        sheet.add(Line(left, y + 11.0, rail_end, y + 11.0, 0.6))
+        x = left
+        last = len(rail.slots) - 1
+        for index, slot in enumerate(rail.slots):
+            w = float(drawn(slot)) * scale
+            sheet.add(Rect(x, y, w, 22.0, 0.25, dashed=slot.width_mm is None))
+            # A strip's terminals are too narrow to each carry a label: its
+            # first and last name the range.
+            labelled = slot.device_id or index in (0, last)
+            if w >= 4.0 and labelled:
+                label = slot.label if slot.width_mm is not None else f"{slot.label} ?"
+                sheet.add(
+                    Text(x + w / 2, y + 26.0, label, size=1.8, anchor=Anchor.MIDDLE, rotation=0)
+                )
+            x += w
+        y += 38.0
+    sheet.add(
+        Text(
+            AREA_LEFT + 10.0,
+            AREA_BOTTOM - 4.0,
+            say(
+                "Dashed: no width is given for the device's kind (rail_widths_mm in the company settings)."
+            ),
+            size=2.2,
+        )
+    )
+
+
 def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[Sheet]:
     """Lay a project out as the pages of its drawing set.
 
@@ -856,6 +928,8 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
             _draw_distribution(sheet, plan, numbers, say)
         elif plan.kind is PageKind.NOTES:
             _draw_notes(sheet, plan, say)
+        elif plan.kind is PageKind.LAYOUT:
+            _draw_layout(sheet, [r for r in plan.payload if isinstance(r, layout.Rail)], say)
         elif plan.kind is PageKind.TERMINALS:
             _table(
                 sheet,
