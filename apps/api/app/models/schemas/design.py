@@ -519,6 +519,8 @@ class CompanyProfile(BaseModel):
             takes ``default_max_voltage_drop_percent``. The defaults are IEC
             60364-5-52 Annex G (Table G.52.1) for a public LV supply.
         default_max_voltage_drop_percent: The limit for any other load.
+        max_starting_voltage_drop_percent: The largest drop from the origin
+            to a motor's terminals while it starts.
         rules_confirmed_by: Who confirmed the design rules. Empty while they
             are this software's defaults, which the drawing then says.
     """
@@ -547,6 +549,7 @@ class CompanyProfile(BaseModel):
         default_factory=lambda: {LoadKind.LIGHTING: Decimal(3)}
     )
     default_max_voltage_drop_percent: Decimal = Decimal(5)
+    max_starting_voltage_drop_percent: Decimal = Decimal(15)
     rules_confirmed_by: str = ""
 
     @model_validator(mode="after")

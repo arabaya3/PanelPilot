@@ -320,6 +320,8 @@ def _size_motor(
             voltage_v=request.supply.voltage_v,
         )
     section, drop = _check_drop(request, profile, budget, load, run, cable.cross_section_mm2, notes)
+    if load.length_m and load.starter is not None:
+        section = _check_starting(request, profile, budget, load, motor, section, notes)
     return _Sized(
         load=load,
         index=index,
@@ -330,6 +332,82 @@ def _size_motor(
         motor=motor,
         drop_percent=drop,
     )
+
+
+#: Starting current as a multiple of Ir, by starter: a direct-on-line
+#: start draws the locked-rotor current (IEC 60034-12 design N motors, about
+#: 6 to 8 Ir; 6 is taken as typical), a star-delta start a third of it, and a
+#: drive no more than the motor's rated current.
+STARTING_MULTIPLE: dict[MotorStarter, Decimal] = {
+    MotorStarter.DIRECT_ON_LINE: Decimal(6),
+    MotorStarter.STAR_DELTA: Decimal(2),
+}
+
+
+def _check_starting(
+    request: DistributionBoardRequest,
+    profile: CompanyProfile,
+    budget: voltage_drop.Budget,
+    load: LoadInput,
+    motor: motors.MotorCircuit,
+    section: Decimal,
+    notes: list[DesignNote],
+) -> Decimal:
+    """Hold the drop while a motor starts within the company's limit.
+
+    The starting current flows in the three line conductors only (a star-delta
+    motor starts in star, its second set of conductors idle), at cos phi 0.35.
+    A drive limits it to the running current, which the running check covers.
+
+    Returns:
+        The cable's section, enlarged where starting needs it.
+    """
+    multiple = STARTING_MULTIPLE.get(load.starter) if load.starter else None
+    if multiple is None or load.length_m is None:
+        return section
+    if request.conditions.conductor_material is not ConductorMaterial.COPPER:
+        notes.append(note("starting_drop_unchecked", load=load.description))
+        return section
+    run = voltage_drop.Run(
+        current_a=motor.current_a * multiple,
+        length_m=load.length_m,
+        three_phase=True,
+        voltage_v=request.supply.voltage_v,
+    )
+    limit = profile.max_starting_voltage_drop_percent
+    checked = voltage_drop.fit(
+        run,
+        section,
+        limit - budget.upstream_percent,
+        request.conditions,
+        voltage_drop.starting_percent,
+    )
+    if checked is None:
+        return section
+    total = checked.percent + budget.upstream_percent
+    if not checked.within:
+        notes.append(
+            note(
+                "starting_drop_exceeded",
+                load=load.description,
+                total=_plain(total),
+                limit=_plain(limit),
+                section=_plain(section),
+            )
+        )
+    elif checked.section_mm2 != section:
+        notes.append(
+            note(
+                "starting_drop_upsized",
+                load=load.description,
+                sized=_plain(section),
+                section=_plain(checked.section_mm2),
+                multiple=_plain(multiple),
+                total=_plain(total),
+                limit=_plain(limit),
+            )
+        )
+    return checked.section_mm2
 
 
 def balance_phases(currents: list[tuple[int, Decimal, bool]]) -> dict[int, Phase]:

@@ -108,6 +108,9 @@
     "discrimination_incomer_not_met": "القاطع الرئيسي: ‏{rated} A أقل من {ratio} × القاطع {after} A الذي بعده، ولا يوجد قاطع صغير أكبر متوفر؛ التمييز عند الحمل الزائد غير مضمون.",
     "incomer_isolator": "المدخل الرئيسي مفتاح فاصل: قاطع التغذية في {board} يحمي هذه اللوحة، فالمفتاح مصنّف بما لا يقل عن ذلك القاطع ولا يفصل؛ والتمييز يكون بين قاطع التغذية وقواطع هذه اللوحة.",
     "isolator_unselected": "المدخل الرئيسي: لا يوجد مفتاح فاصل متوفر يحمل {current} A (حتى 250 A)؛ لم يُختر هنا.",
-    "fault_level_calculated": "تيار القصر {fault} kA، محسوب من {upstream} kA في {board} عبر كيبل تغذية {section} mm² {material} بطول {length} m (حسب IEC 60909، الموصلات عند 20 °C)."
+    "fault_level_calculated": "تيار القصر {fault} kA، محسوب من {upstream} kA في {board} عبر كيبل تغذية {section} mm² {material} بطول {length} m (حسب IEC 60909، الموصلات عند 20 °C).",
+    "starting_drop_upsized": "{load}: كُبّر الكيبل من {sized} إلى {section} mm² بسبب الإقلاع: تيار {multiple} × Ir عند cos φ 0.35 يُهبط الجهد {total}% من المصدر، ضمن الحد المسموح أثناء الإقلاع {limit}%.",
+    "starting_drop_exceeded": "{load}: هبوط الجهد من المصدر أثناء الإقلاع {total}%، أكبر من الحد المسموح {limit}%، ولا يوجد مقطع في الجداول يحققه؛ أُبقي على {section} mm². فكّر بمُقلع ناعم أو مغيّر سرعة.",
+    "starting_drop_unchecked": "{load}: لم يُفحص هبوط الجهد أثناء الإقلاع لكيبل ألمنيوم (لا يوجد عمود إقلاع في الجداول)."
   }
 }

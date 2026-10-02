@@ -464,3 +464,32 @@ def test_a_switch_beyond_every_rating_is_said() -> None:
     )
     assert board.device("incomer").rated_current_a is None
     assert "isolator_unselected" in [n.code for n in board.notes]
+
+
+def test_a_long_motor_cable_is_enlarged_for_starting() -> None:
+    # A company that holds starting to 8 %: at 6 x Ir the start, not the
+    # running current, then decides the cable.
+    company = profile.default_profile().model_copy(
+        update={"max_starting_voltage_drop_percent": Decimal(8)}
+    )
+
+    def board(starter: str, metres: str) -> list[str]:
+        request = DistributionBoardRequest(
+            name="DB",
+            loads=[
+                _load(
+                    LoadKind.MOTOR,
+                    "22",
+                    "Pump",
+                    phases=3,
+                    starter=starter,
+                    length_m=Decimal(metres),
+                )
+            ],
+        )
+        return [n.code for n in distribution.design_distribution_board(request, company).notes]
+
+    assert "starting_drop_upsized" in board("dol", "200")
+    # A third of the current in star-delta, and a drive starts at Ir.
+    assert "starting_drop_upsized" not in board("star_delta", "200")
+    assert "starting_drop_upsized" not in board("drive", "200")

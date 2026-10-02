@@ -82,3 +82,19 @@ def test_fit_says_when_no_section_is_enough() -> None:
 
 def test_fit_leaves_a_section_beyond_the_tables_unchecked() -> None:
     assert voltage_drop.fit(_run("500", "50"), Decimal(400), Decimal(5), _COPPER) is None
+
+
+def test_starting_percent_reads_the_start_up_column() -> None:
+    # Fig. G28, 10 mm² three-phase, cos phi 0.35: 1.5 V/A/km.
+    # 252 A x 0.12 km x 1.5 = 45.36 V of 400 V.
+    run = _run("252", "120", three_phase=True, volts="400")
+    assert voltage_drop.starting_percent(run, Decimal(10), _COPPER) == Decimal("11.34")
+
+
+def test_fit_can_measure_the_start() -> None:
+    run = _run("252", "200", three_phase=True, volts="400")
+    checked = voltage_drop.fit(
+        run, Decimal(10), Decimal(15), _COPPER, voltage_drop.starting_percent
+    )
+    assert checked is not None
+    assert checked.section_mm2 == Decimal(16)
