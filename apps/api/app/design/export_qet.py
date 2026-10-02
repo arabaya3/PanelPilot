@@ -37,6 +37,7 @@ _PER_DIAGRAM = 9
 BREAKER = "pp_breaker.elmt"
 RCD = "pp_rcd.elmt"
 LOAD = "pp_load.elmt"
+CONTACTOR = "pp_contactor.elmt"
 SUPPLY = "pp_supply.elmt"
 
 
@@ -141,6 +142,14 @@ def _symbols() -> list[ET.Element]:
     _line(body, -9, -2, -4, -2, dashed=True)
     _terminals(body, RCD)
     elements.append(rcd)
+
+    contactor, body = _definition(CONTACTOR, "Contactor", "كونتاكتر")
+    _line(body, 0, -20, 0, -9)
+    ET.SubElement(body, "circle", x="-1.5", y="-9", diameter="3", style=_LINE, antialias="true")
+    _line(body, 0, 6, -6, -5)
+    _line(body, 0, 6, 0, 20)
+    _terminals(body, CONTACTOR)
+    elements.append(contactor)
 
     load, body = _definition(LOAD, "Outgoing circuit", "مخرج")
     _line(body, 0, -20, 0, -3)
@@ -298,6 +307,8 @@ def _rating(device: Device) -> str:
         return f"{_plain(device.rated_current_a)} A {_plain(device.residual_current_ma)} mA {poles}".strip()
     if device.rated_current_a is None:
         return f"not selected {poles}".strip()
+    if device.kind is DeviceKind.CONTACTOR:
+        return f"{_plain(device.rated_current_a)} A AC-1 {poles}".strip()
     return f"{device.curve or ''}{_plain(device.rated_current_a)} {poles}".strip()
 
 
@@ -386,6 +397,15 @@ def _group_diagram(
         )
         diagram.connect(previous, top)
         previous = top
+        row = 200
+        for device_id in circuit.device_ids[1:]:
+            switch = board.device(device_id)
+            row += 80
+            switch_top, switch_bottom = diagram.element(
+                CONTACTOR, x, row, f"{board.id}/{switch.id}", _label(switch), _rating(switch)
+            )
+            diagram.connect(bottom, switch_top)
+            bottom = switch_bottom
         cable = board.cable(circuit.cable_id) if circuit.cable_id else None
         section = (
             f"{cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material}" if cable else ""
@@ -393,7 +413,7 @@ def _group_diagram(
         load_top = diagram.element(
             LOAD,
             x,
-            330,
+            row + 130,
             f"{board.id}/{circuit.id}/load",
             circuit.description,
             f"{_plain(circuit.power_kw)} kW",

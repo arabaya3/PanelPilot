@@ -92,6 +92,29 @@ def test_every_circuit_is_drawn_once() -> None:
         assert drawn.count(f"-{breaker.designation.product}") == 1  # type: ignore[union-attr]
 
 
+def test_a_contactor_is_drawn_under_its_breaker() -> None:
+    board = distribution.design_distribution_board(
+        DistributionBoardRequest(
+            name="DBG-HALL",
+            loads=[
+                LoadInput(
+                    description="Lights",
+                    load=LoadKind.LIGHTING,
+                    power_kw=Decimal("0.6"),
+                    controlled=True,
+                )
+            ],
+        ),
+        profile.default_profile(),
+    )
+    project = designations.designate_project(
+        DesignProject(info=ProjectInfo(name="Pocket"), boards=[board]), profile.default_profile()
+    )
+    sheets = pages.build_drawing_set(project, profile.default_profile())
+    drawn = [t for s in sheets if s.title == "Distribution loads" for t in _texts(s)]
+    assert "20 A AC-1 2P" in drawn
+
+
 def test_many_feeders_continue_onto_another_main_page() -> None:
     project = _project(lights=60)
     sheets = pages.build_drawing_set(project, profile.default_profile())
@@ -131,6 +154,12 @@ def test_rating_text() -> None:
             )
         )
         == "40 A 30 mA 4P"
+    )
+    assert (
+        pages.rating_text(
+            Device(id="k", kind=DeviceKind.CONTACTOR, poles=4, rated_current_a=Decimal(25))
+        )
+        == "25 A AC-1 4P"
     )
     assert (
         pages.rating_text(Device(id="c", kind=DeviceKind.CIRCUIT_BREAKER, poles=4))

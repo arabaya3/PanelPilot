@@ -50,6 +50,10 @@ from app.models.schemas.design import (
 #: load-current table is drawn up for cosφ = 0.9.
 DEFAULT_POWER_FACTOR = Decimal("0.9")
 
+#: Rated currents (AC-1) of modular installation contactors, as the common
+#: ranges list them; the contactor is rated no lower than its breaker.
+CONTACTOR_RATINGS: tuple[Decimal, ...] = tuple(Decimal(r) for r in ("20", "25", "40", "63"))
+
 #: Preferred rated currents of residual current circuit-breakers, IEC 61008-1.
 RCCB_RATINGS: tuple[Decimal, ...] = tuple(
     Decimal(r) for r in ("16", "25", "40", "63", "80", "100", "125")
@@ -312,6 +316,24 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
             insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
         )
         devices.append(breaker)
+        circuit_devices = [breaker.id]
+        if item.load.controlled:
+            rating = next((r for r in CONTACTOR_RATINGS if r >= item.rated_a), None)
+            if rating is None:
+                notes.append(
+                    f"{item.load.description}: no modular contactor rating carries "
+                    f"{_plain(item.rated_a)} A; the contactor is left unselected."
+                )
+            contactor = Device(
+                id=f"c{item.index + 1}-contactor",
+                kind=DeviceKind.CONTACTOR,
+                poles=4 if three_phase else 2,
+                rated_current_a=rating,
+                description=f"{item.load.description} (PLC)",
+                upstream_id=breaker.id,
+            )
+            devices.append(contactor)
+            circuit_devices.append(contactor.id)
         cables.append(cable)
         circuits.append(
             Circuit(
@@ -322,7 +344,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
                 design_current_a=item.current_a,
                 phase=item.phase,
                 upstream_id=upstream.get(item.index),
-                device_ids=[breaker.id],
+                device_ids=circuit_devices,
                 cable_id=cable.id,
             )
         )
@@ -368,6 +390,11 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
     )
     if any(s.load.power_factor is None for s in sized):
         notes.append("Loads without a power factor were taken at cos phi 0.9.")
+    if any(load.controlled for load in request.loads):
+        notes.append(
+            "Contactors are rated at least their breaker's current (AC-1); confirm the "
+            "utilisation category against the catalogue for motor or lamp loads."
+        )
     if groups:
         notes.append(
             "Discrimination between each group breaker and its outgoing breakers is not checked."

@@ -413,6 +413,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/plc': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Write Plc Program
+     * @description Write and check the control program for the PLC-switched circuits.
+     */
+    post: operations['write_plc_program_api_v1_design_plc_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -1881,6 +1901,8 @@ export interface components {
       | 'circuits_csv'
       | 'quotation_pdf'
       | 'quotation_csv'
+      | 'plc_st'
+      | 'plc_io_csv'
       | 'json';
     /**
      * FaultRecognitionResult
@@ -2152,6 +2174,8 @@ export interface components {
      *         phases: 1 or 3.
      *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
      *             load-current table is drawn up for, and the board says so.
+     *         controlled: Switched by a contactor the PLC drives, rather than
+     *             live whenever its breaker is closed.
      */
     'LoadInput-Input': {
       /** Description */
@@ -2166,6 +2190,11 @@ export interface components {
       phases: number;
       /** Power Factor */
       power_factor?: number | string | null;
+      /**
+       * Controlled
+       * @default false
+       */
+      controlled: boolean;
     };
     /**
      * LoadInput
@@ -2178,6 +2207,8 @@ export interface components {
      *         phases: 1 or 3.
      *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
      *             load-current table is drawn up for, and the board says so.
+     *         controlled: Switched by a contactor the PLC drives, rather than
+     *             live whenever its breaker is closed.
      */
     'LoadInput-Output': {
       /** Description */
@@ -2192,6 +2223,11 @@ export interface components {
       phases: number;
       /** Power Factor */
       power_factor?: string | null;
+      /**
+       * Controlled
+       * @default false
+       */
+      controlled: boolean;
     };
     /**
      * LoadKind
@@ -2459,11 +2495,68 @@ export interface components {
       validation: components['schemas']['PlcValidationResult'];
     };
     /**
+     * PlcIoPoint
+     * @description One point on a control program's I/O list.
+     *
+     *     Attributes:
+     *         tag: The variable name in the program.
+     *         direction: "input" or "output".
+     *         board: The board it belongs to; empty for shared inputs.
+     *         device: The designation of the device it drives or reports.
+     *         description: What it is, for the wiring list.
+     */
+    PlcIoPoint: {
+      /** Tag */
+      tag: string;
+      /** Direction */
+      direction: string;
+      /** Board */
+      board: string;
+      /** Device */
+      device: string;
+      /** Description */
+      description: string;
+    };
+    /**
      * PlcLanguage
      * @description What form the output takes.
      * @enum {string}
      */
     PlcLanguage: 'structured-text' | 'ladder';
+    /**
+     * PlcProgramRequest
+     * @description A project whose PLC-switched circuits need a control program.
+     *
+     *     Attributes:
+     *         project: The designed project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    PlcProgramRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * PlcProgramResponse
+     * @description The control program for a project, and the checker's verdict on it.
+     *
+     *     Attributes:
+     *         name: The program unit's name.
+     *         source: The IEC 61131-3 Structured Text.
+     *         io: Every input and output, shared inputs first.
+     *         validation: The parser-based checker's verdict on ``source``.
+     */
+    PlcProgramResponse: {
+      /** Name */
+      name: string;
+      /** Source */
+      source: string;
+      /** Io */
+      io: components['schemas']['PlcIoPoint'][];
+      validation: components['schemas']['PlcValidationResult'];
+    };
     /**
      * PlcValidationRequest
      * @description A request to validate code the caller already has.
@@ -4040,6 +4133,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PriceListEntry-Output'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  write_plc_program_api_v1_design_plc_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcProgramRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcProgramResponse'];
         };
       };
       /** @description Validation Error */

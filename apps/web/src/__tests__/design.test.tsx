@@ -121,6 +121,7 @@ describe('board design', () => {
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
     );
     fillSchedule();
+    fireEvent.click(screen.getByLabelText('PLC switched'));
     await submit();
 
     await screen.findByTestId('design-result');
@@ -134,6 +135,7 @@ describe('board design', () => {
         power_kw: '1.5',
         phases: 1,
         power_factor: null,
+        controlled: true,
       },
     ]);
     expect(call?.request.profile).toBeNull();
@@ -221,6 +223,7 @@ describe('load schedule import', () => {
             power_kw: '1.5',
             phases: 1,
             power_factor: null,
+            controlled: false,
           },
           {
             description: 'AC 1',
@@ -228,6 +231,7 @@ describe('load schedule import', () => {
             power_kw: '4',
             phases: 3,
             power_factor: '0.85',
+            controlled: false,
           },
         ],
         warnings: ['Row 3 (AC 1): taken as air_conditioning from its description.'],
@@ -301,6 +305,7 @@ describe('suggest from a description', () => {
             power_kw: '1.05',
             phases: 1,
             power_factor: null,
+            controlled: false,
           },
           {
             description: 'Hall sockets 2',
@@ -308,6 +313,7 @@ describe('suggest from a description', () => {
             power_kw: '0.9',
             phases: 1,
             power_factor: null,
+            controlled: false,
           },
         ],
         assumptions: ['Diversity not applied.', 'Hall sockets 1: 7 x 150 W = 1.05 kW. typical'],

@@ -18,6 +18,8 @@ from app.models.schemas.design import (
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    PlcProgramRequest,
+    PlcProgramResponse,
     PriceListEntry,
     Quotation,
     QuotationRequest,
@@ -102,3 +104,14 @@ async def import_price_list(
     """Read a company's price list (.xlsx or .csv)."""
     data = await file.read(design_domain.MAX_SCHEDULE_BYTES + 1)
     return design_domain.import_price_list(user=user, data=data)
+
+
+@router.post("/plc", response_model=PlcProgramResponse)
+def write_plc_program(
+    payload: PlcProgramRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> PlcProgramResponse:
+    """Write and check the control program for the PLC-switched circuits."""
+    del session
+    return design_domain.write_plc_program(user=user, request=payload)
