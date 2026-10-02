@@ -417,6 +417,7 @@ class PageKind(StrEnum):
     LAYOUT = "layout"
     SINGLE_LINE = "single_line"
     DISTRIBUTION = "distribution"
+    NOTES = "notes"
     TERMINALS = "terminals"
     CABLES = "cables"
     PARTS = "parts"

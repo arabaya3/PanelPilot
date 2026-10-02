@@ -1,0 +1,140 @@
+"""Single-line symbols, after IEC 60617, as sheet geometry.
+
+Each symbol is drawn downward from a top connection point and returns its
+geometry with the y of its bottom connection point, so a circuit is drawn by
+stacking symbols down a column. Sizes are in millimetres, on the 2.5 mm text
+grid most ECAD frames use.
+"""
+
+from __future__ import annotations
+
+from app.design.sheet import Anchor, Circle, Item, Line, Rect, Text
+
+#: Height of a switching device symbol, lead to lead.
+DEVICE_HEIGHT = 20.0
+
+
+def pole_marks(x: float, y: float, poles: int) -> list[Item]:
+    """Mark a single-line conductor with its number of poles.
+
+    One oblique stroke, and the number beside it when there is more than one
+    conductor: the single-line convention of IEC 60617-3.
+
+    Args:
+        x: The conductor's x.
+        y: Where along it to mark.
+        poles: The number of conductors.
+
+    Returns:
+        The geometry.
+    """
+    items: list[Item] = [Line(x - 1.5, y + 1.0, x + 1.5, y - 1.0)]
+    if poles > 1:
+        items.append(Text(x + 2.0, y - 1.2, str(poles), size=2.0))
+    return items
+
+
+def circuit_breaker(x: float, top: float, poles: int = 1) -> tuple[list[Item], float]:
+    """Draw a circuit-breaker: a switch with the breaker cross on its fixed contact.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    fixed = top + 6.0
+    pivot = top + 14.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, fixed),
+        # The breaker cross on the fixed contact.
+        Line(x - 1.2, fixed - 1.2, x + 1.2, fixed + 1.2),
+        Line(x - 1.2, fixed + 1.2, x + 1.2, fixed - 1.2),
+        # The blade, open.
+        Line(x, pivot, x - 3.5, fixed + 0.8),
+        Line(x, pivot, x, bottom),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
+def residual_current_device(x: float, top: float, poles: int = 4) -> tuple[list[Item], float]:
+    """Draw a residual current circuit-breaker: a switch with a summation transformer.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    contact = top + 6.0
+    pivot = top + 12.0
+    toroid = top + 16.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, contact),
+        Line(x, pivot, x - 3.5, contact + 0.8),
+        Line(x, pivot, x, bottom),
+        # The summation transformer around the conductor, linked to the blade.
+        Rect(x - 2.5, toroid - 1.2, 5.0, 2.4),
+        Line(x - 2.5, toroid, x - 5.0, toroid, dashed=True),
+        Line(x - 5.0, toroid, x - 5.0, contact + 4.0, dashed=True),
+        Line(x - 5.0, contact + 4.0, x - 2.0, contact + 4.0, dashed=True),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
+def cable_end(x: float, top: float, length: float = 8.0) -> tuple[list[Item], float]:
+    """Draw an outgoing cable ending in a terminal point.
+
+    Args:
+        x: The conductor's x.
+        top: Where the cable leaves the device above.
+        length: How far it runs before the terminal point.
+
+    Returns:
+        The geometry, and the y below the terminal point.
+    """
+    end = top + length
+    return [Line(x, top, x, end - 1.0), Circle(x, end, 1.0)], end + 1.0
+
+
+def busbar(x1: float, x2: float, y: float) -> list[Item]:
+    """Draw a busbar between two x's.
+
+    Args:
+        x1: Left end.
+        x2: Right end.
+        y: Its height on the sheet.
+
+    Returns:
+        The geometry.
+    """
+    return [Line(x1, y, x2, y, width=0.8)]
+
+
+def labels(x: float, y: float, lines: list[str], size: float = 2.2) -> list[Item]:
+    """Write a device's labels beside it, one per line.
+
+    Args:
+        x: The device's x; text starts just right of it.
+        y: The first baseline.
+        lines: The labels, top to bottom; empty ones are skipped.
+        size: Character height.
+
+    Returns:
+        The geometry.
+    """
+    items: list[Item] = []
+    row = y
+    for line in lines:
+        if line:
+            items.append(Text(x + 4.0, row, line, size=size, anchor=Anchor.START))
+            row += size * 1.35
+    return items

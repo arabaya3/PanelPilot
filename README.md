@@ -210,6 +210,24 @@ What the design assumed is listed on the board: the power factor, the fault
 level, the cable conditions, and whether the rules were confirmed. Devices
 carry ratings, not articles, until a catalogue is chosen.
 
+The **drawing set** (`app/design/pages.py`, `render_pdf.py`) is laid out once
+as plain geometry on an A3 frame. The frame has columns 0–9 and rows A–F, as
+EPLAN uses, so a cross-reference such as "/4.3" names a page and a column.
+Every renderer draws that same geometry. The set holds:
+
+- a title page, including the revisions and whether the design rules were
+  confirmed;
+- the contents;
+- per board, single-line pages: the incomer, the busbar, and each group
+  breaker with its residual current device;
+- distribution pages, with each circuit's breaker, phase and cable;
+- the design notes;
+- the cable list and the parts list.
+
+The profile decides which of these pages appear and in what order, and what
+the title block shows. Symbols follow IEC 60617 single-line conventions.
+Drawing text is in English for now.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The

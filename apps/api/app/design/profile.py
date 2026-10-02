@@ -96,6 +96,7 @@ DEFAULT_PROFILE = CompanyProfile(
         PageKind.CONTENTS,
         PageKind.SINGLE_LINE,
         PageKind.DISTRIBUTION,
+        PageKind.NOTES,
         PageKind.TERMINALS,
         PageKind.CABLES,
         PageKind.PARTS,
