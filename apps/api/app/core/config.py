@@ -180,6 +180,11 @@ class Settings(BaseSettings):
     # PLC review accepts up to 100,000 characters of source, which a 64 KiB
     # ceiling would reject for a perfectly valid request.
     max_plc_request_body_bytes: int = 512 * 1024
+    # Panel design: a consultant's schedule or a price list up to the 5 MiB
+    # the design reads (app.design.schedule_import.MAX_SCHEDULE_BYTES), plus
+    # multipart framing; and a designed project sent back to export, which
+    # for a few boards is already past 64 KiB. A test pins the relationship.
+    max_design_request_body_bytes: int = 6 * 1024 * 1024
 
     # --- Redis -------------------------------------------------------------
     redis_url: str = Field(..., description="Redis URL used for rate limiting and cached lookups.")

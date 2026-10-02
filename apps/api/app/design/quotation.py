@@ -13,12 +13,12 @@ incomplete. The total is the total of what was priced.
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from app.core.errors import ValidationError
+from app.design.export_lists import write_csv
 from app.design.schedule_import import read_rows
 from app.models.schemas.design import (
     Cable,
@@ -289,33 +289,30 @@ def quotation_csv(quotation: Quotation) -> str:
     Returns:
         The CSV text, with a byte-order mark for Excel.
     """
-    import csv
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\r\n")
-    writer.writerow(
-        ["Description", "Designations", "Quantity", "Unit", "Unit price", "Total", "Key"]
-    )
-    for line in quotation.lines:
-        writer.writerow(
-            [
-                line.description,
-                " ".join(line.designations),
-                _plain(line.quantity),
-                line.unit,
-                _plain(line.unit_price) if line.unit_price is not None else "not priced",
-                _plain(line.total) if line.total is not None else "",
-                line.key,
-            ]
+    rows = [
+        [
+            line.description,
+            " ".join(line.designations),
+            _plain(line.quantity),
+            line.unit,
+            _plain(line.unit_price) if line.unit_price is not None else "not priced",
+            _plain(line.total) if line.total is not None else "",
+            line.key,
+        ]
+        for line in quotation.lines
+    ]
+    rows += [
+        [label, "", "", "", "", _plain(amount), ""]
+        for label, amount in (
+            ("Materials", quotation.materials),
+            ("Labour and enclosure", quotation.labour),
+            ("Markup", quotation.markup),
+            ("VAT", quotation.vat),
+            (f"Total ({quotation.currency})", quotation.total),
         )
-    for label, amount in (
-        ("Materials", quotation.materials),
-        ("Labour and enclosure", quotation.labour),
-        ("Markup", quotation.markup),
-        ("VAT", quotation.vat),
-        (f"Total ({quotation.currency})", quotation.total),
-    ):
-        writer.writerow([label, "", "", "", "", _plain(amount), ""])
+    ]
     if not quotation.complete:
-        writer.writerow(["Not priced: " + "; ".join(quotation.unpriced)])
-    return "﻿" + buffer.getvalue()
+        rows.append(["Not priced: " + "; ".join(quotation.unpriced)])
+    return write_csv(
+        ["Description", "Designations", "Quantity", "Unit", "Unit price", "Total", "Key"], rows
+    )

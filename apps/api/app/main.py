@@ -63,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limits_by_prefix=[
             (f"{prefix}/images", settings.max_image_request_body_bytes),
             (f"{prefix}/plc", settings.max_plc_request_body_bytes),
+            (f"{prefix}/design", settings.max_design_request_body_bytes),
         ],
     )
     app.add_middleware(

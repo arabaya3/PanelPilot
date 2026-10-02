@@ -5,6 +5,12 @@ device or parts list from a spreadsheet, and Excel opens CSV directly; so
 each list is written once, in plain CSV, with column names the tools'
 import dialogs can be mapped from. UTF-8 with a byte-order mark, so Excel
 reads accented and Arabic text correctly instead of guessing a code page.
+
+A cell starting with ``=``, ``+``, ``-``, ``@``, a tab or a carriage return is
+written with a leading apostrophe. A spreadsheet would otherwise take it as a
+formula: an IEC 81346 designation such as ``=DB1-Q3`` shows as ``#NAME?``,
+and a description typed as ``=HYPERLINK(...)`` would run (OWASP "CSV
+injection"). Excel shows the cell as text without the apostrophe.
 """
 
 from __future__ import annotations
@@ -15,7 +21,10 @@ from io import StringIO
 
 from app.models.schemas.design import Board, DesignProject, Device
 
-_BOM = "﻿"
+_BOM = "\ufeff"
+
+#: First characters a spreadsheet reads as the start of a formula.
+_FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _plain(value: Decimal | None) -> str:
@@ -28,11 +37,32 @@ def _designation(device: Device) -> str:
     return str(device.designation) if device.designation else device.id
 
 
-def _csv(header: list[str], rows: list[list[str]]) -> str:
+def text_cell(value: str) -> str:
+    """Make a value read as text in a spreadsheet, never as a formula.
+
+    Args:
+        value: The cell's text.
+
+    Returns:
+        The value, with a leading apostrophe if it starts like a formula.
+    """
+    return f"'{value}" if value.startswith(_FORMULA_STARTS) else value
+
+
+def write_csv(header: list[str], rows: list[list[str]]) -> str:
+    """Write rows as CSV for Excel: a byte-order mark, CRLF lines, text-safe cells.
+
+    Args:
+        header: The column names.
+        rows: The rows; a row may be shorter than the header.
+
+    Returns:
+        The CSV text.
+    """
     buffer = StringIO()
     writer = csv.writer(buffer, lineterminator="\r\n")
     writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerows([text_cell(cell) for cell in row] for row in rows)
     return _BOM + buffer.getvalue()
 
 
@@ -72,7 +102,7 @@ def device_list(project: DesignProject) -> str:
                     device.description,
                 ]
             )
-    return _csv(
+    return write_csv(
         [
             "Board",
             "Designation",
@@ -127,7 +157,7 @@ def parts_list(project: DesignProject) -> str:
         ]
         for sample, names in groups.values()
     ]
-    return _csv(
+    return write_csv(
         [
             "Quantity",
             "Kind",
@@ -177,7 +207,7 @@ def cable_list(project: DesignProject) -> str:
         The CSV text.
     """
     rows = [row for board in project.boards for row in _cable_rows(board)]
-    return _csv(
+    return write_csv(
         [
             "Board",
             "Cable",
@@ -227,7 +257,7 @@ def circuit_schedule(project: DesignProject) -> str:
                     ),
                 ]
             )
-    return _csv(
+    return write_csv(
         [
             "Board",
             "Circuit",

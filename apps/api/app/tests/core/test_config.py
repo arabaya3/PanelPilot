@@ -171,3 +171,10 @@ def test_a_similarity_floor_outside_the_open_unit_interval_is_refused(floor: flo
 
 def test_a_calibrated_similarity_floor_is_accepted() -> None:
     assert _settings(retrieval_min_similarity=0.42).retrieval_min_similarity == 0.42
+
+
+def test_the_design_body_limit_fits_the_largest_schedule_upload() -> None:
+    """Above the design's own 5 MiB file limit plus multipart framing."""
+    from app.design.schedule_import import MAX_SCHEDULE_BYTES
+
+    assert _settings().max_design_request_body_bytes > MAX_SCHEDULE_BYTES + 64 * 1024

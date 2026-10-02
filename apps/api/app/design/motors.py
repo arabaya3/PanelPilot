@@ -306,9 +306,8 @@ def parts_for(boards: list[Board]) -> list[Part]:
             if not key or "/" not in key or key in parts:
                 continue
             manufacturer, type_number = key.split("/", 1)
-            source = (
-                _DRIVE_MANUAL if device.kind in (DeviceKind.DRIVE, DeviceKind.FUSE) else (_HANDBOOK)
-            )
+            from_drive_manual = device.kind in (DeviceKind.DRIVE, DeviceKind.FUSE)
+            source = _DRIVE_MANUAL if from_drive_manual else _HANDBOOK
             parts[key] = Part(
                 key=key,
                 manufacturer=manufacturer,

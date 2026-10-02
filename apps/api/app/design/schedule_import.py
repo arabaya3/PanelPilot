@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import io
+import itertools
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -28,6 +29,14 @@ from app.models.schemas.design import LoadInput, LoadKind
 
 #: The largest schedule accepted, in bytes.
 MAX_SCHEDULE_BYTES = 5 * 1024 * 1024
+
+#: Rows, columns and sheets read from a spreadsheet. A schedule or a price
+#: list is a few hundred rows; the bound keeps a 5 MB file that expands to
+#: millions of cells (an .xlsx is a zip) from costing more than one that
+#: does not.
+MAX_ROWS = 5000
+_MAX_COLUMNS = 60
+_MAX_SHEETS = 20
 
 #: Pages of a PDF searched for the schedule: a schedule is a few pages, and
 #: table detection is costly enough that a 500-page upload is refused work.
@@ -144,8 +153,11 @@ def _rows_from_xlsx(data: bytes) -> list[list[str]]:
         # The first sheet that has a recognisable header; the first sheet
         # otherwise, so the error names what was found there.
         sheets = [
-            [[_cell(v) for v in row] for row in sheet.iter_rows(values_only=True)]
-            for sheet in workbook.worksheets
+            [
+                [_cell(v) for v in row]
+                for row in sheet.iter_rows(max_row=MAX_ROWS, max_col=_MAX_COLUMNS, values_only=True)
+            ]
+            for sheet in workbook.worksheets[:_MAX_SHEETS]
         ]
     finally:
         workbook.close()
@@ -167,7 +179,8 @@ def _rows_from_csv(data: bytes) -> list[list[str]]:
         delimiter = dialect.delimiter
     except csv.Error:
         delimiter = ","
-    return [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    return [[c.strip() for c in row[:_MAX_COLUMNS]] for row in itertools.islice(reader, MAX_ROWS)]
 
 
 #: Column and row edges taken from the text's alignment, for a table drawn
