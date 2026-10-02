@@ -71,7 +71,8 @@
     "Residual current group": "مجموعة قاطع التسرّب",
     "{known} mm of rail": "{known} mm من السكة",
     "{count} without a width": "{count} بلا عرض",
-    "Dashed: no width is given for the device's kind (rail_widths_mm in the company settings).": "المتقطّع: لا عرض مُعطى لنوع الجهاز (rail_widths_mm في إعدادات الشركة)."
+    "Dashed: no width is given for the device's kind (rail_widths_mm in the company settings).": "المتقطّع: لا عرض مُعطى لنوع الجهاز (rail_widths_mm في إعدادات الشركة).",
+    "Notes": "ملاحظات"
   },
   "note": {
     "mccb_needed": "{load}: تيار التصميم Ib = {current} A أكبر من أكبر قاطع صغير (MCB) متوفر (125 A)؛ يلزم قاطع علبي (MCCB) ولم يُختر هنا. الكيبل محسوب على Ib، فراجعه مع تيار القاطع In.",

@@ -15,10 +15,10 @@ _CU = ConductorMaterial.COPPER
 
 def test_withstand_is_k_squared_s_squared() -> None:
     # Handbook Table 2: 2.5 mm² copper PVC, 8.27·10⁻² (kA)²s; 95 mm² XLPE 1.85·10².
-    assert short_circuit.withstand_ka2s(Decimal("2.5"), _CU, 70) == Decimal("0.1")
-    assert short_circuit.withstand_ka2s(Decimal(95), _CU, 90) == Decimal("184.6")
+    assert short_circuit.withstand_ka2s(Decimal("2.5"), _CU, 70) == Decimal("0.083")
+    assert short_circuit.withstand_ka2s(Decimal(95), _CU, 90) == Decimal("184.552")
     assert short_circuit.withstand_ka2s(Decimal(16), ConductorMaterial.ALUMINIUM, 70) == Decimal(
-        "1.5"
+        "1.479"
     )
     assert short_circuit.withstand_ka2s(Decimal(400), _CU, 70) is None
     assert short_circuit.withstand_ka2s(Decimal(4), _CU, 105) is None

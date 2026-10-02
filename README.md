@@ -261,6 +261,12 @@ Drawing text is in English for now.
   `=`, `+`, `-` or `@` (an IEC 81346 designation such as `=DB1-Q3`) is written
   with a leading apostrophe. Excel then shows it as text instead of `#NAME?`,
   and a description can never run as a formula.
+- **Calculations report (PDF)**: for the consultant. It starts with the
+  basis of calculation (each method and standard). Then, per board: the
+  supply, the incomer, and one row per circuit with Ib, protection, cable,
+  length, voltage drop, `Zs` against the most its breaker allows, and the
+  cable's `k²S²`, followed by the board's notes in the company's language.
+  It closes with the revision's approval, or says it is not approved.
 - **DXF (R12)**: the drawing set's geometry, for any CAD tool. It is a
   drawing only, with no device data.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols

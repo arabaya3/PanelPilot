@@ -2195,6 +2195,7 @@ export interface components {
       | 'circuits_csv'
       | 'terminals_csv'
       | 'quotation_pdf'
+      | 'calculations_pdf'
       | 'quotation_csv'
       | 'plc_st'
       | 'plc_io_csv'
