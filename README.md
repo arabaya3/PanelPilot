@@ -267,6 +267,8 @@ Drawing text is in English for now.
   length, voltage drop, `Zs` against the most its breaker allows, and the
   cable's `k²S²`, followed by the board's notes in the company's language.
   It closes with the revision's approval, or says it is not approved.
+  It is written in the company's drawing language throughout; an Arabic
+  report reads right to left, its table from the right.
 - **DXF (R12)**: the drawing set's geometry, for any CAD tool. It is a
   drawing only, with no device data.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols

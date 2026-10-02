@@ -41,12 +41,14 @@ def _latin(text: str) -> bool:
     return True
 
 
-def font_for(text: str, *, bold: bool = False) -> tuple[str, str]:
+def font_for(text: str, *, bold: bool = False, right_to_left: bool = False) -> tuple[str, str]:
     """Pick the font for a text and lay it out for drawing.
 
     Args:
         text: The text in logical (typed) order.
         bold: Whether the bold face is wanted.
+        right_to_left: Lay a line holding Arabic or Hebrew out right to left
+            even where it opens with a Latin word (``rtl.visual``).
 
     Returns:
         The font name to set, and the text to draw with it.
@@ -54,4 +56,4 @@ def font_for(text: str, *, bold: bool = False) -> tuple[str, str]:
     if _latin(text):
         return (LATIN_BOLD if bold else LATIN), text
     _registered()
-    return (UNICODE_BOLD if bold else UNICODE), rtl.visual(text)
+    return (UNICODE_BOLD if bold else UNICODE), rtl.visual(text, right_to_left=right_to_left)

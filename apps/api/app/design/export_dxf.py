@@ -148,7 +148,7 @@ def export_dxf(sheets: list[Sheet]) -> bytes:
                     (20, ty),
                     (30, 0),
                     (40, _number(item.size)),
-                    (1, _clean(rtl.visual(item.text))),
+                    (1, _clean(rtl.visual(item.text, right_to_left=rtl.has_rtl(item.text)))),
                 ]
                 if rtl.has_rtl(item.text):
                     pairs.append((7, RTL_STYLE))

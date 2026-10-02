@@ -72,3 +72,24 @@ def test_render_calculations_pdf_lists_every_circuit_and_its_figures() -> None:
 def test_an_unapproved_report_says_so() -> None:
     text = _text(calc_report.render_calculations_pdf(_project(), profile.default_profile()))
     assert "NOT APPROVED" in text
+
+
+def test_every_phrase_has_an_arabic_one() -> None:
+    import json
+    from pathlib import Path
+
+    catalogue = Path(calc_report.__file__).parent / "locale" / "ar.json"
+    drawing = json.loads(catalogue.read_text(encoding="utf-8"))["drawing"]
+    said = {*calc_report.COLUMNS, *calc_report.PHRASES, *calc_report.BASIS}
+    assert said <= set(drawing)
+
+
+def test_an_arabic_company_gets_the_report_in_arabic() -> None:
+    company = profile.default_profile().model_copy(update={"language": "ar"})
+    approved = Revision(index="01", date="2026-10-02", approved_by="A. Rabaya")
+    text = _text(calc_report.render_calculations_pdf(_project(approved), company))
+    # Drawn in visual order, so a word reads reversed in extracted text.
+    assert "Calculations report" not in text
+    assert "Basis of calculation" not in text
+    assert "MDB" in text
+    assert "1.372" in text

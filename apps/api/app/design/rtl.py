@@ -57,8 +57,8 @@ def has_rtl(text: str) -> bool:
     return any(_strong(char) == "R" for char in text)
 
 
-def _directions(text: str) -> tuple[list[str], str]:
-    """Each character's resolved direction, and the line's own."""
+def _directions(text: str, line: str | None = None) -> tuple[list[str], str]:
+    """Each character's resolved direction, and the line's own (or ``line``, given)."""
     marks: list[str | None] = [_strong(char) for char in text]
     # A mark between, or next to, digits belongs to the number.
     for index, char in enumerate(text):
@@ -76,7 +76,7 @@ def _directions(text: str) -> tuple[list[str], str]:
         ):
             marks[index] = "L"
     letters = (unicodedata.bidirectional(char) for char in text)
-    base = next(
+    base = line or next(
         ("R" if kind in ("R", "AL") else "L" for kind in letters if kind in ("L", "R", "AL")), "L"
     )
     resolved: list[str] = []
@@ -90,11 +90,14 @@ def _directions(text: str) -> tuple[list[str], str]:
     return resolved, base
 
 
-def visual(text: str) -> str:
+def visual(text: str, *, right_to_left: bool = False) -> str:
     """Lay one line out in the order its glyphs are drawn, left to right.
 
     Args:
         text: The line, in logical (typed) order.
+        right_to_left: Take the line as right to left whatever letter it
+            opens with, as an Arabic sentence that starts with a Latin name
+            ("MDB: ...") is.
 
     Returns:
         The line shaped and reordered; unchanged if it holds no Arabic or
@@ -103,7 +106,7 @@ def visual(text: str) -> str:
     if not has_rtl(text):
         return text
     shaped = arabic_reshaper.reshape(text)
-    directions, base = _directions(shaped)
+    directions, base = _directions(shaped, "R" if right_to_left else None)
     runs: list[tuple[str, str]] = []
     for char, direction in zip(shaped, directions, strict=True):
         if runs and runs[-1][0] == direction:
