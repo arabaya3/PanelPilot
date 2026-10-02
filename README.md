@@ -214,10 +214,12 @@ level, the cable conditions, and whether the rules were confirmed. Every
 note, import warning and suggestion note is a code with its values
 (`app/design/notes.py`). The page renders it in the reader's language
 (en/ar/he), and a test keeps the catalogues in step with the codes. The
-drawing set is written in the company's drawing language (`language`: `en`
-or `ar`). With `ar`, page titles, the title block, table headings and the
-notes are in Arabic (`app/design/drawing_text.py`, `locale/ar.json`, which a
-test holds to the page's Arabic notes). In every PDF, the drawings and the
+drawing set is written in the company's drawing language (`language`: `en`,
+`ar` or `he`). With `ar` or `he`, page titles, the title block, table
+headings and the notes are in Arabic or Hebrew (`app/design/drawing_text.py`,
+`locale/ar.json`, `locale/he.json`, which tests hold to the page's notes and
+to each other's phrases). The page's own language picks the drawing language
+by default. In every PDF, the drawings and the
 quotation alike, Arabic and Hebrew text is drawn in the bundled DejaVu Sans
 (`app/design/fonts`, free licence). Its letters are joined by
 `arabic-reshaper` (MIT) and laid out right to left by `app/design/rtl.py`;
@@ -267,8 +269,8 @@ Drawing text is in English for now.
   length, voltage drop, `Zs` against the most its breaker allows, and the
   cable's `k²S²`, followed by the board's notes in the company's language.
   It closes with the revision's approval, or says it is not approved.
-  It is written in the company's drawing language throughout; an Arabic
-  report reads right to left, its table from the right.
+  It is written in the company's drawing language throughout; an Arabic or
+  Hebrew report reads right to left, its table from the right.
 - **DXF (R12)**: the drawing set's geometry, for any CAD tool. It is a
   drawing only, with no device data.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols

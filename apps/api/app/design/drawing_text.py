@@ -25,7 +25,7 @@ from app.models.schemas.design import DesignNote
 _LOCALES = Path(__file__).parent / "locale"
 
 #: Drawing languages with a catalogue; any other is drawn in English.
-LANGUAGES = frozenset({"en", "ar"})
+LANGUAGES = frozenset({"en", "ar", "he"})
 
 
 @cache
@@ -59,6 +59,9 @@ def _plural(language: str, value: str) -> str:
         return "other"
     if language == "ar":
         return _arabic_plural(count)
+    if language == "he":
+        # CLDR: one, two, and other for every other count.
+        return {1: "one", 2: "two"}.get(count, "other")
     return "one" if count == 1 else "other"
 
 

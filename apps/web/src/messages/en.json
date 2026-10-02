@@ -783,7 +783,8 @@
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
       "en": "English",
-      "ar": "Arabic"
+      "ar": "Arabic",
+      "he": "Hebrew"
     },
     "projects": {
       "title": "Saved projects",
