@@ -25,7 +25,7 @@ GOOD = {
             "quantity": 20,
             "unit_power_kw": 0.15,
             "three_phase": False,
-            "assumption": "typical 150 W per socket",
+            "power_stated": True,
         }
     ],
     "assumptions": ["No diversity applied."],
@@ -115,3 +115,27 @@ def test_an_arabic_description_is_answered_in_arabic() -> None:
         ScheduleSuggestionRequest(description="قاعة فيها ٢٠ مأخذ"), client=client
     )
     assert "in Arabic" in client.sent[0]["messages"][0]["content"]
+
+
+@pytest.mark.parametrize(
+    ("text", "stated"),
+    [
+        ("Hall: 20 sockets, two ACs", False),
+        ("Hall: two 2-ton split units", True),
+        ("Pump 7.5 kW", True),
+        ("Fan 3 HP", True),
+        ("مكيفين ٢ طن", True),
+        ("سخان 3 كيلو", True),
+        ("قاعة فيها ٢٠ مأخذ و٣٠ إنارة", False),
+    ],
+)
+def test_states_power(text: str, stated: bool) -> None:
+    assert schedule_writer.states_power(text) is stated
+
+
+def test_a_power_the_description_never_gave_is_not_called_given() -> None:
+    output = schedule_writer.write_schedule(REQUEST, client=_Client(GOOD))
+    assert output.items[0].power_stated is False
+    stated = ScheduleSuggestionRequest(description="Hall: 20 sockets at 200 W")
+    output = schedule_writer.write_schedule(stated, client=_Client(GOOD))
+    assert output.items[0].power_stated is True

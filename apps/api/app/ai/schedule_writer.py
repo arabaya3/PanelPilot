@@ -16,6 +16,7 @@ here.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -42,10 +43,13 @@ circuits; that is done afterwards by the company's rules.
 - Language: write in the language the request names.
 - An item's description names the kind and place, never the count:
   "Hall sockets", "High-bay lights", "مآخذ القاعة"; not "20 sockets".
-- An item's assumption says only where its power came from: "given" or
-  "typical 150 W per socket". Overall assumptions go in the overall list.
+- power_stated is true only when the description itself states this item's
+  power or a rating it follows from (watts, kW, tons, HP). Otherwise it is
+  false and a typical figure is used.
+- An item's description is singular for one unit of a kind: "two split
+  units" is "Split unit", "مكيفين" is "مكيف".
 - Power of one point: use what the description gives. Where it gives none,
-  use a typical figure and write "typical" in the assumption. Typical:
+  use a typical figure. Typical:
   socket point 150 W; LED luminaire 30 W; LED high-bay 150 W; 1-ton split
   air conditioner 1.2 kW electrical, 2-ton 2.5 kW, 3-ton 3.5 kW; kitchen
   exhaust fan 250 W; water heater 2 kW.
@@ -75,6 +79,36 @@ def description_language(text: str) -> str:
     arabic = sum(1 for ch in text if "\u0600" <= ch <= "\u06ff")
     latin = sum(1 for ch in text if ch.isascii() and ch.isalpha())
     return "Arabic" if arabic > latin else "English"
+
+
+#: A number followed by a power or rating unit, in English or Arabic.
+_POWER_UNIT = re.compile(
+    r"\d[\d.,\s-]*(?:k?w\b|kva\b|hp\b|ton|tr\b|btu|"
+    "\u0648\u0627\u0637|\u0643\u064a\u0644\u0648|\u0637\u0646|\u062d\u0635\u0627\u0646)",
+    re.IGNORECASE,
+)
+
+#: Arabic-Indic digits to ASCII, so "٢ طن" reads as a rating.
+_ARABIC_DIGITS = str.maketrans(
+    "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669", "0123456789"
+)
+
+
+def states_power(text: str) -> bool:
+    """Say whether a description states any power or rating at all.
+
+    The check behind ``power_stated``: a model asked where a power came from
+    called a typical figure "given" in live tests. Where the description holds
+    no number with a power unit, no item's power can have been given.
+
+    Args:
+        text: The engineer's description.
+
+    Returns:
+        Whether a number followed by W, kW, kVA, HP, ton, TR or BTU (or the
+        Arabic for watt, kilo, ton or horsepower) appears in it.
+    """
+    return _POWER_UNIT.search(text.translate(_ARABIC_DIGITS)) is not None
 
 
 def _tool() -> dict[str, Any]:
@@ -131,6 +165,10 @@ def write_schedule(
     if payload is None:
         raise InputError("no schedule came back; describe the loads more concretely")
     try:
-        return ScheduleSuggestionOutput.model_validate(payload)
+        output = ScheduleSuggestionOutput.model_validate(payload)
     except ValidationError as exc:
         raise InputError("the drafted schedule did not fit the table; try rephrasing") from exc
+    if not states_power(request.description):
+        for item in output.items:
+            item.power_stated = False
+    return output

@@ -397,7 +397,7 @@ export function PanelBomPanel({
                 onClick={() => {
                   setLoads((current) => current.filter((l) => l.key !== load.key));
                 }}
-                className="btn btn-sm self-start lg:self-end"
+                className="btn btn-sm btn-secondary self-start lg:self-end"
               >
                 {t('bom.remove')}
               </button>
@@ -409,7 +409,7 @@ export function PanelBomPanel({
               setLoads((current) => [...current, blankLoad(nextKey)]);
               setNextKey((key) => key + 1);
             }}
-            className="btn btn-sm self-start"
+            className="btn btn-sm btn-secondary self-start"
           >
             {t('bom.add')}
           </button>

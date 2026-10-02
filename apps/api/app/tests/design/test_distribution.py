@@ -222,3 +222,14 @@ def test_phase_currents() -> None:
 
     totals = distribution.phase_currents([circuit(Phase.L1, "2"), circuit(Phase.THREE_PHASE, "3")])
     assert totals == {Phase.L1: Decimal(5), Phase.L2: Decimal(3), Phase.L3: Decimal(3)}
+
+
+def test_a_small_split_unit_still_gets_16_a() -> None:
+    request = DistributionBoardRequest(
+        name="DB", loads=[_load(LoadKind.AIR_CONDITIONING, "1.2", "Split unit")]
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    breaker = board.device(board.circuits[0].device_ids[0])
+    cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
+    assert breaker.rated_current_a == 16
+    assert cable.cross_section_mm2 == Decimal("2.5")

@@ -2840,6 +2840,8 @@ export interface components {
      *         key: The price-list key it was matched by, or would be.
      *         unit_price: ``None`` when the price list has no price for it.
      *         total: ``None`` when unpriced.
+     *         missing: Why it is unpriced: "price" (not in the price list) or
+     *             "length" (a cable with no length); ``None`` when priced.
      */
     QuotationLine: {
       /** Description */
@@ -2856,6 +2858,8 @@ export interface components {
       unit_price: string | null;
       /** Total */
       total: string | null;
+      /** Missing */
+      missing?: ('price' | 'length') | null;
     };
     /**
      * QuotationRequest

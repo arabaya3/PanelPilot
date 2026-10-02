@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
+import { FilePicker } from '@/components/file-picker';
 import {
   exportDesign,
   importPriceList,
@@ -140,23 +141,15 @@ export function QuotationPanel({
       <h2 className="text-lg font-semibold">{t('title')}</h2>
       <p className="text-sm text-text-muted">{t('intro')}</p>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`${id}-prices`} className="text-sm font-semibold">
-          {t('priceList')}
-        </label>
-        <input
-          id={`${id}-prices`}
-          type="file"
-          accept=".xlsx,.csv,text/csv"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void loadPrices(file);
-            event.target.value = '';
-          }}
-          className="text-sm"
-        />
-        <p className="text-sm text-text-muted">{t('priceListHelp')}</p>
-      </div>
+      <FilePicker
+        id={`${id}-prices`}
+        label={t('priceList')}
+        help={t('priceListHelp')}
+        accept=".xlsx,.csv,text/csv"
+        onFile={(file) => {
+          void loadPrices(file);
+        }}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {rateField('currency')}
@@ -185,7 +178,7 @@ export function QuotationPanel({
           onClick={() => {
             void download('quotation_pdf');
           }}
-          className="btn btn-sm"
+          className="btn btn-sm btn-secondary"
         >
           {t('pdf')}
         </button>
@@ -195,7 +188,7 @@ export function QuotationPanel({
           onClick={() => {
             void download('quotation_csv');
           }}
-          className="btn btn-sm"
+          className="btn btn-sm btn-secondary"
         >
           {t('csv')}
         </button>
@@ -230,7 +223,11 @@ export function QuotationPanel({
                     <td className="p-2">{line.description}</td>
                     <td className="p-2 text-end">{`${line.quantity} ${line.unit}`}</td>
                     <td className="p-2 text-end">
-                      {line.unit_price == null ? t('notPriced') : amount(line.unit_price)}
+                      {line.missing === 'length'
+                        ? t('noLength')
+                        : line.unit_price == null
+                          ? t('notPriced')
+                          : amount(line.unit_price)}
                     </td>
                     <td className="p-2 text-end">
                       {line.total == null ? '—' : amount(line.total)}

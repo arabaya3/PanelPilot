@@ -615,7 +615,7 @@
       "pdf": "Quotation (PDF)",
       "csv": "Quotation (CSV)",
       "error": "The quotation could not be completed. Try again.",
-      "incomplete": "{count, plural, one {# line has no price} other {# lines have no price}} and is left out of the total.",
+      "incomplete": "{count, plural, one {# line is not priced} other {# lines are not priced}} and left out of the total.",
       "col": {
         "item": "Item",
         "qty": "Qty",
@@ -627,7 +627,8 @@
       "labour": "Labour and enclosure",
       "markup": "Markup",
       "vat": "VAT",
-      "total": "Total"
+      "total": "Total",
+      "noLength": "no length"
     },
     "plc": {
       "title": "Control program",
@@ -644,5 +645,9 @@
         "incomplete": "The checker could not check this program in full."
       }
     }
+  },
+  "files": {
+    "choose": "Choose file",
+    "none": "No file chosen"
   }
 }

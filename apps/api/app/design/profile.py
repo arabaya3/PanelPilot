@@ -60,7 +60,11 @@ _DEFAULT_RULES: dict[LoadKind, CircuitRule] = {
     LoadKind.SOCKET: CircuitRule(
         breaker_a=Decimal(16), residual_current_ma=Decimal(30), cable_mm2=Decimal("2.5")
     ),
-    LoadKind.AIR_CONDITIONING: CircuitRule(residual_current_ma=Decimal(30)),
+    # At least 16 A for a split unit: below it the compressor's start trips a
+    # breaker sized to the running current.
+    LoadKind.AIR_CONDITIONING: CircuitRule(
+        breaker_a=Decimal(16), residual_current_ma=Decimal(30), cable_mm2=Decimal("2.5")
+    ),
     LoadKind.WATER_HEATER: CircuitRule(residual_current_ma=Decimal(30)),
     LoadKind.KITCHEN: CircuitRule(residual_current_ma=Decimal(30)),
     LoadKind.FAN: CircuitRule(residual_current_ma=Decimal(30)),

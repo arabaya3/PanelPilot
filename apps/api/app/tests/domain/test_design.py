@@ -132,7 +132,7 @@ def test_a_suggestion_is_split_under_the_company_rules(
                 quantity=10,
                 unit_power_kw=Decimal("0.15"),
                 three_phase=False,
-                assumption="typical",
+                power_stated=False,
             )
         ],
         assumptions=["No diversity applied."],

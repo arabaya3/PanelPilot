@@ -18,7 +18,7 @@ def _points(kind: LoadKind, quantity: int, watts: str, three: bool = False) -> S
         quantity=quantity,
         unit_power_kw=Decimal(watts) / 1000,
         three_phase=three,
-        assumption="typical",
+        power_stated=False,
     )
 
 
@@ -67,3 +67,15 @@ def test_every_circuit_says_how_its_power_was_reached() -> None:
         "socket 1: 5 x 150 W = 0.75 kW. typical",
         "socket 2: 4 x 150 W = 0.6 kW. typical",
     ]
+
+
+def test_notes_say_where_the_power_came_from_in_the_descriptions_language() -> None:
+    stated = _points(LoadKind.WATER_HEATER, 1, "3000").model_copy(update={"power_stated": True})
+    _, notes = schedule_split.split_points(
+        [stated, _points(LoadKind.SOCKET, 1, "150")],
+        profile.default_profile(),
+        supply_phases=3,
+        language="Arabic",
+    )
+    assert notes[0].endswith("kW. من الوصف")
+    assert notes[1].endswith("kW. قيمة نموذجية")

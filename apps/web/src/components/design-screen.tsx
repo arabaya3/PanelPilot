@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field, round } from '@/components/cable-sizing-panel';
+import { FilePicker } from '@/components/file-picker';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
@@ -421,7 +422,7 @@ export function DesignScreen({
               onClick={() => {
                 void suggestFromBrief();
               }}
-              className="btn btn-sm self-start"
+              className="btn btn-sm btn-secondary self-start"
             >
               {suggestState.kind === 'working' ? t('suggest.working') : t('suggest.submit')}
             </button>
@@ -442,22 +443,16 @@ export function DesignScreen({
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <label htmlFor={`${id}-import`} className="text-sm font-semibold">
-              {t('import.label')}
-            </label>
-            <input
+            <FilePicker
               id={`${id}-import`}
-              type="file"
+              label={t('import.label')}
+              help={t('import.help')}
               accept=".xlsx,.csv,.pdf,application/pdf,text/csv"
               disabled={session.kind !== 'ready' || importState.kind === 'working'}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void importFile(file);
-                event.target.value = '';
+              onFile={(file) => {
+                void importFile(file);
               }}
-              className="text-sm"
             />
-            <p className="text-sm text-text-muted">{t('import.help')}</p>
             {importState.kind === 'working' && (
               <p className="text-sm text-text-muted">{t('import.working')}</p>
             )}
@@ -566,7 +561,7 @@ export function DesignScreen({
                 onClick={() => {
                   setLoads((current) => current.filter((l) => l.key !== load.key));
                 }}
-                className="btn btn-sm self-start lg:self-end"
+                className="btn btn-sm btn-secondary self-start lg:self-end"
               >
                 {t('remove')}
               </button>
@@ -578,7 +573,7 @@ export function DesignScreen({
               setLoads((current) => [...current, blankLoad(nextKey)]);
               setNextKey((key) => key + 1);
             }}
-            className="btn btn-sm self-start"
+            className="btn btn-sm btn-secondary self-start"
           >
             {t('add')}
           </button>
@@ -748,7 +743,7 @@ function DesignResult({
               onClick={() => {
                 void onExport(format);
               }}
-              className="btn btn-sm"
+              className="btn btn-sm btn-secondary"
             >
               {t(`format.${format}`)}
             </button>

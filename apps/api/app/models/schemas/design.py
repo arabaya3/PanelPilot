@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -662,7 +662,9 @@ class SuggestedPoints(BaseModel):
         quantity: How many points.
         unit_power_kw: The power of one point.
         three_phase: Whether one point is a three-phase load.
-        assumption: Where the power came from: given, or typical.
+        power_stated: Whether the description states this power, or a rating
+            it follows from (watts, kW, tons, HP). False means a typical
+            figure was used.
     """
 
     description: str = Field(min_length=1, max_length=100)
@@ -670,7 +672,7 @@ class SuggestedPoints(BaseModel):
     quantity: int = Field(ge=1, le=500)
     unit_power_kw: Decimal = Field(gt=0, le=500)
     three_phase: bool
-    assumption: str = Field(min_length=1, max_length=300)
+    power_stated: bool
 
 
 class ScheduleSuggestionOutput(BaseModel):
@@ -761,6 +763,8 @@ class QuotationLine(BaseModel):
         key: The price-list key it was matched by, or would be.
         unit_price: ``None`` when the price list has no price for it.
         total: ``None`` when unpriced.
+        missing: Why it is unpriced: "price" (not in the price list) or
+            "length" (a cable with no length); ``None`` when priced.
     """
 
     description: str
@@ -770,6 +774,7 @@ class QuotationLine(BaseModel):
     key: str
     unit_price: Decimal | None
     total: Decimal | None
+    missing: Literal["price", "length"] | None = None
 
 
 class Quotation(BaseModel):
