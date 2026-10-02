@@ -61,6 +61,13 @@ def test_a_board_is_designed_then_exported(client: TestClient) -> None:
     assert exported.headers["content-disposition"] == 'attachment; filename="Pocket.pdf"'
     assert exported.content.startswith(b"%PDF")
 
+    report = client.post("/design/export", json={"project": project, "format": "calculations_pdf"})
+    assert report.status_code == 200
+    assert report.headers["content-disposition"] == (
+        'attachment; filename="Pocket.calculations.pdf"'
+    )
+    assert report.content.startswith(b"%PDF")
+
 
 def test_a_bad_profile_is_a_client_error(client: TestClient) -> None:
     response = client.post(

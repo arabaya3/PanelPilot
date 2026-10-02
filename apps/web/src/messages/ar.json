@@ -587,7 +587,8 @@
       "cables_csv": "قائمة الكوابل (CSV)",
       "circuits_csv": "جدول الدوائر (CSV)",
       "json": "المشروع (JSON)",
-      "terminals_csv": "جدول الأطراف (CSV)"
+      "terminals_csv": "جدول الأطراف (CSV)",
+      "calculations_pdf": "تقرير الحسابات (PDF)"
     },
     "import": {
       "label": "استيراد جدول الأحمال",

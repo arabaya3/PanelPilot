@@ -20,6 +20,7 @@ from app.ai import schedule_writer
 from app.ai.plc.validation import validate_plc_code
 from app.core.errors import ValidationError
 from app.design import (
+    calc_report,
     designations,
     export_aml,
     export_dxf,
@@ -76,6 +77,7 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.CIRCUITS_CSV: ("text/csv; charset=utf-8", "circuits.csv"),
     ExportFormat.TERMINALS_CSV: ("text/csv; charset=utf-8", "terminals.csv"),
     ExportFormat.QUOTATION_PDF: ("application/pdf", "quotation.pdf"),
+    ExportFormat.CALCULATIONS_PDF: ("application/pdf", "calculations.pdf"),
     ExportFormat.QUOTATION_CSV: ("text/csv; charset=utf-8", "quotation.csv"),
     ExportFormat.PLC_ST: ("text/plain; charset=utf-8", "st"),
     ExportFormat.PLC_IO_CSV: ("text/csv; charset=utf-8", "io.csv"),
@@ -212,6 +214,8 @@ def export_design(
         content = export_lists.circuit_schedule(project).encode("utf-8")
     elif request.format is ExportFormat.TERMINALS_CSV:
         content = export_lists.terminal_list(project).encode("utf-8")
+    elif request.format is ExportFormat.CALCULATIONS_PDF:
+        content = calc_report.render_calculations_pdf(project, company)
     elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
         if request.pricing is None:
             raise ValidationError(

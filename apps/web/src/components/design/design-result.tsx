@@ -8,6 +8,7 @@ import type { BoardDesignResponse, ExportFormat } from '@/lib/design';
 
 const FORMATS: ExportFormat[] = [
   'pdf',
+  'calculations_pdf',
   'dxf',
   'qet',
   'aml',

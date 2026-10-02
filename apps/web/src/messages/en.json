@@ -587,7 +587,8 @@
       "cables_csv": "Cable list (CSV)",
       "circuits_csv": "Circuit schedule (CSV)",
       "json": "Project (JSON)",
-      "terminals_csv": "Terminal list (CSV)"
+      "terminals_csv": "Terminal list (CSV)",
+      "calculations_pdf": "Calculations report (PDF)"
     },
     "import": {
       "label": "Import a load schedule",

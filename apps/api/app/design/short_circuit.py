@@ -56,8 +56,6 @@ REACTANCE_FACTOR: dict[Decimal, Decimal] = {
     Decimal(300): Decimal("0.72"),
 }
 
-_TENTH = Decimal("0.1")
-
 
 def withstand_ka2s(
     section_mm2: Decimal, material: ConductorMaterial, insulation_rating_c: int
@@ -70,13 +68,13 @@ def withstand_ka2s(
         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
 
     Returns:
-        ``k²S²`` in (kA)²s, to a tenth; ``None`` for an insulation not held
+        ``k²S²`` in (kA)²s, to a thousandth; ``None`` for an insulation not held
         or a section above 300 mm², whose ``k`` differs.
     """
     k = K_FACTOR.get((insulation_rating_c, material))
     if k is None or section_mm2 > 300:
         return None
-    return ((k * section_mm2) ** 2 / 1_000_000).quantize(_TENTH)
+    return ((k * section_mm2) ** 2 / 1_000_000).quantize(Decimal("0.001"))
 
 
 def min_current_a(
