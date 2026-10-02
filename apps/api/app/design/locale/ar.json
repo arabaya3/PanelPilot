@@ -104,7 +104,9 @@
     "discrimination_group_raised": "رُفع قاطع المجموعة {group} إلى {rated} A، أي {ratio} × القاطع {after} A الذي بعده، لتحقيق التمييز.",
     "discrimination_group_not_met": "قاطع المجموعة {group}: ‏{rated} A أقل من {ratio} × القاطع {after} A الذي بعده، ولا يوجد تصنيف أكبر متوفر لقاطع التسرب (RCCB) الخاص به؛ التمييز عند الحمل الزائد غير مضمون.",
     "discrimination_incomer_raised": "رُفع القاطع الرئيسي إلى {rated} A، أي {ratio} × القاطع {after} A الذي بعده، لتحقيق التمييز.",
-    "discrimination_feeder_raised": "رُفع قاطع تغذية {board} إلى {rated} A، أي {ratio} × القاطع الرئيسي {after} A الذي يغذّيه، لتحقيق التمييز؛ وكيبله محسوب على {rated} A.",
-    "discrimination_incomer_not_met": "القاطع الرئيسي: ‏{rated} A أقل من {ratio} × القاطع {after} A الذي بعده، ولا يوجد قاطع صغير أكبر متوفر؛ التمييز عند الحمل الزائد غير مضمون."
+    "discrimination_feeder_raised": "رُفع قاطع تغذية {board} إلى {rated} A، أي {ratio} × القاطع {after} A الذي بعده في {board}، لتحقيق التمييز؛ وكيبله محسوب على {rated} A.",
+    "discrimination_incomer_not_met": "القاطع الرئيسي: ‏{rated} A أقل من {ratio} × القاطع {after} A الذي بعده، ولا يوجد قاطع صغير أكبر متوفر؛ التمييز عند الحمل الزائد غير مضمون.",
+    "incomer_isolator": "المدخل الرئيسي مفتاح فاصل: قاطع التغذية في {board} يحمي هذه اللوحة، فالمفتاح مصنّف بما لا يقل عن ذلك القاطع ولا يفصل؛ والتمييز يكون بين قاطع التغذية وقواطع هذه اللوحة.",
+    "isolator_unselected": "المدخل الرئيسي: لا يوجد مفتاح فاصل متوفر يحمل {current} A (حتى 250 A)؛ لم يُختر هنا."
   }
 }

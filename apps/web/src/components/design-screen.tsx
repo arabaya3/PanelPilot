@@ -114,10 +114,11 @@ export function DesignScreen({
   // Board keys and row keys both come from this counter, so none collide.
   const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
+  // Follows the page's language until the engineer picks one: the locale is
+  // read from storage after the first render, so it cannot seed the state.
   const locale = useLocale();
-  const [drawingLanguage, setDrawingLanguage] = useState<DrawingLanguage>(
-    locale === 'ar' ? 'ar' : 'en',
-  );
+  const [chosenLanguage, setDrawingLanguage] = useState<DrawingLanguage | null>(null);
+  const drawingLanguage: DrawingLanguage = chosenLanguage ?? (locale === 'ar' ? 'ar' : 'en');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
 

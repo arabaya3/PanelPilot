@@ -177,6 +177,13 @@ describe('board design', () => {
     expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({ key: 'acme' });
   });
 
+  it('draws in Arabic by default in the Arabic page', () => {
+    renderApp(<DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />, {
+      locale: 'ar',
+    });
+    expect(screen.getByLabelText<HTMLSelectElement>('لغة المخططات').value).toBe('ar');
+  });
+
   it('asks for the drawings in Arabic', async () => {
     const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'designed',
