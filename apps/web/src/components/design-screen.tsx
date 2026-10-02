@@ -8,6 +8,7 @@ import { Field, round } from '@/components/cable-sizing-panel';
 import {
   designBoard,
   exportDesign,
+  importSchedule,
   type BoardDesignResponse,
   type DesignOutcome,
   type ExportFormat,
@@ -118,11 +119,13 @@ export function DesignScreen({
   acquireImpl = acquireTrial,
   designImpl = designBoard,
   exportImpl = exportDesign,
+  importImpl = importSchedule,
   saveImpl = saveBlob,
 }: {
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designBoard;
   exportImpl?: typeof exportDesign;
+  importImpl?: typeof importSchedule;
   saveImpl?: typeof saveBlob;
 }) {
   const t = useTranslations('design');
@@ -133,6 +136,12 @@ export function DesignScreen({
   const [profileText, setProfileText] = useState('');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
+  const [importState, setImportState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'working' }
+    | { kind: 'done'; count: number; warnings: string[] }
+    | { kind: 'error'; detail: string }
+  >({ kind: 'idle' });
   const id = useId();
 
   const connect = useCallback(async () => {
@@ -144,6 +153,35 @@ export function DesignScreen({
   useEffect(() => {
     void connect();
   }, [connect]);
+
+  async function importFile(file: File) {
+    if (session.kind !== 'ready') return;
+    setImportState({ kind: 'working' });
+    const outcome = await importImpl({ token: session.token, file, filename: file.name });
+    if (outcome.kind !== 'imported') {
+      setImportState({
+        kind: 'error',
+        detail: outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'),
+      });
+      if (outcome.kind === 'unauthorized') void connect();
+      return;
+    }
+    const imported = outcome.result.loads.map((load, index): Load => ({
+      key: nextKey + index,
+      description: load.description,
+      load: load.load,
+      power: load.power_kw,
+      phases: load.phases === 3 ? '3' : '1',
+      powerFactor: load.power_factor ?? '',
+    }));
+    setLoads(imported);
+    setNextKey((key) => key + imported.length);
+    setImportState({
+      kind: 'done',
+      count: imported.length,
+      warnings: outcome.result.warnings,
+    });
+  }
 
   function updateLoad(key: number, patch: Partial<Load>) {
     setLoads((current) => current.map((load) => (load.key === key ? { ...load, ...patch } : load)));
@@ -298,6 +336,44 @@ export function DesignScreen({
 
         <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
           <legend className="px-1 text-sm font-semibold">{t('loads')}</legend>
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`${id}-import`} className="text-sm font-semibold">
+              {t('import.label')}
+            </label>
+            <input
+              id={`${id}-import`}
+              type="file"
+              accept=".xlsx,.csv,.pdf,application/pdf,text/csv"
+              disabled={session.kind !== 'ready' || importState.kind === 'working'}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importFile(file);
+                event.target.value = '';
+              }}
+              className="text-sm"
+            />
+            <p className="text-sm text-text-muted">{t('import.help')}</p>
+            {importState.kind === 'working' && (
+              <p className="text-sm text-text-muted">{t('import.working')}</p>
+            )}
+            {importState.kind === 'error' && (
+              <p role="alert" className="text-sm text-danger" data-testid="import-error">
+                {importState.detail}
+              </p>
+            )}
+            {importState.kind === 'done' && (
+              <div data-testid="import-result" className="text-sm">
+                <p>{t('import.done', { count: importState.count })}</p>
+                {importState.warnings.length > 0 && (
+                  <ul className="mt-1 list-disc ps-5 text-text-muted" dir="ltr">
+                    {importState.warnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
           {loads.map((load, index) => (
             <div
               key={load.key}

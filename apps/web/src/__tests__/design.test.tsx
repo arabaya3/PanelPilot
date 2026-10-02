@@ -5,6 +5,7 @@ import { DesignScreen } from '@/components/design-screen';
 import {
   designBoard,
   exportDesign,
+  importSchedule,
   type BoardDesignResponse,
   type DesignProject,
 } from '@/lib/design';
@@ -204,6 +205,86 @@ describe('board design', () => {
       format: 'pdf',
       project: PROJECT,
     });
+  });
+});
+
+describe('load schedule import', () => {
+  it('fills the rows from the file and lists what it assumed', async () => {
+    const importImpl = vi.fn<typeof importSchedule>().mockResolvedValue({
+      kind: 'imported',
+      result: {
+        loads: [
+          {
+            description: 'Sockets east',
+            load: 'socket',
+            power_kw: '1.5',
+            phases: 1,
+            power_factor: null,
+          },
+          {
+            description: 'AC 1',
+            load: 'air_conditioning',
+            power_kw: '4',
+            phases: 3,
+            power_factor: '0.85',
+          },
+        ],
+        warnings: ['Row 3 (AC 1): taken as air_conditioning from its description.'],
+        rows_read: 2,
+      },
+    });
+    renderApp(
+      <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} importImpl={importImpl} />,
+    );
+    const input = screen.getByLabelText('Import a load schedule');
+    await waitFor(() => {
+      expect(input.hasAttribute('disabled')).toBe(false);
+    });
+    const file = new File(['x'], 'schedule.xlsx');
+    fireEvent.change(input, { target: { files: [file] } });
+
+    const result = await screen.findByTestId('import-result');
+    expect(result.textContent).toContain('2 circuits read.');
+    expect(result.textContent).toContain('from its description');
+    expect(importImpl.mock.calls[0]?.[0]).toMatchObject({
+      token: 'tok',
+      filename: 'schedule.xlsx',
+    });
+    expect((screen.getAllByLabelText('Circuit')[1] as HTMLInputElement).value).toBe('AC 1');
+    expect((screen.getAllByLabelText('Power factor')[1] as HTMLInputElement).value).toBe('0.85');
+  });
+
+  it('shows why a file was refused', async () => {
+    const importImpl = vi.fn<typeof importSchedule>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'no header row names both a description and a power (kW or W) column',
+    });
+    renderApp(
+      <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} importImpl={importImpl} />,
+    );
+    const input = screen.getByLabelText('Import a load schedule');
+    await waitFor(() => {
+      expect(input.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.change(input, { target: { files: [new File(['x'], 'bad.csv')] } });
+    expect((await screen.findByTestId('import-error')).textContent).toContain('no header row');
+  });
+
+  it('posts the file as multipart', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ loads: [], warnings: [], rows_read: 0 }), { status: 200 }),
+      );
+    const outcome = await importSchedule({
+      token: 't',
+      file: new Blob(['a']),
+      filename: 's.csv',
+      fetchImpl,
+    });
+    expect(outcome.kind).toBe('imported');
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(init?.body).toBeInstanceOf(FormData);
   });
 });
 

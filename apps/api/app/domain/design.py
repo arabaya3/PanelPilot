@@ -24,6 +24,7 @@ from app.design import (
     pages,
     profile,
     render_pdf,
+    schedule_import,
 )
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
@@ -33,9 +34,13 @@ from app.models.schemas.design import (
     DesignExportRequest,
     DesignProject,
     ExportFormat,
+    LoadScheduleImport,
 )
 
 logger = structlog.get_logger(__name__)
+
+#: The largest load schedule file read.
+MAX_SCHEDULE_BYTES = schedule_import.MAX_SCHEDULE_BYTES
 
 _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.PDF: ("application/pdf", "pdf"),
@@ -161,4 +166,29 @@ def export_design(
         content=content,
         media_type=media_type,
         filename=f"{_slug(project.info.name)}.{extension}",
+    )
+
+
+def import_load_schedule(*, user: CurrentUser, data: bytes) -> LoadScheduleImport:
+    """Read a consultant's load schedule file into loads.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        data: The file's bytes (.xlsx, .csv or .pdf).
+
+    Returns:
+        The loads read, with every row skipped and every assumption made.
+
+    Raises:
+        ValidationError: If the file cannot be read or has no usable table.
+    """
+    result = schedule_import.import_schedule(data)
+    logger.info(
+        "design.schedule_imported",
+        tenant_id=user.tenant_id,
+        loads=len(result.loads),
+        warnings=len(result.warnings),
+    )
+    return LoadScheduleImport(
+        loads=result.loads, warnings=result.warnings, rows_read=result.rows_read
     )

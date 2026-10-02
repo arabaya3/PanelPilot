@@ -252,6 +252,14 @@ The API behind it is `POST /api/v1/design/distribution-board` and
 caller, so an engineer's edits are what gets exported, renumbered under the
 profile.
 
+A consultant's **load schedule file** (Excel, CSV or PDF table, English or
+Arabic headers) can be imported instead of typed
+(`app/design/schedule_import.py`). The header row is found by what its cells
+say. Each load type comes from its type column, or failing that from its
+description, and a type inferred that way is reported. Every row skipped
+(totals, spares, no power) and every assumption made is listed by row
+number, so the engineer checks exactly what the import decided.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The

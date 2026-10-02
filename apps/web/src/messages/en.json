@@ -578,6 +578,12 @@
       "cables_csv": "Cable list (CSV)",
       "circuits_csv": "Circuit schedule (CSV)",
       "json": "Project (JSON)"
+    },
+    "import": {
+      "label": "Import a load schedule",
+      "help": "An Excel, CSV or PDF schedule from the consultant. Its rows replace the ones below; check each before designing.",
+      "working": "Reading the schedule…",
+      "done": "{count, plural, one {# circuit read.} other {# circuits read.}} Rows skipped and assumptions made:"
     }
   }
 }
