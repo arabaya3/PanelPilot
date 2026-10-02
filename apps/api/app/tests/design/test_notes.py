@@ -64,6 +64,7 @@ def test_the_page_can_say_every_refusal_the_design_raises() -> None:
         *(app_dir / "design").glob("*.py"),
         *(app_dir / "ai" / "tools").glob("*.py"),
         app_dir / "domain" / "design.py",
+        app_dir / "domain" / "design_projects.py",
         app_dir / "core" / "errors.py",
     ]
     raised = {

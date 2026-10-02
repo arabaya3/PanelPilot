@@ -223,3 +223,51 @@ def test_the_design_routes_share_one_per_address_budget(client: TestClient) -> N
         assert client.post("/design/distribution-board", json=BOARD).status_code == 200
     refused = client.post("/design/plc", json={"project": {}})
     assert refused.status_code == 429
+
+
+def test_project_routes_call_the_domain(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import design_projects
+    from app.models.schemas.design import ProjectPage, ProjectSummary, SavedProject
+
+    saved = SavedProject.model_validate(
+        {
+            "id": "p1",
+            "name": "Pocket",
+            "revisions": [{"number": 1, "note": "", "author": "e", "created_at": "now"}],
+            "revision": 1,
+            "request": {"info": {"name": "Pocket"}, "boards": [BOARD["board"]]},
+        }
+    )
+    calls: list[str] = []
+
+    def record(name: str, result: object):  # type: ignore[no-untyped-def]
+        def call(**kwargs: object) -> object:
+            calls.append(name)
+            return result
+
+        return call
+
+    monkeypatch.setattr(design_projects, "save_project", record("save", saved))
+    monkeypatch.setattr(design_projects, "revise_project", record("revise", saved))
+    monkeypatch.setattr(design_projects, "open_project", record("open", saved))
+    monkeypatch.setattr(design_projects, "delete_project", record("delete", None))
+    page = ProjectPage(
+        projects=[ProjectSummary(id="p1", name="Pocket", revisions=1, updated_at="now")]
+    )
+    monkeypatch.setattr(design_projects, "list_projects", record("list", page))
+
+    body = {"name": "Pocket", "request": {"info": {"name": "Pocket"}, "boards": [BOARD["board"]]}}
+    assert client.post("/design/projects", json=body).status_code == 201
+    assert client.get("/design/projects").json()["projects"][0]["id"] == "p1"
+    assert client.get("/design/projects/p1?revision=1").json()["revision"] == 1
+    revision = {"request": body["request"], "note": "more"}
+    assert client.post("/design/projects/p1/revisions", json=revision).status_code == 201
+    assert client.delete("/design/projects/p1").status_code == 204
+    assert calls == ["save", "list", "open", "revise", "delete"]
+
+
+def test_a_project_needs_a_name(client: TestClient) -> None:
+    body = {"name": "", "request": {"info": {"name": "Pocket"}, "boards": [BOARD["board"]]}}
+    assert client.post("/design/projects", json=body).status_code == 422

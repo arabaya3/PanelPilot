@@ -453,6 +453,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Projects
+     * @description List the caller's saved projects, most recently saved first.
+     */
+    get: operations['list_projects_api_v1_design_projects_get'];
+    put?: never;
+    /**
+     * Save Project
+     * @description Save a new project as its first revision.
+     */
+    post: operations['save_project_api_v1_design_projects_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Open Project
+     * @description Open a saved project at its latest revision, or the one asked for.
+     */
+    get: operations['open_project_api_v1_design_projects__project_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Project
+     * @description Delete a saved project and all its revisions.
+     */
+    delete: operations['delete_project_api_v1_design_projects__project_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revise Project
+     * @description Save a new revision of a project.
+     */
+    post: operations['revise_project_api_v1_design_projects__project_id__revisions_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -886,7 +954,7 @@ export interface components {
      */
     BoardDesignRequest: {
       info: components['schemas']['ProjectInfo'];
-      board: components['schemas']['DistributionBoardRequest'];
+      board: components['schemas']['DistributionBoardRequest-Input'];
       /** Profile */
       profile?: {
         [key: string]: unknown;
@@ -1864,7 +1932,7 @@ export interface components {
      *         feeder_length_m: The route length of the cable feeding this board
      *             from ``fed_from``, for that feeder's voltage drop.
      */
-    DistributionBoardRequest: {
+    'DistributionBoardRequest-Input': {
       /** Name */
       name: string;
       /** Location */
@@ -1872,11 +1940,41 @@ export interface components {
       supply?: components['schemas']['Supply-Input'];
       /** Loads */
       loads: components['schemas']['LoadInput-Input'][];
-      conditions?: components['schemas']['InstallationConditions'];
+      conditions?: components['schemas']['InstallationConditions-Input'];
       /** Fed From */
       fed_from?: string | null;
       /** Feeder Length M */
       feeder_length_m?: number | string | null;
+    };
+    /**
+     * DistributionBoardRequest
+     * @description What a distribution board is designed from.
+     *
+     *     Attributes:
+     *         name: The board's name ("DBG-HALL").
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         loads: The load schedule, in the order the circuits are drawn.
+     *         conditions: How the outgoing cables are run.
+     *         fed_from: The board whose feeder supplies this one; ``None`` for a
+     *             board fed from the utility or a main switchboard outside the
+     *             project.
+     *         feeder_length_m: The route length of the cable feeding this board
+     *             from ``fed_from``, for that feeder's voltage drop.
+     */
+    'DistributionBoardRequest-Output': {
+      /** Name */
+      name: string;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Output'];
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      conditions?: components['schemas']['InstallationConditions-Output'];
+      /** Fed From */
+      fed_from?: string | null;
+      /** Feeder Length M */
+      feeder_length_m?: string | null;
     };
     /**
      * DriveRangeSummary
@@ -2126,7 +2224,7 @@ export interface components {
      *         conductor_material: Copper or aluminium.
      *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
      */
-    InstallationConditions: {
+    'InstallationConditions-Input': {
       /** @default B1 */
       installation_method: components['schemas']['InstallationMethod'];
       /**
@@ -2134,6 +2232,38 @@ export interface components {
        * @default 30
        */
       ambient_temp_c: number | string;
+      /**
+       * Grouped Circuits
+       * @default 1
+       */
+      grouped_circuits: number;
+      /** @default copper */
+      conductor_material: components['schemas']['ConductorMaterial'];
+      /**
+       * Insulation Rating C
+       * @default 70
+       */
+      insulation_rating_c: number;
+    };
+    /**
+     * InstallationConditions
+     * @description How the outgoing cables are run, for their sizing.
+     *
+     *     Attributes:
+     *         installation_method: IEC 60364-5-52 reference method.
+     *         ambient_temp_c: Air temperature around the cables.
+     *         grouped_circuits: Loaded circuits run together.
+     *         conductor_material: Copper or aluminium.
+     *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
+     */
+    'InstallationConditions-Output': {
+      /** @default B1 */
+      installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Ambient Temp C
+       * @default 30
+       */
+      ambient_temp_c: string;
       /**
        * Grouped Circuits
        * @default 1
@@ -2820,10 +2950,30 @@ export interface components {
      *             design, so sub-boards need no hand-entered load.
      *         profile: The company's profile settings; ``None`` for the default.
      */
-    ProjectDesignRequest: {
+    'ProjectDesignRequest-Input': {
       info: components['schemas']['ProjectInfo'];
       /** Boards */
-      boards: components['schemas']['DistributionBoardRequest'][];
+      boards: components['schemas']['DistributionBoardRequest-Input'][];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * ProjectDesignRequest
+     * @description A project of one or more boards to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         boards: Each board's schedule. A board naming another in
+     *             ``fed_from`` gets a feeder in that board, sized from its own
+     *             design, so sub-boards need no hand-entered load.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    'ProjectDesignRequest-Output': {
+      info: components['schemas']['ProjectInfo'];
+      /** Boards */
+      boards: components['schemas']['DistributionBoardRequest-Output'][];
       /** Profile */
       profile?: {
         [key: string]: unknown;
@@ -2866,6 +3016,40 @@ export interface components {
       contractor: string;
       /** Revisions */
       revisions?: components['schemas']['Revision'][];
+    };
+    /**
+     * ProjectPage
+     * @description One page of saved projects, most recently saved first.
+     *
+     *     Attributes:
+     *         projects: The page.
+     *         next_cursor: Pass back for the next page; ``None`` on the last.
+     */
+    ProjectPage: {
+      /** Projects */
+      projects: components['schemas']['ProjectSummary'][];
+      /** Next Cursor */
+      next_cursor?: string | null;
+    };
+    /**
+     * ProjectSummary
+     * @description One saved project as the project list shows it.
+     *
+     *     Attributes:
+     *         id: Its identifier.
+     *         name: Its name.
+     *         revisions: How many revisions it has.
+     *         updated_at: When its latest revision was saved, ISO 8601.
+     */
+    ProjectSummary: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Revisions */
+      revisions: number;
+      /** Updated At */
+      updated_at: string;
     };
     /**
      * QueueItem
@@ -3085,6 +3269,22 @@ export interface components {
       anchored: boolean;
     };
     /**
+     * ReviseProjectRequest
+     * @description A new revision of a saved project.
+     *
+     *     Attributes:
+     *         request: The project as entered now.
+     *         note: What changed, for the revision list.
+     */
+    ReviseProjectRequest: {
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
      * Revision
      * @description One issue of the drawing set.
      *
@@ -3121,6 +3321,67 @@ export interface components {
        * @default
        */
       approved_by: string;
+    };
+    /**
+     * RevisionSummary
+     * @description One revision as the revision list shows it.
+     *
+     *     Attributes:
+     *         number: 1 for the first save, then in order.
+     *         note: What it is.
+     *         author: Who saved it.
+     *         created_at: When, ISO 8601.
+     */
+    RevisionSummary: {
+      /** Number */
+      number: number;
+      /** Note */
+      note: string;
+      /** Author */
+      author: string;
+      /** Created At */
+      created_at: string;
+    };
+    /**
+     * SaveProjectRequest
+     * @description A new project to save, as its first revision.
+     *
+     *     Attributes:
+     *         name: What the project is listed as.
+     *         request: The project as entered.
+     *         note: What this revision is, for the revision list.
+     */
+    SaveProjectRequest: {
+      /** Name */
+      name: string;
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
+     * SavedProject
+     * @description A saved project, its revisions, and one revision's request.
+     *
+     *     Attributes:
+     *         id: Its identifier.
+     *         name: Its name.
+     *         revisions: Every revision, oldest first.
+     *         revision: The number of the revision ``request`` is.
+     *         request: That revision as entered.
+     */
+    SavedProject: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Revisions */
+      revisions: components['schemas']['RevisionSummary'][];
+      /** Revision */
+      revision: number;
+      request: components['schemas']['ProjectDesignRequest-Output'];
     };
     /**
      * ScheduleSuggestionRequest
@@ -4136,7 +4397,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['ProjectDesignRequest'];
+        'application/json': components['schemas']['ProjectDesignRequest-Input'];
       };
     };
     responses: {
@@ -4345,6 +4606,168 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PlcProgramResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_projects_api_v1_design_projects_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        cursor?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProjectPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  save_project_api_v1_design_projects_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveProjectRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  open_project_api_v1_design_projects__project_id__get: {
+    parameters: {
+      query?: {
+        revision?: number | null;
+      };
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_project_api_v1_design_projects__project_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revise_project_api_v1_design_projects__project_id__revisions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReviseProjectRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
         };
       };
       /** @description Validation Error */

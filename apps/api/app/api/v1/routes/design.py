@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
 from app.api.deps import (
     CurrentUserDep,
@@ -16,7 +16,7 @@ from app.api.deps import (
     enforce_trial_rate_limit,
 )
 from app.domain import design as design_domain
-from app.domain import model_budget
+from app.domain import design_projects, model_budget
 from app.models.schemas.design import (
     BoardDesignRequest,
     BoardDesignResponse,
@@ -27,8 +27,12 @@ from app.models.schemas.design import (
     PlcProgramResponse,
     PriceListEntry,
     ProjectDesignRequest,
+    ProjectPage,
     Quotation,
     QuotationRequest,
+    ReviseProjectRequest,
+    SavedProject,
+    SaveProjectRequest,
     ScheduleSuggestionRequest,
 )
 
@@ -133,3 +137,52 @@ def write_plc_program(
     """Write and check the control program for the PLC-switched circuits."""
     del session
     return design_domain.write_plc_program(user=user, request=payload)
+
+
+@router.get("/projects", response_model=ProjectPage)
+def list_projects(
+    session: SessionDep,
+    user: CurrentUserDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    cursor: str | None = None,
+) -> ProjectPage:
+    """List the caller's saved projects, most recently saved first."""
+    return design_projects.list_projects(session=session, user=user, limit=limit, cursor=cursor)
+
+
+@router.post("/projects", response_model=SavedProject, status_code=201)
+def save_project(
+    payload: SaveProjectRequest, session: SessionDep, user: CurrentUserDep
+) -> SavedProject:
+    """Save a new project as its first revision."""
+    return design_projects.save_project(session=session, user=user, request=payload)
+
+
+@router.get("/projects/{project_id}", response_model=SavedProject)
+def open_project(
+    project_id: str,
+    session: SessionDep,
+    user: CurrentUserDep,
+    revision: Annotated[int | None, Query(ge=1)] = None,
+) -> SavedProject:
+    """Open a saved project at its latest revision, or the one asked for."""
+    return design_projects.open_project(
+        session=session, user=user, project_id=project_id, revision=revision
+    )
+
+
+@router.post("/projects/{project_id}/revisions", response_model=SavedProject, status_code=201)
+def revise_project(
+    project_id: str, payload: ReviseProjectRequest, session: SessionDep, user: CurrentUserDep
+) -> SavedProject:
+    """Save a new revision of a project."""
+    return design_projects.revise_project(
+        session=session, user=user, project_id=project_id, request=payload
+    )
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: str, session: SessionDep, user: CurrentUserDep) -> Response:
+    """Delete a saved project and all its revisions."""
+    design_projects.delete_project(session=session, user=user, project_id=project_id)
+    return Response(status_code=204)

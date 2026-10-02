@@ -33,6 +33,9 @@ TENANT_SCOPED = {
     "diagnostic_turns",
     # A customer's own spend on model calls.
     "model_usage",
+    # A customer's saved designs: their projects, clients and loads.
+    "design_projects",
+    "design_project_revisions",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would

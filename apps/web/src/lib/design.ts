@@ -1,6 +1,8 @@
 import type { components } from '@panelpilot/shared-types';
 
-export type ProjectDesignRequest = components['schemas']['ProjectDesignRequest'];
+export type ProjectDesignRequest = components['schemas']['ProjectDesignRequest-Input'];
+/** A saved request as the server returns it: numbers as strings, defaults filled. */
+export type SavedRequest = components['schemas']['ProjectDesignRequest-Output'];
 export type BoardDesignResponse = components['schemas']['BoardDesignResponse'];
 /** A project as the API returns it, and as it is sent back to export. */
 export type DesignProject = components['schemas']['DesignProject-Output'];
@@ -14,6 +16,8 @@ export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
 export type Quotation = components['schemas']['Quotation'];
 export type PlcProgram = components['schemas']['PlcProgramResponse'];
 export type DesignNote = components['schemas']['DesignNote'];
+export type SavedProject = components['schemas']['SavedProject'];
+export type ProjectPage = components['schemas']['ProjectPage'];
 
 /**
  * How every design call can end besides success. A 400 or 422 is the design
@@ -39,6 +43,9 @@ export type SuggestOutcome =
 export type PriceOutcome = { kind: 'priced'; quotation: Quotation } | Failure;
 export type PriceListOutcome = { kind: 'imported'; entries: PriceListEntry[] } | Failure;
 export type PlcOutcome = { kind: 'written'; program: PlcProgram } | Failure;
+export type ProjectOutcome = { kind: 'saved'; project: SavedProject } | Failure;
+export type ProjectListOutcome = { kind: 'listed'; page: ProjectPage } | Failure;
+export type DeleteOutcome = { kind: 'deleted' } | Failure;
 
 /** Options every call takes, so tests can stand in for the network. */
 type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
@@ -78,9 +85,9 @@ async function readJson(response: Response): Promise<unknown> {
 /**
  * Send one request and sort its answer into success or a {@link Failure}.
  *
- * `body` is sent as JSON, or as-is when it is form data (a file upload).
- * `accept` checks a 2xx body has the fields the caller relies on; anything
- * else is `failed` rather than trusted.
+ * `body` is sent as JSON, or as-is when it is form data (a file upload); a
+ * GET or DELETE sends none. `accept` checks a 2xx body has the fields the
+ * caller relies on; anything else is `failed` rather than trusted.
  */
 async function call<T>(
   transport: Transport,
@@ -88,26 +95,32 @@ async function call<T>(
   body: unknown,
   accept: (payload: object) => T | null,
   extra?: (response: Response) => T | null,
+  method: 'POST' | 'GET' | 'DELETE' = 'POST',
 ): Promise<T | Failure> {
   const { token, fetchImpl = fetch, endpoint = defaultEndpoint } = transport;
   const isForm = body instanceof FormData;
+  const auth = { Authorization: `Bearer ${token}` };
   let response: Response;
   try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: isForm
-        ? { Authorization: `Bearer ${token}` }
-        : { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: isForm ? body : JSON.stringify(body),
-    });
+    response = await fetchImpl(
+      endpoint,
+      method !== 'POST'
+        ? { method, headers: auth }
+        : {
+            method,
+            headers: isForm ? auth : { 'Content-Type': 'application/json', ...auth },
+            body: isForm ? body : JSON.stringify(body),
+          },
+    );
   } catch {
     return { kind: 'failed' };
   }
   if (response.status === 401) return { kind: 'unauthorized' };
   const special = extra?.(response);
   if (special) return special;
-  // 429 too: the design routes' per-address budget, said with a code.
-  if (response.status === 400 || response.status === 422 || response.status === 429) {
+  // 429 too: the design routes' per-address budget, said with a code; and
+  // 404, a saved project that is not (or no longer) there.
+  if ([400, 404, 422, 429].includes(response.status)) {
     return refusalOf(await readJson(response));
   }
   if (!response.ok) return { kind: 'failed' };
@@ -256,5 +269,73 @@ export function writePlcProgram(
     has(payload, 'source', 'validation')
       ? { kind: 'written', program: payload as PlcProgram }
       : null,
+  );
+}
+
+const PROJECTS = '/api/v1/design/projects';
+
+function saved(payload: object): ProjectOutcome | null {
+  return has(payload, 'id', 'revisions', 'request')
+    ? { kind: 'saved', project: payload as SavedProject }
+    : null;
+}
+
+/** The caller's saved projects, newest first: `GET /api/v1/design/projects`. */
+export function listProjects(
+  options: Transport & { cursor?: string | null },
+): Promise<ProjectListOutcome> {
+  const query = options.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : '';
+  return call<ProjectListOutcome>(
+    options,
+    `${PROJECTS}${query}`,
+    undefined,
+    (payload) =>
+      has(payload, 'projects') ? { kind: 'listed', page: payload as ProjectPage } : null,
+    undefined,
+    'GET',
+  );
+}
+
+/** Save a new project as its first revision: `POST /api/v1/design/projects`. */
+export function saveProject(
+  options: Transport & { name: string; request: ProjectDesignRequest; note?: string },
+): Promise<ProjectOutcome> {
+  const { name, request, note = '' } = options;
+  return call(options, PROJECTS, { name, request, note }, saved);
+}
+
+/** Save a new revision of a project: `POST /api/v1/design/projects/{id}/revisions`. */
+export function reviseProject(
+  options: Transport & { id: string; request: ProjectDesignRequest; note?: string },
+): Promise<ProjectOutcome> {
+  const { id, request, note = '' } = options;
+  return call(options, `${PROJECTS}/${encodeURIComponent(id)}/revisions`, { request, note }, saved);
+}
+
+/** Open a project, at its latest revision or one asked for. */
+export function openProject(
+  options: Transport & { id: string; revision?: number | null },
+): Promise<ProjectOutcome> {
+  const { id, revision } = options;
+  const query = revision ? `?revision=${String(revision)}` : '';
+  return call<ProjectOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}${query}`,
+    undefined,
+    saved,
+    undefined,
+    'GET',
+  );
+}
+
+/** Delete a project and all its revisions. */
+export function deleteProject(options: Transport & { id: string }): Promise<DeleteOutcome> {
+  return call<DeleteOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(options.id)}`,
+    undefined,
+    () => null,
+    (response) => (response.status === 204 ? { kind: 'deleted' } : null),
+    'DELETE',
   );
 }

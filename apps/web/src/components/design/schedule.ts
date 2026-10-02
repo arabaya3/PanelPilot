@@ -3,6 +3,7 @@ import type {
   LoadScheduleImport,
   MotorStarter,
   ProjectDesignRequest,
+  SavedRequest,
 } from '@/lib/design';
 
 /** One load schedule row as the engineer edits it: every field a string. */
@@ -185,4 +186,62 @@ export function withLanguage(
   if (language === 'en' || (profile && 'language' in profile)) return profile;
   // Settings name the profile they adjust; with none typed, the default one.
   return { ...(profile ?? { key: DEFAULT_PROFILE_KEY }), language };
+}
+
+/**
+ * A saved project back as the form: its title block and boards, keyed from
+ * `firstKey`. Returns the keys it used, so the caller's counter moves past.
+ */
+export function fromRequest(
+  request: SavedRequest,
+  firstKey: number,
+): { info: ProjectInfo; boards: BoardForm[]; used: number } {
+  let key = firstKey;
+  const boards = request.boards.map((board) => {
+    const boardKey = key;
+    const loads = rowsFrom(board.loads, boardKey + 1);
+    key += loads.length + 1;
+    return {
+      key: boardKey,
+      name: board.name,
+      location: board.location ?? '',
+      voltage: board.supply?.voltage_v ?? '400',
+      phases: board.supply?.phases === 1 ? ('1' as const) : ('3' as const),
+      faultLevel: board.supply?.fault_level_ka ?? '',
+      fedFrom: board.fed_from ?? '',
+      feederLength: board.feeder_length_m ?? '',
+      loads,
+    };
+  });
+  const info = request.info;
+  return {
+    info: {
+      name: info.name,
+      number: info.number,
+      customer: info.customer,
+      consultant: info.consultant,
+      contractor: info.contractor,
+    },
+    boards,
+    used: key - firstKey,
+  };
+}
+
+/**
+ * Saved company settings back as the settings box and the drawing language:
+ * the language goes to its own field, and settings that only named the
+ * default profile to carry it leave the box empty.
+ */
+export function profileFrom(profile: Record<string, unknown> | null | undefined): {
+  text: string;
+  language: DrawingLanguage | null;
+} {
+  if (!profile) return { text: '', language: null };
+  const { language, ...rest } = profile;
+  const chosen = DRAWING_LANGUAGES.find((known) => known === language) ?? null;
+  const onlyDefault = Object.keys(rest).length === 1 && rest.key === DEFAULT_PROFILE_KEY;
+  return {
+    text: Object.keys(rest).length === 0 || onlyDefault ? '' : JSON.stringify(rest, null, 2),
+    language: chosen,
+  };
 }

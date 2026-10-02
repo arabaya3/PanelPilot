@@ -12,7 +12,9 @@ import {
   blankBoard,
   blankLoad,
   DRAWING_LANGUAGES,
+  fromRequest,
   isComplete,
+  profileFrom,
   rowsFrom,
   toRequest,
   withLanguage,
@@ -21,6 +23,7 @@ import {
   type Load,
   type ProjectInfo,
 } from '@/components/design/schedule';
+import { ProjectsPanel, type OpenedProject } from '@/components/design/projects-panel';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
@@ -30,6 +33,7 @@ import {
   importSchedule,
   suggestSchedule,
   type BoardDesignResponse,
+  type SavedProject,
   type DesignOutcome,
   type ExportFormat,
 } from '@/lib/design';
@@ -121,6 +125,7 @@ export function DesignScreen({
   const drawingLanguage: DrawingLanguage = chosenLanguage ?? (locale === 'ar' ? 'ar' : 'en');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
+  const [opened, setOpened] = useState<OpenedProject | null>(null);
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -187,6 +192,26 @@ export function DesignScreen({
   }
 
   const complete = isComplete(info, boards);
+
+  function onOpened(project: SavedProject, fill: boolean) {
+    setOpened({
+      id: project.id,
+      name: project.name,
+      revision: project.revision,
+      revisions: project.revisions.map((revision) => revision.number),
+    });
+    if (!fill) return;
+    const loaded = fromRequest(project.request, nextKey.current);
+    nextKey.current += Math.max(1, loaded.used);
+    setInfo(loaded.info);
+    setBoards(loaded.boards);
+    if (loaded.boards[0]) setActiveKey(loaded.boards[0].key);
+    const settings = profileFrom(project.request.profile);
+    setProfileText(settings.text);
+    setDrawingLanguage(settings.language);
+    setResult({ kind: 'idle' });
+    setExportError(null);
+  }
 
   async function run() {
     if (token === null || !complete) return;
@@ -274,6 +299,21 @@ export function DesignScreen({
         <p role="alert" className="mb-4 text-sm text-danger">
           {t('unavailable')}
         </p>
+      )}
+
+      {token !== null && (
+        <div className="mb-6">
+          <ProjectsPanel
+            token={token}
+            current={
+              complete && parsed !== 'invalid'
+                ? { name: info.name.trim(), request: toRequest(info, boards, profile) }
+                : null
+            }
+            opened={opened}
+            onOpened={onOpened}
+          />
+        </div>
       )}
 
       <form

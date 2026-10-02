@@ -941,3 +941,91 @@ class PlcProgramResponse(BaseModel):
 
 # The export request names the pricing settings, defined after it.
 DesignExportRequest.model_rebuild()
+
+
+class SaveProjectRequest(BaseModel):
+    """A new project to save, as its first revision.
+
+    Attributes:
+        name: What the project is listed as.
+        request: The project as entered.
+        note: What this revision is, for the revision list.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    request: ProjectDesignRequest
+    note: str = Field(default="", max_length=500)
+
+
+class ReviseProjectRequest(BaseModel):
+    """A new revision of a saved project.
+
+    Attributes:
+        request: The project as entered now.
+        note: What changed, for the revision list.
+    """
+
+    request: ProjectDesignRequest
+    note: str = Field(default="", max_length=500)
+
+
+class RevisionSummary(BaseModel):
+    """One revision as the revision list shows it.
+
+    Attributes:
+        number: 1 for the first save, then in order.
+        note: What it is.
+        author: Who saved it.
+        created_at: When, ISO 8601.
+    """
+
+    number: int
+    note: str
+    author: str
+    created_at: str
+
+
+class ProjectSummary(BaseModel):
+    """One saved project as the project list shows it.
+
+    Attributes:
+        id: Its identifier.
+        name: Its name.
+        revisions: How many revisions it has.
+        updated_at: When its latest revision was saved, ISO 8601.
+    """
+
+    id: str
+    name: str
+    revisions: int
+    updated_at: str
+
+
+class ProjectPage(BaseModel):
+    """One page of saved projects, most recently saved first.
+
+    Attributes:
+        projects: The page.
+        next_cursor: Pass back for the next page; ``None`` on the last.
+    """
+
+    projects: list[ProjectSummary]
+    next_cursor: str | None = None
+
+
+class SavedProject(BaseModel):
+    """A saved project, its revisions, and one revision's request.
+
+    Attributes:
+        id: Its identifier.
+        name: Its name.
+        revisions: Every revision, oldest first.
+        revision: The number of the revision ``request`` is.
+        request: That revision as entered.
+    """
+
+    id: str
+    name: str
+    revisions: list[RevisionSummary]
+    revision: int
+    request: ProjectDesignRequest
