@@ -532,7 +532,8 @@
       "power": "Power",
       "loadPhases": "Phases",
       "powerFactor": "Power factor",
-      "controlled": "PLC switched"
+      "controlled": "PLC switched",
+      "fedFrom": "Fed from"
     },
     "kind": {
       "lighting": "Lighting",
@@ -644,7 +645,13 @@
         "invalid": "The checker found errors in the program.",
         "incomplete": "The checker could not check this program in full."
       }
-    }
+    },
+    "boards": "Boards",
+    "addBoard": "+ Add board",
+    "removeBoard": "Remove this board",
+    "loadsOf": "Loads of {board}",
+    "fedFromNone": "Project supply",
+    "fedFromLabel": "fed from {board}"
   },
   "files": {
     "choose": "Choose file",

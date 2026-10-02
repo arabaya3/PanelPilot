@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
 import {
-  designBoard,
+  designProject,
   exportDesign,
   importSchedule,
   suggestSchedule,
@@ -113,7 +113,7 @@ async function submit() {
 
 describe('board design', () => {
   it('sends the schedule and shows each circuit with its protection', async () => {
-    const designImpl = vi.fn<typeof designBoard>().mockResolvedValue({
+    const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'designed',
       response: DESIGNED,
     });
@@ -128,7 +128,7 @@ describe('board design', () => {
     const call = designImpl.mock.calls[0]?.[0];
     expect(call?.token).toBe('tok');
     expect(call?.request.info.name).toBe('Pocket');
-    expect(call?.request.board.loads).toEqual([
+    expect(call?.request.boards[0]?.loads).toEqual([
       {
         description: 'Sockets hall',
         load: 'socket',
@@ -146,7 +146,7 @@ describe('board design', () => {
   });
 
   it('sends the company settings, and refuses settings that are not JSON', async () => {
-    const designImpl = vi.fn<typeof designBoard>().mockResolvedValue({
+    const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'designed',
       response: DESIGNED,
     });
@@ -169,7 +169,7 @@ describe('board design', () => {
   });
 
   it('shows a refusal in the server’s words', async () => {
-    const designImpl = vi.fn<typeof designBoard>().mockResolvedValue({
+    const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'refused',
       detail: 'Chiller: 144 A exceeds the largest curve C rating held (125 A)',
     });
@@ -394,7 +394,7 @@ describe('design client', () => {
       await exportDesign({ token: 't', project: PROJECT, format: 'pdf', fetchImpl: refused }),
     ).toEqual({ kind: 'refused', detail: 'bad format' });
 
-    const designed = await designBoard({
+    const designed = await designProject({
       token: 't',
       request: DESIGNED as never,
       fetchImpl: vi
@@ -403,7 +403,7 @@ describe('design client', () => {
     });
     expect(designed.kind).toBe('designed');
     expect(
-      await designBoard({
+      await designProject({
         token: 't',
         request: DESIGNED as never,
         fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 401 })),

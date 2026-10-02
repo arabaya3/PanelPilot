@@ -532,7 +532,8 @@
       "power": "القدرة",
       "loadPhases": "الفازات",
       "powerFactor": "معامل القدرة",
-      "controlled": "يتحكم به PLC"
+      "controlled": "يتحكم به PLC",
+      "fedFrom": "مغذّاة من"
     },
     "kind": {
       "lighting": "إنارة",
@@ -644,7 +645,13 @@
         "invalid": "وجد الفاحص أخطاء في البرنامج.",
         "incomplete": "لم يتمكن الفاحص من فحص البرنامج بالكامل."
       }
-    }
+    },
+    "boards": "اللوحات",
+    "addBoard": "+ إضافة لوحة",
+    "removeBoard": "حذف هذه اللوحة",
+    "loadsOf": "أحمال {board}",
+    "fedFromNone": "مصدر المشروع",
+    "fedFromLabel": "مغذّاة من {board}"
   },
   "files": {
     "choose": "اختر ملفاً",

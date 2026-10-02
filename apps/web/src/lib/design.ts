@@ -1,18 +1,37 @@
 import type { components } from '@panelpilot/shared-types';
 
-export type BoardDesignRequest = components['schemas']['BoardDesignRequest'];
+export type ProjectDesignRequest = components['schemas']['ProjectDesignRequest'];
 export type BoardDesignResponse = components['schemas']['BoardDesignResponse'];
 /** A project as the API returns it, and as it is sent back to export. */
 export type DesignProject = components['schemas']['DesignProject-Output'];
 export type ExportFormat = components['schemas']['ExportFormat'];
 export type LoadKind = components['schemas']['LoadKind'];
+export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
+export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
+export type PricingSettings = components['schemas']['PricingSettings'];
+export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
+export type Quotation = components['schemas']['Quotation'];
+export type PlcProgram = components['schemas']['PlcProgramResponse'];
 
-export type DesignOutcome =
-  | { kind: 'designed'; response: BoardDesignResponse }
-  /** The schedule or the company settings were refused; `detail` says why. */
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
+/**
+ * How every design call can end besides success. A 400 or 422 is the design
+ * refusing an input (a load no table protects, a malformed company setting)
+ * -- an answer to show, with `detail` saying why, not a fault.
+ */
+type Failure = { kind: 'refused'; detail: string } | { kind: 'unauthorized' } | { kind: 'failed' };
+
+export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
+export type ExportOutcome = { kind: 'exported'; blob: Blob; filename: string } | Failure;
+export type ImportOutcome = { kind: 'imported'; result: LoadScheduleImport } | Failure;
+/** `budget`: the month's model allowance is spent (a 429), not a fault. */
+export type SuggestOutcome =
+  { kind: 'suggested'; result: LoadScheduleSuggestion } | { kind: 'budget' } | Failure;
+export type PriceOutcome = { kind: 'priced'; quotation: Quotation } | Failure;
+export type PriceListOutcome = { kind: 'imported'; entries: PriceListEntry[] } | Failure;
+export type PlcOutcome = { kind: 'written'; program: PlcProgram } | Failure;
+
+/** Options every call takes, so tests can stand in for the network. */
+type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
 
 function detailOf(payload: unknown): string {
   const detail = (payload as { detail?: unknown } | null)?.detail;
@@ -26,74 +45,86 @@ function detailOf(payload: unknown): string {
   return '';
 }
 
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * Design a distribution board: `POST /api/v1/design/distribution-board`.
+ * Send one request and sort its answer into success or a {@link Failure}.
  *
- * A 400 or 422 is the design refusing an input (a load no table protects, a
- * malformed company setting) -- an answer to show, not a fault.
+ * `body` is sent as JSON, or as-is when it is form data (a file upload).
+ * `accept` checks a 2xx body has the fields the caller relies on; anything
+ * else is `failed` rather than trusted.
  */
-export async function designBoard(options: {
-  token: string;
-  request: BoardDesignRequest;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<DesignOutcome> {
-  const {
-    token,
-    request,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/distribution-board',
-  } = options;
+async function call<T>(
+  transport: Transport,
+  defaultEndpoint: string,
+  body: unknown,
+  accept: (payload: object) => T | null,
+  extra?: (response: Response) => T | null,
+): Promise<T | Failure> {
+  const { token, fetchImpl = fetch, endpoint = defaultEndpoint } = transport;
+  const isForm = body instanceof FormData;
   let response: Response;
   try {
     response = await fetchImpl(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(request),
+      headers: isForm
+        ? { Authorization: `Bearer ${token}` }
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: isForm ? body : JSON.stringify(body),
     });
   } catch {
     return { kind: 'failed' };
   }
   if (response.status === 401) return { kind: 'unauthorized' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
+  const special = extra?.(response);
+  if (special) return special;
   if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
+    return { kind: 'refused', detail: detailOf(await readJson(response)) };
   }
-  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  if (!('project' in payload) || !('profile' in payload)) return { kind: 'failed' };
-  return { kind: 'designed', response: payload as BoardDesignResponse };
+  if (!response.ok) return { kind: 'failed' };
+  const payload = await readJson(response);
+  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  return accept(payload) ?? { kind: 'failed' };
 }
 
-export type ExportOutcome =
-  | { kind: 'exported'; blob: Blob; filename: string }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
+function has(payload: object, ...keys: string[]): boolean {
+  return keys.every((key) => key in payload);
+}
+
+function upload(file: Blob, filename: string): FormData {
+  const body = new FormData();
+  body.append('file', file, filename);
+  return body;
+}
+
+/** Design a project of one or more boards: `POST /api/v1/design/project`. */
+export function designProject(
+  options: Transport & { request: ProjectDesignRequest },
+): Promise<DesignOutcome> {
+  return call(options, '/api/v1/design/project', options.request, (payload) =>
+    has(payload, 'project', 'profile')
+      ? { kind: 'designed', response: payload as BoardDesignResponse }
+      : null,
+  );
+}
 
 /** Export a project as a file: `POST /api/v1/design/export`. */
-export async function exportDesign(options: {
-  token: string;
-  project: DesignProject;
-  format: ExportFormat;
-  profile?: Record<string, unknown> | null;
-  pricing?: PricingSettings | null;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<ExportOutcome> {
-  const {
-    token,
-    project,
-    format,
-    profile = null,
-    pricing = null,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/export',
-  } = options;
+export async function exportDesign(
+  options: Transport & {
+    project: DesignProject;
+    format: ExportFormat;
+    profile?: Record<string, unknown> | null;
+    pricing?: PricingSettings | null;
+  },
+): Promise<ExportOutcome> {
+  const { token, fetchImpl = fetch, endpoint = '/api/v1/design/export' } = options;
+  const { project, format, profile = null, pricing = null } = options;
   let response: Response;
   try {
     response = await fetchImpl(endpoint, {
@@ -106,13 +137,7 @@ export async function exportDesign(options: {
   }
   if (response.status === 401) return { kind: 'unauthorized' };
   if (response.status === 400 || response.status === 422) {
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch {
-      // A refusal without a body still refuses.
-    }
-    return { kind: 'refused', detail: detailOf(payload) };
+    return { kind: 'refused', detail: detailOf(await readJson(response)) };
   }
   if (!response.ok) return { kind: 'failed' };
   const disposition = response.headers.get('Content-Disposition') ?? '';
@@ -128,258 +153,84 @@ export async function exportDesign(options: {
   }
 }
 
-export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
-
-export type ImportOutcome =
-  | { kind: 'imported'; result: LoadScheduleImport }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
-
 /**
  * Read a consultant's load schedule (.xlsx, .csv or .pdf):
  * `POST /api/v1/design/load-schedule/import`.
  */
-export async function importSchedule(options: {
-  token: string;
-  file: Blob;
-  filename: string;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<ImportOutcome> {
-  const {
-    token,
-    file,
-    filename,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/load-schedule/import',
-  } = options;
-  const body = new FormData();
-  body.append('file', file, filename);
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body,
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 401) return { kind: 'unauthorized' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
-  }
-  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  if (!('loads' in payload) || !('warnings' in payload)) return { kind: 'failed' };
-  return { kind: 'imported', result: payload as LoadScheduleImport };
+export function importSchedule(
+  options: Transport & { file: Blob; filename: string },
+): Promise<ImportOutcome> {
+  return call(
+    options,
+    '/api/v1/design/load-schedule/import',
+    upload(options.file, options.filename),
+    (payload) =>
+      has(payload, 'loads', 'warnings')
+        ? { kind: 'imported', result: payload as LoadScheduleImport }
+        : null,
+  );
 }
-
-export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
-
-export type SuggestOutcome =
-  | { kind: 'suggested'; result: LoadScheduleSuggestion }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'budget' }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
 
 /**
  * Draft a load schedule from a plain description:
  * `POST /api/v1/design/load-schedule/suggest`. Each call is a model request,
  * so a 429 is the month's allowance spent rather than a fault.
  */
-export async function suggestSchedule(options: {
-  token: string;
-  description: string;
-  supplyPhases: number;
-  profile?: Record<string, unknown> | null;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<SuggestOutcome> {
-  const {
-    token,
-    description,
-    supplyPhases,
-    profile = null,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/load-schedule/suggest',
-  } = options;
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ description, supply_phases: supplyPhases, profile }),
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 401) return { kind: 'unauthorized' };
-  if (response.status === 429) return { kind: 'budget' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
-  }
-  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  if (!('loads' in payload) || !('assumptions' in payload)) return { kind: 'failed' };
-  return { kind: 'suggested', result: payload as LoadScheduleSuggestion };
+export function suggestSchedule(
+  options: Transport & {
+    description: string;
+    supplyPhases: number;
+    profile?: Record<string, unknown> | null;
+  },
+): Promise<SuggestOutcome> {
+  const { description, supplyPhases, profile = null } = options;
+  return call<SuggestOutcome>(
+    options,
+    '/api/v1/design/load-schedule/suggest',
+    { description, supply_phases: supplyPhases, profile },
+    (payload) =>
+      has(payload, 'loads', 'assumptions')
+        ? { kind: 'suggested', result: payload as LoadScheduleSuggestion }
+        : null,
+    (response) => (response.status === 429 ? { kind: 'budget' } : null),
+  );
 }
-
-export type PricingSettings = components['schemas']['PricingSettings'];
-export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
-export type Quotation = components['schemas']['Quotation'];
-
-export type PriceOutcome =
-  | { kind: 'priced'; quotation: Quotation }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
 
 /** Price a designed project: `POST /api/v1/design/quotation`. */
-export async function priceDesign(options: {
-  token: string;
-  project: DesignProject;
-  pricing: PricingSettings;
-  profile?: Record<string, unknown> | null;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<PriceOutcome> {
-  const {
-    token,
-    project,
-    pricing,
-    profile = null,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/quotation',
-  } = options;
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ project, pricing, profile }),
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 401) return { kind: 'unauthorized' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
-  }
-  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  if (!('lines' in payload) || !('total' in payload)) return { kind: 'failed' };
-  return { kind: 'priced', quotation: payload as Quotation };
+export function priceDesign(
+  options: Transport & {
+    project: DesignProject;
+    pricing: PricingSettings;
+    profile?: Record<string, unknown> | null;
+  },
+): Promise<PriceOutcome> {
+  const { project, pricing, profile = null } = options;
+  return call(options, '/api/v1/design/quotation', { project, pricing, profile }, (payload) =>
+    has(payload, 'lines', 'total') ? { kind: 'priced', quotation: payload as Quotation } : null,
+  );
 }
-
-export type PriceListOutcome =
-  | { kind: 'imported'; entries: PriceListEntry[] }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
 
 /** Read a price list (.xlsx or .csv): `POST /api/v1/design/price-list/import`. */
-export async function importPriceList(options: {
-  token: string;
-  file: Blob;
-  filename: string;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<PriceListOutcome> {
-  const {
-    token,
-    file,
-    filename,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/price-list/import',
-  } = options;
-  const body = new FormData();
-  body.append('file', file, filename);
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body,
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 401) return { kind: 'unauthorized' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
-  }
-  if (!response.ok || !Array.isArray(payload)) return { kind: 'failed' };
-  return { kind: 'imported', entries: payload as PriceListEntry[] };
+export function importPriceList(
+  options: Transport & { file: Blob; filename: string },
+): Promise<PriceListOutcome> {
+  return call(
+    options,
+    '/api/v1/design/price-list/import',
+    upload(options.file, options.filename),
+    (payload) =>
+      Array.isArray(payload) ? { kind: 'imported', entries: payload as PriceListEntry[] } : null,
+  );
 }
 
-export type PlcProgram = components['schemas']['PlcProgramResponse'];
-
-export type PlcOutcome =
-  | { kind: 'written'; program: PlcProgram }
-  | { kind: 'refused'; detail: string }
-  | { kind: 'unauthorized' }
-  | { kind: 'failed' };
-
 /** Write and check the control program for the PLC-switched circuits: `POST /api/v1/design/plc`. */
-export async function writePlcProgram(options: {
-  token: string;
-  project: DesignProject;
-  profile?: Record<string, unknown> | null;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}): Promise<PlcOutcome> {
-  const {
-    token,
-    project,
-    profile = null,
-    fetchImpl = fetch,
-    endpoint = '/api/v1/design/plc',
-  } = options;
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ project, profile }),
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 401) return { kind: 'unauthorized' };
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(payload) };
-  }
-  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  if (!('source' in payload) || !('validation' in payload)) return { kind: 'failed' };
-  return { kind: 'written', program: payload as PlcProgram };
+export function writePlcProgram(
+  options: Transport & { project: DesignProject; profile?: Record<string, unknown> | null },
+): Promise<PlcOutcome> {
+  const { project, profile = null } = options;
+  return call(options, '/api/v1/design/plc', { project, profile }, (payload) =>
+    has(payload, 'source', 'validation')
+      ? { kind: 'written', program: payload as PlcProgram }
+      : null,
+  );
 }

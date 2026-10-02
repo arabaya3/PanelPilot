@@ -1,0 +1,76 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  blankBoard,
+  blankLoad,
+  isComplete,
+  rowsFrom,
+  toRequest,
+  type ProjectInfo,
+} from '@/components/design/schedule';
+
+/** The pure helpers behind the design form. */
+
+const INFO: ProjectInfo = {
+  name: ' Tower ',
+  number: '',
+  customer: '',
+  consultant: '',
+  contractor: '',
+};
+
+describe('design schedule helpers', () => {
+  it('turns the form into a request, blanks as nulls and text trimmed', () => {
+    const main = blankBoard(0, 1, 'MDB');
+    main.loads = [{ ...blankLoad(1), description: ' Lights ', power: '1' }];
+    const sub = blankBoard(2, 3, 'DB2', 'MDB');
+    sub.faultLevel = '6';
+    const request = toRequest(INFO, [main, sub], null);
+    expect(request.info.name).toBe('Tower');
+    expect(request.boards[0]).toMatchObject({ name: 'MDB', fed_from: null, location: null });
+    expect(request.boards[0]?.loads[0]).toMatchObject({
+      description: 'Lights',
+      power_kw: '1',
+      power_factor: null,
+      phases: 1,
+    });
+    expect(request.boards[1]).toMatchObject({ fed_from: 'MDB' });
+    expect(request.boards[1]?.supply?.fault_level_ka).toBe('6');
+  });
+
+  it('is complete only when every board names itself and fills every row', () => {
+    const main = blankBoard(0, 1, 'MDB');
+    expect(isComplete(INFO, [main])).toBe(false);
+    main.loads = [{ ...blankLoad(1), description: 'Lights', power: '1' }];
+    expect(isComplete(INFO, [main])).toBe(true);
+    expect(isComplete(INFO, [{ ...main, name: ' ' }])).toBe(false);
+    expect(isComplete({ ...INFO, name: '' }, [main])).toBe(false);
+  });
+
+  it('keys imported rows from the number given', () => {
+    const rows = rowsFrom(
+      [
+        {
+          description: 'AC',
+          load: 'air_conditioning',
+          power_kw: '4',
+          phases: 3,
+          power_factor: '0.85',
+          controlled: false,
+        },
+      ],
+      40,
+    );
+    expect(rows).toEqual([
+      {
+        key: 40,
+        description: 'AC',
+        load: 'air_conditioning',
+        power: '4',
+        phases: '3',
+        powerFactor: '0.85',
+        controlled: false,
+      },
+    ]);
+  });
+});

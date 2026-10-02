@@ -178,3 +178,30 @@ def test_unconfirmed_rules_are_printed_on_the_title_page() -> None:
     sheets = pages.build_drawing_set(_project(), profile.default_profile())
     assert any("not confirmed" in t for t in _texts(sheets[0]))
     assert PageKind.NOTES in profile.default_profile().page_order
+
+
+def test_a_feeder_and_its_sub_board_point_at_each_other() -> None:
+    from app.design import project as project_design
+
+    def schedule(name: str, fed_from: str | None = None) -> DistributionBoardRequest:
+        return DistributionBoardRequest(
+            name=name,
+            fed_from=fed_from,
+            loads=[LoadInput(description="Lights", load=LoadKind.LIGHTING, power_kw=Decimal(1))],
+        )
+
+    boards = project_design.design_boards(
+        [schedule("MDB"), schedule("DB-1", "MDB")], profile.default_profile()
+    )
+    designed = designations.designate_project(
+        DesignProject(info=ProjectInfo(name="Tower"), boards=boards), profile.default_profile()
+    )
+    sheets = pages.build_drawing_set(designed, profile.default_profile())
+    sub_main = next(s for s in sheets if s.title == "Main power" and s.board == "DB-1")
+    feeder_page = next(
+        s for s in sheets if s.board == "MDB" and any(t.startswith("to DB-1") for t in _texts(s))
+    )
+    assert f"to DB-1 /{sub_main.number}.0" in _texts(feeder_page)
+    fed = next(t for t in _texts(sub_main) if t.startswith("from MDB"))
+    assert fed.startswith("from MDB -Q")
+    assert fed.endswith(f"/{feeder_page.number}.0")

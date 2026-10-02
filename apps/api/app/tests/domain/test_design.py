@@ -241,3 +241,26 @@ def test_a_plc_program_needs_a_controlled_circuit() -> None:
     project = design.design_board(session=None, user=USER, request=_request()).project  # type: ignore[arg-type]
     with pytest.raises(ValidationError, match="PLC-switched"):
         design.write_plc_program(user=USER, request=PlcProgramRequest(project=project))
+
+
+def test_a_project_of_boards_is_designed_and_designated_per_board() -> None:
+    from app.models.schemas.design import ProjectDesignRequest
+
+    def board(name: str, fed_from: str | None = None) -> DistributionBoardRequest:
+        return DistributionBoardRequest(
+            name=name,
+            fed_from=fed_from,
+            loads=[LoadInput(description="Lights", load=LoadKind.LIGHTING, power_kw=Decimal(1))],
+        )
+
+    response = design.design_project(
+        session=None,  # type: ignore[arg-type]
+        user=USER,
+        request=ProjectDesignRequest(
+            info=ProjectInfo(name="Tower"), boards=[board("MDB"), board("DB-1", "MDB")]
+        ),
+    )
+    main, sub = response.project.boards
+    assert [c.feeds for c in main.circuits].count("DB-1") == 1
+    assert main.devices[0].designation.function == "MDB"  # type: ignore[union-attr]
+    assert sub.devices[0].designation.function == "DB-1"  # type: ignore[union-attr]

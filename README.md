@@ -279,6 +279,21 @@ circuit's arithmetic is listed ("7 x 150 W = 1.05 kW. typical") for the
 engineer to check, and each suggestion is charged to the tenant's monthly
 model allowance.
 
+A project can hold several boards (`POST /design/project`,
+`app/design/project.py`). A sub-board names the board that feeds it, and
+boards are designed leaves first:
+
+- **Feeder sizing:** each feeder is sized from its sub-board as designed. Its
+  Ib is the sub-board's most loaded line conductor, the same current that
+  board's incomer is rated for, so no feeder load is typed in by hand.
+- **Checks:** names, the feeding graph (an unknown board, a board feeding
+  itself, a loop) and supply compatibility are checked first, and each
+  refusal names the board.
+- **Drawings:** the feeder and the sub-board cross-reference each other by
+  page and column ("to DB-1 /4.0", "from MDB -Q5 /6.0").
+- **Not checked:** discrimination between a feeder and the incomer it
+  supplies is not checked, and the board says so.
+
 A designed board can be **priced** from the company's price list (Excel
 or CSV) and rates (`app/design/quotation.py`):
 

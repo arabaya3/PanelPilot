@@ -346,6 +346,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
                 upstream_id=upstream.get(item.index),
                 device_ids=circuit_devices,
                 cable_id=cable.id,
+                feeds=item.load.feeds,
             )
         )
 
@@ -423,4 +424,5 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
         cables=cables,
         circuits=circuits,
         notes=notes,
+        fed_from=request.fed_from,
     )

@@ -461,7 +461,18 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile) -
         )
 
 
-def _draw_main(sheet: Sheet, plan: _Plan, numbers: dict[str, int], first: bool) -> None:
+def _fed_from_text(board: Board, numbers: dict[str, int], supplies: dict[str, str]) -> str:
+    """Where a sub-board's supply comes from, with the page and column it is drawn on."""
+    text = f"from {board.fed_from} {supplies.get(board.name, '')}".rstrip()
+    page = numbers.get(f"feeder:{board.name}")
+    if page:
+        text += f" /{page}.{numbers.get(f'feedercol:{board.name}', 0)}"
+    return text
+
+
+def _draw_main(
+    sheet: Sheet, plan: _Plan, numbers: dict[str, int], supplies: dict[str, str], first: bool
+) -> None:
     board = plan.board
     assert board is not None
     bus_y = AREA_TOP + 52.0
@@ -477,6 +488,10 @@ def _draw_main(sheet: Sheet, plan: _Plan, numbers: dict[str, int], first: bool) 
         )
         if supply.fault_level_ka:
             sheet.add(Text(x, AREA_TOP + 13, f"Ik {_plain(supply.fault_level_ka)} kA", size=2.5))
+        if board.fed_from:
+            sheet.add(
+                Text(x + 30.0, AREA_TOP + 6, _fed_from_text(board, numbers, supplies), size=2.5)
+            )
         top = AREA_TOP + 18.0
         for incomer_id in board.incomer_ids:
             incomer = board.device(incomer_id)
@@ -582,6 +597,10 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
         y = end + 6.0
         for n, line in enumerate(textwrap.wrap(circuit.description, 20)[:4]):
             sheet.add(Text(x, y + n * 3.0, line, size=2.2, anchor=Anchor.MIDDLE))
+        if circuit.feeds:
+            target = numbers.get(f"main:{circuit.feeds}:busbar")
+            reference = f"to {circuit.feeds}" + (f" /{target}.0" if target else "")
+            sheet.add(Text(x, y + 19.0, reference, size=2.2, anchor=Anchor.MIDDLE))
         sheet.add(
             Text(
                 x,
@@ -630,9 +649,20 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
         elif plan.kind is PageKind.DISTRIBUTION:
             key = plan.group or "busbar"
             numbers.setdefault(f"dist:{board.id}:{key}", number)
-            for circuit in plan.payload:
-                if isinstance(circuit, Circuit) and circuit.upstream_id is None:
+            circuits = [c for c in plan.payload if isinstance(c, Circuit)]
+            for column, circuit in enumerate(circuits):
+                if circuit.upstream_id is None:
                     numbers.setdefault(f"dist:{board.id}:{circuit.id}", number)
+                if circuit.feeds:
+                    numbers[f"feeder:{circuit.feeds}"] = number
+                    numbers[f"feedercol:{circuit.feeds}"] = column
+    # Each sub-board's feeder breaker, by the sub-board it supplies.
+    supplies = {
+        circuit.feeds: _product(board.device(circuit.device_ids[0]))
+        for board in project.boards
+        for circuit in board.circuits
+        if circuit.feeds and circuit.device_ids
+    }
 
     total = len(plans)
     contents = [
@@ -657,7 +687,7 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
         elif plan.kind is PageKind.SINGLE_LINE and plan.board is not None:
             first = plan.board.id not in started
             started.add(plan.board.id)
-            _draw_main(sheet, plan, numbers, first)
+            _draw_main(sheet, plan, numbers, supplies, first)
         elif plan.kind is PageKind.DISTRIBUTION:
             _draw_distribution(sheet, plan, numbers)
         elif plan.kind is PageKind.NOTES:
