@@ -18,6 +18,7 @@ from app.api import deps
 from app.core.config import RateLimitBackend
 from app.core.errors import install_exception_handlers
 from app.domain.rate_limit import (
+    DESIGN_POLICY,
     LOGIN_ACCOUNT_POLICY,
     SIGNUP_POLICY,
     TRIAL_REQUESTS_PER_WINDOW,
@@ -57,6 +58,10 @@ def client(store: InMemoryRateLimitStore) -> Iterator[TestClient]:
 
     @app.post("/signup", dependencies=[Depends(deps.enforce_signup_rate_limit)])
     def signup() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/design", dependencies=[Depends(deps.enforce_design_rate_limit)])
+    def design() -> dict[str, bool]:
         return {"ok": True}
 
     @app.post("/login", dependencies=[Depends(deps.enforce_login_rate_limit)])
@@ -111,7 +116,8 @@ def test_reads_do_not_count_towards_the_write_limit(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "policy"), [("/trial", TRIAL_START_POLICY), ("/signup", SIGNUP_POLICY)]
+    ("path", "policy"),
+    [("/trial", TRIAL_START_POLICY), ("/signup", SIGNUP_POLICY), ("/design", DESIGN_POLICY)],
 )
 def test_auth_endpoints_have_their_own_limits(
     client: TestClient, path: str, policy: RateLimitPolicy

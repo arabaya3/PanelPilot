@@ -7,6 +7,7 @@ under ``app/domain`` or ``app/ai`` ever imports ``HTTPException``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -14,7 +15,46 @@ from fastapi.responses import JSONResponse
 
 
 class PanelPilotError(Exception):
-    """Base class for every error this application raises deliberately."""
+    """Base class for every error this application raises deliberately.
+
+    An error the reader sees may carry a ``code`` and the values it names
+    (``params``), so the page can say it in the reader's language; the
+    message stays the English, for logs and as the page's fallback.
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        code: str | None = None,
+        params: Mapping[str, object] | None = None,
+    ) -> None:
+        """Record the message and, for a reader-facing error, its code.
+
+        Args:
+            message: Human-readable explanation, in English.
+            code: Stable identifier the page renders in the reader's language.
+            params: The values the message names.
+        """
+        super().__init__(message)
+        self.code = code
+        self.params = {name: str(value) for name, value in (params or {}).items()}
+
+    def about(self, subject: str) -> ValidationError:
+        """The same refusal, said about one thing: "Pump: <message>".
+
+        Keeps the code and params, adding ``subject``, so the page can prefix
+        the thing it is about to its own sentence.
+
+        Args:
+            subject: What the refusal is about (a load, a board, a group).
+
+        Returns:
+            A validation error naming the subject.
+        """
+        return ValidationError(
+            f"{subject}: {self}", code=self.code, params={**self.params, "subject": subject}
+        )
 
 
 class NotFoundError(PanelPilotError):
@@ -61,7 +101,7 @@ class TooManyRequestsError(PanelPilotError):
             retry_after_seconds: Whole seconds until a retry can succeed,
                 sent as ``Retry-After`` so a client need not parse the text.
         """
-        super().__init__(message)
+        super().__init__(message, code="rate_limited")
         self.retry_after_seconds = retry_after_seconds
 
 
@@ -130,10 +170,13 @@ def install_exception_handlers(app: FastAPI) -> None:
             # RFC 9110 §10.2.3: the machine-readable half of "please wait",
             # so a client backs off by the number rather than guessing.
             headers["Retry-After"] = str(exc.retry_after_seconds)
-        return JSONResponse(
-            status_code=status,
-            content={"error": type(exc).__name__, "detail": str(exc) or status.phrase},
-            headers=headers or None,
-        )
+        content: dict[str, object] = {
+            "error": type(exc).__name__,
+            "detail": str(exc) or status.phrase,
+        }
+        if exc.code is not None:
+            content["code"] = exc.code
+            content["params"] = exc.params
+        return JSONResponse(status_code=status, content=content, headers=headers or None)
 
     app.add_exception_handler(PanelPilotError, handle_panelpilot_error)

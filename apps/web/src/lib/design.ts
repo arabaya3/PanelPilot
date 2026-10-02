@@ -20,7 +20,15 @@ export type DesignNote = components['schemas']['DesignNote'];
  * refusing an input (a load no table protects, a malformed company setting)
  * -- an answer to show, with `detail` saying why, not a fault.
  */
-type Failure = { kind: 'refused'; detail: string } | { kind: 'unauthorized' } | { kind: 'failed' };
+export type Refusal = {
+  kind: 'refused';
+  /** The reason in English, as the server words it. */
+  detail: string;
+  /** A code the page can say in the reader's language, with its values. */
+  code?: string;
+  params?: Record<string, string>;
+};
+type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
 
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
 export type ExportOutcome = { kind: 'exported'; blob: Blob; filename: string } | Failure;
@@ -45,6 +53,18 @@ function detailOf(payload: unknown): string {
       .join('; ');
   }
   return '';
+}
+
+function refusalOf(payload: unknown): Refusal {
+  const refusal: Refusal = { kind: 'refused', detail: detailOf(payload) };
+  const body = payload as { code?: unknown; params?: unknown } | null;
+  if (typeof body?.code === 'string') {
+    refusal.code = body.code;
+    if (typeof body.params === 'object' && body.params !== null) {
+      refusal.params = body.params as Record<string, string>;
+    }
+  }
+  return refusal;
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -86,8 +106,9 @@ async function call<T>(
   if (response.status === 401) return { kind: 'unauthorized' };
   const special = extra?.(response);
   if (special) return special;
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(await readJson(response)) };
+  // 429 too: the design routes' per-address budget, said with a code.
+  if (response.status === 400 || response.status === 422 || response.status === 429) {
+    return refusalOf(await readJson(response));
   }
   if (!response.ok) return { kind: 'failed' };
   const payload = await readJson(response);
@@ -138,8 +159,9 @@ export async function exportDesign(
     return { kind: 'failed' };
   }
   if (response.status === 401) return { kind: 'unauthorized' };
-  if (response.status === 400 || response.status === 422) {
-    return { kind: 'refused', detail: detailOf(await readJson(response)) };
+  // 429 too: the design routes' per-address budget, said with a code.
+  if (response.status === 400 || response.status === 422 || response.status === 429) {
+    return refusalOf(await readJson(response));
   }
   if (!response.ok) return { kind: 'failed' };
   const disposition = response.headers.get('Content-Disposition') ?? '';

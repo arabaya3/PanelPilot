@@ -206,7 +206,9 @@ def export_design(
         content = export_lists.circuit_schedule(project).encode("utf-8")
     elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
         if request.pricing is None:
-            raise ValidationError("a quotation needs the company's pricing settings")
+            raise ValidationError(
+                "a quotation needs the company's pricing settings", code="quotation_needs_pricing"
+            )
         priced = quotation.price_project(project, request.pricing)
         content = (
             quotation_pdf.render_quotation_pdf(priced, project, company=company.name)
@@ -338,7 +340,8 @@ def _program(project: DesignProject) -> plc_program.PlcProgram:
     program = plc_program.build_program(project)
     if program is None:
         raise ValidationError(
-            "no circuit is PLC-switched: mark the loads the PLC controls, then design again"
+            "no circuit is PLC-switched: mark the loads the PLC controls, then design again",
+            code="plc_nothing_switched",
         )
     return program
 

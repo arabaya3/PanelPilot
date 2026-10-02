@@ -21,6 +21,7 @@ import redis
 from app.core.errors import TooManyRequestsError, ValidationError
 from app.domain import rate_limit as rate_limit_domain
 from app.domain.rate_limit import (
+    DESIGN_POLICY,
     LOGIN_ACCOUNT_POLICY,
     LOGIN_IP_POLICY,
     SIGNUP_POLICY,
@@ -34,6 +35,7 @@ from app.domain.rate_limit import (
     RateLimitStoreUnavailableError,
     RedisRateLimitStore,
     WindowDecision,
+    check_design_rate_limit,
     check_login_rate_limit,
     check_signup_rate_limit,
     check_trial_rate_limit,
@@ -459,6 +461,7 @@ def test_each_auth_limit_counts_in_its_own_namespace() -> None:
     [
         (check_trial_start_rate_limit, TRIAL_START_POLICY),
         (check_signup_rate_limit, SIGNUP_POLICY),
+        (check_design_rate_limit, DESIGN_POLICY),
     ],
 )
 def test_trial_start_and_signup_are_limited_per_address(

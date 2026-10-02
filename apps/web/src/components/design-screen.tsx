@@ -7,6 +7,7 @@ import { AppShell } from '@/components/app-shell';
 import { Field } from '@/components/cable-sizing-panel';
 import { DesignResult } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import { useOutcomeText } from '@/components/design/note-text';
 import {
   blankBoard,
   blankLoad,
@@ -101,6 +102,7 @@ export function DesignScreen({
   saveImpl?: typeof saveBlob;
 }) {
   const t = useTranslations('design');
+  const say = useOutcomeText();
   const id = useId();
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
@@ -207,7 +209,7 @@ export function DesignScreen({
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
-      setExportError(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setExportError(say(outcome));
     }
   }
 
@@ -433,9 +435,7 @@ export function DesignScreen({
 
       {result.kind === 'error' && (
         <p role="alert" className="mb-4 text-sm text-danger" data-testid="design-error">
-          {result.outcome.kind === 'refused' && result.outcome.detail
-            ? result.outcome.detail
-            : t('error')}
+          {say(result.outcome)}
         </p>
       )}
 

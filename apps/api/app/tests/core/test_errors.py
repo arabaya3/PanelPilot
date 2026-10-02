@@ -55,6 +55,8 @@ def test_too_many_requests_is_a_429_with_retry_after(client: TestClient) -> None
     assert response.json() == {
         "error": "TooManyRequestsError",
         "detail": "slow down — wait 2 minutes",
+        "code": "rate_limited",
+        "params": {},
     }
 
 
@@ -88,3 +90,40 @@ def test_status_for_walks_the_mapping(error: PanelPilotError, status: HTTPStatus
 def test_too_many_requests_is_not_a_validation_error() -> None:
     """A subclass of ValidationError would inherit its 422 by MRO."""
     assert not issubclass(TooManyRequestsError, ValidationError)
+
+
+def test_a_coded_error_carries_its_code_and_values() -> None:
+    from fastapi import FastAPI
+
+    from app.core.errors import ValidationError, install_exception_handlers
+
+    app = FastAPI()
+
+    @app.get("/refused")
+    def refused() -> None:
+        raise ValidationError(
+            "two boards are named A", code="board_name_twice", params={"board": "A"}
+        )
+
+    @app.get("/plain")
+    def plain() -> None:
+        raise ValidationError("nope")
+
+    install_exception_handlers(app)
+    with TestClient(app) as test_client:
+        assert test_client.get("/refused").json() == {
+            "error": "ValidationError",
+            "detail": "two boards are named A",
+            "code": "board_name_twice",
+            "params": {"board": "A"},
+        }
+        assert "code" not in test_client.get("/plain").json()
+
+
+def test_about_names_the_subject_and_keeps_the_code() -> None:
+    from app.core.errors import ValidationError
+
+    said = ValidationError("too big", code="x", params={"current": 3}).about("Pump")
+    assert str(said) == "Pump: too big"
+    assert said.code == "x"
+    assert said.params == {"current": "3", "subject": "Pump"}

@@ -101,7 +101,9 @@ def _size(
 ) -> _Sized:
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
-        raise ValidationError(f"{load.description}: a three-phase load on a single-phase supply")
+        raise ValidationError(
+            "a three-phase load on a single-phase supply", code="three_phase_on_single_phase"
+        ).about(load.description)
     if load.starter is not None:
         return _size_motor(request, load, index)
     power_factor = load.power_factor or DEFAULT_POWER_FACTOR
@@ -148,7 +150,7 @@ def _size(
             three_phase=three_phase,
         )
     except ValidationError as exc:
-        raise ValidationError(f"{load.description}: {exc}") from exc
+        raise exc.about(load.description) from exc
     section = cable.cross_section_mm2
     if rule and rule.cable_mm2 is not None and rule.cable_mm2 > section:
         section = rule.cable_mm2
@@ -183,7 +185,7 @@ def _size_motor(request: DistributionBoardRequest, load: LoadInput, index: int) 
             three_phase=True,
         )
     except ValidationError as exc:
-        raise ValidationError(f"{load.description}: {exc}") from exc
+        raise exc.about(load.description) from exc
     return _Sized(
         load=load,
         index=index,
@@ -279,7 +281,9 @@ def _rccb_rating(current: Decimal) -> Decimal:
             return rating
     raise ValidationError(
         f"a residual current group carrying {_plain(current)} A exceeds the largest "
-        f"preferred RCCB rating held ({_plain(RCCB_RATINGS[-1])} A)"
+        f"preferred RCCB rating held ({_plain(RCCB_RATINGS[-1])} A)",
+        code="rccb_group_too_large",
+        params={"current": _plain(current), "largest": _plain(RCCB_RATINGS[-1])},
     )
 
 
@@ -351,7 +355,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
             try:
                 group_rated = Decimal(feeder_protection.smallest_rating(loaded))
             except ValidationError as exc:
-                raise ValidationError(f"residual current group {group_number}: {exc}") from exc
+                raise exc.about(f"RCD group {group_number}") from exc
             breaker_id = f"g{group_number}-breaker"
             rcd_id = f"g{group_number}-rcd"
             devices.append(

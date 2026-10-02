@@ -15,6 +15,7 @@ from app.api import deps
 from app.api.v1.routes import design as design_route
 from app.core.db import get_session
 from app.core.errors import install_exception_handlers
+from app.domain.rate_limit import InMemoryRateLimitStore
 from app.models.schemas.auth import CurrentUser, Role
 
 BOARD = {
@@ -41,6 +42,8 @@ def _client() -> Iterator[TestClient]:
     app.include_router(design_route.router, prefix="/design")
     app.dependency_overrides[deps.get_current_user] = _user
     app.dependency_overrides[get_session] = object
+    store = InMemoryRateLimitStore()
+    app.dependency_overrides[deps.get_rate_limit_store] = lambda: store
     install_exception_handlers(app)
     with TestClient(app) as test_client:
         yield test_client
@@ -211,3 +214,12 @@ def test_a_project_of_boards_is_designed(client: TestClient) -> None:
         },
     )
     assert looped.status_code == 422
+
+
+def test_the_design_routes_share_one_per_address_budget(client: TestClient) -> None:
+    from app.domain.rate_limit import DESIGN_POLICY
+
+    for _ in range(DESIGN_POLICY.limit):
+        assert client.post("/design/distribution-board", json=BOARD).status_code == 200
+    refused = client.post("/design/plc", json={"project": {}})
+    assert refused.status_code == 429

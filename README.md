@@ -214,7 +214,14 @@ level, the cable conditions, and whether the rules were confirmed. Every
 note, import warning and suggestion note is a code with its values
 (`app/design/notes.py`). The page renders it in the reader's language
 (en/ar/he), and a test keeps the catalogues in step with the codes. The
-drawing set prints the English text, since its frame fonts are Latin-only. Devices
+drawing set prints the English text, since its frame fonts are Latin-only.
+A refusal the engineer can meet works the same way: a load the tables do not
+cover, a board graph that loops, an unreadable file. It carries a `code` and
+`params` beside its English `detail` (`PanelPilotError(code=..., params=...)`,
+and `.about(subject)` to name the load or board), and the page says it from
+`design.errors`. The design routes share a per-address budget of 240 requests
+in 5 minutes (`DESIGN_POLICY`). That is generous for a site of engineers
+re-exporting drawings, and holds a script to under one drawing set a second. Devices
 carry ratings, not articles, until a catalogue is chosen.
 
 The **drawing set** (`app/design/pages.py`, `render_pdf.py`) is laid out once

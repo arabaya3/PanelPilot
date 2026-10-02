@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { useOutcomeText } from '@/components/design/note-text';
 import { exportDesign, writePlcProgram, type DesignProject, type PlcProgram } from '@/lib/design';
 
 /**
@@ -29,6 +30,7 @@ export function PlcPanel({
   saveImpl: (blob: Blob, filename: string) => void;
 }) {
   const t = useTranslations('design.plc');
+  const say = useOutcomeText();
   const [program, setProgram] = useState<PlcProgram | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -41,7 +43,7 @@ export function PlcPanel({
     if (outcome.kind === 'written') {
       setProgram(outcome.program);
     } else {
-      setMessage(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setMessage(say(outcome));
     }
   }
 
@@ -50,7 +52,7 @@ export function PlcPanel({
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
-      setMessage(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setMessage(say(outcome));
     }
   }
 

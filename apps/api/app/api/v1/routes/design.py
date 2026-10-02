@@ -9,7 +9,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Response, UploadFile
 
-from app.api.deps import CurrentUserDep, SessionDep, enforce_trial_rate_limit
+from app.api.deps import (
+    CurrentUserDep,
+    SessionDep,
+    enforce_design_rate_limit,
+    enforce_trial_rate_limit,
+)
 from app.domain import design as design_domain
 from app.domain import model_budget
 from app.models.schemas.design import (
@@ -27,7 +32,9 @@ from app.models.schemas.design import (
     ScheduleSuggestionRequest,
 )
 
-router = APIRouter()
+# Every design route costs CPU (drawing sets, PDF table scans) and is open to a
+# trial session, so all of them share one per-address budget.
+router = APIRouter(dependencies=[Depends(enforce_design_rate_limit)])
 
 
 @router.post("/distribution-board", response_model=BoardDesignResponse)
