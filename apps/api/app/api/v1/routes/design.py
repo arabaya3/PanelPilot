@@ -15,12 +15,13 @@ from app.api.deps import (
     enforce_design_rate_limit,
     enforce_trial_rate_limit,
 )
+from app.domain import company_settings, design_projects, model_budget
 from app.domain import design as design_domain
-from app.domain import design_projects, model_budget
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
+    CompanySettings,
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
@@ -33,6 +34,7 @@ from app.models.schemas.design import (
     Quotation,
     QuotationRequest,
     ReviseProjectRequest,
+    SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
     ScheduleSuggestionRequest,
@@ -202,6 +204,20 @@ def delete_project(project_id: str, session: SessionDep, user: CurrentUserDep) -
     """Delete a saved project and all its revisions."""
     design_projects.delete_project(session=session, user=user, project_id=project_id)
     return Response(status_code=204)
+
+
+@router.get("/company-settings", response_model=CompanySettings)
+def get_company_settings(session: SessionDep, user: CurrentUserDep) -> CompanySettings:
+    """The caller's company profile settings, as saved."""
+    return company_settings.get_settings(session=session, user=user)
+
+
+@router.put("/company-settings", response_model=CompanySettings)
+def save_company_settings(
+    payload: SaveCompanySettings, session: SessionDep, user: CurrentUserDep
+) -> CompanySettings:
+    """Save the caller's company profile settings, refused if a design would refuse them."""
+    return company_settings.save_settings(session=session, user=user, settings=payload.settings)
 
 
 @router.post("/markups", response_model=MarkupReport)

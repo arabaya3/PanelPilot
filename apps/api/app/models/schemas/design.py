@@ -1077,6 +1077,31 @@ class SavedProject(BaseModel):
     request: ProjectDesignRequest
 
 
+class CompanySettings(BaseModel):
+    """A tenant's saved company profile settings.
+
+    Attributes:
+        settings: What the company does differently from the default
+            profile; ``None`` while none are saved.
+        updated_by: Who saved them last.
+        updated_at: When, ISO 8601.
+    """
+
+    settings: dict[str, Any] | None = None
+    updated_by: str = ""
+    updated_at: str | None = None
+
+
+class SaveCompanySettings(BaseModel):
+    """Company settings to save.
+
+    Attributes:
+        settings: What the company does differently from the default profile.
+    """
+
+    settings: dict[str, Any]
+
+
 class MarkupItem(BaseModel):
     """One reviewer's mark read off a drawing set PDF.
 

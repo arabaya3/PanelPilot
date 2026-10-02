@@ -310,3 +310,25 @@ def test_markups_are_read_from_an_upload(
     assert seen["data"] == b"%PDF"
     assert seen["project_json"] == "{}"
     assert seen["profile_json"] == '{"key": "acme"}'
+
+
+def test_company_settings_routes_call_the_domain(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import company_settings
+    from app.models.schemas.design import CompanySettings
+
+    saved = CompanySettings(settings={"key": "acme"}, updated_by="e", updated_at="now")
+    seen: list[object] = []
+    monkeypatch.setattr(company_settings, "get_settings", lambda **_: saved)
+
+    def save(**kwargs: object) -> CompanySettings:
+        seen.append(kwargs["settings"])
+        return saved
+
+    monkeypatch.setattr(company_settings, "save_settings", save)
+    assert client.get("/design/company-settings").json()["settings"] == {"key": "acme"}
+    response = client.put("/design/company-settings", json={"settings": {"key": "acme"}})
+    assert response.status_code == 200
+    assert seen == [{"key": "acme"}]
+    assert client.put("/design/company-settings", json={}).status_code == 422

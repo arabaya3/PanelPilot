@@ -48,6 +48,8 @@ export type ProjectOutcome = { kind: 'saved'; project: SavedProject } | Failure;
 export type ProjectListOutcome = { kind: 'listed'; page: ProjectPage } | Failure;
 export type DeleteOutcome = { kind: 'deleted' } | Failure;
 export type MarkupOutcome = { kind: 'read'; report: MarkupReport } | Failure;
+export type CompanySettings = components['schemas']['CompanySettings'];
+export type SettingsOutcome = { kind: 'settings'; saved: CompanySettings } | Failure;
 
 /** Options every call takes, so tests can stand in for the network. */
 type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
@@ -97,7 +99,7 @@ async function call<T>(
   body: unknown,
   accept: (payload: object) => T | null,
   extra?: (response: Response) => T | null,
-  method: 'POST' | 'GET' | 'DELETE' = 'POST',
+  method: 'POST' | 'PUT' | 'GET' | 'DELETE' = 'POST',
 ): Promise<T | Failure> {
   const { token, fetchImpl = fetch, endpoint = defaultEndpoint } = transport;
   const isForm = body instanceof FormData;
@@ -106,7 +108,7 @@ async function call<T>(
   try {
     response = await fetchImpl(
       endpoint,
-      method !== 'POST'
+      method === 'GET' || method === 'DELETE'
         ? { method, headers: auth }
         : {
             method,
@@ -340,6 +342,31 @@ export function approveRevision(
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
     { approver },
     saved,
+  );
+}
+
+const COMPANY_SETTINGS = '/api/v1/design/company-settings';
+
+function settingsOf(payload: object): SettingsOutcome | null {
+  return has(payload, 'settings') ? { kind: 'settings', saved: payload as CompanySettings } : null;
+}
+
+/** The company's saved settings: `GET /api/v1/design/company-settings`. */
+export function getCompanySettings(options: Transport): Promise<SettingsOutcome> {
+  return call<SettingsOutcome>(options, COMPANY_SETTINGS, undefined, settingsOf, undefined, 'GET');
+}
+
+/** Save the company's settings for every later project: `PUT .../company-settings`. */
+export function saveCompanySettings(
+  options: Transport & { settings: Record<string, unknown> },
+): Promise<SettingsOutcome> {
+  return call<SettingsOutcome>(
+    options,
+    COMPANY_SETTINGS,
+    { settings: options.settings },
+    settingsOf,
+    undefined,
+    'PUT',
   );
 }
 

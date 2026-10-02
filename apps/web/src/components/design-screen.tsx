@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field } from '@/components/cable-sizing-panel';
+import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { DesignResult } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
 import { useOutcomeText } from '@/components/design/note-text';
@@ -503,21 +504,19 @@ export function DesignScreen({
 
         <details className="card p-4 md:p-5">
           <summary className="cursor-pointer text-sm font-semibold">{t('profile.title')}</summary>
-          <p className="my-2 text-sm text-text-muted">{t('profile.help')}</p>
-          <label htmlFor={`${id}-profile`} className="sr-only">
-            {t('profile.title')}
-          </label>
-          <textarea
-            id={`${id}-profile`}
-            dir="ltr"
-            rows={6}
-            value={profileText}
-            placeholder='{"key": "my-company", "name": "My Company", "max_circuits_per_rcd": 8}'
-            onChange={(event) => {
-              setProfileText(event.target.value);
-            }}
-            className="input w-full font-mono text-sm"
-          />
+          <div className="mt-3">
+            <CompanySettingsPanel
+              token={token}
+              text={profileText}
+              onText={setProfileText}
+              onLoaded={(settings) => {
+                const loaded = profileFrom(settings);
+                setProfileText((current) => (current === '' ? loaded.text : current));
+                if (loaded.language) setDrawingLanguage(loaded.language);
+              }}
+              language={drawingLanguage}
+            />
+          </div>
         </details>
 
         <div>

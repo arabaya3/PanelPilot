@@ -541,6 +541,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/company-settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Company Settings
+     * @description The caller's company profile settings, as saved.
+     */
+    get: operations['get_company_settings_api_v1_design_company_settings_get'];
+    /**
+     * Save Company Settings
+     * @description Save the caller's company profile settings, refused if a design would refuse them.
+     */
+    put: operations['save_company_settings_api_v1_design_company_settings_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/markups': {
     parameters: {
       query?: never;
@@ -1520,6 +1544,29 @@ export interface components {
        * @default
        */
       rules_confirmed_by: string;
+    };
+    /**
+     * CompanySettings
+     * @description A tenant's saved company profile settings.
+     *
+     *     Attributes:
+     *         settings: What the company does differently from the default
+     *             profile; ``None`` while none are saved.
+     *         updated_by: Who saved them last.
+     *         updated_at: When, ISO 8601.
+     */
+    CompanySettings: {
+      /** Settings */
+      settings?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Updated By
+       * @default
+       */
+      updated_by: string;
+      /** Updated At */
+      updated_at?: string | null;
     };
     /**
      * ConductorMaterial
@@ -3498,6 +3545,19 @@ export interface components {
       approved_at?: string | null;
     };
     /**
+     * SaveCompanySettings
+     * @description Company settings to save.
+     *
+     *     Attributes:
+     *         settings: What the company does differently from the default profile.
+     */
+    SaveCompanySettings: {
+      /** Settings */
+      settings: {
+        [key: string]: unknown;
+      };
+    };
+    /**
      * SaveProjectRequest
      * @description A new project to save, as its first revision.
      *
@@ -4969,6 +5029,59 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_company_settings_api_v1_design_company_settings_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanySettings'];
+        };
+      };
+    };
+  };
+  save_company_settings_api_v1_design_company_settings_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveCompanySettings'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanySettings'];
         };
       };
       /** @description Validation Error */

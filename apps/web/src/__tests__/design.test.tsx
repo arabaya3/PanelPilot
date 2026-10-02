@@ -163,7 +163,7 @@ describe('board design', () => {
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
     );
     fillSchedule();
-    const settings = screen.getByLabelText('Company settings (optional)');
+    const settings = screen.getByLabelText('Settings as JSON');
     fireEvent.change(settings, { target: { value: '{not json' } });
     await submit();
     expect((await screen.findByTestId('design-error')).textContent).toBe(
