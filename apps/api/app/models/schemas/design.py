@@ -521,6 +521,12 @@ class CompanyProfile(BaseModel):
         default_max_voltage_drop_percent: The limit for any other load.
         max_starting_voltage_drop_percent: The largest drop from the origin
             to a motor's terminals while it starts.
+        rail_widths_mm: The DIN-rail width of one pole of each kind of
+            device, from the datasheets of the ranges the company fits. A
+            kind not given has no width on the layout; the default holds only
+            what is sourced (ABB S200 miniature breakers, 17.5 mm a pole).
+        usable_rail_mm: The usable rail length per row of the company's
+            enclosure; a row longer than this continues on the next.
         rules_confirmed_by: Who confirmed the design rules. Empty while they
             are this software's defaults, which the drawing then says.
     """
@@ -550,6 +556,10 @@ class CompanyProfile(BaseModel):
     )
     default_max_voltage_drop_percent: Decimal = Decimal(5)
     max_starting_voltage_drop_percent: Decimal = Decimal(15)
+    rail_widths_mm: dict[DeviceKind, Decimal] = Field(
+        default_factory=lambda: {DeviceKind.CIRCUIT_BREAKER: Decimal("17.5")}
+    )
+    usable_rail_mm: Decimal | None = Field(default=None, gt=0, le=5000)
     rules_confirmed_by: str = ""
 
     @model_validator(mode="after")
