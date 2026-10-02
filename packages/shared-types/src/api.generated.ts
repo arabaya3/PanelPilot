@@ -302,6 +302,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/distribution-board': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Design Distribution Board */
+    post: operations['design_distribution_board_api_v1_design_distribution_board_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Export Design */
+    post: operations['export_design_api_v1_design_export_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -643,6 +677,110 @@ export interface components {
       value: string;
       source: components['schemas']['Citation'];
     };
+    /**
+     * Board
+     * @description One panel or distribution board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         name: As the project names it ("DBG-HALL").
+     *         function: Its IEC 81346 function aspect; defaults to the name.
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         incomer_ids: The incoming devices, in order from the supply.
+     *         devices: Every device in the board.
+     *         cables: Every outgoing cable.
+     *         circuits: The outgoing circuits, in the order they are drawn.
+     *         notes: What the design could not settle, for the reviewer.
+     */
+    'Board-Input': {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Input'];
+      /** Incomer Ids */
+      incomer_ids?: string[];
+      /** Devices */
+      devices?: components['schemas']['Device-Input'][];
+      /** Cables */
+      cables?: components['schemas']['Cable-Input'][];
+      /** Circuits */
+      circuits?: components['schemas']['Circuit-Input'][];
+      /** Notes */
+      notes?: string[];
+    };
+    /**
+     * Board
+     * @description One panel or distribution board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         name: As the project names it ("DBG-HALL").
+     *         function: Its IEC 81346 function aspect; defaults to the name.
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         incomer_ids: The incoming devices, in order from the supply.
+     *         devices: Every device in the board.
+     *         cables: Every outgoing cable.
+     *         circuits: The outgoing circuits, in the order they are drawn.
+     *         notes: What the design could not settle, for the reviewer.
+     */
+    'Board-Output': {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Output'];
+      /** Incomer Ids */
+      incomer_ids?: string[];
+      /** Devices */
+      devices?: components['schemas']['Device-Output'][];
+      /** Cables */
+      cables?: components['schemas']['Cable-Output'][];
+      /** Circuits */
+      circuits?: components['schemas']['Circuit-Output'][];
+      /** Notes */
+      notes?: string[];
+    };
+    /**
+     * BoardDesignRequest
+     * @description A distribution board to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         board: The board's load schedule and conditions.
+     *         profile: The company's profile settings (only what differs from the
+     *             default); ``None`` designs under the default profile.
+     */
+    BoardDesignRequest: {
+      info: components['schemas']['ProjectInfo'];
+      board: components['schemas']['DistributionBoardRequest'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * BoardDesignResponse
+     * @description A designed board, issued under the profile it was designed with.
+     *
+     *     Attributes:
+     *         project: The project, designated.
+     *         profile: The profile applied, in full.
+     */
+    BoardDesignResponse: {
+      project: components['schemas']['DesignProject-Output'];
+      profile: components['schemas']['CompanyProfile'];
+    };
     /** Body_upload_image_api_v1_images_post */
     Body_upload_image_api_v1_images_post: {
       /** File */
@@ -697,6 +835,80 @@ export interface components {
       | 'fault_level_assumed'
       | 'drive_fuses_not_listed'
       | 'feeder_breaking_capacity';
+    /**
+     * Cable
+     * @description An outgoing cable.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         designation: Assigned from the company profile.
+     *         cores: Number of cores, protective conductor included.
+     *         cross_section_mm2: Of each line conductor.
+     *         material: "Cu" or "Al".
+     *         insulation: "PVC" or "XLPE".
+     *         length_m: Where known.
+     *         part_key: The cable type, where selected.
+     */
+    'Cable-Input': {
+      /** Id */
+      id: string;
+      designation?: components['schemas']['Designation'] | null;
+      /** Cores */
+      cores: number;
+      /** Cross Section Mm2 */
+      cross_section_mm2: number | string;
+      /**
+       * Material
+       * @default Cu
+       */
+      material: string;
+      /**
+       * Insulation
+       * @default PVC
+       */
+      insulation: string;
+      /** Length M */
+      length_m?: number | string | null;
+      /** Part Key */
+      part_key?: string | null;
+    };
+    /**
+     * Cable
+     * @description An outgoing cable.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         designation: Assigned from the company profile.
+     *         cores: Number of cores, protective conductor included.
+     *         cross_section_mm2: Of each line conductor.
+     *         material: "Cu" or "Al".
+     *         insulation: "PVC" or "XLPE".
+     *         length_m: Where known.
+     *         part_key: The cable type, where selected.
+     */
+    'Cable-Output': {
+      /** Id */
+      id: string;
+      designation?: components['schemas']['Designation'] | null;
+      /** Cores */
+      cores: number;
+      /** Cross Section Mm2 */
+      cross_section_mm2: string;
+      /**
+       * Material
+       * @default Cu
+       */
+      material: string;
+      /**
+       * Insulation
+       * @default PVC
+       */
+      insulation: string;
+      /** Length M */
+      length_m?: string | null;
+      /** Part Key */
+      part_key?: string | null;
+    };
     /**
      * CableSizingRequest
      * @description Inputs for a feeder cable sizing.
@@ -760,6 +972,103 @@ export interface components {
       applied_factors: components['schemas']['AppliedFactor'][];
     };
     /**
+     * Circuit
+     * @description An outgoing circuit.
+     *
+     *     A load, the devices that switch and protect it, and the cable feeding it.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the board.
+     *         description: What it feeds, as the load schedule names it.
+     *         load: The kind of load.
+     *         power_kw: Installed power.
+     *         design_current_a: Ib.
+     *         phase: The line conductor(s) it is connected to.
+     *         upstream_id: The device this circuit is fed from (a residual current
+     *             device, say); ``None`` when it hangs off the busbar directly.
+     *         device_ids: The circuit's own devices, in order from the busbar.
+     *         cable_id: Its outgoing cable, where it has one.
+     */
+    'Circuit-Input': {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: number | string;
+      /** Design Current A */
+      design_current_a: number | string;
+      phase: components['schemas']['Phase'];
+      /** Upstream Id */
+      upstream_id?: string | null;
+      /** Device Ids */
+      device_ids?: string[];
+      /** Cable Id */
+      cable_id?: string | null;
+    };
+    /**
+     * Circuit
+     * @description An outgoing circuit.
+     *
+     *     A load, the devices that switch and protect it, and the cable feeding it.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the board.
+     *         description: What it feeds, as the load schedule names it.
+     *         load: The kind of load.
+     *         power_kw: Installed power.
+     *         design_current_a: Ib.
+     *         phase: The line conductor(s) it is connected to.
+     *         upstream_id: The device this circuit is fed from (a residual current
+     *             device, say); ``None`` when it hangs off the busbar directly.
+     *         device_ids: The circuit's own devices, in order from the busbar.
+     *         cable_id: Its outgoing cable, where it has one.
+     */
+    'Circuit-Output': {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: string;
+      /** Design Current A */
+      design_current_a: string;
+      phase: components['schemas']['Phase'];
+      /** Upstream Id */
+      upstream_id?: string | null;
+      /** Device Ids */
+      device_ids?: string[];
+      /** Cable Id */
+      cable_id?: string | null;
+    };
+    /**
+     * CircuitRule
+     * @description A company's rule for one kind of load.
+     *
+     *     Attributes:
+     *         breaker_a: The circuit-breaker rating used for this kind of load,
+     *             where the company fixes one rather than sizing from the load.
+     *         curve: The tripping characteristic.
+     *         residual_current_ma: The residual current device sensitivity this
+     *             kind of load is grouped under; ``None`` for none.
+     *         cable_mm2: The minimum cable cross-section for this kind of load.
+     */
+    CircuitRule: {
+      /** Breaker A */
+      breaker_a?: string | null;
+      /**
+       * Curve
+       * @default C
+       */
+      curve: string;
+      /** Residual Current Ma */
+      residual_current_ma?: string | null;
+      /** Cable Mm2 */
+      cable_mm2?: string | null;
+    };
+    /**
      * Citation
      * @description A resolvable pointer back into a source document.
      */
@@ -774,6 +1083,89 @@ export interface components {
       page?: number | null;
       /** Section */
       section?: string | null;
+    };
+    /**
+     * CompanyProfile
+     * @description How one company issues a design.
+     *
+     *     Naming, numbering, title block, page order, brands and design rules. A
+     *     project is designed once; issuing it under another profile changes only
+     *     what this model governs.
+     *
+     *     Attributes:
+     *         key: Unique identifier.
+     *         name: The company's name, as the title block prints it.
+     *         language: Drawing language ("en", "ar").
+     *         letters: The product-aspect letter for each kind of device.
+     *         start_number: The first number of each letter's sequence.
+     *         title_fields: The title block's fields, in order.
+     *         page_order: The drawing set's pages, in order.
+     *         wire_numbering: How wires are numbered.
+     *         preferred_manufacturers: For each device kind, the manufacturers to
+     *             choose from, most preferred first.
+     *         circuit_rules: The company's rule for each kind of load.
+     *         max_circuits_per_rcd: How many outgoing circuits one residual current
+     *             device may protect.
+     *         spare_ways_percent: Spare outgoing ways to leave, as a share of the
+     *             circuits.
+     *         max_phase_imbalance_percent: The largest difference between the most
+     *             and least loaded line conductors, as a share of the most loaded.
+     *         rules_confirmed_by: Who confirmed the design rules. Empty while they
+     *             are this software's defaults, which the drawing then says.
+     */
+    CompanyProfile: {
+      /** Key */
+      key: string;
+      /** Name */
+      name: string;
+      /**
+       * Language
+       * @default en
+       */
+      language: string;
+      /** Letters */
+      letters: {
+        [key: string]: string;
+      };
+      /**
+       * Start Number
+       * @default 1
+       */
+      start_number: number;
+      /** Title Fields */
+      title_fields: components['schemas']['TitleField'][];
+      /** Page Order */
+      page_order: components['schemas']['PageKind'][];
+      /** @default potential */
+      wire_numbering: components['schemas']['WireNumbering'];
+      /** Preferred Manufacturers */
+      preferred_manufacturers?: {
+        [key: string]: string[];
+      };
+      /** Circuit Rules */
+      circuit_rules?: {
+        [key: string]: components['schemas']['CircuitRule'];
+      };
+      /**
+       * Max Circuits Per Rcd
+       * @default 6
+       */
+      max_circuits_per_rcd: number;
+      /**
+       * Spare Ways Percent
+       * @default 20
+       */
+      spare_ways_percent: string;
+      /**
+       * Max Phase Imbalance Percent
+       * @default 10
+       */
+      max_phase_imbalance_percent: string;
+      /**
+       * Rules Confirmed By
+       * @default
+       */
+      rules_confirmed_by: string;
     };
     /**
      * ConductorMaterial
@@ -867,6 +1259,196 @@ export interface components {
      * @enum {string}
      */
     DependencyState: 'up' | 'down';
+    /**
+     * DesignExportRequest
+     * @description A project to export, possibly edited since it was designed.
+     *
+     *     Attributes:
+     *         project: The project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     *         format: The file to produce.
+     */
+    DesignExportRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      format: components['schemas']['ExportFormat'];
+    };
+    /**
+     * DesignProject
+     * @description A whole design: what every output is generated from.
+     *
+     *     Attributes:
+     *         info: Title-block data.
+     *         profile: The key of the company profile the project is issued under.
+     *         boards: The boards, in the order they are drawn.
+     *         parts: Every part any device or cable refers to.
+     */
+    'DesignProject-Input': {
+      info: components['schemas']['ProjectInfo'];
+      /**
+       * Profile
+       * @default iec-default
+       */
+      profile: string;
+      /** Boards */
+      boards?: components['schemas']['Board-Input'][];
+      /** Parts */
+      parts?: components['schemas']['Part-Input'][];
+    };
+    /**
+     * DesignProject
+     * @description A whole design: what every output is generated from.
+     *
+     *     Attributes:
+     *         info: Title-block data.
+     *         profile: The key of the company profile the project is issued under.
+     *         boards: The boards, in the order they are drawn.
+     *         parts: Every part any device or cable refers to.
+     */
+    'DesignProject-Output': {
+      info: components['schemas']['ProjectInfo'];
+      /**
+       * Profile
+       * @default iec-default
+       */
+      profile: string;
+      /** Boards */
+      boards?: components['schemas']['Board-Output'][];
+      /** Parts */
+      parts?: components['schemas']['Part-Output'][];
+    };
+    /**
+     * Designation
+     * @description An IEC 81346-1 reference designation.
+     *
+     *     Attributes:
+     *         function: The function aspect, without its ``=`` prefix ("DB1").
+     *         location: The location aspect, without its ``+`` prefix ("HALL").
+     *         product: The product aspect, without its ``-`` prefix ("Q12").
+     */
+    Designation: {
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      /** Product */
+      product: string;
+    };
+    /**
+     * Device
+     * @description One device in a board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project; connections refer to it.
+     *         kind: What the device does.
+     *         designation: Assigned from the company profile; ``None`` until then.
+     *         part_key: The part it is built from; ``None`` for a device whose part
+     *             has not been selected yet (it is listed as such, never guessed).
+     *         poles: Number of poles, where it has any.
+     *         rated_current_a: In, for switching and protective devices.
+     *         residual_current_ma: IΔn, for a residual current device.
+     *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
+     *         breaking_capacity_ka: Rated short-circuit breaking capacity.
+     *         description: A short function text for the drawing.
+     *         upstream_id: The device that feeds this one (a group breaker feeding
+     *             a residual current device, say); ``None`` for the busbar.
+     */
+    'Device-Input': {
+      /** Id */
+      id: string;
+      kind: components['schemas']['DeviceKind'];
+      designation?: components['schemas']['Designation'] | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Poles */
+      poles?: number | null;
+      /** Rated Current A */
+      rated_current_a?: number | string | null;
+      /** Residual Current Ma */
+      residual_current_ma?: number | string | null;
+      /** Curve */
+      curve?: string | null;
+      /** Breaking Capacity Ka */
+      breaking_capacity_ka?: number | string | null;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Upstream Id */
+      upstream_id?: string | null;
+    };
+    /**
+     * Device
+     * @description One device in a board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project; connections refer to it.
+     *         kind: What the device does.
+     *         designation: Assigned from the company profile; ``None`` until then.
+     *         part_key: The part it is built from; ``None`` for a device whose part
+     *             has not been selected yet (it is listed as such, never guessed).
+     *         poles: Number of poles, where it has any.
+     *         rated_current_a: In, for switching and protective devices.
+     *         residual_current_ma: IΔn, for a residual current device.
+     *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
+     *         breaking_capacity_ka: Rated short-circuit breaking capacity.
+     *         description: A short function text for the drawing.
+     *         upstream_id: The device that feeds this one (a group breaker feeding
+     *             a residual current device, say); ``None`` for the busbar.
+     */
+    'Device-Output': {
+      /** Id */
+      id: string;
+      kind: components['schemas']['DeviceKind'];
+      designation?: components['schemas']['Designation'] | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Poles */
+      poles?: number | null;
+      /** Rated Current A */
+      rated_current_a?: string | null;
+      /** Residual Current Ma */
+      residual_current_ma?: string | null;
+      /** Curve */
+      curve?: string | null;
+      /** Breaking Capacity Ka */
+      breaking_capacity_ka?: string | null;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Upstream Id */
+      upstream_id?: string | null;
+    };
+    /**
+     * DeviceKind
+     * @description What a device does, which decides its designation letter.
+     * @enum {string}
+     */
+    DeviceKind:
+      | 'circuit_breaker'
+      | 'residual_current_device'
+      | 'switch_disconnector'
+      | 'contactor'
+      | 'overload_relay'
+      | 'fuse'
+      | 'surge_protector'
+      | 'drive'
+      | 'motor'
+      | 'relay'
+      | 'bus_actuator'
+      | 'power_supply'
+      | 'meter'
+      | 'indicator_lamp'
+      | 'terminal_strip'
+      | 'cable'
+      | 'busbar'
+      | 'other';
     /**
      * DiagnosisStep
      * @description One step an engineer should carry out.
@@ -1061,6 +1643,27 @@ export interface components {
      */
     DisplayVerdict: 'fault_display' | 'not_a_fault_display' | 'unreadable';
     /**
+     * DistributionBoardRequest
+     * @description What a distribution board is designed from.
+     *
+     *     Attributes:
+     *         name: The board's name ("DBG-HALL").
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         loads: The load schedule, in the order the circuits are drawn.
+     *         conditions: How the outgoing cables are run.
+     */
+    DistributionBoardRequest: {
+      /** Name */
+      name: string;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Input'];
+      /** Loads */
+      loads: components['schemas']['LoadInput'][];
+      conditions?: components['schemas']['InstallationConditions'];
+    };
+    /**
      * DriveRangeSummary
      * @description A drive series selection can choose from.
      */
@@ -1161,6 +1764,21 @@ export interface components {
       /** Items */
       items: components['schemas']['QueueItem'][];
     };
+    /**
+     * ExportFormat
+     * @description A file a project can be exported as.
+     * @enum {string}
+     */
+    ExportFormat:
+      | 'pdf'
+      | 'dxf'
+      | 'qet'
+      | 'aml'
+      | 'devices_csv'
+      | 'parts_csv'
+      | 'cables_csv'
+      | 'circuits_csv'
+      | 'json';
     /**
      * FaultRecognitionResult
      * @description What the model saw.
@@ -1279,6 +1897,38 @@ export interface components {
       recognition?: components['schemas']['FaultRecognitionResult'] | null;
     };
     /**
+     * InstallationConditions
+     * @description How the outgoing cables are run, for their sizing.
+     *
+     *     Attributes:
+     *         installation_method: IEC 60364-5-52 reference method.
+     *         ambient_temp_c: Air temperature around the cables.
+     *         grouped_circuits: Loaded circuits run together.
+     *         conductor_material: Copper or aluminium.
+     *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
+     */
+    InstallationConditions: {
+      /** @default B1 */
+      installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Ambient Temp C
+       * @default 30
+       */
+      ambient_temp_c: number | string;
+      /**
+       * Grouped Circuits
+       * @default 1
+       */
+      grouped_circuits: number;
+      /** @default copper */
+      conductor_material: components['schemas']['ConductorMaterial'];
+      /**
+       * Insulation Rating C
+       * @default 70
+       */
+      insulation_rating_c: number;
+    };
+    /**
      * InstallationMethod
      * @description IEC 60364-5-52 reference installation method.
      * @enum {string}
@@ -1389,6 +2039,54 @@ export interface components {
       output: components['schemas']['LadderContact'];
     };
     /**
+     * LoadInput
+     * @description One line of a distribution board's load schedule.
+     *
+     *     Attributes:
+     *         description: What it feeds ("Sockets - hall east").
+     *         load: The kind of load, which picks the company's rule for it.
+     *         power_kw: Installed active power.
+     *         phases: 1 or 3.
+     *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
+     *             load-current table is drawn up for, and the board says so.
+     */
+    LoadInput: {
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: number | string;
+      /**
+       * Phases
+       * @default 1
+       */
+      phases: number;
+      /** Power Factor */
+      power_factor?: number | string | null;
+    };
+    /**
+     * LoadKind
+     * @description What a circuit feeds.
+     *
+     *     Company rules (breaker size, residual current sensitivity) are set per
+     *     kind in the profile.
+     * @enum {string}
+     */
+    LoadKind:
+      | 'lighting'
+      | 'socket'
+      | 'air_conditioning'
+      | 'water_heater'
+      | 'motor'
+      | 'fan'
+      | 'kitchen'
+      | 'lift'
+      | 'sub_board'
+      | 'control'
+      | 'data'
+      | 'spare'
+      | 'other';
+    /**
      * LoadScheduleItem
      * @description One load on a panel's schedule.
      */
@@ -1434,6 +2132,22 @@ export interface components {
       password: string;
     };
     /**
+     * PageKind
+     * @description A kind of page in a drawing set.
+     * @enum {string}
+     */
+    PageKind:
+      | 'title'
+      | 'safety'
+      | 'contents'
+      | 'layout'
+      | 'single_line'
+      | 'distribution'
+      | 'notes'
+      | 'terminals'
+      | 'cables'
+      | 'parts';
+    /**
      * PanelBomRequest
      * @description Inputs for BOM generation.
      */
@@ -1473,6 +2187,72 @@ export interface components {
        */
       note_keys: components['schemas']['BomNote'][];
     };
+    /**
+     * Part
+     * @description An orderable article.
+     *
+     *     Attributes:
+     *         key: Unique within the project; how devices refer to the part.
+     *         manufacturer: As the manufacturer names itself.
+     *         type_number: The manufacturer's type designation.
+     *         order_number: The number an order is placed with, where it differs.
+     *         description: What it is, in the catalogue's words.
+     *         source: Where the data came from (catalogue, page), so a reviewer
+     *             can check it.
+     *         width_mm: Mounting width, for layout. ``None`` when not known.
+     */
+    'Part-Input': {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Type Number */
+      type_number: string;
+      /** Order Number */
+      order_number?: string | null;
+      /** Description */
+      description: string;
+      /** Source */
+      source?: string | null;
+      /** Width Mm */
+      width_mm?: number | string | null;
+    };
+    /**
+     * Part
+     * @description An orderable article.
+     *
+     *     Attributes:
+     *         key: Unique within the project; how devices refer to the part.
+     *         manufacturer: As the manufacturer names itself.
+     *         type_number: The manufacturer's type designation.
+     *         order_number: The number an order is placed with, where it differs.
+     *         description: What it is, in the catalogue's words.
+     *         source: Where the data came from (catalogue, page), so a reviewer
+     *             can check it.
+     *         width_mm: Mounting width, for layout. ``None`` when not known.
+     */
+    'Part-Output': {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Type Number */
+      type_number: string;
+      /** Order Number */
+      order_number?: string | null;
+      /** Description */
+      description: string;
+      /** Source */
+      source?: string | null;
+      /** Width Mm */
+      width_mm?: string | null;
+    };
+    /**
+     * Phase
+     * @description A line conductor, or all three.
+     * @enum {string}
+     */
+    Phase: 'L1' | 'L2' | 'L3' | 'L1L2L3';
     /**
      * PlcDialect
      * @description Which vendor's flavour a request targets.
@@ -1556,6 +2336,44 @@ export interface components {
       dialect: components['schemas']['PlcDialect'];
       /** Checked By */
       checked_by: string;
+    };
+    /**
+     * ProjectInfo
+     * @description What the title block prints.
+     *
+     *     Attributes:
+     *         name: Project name.
+     *         number: The company's job number.
+     *         customer: Owner or customer.
+     *         consultant: Consultant, where there is one.
+     *         contractor: Contractor, where there is one.
+     *         revisions: Issues of the drawing set, oldest first.
+     */
+    ProjectInfo: {
+      /** Name */
+      name: string;
+      /**
+       * Number
+       * @default
+       */
+      number: string;
+      /**
+       * Customer
+       * @default
+       */
+      customer: string;
+      /**
+       * Consultant
+       * @default
+       */
+      consultant: string;
+      /**
+       * Contractor
+       * @default
+       */
+      contractor: string;
+      /** Revisions */
+      revisions?: components['schemas']['Revision'][];
     };
     /**
      * QueueItem
@@ -1688,6 +2506,44 @@ export interface components {
        * @default false
        */
       anchored: boolean;
+    };
+    /**
+     * Revision
+     * @description One issue of the drawing set.
+     *
+     *     Attributes:
+     *         index: "01", "A", as the company numbers them.
+     *         date: ISO date.
+     *         description: What changed.
+     *         drawn_by: Initials or name.
+     *         checked_by: Initials or name.
+     *         approved_by: Initials or name.
+     */
+    Revision: {
+      /** Index */
+      index: string;
+      /** Date */
+      date: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /**
+       * Drawn By
+       * @default
+       */
+      drawn_by: string;
+      /**
+       * Checked By
+       * @default
+       */
+      checked_by: string;
+      /**
+       * Approved By
+       * @default
+       */
+      approved_by: string;
     };
     /**
      * SearchFilters
@@ -1843,6 +2699,76 @@ export interface components {
       equipment_model?: string | null;
     };
     /**
+     * Supply
+     * @description The board's incoming supply.
+     *
+     *     Attributes:
+     *         voltage_v: Line-to-line voltage.
+     *         phases: 1 or 3.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
+     *         fault_level_ka: Prospective short-circuit current at the board.
+     */
+    'Supply-Input': {
+      /**
+       * Voltage V
+       * @default 400
+       */
+      voltage_v: number | string;
+      /**
+       * Phases
+       * @default 3
+       */
+      phases: number;
+      /**
+       * Frequency Hz
+       * @default 50
+       */
+      frequency_hz: number | string;
+      /**
+       * Earthing
+       * @default TN-S
+       */
+      earthing: string;
+      /** Fault Level Ka */
+      fault_level_ka?: number | string | null;
+    };
+    /**
+     * Supply
+     * @description The board's incoming supply.
+     *
+     *     Attributes:
+     *         voltage_v: Line-to-line voltage.
+     *         phases: 1 or 3.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
+     *         fault_level_ka: Prospective short-circuit current at the board.
+     */
+    'Supply-Output': {
+      /**
+       * Voltage V
+       * @default 400
+       */
+      voltage_v: string;
+      /**
+       * Phases
+       * @default 3
+       */
+      phases: number;
+      /**
+       * Frequency Hz
+       * @default 50
+       */
+      frequency_hz: string;
+      /**
+       * Earthing
+       * @default TN-S
+       */
+      earthing: string;
+      /** Fault Level Ka */
+      fault_level_ka?: string | null;
+    };
+    /**
      * SupplyBand
      * @description A supply voltage band a range is rated for.
      */
@@ -1852,6 +2778,26 @@ export interface components {
       /** High V */
       high_v: string;
     };
+    /**
+     * TitleField
+     * @description A field a title block can print.
+     * @enum {string}
+     */
+    TitleField:
+      | 'project_name'
+      | 'project_number'
+      | 'board_name'
+      | 'customer'
+      | 'consultant'
+      | 'contractor'
+      | 'page_title'
+      | 'page_number'
+      | 'revision'
+      | 'drawn_by'
+      | 'checked_by'
+      | 'approved_by'
+      | 'date'
+      | 'company';
     /**
      * TokenPair
      * @description A short-lived access token and the refresh token that renews it.
@@ -2062,6 +3008,12 @@ export interface components {
        */
       series: string;
     };
+    /**
+     * WireNumbering
+     * @description How wires are numbered.
+     * @enum {string}
+     */
+    WireNumbering: 'potential' | 'sequential' | 'source_target';
   };
   responses: never;
   parameters: never;
@@ -2528,6 +3480,72 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PanelBomResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  design_distribution_board_api_v1_design_distribution_board_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BoardDesignRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BoardDesignResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_design_api_v1_design_export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DesignExportRequest'];
+      };
+    };
+    responses: {
+      /** @description The exported file */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/octet-stream': unknown;
         };
       };
       /** @description Validation Error */

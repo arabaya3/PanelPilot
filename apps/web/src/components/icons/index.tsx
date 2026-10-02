@@ -146,3 +146,12 @@ export function CalculatorIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function BoardIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="1" />
+      <path d="M4 9h16M8 9v4M12 9v4M16 9v4" />
+    </Icon>
+  );
+}

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
 import {
+  BoardIcon,
   BoltIcon,
   CalculatorIcon,
   ChatIcon,
@@ -21,6 +22,7 @@ const NAV = [
   { href: '/search', key: 'search', Icon: SearchIcon },
   { href: '/plc', key: 'plc', Icon: CodeIcon },
   { href: '/calc', key: 'calc', Icon: CalculatorIcon },
+  { href: '/design', key: 'design', Icon: BoardIcon },
   { href: '/review', key: 'review', Icon: CheckCircleIcon },
 ] as const;
 

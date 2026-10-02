@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -560,3 +561,58 @@ class DistributionBoardRequest(BaseModel):
     supply: Supply = Field(default_factory=Supply)
     loads: list[LoadInput] = Field(min_length=1)
     conditions: InstallationConditions = Field(default_factory=InstallationConditions)
+
+
+class BoardDesignRequest(BaseModel):
+    """A distribution board to design, under a company's profile.
+
+    Attributes:
+        info: Title-block data for the project.
+        board: The board's load schedule and conditions.
+        profile: The company's profile settings (only what differs from the
+            default); ``None`` designs under the default profile.
+    """
+
+    info: ProjectInfo
+    board: DistributionBoardRequest
+    profile: dict[str, Any] | None = None
+
+
+class BoardDesignResponse(BaseModel):
+    """A designed board, issued under the profile it was designed with.
+
+    Attributes:
+        project: The project, designated.
+        profile: The profile applied, in full.
+    """
+
+    project: DesignProject
+    profile: CompanyProfile
+
+
+class ExportFormat(StrEnum):
+    """A file a project can be exported as."""
+
+    PDF = "pdf"
+    DXF = "dxf"
+    QET = "qet"
+    AML = "aml"
+    DEVICES_CSV = "devices_csv"
+    PARTS_CSV = "parts_csv"
+    CABLES_CSV = "cables_csv"
+    CIRCUITS_CSV = "circuits_csv"
+    JSON = "json"
+
+
+class DesignExportRequest(BaseModel):
+    """A project to export, possibly edited since it was designed.
+
+    Attributes:
+        project: The project.
+        profile: The company's profile settings; ``None`` for the default.
+        format: The file to produce.
+    """
+
+    project: DesignProject
+    profile: dict[str, Any] | None = None
+    format: ExportFormat

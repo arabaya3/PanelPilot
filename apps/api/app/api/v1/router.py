@@ -11,6 +11,7 @@ from app.api.deps import enforce_trial_rate_limit, enforce_trial_rate_limit_on_w
 from app.api.v1.routes import (
     auth,
     calculations,
+    design,
     diagnostics,
     feedback,
     health,
@@ -45,6 +46,7 @@ api_router.include_router(
 # like asking a question is.
 api_router.include_router(diagnostics.sessions_router, prefix="/sessions", tags=["diagnostics"])
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
+api_router.include_router(design.router, prefix="/design", tags=["design"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
 api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
