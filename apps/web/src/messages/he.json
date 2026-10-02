@@ -533,7 +533,8 @@
       "loadPhases": "פאזות",
       "powerFactor": "מקדם הספק",
       "controlled": "מבוקר PLC",
-      "fedFrom": "מוזן מ"
+      "fedFrom": "מוזן מ",
+      "starter": "מתנע"
     },
     "kind": {
       "lighting": "תאורה",
@@ -651,7 +652,13 @@
     "removeBoard": "הסרת לוח זה",
     "loadsOf": "עומסים של {board}",
     "fedFromNone": "הזנת הפרויקט",
-    "fedFromLabel": "מוזן מ-{board}"
+    "fedFromLabel": "מוזן מ-{board}",
+    "starter": {
+      "none": "ללא",
+      "dol": "התנעה ישירה",
+      "star_delta": "כוכב-משולש",
+      "drive": "ממיר תדר"
+    }
   },
   "files": {
     "choose": "בחירת קובץ",

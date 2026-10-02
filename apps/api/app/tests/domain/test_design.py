@@ -264,3 +264,46 @@ def test_a_project_of_boards_is_designed_and_designated_per_board() -> None:
     assert [c.feeds for c in main.circuits].count("DB-1") == 1
     assert main.devices[0].designation.function == "MDB"  # type: ignore[union-attr]
     assert sub.devices[0].designation.function == "DB-1"  # type: ignore[union-attr]
+
+
+def test_a_motor_project_carries_its_articles_and_prices_by_them() -> None:
+    from app.models.schemas.design import (
+        PriceListEntry,
+        PricingSettings,
+        ProjectDesignRequest,
+        QuotationRequest,
+    )
+
+    response = design.design_project(
+        session=None,  # type: ignore[arg-type]
+        user=USER,
+        request=ProjectDesignRequest(
+            info=ProjectInfo(name="Plant"),
+            boards=[
+                DistributionBoardRequest(
+                    name="MCC",
+                    loads=[
+                        LoadInput(
+                            description="Pump",
+                            load=LoadKind.MOTOR,
+                            power_kw=Decimal("7.5"),
+                            phases=3,
+                            starter="dol",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+    keys = {part.key for part in response.project.parts}
+    assert {"ABB/T2S160 MA 20", "ABB/A30", "ABB/TA25DU19"} <= keys
+    priced = design.price_design(
+        user=USER,
+        request=QuotationRequest(
+            project=response.project,
+            pricing=PricingSettings(price_list=[PriceListEntry(key="A30", unit_price=Decimal(40))]),
+        ),
+    )
+    line = next(line for line in priced.lines if line.key == "A30")
+    assert line.total == Decimal("40.00")
+    assert line.description == "ABB A30"

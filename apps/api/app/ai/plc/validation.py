@@ -52,9 +52,11 @@ CHECKER: Final = "lark-iec61131-3-subset"
 #:
 #: A subset, and named as one. It handles the constructs generation actually
 #: emits — programs, variable blocks, assignment, IF/ELSIF/ELSE, WHILE, FOR,
-#: boolean and arithmetic expressions, function calls. It does not handle
-#: function blocks, structs, arrays, or vendor extensions, and code using them
-#: reports INCOMPLETE rather than being failed for using valid language.
+#: boolean and arithmetic expressions, function calls, calls to function
+#: block instances with named inputs and outputs (``T1(IN := x, PT := T#5S);``),
+#: an instance's outputs (``T1.Q``) and duration literals. It does not handle
+#: declaring function blocks, structs, arrays, or vendor extensions, and code
+#: using them reports INCOMPLETE rather than being failed for valid language.
 _GRAMMAR: Final = r"""
 ?start: program
 
@@ -75,7 +77,10 @@ statement_list: statement*
 
 assignment: NAME ":=" expression ";"
 call_statement: NAME "(" [arguments] ")" ";"
-arguments: expression ("," expression)*
+arguments: argument ("," argument)*
+?argument: NAME ":=" expression -> named_input
+         | NAME _ARROW NAME -> named_output
+         | expression
 
 if_statement: "IF" expression "THEN" statement_list elsif_clause* else_clause? "END_IF" ";"
 elsif_clause: "ELSIF" expression "THEN" statement_list
@@ -96,7 +101,9 @@ ADD_OP: "+" | "-"
 ?product: atom | product MUL_OP atom -> arith
 MUL_OP: "*" | "/" | "MOD"
 ?atom: NAME "(" [arguments] ")" -> call_expr
+     | NAME "." NAME -> member_ref
      | NAME -> var_ref
+     | TIME_LIT -> time_literal
      | NUMBER -> number
      | BOOL_LIT -> boolean
      | STRING -> string
@@ -105,6 +112,8 @@ BOOL_LIT: "TRUE" | "FALSE"
 
 NAME: /(?!(?:IF|THEN|ELSE|ELSIF|END_IF|WHILE|DO|END_WHILE|FOR|TO|BY|END_FOR|AND|OR|NOT|MOD|TRUE|FALSE|VAR|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|END_VAR|PROGRAM|END_PROGRAM)\b)[A-Za-z_][A-Za-z0-9_]*/
 NUMBER: /\d+(\.\d+)?/
+TIME_LIT.2: /(?i:T|TIME)#[0-9][0-9A-Za-z_.]*/
+_ARROW.3: "=>"
 STRING: /'[^']*'/
 
 COMMENT: "(*" /(.|\n)*?/ "*)" | "//" /[^\n]*/
@@ -128,9 +137,13 @@ _UNSUPPORTED: Final = (
     (re.compile(r"\bCASE\b", re.IGNORECASE), "CASE statements"),
     (re.compile(r"\bREGION\b", re.IGNORECASE), "Siemens REGION blocks"),
     (re.compile(r"\bREPEAT\b", re.IGNORECASE), "REPEAT loops"),
+    # Any "#" left once duration literals (T#5S) are taken out.
     (re.compile(r"#", re.NOFLAG), "vendor literal or tag syntax"),
     (re.compile(r"%[IQM]", re.IGNORECASE), "direct addressing"),
 )
+
+#: A duration literal, the one "#" the grammar reads.
+_TIME_LITERAL: Final = re.compile(r"\b(?:T|TIME)#[0-9][0-9A-Za-z_.]*", re.IGNORECASE)
 
 #: Types the grammar knows enough about to type-check assignments against.
 _BOOLEAN_TYPES: Final = frozenset({"BOOL"})
@@ -274,7 +287,7 @@ def _first_unsupported(source: str) -> str | None:
     Scanned outside comments, so a comment mentioning "the CASE statement"
     does not make an otherwise checkable program unverifiable.
     """
-    stripped = _strip_comments(source)
+    stripped = _TIME_LITERAL.sub(" ", _strip_comments(source))
     for pattern, description in _UNSUPPORTED:
         if pattern.search(stripped):
             return description
@@ -384,6 +397,10 @@ def _assigned_names(tree: Tree[Token]) -> set[str]:
         counter = loop.children[0]
         if isinstance(counter, Token):
             names.add(str(counter))
+    for output in tree.find_data("named_output"):
+        target = output.children[1]
+        if isinstance(target, Token):
+            names.add(str(target))
     return names
 
 
@@ -401,10 +418,12 @@ def _read_names(tree: Tree[Token]) -> set[str]:
         token = reference.children[0]
         if isinstance(token, Token):
             names.add(str(token))
-    for call in tree.find_data("call_expr"):
-        token = call.children[0]
-        if isinstance(token, Token):
-            names.add(str(token))
+    # A called name and an instance whose output is read are both used.
+    for data in ("call_expr", "call_statement", "member_ref"):
+        for node in tree.find_data(data):
+            token = node.children[0]
+            if isinstance(token, Token):
+                names.add(str(token))
     return names
 
 
@@ -420,7 +439,14 @@ def _first_lines(tree: Tree[Token]) -> dict[str, int]:
     lines: dict[str, int] = {}
     tokens = [
         node.children[0]
-        for data in ("assignment", "for_statement", "var_ref", "call_expr")
+        for data in (
+            "assignment",
+            "for_statement",
+            "var_ref",
+            "call_expr",
+            "call_statement",
+            "member_ref",
+        )
         for node in tree.find_data(data)
     ]
     for token in tokens:

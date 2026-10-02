@@ -533,7 +533,8 @@
       "loadPhases": "الفازات",
       "powerFactor": "معامل القدرة",
       "controlled": "يتحكم به PLC",
-      "fedFrom": "مغذّاة من"
+      "fedFrom": "مغذّاة من",
+      "starter": "طريقة التشغيل"
     },
     "kind": {
       "lighting": "إنارة",
@@ -651,7 +652,13 @@
     "removeBoard": "حذف هذه اللوحة",
     "loadsOf": "أحمال {board}",
     "fedFromNone": "مصدر المشروع",
-    "fedFromLabel": "مغذّاة من {board}"
+    "fedFromLabel": "مغذّاة من {board}",
+    "starter": {
+      "none": "بدون",
+      "dol": "تشغيل مباشر",
+      "star_delta": "ستار-دلتا",
+      "drive": "مغيّر سرعة"
+    }
   },
   "files": {
     "choose": "اختر ملفاً",

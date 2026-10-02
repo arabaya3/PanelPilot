@@ -93,3 +93,60 @@ def test_a_description_in_arabic_is_left_to_the_io_list() -> None:
     assert "=DBG-HALL" in program.source
     assert "إنارة" in plc_program.io_list_csv(program)
     assert validate_plc_code(program.source).status is ValidationStatus.VALID
+
+
+def _motor_project() -> DesignProject:
+    from app.design import motors
+    from app.design import project as project_design
+    from app.models.schemas.design import MotorStarter
+
+    loads = [
+        LoadInput(
+            description=name,
+            load=LoadKind.MOTOR,
+            power_kw=Decimal(kw),
+            phases=3,
+            starter=starter,
+        )
+        for name, kw, starter in (
+            ("Pump", "7.5", MotorStarter.DIRECT_ON_LINE),
+            ("Fan", "30", MotorStarter.STAR_DELTA),
+            ("Conveyor", "15", MotorStarter.DRIVE),
+        )
+    ]
+    boards = project_design.design_boards(
+        [DistributionBoardRequest(name="MCC", loads=loads)], profile.default_profile()
+    )
+    return designations.designate_project(
+        DesignProject(
+            info=ProjectInfo(name="Plant"), boards=boards, parts=motors.parts_for(boards)
+        ),
+        profile.default_profile(),
+    )
+
+
+def test_motors_get_their_starters_logic_and_the_checker_passes_it() -> None:
+    program = plc_program.build_program(_motor_project())
+    assert program is not None
+    tags = {point.tag: point for point in program.io}
+    # Direct on line: start, stop, overload in; one coil out.
+    assert {"Start_MCC_Q3", "Stop_MCC_Q3", "OL_MCC_Q3", "K_MCC_Q3"} <= set(tags)
+    assert tags["OL_MCC_Q3"].device.endswith("-F1")
+    # Star-delta: line, star and delta coils, timed and interlocked.
+    assert {"KM_MCC_Q5", "KY_MCC_Q5", "KD_MCC_Q5"} <= set(tags)
+    assert "TStar_MCC_Q5(IN := Run_MCC_Q5, PT := T#6S);" in program.source
+    assert "KY_MCC_Q5 := Run_MCC_Q5 AND NOT TStar_MCC_Q5.Q AND NOT KD_MCC_Q5;" in program.source
+    assert "KD_MCC_Q5 := Run_MCC_Q5 AND TGap_MCC_Q5.Q AND NOT KY_MCC_Q5;" in program.source
+    # Drive: run command gated by its ready signal.
+    assert "Run_MCC_T1 := EStop_OK AND Stop_MCC_T1 AND Ready_MCC_T1" in program.source
+    verdict = validate_plc_code(program.source)
+    assert verdict.status is ValidationStatus.VALID, verdict.findings
+    assert not verdict.findings
+
+
+def test_every_motor_output_drops_on_emergency_stop() -> None:
+    program = plc_program.build_program(_motor_project())
+    assert program is not None
+    for line in program.source.splitlines():
+        if line.startswith(("K_", "Run_")) and ":=" in line:
+            assert "EStop_OK AND" in line

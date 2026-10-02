@@ -110,3 +110,18 @@ describe('a project of boards', () => {
     );
   });
 });
+
+describe('a motor row', () => {
+  it('offers a starter only for a motor, and a starter makes it three-phase', () => {
+    render();
+    const starter = screen.getByLabelText<HTMLSelectElement>('Starter');
+    expect(starter.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Load type'), { target: { value: 'motor' } });
+    expect(starter.disabled).toBe(false);
+    fireEvent.change(starter, { target: { value: 'star_delta' } });
+    expect(screen.getByLabelText<HTMLSelectElement>('Phases').value).toBe('3');
+    // Back to sockets: the starter goes with the motor.
+    fireEvent.change(screen.getByLabelText('Load type'), { target: { value: 'socket' } });
+    expect(starter.value).toBe('');
+  });
+});

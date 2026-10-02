@@ -28,6 +28,14 @@ from app.models.schemas.calculations import ConductorMaterial, InstallationMetho
 from app.models.schemas.plc import PlcValidationResult
 
 
+class MotorStarter(StrEnum):
+    """How a motor is started."""
+
+    DIRECT_ON_LINE = "dol"
+    STAR_DELTA = "star_delta"
+    DRIVE = "drive"
+
+
 class DeviceKind(StrEnum):
     """What a device does, which decides its designation letter."""
 
@@ -202,6 +210,7 @@ class Circuit(BaseModel):
         device_ids: The circuit's own devices, in order from the busbar.
         cable_id: Its outgoing cable, where it has one.
         feeds: The board it supplies, for a feeder to a sub-board.
+        starter: How the motor it feeds is started, for a motor circuit.
     """
 
     id: str
@@ -214,6 +223,7 @@ class Circuit(BaseModel):
     device_ids: list[str] = Field(default_factory=list)
     cable_id: str | None = None
     feeds: str | None = None
+    starter: MotorStarter | None = None
 
 
 class Supply(BaseModel):
@@ -531,6 +541,8 @@ class LoadInput(BaseModel):
             live whenever its breaker is closed.
         feeds: The board this circuit feeds, for a feeder to a sub-board;
             set by the project design, not typed in.
+        starter: For a three-phase motor, how it is started; its
+            ``power_kw`` is then the motor's shaft power.
     """
 
     description: str = Field(min_length=1)
@@ -540,6 +552,7 @@ class LoadInput(BaseModel):
     power_factor: Decimal | None = Field(default=None, gt=0, le=1)
     controlled: bool = False
     feeds: str | None = None
+    starter: MotorStarter | None = None
 
     @model_validator(mode="after")
     def _one_or_three(self) -> LoadInput:

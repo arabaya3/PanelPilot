@@ -44,6 +44,7 @@ from app.design.sheet import (
     ROWS,
     TITLE_BLOCK_HEIGHT,
     Anchor,
+    Item,
     Line,
     Rect,
     Sheet,
@@ -57,6 +58,7 @@ from app.models.schemas.design import (
     DesignProject,
     Device,
     DeviceKind,
+    MotorStarter,
     PageKind,
     TitleField,
 )
@@ -129,7 +131,16 @@ def rating_text(device: Device) -> str:
         "C16 1P", "40 A 30 mA 4P", "MCCB, not selected", and so on.
     """
     poles = f"{device.poles}P" if device.poles else ""
-    if device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE:
+    article = device.part_key.split("/", 1)[-1] if device.part_key else None
+    if device.kind is DeviceKind.FUSE:
+        parts = [f"{_plain(device.rated_current_a)} A {device.curve or ''}".strip(), poles]
+    elif device.kind is DeviceKind.DRIVE:
+        parts = [article or "drive, not selected"]
+    elif device.kind is DeviceKind.OVERLOAD_RELAY:
+        parts = [article or "", f"set {_plain(device.rated_current_a)} A"]
+    elif device.kind is DeviceKind.CONTACTOR and article and device.rated_current_a is None:
+        parts = [article, poles]
+    elif device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE:
         parts = [
             f"{_plain(device.rated_current_a)} A" if device.rated_current_a else "",
             f"{_plain(device.residual_current_ma)} mA" if device.residual_current_ma else "",
@@ -532,7 +543,7 @@ def _draw_main(
             sheet.add(Line(x, top, x, top + 6))
             top += 6
             breaker = board.device(circuit.device_ids[0])
-            items, bottom = symbols.circuit_breaker(x, top, breaker.poles or 1)
+            items, bottom = _symbol(breaker, x, top)
             sheet.add(*items)
             sheet.add(*symbols.labels(x, top + 8, [_product(breaker), rating_text(breaker)]))
             target = numbers.get(f"dist:{board.id}:{circuit.id}")
@@ -541,6 +552,63 @@ def _draw_main(
                 sheet.add(Text(x, bottom + 12, f"to /{target}.0", size=2.2, anchor=Anchor.MIDDLE))
             for n, line in enumerate(textwrap.wrap(circuit.description, 18)[:3]):
                 sheet.add(Text(x, bottom + 17 + n * 3.0, line, size=2.2, anchor=Anchor.MIDDLE))
+
+
+def _symbol(device: Device, x: float, top: float) -> tuple[list[Item], float]:
+    """The single-line symbol for a device, by what it does."""
+    poles = device.poles or 1
+    if device.kind is DeviceKind.FUSE:
+        return symbols.fuse(x, top, poles)
+    if device.kind is DeviceKind.DRIVE:
+        return symbols.drive(x, top)
+    if device.kind is DeviceKind.OVERLOAD_RELAY:
+        return symbols.overload_relay(x, top, poles)
+    if device.kind is DeviceKind.CONTACTOR:
+        return symbols.contactor(x, top, device.poles or 2)
+    return symbols.circuit_breaker(x, top, poles)
+
+
+def _draw_chain(sheet: Sheet, board: Board, circuit: Circuit, x: float, top: float) -> float:
+    """Draw a circuit's devices down a column from ``top``; return the bottom.
+
+    A star-delta starter's delta and star contactors are drawn as one Y/D
+    block labelled with both, the way a single-line diagram shows them.
+    """
+    devices = [board.device(device_id) for device_id in circuit.device_ids]
+    changeover: list[Device] = []
+    if circuit.starter is MotorStarter.STAR_DELTA:
+        changeover = [d for d in devices if d.id.endswith(("-delta", "-star"))]
+        devices = [d for d in devices if d not in changeover]
+    if changeover:
+        # The block goes where the delta contactor was: after the line contactor.
+        line = next((i for i, d in enumerate(devices) if d.kind is DeviceKind.CONTACTOR), 0)
+        devices.insert(line + 1, changeover[0])
+    bottom = top
+    for index, device in enumerate(devices):
+        start = bottom if index == 0 else bottom + 2.0
+        if index:
+            sheet.add(Line(x, bottom, x, start))
+        clearance = 4.0
+        if changeover and device is changeover[0]:
+            items, bottom = symbols.star_delta(x, start)
+            labels = [
+                " ".join(_product(d) for d in changeover),
+                "/".join(rating_text(d).split(" ")[0] for d in changeover),
+            ]
+            clearance = symbols.WIDE_HALF_WIDTH + 1.0
+        elif device.kind is DeviceKind.OVERLOAD_RELAY:
+            # Article and setting on lines of their own: a column is narrow.
+            items, bottom = _symbol(device, x, start)
+            article, _, setting = rating_text(device).partition(" set ")
+            labels = [_product(device), article, f"set {setting}" if setting else ""]
+        else:
+            items, bottom = _symbol(device, x, start)
+            labels = [_product(device), rating_text(device)]
+            if device.kind is DeviceKind.DRIVE:
+                clearance = symbols.WIDE_HALF_WIDTH + 1.0
+        sheet.add(*items)
+        sheet.add(*symbols.labels(x, start + 8, labels, clearance=clearance))
+    return bottom
 
 
 def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> None:
@@ -567,20 +635,11 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
     )
     for column, circuit in enumerate(circuits):
         x = column_x(column)
-        breaker = board.device(circuit.device_ids[0])
         top = bus_y + 12.0
         sheet.add(Line(x, bus_y, x, top), Text(x + 1.0, bus_y + 5.0, circuit.phase.value, size=2.0))
-        items, bottom = symbols.circuit_breaker(x, top, breaker.poles or 1)
-        sheet.add(*items)
-        sheet.add(*symbols.labels(x, top + 8, [_product(breaker), rating_text(breaker)]))
-        cable_length = 30.0
-        for device_id in circuit.device_ids[1:]:
-            switch = board.device(device_id)
-            items, below = symbols.contactor(x, bottom + 2.0, switch.poles or 2)
-            sheet.add(Line(x, bottom, x, bottom + 2.0), *items)
-            sheet.add(*symbols.labels(x, bottom + 10, [_product(switch), rating_text(switch)]))
-            bottom = below
-            cable_length = 12.0
+        bottom = _draw_chain(sheet, board, circuit, x, top)
+        # The column has room for the cable under up to three devices.
+        cable_length = max(8.0, 30.0 - (bottom - top - symbols.DEVICE_HEIGHT) * 0.4)
         items, end = symbols.cable_end(x, bottom, cable_length)
         sheet.add(*items)
         cable = board.cable(circuit.cable_id) if circuit.cable_id else None

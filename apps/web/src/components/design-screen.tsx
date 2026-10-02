@@ -250,8 +250,9 @@ export function DesignScreen({
   }
 
   const designed = result.kind === 'designed' ? result.response.project : null;
-  const hasContactors = (designed?.boards ?? []).some((board) =>
-    (board.devices ?? []).some((device) => device.kind === 'contactor'),
+  // The PLC drives every contactor and every drive.
+  const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
+    (board.devices ?? []).some((device) => device.kind === 'contactor' || device.kind === 'drive'),
   );
 
   return (
@@ -448,7 +449,7 @@ export function DesignScreen({
         </div>
       )}
 
-      {designed && token !== null && hasContactors && (
+      {designed && token !== null && hasPlcOutputs && (
         <div className="mt-6">
           <PlcPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
         </div>

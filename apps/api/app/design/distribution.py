@@ -33,6 +33,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
+from app.design import motors
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
     Board,
@@ -72,6 +73,7 @@ class _Sized:
     curve: str
     section_mm2: Decimal
     phase: Phase = Phase.L1
+    motor: motors.MotorCircuit | None = None
 
 
 def _plain(value: Decimal) -> str:
@@ -95,6 +97,8 @@ def _size(
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
         raise ValidationError(f"{load.description}: a three-phase load on a single-phase supply")
+    if load.starter is not None:
+        return _size_motor(request, load, index)
     power_factor = load.power_factor or DEFAULT_POWER_FACTOR
     current = feeder_protection.load_current(
         power_kw=load.power_kw,
@@ -139,6 +143,38 @@ def _size(
         rated_a=rated,
         curve=rule.curve if rule else "C",
         section_mm2=section,
+    )
+
+
+def _size_motor(request: DistributionBoardRequest, load: LoadInput, index: int) -> _Sized:
+    """Size a motor's circuit: its devices from the starter tables, its cable for them.
+
+    The breaker in a coordinated starter trips on short circuit only; the
+    overload relay protects the cable, so each conductor is sized to carry
+    what the relay is set to (Ib <= Ir <= Iz).
+    """
+    conditions = request.conditions
+    motor = motors.motor_circuit(index, load, request.supply, ambient_c=conditions.ambient_temp_c)
+    try:
+        cable = cable_sizing.size_conductor(
+            design_current_a=motor.cable_current_a,
+            installation_method=conditions.installation_method,
+            ambient_temp_c=conditions.ambient_temp_c,
+            grouped_circuits=conditions.grouped_circuits,
+            conductor_material=conditions.conductor_material,
+            insulation_rating_c=conditions.insulation_rating_c,
+            three_phase=True,
+        )
+    except ValidationError as exc:
+        raise ValidationError(f"{load.description}: {exc}") from exc
+    return _Sized(
+        load=load,
+        index=index,
+        current_a=motor.current_a,
+        rated_a=motor.current_a,
+        curve="",
+        section_mm2=cable.cross_section_mm2,
+        motor=motor,
     )
 
 
@@ -187,6 +223,37 @@ def phase_currents(circuits: list[Circuit]) -> dict[Phase, Decimal]:
         for line in lines:
             totals[line] += circuit.design_current_a
     return totals
+
+
+def _motor_circuit(
+    request: DistributionBoardRequest, item: _Sized, upstream: str | None
+) -> tuple[Circuit, Cable]:
+    motor = item.motor
+    assert motor is not None
+    motor.devices[0].upstream_id = upstream or "incomer"
+    number = item.index + 1
+    cable = Cable(
+        id=f"c{number}-cable",
+        cores=motor.cable_cores,
+        cross_section_mm2=item.section_mm2,
+        material=(
+            "Cu" if request.conditions.conductor_material is ConductorMaterial.COPPER else "Al"
+        ),
+        insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
+    )
+    circuit = Circuit(
+        id=f"c{number}",
+        description=item.load.description,
+        load=item.load.load,
+        power_kw=item.load.power_kw,
+        design_current_a=item.current_a,
+        phase=item.phase,
+        upstream_id=upstream,
+        device_ids=[device.id for device in motor.devices],
+        cable_id=cable.id,
+        starter=item.load.starter,
+    )
+    return circuit, cable
 
 
 def _rccb_rating(current: Decimal) -> Decimal:
@@ -297,6 +364,13 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
 
     for item in sorted(sized, key=lambda s: s.index):
         three_phase = item.load.phases == 3
+        if item.motor is not None:
+            circuit, cable = _motor_circuit(request, item, upstream.get(item.index))
+            devices.extend(item.motor.devices)
+            notes.extend(item.motor.notes)
+            cables.append(cable)
+            circuits.append(circuit)
+            continue
         breaker = Device(
             id=f"c{item.index + 1}-breaker",
             kind=DeviceKind.CIRCUIT_BREAKER,

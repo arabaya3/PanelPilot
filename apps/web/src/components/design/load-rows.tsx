@@ -3,8 +3,8 @@
 import { useTranslations } from 'next-intl';
 
 import { Field } from '@/components/cable-sizing-panel';
-import { LOAD_KINDS, type Load } from '@/components/design/schedule';
-import type { LoadKind } from '@/lib/design';
+import { LOAD_KINDS, MOTOR_KINDS, STARTERS, type Load } from '@/components/design/schedule';
+import type { LoadKind, MotorStarter } from '@/lib/design';
 
 /**
  * One board's load schedule as editable rows: what each circuit feeds, its
@@ -32,7 +32,7 @@ export function LoadRows({
           <div
             key={load.key}
             data-testid={`design-load-${String(index)}`}
-            className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-7 lg:items-end"
+            className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-8 lg:items-end"
           >
             <Field id={field('desc')} label={t('field.description')}>
               <input
@@ -49,7 +49,12 @@ export function LoadRows({
                 id={field('kind')}
                 value={load.load}
                 onChange={(event) => {
-                  onChange(load.key, { load: event.target.value as LoadKind });
+                  const kind = event.target.value as LoadKind;
+                  // A starter belongs to a motor; another kind of load has none.
+                  onChange(load.key, {
+                    load: kind,
+                    starter: MOTOR_KINDS.includes(kind) ? load.starter : '',
+                  });
                 }}
                 className="input w-full"
               >
@@ -97,6 +102,26 @@ export function LoadRows({
                 }}
                 className="input w-full"
               />
+            </Field>
+            <Field id={field('starter')} label={t('field.starter')}>
+              <select
+                id={field('starter')}
+                value={load.starter}
+                disabled={!MOTOR_KINDS.includes(load.load)}
+                onChange={(event) => {
+                  const starter = event.target.value as MotorStarter | '';
+                  // Every starter here is for a three-phase motor.
+                  onChange(load.key, starter ? { starter, phases: '3' } : { starter });
+                }}
+                className="input w-full"
+              >
+                <option value="">{t('starter.none')}</option>
+                {STARTERS.map((starter) => (
+                  <option key={starter} value={starter}>
+                    {t(`starter.${starter}`)}
+                  </option>
+                ))}
+              </select>
             </Field>
             <label className="flex items-center gap-2 text-sm lg:pb-2">
               <input

@@ -18,6 +18,15 @@ const FORMATS: ExportFormat[] = [
 ];
 
 type Board = NonNullable<BoardDesignResponse['project']['boards']>[number];
+type Device = NonNullable<Board['devices']>[number];
+
+/** A circuit's first device as the table shows it: "-Q3 C16", "-F3 63 A aR". */
+function protectionText(device: Device): string {
+  const product = `-${device.designation?.product ?? ''}`;
+  const rating = round(device.rated_current_a ?? '');
+  if (device.kind === 'fuse') return `${product} ${rating} A ${device.curve ?? ''}`.trim();
+  return `${product} ${device.curve ?? ''}${rating}`;
+}
 
 function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
   const t = useTranslations('design');
@@ -59,13 +68,7 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
                   </td>
                   <td className="p-2">{circuit.phase}</td>
                   <td className="p-2">{`${round(circuit.design_current_a)} A`}</td>
-                  <td className="p-2">
-                    {breaker
-                      ? `-${breaker.designation?.product ?? ''} ${breaker.curve ?? ''}${round(
-                          breaker.rated_current_a ?? '',
-                        )}`
-                      : ''}
-                  </td>
+                  <td className="p-2">{breaker ? protectionText(breaker) : ''}</td>
                   <td className="p-2">
                     {rcd
                       ? `-${rcd.designation?.product ?? ''} ${round(rcd.residual_current_ma ?? '')} mA`
