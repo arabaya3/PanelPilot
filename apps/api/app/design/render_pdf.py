@@ -1,8 +1,9 @@
 """Render drawing sheets to a PDF.
 
 The sheets' geometry is drawn as it is, in millimetres; this module only
-flips y, since PDF counts from the bottom of the page. Text uses the PDF base
-fonts, which every viewer has, so the file needs no embedded font to open.
+flips y, since PDF counts from the bottom of the page. Latin text uses the
+PDF base fonts, which every viewer has; Arabic, Hebrew and anything else they
+lack is drawn in an embedded font, laid out right to left (``pdf_fonts``).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from io import BytesIO
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
+from app.design.pdf_fonts import font_for
 from app.design.sheet import (
     SHEET_HEIGHT,
     SHEET_WIDTH,
@@ -23,8 +25,6 @@ from app.design.sheet import (
     Text,
 )
 
-_FONT = "Helvetica"
-_BOLD = "Helvetica-Bold"
 _DASH = (1.5 * mm, 1.0 * mm)
 
 
@@ -63,17 +63,18 @@ def render_pdf(sheets: list[Sheet], *, title: str = "", author: str = "") -> byt
                 canvas.setDash()
                 canvas.circle(item.x * mm, _y(item.y), item.r * mm)
             elif isinstance(item, Text):
-                canvas.setFont(_BOLD if item.bold else _FONT, item.size * mm / 0.72)
+                font, text = font_for(item.text, bold=item.bold)
+                canvas.setFont(font, item.size * mm / 0.72)
                 canvas.saveState()
                 canvas.translate(item.x * mm, _y(item.y))
                 if item.rotation:
                     canvas.rotate(item.rotation)
                 if item.anchor is Anchor.MIDDLE:
-                    canvas.drawCentredString(0, 0, item.text)
+                    canvas.drawCentredString(0, 0, text)
                 elif item.anchor is Anchor.END:
-                    canvas.drawRightString(0, 0, item.text)
+                    canvas.drawRightString(0, 0, text)
                 else:
-                    canvas.drawString(0, 0, item.text)
+                    canvas.drawString(0, 0, text)
                 canvas.restoreState()
         canvas.showPage()
     canvas.save()

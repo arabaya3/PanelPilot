@@ -214,7 +214,16 @@ level, the cable conditions, and whether the rules were confirmed. Every
 note, import warning and suggestion note is a code with its values
 (`app/design/notes.py`). The page renders it in the reader's language
 (en/ar/he), and a test keeps the catalogues in step with the codes. The
-drawing set prints the English text, since its frame fonts are Latin-only.
+drawing set is written in the company's drawing language (`language`: `en`
+or `ar`). With `ar`, page titles, the title block, table headings and the
+notes are in Arabic (`app/design/drawing_text.py`, `locale/ar.json`, which a
+test holds to the page's Arabic notes). In every PDF, the drawings and the
+quotation alike, Arabic and Hebrew text is drawn in the bundled DejaVu Sans
+(`app/design/fonts`, free licence). Its letters are joined by
+`arabic-reshaper` (MIT) and laid out right to left by `app/design/rtl.py`;
+python-bidi and fribidi were not used because they are LGPL. Latin text keeps
+the PDF base fonts. Typed text in the quotation is escaped, so a `<` in a
+description is printed rather than read as markup.
 A refusal the engineer can meet works the same way: a load the tables do not
 cover, a board graph that loops, an unreadable file. It carries a `code` and
 `params` beside its English `detail` (`PanelPilotError(code=..., params=...)`,

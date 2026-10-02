@@ -34,3 +34,16 @@ def test_an_incomplete_quotation_says_so(hall_project: DesignProject) -> None:
     text = _text(quotation_pdf.render_quotation_pdf(priced, hall_project))
     assert "Incomplete" in text
     assert "not priced" in text
+
+
+def test_typed_text_is_not_read_as_markup_and_arabic_is_drawn(
+    hall_project: DesignProject,
+) -> None:
+    info = hall_project.info.model_copy(update={"name": "<b>Tower & Co</b> برج"})
+    project = hall_project.model_copy(update={"info": info})
+    priced = quotation.price_project(project, PricingSettings())
+    data = quotation_pdf.render_quotation_pdf(priced, project, company="شركة اللوحات")
+    with pdfplumber.open(BytesIO(data)) as pdf:
+        fonts = {c["fontname"].split("+")[-1] for p in pdf.pages for c in p.chars}
+    assert "DejaVuSans-Bold" in fonts or "DejaVuSans" in fonts
+    assert "<b>Tower & Co</b>" in _text(data)

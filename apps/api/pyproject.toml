@@ -32,6 +32,10 @@ dependencies = [
     # the structure extractor's fixture PDFs: a real PDF is the only honest
     # fixture there, since the extractor's whole job is reading layout.
     "reportlab>=4.2",
+    # Joins Arabic letters into the presentation forms a PDF draws
+    # (app/design/rtl.py). MIT, pure Python. The bidirectional ordering is
+    # done there by hand: python-bidi and fribidi are LGPL.
+    "arabic-reshaper>=3.0",
     # Reads a consultant's load schedule from Excel (app/design/
     # schedule_import.py), the form most of them arrive in. MIT.
     "openpyxl>=3.1",
@@ -151,7 +155,14 @@ plugins = ["pydantic.mypy"]
 exclude = "^alembic/"
 
 [[tool.mypy.overrides]]
-module = ["opensearchpy.*", "reportlab.*", "pdfplumber.*", "voyageai.*", "openpyxl.*"]
+module = [
+    "opensearchpy.*",
+    "reportlab.*",
+    "pdfplumber.*",
+    "voyageai.*",
+    "openpyxl.*",
+    "arabic_reshaper.*",
+]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

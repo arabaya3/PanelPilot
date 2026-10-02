@@ -160,6 +160,10 @@ anyio==4.15.1 \
     #   openai
     #   starlette
     #   watchfiles
+arabic-reshaper==3.0.1 \
+    --hash=sha256:41c5adc2420f85758eada7e880251c4b6a2adbd83377bd27e5d4eba71f648bc7 \
+    --hash=sha256:a0d9b2a9fa29b5f2c1d705f407adf6ca4242405b9cac0e5cc09e6c4f3f8fb68c
+    # via panelpilot-api (pyproject.toml)
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32

@@ -21,6 +21,9 @@ What the set holds:
 
 A page kind the profile names but the project has nothing for (terminals,
 layout, safety text) is left out rather than printed empty.
+
+The set's own words and the notes are in the profile's drawing language
+(``drawing_text``); what the engineer typed is drawn as typed.
 """
 
 from __future__ import annotations
@@ -29,7 +32,8 @@ import textwrap
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.design import symbols
+from app.design import rtl, symbols
+from app.design.drawing_text import Words
 from app.design.sheet import (
     AREA_BOTTOM,
     AREA_LEFT,
@@ -71,6 +75,10 @@ CONTENTS_ROWS_PER_PAGE = 38
 #: Average character width as a share of text height, for the base font:
 #: what a cell can hold before its text is wrapped.
 _CHAR_WIDTH = 0.75
+
+#: The same for a text drawn in the embedded font (``pdf_fonts``), whose
+#: Latin and Arabic glyphs run wider than the base font's.
+_RTL_CHAR_WIDTH = 0.95
 
 _TITLE_LABELS: dict[TitleField, str] = {
     TitleField.COMPANY: "Company",
@@ -213,7 +221,7 @@ def _chunks(items: list[object], size: int) -> list[list[object]]:
     return [items[i : i + size] for i in range(0, len(items), size)] or [[]]
 
 
-def _part_rows(project: DesignProject) -> list[list[str]]:
+def _part_rows(project: DesignProject, say: Words) -> list[list[str]]:
     """The parts list: identical devices counted together."""
     groups: dict[tuple[object, ...], tuple[Device, list[str]]] = {}
     for board in project.boards:
@@ -236,11 +244,11 @@ def _part_rows(project: DesignProject) -> list[list[str]]:
             article = f"{part.manufacturer} {part.type_number}"
             order_number = part.order_number or ""
         else:
-            article, order_number = "not selected", ""
+            article, order_number = say("not selected"), ""
         table.append(
             [
                 str(len(names)),
-                f"{_KIND_NAMES[sample.kind]} {rating_text(sample)}",
+                f"{say(_KIND_NAMES[sample.kind])} {rating_text(sample)}",
                 article,
                 order_number,
                 ", ".join(names),
@@ -269,36 +277,38 @@ def _cable_rows(project: DesignProject) -> list[list[str]]:
     return table
 
 
-def _plan(project: DesignProject, profile: CompanyProfile) -> list[_Plan]:
+def _plan(project: DesignProject, profile: CompanyProfile, say: Words) -> list[_Plan]:
     plans: list[_Plan] = []
     for kind in profile.page_order:
         if kind is PageKind.TITLE:
-            plans.append(_Plan(kind, "Title page"))
+            plans.append(_Plan(kind, say("Title page")))
         elif kind is PageKind.CONTENTS:
-            plans.append(_Plan(kind, "Table of contents"))
+            plans.append(_Plan(kind, say("Table of contents")))
         elif kind is PageKind.SINGLE_LINE:
             for board in project.boards:
                 for chunk in _chunks(list(_feeders(board)), FEEDERS_PER_PAGE):
-                    plans.append(_Plan(kind, "Main power", board, chunk))
+                    plans.append(_Plan(kind, say("Main power"), board, chunk))
         elif kind is PageKind.DISTRIBUTION:
             for board in project.boards:
                 for group, circuits in _groups(board):
                     for chunk in _chunks(list(circuits), CIRCUITS_PER_PAGE):
-                        plans.append(_Plan(kind, "Distribution loads", board, chunk, group))
+                        plans.append(_Plan(kind, say("Distribution loads"), board, chunk, group))
         elif kind is PageKind.NOTES:
             for board in project.boards:
                 if board.notes:
-                    plans.append(_Plan(kind, "Design notes", board, [n.text for n in board.notes]))
+                    plans.append(
+                        _Plan(kind, say("Design notes"), board, [say.note(n) for n in board.notes])
+                    )
         elif kind is PageKind.CABLES:
             rows = _cable_rows(project)
             if rows:
                 for chunk in _chunks(list(rows), ROWS_PER_TABLE_PAGE):
-                    plans.append(_Plan(kind, "Cable list", None, chunk))
+                    plans.append(_Plan(kind, say("Cable list"), None, chunk))
         elif kind is PageKind.PARTS:
-            rows = _part_rows(project)
+            rows = _part_rows(project, say)
             if rows:
                 for chunk in _chunks(list(rows), ROWS_PER_TABLE_PAGE):
-                    plans.append(_Plan(kind, "Parts list", None, chunk))
+                    plans.append(_Plan(kind, say("Parts list"), None, chunk))
     # Contents may need more than one page once the set is long.
     expanded: list[_Plan] = []
     for plan in plans:
@@ -310,7 +320,9 @@ def _plan(project: DesignProject, profile: CompanyProfile) -> list[_Plan]:
     return expanded
 
 
-def _frame(sheet: Sheet, total: int, project: DesignProject, profile: CompanyProfile) -> None:
+def _frame(
+    sheet: Sheet, total: int, project: DesignProject, profile: CompanyProfile, say: Words
+) -> None:
     """Draw the frame, the column and row indexes, and the title block."""
     title_top = FRAME_BOTTOM - TITLE_BLOCK_HEIGHT
     sheet.add(Rect(FRAME_LEFT, FRAME_TOP, FRAME_RIGHT - FRAME_LEFT, FRAME_BOTTOM - FRAME_TOP, 0.5))
@@ -353,7 +365,7 @@ def _frame(sheet: Sheet, total: int, project: DesignProject, profile: CompanyPro
         TitleField.CONSULTANT: project.info.consultant,
         TitleField.CONTRACTOR: project.info.contractor,
         TitleField.PAGE_TITLE: sheet.title,
-        TitleField.PAGE_NUMBER: f"{sheet.number} of {total}",
+        TitleField.PAGE_NUMBER: say("{number} of {total}", number=sheet.number, total=total),
         TitleField.REVISION: latest.index if latest else "",
         TitleField.DATE: latest.date if latest else "",
         TitleField.DRAWN_BY: latest.drawn_by if latest else "",
@@ -374,15 +386,30 @@ def _frame(sheet: Sheet, total: int, project: DesignProject, profile: CompanyPro
             sheet.add(Line(x, y, x, y + cell_height))
         value = _fit(values[name], cell_width - 3.0, 3.0)
         sheet.add(
-            Text(x + 1.5, y + 4.0, _TITLE_LABELS[name], size=1.8),
+            Text(x + 1.5, y + 4.0, say(_TITLE_LABELS[name]), size=1.8),
             Text(x + 1.5, y + 11.0, value, size=3.0, bold=name is TitleField.PAGE_TITLE),
         )
 
 
+def _per_line(text: str, width: float, size: float) -> int:
+    """How many of a text's characters fit a width, by its script's average."""
+    factor = _RTL_CHAR_WIDTH if rtl.has_rtl(text) else _CHAR_WIDTH
+    return max(1, int(width / (size * factor)))
+
+
 def _fit(text: str, width: float, size: float) -> str:
     """Cut a text to what fits a width, marking the cut."""
-    limit = max(1, int(width / (size * _CHAR_WIDTH)))
+    limit = _per_line(text, width, size)
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _cell(
+    x: float, width: float, y: float, text: str, size: float, *, right: bool, bold: bool = False
+) -> Text:
+    """One line of a table cell, right-aligned for a cell that reads right to left."""
+    if right:
+        return Text(x + width - 1.5, y, text, size=size, bold=bold, anchor=Anchor.END)
+    return Text(x + 1.5, y, text, size=size, bold=bold)
 
 
 def _table(
@@ -401,20 +428,22 @@ def _table(
     if any(header for header, _ in headers):
         x = x0
         for header, width in headers:
-            sheet.add(Text(x + 1.5, y + line_height, header, size=size, bold=True))
+            right = rtl.has_rtl(header)
+            sheet.add(_cell(x, width, y + line_height, header, size, right=right, bold=True))
             x += width
         y += line_height + 1.5
         sheet.add(Line(x0, y, x0 + sum(widths), y, 0.35))
     for row in rows:
         wrapped = [
-            textwrap.wrap(cell, max(1, int((width - 3.0) / (size * _CHAR_WIDTH)))) or [""]
+            textwrap.wrap(cell, _per_line(cell, width - 3.0, size)) or [""]
             for cell, width in zip(row, widths, strict=True)
         ]
         height = max(len(w) for w in wrapped) * line_height + 1.5
         x = x0
-        for lines, width in zip(wrapped, widths, strict=True):
+        for cell, lines, width in zip(row, wrapped, widths, strict=True):
+            right = rtl.has_rtl(cell)
             for n, text in enumerate(lines):
-                sheet.add(Text(x + 1.5, y + line_height * (n + 1), text, size=size))
+                sheet.add(_cell(x, width, y + line_height * (n + 1), text, size, right=right))
             x += width
         y += height
         sheet.add(Line(x0, y, x0 + sum(widths), y, 0.18))
@@ -426,7 +455,7 @@ def _table(
         sheet.add(Line(x, top, x, y, 0.18))
 
 
-def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile) -> None:
+def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile, say: Words) -> None:
     info = project.info
     middle = (AREA_LEFT + AREA_RIGHT) / 2
     sheet.add(
@@ -440,17 +469,17 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile) -
         ),
     )
     rows = [
-        ["Customer", info.customer],
-        ["Consultant", info.consultant],
-        ["Contractor", info.contractor],
-        ["Job number", info.number],
-        ["Issued under", profile.name or profile.key],
+        [say("Customer"), info.customer],
+        [say("Consultant"), info.consultant],
+        [say("Contractor"), info.contractor],
+        [say("Job number"), info.number],
+        [say("Issued under"), profile.name or profile.key],
         [
-            "Design rules",
+            say("Design rules"),
             (
-                f"confirmed by {profile.rules_confirmed_by}"
+                say("confirmed by {name}", name=profile.rules_confirmed_by)
                 if profile.rules_confirmed_by
-                else "software defaults, not confirmed by the company's engineers"
+                else say("software defaults, not confirmed by the company's engineers")
             ),
         ],
     ]
@@ -460,12 +489,12 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile) -
             sheet,
             AREA_TOP + 135,
             [
-                ("Rev.", 15.0),
-                ("Date", 25.0),
-                ("Description", 120.0),
-                ("Drawn", 30.0),
-                ("Checked", 30.0),
-                ("Approved", 30.0),
+                (say("Rev."), 15.0),
+                (say("Date"), 25.0),
+                (say("Description"), 120.0),
+                (say("Drawn"), 30.0),
+                (say("Checked"), 30.0),
+                (say("Approved"), 30.0),
             ],
             [
                 [r.index, r.date, r.description, r.drawn_by, r.checked_by, r.approved_by]
@@ -474,17 +503,24 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile) -
         )
 
 
-def _fed_from_text(board: Board, numbers: dict[str, int], supplies: dict[str, str]) -> str:
+def _fed_from_text(
+    board: Board, numbers: dict[str, int], supplies: dict[str, str], say: Words
+) -> str:
     """Where a sub-board's supply comes from, with the page and column it is drawn on."""
-    text = f"from {board.fed_from} {supplies.get(board.name, '')}".rstrip()
+    source = f"{board.fed_from} {supplies.get(board.name, '')}".rstrip()
     page = numbers.get(f"feeder:{board.name}")
     if page:
-        text += f" /{page}.{numbers.get(f'feedercol:{board.name}', 0)}"
-    return text
+        source += f" /{page}.{numbers.get(f'feedercol:{board.name}', 0)}"
+    return say("from {source}", source=source)
 
 
 def _draw_main(
-    sheet: Sheet, plan: _Plan, numbers: dict[str, int], supplies: dict[str, str], first: bool
+    sheet: Sheet,
+    plan: _Plan,
+    numbers: dict[str, int],
+    supplies: dict[str, str],
+    first: bool,
+    say: Words,
 ) -> None:
     board = plan.board
     assert board is not None
@@ -503,7 +539,9 @@ def _draw_main(
             sheet.add(Text(x, AREA_TOP + 13, f"Ik {_plain(supply.fault_level_ka)} kA", size=2.5))
         if board.fed_from:
             sheet.add(
-                Text(x + 30.0, AREA_TOP + 6, _fed_from_text(board, numbers, supplies), size=2.5)
+                Text(
+                    x + 30.0, AREA_TOP + 6, _fed_from_text(board, numbers, supplies, say), size=2.5
+                )
             )
         top = AREA_TOP + 18.0
         for incomer_id in board.incomer_ids:
@@ -516,7 +554,7 @@ def _draw_main(
     else:
         sheet.add(
             *symbols.busbar(AREA_LEFT + 4.0, last_x, bus_y),
-            Text(AREA_LEFT + 4.0, bus_y - 2.0, "Busbar, continued", size=2.2),
+            Text(AREA_LEFT + 4.0, bus_y - 2.0, say("Busbar, continued"), size=2.2),
         )
     for column, feeder in enumerate(feeders, start=1):
         x = column_x(column)
@@ -539,7 +577,15 @@ def _draw_main(
             target = numbers.get(f"dist:{board.id}:{ident}")
             sheet.add(Line(x, top, x, top + 8))
             if target:
-                sheet.add(Text(x, top + 12, f"to /{target}.0", size=2.2, anchor=Anchor.MIDDLE))
+                sheet.add(
+                    Text(
+                        x,
+                        top + 12,
+                        say("to {target}", target=f"/{target}.0"),
+                        size=2.2,
+                        anchor=Anchor.MIDDLE,
+                    )
+                )
         else:
             circuit = next(c for c in board.circuits if c.id == ident)
             sheet.add(Line(x, top, x, top + 6))
@@ -551,7 +597,15 @@ def _draw_main(
             target = numbers.get(f"dist:{board.id}:{circuit.id}")
             sheet.add(Line(x, bottom, x, bottom + 8))
             if target:
-                sheet.add(Text(x, bottom + 12, f"to /{target}.0", size=2.2, anchor=Anchor.MIDDLE))
+                sheet.add(
+                    Text(
+                        x,
+                        bottom + 12,
+                        say("to {target}", target=f"/{target}.0"),
+                        size=2.2,
+                        anchor=Anchor.MIDDLE,
+                    )
+                )
             for n, line in enumerate(textwrap.wrap(circuit.description, 18)[:3]):
                 sheet.add(Text(x, bottom + 17 + n * 3.0, line, size=2.2, anchor=Anchor.MIDDLE))
 
@@ -615,7 +669,7 @@ def _draw_chain(sheet: Sheet, board: Board, circuit: Circuit, x: float, top: flo
     return bottom
 
 
-def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> None:
+def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int], say: Words) -> None:
     board = plan.board
     assert board is not None
     circuits = [c for c in plan.payload if isinstance(c, Circuit)]
@@ -623,12 +677,12 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
     last_x = column_x(max(0, len(circuits) - 1))
     if plan.group:
         rcd = board.device(plan.group)
-        source = f"from {_product(rcd)} {rating_text(rcd)}"
+        source = say("from {source}", source=f"{_product(rcd)} {rating_text(rcd)}")
         back_page = numbers.get(f"main:{board.id}:{plan.group}")
         back_column = numbers.get(f"column:{board.id}:{plan.group}", 0)
         back = f"{back_page}.{back_column}" if back_page else None
     else:
-        source = "from busbar"
+        source = say("from busbar")
         busbar_page = numbers.get(f"main:{board.id}:busbar")
         back = f"{busbar_page}.0" if busbar_page else None
     if back:
@@ -662,7 +716,9 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
             sheet.add(Text(x, y + n * 3.0, line, size=2.2, anchor=Anchor.MIDDLE))
         if circuit.feeds:
             target = numbers.get(f"main:{circuit.feeds}:busbar")
-            reference = f"to {circuit.feeds}" + (f" /{target}.0" if target else "")
+            reference = say(
+                "to {target}", target=circuit.feeds + (f" /{target}.0" if target else "")
+            )
             sheet.add(Text(x, y + 19.0, reference, size=2.2, anchor=Anchor.MIDDLE))
         sheet.add(
             Text(
@@ -675,13 +731,18 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
         )
 
 
-def _draw_contents(sheet: Sheet, rows: list[list[str]]) -> None:
-    _table(sheet, AREA_TOP + 6, [("Page", 20.0), ("Title", 150.0), ("Board", 80.0)], rows)
+def _draw_contents(sheet: Sheet, rows: list[list[str]], say: Words) -> None:
+    _table(
+        sheet,
+        AREA_TOP + 6,
+        [(say("Page"), 20.0), (say("Title"), 150.0), (say("Board"), 80.0)],
+        rows,
+    )
 
 
-def _draw_notes(sheet: Sheet, plan: _Plan) -> None:
+def _draw_notes(sheet: Sheet, plan: _Plan, say: Words) -> None:
     rows = [[str(n), str(note)] for n, note in enumerate(plan.payload, start=1)]
-    _table(sheet, AREA_TOP + 6, [("No.", 15.0), ("Note", 340.0)], rows, size=2.6)
+    _table(sheet, AREA_TOP + 6, [(say("No."), 15.0), (say("Note"), 340.0)], rows, size=2.6)
 
 
 def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[Sheet]:
@@ -694,7 +755,8 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
     Returns:
         The sheets, numbered from 1, frame and title block drawn.
     """
-    plans = _plan(project, profile)
+    say = Words(profile.language)
+    plans = _plan(project, profile, say)
     numbers: dict[str, int] = {}
     seen_main: set[str] = set()
     for number, plan in enumerate(plans, start=1):
@@ -740,26 +802,32 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
     for number, plan in enumerate(plans, start=1):
         sheet = Sheet(number=number, title=plan.title, board=plan.board.name if plan.board else "")
         if plan.kind is PageKind.TITLE:
-            _draw_title(sheet, project, profile)
+            _draw_title(sheet, project, profile, say)
         elif plan.kind is PageKind.CONTENTS:
             page_rows = contents_pages[min(contents_index, len(contents_pages) - 1)]
             _draw_contents(
-                sheet, [[str(c) for c in row] for row in page_rows if isinstance(row, list)]
+                sheet, [[str(c) for c in row] for row in page_rows if isinstance(row, list)], say
             )
             contents_index += 1
         elif plan.kind is PageKind.SINGLE_LINE and plan.board is not None:
             first = plan.board.id not in started
             started.add(plan.board.id)
-            _draw_main(sheet, plan, numbers, supplies, first)
+            _draw_main(sheet, plan, numbers, supplies, first, say)
         elif plan.kind is PageKind.DISTRIBUTION:
-            _draw_distribution(sheet, plan, numbers)
+            _draw_distribution(sheet, plan, numbers, say)
         elif plan.kind is PageKind.NOTES:
-            _draw_notes(sheet, plan)
+            _draw_notes(sheet, plan, say)
         elif plan.kind is PageKind.CABLES:
             _table(
                 sheet,
                 AREA_TOP + 6,
-                [("Cable", 45.0), ("From", 55.0), ("To", 120.0), ("Type", 60.0), ("Length", 25.0)],
+                [
+                    (say("Cable"), 45.0),
+                    (say("From"), 55.0),
+                    (say("To"), 120.0),
+                    (say("Type"), 60.0),
+                    (say("Length"), 25.0),
+                ],
                 [[str(c) for c in row] for row in plan.payload if isinstance(row, list)],
             )
         elif plan.kind is PageKind.PARTS:
@@ -767,14 +835,14 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
                 sheet,
                 AREA_TOP + 6,
                 [
-                    ("Qty", 15.0),
-                    ("Description", 105.0),
-                    ("Article", 70.0),
-                    ("Order number", 45.0),
-                    ("Devices", 125.0),
+                    (say("Qty"), 15.0),
+                    (say("Description"), 105.0),
+                    (say("Article"), 70.0),
+                    (say("Order number"), 45.0),
+                    (say("Devices"), 125.0),
                 ],
                 [[str(c) for c in row] for row in plan.payload if isinstance(row, list)],
             )
-        _frame(sheet, total, project, profile)
+        _frame(sheet, total, project, profile, say)
         sheets.append(sheet)
     return sheets

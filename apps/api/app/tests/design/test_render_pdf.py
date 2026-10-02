@@ -45,3 +45,17 @@ def test_rendering_is_deterministic() -> None:
     sheet = Sheet(number=1, title="T")
     sheet.add(Text(10, 10, "x"))
     assert render_pdf.render_pdf([sheet]) == render_pdf.render_pdf([sheet])
+
+
+def test_arabic_text_is_embedded_joined_and_right_to_left() -> None:
+    sheet = Sheet(number=1, title="لوحة")
+    sheet.add(Text(30, 40, "إنارة الموقف"), Text(30, 60, "Plain", bold=True))
+    data = render_pdf.render_pdf([sheet])
+    with pdfplumber.open(BytesIO(data)) as pdf:
+        page = pdf.pages[0]
+        fonts = {char["fontname"].split("+")[-1] for char in page.chars}
+        assert fonts == {"DejaVuSans", "Helvetica-Bold"}
+        # Drawn in visual order: the first word typed is the rightmost.
+        arabic = [c for c in page.chars if "DejaVu" in c["fontname"]]
+        first_drawn = min(arabic, key=lambda c: c["x0"])["text"]
+        assert first_drawn not in "إنارة"
