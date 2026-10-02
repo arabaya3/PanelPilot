@@ -9,8 +9,9 @@ than from a figure typed in by hand:
 * It is entered as a load of ``power_kw`` at cos phi 1 chosen so that
   P / (k Ur cos phi) gives that current back, so the feeder is protected and
   cabled by the same rule as every other circuit (``distribution``).
-* A feeder and the incomer it supplies come out the same rating, so the board
-  says discrimination between them is not checked.
+* A feeder is rated at least the company's discrimination ratio times the
+  incomer it supplies, so the two discriminate on overload; its cable is
+  sized for that rating.
 * A sub-board with no fault level of its own takes the one of the board
   that feeds it, unreduced by the feeder: a safe figure for its breakers'
   breaking capacity, which the engineer can replace with a calculated one.
@@ -184,8 +185,14 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     # Cable sizes do not change a current, so this pass needs no drop budget.
     feeders: dict[str, list[LoadInput]] = {request.name: [] for request in requests}
     strictest: dict[str, Decimal] = {}
+    incomers: dict[str, Decimal] = {}
     for request in order:
-        board = distribution.design_distribution_board(_with_feeders(request, feeders), profile)
+        board = distribution.design_distribution_board(
+            _with_feeders(request, feeders), profile, sub_board_incomers_a=incomers
+        )
+        incomer = board.device(board.incomer_ids[0]).rated_current_a
+        if incomer is not None:
+            incomers[request.name] = incomer
         strictest[request.name] = min(
             [
                 *(voltage_drop.limit_for(profile, load.load) for load in request.loads),
@@ -207,7 +214,7 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
             feeder_limits={child: strictest[child] for child in children},
         )
         board = distribution.design_distribution_board(
-            _with_feeders(request, feeders), profile, budget
+            _with_feeders(request, feeders), profile, budget, incomers
         )
         for circuit in board.circuits:
             if circuit.feeds is not None:
@@ -224,8 +231,6 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
                     board=request.fed_from,
                 )
             )
-        if children:
-            board.notes.append(note("feeder_discrimination"))
         designed[request.name] = board
     return [designed[request.name] for request in requests]
 

@@ -73,10 +73,12 @@ def test_a_feeder_is_sized_from_the_sub_board_as_designed() -> None:
     assert feeder.phase is Phase.THREE_PHASE
     breaker = main.device(feeder.device_ids[0])
     incomer = sub.device(sub.incomer_ids[0])
-    assert breaker.rated_current_a >= incomer.rated_current_a  # type: ignore[operator]
+    # Rated to discriminate with the incomer it supplies, the cable to carry it.
+    assert breaker.rated_current_a >= incomer.rated_current_a * Decimal("1.6")  # type: ignore[operator]
+    (raised,) = [n for n in main.notes if n.code == "discrimination_feeder_raised"]
+    assert raised.params["board"] == "DB-1"
     assert sub.fed_from == "MDB"
     assert "Fed from MDB." in [n.text for n in sub.notes]
-    assert any("Discrimination between each sub-board feeder" in n.text for n in main.notes)
 
 
 def test_a_single_phase_sub_board_on_a_three_phase_main() -> None:

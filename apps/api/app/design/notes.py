@@ -49,11 +49,34 @@ TEMPLATES: dict[str, str] = {
         "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation "
         "category against the catalogue for motor or lamp loads."
     ),
-    "group_discrimination": (
-        "Discrimination between each group breaker and its outgoing breakers is not checked."
-    ),
     "no_fault_level": (
         "No fault level given: every breaker's breaking capacity is left to be confirmed."
+    ),
+    "discrimination": (
+        "Each breaker is rated at least {ratio} x the largest breaker after it, so they "
+        "discriminate on overload. On short circuit, miniature breakers discriminate only up to "
+        "the upstream breaker's instantaneous trip (about 5 x In for curve C); where total "
+        "selectivity is required, confirm it from the manufacturer's selectivity tables."
+    ),
+    "discrimination_group_raised": (
+        "Group {group} breaker raised to {rated} A, {ratio} x the {after} A breaker after it, for "
+        "discrimination."
+    ),
+    "discrimination_group_not_met": (
+        "Group {group} breaker: {rated} A is less than {ratio} x the {after} A breaker after it, "
+        "and no larger rating is held for its RCCB; overload discrimination is not assured."
+    ),
+    "discrimination_incomer_raised": (
+        "Incomer raised to {rated} A, {ratio} x the {after} A breaker after it, for "
+        "discrimination."
+    ),
+    "discrimination_incomer_not_met": (
+        "Incomer: {rated} A is less than {ratio} x the {after} A breaker after it, and a larger "
+        "miniature breaker is not held; overload discrimination is not assured."
+    ),
+    "discrimination_feeder_raised": (
+        "Feeder to {board} raised to {rated} A, {ratio} x the {after} A incomer it supplies, for "
+        "discrimination; its cable is sized for {rated} A."
     ),
     "breaking_capacity": (
         "Breakers are rated for at least {rating} kA breaking capacity against {fault} kA "
@@ -100,10 +123,6 @@ TEMPLATES: dict[str, str] = {
     ),
     # Projects of boards.
     "fed_from": "Fed from {board}.",
-    "feeder_discrimination": (
-        "Discrimination between each sub-board feeder and the incomer it supplies is not "
-        "checked."
-    ),
     # Motors.
     "motor_current_table": (
         "{load}: Ir {current} A, the typical Ir of a {power} kW motor in {source}; check it "

@@ -512,6 +512,8 @@ class CompanyProfile(BaseModel):
             circuits.
         max_phase_imbalance_percent: The largest difference between the most
             and least loaded line conductors, as a share of the most loaded.
+        discrimination_ratio: How many times the largest breaker after it each
+            breaker is rated at least, for overload discrimination.
         max_voltage_drop_percent: The largest voltage drop from the origin of
             the installation to a load, by kind of load; a kind not listed
             takes ``default_max_voltage_drop_percent``. The defaults are IEC
@@ -540,6 +542,7 @@ class CompanyProfile(BaseModel):
     )
     spare_ways_percent: Decimal = Decimal(20)
     max_phase_imbalance_percent: Decimal = Decimal(10)
+    discrimination_ratio: Decimal = Field(default=Decimal("1.6"), ge=1, le=10)
     max_voltage_drop_percent: dict[LoadKind, Decimal] = Field(
         default_factory=lambda: {LoadKind.LIGHTING: Decimal(3)}
     )

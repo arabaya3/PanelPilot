@@ -1265,6 +1265,8 @@ export interface components {
      *             circuits.
      *         max_phase_imbalance_percent: The largest difference between the most
      *             and least loaded line conductors, as a share of the most loaded.
+     *         discrimination_ratio: How many times the largest breaker after it each
+     *             breaker is rated at least, for overload discrimination.
      *         max_voltage_drop_percent: The largest voltage drop from the origin of
      *             the installation to a load, by kind of load; a kind not listed
      *             takes ``default_max_voltage_drop_percent``. The defaults are IEC
@@ -1329,6 +1331,11 @@ export interface components {
        * @default 10
        */
       max_phase_imbalance_percent: string;
+      /**
+       * Discrimination Ratio
+       * @default 1.6
+       */
+      discrimination_ratio: string;
       /** Max Voltage Drop Percent */
       max_voltage_drop_percent?: {
         [key: string]: string;
