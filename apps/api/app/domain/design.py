@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -94,12 +95,16 @@ class ExportedFile:
     Attributes:
         content: Its bytes.
         media_type: Its MIME type.
-        filename: The name to save it under.
+        filename: The name to save it under, in ASCII, for a client that
+            reads no other.
+        display_name: The same name in the project's own script, which a
+            client that reads RFC 6266 ``filename*`` saves it under.
     """
 
     content: bytes
     media_type: str
     filename: str
+    display_name: str = ""
 
 
 def _profile(settings: dict[str, Any] | None) -> CompanyProfile:
@@ -111,6 +116,20 @@ def _profile(settings: dict[str, Any] | None) -> CompanyProfile:
 def _slug(name: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.")
     return slug or "project"
+
+
+def _unicode_slug(name: str) -> str:
+    """A project name as a file name, its own script kept ("برج-القمة").
+
+    Letters, marks (an Arabic shadda) and digits of any script stay, as do
+    "." and "-"; anything else (spaces, path separators, quotes, control
+    characters) becomes one hyphen.
+    """
+    kept = "".join(
+        char if unicodedata.category(char)[0] in "LMN" or char in ".-" else " " for char in name
+    )
+    slug = "-".join(kept.split()).strip("-.")
+    return slug[:100] or "project"
 
 
 def design_board(
@@ -249,6 +268,7 @@ def export_design(
         content=content,
         media_type=media_type,
         filename=f"{_slug(project.info.name)}.{extension}",
+        display_name=f"{_unicode_slug(project.info.name)}.{extension}",
     )
 
 

@@ -138,6 +138,22 @@ function has(payload: object, ...keys: string[]): boolean {
   return keys.every((key) => key in payload);
 }
 
+/**
+ * The name a download is saved under: the project's own (RFC 6266
+ * `filename*`, which keeps an Arabic name), else the ASCII `filename`.
+ */
+export function savedName(disposition: string): string | null {
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.trim());
+    } catch {
+      // A malformed encoding falls back to the plain name.
+    }
+  }
+  return /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+}
+
 function upload(file: Blob, filename: string): FormData {
   const body = new FormData();
   body.append('file', file, filename);
@@ -183,12 +199,11 @@ export async function exportDesign(
   }
   if (!response.ok) return { kind: 'failed' };
   const disposition = response.headers.get('Content-Disposition') ?? '';
-  const match = /filename="([^"]+)"/.exec(disposition);
   try {
     return {
       kind: 'exported',
       blob: await response.blob(),
-      filename: match?.[1] ?? `project.${format}`,
+      filename: savedName(disposition) ?? `project.${format}`,
     };
   } catch {
     return { kind: 'failed' };

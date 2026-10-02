@@ -69,6 +69,17 @@ def test_a_board_is_designed_then_exported(client: TestClient) -> None:
     assert report.content.startswith(b"%PDF")
 
 
+def test_an_arabic_project_name_is_kept_for_the_download(client: TestClient) -> None:
+    from urllib.parse import quote
+
+    body = {**BOARD, "info": {"name": "برج القمة"}}
+    project = client.post("/design/distribution-board", json=body).json()["project"]
+    exported = client.post("/design/export", json={"project": project, "format": "pdf"})
+    disposition = exported.headers["content-disposition"]
+    assert 'filename="project.pdf"' in disposition
+    assert "filename*=UTF-8''" + quote("برج-القمة.pdf", safe="") in disposition
+
+
 def test_a_bad_profile_is_a_client_error(client: TestClient) -> None:
     response = client.post(
         "/design/distribution-board", json={**BOARD, "profile": {"key": "x", "bogus": 1}}
