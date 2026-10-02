@@ -722,7 +722,10 @@
       "earth_fault_tt_no_rcd": "{load}: בשיטת TT רק ממסר פחת מנתק תקלת הארקה בזמן (IEC 60364-4-41 §411.5); חברו את המעגל דרך ממסר פחת.",
       "earth_fault_no_ze": "לא הוזן Ze ללוח הזה, ולכן מעגלים שאינם מוגנים בממסר פחת לא נבדקו לניתוק בתקלת הארקה; הזינו את ה-Ze הנמדד או המוצהר.",
       "earth_fault_unchecked": "{count, plural, one {מעגל אחד לא נבדק לניתוק בתקלת הארקה: אין אורך כבל, מפסק של מתנע מנוע, או מפסק שלא נבחר כאן.} other {# מעגלים לא נבדקו לניתוק בתקלת הארקה: אין אורך כבל, מפסק של מתנע מנוע, או מפסק שלא נבחר כאן.}}",
-      "earth_loop_calculated": "‏Ze {ze} Ω, מ-{upstream} Ω ב-{board} בתוספת הלולאה של {length} m של כבל הזנה {section} mm² {material} בטמפרטורת ההפעלה המרבית."
+      "earth_loop_calculated": "‏Ze {ze} Ω, מ-{upstream} Ω ב-{board} בתוספת הלולאה של {length} m של כבל הזנה {section} mm² {material} בטמפרטורת ההפעלה המרבית.",
+      "short_circuit_min_upsized": "{load}: הכבל הוגדל מ-{sized} ל-{section} mm² כדי שקצר בקצה הכבל ינתק את המפסק מיד: ‏Ikmin {current} A, לפחות {trip} A (מדריך ABB §2.4).",
+      "short_circuit_min_exceeded": "{load}: קצר בקצה הכבל מושך רק {current} A, פחות מ-{trip} A שבו המפסק {rated} A עקומה {curve} מנתק מיד, בכל חתכי הכבל הזמינים; קצרו את התוואי או הגנו עליו בעקומה או דירוג נמוכים יותר.",
+      "short_circuit_withstand": "עמידות k²S² של כל כבל מופיעה ברשימת הכבלים; השוו אותה לאנרגיית המעבר I²t של המפסק שנבחר ב-{fault} kA מעקומת היצרן (מדריך ABB §2.4)."
     },
     "errors": {
       "ambient_out_of_table": "טמפרטורת סביבה {ambient} °C מחוץ לטבלת הכבלים לבידוד {insulation} °C ({low}–{high} °C); יש לפנות ליצרן הכבל.",

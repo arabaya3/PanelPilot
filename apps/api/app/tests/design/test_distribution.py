@@ -559,3 +559,25 @@ def test_earth_fault_without_ze_or_length_is_said() -> None:
     )
     (unchecked,) = [n for n in no_length.notes if n.code == "earth_fault_unchecked"]
     assert unchecked.params["count"] == "1"
+
+
+def test_a_long_cable_is_enlarged_until_a_far_short_circuit_trips_at_once() -> None:
+    # Under an RCD, so only the short circuit check can enlarge it for its breaker.
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[_load(LoadKind.SOCKET, "0.5", "Garden sockets", length_m=Decimal(70))],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (upsized,) = [n for n in board.notes if n.code == "short_circuit_min_upsized"]
+    assert upsized.params["trip"] == "160"
+    cable = board.cables[0]
+    assert cable.cross_section_mm2 == Decimal(upsized.params["section"])
+    assert cable.withstand_ka2s is not None
+    assert "short_circuit_withstand" not in [n.code for n in board.notes]
+
+
+def test_the_board_asks_for_the_breakers_let_through_at_its_fault_level() -> None:
+    request = _hall().model_copy(update={"supply": Supply(fault_level_ka=Decimal(10))})
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (withstand,) = [n for n in board.notes if n.code == "short_circuit_withstand"]
+    assert withstand.params["fault"] == "10"

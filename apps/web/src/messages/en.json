@@ -722,7 +722,10 @@
       "earth_fault_tt_no_rcd": "{load}: in a TT system only a residual current device disconnects an earth fault in time (IEC 60364-4-41 §411.5); put this circuit under one.",
       "earth_fault_no_ze": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
       "earth_fault_unchecked": "{count, plural, one {# circuit is not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.} other {# circuits are not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.}}",
-      "earth_loop_calculated": "Ze {ze} Ω, from {board}’s {upstream} Ω plus the loop of {length} m of {section} mm² {material} feeder at its maximum operating temperature."
+      "earth_loop_calculated": "Ze {ze} Ω, from {board}’s {upstream} Ω plus the loop of {length} m of {section} mm² {material} feeder at its maximum operating temperature.",
+      "short_circuit_min_upsized": "{load}: cable enlarged from {sized} to {section} mm² so a short circuit at its far end trips its breaker at once: Ikmin {current} A, at least {trip} A (ABB handbook §2.4).",
+      "short_circuit_min_exceeded": "{load}: a short circuit at the far end draws only {current} A, below the {trip} A that trips its {rated} A curve {curve} breaker at once, at every cable size held; shorten the run or protect it with a lower curve or rating.",
+      "short_circuit_withstand": "Each cable’s withstand k²S² is in the cable list; compare it with the selected breaker’s let-through I²t at {fault} kA from its maker’s curve (ABB handbook §2.4)."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",

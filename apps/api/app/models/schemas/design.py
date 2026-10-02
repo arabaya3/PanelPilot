@@ -196,6 +196,8 @@ class Cable(BaseModel):
         insulation: "PVC" or "XLPE".
         length_m: Where known.
         part_key: The cable type, where selected.
+        withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
+            (kA)²s, for its insulation and material.
     """
 
     id: str
@@ -206,6 +208,7 @@ class Cable(BaseModel):
     insulation: str = "PVC"
     length_m: Decimal | None = None
     part_key: str | None = None
+    withstand_ka2s: Decimal | None = None
 
 
 class Circuit(BaseModel):
