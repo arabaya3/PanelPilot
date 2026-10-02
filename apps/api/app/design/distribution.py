@@ -21,6 +21,11 @@ comes from its profile; what neither settles is left on the board as a note.
   loaded conductor. The resulting imbalance is checked against the profile.
 * The incomer is rated for the most loaded line conductor with no diversity
   applied; a company's demand factors are not assumed.
+* Every breaker but a motor starter's is given the smallest standard breaking
+  capacity at or above the board's prospective fault current (a starter's
+  coordination tables hold to 50 kA, ``motors``). Beyond the largest held, a
+  breaker's capacity is left open and the board says back-up protection is
+  needed.
 * A circuit whose cable length is given has its voltage drop checked against
   the company's limit from the origin, less what the board's own feeders
   dropped, and its cable enlarged where that is needed (``voltage_drop``).
@@ -64,6 +69,12 @@ CONTACTOR_RATINGS: tuple[Decimal, ...] = tuple(Decimal(r) for r in ("20", "25", 
 #: Preferred rated currents of residual current circuit-breakers, IEC 61008-1.
 RCCB_RATINGS: tuple[Decimal, ...] = tuple(
     Decimal(r) for r in ("16", "25", "40", "63", "80", "100", "125")
+)
+
+#: Standard rated breaking capacities, kA: Icn of IEC 60898-1 miniature
+#: breakers (6, 10, 15, 25) and the common Icu steps of moulded-case ones.
+BREAKING_CAPACITIES: tuple[Decimal, ...] = tuple(
+    Decimal(r) for r in ("6", "10", "15", "25", "36", "50")
 )
 
 _LINES = (Phase.L1, Phase.L2, Phase.L3)
@@ -364,6 +375,40 @@ def _motor_circuit(
     return circuit, cable
 
 
+def breaking_capacity(fault_level_ka: Decimal) -> Decimal | None:
+    """The smallest standard breaking capacity that clears a fault.
+
+    Args:
+        fault_level_ka: The prospective short-circuit current at the board.
+
+    Returns:
+        A value from :data:`BREAKING_CAPACITIES` at or above it; ``None``
+        beyond the largest.
+    """
+    return next((rating for rating in BREAKING_CAPACITIES if rating >= fault_level_ka), None)
+
+
+def _rate_breaking_capacity(
+    devices: list[Device], starters: set[str], fault_level_ka: Decimal | None
+) -> list[DesignNote]:
+    """Give every breaker but a starter's the breaking capacity the fault needs."""
+    if fault_level_ka is None:
+        return [note("no_fault_level")]
+    required = breaking_capacity(fault_level_ka)
+    for device in devices:
+        if device.kind is DeviceKind.CIRCUIT_BREAKER and device.id not in starters:
+            device.breaking_capacity_ka = required
+    if required is None:
+        return [
+            note(
+                "breaking_capacity_beyond",
+                fault=_plain(fault_level_ka),
+                largest=_plain(BREAKING_CAPACITIES[-1]),
+            )
+        ]
+    return [note("breaking_capacity", rating=_plain(required), fault=_plain(fault_level_ka))]
+
+
 def _rccb_rating(current: Decimal) -> Decimal:
     for rating in RCCB_RATINGS:
         if rating >= current:
@@ -579,10 +624,11 @@ def design_distribution_board(
         poles=2 if single_phase_supply else 4,
         rated_current_a=incomer_rated,
         curve="C" if incomer_rated is not None else None,
-        breaking_capacity_ka=request.supply.fault_level_ka,
         description="Main incomer",
     )
     devices.insert(0, incomer)
+    starters = {device.id for item in sized if item.motor for device in item.motor.devices}
+    notes.extend(_rate_breaking_capacity(devices, starters, request.supply.fault_level_ka))
 
     spare = (len(circuits) * profile.spare_ways_percent / 100).to_integral_value(ROUND_CEILING)
     notes.append(
@@ -594,8 +640,6 @@ def design_distribution_board(
         notes.append(note("contactor_ac1"))
     if groups:
         notes.append(note("group_discrimination"))
-    if request.supply.fault_level_ka is None:
-        notes.append(note("no_fault_level"))
     unchecked = sum(1 for load in request.loads if load.length_m is None)
     if unchecked:
         notes.append(note("voltage_drop_unchecked", count=unchecked))

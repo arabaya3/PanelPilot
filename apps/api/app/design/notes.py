@@ -55,6 +55,20 @@ TEMPLATES: dict[str, str] = {
     "no_fault_level": (
         "No fault level given: every breaker's breaking capacity is left to be confirmed."
     ),
+    "breaking_capacity": (
+        "Breakers are rated for at least {rating} kA breaking capacity against {fault} kA "
+        "prospective at the board; each RCCB's conditional short-circuit current with the "
+        "breaker ahead of it must reach it too."
+    ),
+    "breaking_capacity_beyond": (
+        "Prospective fault {fault} kA exceeds the largest breaking capacity held "
+        "({largest} kA): the breakers need back-up (cascade) protection from a current-limiting "
+        "device ahead of them, confirmed from the manufacturer's tables; none is rated here."
+    ),
+    "fault_level_inherited": (
+        "Fault level {fault} kA taken from {board}, not reduced by the feeder cable; enter this "
+        "board's own fault level to rate its breakers lower."
+    ),
     "cable_conditions": (
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."

@@ -338,6 +338,18 @@ boards are designed leaves first:
 - **Not checked:** discrimination between a feeder and the incomer it
   supplies is not checked, and the board says so.
 
+**Breaking capacity** is set from the fault level (`distribution.breaking_capacity`):
+
+- **Rating:** every breaker gets the smallest standard breaking capacity at or
+  above the board's prospective fault current (6, 10, 15, 25, 36 or 50 kA).
+  A motor starter keeps its coordinated breaker, which the tables hold to
+  50 kA.
+- **Beyond 50 kA:** no capacity is rated, and the board says back-up
+  (cascade) protection is needed from the manufacturer's tables.
+- **Sub-boards:** a sub-board with no fault level of its own takes its
+  supply's, unreduced by the feeder. That is a safe figure, and the engineer
+  can replace it with a calculated one.
+
 **Voltage drop** is checked for every circuit whose cable length is given,
 and for every feeder whose length is given (`app/design/voltage_drop.py`):
 

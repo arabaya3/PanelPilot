@@ -259,7 +259,7 @@ class Supply(BaseModel):
     phases: int = Field(default=3, ge=1, le=3)
     frequency_hz: Decimal = Decimal(50)
     earthing: str = "TN-S"
-    fault_level_ka: Decimal | None = None
+    fault_level_ka: Decimal | None = Field(default=None, gt=0, le=200)
 
 
 class Board(BaseModel):

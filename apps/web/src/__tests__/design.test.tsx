@@ -67,6 +67,7 @@ const PROJECT: DesignProject = {
           poles: 1,
           rated_current_a: '16',
           curve: 'C',
+          breaking_capacity_ka: '10',
           designation: { product: 'Q3' },
           description: 'Sockets',
         },
@@ -147,7 +148,7 @@ describe('board design', () => {
       },
     ]);
     expect(call?.request.profile).toBeNull();
-    expect(screen.getByText('-Q3 C16')).toBeTruthy();
+    expect(screen.getByText('-Q3 C16 10 kA')).toBeTruthy();
     expect(screen.getByText('-F1 30 mA')).toBeTruthy();
     expect(screen.getByText('3G2.5 Cu')).toBeTruthy();
     expect(screen.getByTestId('design-notes').textContent).toContain('cos φ 0.9');
