@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field, round } from '@/components/cable-sizing-panel';
+import { QuotationPanel } from '@/components/quotation-panel';
 import {
   designBoard,
   exportDesign,
@@ -599,6 +600,20 @@ export function DesignScreen({
 
       {result.kind === 'designed' && (
         <DesignResult response={result.response} onExport={download} exportError={exportError} />
+      )}
+
+      {result.kind === 'designed' && session.kind === 'ready' && (
+        <div className="mt-6">
+          <QuotationPanel
+            token={session.token}
+            project={result.response.project}
+            profile={(() => {
+              const profile = parsedProfile();
+              return profile === 'invalid' ? null : profile;
+            })()}
+            saveImpl={saveImpl}
+          />
+        </div>
       )}
     </AppShell>
   );

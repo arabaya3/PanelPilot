@@ -15,6 +15,7 @@ import structlog
 from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
+from app.core.errors import ValidationError
 from app.design import (
     designations,
     distribution,
@@ -24,6 +25,8 @@ from app.design import (
     export_qet,
     pages,
     profile,
+    quotation,
+    quotation_pdf,
     render_pdf,
     schedule_import,
     schedule_split,
@@ -38,6 +41,9 @@ from app.models.schemas.design import (
     ExportFormat,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    PriceListEntry,
+    Quotation,
+    QuotationRequest,
     ScheduleSuggestionRequest,
 )
 
@@ -55,6 +61,8 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.PARTS_CSV: ("text/csv; charset=utf-8", "parts.csv"),
     ExportFormat.CABLES_CSV: ("text/csv; charset=utf-8", "cables.csv"),
     ExportFormat.CIRCUITS_CSV: ("text/csv; charset=utf-8", "circuits.csv"),
+    ExportFormat.QUOTATION_PDF: ("application/pdf", "quotation.pdf"),
+    ExportFormat.QUOTATION_CSV: ("text/csv; charset=utf-8", "quotation.csv"),
     ExportFormat.JSON: ("application/json", "json"),
 }
 
@@ -134,7 +142,8 @@ def export_design(
         The file.
 
     Raises:
-        ValidationError: If the profile is malformed.
+        ValidationError: If the profile is malformed, or a quotation is asked
+            for without pricing settings.
     """
     del session
     company = _profile(request.profile)
@@ -157,6 +166,15 @@ def export_design(
         content = export_lists.cable_list(project).encode("utf-8")
     elif request.format is ExportFormat.CIRCUITS_CSV:
         content = export_lists.circuit_schedule(project).encode("utf-8")
+    elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
+        if request.pricing is None:
+            raise ValidationError("a quotation needs the company's pricing settings")
+        priced = quotation.price_project(project, request.pricing)
+        content = (
+            quotation_pdf.render_quotation_pdf(priced, project, company=company.name)
+            if request.format is ExportFormat.QUOTATION_PDF
+            else quotation.quotation_csv(priced).encode("utf-8")
+        )
     else:
         content = project.model_dump_json(indent=2).encode("utf-8")
     media_type, extension = _MEDIA_TYPES[request.format]
@@ -225,3 +243,46 @@ def suggest_load_schedule(
     )
     logger.info("design.schedule_suggested", tenant_id=user.tenant_id, loads=len(loads))
     return LoadScheduleSuggestion(loads=loads, assumptions=[*drafted.assumptions, *notes])
+
+
+def price_design(*, user: CurrentUser, request: QuotationRequest) -> Quotation:
+    """Price a project from the company's price list and rates.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        request: The project, the profile settings and the pricing.
+
+    Returns:
+        The quotation, every unpriced line named.
+
+    Raises:
+        ValidationError: If the profile is malformed.
+    """
+    company = _profile(request.profile)
+    project = designations.designate_project(request.project, company)
+    result = quotation.price_project(project, request.pricing)
+    logger.info(
+        "design.priced",
+        tenant_id=user.tenant_id,
+        lines=len(result.lines),
+        unpriced=len(result.unpriced),
+    )
+    return result
+
+
+def import_price_list(*, user: CurrentUser, data: bytes) -> list[PriceListEntry]:
+    """Read a company's price list from a spreadsheet.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        data: The file's bytes (.xlsx or .csv).
+
+    Returns:
+        The prices.
+
+    Raises:
+        ValidationError: If the file has no key and price columns.
+    """
+    entries = quotation.read_price_list(data)
+    logger.info("design.price_list_imported", tenant_id=user.tenant_id, entries=len(entries))
+    return entries
