@@ -262,7 +262,14 @@ def _ambient_factor(ambient_temp_c: Decimal, insulation_rating_c: int) -> tuple[
         raise ValidationError(
             f"ambient {ambient_temp_c} °C is outside Table 4 for {insulation_rating_c} °C "
             f"insulation ({rows[0]}-{rows[-1]} °C); the handbook says to consult the "
-            "cable manufacturer"
+            "cable manufacturer",
+            code="ambient_out_of_table",
+            params={
+                "ambient": ambient_temp_c,
+                "insulation": insulation_rating_c,
+                "low": rows[0],
+                "high": rows[-1],
+            },
         )
     row = next(t for t in rows if t >= ambient_temp_c)
     return Decimal(column[row]), row
@@ -277,7 +284,9 @@ def _grouping_factor(grouped_circuits: int) -> tuple[Decimal, int]:
     counts = sorted(_GROUPING_K2)
     if grouped_circuits < 1 or grouped_circuits > counts[-1]:
         raise ValidationError(
-            f"{grouped_circuits} grouped circuits is outside Table 5 (1-{counts[-1]})"
+            f"{grouped_circuits} grouped circuits is outside Table 5 (1-{counts[-1]})",
+            code="grouped_out_of_table",
+            params={"grouped": grouped_circuits, "largest": counts[-1]},
         )
     column = next(n for n in counts if n >= grouped_circuits)
     return Decimal(_GROUPING_K2[column]), column
@@ -357,7 +366,13 @@ def size_conductor(
             )
     raise ValidationError(
         f"no tabulated {conductor_material.value} section carries {required.quantize(Decimal('0.01'))} A "
-        f"by method {installation_method.value}; use parallel conductors"
+        f"by method {installation_method.value}; use parallel conductors",
+        code="no_cable_section",
+        params={
+            "current": required.quantize(Decimal("0.01")),
+            "material": conductor_material.value,
+            "method": installation_method.value,
+        },
     )
 
 

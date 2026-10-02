@@ -52,16 +52,26 @@ def design_order(requests: list[DistributionBoardRequest]) -> list[DistributionB
     by_name: dict[str, DistributionBoardRequest] = {}
     for request in requests:
         if request.name in by_name:
-            raise ValidationError(f"two boards are named {request.name}")
+            raise ValidationError(
+                f"two boards are named {request.name}",
+                code="board_name_twice",
+                params={"board": request.name},
+            )
         by_name[request.name] = request
     for request in requests:
         if request.fed_from is None:
             continue
         if request.fed_from == request.name:
-            raise ValidationError(f"{request.name} is named as its own supply")
+            raise ValidationError(
+                f"{request.name} is named as its own supply",
+                code="board_feeds_itself",
+                params={"board": request.name},
+            )
         if request.fed_from not in by_name:
             raise ValidationError(
-                f"{request.name} is fed from {request.fed_from}, which is not in the project"
+                f"{request.name} is fed from {request.fed_from}, which is not in the project",
+                code="board_supply_unknown",
+                params={"board": request.name, "supply": request.fed_from},
             )
 
     order: list[DistributionBoardRequest] = []
@@ -76,7 +86,11 @@ def design_order(requests: list[DistributionBoardRequest]) -> list[DistributionB
         if name in placed:
             return
         if name in visiting:
-            raise ValidationError(f"boards feed one another in a loop through {name}")
+            raise ValidationError(
+                f"boards feed one another in a loop through {name}",
+                code="boards_loop",
+                params={"board": name},
+            )
         visiting.add(name)
         for child in children[name]:
             place(child)
@@ -116,7 +130,9 @@ def feeder_load(board: Board) -> LoadInput:
 def _check_supply(child: DistributionBoardRequest, parent: DistributionBoardRequest) -> None:
     if child.supply.phases == 3 and parent.supply.phases == 1:
         raise ValidationError(
-            f"{child.name} is three-phase but {parent.name}, which feeds it, is single-phase"
+            f"{child.name} is three-phase but {parent.name}, which feeds it, is single-phase",
+            code="board_phase_mismatch",
+            params={"board": child.name, "supply": parent.name},
         )
     if child.supply.phases == parent.supply.phases:
         expected = parent.supply.voltage_v
@@ -125,7 +141,14 @@ def _check_supply(child: DistributionBoardRequest, parent: DistributionBoardRequ
     if abs(child.supply.voltage_v - expected) > 1:
         raise ValidationError(
             f"{child.name} is supplied at {child.supply.voltage_v} V, but {parent.name} "
-            f"gives {expected} V to a {child.supply.phases}-phase board"
+            f"gives {expected} V to a {child.supply.phases}-phase board",
+            code="board_voltage_mismatch",
+            params={
+                "board": child.name,
+                "voltage": child.supply.voltage_v,
+                "supply": parent.name,
+                "expected": expected,
+            },
         )
 
 

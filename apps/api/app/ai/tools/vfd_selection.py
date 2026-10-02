@@ -529,7 +529,9 @@ def _catalogue(supply_voltage_v: Decimal, drive_range: DriveRange = ACS880_01) -
     )
     raise ValidationError(
         f"{supply_voltage_v} V is outside the {drive_range.series} supply ranges tabulated "
-        f"here: {bands}; other voltages are not tabulated here"
+        f"here: {bands}; other voltages are not tabulated here",
+        code="drive_voltage",
+        params={"voltage": supply_voltage_v, "series": drive_range.series, "bands": bands},
     )
 
 
@@ -647,7 +649,9 @@ def temperature_derate(*, ambient_temp_c: Decimal, drive_range: str | None = Non
     if not ambient_temp_c.is_finite() or ambient_temp_c < rule.floor or ambient_temp_c > rule.limit:
         raise ValidationError(
             f"ambient {ambient_temp_c} °C is outside the drive's range "
-            f"({rule.floor}...+{rule.limit} °C)"
+            f"({rule.floor}...+{rule.limit} °C)",
+            code="drive_ambient",
+            params={"ambient": ambient_temp_c, "low": rule.floor, "high": rule.limit},
         )
     return _derate(ambient_temp_c, rule, what="ambient", unit="°C")
 
@@ -734,11 +738,15 @@ def select_frame(
     if chosen is ACS880_01:
         raise ValidationError(
             f"no ACS880-01-xxxx{catalogue.suffix} type supplies {needed} A "
-            f"for {duty_class.value} duty at this site; consider a cabinet-built ACS880"
+            f"for {duty_class.value} duty at this site; consider a cabinet-built ACS880",
+            code="no_drive_type",
+            params={"current": needed},
         )
     raise ValidationError(
         f"no {chosen.manufacturer} {chosen.series} type supplies {needed} A for "
-        f"{duty_class.value} duty at {supply_voltage_v} V on this site"
+        f"{duty_class.value} duty at {supply_voltage_v} V on this site",
+        code="no_drive_type",
+        params={"current": needed},
     )
 
 

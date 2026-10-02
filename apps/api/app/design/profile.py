@@ -136,12 +136,16 @@ def load_profile(data: dict[str, object]) -> CompanyProfile:
         ValidationError: If a setting is unknown or malformed, naming it.
     """
     if "key" not in data or not str(data["key"]).strip():
-        raise ValidationError("a company profile needs a key")
+        raise ValidationError("a company profile needs a key", code="profile_no_key")
     base = DEFAULT_PROFILE.model_dump(mode="json")
     known = set(base)
     unknown = sorted(set(data) - known)
     if unknown:
-        raise ValidationError(f"unknown profile settings: {unknown}")
+        raise ValidationError(
+            f"unknown profile settings: {unknown}",
+            code="profile_unknown_settings",
+            params={"settings": unknown},
+        )
     merged: dict[str, object] = dict(base)
     for name, value in data.items():
         if isinstance(value, dict) and isinstance(base.get(name), dict):
@@ -159,4 +163,8 @@ def load_profile(data: dict[str, object]) -> CompanyProfile:
     except PydanticValidationError as exc:
         first = exc.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
-        raise ValidationError(f"profile setting {where}: {first['msg']}") from exc
+        raise ValidationError(
+            f"profile setting {where}: {first['msg']}",
+            code="profile_setting_invalid",
+            params={"setting": where},
+        ) from exc

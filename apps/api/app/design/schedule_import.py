@@ -149,7 +149,9 @@ def _rows_from_xlsx(data: bytes) -> list[list[str]]:
     try:
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:  # openpyxl raises a zoo of types for a bad file
-        raise ValidationError(f"the workbook could not be read: {exc}") from exc
+        raise ValidationError(
+            f"the workbook could not be read: {exc}", code="workbook_unreadable"
+        ) from exc
     try:
         # The first sheet that has a recognisable header; the first sheet
         # otherwise, so the error names what was found there.
@@ -201,11 +203,12 @@ def _rows_from_pdf(data: bytes) -> list[list[str]]:
                         if any(cells):
                             rows.append(cells)
     except Exception as exc:  # pdfminer raises many types for a bad file
-        raise ValidationError(f"the PDF could not be read: {exc}") from exc
+        raise ValidationError(f"the PDF could not be read: {exc}", code="pdf_unreadable") from exc
     if not rows:
         raise ValidationError(
             "no table was found in the PDF; export the schedule from Excel, "
-            "or check that the PDF holds text rather than a scanned image"
+            "or check that the PDF holds text rather than a scanned image",
+            code="pdf_no_table",
         )
     return rows
 
@@ -301,10 +304,12 @@ def read_rows(data: bytes) -> list[list[str]]:
         ValidationError: If the file is empty, too large, or cannot be read.
     """
     if not data:
-        raise ValidationError("the file is empty")
+        raise ValidationError("the file is empty", code="file_empty")
     if len(data) > MAX_SCHEDULE_BYTES:
         raise ValidationError(
-            f"the file is {len(data) // 1024} KB; the limit is {MAX_SCHEDULE_BYTES // 1024} KB"
+            f"the file is {len(data) // 1024} KB; the limit is {MAX_SCHEDULE_BYTES // 1024} KB",
+            code="file_too_large",
+            params={"size": len(data) // 1024, "limit": MAX_SCHEDULE_BYTES // 1024},
         )
     if data.startswith(b"%PDF"):
         return _rows_from_pdf(data)
@@ -312,12 +317,16 @@ def read_rows(data: bytes) -> list[list[str]]:
         try:
             names = zipfile.ZipFile(io.BytesIO(data)).namelist()
         except zipfile.BadZipFile as exc:
-            raise ValidationError("the file is a damaged archive") from exc
+            raise ValidationError("the file is a damaged archive", code="archive_damaged") from exc
         if any(name.startswith("xl/") for name in names):
             return _rows_from_xlsx(data)
-        raise ValidationError("the archive is not an Excel workbook (.xlsx)")
+        raise ValidationError(
+            "the archive is not an Excel workbook (.xlsx)", code="archive_not_excel"
+        )
     if data.startswith(b"\xd0\xcf\x11\xe0"):
-        raise ValidationError("old Excel files (.xls) are not read; save it as .xlsx or CSV")
+        raise ValidationError(
+            "old Excel files (.xls) are not read; save it as .xlsx or CSV", code="old_excel"
+        )
     return _rows_from_csv(data)
 
 
@@ -339,7 +348,8 @@ def import_schedule(data: bytes) -> ScheduleImport:
     if found is None:
         raise ValidationError(
             "no header row names both a description and a power (kW or W) column "
-            "in the first 30 rows"
+            "in the first 30 rows",
+            code="schedule_no_header",
         )
     header_index, columns = found
     result = ScheduleImport()
@@ -417,6 +427,7 @@ def import_schedule(data: bytes) -> ScheduleImport:
     if not result.loads:
         raise ValidationError(
             "no load could be read below the header; "
-            + (result.warnings[0].text if result.warnings else "")
+            + (result.warnings[0].text if result.warnings else ""),
+            code="schedule_no_load",
         )
     return result

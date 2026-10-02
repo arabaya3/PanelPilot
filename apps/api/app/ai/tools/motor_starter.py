@@ -470,7 +470,9 @@ def _table_voltage(supply_voltage_v: Decimal) -> Decimal:
             return min(near, key=lambda v: abs(supply_voltage_v - v))
     held = ", ".join(f"{v} V" for v in _TABLES)
     raise ValidationError(
-        f"{supply_voltage_v} V: the coordination tables held are for {held} (± 5 %)"
+        f"{supply_voltage_v} V: the coordination tables held are for {held} (± 5 %)",
+        code="starter_voltage",
+        params={"voltage": supply_voltage_v, "held": held},
     )
 
 
@@ -546,7 +548,9 @@ def select_starter(
         not fault_level_ka.is_finite() or fault_level_ka > TABLE_FAULT_LEVEL_KA
     ):
         raise ValidationError(
-            f"a {fault_level_ka} kA fault level exceeds the 50 kA the coordination holds to"
+            f"a {fault_level_ka} kA fault level exceeds the 50 kA the coordination holds to",
+            code="starter_fault_level",
+            params={"fault": fault_level_ka},
         )
 
     rows, page, section = _TABLES[table_voltage][start]
@@ -568,7 +572,15 @@ def select_starter(
                     f"a {motor_current_a} A motor ({relay_current.quantize(Decimal('0.1'))} A "
                     f"at the relay) is below the {row.overload} setting range "
                     f"({row.overload_range_a[0]}-{row.overload_range_a[1]} A) of the first "
-                    f"Type 2 row that carries it in {section}"
+                    f"Type 2 row that carries it in {section}",
+                    code="relay_range",
+                    params={
+                        "current": motor_current_a,
+                        "relay_current": relay_current.quantize(Decimal("0.1")),
+                        "relay": row.overload,
+                        "low": row.overload_range_a[0],
+                        "high": row.overload_range_a[1],
+                    },
                 )
             return StarterSelection(
                 row=row,
@@ -585,5 +597,7 @@ def select_starter(
     largest = rows[-1].power_kw
     raise ValidationError(
         f"a {motor_power_kw} kW, {motor_current_a} A motor is outside {section} "
-        f"({smallest}-{largest} kW)"
+        f"({smallest}-{largest} kW)",
+        code="motor_outside_table",
+        params={"power": motor_power_kw, "low": smallest, "high": largest},
     )

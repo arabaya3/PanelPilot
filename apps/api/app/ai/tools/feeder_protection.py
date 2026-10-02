@@ -93,7 +93,9 @@ def select_feeder_breaker(*, design_current_a: Decimal, cable_ampacity_a: Decima
                 ),
             )
     raise ValidationError(
-        f"{design_current_a} A exceeds the largest curve C rating held ({_CURVE_C_RATINGS[-1]} A)"
+        f"{design_current_a} A exceeds the largest curve C rating held ({_CURVE_C_RATINGS[-1]} A)",
+        code="breaker_too_large",
+        params={"current": design_current_a, "largest": _CURVE_C_RATINGS[-1]},
     )
 
 
@@ -158,7 +160,9 @@ def smallest_rating(design_current_a: Decimal) -> str:
         if Decimal(rating) >= design_current_a:
             return rating
     raise ValidationError(
-        f"{design_current_a} A exceeds the largest curve C rating held ({_CURVE_C_RATINGS[-1]} A)"
+        f"{design_current_a} A exceeds the largest curve C rating held ({_CURVE_C_RATINGS[-1]} A)",
+        code="breaker_too_large",
+        params={"current": design_current_a, "largest": _CURVE_C_RATINGS[-1]},
     )
 
 

@@ -5,6 +5,7 @@ import { useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { FilePicker } from '@/components/file-picker';
+import { useOutcomeText } from '@/components/design/note-text';
 import {
   exportDesign,
   importPriceList,
@@ -66,6 +67,7 @@ export function QuotationPanel({
   saveImpl: (blob: Blob, filename: string) => void;
 }) {
   const t = useTranslations('design.quote');
+  const say = useOutcomeText();
   const id = useId();
   const [rates, setRates] = useState<Rates>(INITIAL_RATES);
   const [entries, setEntries] = useState<PriceListEntry[]>([]);
@@ -94,7 +96,7 @@ export function QuotationPanel({
       setEntries(outcome.entries);
       setMessage(t('listLoaded', { count: outcome.entries.length }));
     } else {
-      setMessage(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setMessage(say(outcome));
     }
   }
 
@@ -106,7 +108,7 @@ export function QuotationPanel({
     if (outcome.kind === 'priced') {
       setQuotation(outcome.quotation);
     } else {
-      setMessage(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setMessage(say(outcome));
     }
   }
 
@@ -115,7 +117,7 @@ export function QuotationPanel({
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
-      setMessage(outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'));
+      setMessage(say(outcome));
     }
   }
 

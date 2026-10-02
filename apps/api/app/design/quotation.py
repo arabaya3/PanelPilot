@@ -275,9 +275,14 @@ def read_price_list(data: bytes) -> list[PriceListEntry]:
             )
             entries.append(PriceListEntry(key=key, description=description, unit_price=price))
         if not entries:
-            raise ValidationError("the price list has no row with both a key and a price")
+            raise ValidationError(
+                "the price list has no row with both a key and a price", code="price_list_empty"
+            )
         return entries
-    raise ValidationError("no header row names a key (or order number) and a price column")
+    raise ValidationError(
+        "no header row names a key (or order number) and a price column",
+        code="price_list_no_header",
+    )
 
 
 def quotation_csv(quotation: Quotation) -> str:

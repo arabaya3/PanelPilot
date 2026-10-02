@@ -1,8 +1,8 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { useNoteText } from '@/components/design/note-text';
-import type { DesignNote } from '@/lib/design';
+import { useNoteText, useOutcomeText } from '@/components/design/note-text';
+import type { DesignNote, Refusal } from '@/lib/design';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
 import he from '@/messages/he.json';
@@ -73,5 +73,45 @@ describe('design notes', () => {
     const codes = Object.keys(en.design.note).sort();
     expect(Object.keys(ar.design.note).sort()).toEqual(codes);
     expect(Object.keys(he.design.note).sort()).toEqual(codes);
+  });
+});
+
+function Said({ outcome }: { outcome: Refusal | { kind: 'failed' } }) {
+  const say = useOutcomeText();
+  return <p data-testid="said">{say(outcome)}</p>;
+}
+
+describe('design refusals', () => {
+  it('says a coded refusal in Arabic, naming what it is about', () => {
+    renderApp(
+      <Said
+        outcome={{
+          kind: 'refused',
+          detail: 'Pump: a motor starter needs a three-phase motor',
+          code: 'starter_needs_three_phase',
+          params: { subject: 'Pump' },
+        }}
+      />,
+      { locale: 'ar' },
+    );
+    expect(screen.getByTestId('said').textContent).toBe(
+      'Pump: ' + ar.design.errors.starter_needs_three_phase,
+    );
+  });
+
+  it('falls back to the server’s reason, then to the generic error', () => {
+    renderApp(<Said outcome={{ kind: 'refused', detail: 'Something odd.' }} />, { locale: 'ar' });
+    expect(screen.getByTestId('said').textContent).toBe('Something odd.');
+  });
+
+  it('says a failure as the generic error', () => {
+    renderApp(<Said outcome={{ kind: 'failed' }} />, { locale: 'ar' });
+    expect(screen.getByTestId('said').textContent).toBe(ar.design.error);
+  });
+
+  it('has every refusal in every language', () => {
+    const codes = Object.keys(en.design.errors).sort();
+    expect(Object.keys(ar.design.errors).sort()).toEqual(codes);
+    expect(Object.keys(he.design.errors).sort()).toEqual(codes);
   });
 });

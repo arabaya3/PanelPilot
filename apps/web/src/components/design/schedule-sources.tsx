@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
-import { useNoteText } from '@/components/design/note-text';
+import { useNoteText, useOutcomeText } from '@/components/design/note-text';
 import { FilePicker } from '@/components/file-picker';
 import {
   importSchedule,
@@ -42,6 +42,7 @@ export function ScheduleSources({
 }) {
   const t = useTranslations('design');
   const noteText = useNoteText();
+  const say = useOutcomeText();
   const id = useId();
   const [brief, setBrief] = useState('');
   const [suggestState, setSuggestState] = useState<State<{ assumptions: DesignNote[] }>>({
@@ -67,12 +68,7 @@ export function ScheduleSources({
     }
     setSuggestState({
       kind: 'error',
-      detail:
-        outcome.kind === 'refused' && outcome.detail
-          ? outcome.detail
-          : outcome.kind === 'budget'
-            ? t('suggest.budget')
-            : t('error'),
+      detail: outcome.kind === 'budget' ? t('suggest.budget') : say(outcome),
     });
     if (outcome.kind === 'unauthorized') onUnauthorized();
   }
@@ -92,7 +88,7 @@ export function ScheduleSources({
     }
     setImportState({
       kind: 'error',
-      detail: outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'),
+      detail: say(outcome),
     });
     if (outcome.kind === 'unauthorized') onUnauthorized();
   }

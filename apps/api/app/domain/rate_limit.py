@@ -114,6 +114,14 @@ LOGIN_ACCOUNT_POLICY = RateLimitPolicy("auth-login-account", 10, 900)
 # Signup, per source address. Each one is a bcrypt hash and a new tenant.
 SIGNUP_POLICY = RateLimitPolicy("auth-signup", 10, 3600)
 
+# Panel design: designing, importing a schedule, exporting drawings, pricing,
+# writing the PLC program. Each costs CPU (a drawing set, a PDF table scan) but
+# no model call, so the budget is far wider than the trial's: an engineer
+# editing and re-exporting a project makes dozens of calls in a session, and a
+# dozen of them behind one site address must not notice the limit. A script
+# rendering drawing sets in a loop is held to under one a second.
+DESIGN_POLICY = RateLimitPolicy("design", 240, 300)
+
 # Optimistic-transaction attempts before a contended key is treated as full.
 # Contention on one key means other requests from that source are being
 # admitted at that very moment, so refusing here errs in the safe direction.
@@ -515,6 +523,31 @@ def check_trial_resume_rate_limit(
         policy=TRIAL_RESUME_POLICY,
         subject=_ip_subject(client_ip),
         message="too many trial resumptions from this network",
+        now=now,
+    )
+
+
+def check_design_rate_limit(
+    *, store: RateLimitStore, client_ip: str, now: float | None = None
+) -> int:
+    """Throttle the panel design routes, per source address.
+
+    Args:
+        store: Where request history lives.
+        client_ip: The source address.
+        now: Current time; defaults to now.
+
+    Returns:
+        Requests from this source in the window, including this one.
+
+    Raises:
+        RateLimitExceededError: If this source has made too many design requests.
+    """
+    return check_rate_limit(
+        store=store,
+        policy=DESIGN_POLICY,
+        subject=_ip_subject(client_ip),
+        message="too many design requests from this network; wait a few minutes",
         now=now,
     )
 

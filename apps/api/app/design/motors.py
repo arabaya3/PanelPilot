@@ -281,9 +281,11 @@ def motor_circuit(
             naming the load.
     """
     if load.starter is None:
-        raise ValidationError(f"{load.description}: no starter given")
+        raise ValidationError("no starter given", code="starter_missing").about(load.description)
     if load.phases != 3 or supply.phases != 3:
-        raise ValidationError(f"{load.description}: a motor starter needs a three-phase motor")
+        raise ValidationError(
+            "a motor starter needs a three-phase motor", code="starter_needs_three_phase"
+        ).about(load.description)
     current, basis = motor_current(load, supply)
     try:
         if load.starter is MotorStarter.DRIVE:
@@ -293,7 +295,7 @@ def motor_circuit(
                 index, load, supply, current, load.starter is MotorStarter.STAR_DELTA
             )
     except ValidationError as exc:
-        raise ValidationError(f"{load.description}: {exc}") from exc
+        raise exc.about(load.description) from exc
     circuit.notes.insert(0, basis)
     return circuit
 

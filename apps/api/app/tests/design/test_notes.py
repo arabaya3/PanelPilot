@@ -51,3 +51,27 @@ def test_the_page_has_a_sentence_for_every_code_in_every_language() -> None:
     for language in ("en", "ar", "he"):
         catalogue = json.loads((messages / f"{language}.json").read_text(encoding="utf-8"))
         assert set(catalogue["design"]["note"]) == set(notes.TEMPLATES), language
+
+
+def test_the_page_can_say_every_refusal_the_design_raises() -> None:
+    """Every ``code=`` a design refusal carries has a sentence on the page."""
+    import json
+    import re
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[2]
+    sources = [
+        *(app_dir / "design").glob("*.py"),
+        *(app_dir / "ai" / "tools").glob("*.py"),
+        app_dir / "domain" / "design.py",
+        app_dir / "core" / "errors.py",
+    ]
+    raised = {
+        code
+        for source in sources
+        for code in re.findall(r'code="([a-z_]+)"', source.read_text(encoding="utf-8"))
+    }
+    messages = app_dir.parent.parent / "web" / "src" / "messages"
+    for language in ("en", "ar", "he"):
+        catalogue = json.loads((messages / f"{language}.json").read_text(encoding="utf-8"))
+        assert raised <= set(catalogue["design"]["errors"]), language
