@@ -129,3 +129,22 @@ def test_voltage_drop_adds_up_from_the_origin() -> None:
 def test_feeder_load_carries_its_length() -> None:
     (board,) = project.design_boards([_board("DB-1")], profile.default_profile())
     assert project.feeder_load(board, Decimal(25)).length_m == 25
+
+
+def test_a_sub_board_takes_the_fault_level_that_feeds_it() -> None:
+    main, sub, own = project.design_boards(
+        [
+            _board("MDB", fault_level_ka=Decimal(30)),
+            _board("DB-1", fed_from="MDB"),
+            _board("DB-2", fed_from="MDB", fault_level_ka=Decimal(8)),
+        ],
+        profile.default_profile(),
+    )
+    assert sub.supply.fault_level_ka == 30
+    assert sub.device("incomer").breaking_capacity_ka == 36
+    (inherited,) = [n for n in sub.notes if n.code == "fault_level_inherited"]
+    assert inherited.params == {"fault": "30", "board": "MDB"}
+    # A board's own figure is kept.
+    assert own.device("incomer").breaking_capacity_ka == 10
+    assert "fault_level_inherited" not in [n.code for n in own.notes]
+    assert main.device("incomer").breaking_capacity_ka == 36

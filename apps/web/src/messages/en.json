@@ -698,7 +698,10 @@
       "voltage_drop_exceeded": "{load}: voltage drop {total} % from the origin ({own} % on its own cable, {upstream} % before the board) exceeds the {limit} % limit, and no tabulated section brings it within; kept at {section} mm². Shorten the run, run cables in parallel or enlarge the feeders.",
       "voltage_drop_untabulated": "{load}: {section} mm² is beyond the voltage-drop tables (up to 300 mm²); its drop is not checked.",
       "voltage_drop_unchecked": "{count, plural, one {# circuit has no cable length given; its voltage drop is not checked.} other {# circuits have no cable length given; their voltage drop is not checked.}}",
-      "voltage_drop_upstream": "{percent} % is dropped on the feeders before this board, and taken from every circuit’s limit."
+      "voltage_drop_upstream": "{percent} % is dropped on the feeders before this board, and taken from every circuit’s limit.",
+      "breaking_capacity": "Breakers are rated for at least {rating} kA breaking capacity against {fault} kA prospective at the board; each RCCB’s conditional short-circuit current with the breaker ahead of it must reach it too.",
+      "breaking_capacity_beyond": "Prospective fault {fault} kA exceeds the largest breaking capacity held ({largest} kA): the breakers need back-up (cascade) protection from a current-limiting device ahead of them, confirmed from the manufacturer’s tables; none is rated here.",
+      "fault_level_inherited": "Fault level {fault} kA taken from {board}, not reduced by the feeder cable; enter this board’s own fault level to rate its breakers lower."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",

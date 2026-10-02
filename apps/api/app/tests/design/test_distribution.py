@@ -338,3 +338,47 @@ def test_a_star_delta_motor_is_read_as_three_loops() -> None:
     )
     expected = voltage_drop.percent(loop, section, request.conditions)
     assert circuit.voltage_drop_percent == expected.quantize(Decimal("0.01"))
+
+
+@pytest.mark.parametrize(
+    ("fault", "rating"),
+    [("4.5", "6"), ("6", "6"), ("6.1", "10"), ("20", "25"), ("50", "50"), ("51", None)],
+)
+def test_breaking_capacity(fault: str, rating: str | None) -> None:
+    expected = Decimal(rating) if rating else None
+    assert distribution.breaking_capacity(Decimal(fault)) == expected
+
+
+def test_every_breaker_clears_the_fault_level() -> None:
+    request = _hall().model_copy(update={"supply": Supply(fault_level_ka=Decimal(12))})
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    breakers = [d for d in board.devices if d.kind is DeviceKind.CIRCUIT_BREAKER]
+    assert {d.breaking_capacity_ka for d in breakers} == {Decimal(15)}
+    (rated,) = [n for n in board.notes if n.code == "breaking_capacity"]
+    assert rated.params == {"rating": "15", "fault": "12"}
+    assert "no_fault_level" not in [n.code for n in board.notes]
+
+
+def test_a_fault_beyond_every_breaker_is_said() -> None:
+    request = _hall().model_copy(update={"supply": Supply(fault_level_ka=Decimal(65))})
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    assert board.device("incomer").breaking_capacity_ka is None
+    assert "breaking_capacity_beyond" in [n.code for n in board.notes]
+
+
+def test_a_starter_keeps_its_coordinated_breaker() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        supply=Supply(fault_level_ka=Decimal(20)),
+        loads=[_load(LoadKind.MOTOR, "7.5", "Fan", phases=3, starter="dol")],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    starter = board.device(board.circuits[0].device_ids[0])
+    assert starter.breaking_capacity_ka is None
+    assert board.device("incomer").breaking_capacity_ka == 25
+
+
+def test_no_fault_level_is_said() -> None:
+    board = distribution.design_distribution_board(_hall(), profile.default_profile())
+    assert "no_fault_level" in [n.code for n in board.notes]
+    assert all(d.breaking_capacity_ka is None for d in board.devices)

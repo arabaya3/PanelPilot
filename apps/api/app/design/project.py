@@ -11,6 +11,9 @@ than from a figure typed in by hand:
   cabled by the same rule as every other circuit (``distribution``).
 * A feeder and the incomer it supplies come out the same rating, so the board
   says discrimination between them is not checked.
+* A sub-board with no fault level of its own takes the one of the board
+  that feeds it, unreduced by the feeder: a safe figure for its breakers'
+  breaking capacity, which the engineer can replace with a calculated one.
 * Voltage drop adds up from the origin. Once every feeder's current is known,
   the boards are designed again from the origin down: each feeder is held to
   the limit of the strictest load anywhere below it, and each sub-board's
@@ -196,6 +199,8 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     upstream: dict[str, Decimal] = {}
     designed: dict[str, Board] = {}
     for request in reversed(order):
+        inherited = _inherit_fault_level(request, designed)
+        request = inherited or request
         children = [feeder.feeds for feeder in feeders[request.name] if feeder.feeds]
         budget = voltage_drop.Budget(
             upstream_percent=upstream.get(request.name, Decimal(0)),
@@ -211,10 +216,31 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
                 )
         if request.fed_from is not None:
             board.notes.append(note("fed_from", board=request.fed_from))
+        if inherited is not None and request.fed_from is not None:
+            board.notes.append(
+                note(
+                    "fault_level_inherited",
+                    fault=inherited.supply.fault_level_ka,
+                    board=request.fed_from,
+                )
+            )
         if children:
             board.notes.append(note("feeder_discrimination"))
         designed[request.name] = board
     return [designed[request.name] for request in requests]
+
+
+def _inherit_fault_level(
+    request: DistributionBoardRequest, designed: dict[str, Board]
+) -> DistributionBoardRequest | None:
+    """The sub-board with its supply's fault level, where it gives none of its own."""
+    if request.fed_from is None or request.supply.fault_level_ka is not None:
+        return None
+    level = designed[request.fed_from].supply.fault_level_ka
+    if level is None:
+        return None
+    supply = request.supply.model_copy(update={"fault_level_ka": level})
+    return request.model_copy(update={"supply": supply})
 
 
 def _with_feeders(

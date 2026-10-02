@@ -26,7 +26,8 @@ function protectionText(device: Device): string {
   const product = `-${device.designation?.product ?? ''}`;
   const rating = round(device.rated_current_a ?? '');
   if (device.kind === 'fuse') return `${product} ${rating} A ${device.curve ?? ''}`.trim();
-  return `${product} ${device.curve ?? ''}${rating}`;
+  const breaking = device.breaking_capacity_ka ? ` ${round(device.breaking_capacity_ka)} kA` : '';
+  return `${product} ${device.curve ?? ''}${rating}${breaking}`;
 }
 
 function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
