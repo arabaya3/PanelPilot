@@ -373,9 +373,12 @@ selectivity from the manufacturer's tables.
   50 kA.
 - **Beyond 50 kA:** no capacity is rated, and the board says back-up
   (cascade) protection is needed from the manufacturer's tables.
-- **Sub-boards:** a sub-board with no fault level of its own takes its
-  supply's, unreduced by the feeder. That is a safe figure, and the engineer
-  can replace it with a calculated one.
+- **Sub-boards:** a sub-board with no fault level of its own gets one from
+  its supply. When the feeder's length is given and the board is
+  three-phase, it is calculated through the feeder (IEC 60909, cmax 1.10,
+  conductors at 20 °C, source taken as pure reactance; `fault_level.py`).
+  Otherwise the supply's figure is taken unreduced. Either way it errs
+  towards the higher current.
 
 **Voltage drop** is checked for every circuit whose cable length is given,
 and for every feeder whose length is given (`app/design/voltage_drop.py`):

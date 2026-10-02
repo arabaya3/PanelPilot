@@ -707,7 +707,8 @@
       "discrimination_feeder_raised": "رُفع قاطع تغذية {board} إلى {rated} A، أي {ratio} × القاطع {after} A الذي بعده في {board}، لتحقيق التمييز؛ وكيبله محسوب على {rated} A.",
       "discrimination_incomer_not_met": "القاطع الرئيسي: ‏{rated} A أقل من {ratio} × القاطع {after} A الذي بعده، ولا يوجد قاطع صغير أكبر متوفر؛ التمييز عند الحمل الزائد غير مضمون.",
       "incomer_isolator": "المدخل الرئيسي مفتاح فاصل: قاطع التغذية في {board} يحمي هذه اللوحة، فالمفتاح مصنّف بما لا يقل عن ذلك القاطع ولا يفصل؛ والتمييز يكون بين قاطع التغذية وقواطع هذه اللوحة.",
-      "isolator_unselected": "المدخل الرئيسي: لا يوجد مفتاح فاصل متوفر يحمل {current} A (حتى 250 A)؛ لم يُختر هنا."
+      "isolator_unselected": "المدخل الرئيسي: لا يوجد مفتاح فاصل متوفر يحمل {current} A (حتى 250 A)؛ لم يُختر هنا.",
+      "fault_level_calculated": "تيار القصر {fault} kA، محسوب من {upstream} kA في {board} عبر كيبل تغذية {section} mm² {material} بطول {length} m (حسب IEC 60909، الموصلات عند 20 °C)."
     },
     "errors": {
       "ambient_out_of_table": "حرارة المحيط {ambient} °C خارج جدول الكيبلات لعزل {insulation} °C ({low}–{high} °C)؛ راجع مصنّع الكيبل.",

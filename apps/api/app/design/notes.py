@@ -97,6 +97,10 @@ TEMPLATES: dict[str, str] = {
         "({largest} kA): the breakers need back-up (cascade) protection from a current-limiting "
         "device ahead of them, confirmed from the manufacturer's tables; none is rated here."
     ),
+    "fault_level_calculated": (
+        "Fault level {fault} kA, calculated from {board}'s {upstream} kA through {length} m of "
+        "{section} mm² {material} feeder (IEC 60909, conductors at 20 °C)."
+    ),
     "fault_level_inherited": (
         "Fault level {fault} kA taken from {board}, not reduced by the feeder cable; enter this "
         "board's own fault level to rate its breakers lower."

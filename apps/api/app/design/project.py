@@ -13,9 +13,10 @@ than from a figure typed in by hand:
   breaker and rated no lower than it. The feeder is rated at least the
   company's discrimination ratio times the largest breaker that switch
   feeds, so the two discriminate on overload; its cable is sized for that.
-* A sub-board with no fault level of its own takes the one of the board
-  that feeds it, unreduced by the feeder: a safe figure for its breakers'
-  breaking capacity, which the engineer can replace with a calculated one.
+* A sub-board with no fault level of its own gets one from the board that
+  feeds it: calculated through its three-phase feeder where the feeder's
+  length is given (``fault_level``), otherwise taken unreduced, which is a
+  safe figure the engineer can replace.
 * Voltage drop adds up from the origin. Once every feeder's current is known,
   the boards are designed again from the origin down: each feeder is held to
   the limit of the strictest load anywhere below it, and each sub-board's
@@ -31,11 +32,13 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from app.core.errors import ValidationError
-from app.design import distribution, voltage_drop
+from app.design import distribution, fault_level, voltage_drop
 from app.design.notes import note
+from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
     Board,
     CompanyProfile,
+    DesignNote,
     DistributionBoardRequest,
     LoadInput,
     LoadKind,
@@ -208,8 +211,7 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     supply_breakers: dict[str, Decimal] = {}
     designed: dict[str, Board] = {}
     for request in reversed(order):
-        inherited = _inherit_fault_level(request, designed)
-        request = inherited or request
+        request, level_note = _inherit_fault_level(request, designed)
         children = [feeder.feeds for feeder in feeders[request.name] if feeder.feeds]
         budget = voltage_drop.Budget(
             upstream_percent=upstream.get(request.name, Decimal(0)),
@@ -232,14 +234,8 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
                 )
         if request.fed_from is not None:
             board.notes.append(note("fed_from", board=request.fed_from))
-        if inherited is not None and request.fed_from is not None:
-            board.notes.append(
-                note(
-                    "fault_level_inherited",
-                    fault=inherited.supply.fault_level_ka,
-                    board=request.fed_from,
-                )
-            )
+        if level_note is not None:
+            board.notes.append(level_note)
         designed[request.name] = board
     return [designed[request.name] for request in requests]
 
@@ -256,15 +252,50 @@ def _largest_after_incomer(board: Board) -> Decimal | None:
 
 def _inherit_fault_level(
     request: DistributionBoardRequest, designed: dict[str, Board]
-) -> DistributionBoardRequest | None:
-    """The sub-board with its supply's fault level, where it gives none of its own."""
+) -> tuple[DistributionBoardRequest, DesignNote | None]:
+    """The sub-board with a fault level from its supply, where it gives none.
+
+    Returns:
+        The request, with the fault level set where one was derived, and the
+        note saying how.
+    """
     if request.fed_from is None or request.supply.fault_level_ka is not None:
-        return None
-    level = designed[request.fed_from].supply.fault_level_ka
-    if level is None:
-        return None
+        return request, None
+    parent = designed[request.fed_from]
+    upstream = parent.supply.fault_level_ka
+    if upstream is None:
+        return request, None
+    feeder = next((c for c in parent.circuits if c.feeds == request.name), None)
+    cable = parent.cable(feeder.cable_id) if feeder and feeder.cable_id else None
+    if cable is not None and cable.length_m and request.supply.phases == 3:
+        material = (
+            ConductorMaterial.ALUMINIUM if cable.material == "Al" else ConductorMaterial.COPPER
+        )
+        level = fault_level.at_feeder_end(
+            upstream_ka=upstream,
+            voltage_v=request.supply.voltage_v,
+            length_m=cable.length_m,
+            section_mm2=cable.cross_section_mm2,
+            material=material,
+        )
+        made = note(
+            "fault_level_calculated",
+            fault=_plain(level),
+            board=request.fed_from,
+            upstream=_plain(upstream),
+            length=_plain(cable.length_m),
+            section=_plain(cable.cross_section_mm2),
+            material=cable.material,
+        )
+    else:
+        level = upstream
+        made = note("fault_level_inherited", fault=_plain(upstream), board=request.fed_from)
     supply = request.supply.model_copy(update={"fault_level_ka": level})
-    return request.model_copy(update={"supply": supply})
+    return request.model_copy(update={"supply": supply}), made
+
+
+def _plain(value: Decimal) -> str:
+    return format(value.normalize(), "f")
 
 
 def _with_feeders(

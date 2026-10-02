@@ -157,3 +157,20 @@ def test_a_sub_board_takes_the_fault_level_that_feeds_it() -> None:
     assert own.device("g1-breaker").breaking_capacity_ka == 10
     assert "fault_level_inherited" not in [n.code for n in own.notes]
     assert main.device("incomer").breaking_capacity_ka == 36
+
+
+def test_a_sub_board_fault_level_is_calculated_through_its_feeder() -> None:
+    sub = _board("DB-1", fed_from="MDB").model_copy(update={"feeder_length_m": Decimal(60)})
+    _, designed = project.design_boards(
+        [_board("MDB", fault_level_ka=Decimal(25)), sub], profile.default_profile()
+    )
+    level = designed.supply.fault_level_ka
+    assert level is not None
+    assert level < 25
+    (calculated,) = [n for n in designed.notes if n.code == "fault_level_calculated"]
+    assert calculated.params["upstream"] == "25"
+    assert calculated.params["length"] == "60"
+    assert "fault_level_inherited" not in [n.code for n in designed.notes]
+    # Its breakers are rated for what reaches it, not for the main board's.
+    assert designed.device("g1-breaker").breaking_capacity_ka is not None
+    assert designed.device("g1-breaker").breaking_capacity_ka < 25  # type: ignore[operator]
