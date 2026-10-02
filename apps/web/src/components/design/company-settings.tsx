@@ -5,9 +5,13 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import {
+  moved,
   parseSettings,
+  readList,
   readSetting,
   settingsText,
+  toggled,
+  writeList,
   writeSetting,
   type Settings,
 } from '@/components/design/company-settings-model';
@@ -44,6 +48,57 @@ const RULES: Setting[] = [
   },
   { path: ['usable_rail_mm'], label: 'rail', unit: 'mm' },
 ];
+
+/** The default profile's designation letter for each kind of device (IEC 81346-2). */
+const DEFAULT_LETTERS: Record<string, string> = {
+  circuit_breaker: 'Q',
+  residual_current_device: 'F',
+  switch_disconnector: 'Q',
+  contactor: 'Q',
+  overload_relay: 'F',
+  fuse: 'F',
+  surge_protector: 'F',
+  drive: 'T',
+  motor: 'M',
+  relay: 'K',
+  bus_actuator: 'K',
+  power_supply: 'T',
+  meter: 'P',
+  indicator_lamp: 'P',
+  terminal_strip: 'X',
+  cable: 'W',
+  busbar: 'W',
+  other: 'A',
+};
+
+/** The default title block's fields, in order, and every field it can print. */
+const DEFAULT_TITLE_FIELDS = [
+  'company',
+  'project_name',
+  'project_number',
+  'board_name',
+  'page_title',
+  'revision',
+  'date',
+  'drawn_by',
+  'checked_by',
+  'approved_by',
+  'page_number',
+] as const;
+const TITLE_FIELDS = [...DEFAULT_TITLE_FIELDS, 'customer', 'consultant', 'contractor'] as const;
+
+/** The default drawing set's pages, in order; every kind the drawing set draws. */
+const DEFAULT_PAGES = [
+  'title',
+  'contents',
+  'single_line',
+  'distribution',
+  'notes',
+  'layout',
+  'terminals',
+  'cables',
+  'parts',
+] as const;
 
 /** The default profile's rule per kind of load, shown as each cell's placeholder. */
 const DEFAULT_RULES: Partial<Record<string, Record<string, string>>> = {
@@ -153,6 +208,70 @@ export function CompanySettingsPanel({
   }
 
   const settings = parsed === 'invalid' ? {} : parsed;
+
+  /** A list the company orders and picks from: the title block's fields, or the pages. */
+  function orderedList(
+    key: string,
+    defaults: readonly string[],
+    every: readonly string[],
+    heading: string,
+    labels: string,
+  ) {
+    const chosen = readList(settings, key, defaults);
+    const write = (list: string[]) => {
+      // A title block or a drawing set with nothing in it is not one.
+      if (parsed === 'invalid' || list.length === 0) return;
+      onText(settingsText(writeList(parsed, key, list, defaults)));
+    };
+    const shown = [...chosen, ...every.filter((item) => !chosen.includes(item))];
+    return (
+      <fieldset className="flex flex-col gap-1" data-testid={`settings-${key}`}>
+        <legend className="mb-1 text-sm font-semibold">{t(heading)}</legend>
+        {shown.map((item) => {
+          const label = t(`${labels}.${item}`);
+          const included = chosen.includes(item);
+          return (
+            <div key={item} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                aria-label={label}
+                checked={included}
+                disabled={parsed === 'invalid'}
+                onChange={() => {
+                  write(toggled(chosen, item));
+                }}
+              />
+              <span className={included ? 'flex-1' : 'flex-1 text-text-muted'}>{label}</span>
+              <button
+                type="button"
+                aria-label={t('moveUp', { item: label })}
+                disabled={!included || chosen.indexOf(item) === 0 || parsed === 'invalid'}
+                onClick={() => {
+                  write(moved(chosen, item, -1));
+                }}
+                className="btn btn-sm btn-secondary"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label={t('moveDown', { item: label })}
+                disabled={
+                  !included || chosen.indexOf(item) === chosen.length - 1 || parsed === 'invalid'
+                }
+                onClick={() => {
+                  write(moved(chosen, item, 1));
+                }}
+                className="btn btn-sm btn-secondary"
+              >
+                ↓
+              </button>
+            </div>
+          );
+        })}
+      </fieldset>
+    );
+  }
   return (
     <div className="flex flex-col gap-4" data-testid="company-settings">
       <p className="text-sm text-text-muted">{t('help')}</p>
@@ -229,6 +348,28 @@ export function CompanySettingsPanel({
           );
         })}
       </div>
+      <h3 className="text-sm font-semibold">{t('letters')}</h3>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {Object.entries(DEFAULT_LETTERS).map(([kind, letter]) => (
+          <label key={kind} className="flex items-center justify-between gap-2 text-sm">
+            <span>{t(`device.${kind}`)}</span>
+            <input
+              dir="ltr"
+              maxLength={3}
+              aria-label={`${t('letters')}: ${t(`device.${kind}`)}`}
+              value={readSetting(settings, ['letters', kind])}
+              placeholder={letter}
+              disabled={parsed === 'invalid'}
+              onChange={(event) => {
+                change(['letters', kind], event.target.value.toUpperCase());
+              }}
+              className="input w-24"
+            />
+          </label>
+        ))}
+      </div>
+      {orderedList('title_fields', DEFAULT_TITLE_FIELDS, TITLE_FIELDS, 'titleFields', 'titleField')}
+      {orderedList('page_order', DEFAULT_PAGES, DEFAULT_PAGES, 'pageOrder', 'page')}
       <details>
         <summary className="cursor-pointer text-sm font-semibold">{t('json')}</summary>
         <p className="my-2 text-sm text-text-muted">{t('jsonHelp')}</p>

@@ -284,7 +284,9 @@ formats are undocumented and need testing against a real installation.
 covers the company name and key, who confirmed the rules, the design rules
 (discrimination ratio, circuits per RCD, spare ways, phase imbalance and
 voltage drop limits, usable rail length), and per kind of load the breaker,
-curve, RCD, minimum cable and demand factor. A blank field keeps the default,
+curve, RCD, minimum cable and demand factor. The designation letter of each kind of
+device, the title block's fields and the drawing set's pages are picked
+and ordered there too. A blank field keeps the default,
 shown greyed. They are saved per company (`GET`/`PUT /design/company-settings`,
 validated as a design would read them), and every new project starts from
 them. The JSON stays underneath for anything the form does not hold.
