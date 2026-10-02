@@ -1078,6 +1078,8 @@ export interface components {
      *         insulation: "PVC" or "XLPE".
      *         length_m: Where known.
      *         part_key: The cable type, where selected.
+     *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
+     *             (kA)²s, for its insulation and material.
      */
     'Cable-Input': {
       /** Id */
@@ -1101,6 +1103,8 @@ export interface components {
       length_m?: number | string | null;
       /** Part Key */
       part_key?: string | null;
+      /** Withstand Ka2S */
+      withstand_ka2s?: number | string | null;
     };
     /**
      * Cable
@@ -1115,6 +1119,8 @@ export interface components {
      *         insulation: "PVC" or "XLPE".
      *         length_m: Where known.
      *         part_key: The cable type, where selected.
+     *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
+     *             (kA)²s, for its insulation and material.
      */
     'Cable-Output': {
       /** Id */
@@ -1138,6 +1144,8 @@ export interface components {
       length_m?: string | null;
       /** Part Key */
       part_key?: string | null;
+      /** Withstand Ka2S */
+      withstand_ka2s?: string | null;
     };
     /**
      * CableSizingRequest

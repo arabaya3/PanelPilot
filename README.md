@@ -403,6 +403,20 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Short circuit along the cable** (`app/design/short_circuit.py`, ABB
+handbook Vol. 2 §2.4):
+
+- **Far end:** for every circuit whose cable length is given, the smallest
+  short circuit at the far end must trip the breaker at once. It is the
+  handbook's `Ikmin = 0.8 U0 ksec / (1.5 ρ 2L / S)`, and must reach the top
+  of the instantaneous band. A cable too long for that is enlarged, under an
+  RCD too, since an RCD does not see a line-to-neutral fault.
+- **Near end:** each cable carries its withstand `k²S²` (Table 1: 115/76
+  copper/aluminium in PVC, 143/94 in XLPE), listed in the cable list. A
+  breaker's let-through `I²t` comes from its maker's curve once a part is
+  selected, so the board asks for that comparison at its fault level rather
+  than assuming a figure.
+
 **Earth fault disconnection** is checked in a TN system for every circuit
 whose cable length is given, once the board's `Ze` is entered
 (`app/design/disconnection.py`, IEC 60364-4-41 §411.4.4):

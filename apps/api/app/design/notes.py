@@ -126,6 +126,15 @@ TEMPLATES: dict[str, str] = {
     "earth_loop_calculated": (
         "Ze {ze} Ω, from {board}'s {upstream} Ω plus the loop of {length} m of {section} mm² {material} feeder at its maximum operating temperature."
     ),
+    "short_circuit_min_upsized": (
+        "{load}: cable enlarged from {sized} to {section} mm² so a short circuit at its far end trips its breaker at once: Ikmin {current} A, at least {trip} A (ABB handbook §2.4)."
+    ),
+    "short_circuit_min_exceeded": (
+        "{load}: a short circuit at the far end draws only {current} A, below the {trip} A that trips its {rated} A curve {curve} breaker at once, at every cable size held; shorten the run or protect it with a lower curve or rating."
+    ),
+    "short_circuit_withstand": (
+        "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at {fault} kA from its maker's curve (ABB handbook §2.4)."
+    ),
     "cable_conditions": (
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."

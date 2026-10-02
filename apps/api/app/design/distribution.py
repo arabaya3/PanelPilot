@@ -37,6 +37,9 @@ comes from its profile; what neither settles is left on the board as a note.
 * A circuit whose cable length is given has its voltage drop checked against
   the company's limit from the origin, less what the board's own feeders
   dropped, and its cable enlarged where that is needed (``voltage_drop``).
+* Such a circuit's cable is also enlarged until a short circuit at its far
+  end trips its breaker at once, and each cable carries the ``k²S²`` it
+  withstands for the breaker's let-through energy (``short_circuit``).
 * Where the board's ``Ze`` is known too, its breaker is checked to disconnect
   an earth fault at the cable's far end, and the cable enlarged where it
   would not (``disconnection``). A circuit under a residual current device
@@ -53,7 +56,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import disconnection, motors, voltage_drop
+from app.design import disconnection, motors, short_circuit, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -230,7 +233,13 @@ def _size(
         selected=selected,
         drop_percent=drop,
     )
+    # Short circuit first: the earth fault loop, checked last, only ever
+    # enlarges the cable further, which a short circuit trips on sooner.
+    _check_short_circuit(request, sized, notes)
     _check_disconnection(request, profile, sized, notes)
+    if sized.section_mm2 != section:
+        # A larger cable drops less; the drop shown is the one it has.
+        _redo_drop(request, sized)
     return sized
 
 
@@ -301,18 +310,68 @@ def _check_disconnection(
             )
         )
         item.section_mm2 = checked.section_mm2
-        if item.drop_percent is not None:
-            # A larger cable drops less; the drop shown is the one it has.
-            three_phase = load.phases == 3
-            run = voltage_drop.Run(
-                item.current_a,
-                load.length_m,
-                three_phase,
-                request.supply.voltage_v if three_phase else _phase_voltage(request),
+
+
+def _check_short_circuit(
+    request: DistributionBoardRequest, item: _Sized, notes: list[DesignNote]
+) -> None:
+    """Make sure a short circuit at a circuit's far end trips its breaker at once.
+
+    Enlarges the item's cable where it would not (``short_circuit``).
+    """
+    load = item.load
+    if load.length_m is None or not item.selected or item.motor:
+        return
+    checked = short_circuit.fit(
+        length_m=load.length_m,
+        section_mm2=item.section_mm2,
+        material=request.conditions.conductor_material,
+        phase_voltage_v=_phase_voltage(request),
+        rated_a=item.rated_a,
+        curve=item.curve,
+    )
+    if checked is None:
+        return
+    if not checked.within:
+        notes.append(
+            note(
+                "short_circuit_min_exceeded",
+                load=load.description,
+                current=_plain(checked.min_current_a),
+                trip=_plain(checked.trip_a),
+                rated=_plain(item.rated_a),
+                curve=item.curve,
             )
-            item.drop_percent = voltage_drop.percent(run, item.section_mm2, conditions).quantize(
-                Decimal("0.01")
+        )
+    elif checked.section_mm2 != item.section_mm2:
+        notes.append(
+            note(
+                "short_circuit_min_upsized",
+                load=load.description,
+                sized=_plain(item.section_mm2),
+                section=_plain(checked.section_mm2),
+                current=_plain(checked.min_current_a),
+                trip=_plain(checked.trip_a),
             )
+        )
+        item.section_mm2 = checked.section_mm2
+
+
+def _redo_drop(request: DistributionBoardRequest, item: _Sized) -> None:
+    """The drop along an item's cable again, after the cable was enlarged."""
+    load = item.load
+    if item.drop_percent is None or load.length_m is None:
+        return
+    three_phase = load.phases == 3
+    run = voltage_drop.Run(
+        item.current_a,
+        load.length_m,
+        three_phase,
+        request.supply.voltage_v if three_phase else _phase_voltage(request),
+    )
+    item.drop_percent = voltage_drop.percent(run, item.section_mm2, request.conditions).quantize(
+        Decimal("0.01")
+    )
 
 
 def _earth_fault_notes(request: DistributionBoardRequest, sized: list[_Sized]) -> list[DesignNote]:
@@ -592,6 +651,7 @@ def _motor_circuit(
         ),
         insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
         length_m=item.load.length_m,
+        withstand_ka2s=_withstand(request, item.section_mm2),
     )
     circuit = Circuit(
         id=f"c{number}",
@@ -608,6 +668,13 @@ def _motor_circuit(
         earth_loop_ohm=item.earth_loop_ohm,
     )
     return circuit, cable
+
+
+def _withstand(request: DistributionBoardRequest, section_mm2: Decimal) -> Decimal | None:
+    conditions = request.conditions
+    return short_circuit.withstand_ka2s(
+        section_mm2, conditions.conductor_material, conditions.insulation_rating_c
+    )
 
 
 def breaking_capacity(fault_level_ka: Decimal) -> Decimal | None:
@@ -906,6 +973,7 @@ def design_distribution_board(
             ),
             insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
             length_m=item.load.length_m,
+            withstand_ka2s=_withstand(request, item.section_mm2),
         )
         devices.append(breaker)
         circuit_devices = [breaker.id]
@@ -990,6 +1058,8 @@ def design_distribution_board(
     if unchecked:
         notes.append(note("voltage_drop_unchecked", count=unchecked))
     notes.extend(_earth_fault_notes(request, sized))
+    if request.supply.fault_level_ka is not None:
+        notes.append(note("short_circuit_withstand", fault=_plain(request.supply.fault_level_ka)))
     conditions = request.conditions
     notes.append(
         note(
