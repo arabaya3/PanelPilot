@@ -44,6 +44,8 @@ class Markup:
         sheet: The title of the page it is on, where the PDF is this project's.
         board: The board that page draws, likewise.
         near: The drawing's label nearest the mark, likewise.
+        labels: The drawing's labels by distance from the mark, nearest
+            first, a few of them, for finding what it is about.
     """
 
     page: int
@@ -53,20 +55,29 @@ class Markup:
     sheet: str
     board: str
     near: str
+    labels: tuple[str, ...] = ()
 
 
-def _nearest(sheet: Sheet, x_mm: float, y_mm: float) -> str:
-    """The drawing area's text label nearest a point."""
-    best: tuple[float, str] | None = None
+#: How many of the nearest labels a mark carries.
+LABELS_KEPT = 8
+
+
+def _nearest(sheet: Sheet, x_mm: float, y_mm: float) -> list[str]:
+    """The drawing area's text labels by distance from a point, nearest first."""
+    found: list[tuple[float, str]] = []
     for item in sheet.items:
         if not isinstance(item, Text) or len(item.text.strip()) < 2:
             continue
         if not (AREA_LEFT <= item.x <= AREA_RIGHT and AREA_TOP <= item.y <= AREA_BOTTOM):
             continue
-        distance = math.hypot(item.x - x_mm, item.y - y_mm)
-        if best is None or distance < best[0]:
-            best = (distance, item.text.strip())
-    return best[1] if best else ""
+        found.append((math.hypot(item.x - x_mm, item.y - y_mm), item.text.strip()))
+    ordered: list[str] = []
+    for _, text in sorted(found):
+        if text not in ordered:
+            ordered.append(text)
+        if len(ordered) == LABELS_KEPT:
+            break
+    return ordered
 
 
 def _subtype(annotation: dict[str, object]) -> str:
@@ -110,6 +121,7 @@ def read_markups(data: bytes, sheets: list[Sheet] | None = None) -> tuple[list[M
                         continue
                     x_mm = (annotation["x0"] + annotation["x1"]) / 2 * _MM_PER_POINT
                     y_mm = (annotation["top"] + annotation["bottom"]) / 2 * _MM_PER_POINT
+                    labels = _nearest(sheet, x_mm, y_mm) if sheet else []
                     markups.append(
                         Markup(
                             page=number,
@@ -118,7 +130,8 @@ def read_markups(data: bytes, sheets: list[Sheet] | None = None) -> tuple[list[M
                             text=text,
                             sheet=sheet.title if sheet else "",
                             board=sheet.board if sheet else "",
-                            near=_nearest(sheet, x_mm, y_mm) if sheet else "",
+                            near=labels[0] if labels else "",
+                            labels=tuple(labels),
                         )
                     )
     except ValidationError:

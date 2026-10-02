@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MarkupsPanel } from '@/components/design/markups-panel';
+import { applySuggestion, blankBoard, blankLoad } from '@/components/design/schedule';
 import { readMarkups, type DesignProject } from '@/lib/design';
 
 import { renderApp } from './helpers';
@@ -54,6 +55,110 @@ describe('the markups panel', () => {
     expect((await screen.findByTestId('markups-message')).textContent).toBe(
       'The file could not be read as a PDF.',
     );
+  });
+});
+
+describe('a suggested change', () => {
+  function boards() {
+    const main = blankBoard(0, 1, 'MDB');
+    main.loads = [
+      { ...blankLoad(1), description: 'Lights', power: '1' },
+      { ...blankLoad(2), description: 'Pump', power: '4' },
+    ];
+    return [main, blankBoard(3, 4, 'DB1', 'MDB')];
+  }
+
+  it('is offered and applied with one click', async () => {
+    const readImpl = vi.fn<typeof readMarkups>().mockResolvedValue({
+      kind: 'read',
+      report: {
+        matched: true,
+        markups: [
+          {
+            page: 4,
+            kind: 'Text',
+            author: '',
+            text: 'pump is 5.5 kW',
+            sheet: 'Distribution loads',
+            board: 'MDB',
+            near: '-Q4',
+            suggestion: {
+              board: 'MDB',
+              circuit: 'Pump',
+              load_index: 1,
+              field: 'power_kw',
+              value: '5.5',
+            },
+          },
+        ],
+      },
+    });
+    const onApply = vi.fn().mockReturnValue(true);
+    renderApp(
+      <MarkupsPanel
+        token="tok"
+        project={PROJECT}
+        profile={null}
+        onApply={onApply}
+        readImpl={readImpl}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Reviewed drawing set (PDF)'), {
+      target: { files: [new File(['%PDF'], 'set.pdf')] },
+    });
+    const offered = await screen.findByTestId('markup-suggestion-0');
+    expect(offered.textContent).toContain('Suggested: Pump at 5.5 kW.');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ field: 'power_kw' }));
+    expect(offered.textContent).toContain('Applied to the schedule');
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
+  });
+
+  it('changes the row it names, found by description when rows moved', () => {
+    const changed = applySuggestion(boards(), {
+      board: 'MDB',
+      circuit: 'Pump',
+      load_index: 0,
+      field: 'length_m',
+      value: '45',
+    });
+    expect(changed?.[0]?.loads[1]).toMatchObject({ description: 'Pump', length: '45' });
+    const removed = applySuggestion(boards(), {
+      board: 'MDB',
+      circuit: 'Lights',
+      load_index: 0,
+      field: 'remove',
+    });
+    expect(removed?.[0]?.loads.map((load) => load.description)).toEqual(['Pump']);
+    const feeder = applySuggestion(boards(), {
+      board: 'DB1',
+      circuit: 'Feeder to DB1',
+      load_index: null,
+      field: 'feeder_length_m',
+      value: '80',
+    });
+    expect(feeder?.[1]?.feederLength).toBe('80');
+    const starter = applySuggestion(boards(), {
+      board: 'MDB',
+      circuit: 'Pump',
+      load_index: 1,
+      field: 'starter',
+      value: 'star_delta',
+    });
+    expect(starter?.[0]?.loads[1]?.starter).toBe('star_delta');
+  });
+
+  it('is refused when its circuit or board is gone', () => {
+    expect(
+      applySuggestion(boards(), {
+        board: 'MDB',
+        circuit: 'Chiller',
+        load_index: 5,
+        field: 'power_kw',
+        value: '9',
+      }),
+    ).toBeNull();
+    expect(applySuggestion(boards(), { board: 'XX', circuit: 'Pump', field: 'remove' })).toBeNull();
   });
 });
 

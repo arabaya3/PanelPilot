@@ -5,22 +5,32 @@ import { useId, useState } from 'react';
 
 import { useOutcomeText } from '@/components/design/note-text';
 import { FilePicker } from '@/components/file-picker';
-import { readMarkups, type DesignProject, type MarkupReport } from '@/lib/design';
+import {
+  readMarkups,
+  type DesignProject,
+  type MarkupReport,
+  type MarkupSuggestion,
+} from '@/lib/design';
 
 /**
  * A reviewed drawing set's marks: upload the PDF the consultant returned and
- * see every comment with the board and label it sits on. Nothing is changed;
- * the engineer makes the changes the review asks for.
+ * see every comment with the board and label it sits on. Where a comment on
+ * a circuit asks for a change the schedule holds (a length, a power, a
+ * removal), it is offered with an Apply button; nothing changes until the
+ * engineer applies it, and the design is then run again by them.
  */
 export function MarkupsPanel({
   token,
   project,
   profile,
+  onApply,
   readImpl = readMarkups,
 }: {
   token: string;
   project: DesignProject;
   profile: Record<string, unknown> | null;
+  /** Apply a suggestion to the form; false when its circuit is no longer there. */
+  onApply?: (suggestion: MarkupSuggestion) => boolean;
   readImpl?: typeof readMarkups;
 }) {
   const t = useTranslations('design.markups');
@@ -29,12 +39,15 @@ export function MarkupsPanel({
   const [report, setReport] = useState<MarkupReport | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  // Each suggestion's outcome, by its mark's place in the report.
+  const [applied, setApplied] = useState<Record<number, 'applied' | 'missing'>>({});
 
   async function read(file: File) {
     setWorking(true);
     setMessage(null);
     const outcome = await readImpl({ token, file, filename: file.name, project, profile });
     setWorking(false);
+    setApplied({});
     if (outcome.kind === 'read') setReport(outcome.report);
     else {
       setReport(null);
@@ -82,6 +95,38 @@ export function MarkupsPanel({
                       .join(' · ')}
                   </span>
                   <span dir="auto">{markup.text}</span>
+                  {markup.suggestion && onApply && (
+                    <div
+                      className="flex flex-wrap items-center gap-2"
+                      data-testid={`markup-suggestion-${String(index)}`}
+                    >
+                      <span className="font-medium" dir="auto">
+                        {t(`suggest.${markup.suggestion.field}`, {
+                          circuit: markup.suggestion.circuit,
+                          board: markup.suggestion.board,
+                          value: markup.suggestion.value ?? '',
+                        })}
+                      </span>
+                      {applied[index] ? (
+                        <span className="text-text-muted">{t(applied[index])}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const suggestion = markup.suggestion;
+                            if (!suggestion) return;
+                            setApplied((current) => ({
+                              ...current,
+                              [index]: onApply(suggestion) ? 'applied' : 'missing',
+                            }));
+                          }}
+                          className="btn btn-sm btn-secondary"
+                        >
+                          {t('apply')}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ol>

@@ -811,7 +811,19 @@
       "found": "{count, plural, one {# comment} other {# comments}}, each placed on its drawing.",
       "foundUnmatched": "{count, plural, one {# comment} other {# comments}}. The PDF is not this project's drawing set as designed now, so they are listed by page only.",
       "page": "Page {page}",
-      "near": "near {label}"
+      "near": "near {label}",
+      "apply": "Apply",
+      "applied": "Applied to the schedule; design again to see it.",
+      "missing": "That circuit is no longer in the schedule.",
+      "suggest": {
+        "remove": "Suggested: remove {circuit}.",
+        "power_kw": "Suggested: {circuit} at {value} kW.",
+        "length_m": "Suggested: {circuit} cable {value} m.",
+        "power_factor": "Suggested: {circuit} power factor {value}.",
+        "phases": "Suggested: {circuit} on {value} phase(s).",
+        "starter": "Suggested: {circuit} started by {value}.",
+        "feeder_length_m": "Suggested: feeder to {board} {value} m."
+      }
     },
     "settings": {
       "help": "What your company does differently from the default. A blank field keeps the default, shown greyed. Save them for the company, and every new project starts from them.",

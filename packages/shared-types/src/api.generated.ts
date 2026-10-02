@@ -2736,6 +2736,8 @@ export interface components {
      *         sheet: The page's title, where the PDF is this project's drawing set.
      *         board: The board the page draws, likewise.
      *         near: The label nearest the mark, likewise.
+     *         suggestion: The change to the schedule it asks for, where it sits on
+     *             a circuit and says one the schedule holds; offered, never applied.
      */
     MarkupItem: {
       /** Page */
@@ -2752,6 +2754,7 @@ export interface components {
       board: string;
       /** Near */
       near: string;
+      suggestion?: components['schemas']['MarkupSuggestion'] | null;
     };
     /**
      * MarkupReport
@@ -2767,6 +2770,40 @@ export interface components {
       markups: components['schemas']['MarkupItem'][];
       /** Matched */
       matched: boolean;
+    };
+    /**
+     * MarkupSuggestion
+     * @description A change to the load schedule a reviewer's comment asks for.
+     *
+     *     Attributes:
+     *         board: The board whose schedule changes.
+     *         circuit: The circuit's description, as the schedule names it.
+     *         load_index: Its place in that board's schedule; ``None`` for a change
+     *             to the board itself (a feeder length).
+     *         field: What changes.
+     *         value: Its new value; ``None`` for a removal.
+     */
+    MarkupSuggestion: {
+      /** Board */
+      board: string;
+      /** Circuit */
+      circuit: string;
+      /** Load Index */
+      load_index?: number | null;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field:
+        | 'remove'
+        | 'power_kw'
+        | 'length_m'
+        | 'power_factor'
+        | 'phases'
+        | 'starter'
+        | 'feeder_length_m';
+      /** Value */
+      value?: string | null;
     };
     /**
      * MotorStarter

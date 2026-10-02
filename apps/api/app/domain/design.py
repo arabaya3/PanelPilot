@@ -26,6 +26,7 @@ from app.design import (
     export_dxf,
     export_lists,
     export_qet,
+    markup_suggestions,
     markups,
     motors,
     pages,
@@ -51,6 +52,7 @@ from app.models.schemas.design import (
     LoadScheduleSuggestion,
     MarkupItem,
     MarkupReport,
+    MarkupSuggestion,
     PlcIoPoint,
     PlcProgramRequest,
     PlcProgramResponse,
@@ -283,6 +285,7 @@ def read_markups(
             "the PDF is larger than the 5 MB read for markups", code="markups_too_large"
         )
     sheets = None
+    designated: DesignProject | None = None
     if project_json:
         try:
             designed = DesignProject.model_validate_json(project_json)
@@ -295,15 +298,32 @@ def read_markups(
         if settings is not None and not isinstance(settings, dict):
             raise ValidationError("the company settings are not a JSON object")
         company = _profile(settings)
-        sheets = pages.build_drawing_set(designations.designate_project(designed, company), company)
+        designated = designations.designate_project(designed, company)
+        sheets = pages.build_drawing_set(designated, company)
     found, matched = markups.read_markups(data, sheets)
     logger.info(
         "design.markups_read", tenant_id=user.tenant_id, markups=len(found), matched=matched
     )
-    return MarkupReport(
-        markups=[MarkupItem(**vars(markup)) for markup in found],
-        matched=matched,
-    )
+    items = []
+    for markup in found:
+        made = (
+            markup_suggestions.suggest(designated, markup.board, markup.labels, markup.text)
+            if designated is not None and matched
+            else None
+        )
+        items.append(
+            MarkupItem(
+                page=markup.page,
+                kind=markup.kind,
+                author=markup.author,
+                text=markup.text,
+                sheet=markup.sheet,
+                board=markup.board,
+                near=markup.near,
+                suggestion=MarkupSuggestion.model_validate(vars(made)) if made else None,
+            )
+        )
+    return MarkupReport(markups=items, matched=matched)
 
 
 def import_load_schedule(*, user: CurrentUser, data: bytes) -> LoadScheduleImport:

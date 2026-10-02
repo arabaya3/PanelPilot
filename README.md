@@ -491,8 +491,15 @@ whose cable length is given, once the board's `Ze` is entered
   text: notes, text boxes, clouds or highlights with a note.
 - **Placing:** where the PDF is this project's drawing set, each comment is
   placed on its page's board and the drawing label nearest it ("near -Q3").
-- **No changes:** the list is for the engineer, who makes and signs the
-  changes. Nothing is applied automatically.
+- **Suggestions:** a comment on a circuit is read for one change the
+  schedule holds (`app/design/markup_suggestions.py`), in English or
+  Arabic. It can be a removal, a power in kW, a cable length in m, a power
+  factor, the phases, or a motor's starter; on a feeder, the sub-board's
+  feeder length. The circuit is the one whose label (breaker, cable or
+  description) is nearest the comment.
+- **Applying:** each suggestion has an Apply button that changes the form,
+  and the engineer then designs again. Nothing is applied without that
+  click, and a comment that asks for anything else is left as text.
 
 **Saved projects** (`/design/projects`, `app/domain/design_projects.py`):
 

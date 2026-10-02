@@ -1,5 +1,6 @@
 import type {
   LoadKind,
+  MarkupSuggestion,
   LoadScheduleImport,
   MotorStarter,
   ProjectDesignRequest,
@@ -256,4 +257,46 @@ export function profileFrom(profile: Record<string, unknown> | null | undefined)
     text: Object.keys(rest).length === 0 || onlyDefault ? '' : JSON.stringify(rest, null, 2),
     language: chosen,
   };
+}
+
+/**
+ * The boards with a reviewer's suggested change applied, or null where the
+ * board or circuit it names is no longer in the form. A circuit is found at
+ * its place in the schedule when its description still matches there, and
+ * by its description otherwise, since rows may have moved since the design.
+ */
+export function applySuggestion(
+  boards: BoardForm[],
+  suggestion: MarkupSuggestion,
+): BoardForm[] | null {
+  const board = boards.find((candidate) => candidate.name.trim() === suggestion.board);
+  if (!board) return null;
+  const value = suggestion.value ?? '';
+  const replace = (changed: BoardForm) =>
+    boards.map((candidate) => (candidate.key === board.key ? changed : candidate));
+  if (suggestion.field === 'feeder_length_m') return replace({ ...board, feederLength: value });
+  const atIndex = suggestion.load_index != null ? board.loads[suggestion.load_index] : undefined;
+  const load =
+    atIndex && atIndex.description.trim() === suggestion.circuit
+      ? atIndex
+      : board.loads.find((candidate) => candidate.description.trim() === suggestion.circuit);
+  if (!load) return null;
+  if (suggestion.field === 'remove') {
+    if (board.loads.length === 1) return null;
+    return replace({ ...board, loads: board.loads.filter((row) => row.key !== load.key) });
+  }
+  const patch: Partial<Load> =
+    suggestion.field === 'power_kw'
+      ? { power: value }
+      : suggestion.field === 'length_m'
+        ? { length: value }
+        : suggestion.field === 'power_factor'
+          ? { powerFactor: value }
+          : suggestion.field === 'phases'
+            ? { phases: value === '1' ? '1' : '3' }
+            : { starter: STARTERS.find((starter) => starter === value) ?? '' };
+  return replace({
+    ...board,
+    loads: board.loads.map((row) => (row.key === load.key ? { ...row, ...patch } : row)),
+  });
 }
