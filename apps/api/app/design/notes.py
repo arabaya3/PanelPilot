@@ -105,6 +105,27 @@ TEMPLATES: dict[str, str] = {
         "Fault level {fault} kA taken from {board}, not reduced by the feeder cable; enter this "
         "board's own fault level to rate its breakers lower."
     ),
+    "earth_fault_basis": (
+        "Earth fault disconnection checked from Ze {ze} Ω at U0 {voltage} V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4)."
+    ),
+    "earth_fault_upsized": (
+        "{load}: cable enlarged from {sized} to {section} mm² so its breaker disconnects an earth fault at the far end: Zs {loop} Ω, within {limit} Ω (IEC 60364-4-41 §411.4.4)."
+    ),
+    "earth_fault_exceeded": (
+        "{load}: Zs {loop} Ω is above the {limit} Ω at which its {rated} A curve {curve} breaker trips at once, at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5)."
+    ),
+    "earth_fault_tt_no_rcd": (
+        "{load}: in a TT system only a residual current device disconnects an earth fault in time (IEC 60364-4-41 §411.5); put this circuit under one."
+    ),
+    "earth_fault_no_ze": (
+        "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze."
+    ),
+    "earth_fault_unchecked": (
+        "{count} circuit(s) are not checked for earth fault disconnection: no cable length, a motor starter's breaker, or a breaker not selected here."
+    ),
+    "earth_loop_calculated": (
+        "Ze {ze} Ω, from {board}'s {upstream} Ω plus the loop of {length} m of {section} mm² {material} feeder at its maximum operating temperature."
+    ),
     "cable_conditions": (
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."

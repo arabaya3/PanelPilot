@@ -174,3 +174,25 @@ def test_a_sub_board_fault_level_is_calculated_through_its_feeder() -> None:
     # Its breakers are rated for what reaches it, not for the main board's.
     assert designed.device("g1-breaker").breaking_capacity_ka is not None
     assert designed.device("g1-breaker").breaking_capacity_ka < 25  # type: ignore[operator]
+
+
+def test_a_sub_board_ze_adds_its_feeder_loop() -> None:
+    sub = _board("DB-1", fed_from="MDB").model_copy(update={"feeder_length_m": Decimal(30)})
+    _, designed = project.design_boards(
+        [_board("MDB", earth_loop_ohm=Decimal("0.35")), sub], profile.default_profile()
+    )
+    ze = designed.supply.earth_loop_ohm
+    assert ze is not None
+    assert ze > Decimal("0.35")
+    (calculated,) = [n for n in designed.notes if n.code == "earth_loop_calculated"]
+    assert calculated.params["upstream"] == "0.35"
+    assert calculated.params["length"] == "30"
+
+
+def test_a_sub_board_ze_is_not_taken_unreduced() -> None:
+    _, designed = project.design_boards(
+        [_board("MDB", earth_loop_ohm=Decimal("0.35")), _board("DB-1", fed_from="MDB")],
+        profile.default_profile(),
+    )
+    assert designed.supply.earth_loop_ohm is None
+    assert "earth_loop_calculated" not in [n.code for n in designed.notes]

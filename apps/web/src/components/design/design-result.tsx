@@ -59,6 +59,7 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
               <th className="p-2 text-start">{t('col.rcd')}</th>
               <th className="p-2 text-start">{t('col.cable')}</th>
               <th className="p-2 text-start">{t('col.drop')}</th>
+              <th className="p-2 text-start">{t('col.loop')}</th>
             </tr>
           </thead>
           <tbody>
@@ -88,6 +89,9 @@ function BoardTable({ board, showName }: { board: Board; showName: boolean }) {
                     {circuit.voltage_drop_percent != null
                       ? `${round(circuit.voltage_drop_percent)} %`
                       : '—'}
+                  </td>
+                  <td className="p-2" data-testid="circuit-loop">
+                    {circuit.earth_loop_ohm != null ? `${round(circuit.earth_loop_ohm)} Ω` : '—'}
                   </td>
                 </tr>
               );

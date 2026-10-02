@@ -493,3 +493,69 @@ def test_a_long_motor_cable_is_enlarged_for_starting() -> None:
     # A third of the current in star-delta, and a drive starts at Ir.
     assert "starting_drop_upsized" not in board("star_delta", "200")
     assert "starting_drop_upsized" not in board("drive", "200")
+
+
+def _earthed(ze: str | None, *loads: LoadInput, earthing: str = "TN-S") -> DistributionBoardRequest:
+    supply = Supply(earthing=earthing, earth_loop_ohm=Decimal(ze) if ze else None)
+    return DistributionBoardRequest(name="DB", supply=supply, loads=list(loads))
+
+
+def test_a_long_cable_is_enlarged_for_earth_fault_disconnection() -> None:
+    request = _earthed("0.8", _load(LoadKind.DATA, "2", "Server room", length_m=Decimal(40)))
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (circuit,) = board.circuits
+    breaker = board.device(circuit.device_ids[0])
+    assert breaker.rated_current_a == 16
+    # C16 trips at once up to 1.366 Ω; 2.5 mm² over 40 m with Ze 0.8 is 1.46 Ω.
+    assert board.cable(circuit.cable_id or "").cross_section_mm2 == 4
+    assert circuit.earth_loop_ohm is not None
+    assert circuit.earth_loop_ohm <= Decimal("1.366")
+    (upsized,) = [n for n in board.notes if n.code == "earth_fault_upsized"]
+    assert upsized.params["sized"] == "2.5"
+    assert "earth_fault_basis" in [n.code for n in board.notes]
+    # The drop shown is the larger cable's.
+    assert circuit.voltage_drop_percent is not None
+    assert circuit.voltage_drop_percent < Decimal("2.5")
+
+
+def test_earth_fault_beyond_any_section_is_said() -> None:
+    request = _earthed("1.5", _load(LoadKind.DATA, "2", "Server room", length_m=Decimal(10)))
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (exceeded,) = [n for n in board.notes if n.code == "earth_fault_exceeded"]
+    assert exceeded.params["load"] == "Server room"
+    assert exceeded.params["curve"] == "C"
+
+
+def test_a_circuit_under_an_rcd_disconnects_by_it() -> None:
+    request = _earthed("1.5", _load(LoadKind.SOCKET, "1", "Sockets", length_m=Decimal(10)))
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    codes = [n.code for n in board.notes]
+    assert "earth_fault_exceeded" not in codes
+    assert "earth_fault_unchecked" not in codes
+    assert board.circuits[0].earth_loop_ohm is None
+
+
+def test_tt_needs_an_rcd_on_every_circuit() -> None:
+    request = _earthed(
+        None,
+        _load(LoadKind.DATA, "1", "Data rack", length_m=Decimal(10)),
+        _load(LoadKind.SOCKET, "1", "Sockets"),
+        earthing="TT",
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (tt,) = [n for n in board.notes if n.code == "earth_fault_tt_no_rcd"]
+    assert tt.params["load"] == "Data rack"
+    assert "earth_fault_no_ze" not in [n.code for n in board.notes]
+
+
+def test_earth_fault_without_ze_or_length_is_said() -> None:
+    no_ze = distribution.design_distribution_board(
+        _earthed(None, _load(LoadKind.DATA, "1", "Data rack", length_m=Decimal(10))),
+        profile.default_profile(),
+    )
+    assert "earth_fault_no_ze" in [n.code for n in no_ze.notes]
+    no_length = distribution.design_distribution_board(
+        _earthed("0.35", _load(LoadKind.DATA, "1", "Data rack")), profile.default_profile()
+    )
+    (unchecked,) = [n for n in no_length.notes if n.code == "earth_fault_unchecked"]
+    assert unchecked.params["count"] == "1"

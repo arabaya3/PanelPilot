@@ -12,6 +12,7 @@ import {
   blankBoard,
   blankLoad,
   DRAWING_LANGUAGES,
+  EARTHING,
   fromRequest,
   isComplete,
   profileFrom,
@@ -264,7 +265,7 @@ export function DesignScreen({
   }
 
   function boardField(
-    key: 'name' | 'location' | 'voltage' | 'faultLevel' | 'feederLength',
+    key: 'name' | 'location' | 'voltage' | 'faultLevel' | 'earthLoop' | 'feederLength',
     label: string,
     unit = '',
   ) {
@@ -380,6 +381,25 @@ export function DesignScreen({
                 </select>
               </Field>
               {boardField('faultLevel', 'faultLevel', 'kA')}
+              <Field id={`${id}-earthing`} label={t('field.earthing')}>
+                <select
+                  id={`${id}-earthing`}
+                  dir="ltr"
+                  value={active.earthing}
+                  onChange={(event) => {
+                    const earthing = EARTHING.find((value) => value === event.target.value);
+                    if (earthing) updateBoard(active.key, { earthing });
+                  }}
+                  className="input w-full"
+                >
+                  {EARTHING.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {active.earthing !== 'TT' && boardField('earthLoop', 'earthLoop', 'Ω')}
               <Field id={`${id}-fed`} label={t('field.fedFrom')}>
                 <select
                   id={`${id}-fed`}

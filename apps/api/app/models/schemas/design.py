@@ -228,6 +228,8 @@ class Circuit(BaseModel):
         starter: How the motor it feeds is started, for a motor circuit.
         voltage_drop_percent: The drop along its own cable, where its length
             is known; the board's notes add what feeds the board.
+        earth_loop_ohm: ``Zs`` at its far end, where its length and the
+            board's ``Ze`` are known and its breaker disconnects by it.
     """
 
     id: str
@@ -242,6 +244,7 @@ class Circuit(BaseModel):
     feeds: str | None = None
     starter: MotorStarter | None = None
     voltage_drop_percent: Decimal | None = None
+    earth_loop_ohm: Decimal | None = None
 
 
 class Supply(BaseModel):
@@ -253,6 +256,9 @@ class Supply(BaseModel):
         frequency_hz: 50 or 60.
         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
         fault_level_ka: Prospective short-circuit current at the board.
+        earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
+            board, as measured or as the supplier declares it. Given, each
+            circuit is checked for disconnection on an earth fault.
     """
 
     voltage_v: Decimal = Decimal(400)
@@ -260,6 +266,7 @@ class Supply(BaseModel):
     frequency_hz: Decimal = Decimal(50)
     earthing: str = "TN-S"
     fault_level_ka: Decimal | None = Field(default=None, gt=0, le=200)
+    earth_loop_ohm: Decimal | None = Field(default=None, gt=0, le=100)
 
 
 class Board(BaseModel):
