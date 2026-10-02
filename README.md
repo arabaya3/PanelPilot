@@ -394,6 +394,19 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Saved projects** (`/design/projects`, `app/domain/design_projects.py`):
+
+- **What is kept:** a project is saved as what the engineer entered, not as
+  the design it produced. Opening it designs it afresh, so a corrected rule
+  or table applies to it.
+- **Revisions:** every save is a new revision, never an overwrite. Any
+  earlier revision can be opened, and a drawing set issued at revision 3 can
+  still be reproduced after revision 7.
+- **Isolation:** projects belong to the tenant (ADR 0003). Another tenant's
+  project is answered as one that does not exist.
+- **Limits:** the list is paged by cursor. There are at most 1000 projects
+  per tenant and 200 revisions per project.
+
 A designed board can be **priced** from the company's price list (Excel
 or CSV) and rates (`app/design/quotation.py`):
 

@@ -748,12 +748,31 @@
       "starter_needs_three_phase": "طريقة تشغيل المحرك تحتاج محركاً ثلاثي الفاز على لوحة ثلاثية الفاز.",
       "starter_voltage": "{voltage} V: جداول التنسيق المتوفرة هي لجهد {held} (± 5%).",
       "three_phase_on_single_phase": "لا يمكن تغذية حمل ثلاثي الفاز من لوحة أحادية الفاز.",
-      "workbook_unreadable": "تعذّرت قراءة ملف الإكسل."
+      "workbook_unreadable": "تعذّرت قراءة ملف الإكسل.",
+      "project_not_found": "هذا المشروع غير موجود: ربما حُذف.",
+      "revision_not_found": "هذه المراجعة من المشروع غير موجودة.",
+      "project_revisions_full": "لهذا المشروع {limit} مراجعة بالفعل؛ احفظه كمشروع جديد.",
+      "projects_full": "لديك {limit} مشروع محفوظ؛ احذف بعضها لتحفظ غيرها.",
+      "bad_cursor": "تعذّر متابعة قائمة المشاريع؛ أعد تحميلها."
     },
     "drawingLanguage": "لغة المخططات",
     "drawingLanguages": {
       "en": "الإنجليزية",
       "ar": "العربية"
+    },
+    "projects": {
+      "title": "المشاريع المحفوظة",
+      "opened": "{name}، المراجعة {revision}",
+      "revision": "المراجعة",
+      "note": "ملاحظة المراجعة",
+      "save": "احفظ المشروع",
+      "saveRevision": "احفظ كمراجعة جديدة",
+      "saved": "حُفظ كمراجعة {revision}.",
+      "none": "لا توجد مشاريع محفوظة بعد.",
+      "revisions": "{count, plural, one {مراجعة واحدة} two {مراجعتان} few {# مراجعات} many {# مراجعة} other {# مراجعة}}",
+      "open": "افتح",
+      "delete": "احذف",
+      "confirmDelete": "تأكيد الحذف نهائياً؟"
     }
   },
   "files": {

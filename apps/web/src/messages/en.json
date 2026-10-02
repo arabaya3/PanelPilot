@@ -748,12 +748,31 @@
       "starter_needs_three_phase": "A motor starter needs a three-phase motor on a three-phase board.",
       "starter_voltage": "{voltage} V: the coordination tables held are for {held} (± 5 %).",
       "three_phase_on_single_phase": "A three-phase load cannot be fed from a single-phase board.",
-      "workbook_unreadable": "The Excel workbook could not be read."
+      "workbook_unreadable": "The Excel workbook could not be read.",
+      "project_not_found": "That project is not there: it may have been deleted.",
+      "revision_not_found": "That revision of the project is not there.",
+      "project_revisions_full": "This project already has {limit} revisions; save it as a new project.",
+      "projects_full": "You have {limit} saved projects; delete some to save more.",
+      "bad_cursor": "The project list could not be continued; reload it."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
       "en": "English",
       "ar": "Arabic"
+    },
+    "projects": {
+      "title": "Saved projects",
+      "opened": "{name}, revision {revision}",
+      "revision": "Revision",
+      "note": "Revision note",
+      "save": "Save project",
+      "saveRevision": "Save as new revision",
+      "saved": "Saved as revision {revision}.",
+      "none": "No saved projects yet.",
+      "revisions": "{count, plural, one {# revision} other {# revisions}}",
+      "open": "Open",
+      "delete": "Delete",
+      "confirmDelete": "Delete for good?"
     }
   },
   "files": {
