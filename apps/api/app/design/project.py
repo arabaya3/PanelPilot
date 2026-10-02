@@ -17,6 +17,10 @@ than from a figure typed in by hand:
   feeds it: calculated through its three-phase feeder where the feeder's
   length is given (``fault_level``), otherwise taken unreduced, which is a
   safe figure the engineer can replace.
+* A sub-board with no ``Ze`` of its own gets its supply board's plus the
+  loop of the feeder between them, where the feeder's length is given
+  (``disconnection``); otherwise its circuits' earth fault loops are left
+  unchecked, as a figure taken unreduced would be too low.
 * Voltage drop adds up from the origin. Once every feeder's current is known,
   the boards are designed again from the origin down: each feeder is held to
   the limit of the strictest load anywhere below it, and each sub-board's
@@ -32,7 +36,7 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from app.core.errors import ValidationError
-from app.design import distribution, fault_level, voltage_drop
+from app.design import disconnection, distribution, fault_level, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -212,6 +216,7 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     designed: dict[str, Board] = {}
     for request in reversed(order):
         request, level_note = _inherit_fault_level(request, designed)
+        request, loop_note = _inherit_earth_loop(request, designed)
         children = [feeder.feeds for feeder in feeders[request.name] if feeder.feeds]
         budget = voltage_drop.Budget(
             upstream_percent=upstream.get(request.name, Decimal(0)),
@@ -236,6 +241,8 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
             board.notes.append(note("fed_from", board=request.fed_from))
         if level_note is not None:
             board.notes.append(level_note)
+        if loop_note is not None:
+            board.notes.append(loop_note)
         designed[request.name] = board
     return [designed[request.name] for request in requests]
 
@@ -291,6 +298,48 @@ def _inherit_fault_level(
         level = upstream
         made = note("fault_level_inherited", fault=_plain(upstream), board=request.fed_from)
     supply = request.supply.model_copy(update={"fault_level_ka": level})
+    return request.model_copy(update={"supply": supply}), made
+
+
+def _inherit_earth_loop(
+    request: DistributionBoardRequest, designed: dict[str, Board]
+) -> tuple[DistributionBoardRequest, DesignNote | None]:
+    """The sub-board with a ``Ze`` from its supply, where it gives none.
+
+    A sub-board's ``Ze`` is its supply board's plus the loop of the feeder
+    between them, so it is only known where the feeder's length is: taken
+    unchanged it would be too low, which errs the unsafe way.
+
+    Returns:
+        The request, with ``Ze`` set where one was derived, and the note
+        saying how.
+    """
+    if request.fed_from is None or request.supply.earth_loop_ohm is not None:
+        return request, None
+    parent = designed[request.fed_from]
+    upstream = parent.supply.earth_loop_ohm
+    feeder = next((c for c in parent.circuits if c.feeds == request.name), None)
+    cable = parent.cable(feeder.cable_id) if feeder and feeder.cable_id else None
+    if upstream is None or cable is None or not cable.length_m:
+        return request, None
+    material = ConductorMaterial.ALUMINIUM if cable.material == "Al" else ConductorMaterial.COPPER
+    loop = disconnection.loop_ohm(
+        cable.length_m,
+        cable.cross_section_mm2,
+        material,
+        90 if cable.insulation == "XLPE" else 70,
+    )
+    external = (upstream + loop).quantize(Decimal("0.001"), rounding=ROUND_CEILING)
+    made = note(
+        "earth_loop_calculated",
+        ze=_plain(external),
+        board=request.fed_from,
+        upstream=_plain(upstream),
+        length=_plain(cable.length_m),
+        section=_plain(cable.cross_section_mm2),
+        material=cable.material,
+    )
+    supply = request.supply.model_copy(update={"earth_loop_ohm": external})
     return request.model_copy(update={"supply": supply}), made
 
 

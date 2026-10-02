@@ -37,6 +37,10 @@ comes from its profile; what neither settles is left on the board as a note.
 * A circuit whose cable length is given has its voltage drop checked against
   the company's limit from the origin, less what the board's own feeders
   dropped, and its cable enlarged where that is needed (``voltage_drop``).
+* Where the board's ``Ze`` is known too, its breaker is checked to disconnect
+  an earth fault at the cable's far end, and the cable enlarged where it
+  would not (``disconnection``). A circuit under a residual current device
+  disconnects by it; in a TT system every circuit needs one.
 
 No part is selected here: devices carry ratings, not articles, until a
 catalogue is chosen, and the parts list says so rather than naming one.
@@ -49,7 +53,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import motors, voltage_drop
+from app.design import disconnection, motors, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -110,6 +114,10 @@ class _Sized:
     selected: bool = True
     #: The drop along its own cable, where its length is given and tabulated.
     drop_percent: Decimal | None = None
+    #: Zs at its far end, where its breaker was checked to disconnect by it.
+    earth_loop_ohm: Decimal | None = None
+    #: How it disconnects on an earth fault: "breaker", "rcd" or "unchecked".
+    earth_fault: str = "unchecked"
 
 
 def _plain(value: Decimal) -> str:
@@ -212,7 +220,7 @@ def _size(
     voltage = request.supply.voltage_v if three_phase else _phase_voltage(request)
     run = voltage_drop.Run(current, load.length_m, three_phase, voltage) if load.length_m else None
     section, drop = _check_drop(request, profile, budget, load, run, section, notes)
-    return _Sized(
+    sized = _Sized(
         load=load,
         index=index,
         current_a=current,
@@ -222,6 +230,113 @@ def _size(
         selected=selected,
         drop_percent=drop,
     )
+    _check_disconnection(request, profile, sized, notes)
+    return sized
+
+
+def _under_rcd(profile: CompanyProfile, load: LoadInput) -> bool:
+    rule = profile.circuit_rules.get(load.load)
+    return rule is not None and rule.residual_current_ma is not None
+
+
+def _check_disconnection(
+    request: DistributionBoardRequest,
+    profile: CompanyProfile,
+    item: _Sized,
+    notes: list[DesignNote],
+) -> None:
+    """Make sure an earth fault at a circuit's far end disconnects it in time.
+
+    A circuit under a residual current device disconnects by it. Otherwise,
+    in a TN system, its breaker must see enough current through the loop
+    (``disconnection``), and its cable is enlarged until it does; in a TT
+    system the board says the circuit needs one. Sets the item's
+    ``earth_fault``, ``earth_loop_ohm`` and, where enlarged, its section.
+    """
+    load = item.load
+    if _under_rcd(profile, load):
+        item.earth_fault = "rcd"
+        return
+    if request.supply.earthing.upper() == "TT":
+        notes.append(note("earth_fault_tt_no_rcd", load=load.description))
+        return
+    external = request.supply.earth_loop_ohm
+    if external is None or load.length_m is None or not item.selected or item.motor:
+        return
+    conditions = request.conditions
+    checked = disconnection.fit(
+        external_ohm=external,
+        length_m=load.length_m,
+        section_mm2=item.section_mm2,
+        material=conditions.conductor_material,
+        insulation_rating_c=conditions.insulation_rating_c,
+        phase_voltage_v=_phase_voltage(request),
+        rated_a=item.rated_a,
+        curve=item.curve,
+    )
+    if checked is None:
+        return
+    item.earth_fault = "breaker"
+    item.earth_loop_ohm = checked.loop_ohm
+    if not checked.within:
+        notes.append(
+            note(
+                "earth_fault_exceeded",
+                load=load.description,
+                loop=_plain(checked.loop_ohm),
+                limit=_plain(checked.max_ohm),
+                rated=_plain(item.rated_a),
+                curve=item.curve,
+            )
+        )
+    elif checked.section_mm2 != item.section_mm2:
+        notes.append(
+            note(
+                "earth_fault_upsized",
+                load=load.description,
+                sized=_plain(item.section_mm2),
+                section=_plain(checked.section_mm2),
+                loop=_plain(checked.loop_ohm),
+                limit=_plain(checked.max_ohm),
+            )
+        )
+        item.section_mm2 = checked.section_mm2
+        if item.drop_percent is not None:
+            # A larger cable drops less; the drop shown is the one it has.
+            three_phase = load.phases == 3
+            run = voltage_drop.Run(
+                item.current_a,
+                load.length_m,
+                three_phase,
+                request.supply.voltage_v if three_phase else _phase_voltage(request),
+            )
+            item.drop_percent = voltage_drop.percent(run, item.section_mm2, conditions).quantize(
+                Decimal("0.01")
+            )
+
+
+def _earth_fault_notes(request: DistributionBoardRequest, sized: list[_Sized]) -> list[DesignNote]:
+    """What the board says of its earth fault protection as a whole."""
+    made: list[DesignNote] = []
+    if request.supply.earthing.upper() == "TT":
+        return made
+    external = request.supply.earth_loop_ohm
+    if external is None:
+        if any(item.earth_fault != "rcd" for item in sized):
+            made.append(note("earth_fault_no_ze"))
+        return made
+    if any(item.earth_fault == "breaker" for item in sized):
+        made.append(
+            note(
+                "earth_fault_basis",
+                ze=_plain(external),
+                voltage=_plain(_phase_voltage(request)),
+            )
+        )
+    unchecked = sum(1 for item in sized if item.earth_fault == "unchecked")
+    if unchecked:
+        made.append(note("earth_fault_unchecked", count=unchecked))
+    return made
 
 
 def _check_drop(
@@ -322,7 +437,7 @@ def _size_motor(
     section, drop = _check_drop(request, profile, budget, load, run, cable.cross_section_mm2, notes)
     if load.length_m and load.starter is not None:
         section = _check_starting(request, profile, budget, load, motor, section, notes)
-    return _Sized(
+    sized = _Sized(
         load=load,
         index=index,
         current_a=motor.current_a,
@@ -332,6 +447,10 @@ def _size_motor(
         motor=motor,
         drop_percent=drop,
     )
+    # A starter's breaker trips on short circuit only, at a setting its
+    # tables do not give here: such a circuit is counted as unchecked.
+    _check_disconnection(request, profile, sized, notes)
+    return sized
 
 
 #: Starting current as a multiple of Ir, by starter: a direct-on-line
@@ -486,6 +605,7 @@ def _motor_circuit(
         cable_id=cable.id,
         starter=item.load.starter,
         voltage_drop_percent=item.drop_percent,
+        earth_loop_ohm=item.earth_loop_ohm,
     )
     return circuit, cable
 
@@ -823,6 +943,7 @@ def design_distribution_board(
                 cable_id=cable.id,
                 feeds=item.load.feeds,
                 voltage_drop_percent=item.drop_percent,
+                earth_loop_ohm=item.earth_loop_ohm,
             )
         )
 
@@ -868,6 +989,7 @@ def design_distribution_board(
     unchecked = sum(1 for load in request.loads if load.length_m is None)
     if unchecked:
         notes.append(note("voltage_drop_unchecked", count=unchecked))
+    notes.extend(_earth_fault_notes(request, sized))
     conditions = request.conditions
     notes.append(
         note(

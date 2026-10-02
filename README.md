@@ -403,6 +403,26 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Earth fault disconnection** is checked in a TN system for every circuit
+whose cable length is given, once the board's `Ze` is entered
+(`app/design/disconnection.py`, IEC 60364-4-41 §411.4.4):
+
+- **Rule:** `Zs × Ia ≤ 0.95 U0`, with `Ia` the top of the breaker's
+  instantaneous band (5, 10, 20 In for curves B, C, D; IEC 60898-1). That
+  trips within 0.1 s, inside both the 0.4 s and 5 s limits.
+- **Loop:** `Zs = Ze + |R1 + R2 + jX|`. The protective conductor is the size
+  of the line conductors (multicore cable). Resistance is taken at the
+  insulation's maximum operating temperature (IEC 60287-1-1 Table 1), and
+  reactance is 0.08 mΩ/m a conductor.
+- **Enlarging:** a cable whose loop is too long is stepped up until the
+  breaker trips at once, and the board names it. If no section is enough,
+  the board asks for a residual current device.
+- **RCD and TT:** a circuit under a residual current device disconnects by
+  it. In a TT system, every circuit not under one is named.
+- **Sub-boards:** a sub-board's `Ze` is its supply board's plus the feeder's
+  loop, where the feeder's length is given. It is never taken unreduced. `Zs`
+  shows in the result table.
+
 **Panel layout** (`app/design/layout.py`):
 
 - **Rows:** each board's DIN rails follow the single-line diagram: the

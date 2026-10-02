@@ -536,7 +536,9 @@
       "fedFrom": "Fed from",
       "starter": "Starter",
       "length": "Cable length",
-      "feederLength": "Feeder length"
+      "feederLength": "Feeder length",
+      "earthing": "Earthing system",
+      "earthLoop": "External loop Ze"
     },
     "kind": {
       "lighting": "Lighting",
@@ -570,7 +572,8 @@
       "breaker": "Breaker",
       "rcd": "RCD",
       "cable": "Cable",
-      "drop": "Voltage drop"
+      "drop": "Voltage drop",
+      "loop": "Earth loop Zs"
     },
     "notes": "What the design assumed",
     "downloads": "Download",
@@ -712,7 +715,14 @@
       "fault_level_calculated": "Fault level {fault} kA, calculated from {board}’s {upstream} kA through {length} m of {section} mm² {material} feeder (IEC 60909, conductors at 20 °C).",
       "starting_drop_upsized": "{load}: cable enlarged from {sized} to {section} mm² for starting: {multiple} × Ir at cos φ 0.35 drops {total} % from the origin, within the {limit} % allowed while starting.",
       "starting_drop_exceeded": "{load}: while starting the drop from the origin is {total} %, above the {limit} % allowed, and no tabulated section brings it within; kept at {section} mm². Consider a soft starter or a drive.",
-      "starting_drop_unchecked": "{load}: the drop while starting is not checked for aluminium cable (no start-up column is tabulated)."
+      "starting_drop_unchecked": "{load}: the drop while starting is not checked for aluminium cable (no start-up column is tabulated).",
+      "earth_fault_basis": "Earth fault disconnection checked from Ze {ze} Ω at U0 {voltage} V: Zs x Ia <= 0.95 U0, Ia the top of the breaker’s instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4).",
+      "earth_fault_upsized": "{load}: cable enlarged from {sized} to {section} mm² so its breaker disconnects an earth fault at the far end: Zs {loop} Ω, within {limit} Ω (IEC 60364-4-41 §411.4.4).",
+      "earth_fault_exceeded": "{load}: Zs {loop} Ω is above the {limit} Ω at which its {rated} A curve {curve} breaker trips at once, at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5).",
+      "earth_fault_tt_no_rcd": "{load}: in a TT system only a residual current device disconnects an earth fault in time (IEC 60364-4-41 §411.5); put this circuit under one.",
+      "earth_fault_no_ze": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
+      "earth_fault_unchecked": "{count, plural, one {# circuit is not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.} other {# circuits are not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.}}",
+      "earth_loop_calculated": "Ze {ze} Ω, from {board}’s {upstream} Ω plus the loop of {length} m of {section} mm² {material} feeder at its maximum operating temperature."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",

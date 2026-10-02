@@ -1222,6 +1222,8 @@ export interface components {
      *         starter: How the motor it feeds is started, for a motor circuit.
      *         voltage_drop_percent: The drop along its own cable, where its length
      *             is known; the board's notes add what feeds the board.
+     *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
+     *             board's ``Ze`` are known and its breaker disconnects by it.
      */
     'Circuit-Input': {
       /** Id */
@@ -1245,6 +1247,8 @@ export interface components {
       starter?: components['schemas']['MotorStarter'] | null;
       /** Voltage Drop Percent */
       voltage_drop_percent?: number | string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: number | string | null;
     };
     /**
      * Circuit
@@ -1267,6 +1271,8 @@ export interface components {
      *         starter: How the motor it feeds is started, for a motor circuit.
      *         voltage_drop_percent: The drop along its own cable, where its length
      *             is known; the board's notes add what feeds the board.
+     *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
+     *             board's ``Ze`` are known and its breaker disconnects by it.
      */
     'Circuit-Output': {
       /** Id */
@@ -1290,6 +1296,8 @@ export interface components {
       starter?: components['schemas']['MotorStarter'] | null;
       /** Voltage Drop Percent */
       voltage_drop_percent?: string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: string | null;
     };
     /**
      * CircuitRule
@@ -3663,6 +3671,9 @@ export interface components {
      *         frequency_hz: 50 or 60.
      *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
      *         fault_level_ka: Prospective short-circuit current at the board.
+     *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
+     *             board, as measured or as the supplier declares it. Given, each
+     *             circuit is checked for disconnection on an earth fault.
      */
     'Supply-Input': {
       /**
@@ -3687,6 +3698,8 @@ export interface components {
       earthing: string;
       /** Fault Level Ka */
       fault_level_ka?: number | string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: number | string | null;
     };
     /**
      * Supply
@@ -3698,6 +3711,9 @@ export interface components {
      *         frequency_hz: 50 or 60.
      *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
      *         fault_level_ka: Prospective short-circuit current at the board.
+     *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
+     *             board, as measured or as the supplier declares it. Given, each
+     *             circuit is checked for disconnection on an earth fault.
      */
     'Supply-Output': {
       /**
@@ -3722,6 +3738,8 @@ export interface components {
       earthing: string;
       /** Fault Level Ka */
       fault_level_ka?: string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: string | null;
     };
     /**
      * SupplyBand

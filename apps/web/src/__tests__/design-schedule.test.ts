@@ -3,12 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   blankBoard,
   blankLoad,
+  fromRequest,
   isComplete,
   rowsFrom,
   toRequest,
   withLanguage,
   type ProjectInfo,
 } from '@/components/design/schedule';
+import type { SavedRequest } from '@/lib/design';
 
 /** The pure helpers behind the design form. */
 
@@ -37,6 +39,18 @@ describe('design schedule helpers', () => {
     });
     expect(request.boards[1]).toMatchObject({ fed_from: 'MDB' });
     expect(request.boards[1]?.supply?.fault_level_ka).toBe('6');
+  });
+
+  it('sends the earthing system and Ze, and reads them back', () => {
+    const board = { ...blankBoard(0, 1, 'MDB'), earthing: 'TN-C-S' as const, earthLoop: ' 0.35 ' };
+    board.loads = [{ ...blankLoad(1), description: 'Pump', power: '5' }];
+    const request = toRequest(INFO, [board], null);
+    expect(request.boards[0]?.supply).toMatchObject({ earthing: 'TN-C-S', earth_loop_ohm: '0.35' });
+    expect(
+      toRequest(INFO, [blankBoard(0, 1, 'MDB')], null).boards[0]?.supply?.earth_loop_ohm,
+    ).toBeNull();
+    const [read] = fromRequest(request as SavedRequest, 0).boards;
+    expect(read).toMatchObject({ earthing: 'TN-C-S', earthLoop: '0.35' });
   });
 
   it('sends cable lengths, and a feeder length only for a fed board', () => {

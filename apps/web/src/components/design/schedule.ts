@@ -21,6 +21,10 @@ export type Load = {
   length: string;
 };
 
+/** The system earthing a board's supply can have. */
+export const EARTHING = ['TN-S', 'TN-C-S', 'TT'] as const;
+export type Earthing = (typeof EARTHING)[number];
+
 /** One board's header and schedule as the engineer edits it. */
 export type BoardForm = {
   key: number;
@@ -29,6 +33,9 @@ export type BoardForm = {
   voltage: string;
   phases: '1' | '3';
   faultLevel: string;
+  earthing: Earthing;
+  /** Ze in ohms; empty leaves earth fault disconnection unchecked. */
+  earthLoop: string;
   /** The board that feeds this one; empty for the project's own supply. */
   fedFrom: string;
   /** Route length of the cable from `fedFrom`, in metres. */
@@ -88,6 +95,8 @@ export function blankBoard(key: number, loadKey: number, name: string, fedFrom =
     voltage: '400',
     phases: '3',
     faultLevel: '',
+    earthing: 'TN-S',
+    earthLoop: '',
     fedFrom,
     feederLength: '',
     loads: [blankLoad(loadKey)],
@@ -149,8 +158,9 @@ export function toRequest(
         voltage_v: board.voltage.trim(),
         phases: Number(board.phases),
         frequency_hz: '50',
-        earthing: 'TN-S',
+        earthing: board.earthing,
         fault_level_ka: optional(board.faultLevel),
+        earth_loop_ohm: optional(board.earthLoop),
       },
       loads: board.loads.map((load) => ({
         description: load.description.trim(),
@@ -208,6 +218,8 @@ export function fromRequest(
       voltage: board.supply?.voltage_v ?? '400',
       phases: board.supply?.phases === 1 ? ('1' as const) : ('3' as const),
       faultLevel: board.supply?.fault_level_ka ?? '',
+      earthing: EARTHING.find((value) => value === board.supply?.earthing) ?? ('TN-S' as const),
+      earthLoop: board.supply?.earth_loop_ohm ?? '',
       fedFrom: board.fed_from ?? '',
       feederLength: board.feeder_length_m ?? '',
       loads,
