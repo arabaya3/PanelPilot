@@ -76,11 +76,12 @@ def switch_disconnector(x: float, top: float, poles: int = 4) -> tuple[list[Item
     pivot = top + 14.0
     bottom = top + DEVICE_HEIGHT
     items: list[Item] = [
-        Line(x, top, x, fixed - 1.0),
+        Line(x, top, x, fixed - 1.6),
         # The disconnector's bar across the fixed contact, and the ring that
-        # makes it a switch able to break load (IEC 60617 S00288).
+        # makes it a switch able to break load (IEC 60617 S00288), clear of
+        # the pole mark above.
         Line(x - 1.5, fixed, x + 1.5, fixed),
-        Circle(x, fixed - 1.0, 1.0),
+        Circle(x, fixed - 0.8, 0.8),
         # The blade, open.
         Line(x, pivot, x - 3.5, fixed + 0.8),
         Line(x, pivot, x, bottom),
