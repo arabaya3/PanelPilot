@@ -1393,6 +1393,9 @@ export interface components {
      *             what is sourced (ABB S200 miniature breakers, 17.5 mm a pole).
      *         usable_rail_mm: The usable rail length per row of the company's
      *             enclosure; a row longer than this continues on the next.
+     *         demand_factors: The share of each kind of load's design current
+     *             taken as running at once, for rating incomers and feeders; a
+     *             kind not listed counts in full. Empty assumes no diversity.
      *         rules_confirmed_by: Who confirmed the design rules. Empty while they
      *             are this software's defaults, which the drawing then says.
      */
@@ -1477,6 +1480,10 @@ export interface components {
       };
       /** Usable Rail Mm */
       usable_rail_mm?: string | null;
+      /** Demand Factors */
+      demand_factors?: {
+        [key: string]: string;
+      };
       /**
        * Rules Confirmed By
        * @default

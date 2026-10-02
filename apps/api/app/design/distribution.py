@@ -27,8 +27,10 @@ comes from its profile; what neither settles is left on the board as a note.
   trip (5 In for curve C, IEC 60898-1), which the board says.
 * Single-phase loads are spread over L1-L3 largest first onto the least
   loaded conductor. The resulting imbalance is checked against the profile.
-* The incomer is rated for the most loaded line conductor with no diversity
-  applied; a company's demand factors are not assumed.
+* The incomer is rated for the most loaded line conductor. Where the company
+  profile sets demand factors by kind of load, each circuit's Ib counts at
+  its factor (never below the largest single circuit on that conductor,
+  which can run alone at full load); otherwise none is assumed.
 * Every breaker but a motor starter's is given the smallest standard breaking
   capacity at or above the board's prospective fault current (a starter's
   coordination tables hold to 50 kA, ``motors``). Beyond the largest held, a
@@ -588,6 +590,29 @@ def _check_starting(
     return checked.section_mm2
 
 
+def demand_currents(circuits: list[Circuit], profile: CompanyProfile) -> dict[Phase, Decimal]:
+    """Return the current each line conductor is rated for after diversity.
+
+    Args:
+        circuits: Circuits with their phases set.
+        profile: The company, whose ``demand_factors`` apply.
+
+    Returns:
+        For L1, L2 and L3, the sum of Ib times its kind's demand factor (1
+        where none is set), and never less than the largest Ib on that
+        conductor.
+    """
+    totals = dict.fromkeys(_LINES, Decimal(0))
+    largest = dict.fromkeys(_LINES, Decimal(0))
+    for circuit in circuits:
+        factor = profile.demand_factors.get(circuit.load, Decimal(1))
+        lines = _LINES if circuit.phase is Phase.THREE_PHASE else (circuit.phase,)
+        for line in lines:
+            totals[line] += circuit.design_current_a * factor
+            largest[line] = max(largest[line], circuit.design_current_a)
+    return {line: max(totals[line], largest[line]) for line in _LINES}
+
+
 def balance_phases(currents: list[tuple[int, Decimal, bool]]) -> dict[int, Phase]:
     """Assign single-phase loads to line conductors, largest first.
 
@@ -1033,6 +1058,17 @@ def design_distribution_board(
                     limit=_plain(profile.max_phase_imbalance_percent),
                 )
             )
+    if profile.demand_factors:
+        demand = max(demand_currents(circuits, profile).values())
+        if demand < most:
+            notes.append(
+                note(
+                    "demand_factors",
+                    demand=_plain(demand.quantize(Decimal("0.1"))),
+                    connected=_plain(most.quantize(Decimal("0.1"))),
+                )
+            )
+        most = demand
     # What the incomer feeds directly: group breakers and ungrouped circuits.
     after = max(
         [

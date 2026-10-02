@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -537,6 +537,9 @@ class CompanyProfile(BaseModel):
             what is sourced (ABB S200 miniature breakers, 17.5 mm a pole).
         usable_rail_mm: The usable rail length per row of the company's
             enclosure; a row longer than this continues on the next.
+        demand_factors: The share of each kind of load's design current
+            taken as running at once, for rating incomers and feeders; a
+            kind not listed counts in full. Empty assumes no diversity.
         rules_confirmed_by: Who confirmed the design rules. Empty while they
             are this software's defaults, which the drawing then says.
     """
@@ -570,6 +573,9 @@ class CompanyProfile(BaseModel):
         default_factory=lambda: {DeviceKind.CIRCUIT_BREAKER: Decimal("17.5")}
     )
     usable_rail_mm: Decimal | None = Field(default=None, gt=0, le=5000)
+    demand_factors: dict[LoadKind, Annotated[Decimal, Field(gt=0, le=1)]] = Field(
+        default_factory=dict
+    )
     rules_confirmed_by: str = ""
 
     @model_validator(mode="after")

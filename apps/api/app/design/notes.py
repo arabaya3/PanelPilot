@@ -135,6 +135,9 @@ TEMPLATES: dict[str, str] = {
     "short_circuit_withstand": (
         "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at {fault} kA from its maker's curve (ABB handbook §2.4)."
     ),
+    "demand_factors": (
+        "Incomer rated for {demand} A on the most loaded conductor after the company's demand factors; {connected} A is connected. The factors are the company's, not a standard's."
+    ),
     "cable_conditions": (
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."

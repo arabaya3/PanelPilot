@@ -196,3 +196,19 @@ def test_a_sub_board_ze_is_not_taken_unreduced() -> None:
     )
     assert designed.supply.earth_loop_ohm is None
     assert "earth_loop_calculated" not in [n.code for n in designed.notes]
+
+
+def test_a_feeder_is_rated_after_demand_factors() -> None:
+    sockets = [
+        LoadInput(description=f"Sockets {i}", load=LoadKind.SOCKET, power_kw=Decimal(2))
+        for i in range(9)
+    ]
+    (board,) = project.design_boards(
+        [DistributionBoardRequest(name="DB-1", loads=sockets)], profile.default_profile()
+    )
+    company = profile.default_profile().model_copy(
+        update={"demand_factors": {LoadKind.SOCKET: Decimal("0.5")}}
+    )
+    full = project.feeder_load(board)
+    diverse = project.feeder_load(board, profile=company)
+    assert diverse.power_kw < full.power_kw
