@@ -783,7 +783,8 @@
     "drawingLanguage": "שפת השרטוטים",
     "drawingLanguages": {
       "en": "אנגלית",
-      "ar": "ערבית"
+      "ar": "ערבית",
+      "he": "עברית"
     },
     "projects": {
       "title": "פרויקטים שמורים",

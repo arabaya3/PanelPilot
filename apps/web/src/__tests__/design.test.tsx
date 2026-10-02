@@ -177,6 +177,13 @@ describe('board design', () => {
     expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({ key: 'acme' });
   });
 
+  it('draws in Hebrew by default in the Hebrew page', () => {
+    renderApp(<DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />, {
+      locale: 'he',
+    });
+    expect(screen.getByLabelText<HTMLSelectElement>('שפת השרטוטים').value).toBe('he');
+  });
+
   it('draws in Arabic by default in the Arabic page', () => {
     renderApp(<DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />, {
       locale: 'ar',

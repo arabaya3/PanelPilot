@@ -131,7 +131,8 @@ export function DesignScreen({
   // read from storage after the first render, so it cannot seed the state.
   const locale = useLocale();
   const [chosenLanguage, setDrawingLanguage] = useState<DrawingLanguage | null>(null);
-  const drawingLanguage: DrawingLanguage = chosenLanguage ?? (locale === 'ar' ? 'ar' : 'en');
+  const drawingLanguage: DrawingLanguage =
+    chosenLanguage ?? DRAWING_LANGUAGES.find((language) => language === locale) ?? 'en';
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedProject | null>(null);

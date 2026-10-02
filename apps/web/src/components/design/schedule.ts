@@ -182,7 +182,7 @@ export function toRequest(
 export const DEFAULT_PROFILE_KEY = 'iec-default';
 
 /** Languages the drawing set can be written in. */
-export const DRAWING_LANGUAGES = ['en', 'ar'] as const;
+export const DRAWING_LANGUAGES = ['en', 'ar', 'he'] as const;
 export type DrawingLanguage = (typeof DRAWING_LANGUAGES)[number];
 
 /**

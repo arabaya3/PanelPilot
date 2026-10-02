@@ -72,11 +72,35 @@ def test_arabic_plural(count: int, category: str) -> None:
     assert drawing_text._arabic_plural(count) == category
 
 
-def test_the_drawing_says_every_note_as_the_page_does() -> None:
+@pytest.mark.parametrize("language", ["ar", "he"])
+def test_the_drawing_says_every_note_as_the_page_does(language: str) -> None:
     """One sentence per note per language, on the page and on the drawing."""
-    drawing = json.loads((_LOCALE / "ar.json").read_text(encoding="utf-8"))
-    page = json.loads((_WEB / "ar.json").read_text(encoding="utf-8"))
+    drawing = json.loads((_LOCALE / f"{language}.json").read_text(encoding="utf-8"))
+    page = json.loads((_WEB / f"{language}.json").read_text(encoding="utf-8"))
     assert drawing["note"] == page["design"]["note"]
+
+
+def test_hebrew_has_every_phrase_arabic_has() -> None:
+    arabic = json.loads((_LOCALE / "ar.json").read_text(encoding="utf-8"))["drawing"]
+    hebrew = json.loads((_LOCALE / "he.json").read_text(encoding="utf-8"))["drawing"]
+    assert set(hebrew) == set(arabic)
+
+
+def test_words_in_hebrew_with_its_plural() -> None:
+    say = drawing_text.Words("he")
+    assert say("Board") == "לוח"
+    assert (
+        drawing_text.format_message(
+            "{count, plural, one {אחד} two {שניים} other {# רבים}}", {"count": "2"}, "he"
+        )
+        == "שניים"
+    )
+    assert (
+        drawing_text.format_message(
+            "{count, plural, one {אחד} other {# רבים}}", {"count": "5"}, "he"
+        )
+        == "5 רבים"
+    )
 
 
 def test_every_drawing_phrase_has_an_arabic_one() -> None:

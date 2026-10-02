@@ -7,8 +7,8 @@ its breaker allows, and the let-through energy its cable withstands. Under
 each board, the notes it made, in the company's drawing language. It opens
 with the methods and standards behind those figures and closes with the
 revision's approval, or says plainly that it has none. It is written in the
-company's drawing language throughout (``drawing_text``), an Arabic one
-with its table read from the right.
+company's drawing language throughout (``drawing_text``), an Arabic or
+Hebrew one with its table read from the right.
 
 Typed text is escaped and drawn in a font that holds it (``pdf_fonts``).
 """
@@ -146,7 +146,7 @@ def _max_loop(board: Board, device: Device | None) -> Decimal | None:
 
 
 def _right_to_left(words: Words) -> bool:
-    return words.language == "ar"
+    return words.language in ("ar", "he")
 
 
 def _board_section(board: Board, words: Words, styles: dict[str, ParagraphStyle]) -> list[object]:
