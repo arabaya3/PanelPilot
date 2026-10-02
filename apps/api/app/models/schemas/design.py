@@ -1102,6 +1102,27 @@ class SaveCompanySettings(BaseModel):
     settings: dict[str, Any]
 
 
+class MarkupSuggestion(BaseModel):
+    """A change to the load schedule a reviewer's comment asks for.
+
+    Attributes:
+        board: The board whose schedule changes.
+        circuit: The circuit's description, as the schedule names it.
+        load_index: Its place in that board's schedule; ``None`` for a change
+            to the board itself (a feeder length).
+        field: What changes.
+        value: Its new value; ``None`` for a removal.
+    """
+
+    board: str
+    circuit: str
+    load_index: int | None = None
+    field: Literal[
+        "remove", "power_kw", "length_m", "power_factor", "phases", "starter", "feeder_length_m"
+    ]
+    value: str | None = None
+
+
 class MarkupItem(BaseModel):
     """One reviewer's mark read off a drawing set PDF.
 
@@ -1113,6 +1134,8 @@ class MarkupItem(BaseModel):
         sheet: The page's title, where the PDF is this project's drawing set.
         board: The board the page draws, likewise.
         near: The label nearest the mark, likewise.
+        suggestion: The change to the schedule it asks for, where it sits on
+            a circuit and says one the schedule holds; offered, never applied.
     """
 
     page: int
@@ -1122,6 +1145,7 @@ class MarkupItem(BaseModel):
     sheet: str
     board: str
     near: str
+    suggestion: MarkupSuggestion | None = None
 
 
 class MarkupReport(BaseModel):

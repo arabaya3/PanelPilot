@@ -811,7 +811,19 @@
       "found": "{count, plural, one {הערה אחת} other {# הערות}}, כל אחת במקומה בשרטוטים.",
       "foundUnmatched": "{count, plural, one {הערה אחת} other {# הערות}}. הקובץ אינו סט השרטוטים של הפרויקט כפי שתוכנן כעת, ולכן הן מוצגות לפי עמוד בלבד.",
       "page": "עמוד {page}",
-      "near": "ליד {label}"
+      "near": "ליד {label}",
+      "apply": "החל",
+      "applied": "הוחל בטבלה; תכננו שוב כדי לראות.",
+      "missing": "המעגל הזה כבר לא בטבלה.",
+      "suggest": {
+        "remove": "הצעה: להסיר את {circuit}.",
+        "power_kw": "הצעה: {circuit} ב-{value} kW.",
+        "length_m": "הצעה: כבל {circuit} באורך {value} m.",
+        "power_factor": "הצעה: מקדם הספק של {circuit} {value}.",
+        "phases": "הצעה: {circuit} על {value} פאזות.",
+        "starter": "הצעה: {circuit} מותנע ב-{value}.",
+        "feeder_length_m": "הצעה: כבל הזנה ל-{board} באורך {value} m."
+      }
     },
     "settings": {
       "help": "מה שהחברה שלכם עושה אחרת מברירת המחדל. שדה ריק שומר את ברירת המחדל המוצגת באפור. שמרו אותן לחברה, וכל פרויקט חדש יתחיל מהן.",

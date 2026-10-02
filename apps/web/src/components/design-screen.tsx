@@ -10,6 +10,7 @@ import { DesignResult } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
+  applySuggestion,
   blankBoard,
   blankLoad,
   DRAWING_LANGUAGES,
@@ -548,7 +549,17 @@ export function DesignScreen({
 
       {designed && token !== null && (
         <div className="mt-6">
-          <MarkupsPanel token={token} project={designed} profile={profile} />
+          <MarkupsPanel
+            token={token}
+            project={designed}
+            profile={profile}
+            onApply={(suggestion) => {
+              const changed = applySuggestion(boards, suggestion);
+              if (changed === null) return false;
+              setBoards(changed);
+              return true;
+            }}
+          />
         </div>
       )}
 

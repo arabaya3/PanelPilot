@@ -316,7 +316,7 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
     from reportlab.pdfgen.canvas import Canvas
 
     from app.design import pages, profile
-    from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH
+    from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH, Text
     from app.models.schemas.design import ProjectDesignRequest
 
     request = ProjectDesignRequest.model_validate(
@@ -331,12 +331,21 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
         }
     )
     designed = design.design_project(session=None, user=USER, request=request)  # type: ignore[arg-type]
-    count = len(pages.build_drawing_set(designed.project, profile.default_profile()))
+    sheets = pages.build_drawing_set(designed.project, profile.default_profile())
+    count = len(sheets)
+    # The lights' breaker on the distribution page, where a reviewer would comment on it.
+    breaker = next(
+        item for item in sheets[3].items if isinstance(item, Text) and item.text == "-Q3"
+    )
+    point = 72 / 25.4
+    at = (breaker.x * point, (SHEET_HEIGHT - breaker.y) * point)
     buffer = io.BytesIO()
     canvas = Canvas(buffer, pagesize=(SHEET_WIDTH * 72 / 25.4, SHEET_HEIGHT * 72 / 25.4))
     for page in range(count):
         if page == 2:
             canvas.textAnnotation("Check this breaker", Rect=(300, 500, 320, 520))
+        if page == 3:
+            canvas.textAnnotation("cable length 30 m", Rect=(at[0], at[1] - 10, at[0] + 10, at[1]))
         canvas.showPage()
     canvas.save()
 
@@ -344,9 +353,15 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
         user=USER, data=buffer.getvalue(), project_json=designed.project.model_dump_json()
     )
     assert report.matched
-    (mark,) = report.markups
+    mark, length = report.markups
     assert (mark.page, mark.board, mark.text) == (3, "MDB", "Check this breaker")
     assert mark.near
+    # A comment asking for nothing the schedule holds suggests nothing; one
+    # giving a length on the circuit's breaker suggests that length.
+    assert mark.suggestion is None
+    assert length.suggestion is not None
+    assert (length.suggestion.circuit, length.suggestion.load_index) == ("Lights", 0)
+    assert (length.suggestion.field, length.suggestion.value) == ("length_m", "30")
 
     alone = design.read_markups(user=USER, data=buffer.getvalue())
     assert not alone.matched

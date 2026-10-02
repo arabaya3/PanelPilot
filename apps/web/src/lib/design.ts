@@ -19,6 +19,7 @@ export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
 export type MarkupReport = components['schemas']['MarkupReport'];
+export type MarkupSuggestion = components['schemas']['MarkupSuggestion'];
 
 /**
  * How every design call can end besides success. A 400 or 422 is the design
