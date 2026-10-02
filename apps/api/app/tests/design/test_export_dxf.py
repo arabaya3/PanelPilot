@@ -63,4 +63,19 @@ def test_output_is_ascii() -> None:
     sheet.add(Text(0, 0, "مرحبا"))
     data = export_dxf.export_dxf([sheet])
     data.decode("ascii")
-    assert "\\U+0645" in StringIO(data.decode()).getvalue()
+    # Joined presentation forms (U+FExx), not the letters as typed.
+    assert "\\U+FE" in StringIO(data.decode()).getvalue()
+    assert "\\U+0645" not in data.decode()
+
+
+def test_arabic_is_written_as_drawn_in_a_font_that_holds_it() -> None:
+    sheet = Sheet(number=1, title="T")
+    sheet.add(Text(0, 0, "قاطع -Q3 C16"), Text(0, 10, "-Q4 C20"))
+    doc = _read(export_dxf.export_dxf([sheet]))
+    style = doc.styles.get(export_dxf.RTL_STYLE)
+    assert style.dxf.font == "arial.ttf"
+    arabic, latin = (e for e in doc.modelspace() if e.dxftype() == "TEXT")
+    assert arabic.dxf.style == export_dxf.RTL_STYLE
+    assert arabic.dxf.text.startswith("-Q3 C16 ")
+    assert latin.dxf.style != export_dxf.RTL_STYLE
+    assert latin.dxf.text == "-Q4 C20"

@@ -222,7 +222,9 @@ quotation alike, Arabic and Hebrew text is drawn in the bundled DejaVu Sans
 (`app/design/fonts`, free licence). Its letters are joined by
 `arabic-reshaper` (MIT) and laid out right to left by `app/design/rtl.py`;
 python-bidi and fribidi were not used because they are LGPL. Latin text keeps
-the PDF base fonts. Typed text in the quotation is escaped, so a `<` in a
+the PDF base fonts. The DXF writes Arabic and Hebrew the same way, joined
+and in visual order, in a text style on Arial, since CAD text has no
+shaping of its own. Typed text in the quotation is escaped, so a `<` in a
 description is printed rather than read as markup.
 A refusal the engineer can meet works the same way: a load the tables do not
 cover, a board graph that loops, an unreadable file. It carries a `code` and

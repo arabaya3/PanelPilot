@@ -8,18 +8,29 @@ on layers by kind (frame, symbols, text) so a CAD user can switch them.
 
 A DXF is a drawing, not a schematic: it carries no device or connection
 data. The device and cable lists (export_lists) carry that.
+
+CAD text is drawn glyph after glyph as written, with no joining or
+direction, so Arabic and Hebrew are written the way the PDF draws them:
+joined and in visual order (``rtl``). They take a text style on Arial, which
+holds Arabic and Hebrew, since the default ``txt`` shape font does not;
+Latin text keeps the default style.
 """
 
 from __future__ import annotations
 
 from io import StringIO
 
+from app.design import rtl
 from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH, Anchor, Circle, Line, Rect, Sheet, Text
 
 #: Space between sheets laid side by side.
 SHEET_GAP = 20.0
 
 _LAYERS = {"FRAME": 7, "SYMBOLS": 7, "TEXT": 7, "DASHED": 8}
+
+#: The text style right-to-left text is written in, and its font.
+RTL_STYLE = "PP_RTL"
+_RTL_FONT = "arial.ttf"
 
 #: DXF horizontal justification codes (group 72), and the code a centred or
 #: right-aligned text needs its second alignment point (11/21) for.
@@ -64,6 +75,21 @@ def export_dxf(sheets: list[Sheet]) -> bytes:
     for name, colour in _LAYERS.items():
         linetype = "DASHED" if name == "DASHED" else "CONTINUOUS"
         _pairs(out, (0, "LAYER"), (2, name), (70, 0), (62, colour), (6, linetype))
+    _pairs(out, (0, "ENDTAB"))
+    _pairs(out, (0, "TABLE"), (2, "STYLE"), (70, 1))
+    _pairs(
+        out,
+        (0, "STYLE"),
+        (2, RTL_STYLE),
+        (70, 0),
+        (40, 0.0),
+        (41, 1.0),
+        (50, 0.0),
+        (71, 0),
+        (42, 2.5),
+        (3, _RTL_FONT),
+        (4, ""),
+    )
     _pairs(out, (0, "ENDTAB"), (0, "ENDSEC"))
 
     _pairs(out, (0, "SECTION"), (2, "ENTITIES"))
@@ -122,8 +148,10 @@ def export_dxf(sheets: list[Sheet]) -> bytes:
                     (20, ty),
                     (30, 0),
                     (40, _number(item.size)),
-                    (1, _clean(item.text)),
+                    (1, _clean(rtl.visual(item.text))),
                 ]
+                if rtl.has_rtl(item.text):
+                    pairs.append((7, RTL_STYLE))
                 if item.rotation:
                     pairs.append((50, _number(item.rotation)))
                 justify = _JUSTIFY[item.anchor]
