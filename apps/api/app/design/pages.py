@@ -830,10 +830,14 @@ def _draw_layout(sheet: Sheet, rails: list[layout.Rail], say: Words) -> None:
         rail_end = left + max(float(sum((drawn(s) for s in rail.slots), Decimal(0))) * scale, 10.0)
         sheet.add(Line(left, y + 11.0, rail_end, y + 11.0, 0.6))
         x = left
-        for slot in rail.slots:
+        last = len(rail.slots) - 1
+        for index, slot in enumerate(rail.slots):
             w = float(drawn(slot)) * scale
             sheet.add(Rect(x, y, w, 22.0, 0.25, dashed=slot.width_mm is None))
-            if w >= 4.0:
+            # A strip's terminals are too narrow to each carry a label: its
+            # first and last name the range.
+            labelled = slot.device_id or index in (0, last)
+            if w >= 4.0 and labelled:
                 label = slot.label if slot.width_mm is not None else f"{slot.label} ?"
                 sheet.add(
                     Text(x + w / 2, y + 26.0, label, size=1.8, anchor=Anchor.MIDDLE, rotation=0)
