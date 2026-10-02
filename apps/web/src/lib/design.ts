@@ -335,3 +335,51 @@ export async function importPriceList(options: {
   if (!response.ok || !Array.isArray(payload)) return { kind: 'failed' };
   return { kind: 'imported', entries: payload as PriceListEntry[] };
 }
+
+export type PlcProgram = components['schemas']['PlcProgramResponse'];
+
+export type PlcOutcome =
+  | { kind: 'written'; program: PlcProgram }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/** Write and check the control program for the PLC-switched circuits: `POST /api/v1/design/plc`. */
+export async function writePlcProgram(options: {
+  token: string;
+  project: DesignProject;
+  profile?: Record<string, unknown> | null;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<PlcOutcome> {
+  const {
+    token,
+    project,
+    profile = null,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/design/plc',
+  } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ project, profile }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 400 || response.status === 422) {
+    return { kind: 'refused', detail: detailOf(payload) };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('source' in payload) || !('validation' in payload)) return { kind: 'failed' };
+  return { kind: 'written', program: payload as PlcProgram };
+}

@@ -15,6 +15,7 @@ import structlog
 from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
+from app.ai.plc.validation import validate_plc_code
 from app.core.errors import ValidationError
 from app.design import (
     designations,
@@ -24,6 +25,7 @@ from app.design import (
     export_lists,
     export_qet,
     pages,
+    plc_program,
     profile,
     quotation,
     quotation_pdf,
@@ -41,6 +43,9 @@ from app.models.schemas.design import (
     ExportFormat,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    PlcIoPoint,
+    PlcProgramRequest,
+    PlcProgramResponse,
     PriceListEntry,
     Quotation,
     QuotationRequest,
@@ -63,6 +68,8 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.CIRCUITS_CSV: ("text/csv; charset=utf-8", "circuits.csv"),
     ExportFormat.QUOTATION_PDF: ("application/pdf", "quotation.pdf"),
     ExportFormat.QUOTATION_CSV: ("text/csv; charset=utf-8", "quotation.csv"),
+    ExportFormat.PLC_ST: ("text/plain; charset=utf-8", "st"),
+    ExportFormat.PLC_IO_CSV: ("text/csv; charset=utf-8", "io.csv"),
     ExportFormat.JSON: ("application/json", "json"),
 }
 
@@ -142,8 +149,9 @@ def export_design(
         The file.
 
     Raises:
-        ValidationError: If the profile is malformed, or a quotation is asked
-            for without pricing settings.
+        ValidationError: If the profile is malformed, a quotation is asked
+            for without pricing settings, or a control program for a project
+            with no PLC-switched circuit.
     """
     del session
     company = _profile(request.profile)
@@ -174,6 +182,13 @@ def export_design(
             quotation_pdf.render_quotation_pdf(priced, project, company=company.name)
             if request.format is ExportFormat.QUOTATION_PDF
             else quotation.quotation_csv(priced).encode("utf-8")
+        )
+    elif request.format in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
+        program = _program(project)
+        content = (
+            program.source.encode("utf-8")
+            if request.format is ExportFormat.PLC_ST
+            else plc_program.io_list_csv(program).encode("utf-8")
         )
     else:
         content = project.model_dump_json(indent=2).encode("utf-8")
@@ -286,3 +301,53 @@ def import_price_list(*, user: CurrentUser, data: bytes) -> list[PriceListEntry]
     entries = quotation.read_price_list(data)
     logger.info("design.price_list_imported", tenant_id=user.tenant_id, entries=len(entries))
     return entries
+
+
+def _program(project: DesignProject) -> plc_program.PlcProgram:
+    program = plc_program.build_program(project)
+    if program is None:
+        raise ValidationError(
+            "no circuit is PLC-switched: mark the loads the PLC controls, then design again"
+        )
+    return program
+
+
+def write_plc_program(*, user: CurrentUser, request: PlcProgramRequest) -> PlcProgramResponse:
+    """Write the control program for a project's PLC-switched circuits, and check it.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        request: The project and the profile settings.
+
+    Returns:
+        The Structured Text, its I/O list and the checker's verdict.
+
+    Raises:
+        ValidationError: If the profile is malformed or no circuit is
+            PLC-switched.
+    """
+    company = _profile(request.profile)
+    project = designations.designate_project(request.project, company)
+    program = _program(project)
+    verdict = validate_plc_code(program.source)
+    logger.info(
+        "design.plc_written",
+        tenant_id=user.tenant_id,
+        outputs=sum(point.direction == "output" for point in program.io),
+        status=verdict.status.value,
+    )
+    return PlcProgramResponse(
+        name=program.name,
+        source=program.source,
+        io=[
+            PlcIoPoint(
+                tag=point.tag,
+                direction=point.direction,
+                board=point.board,
+                device=point.device,
+                description=point.description,
+            )
+            for point in program.io
+        ],
+        validation=verdict,
+    )

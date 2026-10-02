@@ -531,7 +531,8 @@
       "load": "Load type",
       "power": "Power",
       "loadPhases": "Phases",
-      "powerFactor": "Power factor"
+      "powerFactor": "Power factor",
+      "controlled": "PLC switched"
     },
     "kind": {
       "lighting": "Lighting",
@@ -627,6 +628,21 @@
       "markup": "Markup",
       "vat": "VAT",
       "total": "Total"
+    },
+    "plc": {
+      "title": "Control program",
+      "intro": "The PLC program for the circuits marked PLC switched: one contactor coil per circuit, a manual-on input for each, and shared emergency-stop, hand/auto and time-clock inputs. Every coil drops when the emergency stop opens. Check it and fill in the addresses before loading it.",
+      "submit": "Write the program",
+      "working": "Writing…",
+      "st": "Program (.st)",
+      "io": "I/O list (CSV)",
+      "error": "The program could not be written. Try again.",
+      "io_count": "{inputs} inputs, {outputs} outputs",
+      "status": {
+        "valid": "Checked: the program parses in full and nothing was found.",
+        "invalid": "The checker found errors in the program.",
+        "incomplete": "The checker could not check this program in full."
+      }
     }
   }
 }

@@ -294,6 +294,23 @@ or CSV) and rates (`app/design/quotation.py`):
   and the PDF says so above its totals.
 - **Output:** the quotation exports as PDF or CSV.
 
+A load marked **PLC switched** gets a contactor after its breaker, rated no
+lower than the breaker (AC-1), and the board gets a **control program**
+(`app/design/plc_program.py`):
+
+- **I/O:** one coil output per contactor and one manual-on input per circuit.
+  Three inputs are shared: `EStop_OK` (normally closed), `Auto_Mode` and
+  `Schedule_On`.
+- **Logic:** each coil is
+  `K := EStop_OK AND (Manual_On OR (Auto_Mode AND Schedule_On))`, so an open
+  emergency stop drops every contactor.
+- **Check:** the program is plain IEC 61131-3 Structured Text with no direct
+  addresses. It is run through the same parser-based checker as generated
+  PLC code, and the page shows that checker's verdict.
+- **Output:** the program exports as `.st`, and the I/O list as CSV with an
+  empty address column for the engineer to fill in. The contactor also
+  appears in the drawing set and the QElectroTech file.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The

@@ -147,3 +147,31 @@ def test_a_price_list_is_uploaded(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.json() == [{"key": "X", "description": "", "unit_price": "2"}]
+
+
+def test_a_plc_program_is_written(client: TestClient) -> None:
+    board = {
+        "info": {"name": "Pocket"},
+        "board": {
+            "name": "DBG-HALL",
+            "loads": [
+                {
+                    "description": "Lights",
+                    "load": "lighting",
+                    "power_kw": "0.6",
+                    "controlled": True,
+                }
+            ],
+        },
+    }
+    project = client.post("/design/distribution-board", json=board).json()["project"]
+    response = client.post("/design/plc", json={"project": project})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["validation"]["status"] == "valid"
+    assert "END_PROGRAM" in body["source"]
+    refused = client.post(
+        "/design/plc",
+        json={"project": client.post("/design/distribution-board", json=BOARD).json()["project"]},
+    )
+    assert refused.status_code == 422

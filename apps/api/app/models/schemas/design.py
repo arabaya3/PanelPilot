@@ -25,6 +25,7 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
+from app.models.schemas.plc import PlcValidationResult
 
 
 class DeviceKind(StrEnum):
@@ -522,6 +523,8 @@ class LoadInput(BaseModel):
         phases: 1 or 3.
         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
             load-current table is drawn up for, and the board says so.
+        controlled: Switched by a contactor the PLC drives, rather than
+            live whenever its breaker is closed.
     """
 
     description: str = Field(min_length=1)
@@ -529,6 +532,7 @@ class LoadInput(BaseModel):
     power_kw: Decimal = Field(gt=0)
     phases: int = Field(default=1)
     power_factor: Decimal | None = Field(default=None, gt=0, le=1)
+    controlled: bool = False
 
     @model_validator(mode="after")
     def _one_or_three(self) -> LoadInput:
@@ -613,6 +617,8 @@ class ExportFormat(StrEnum):
     CIRCUITS_CSV = "circuits_csv"
     QUOTATION_PDF = "quotation_pdf"
     QUOTATION_CSV = "quotation_csv"
+    PLC_ST = "plc_st"
+    PLC_IO_CSV = "plc_io_csv"
     JSON = "json"
 
 
@@ -804,6 +810,52 @@ class QuotationRequest(BaseModel):
     project: DesignProject
     profile: dict[str, Any] | None = None
     pricing: PricingSettings
+
+
+class PlcIoPoint(BaseModel):
+    """One point on a control program's I/O list.
+
+    Attributes:
+        tag: The variable name in the program.
+        direction: "input" or "output".
+        board: The board it belongs to; empty for shared inputs.
+        device: The designation of the device it drives or reports.
+        description: What it is, for the wiring list.
+    """
+
+    tag: str
+    direction: str
+    board: str
+    device: str
+    description: str
+
+
+class PlcProgramRequest(BaseModel):
+    """A project whose PLC-switched circuits need a control program.
+
+    Attributes:
+        project: The designed project.
+        profile: The company's profile settings; ``None`` for the default.
+    """
+
+    project: DesignProject
+    profile: dict[str, Any] | None = None
+
+
+class PlcProgramResponse(BaseModel):
+    """The control program for a project, and the checker's verdict on it.
+
+    Attributes:
+        name: The program unit's name.
+        source: The IEC 61131-3 Structured Text.
+        io: Every input and output, shared inputs first.
+        validation: The parser-based checker's verdict on ``source``.
+    """
+
+    name: str
+    source: str
+    io: list[PlcIoPoint]
+    validation: PlcValidationResult
 
 
 # The export request names the pricing settings, defined after it.

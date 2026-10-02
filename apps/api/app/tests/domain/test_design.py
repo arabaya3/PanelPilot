@@ -15,6 +15,7 @@ from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.design import (
     BoardDesignRequest,
     DesignExportRequest,
+    DesignProject,
     DistributionBoardRequest,
     ExportFormat,
     LoadInput,
@@ -188,3 +189,55 @@ def test_a_design_is_priced_and_exported_as_a_quotation() -> None:
 def test_a_price_list_is_imported() -> None:
     entries = design.import_price_list(user=USER, data=b"Key,Price\nX,2\n")
     assert entries[0].key == "X"
+
+
+def _controlled_project() -> DesignProject:
+    request = BoardDesignRequest(
+        info=ProjectInfo(name="Pocket"),
+        board=DistributionBoardRequest(
+            name="DBG-HALL",
+            loads=[
+                LoadInput(
+                    description="Lights",
+                    load=LoadKind.LIGHTING,
+                    power_kw=Decimal(1),
+                    controlled=True,
+                )
+            ],
+        ),
+    )
+    return design.design_board(session=None, user=USER, request=request).project  # type: ignore[arg-type]
+
+
+def test_a_plc_program_is_written_checked_and_exported() -> None:
+    from app.models.schemas.design import PlcProgramRequest
+    from app.models.schemas.plc import ValidationStatus
+
+    project = _controlled_project()
+    result = design.write_plc_program(
+        user=USER,
+        request=PlcProgramRequest(project=project),
+    )
+    assert result.validation.status is ValidationStatus.VALID
+    assert [p.direction for p in result.io].count("output") == 1
+    source = design.export_design(
+        session=None,  # type: ignore[arg-type]
+        user=USER,
+        request=DesignExportRequest(project=project, format=ExportFormat.PLC_ST),
+    )
+    assert source.filename == "Pocket.st"
+    assert b"END_PROGRAM" in source.content
+    io_list = design.export_design(
+        session=None,  # type: ignore[arg-type]
+        user=USER,
+        request=DesignExportRequest(project=project, format=ExportFormat.PLC_IO_CSV),
+    )
+    assert io_list.filename == "Pocket.io.csv"
+
+
+def test_a_plc_program_needs_a_controlled_circuit() -> None:
+    from app.models.schemas.design import PlcProgramRequest
+
+    project = design.design_board(session=None, user=USER, request=_request()).project  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="PLC-switched"):
+        design.write_plc_program(user=USER, request=PlcProgramRequest(project=project))

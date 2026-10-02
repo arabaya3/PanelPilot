@@ -137,6 +137,8 @@ def rating_text(device: Device) -> str:
         ]
     elif device.rated_current_a is None:
         parts = ["rating not selected", poles]
+    elif device.kind is DeviceKind.CONTACTOR:
+        parts = [f"{_plain(device.rated_current_a)} A AC-1", poles]
     else:
         parts = [f"{device.curve or ''}{_plain(device.rated_current_a)}", poles]
     if device.breaking_capacity_ka:
@@ -556,7 +558,15 @@ def _draw_distribution(sheet: Sheet, plan: _Plan, numbers: dict[str, int]) -> No
         items, bottom = symbols.circuit_breaker(x, top, breaker.poles or 1)
         sheet.add(*items)
         sheet.add(*symbols.labels(x, top + 8, [_product(breaker), rating_text(breaker)]))
-        items, end = symbols.cable_end(x, bottom, 30.0)
+        cable_length = 30.0
+        for device_id in circuit.device_ids[1:]:
+            switch = board.device(device_id)
+            items, below = symbols.contactor(x, bottom + 2.0, switch.poles or 2)
+            sheet.add(Line(x, bottom, x, bottom + 2.0), *items)
+            sheet.add(*symbols.labels(x, bottom + 10, [_product(switch), rating_text(switch)]))
+            bottom = below
+            cable_length = 12.0
+        items, end = symbols.cable_end(x, bottom, cable_length)
         sheet.add(*items)
         cable = board.cable(circuit.cable_id) if circuit.cable_id else None
         sheet.add(

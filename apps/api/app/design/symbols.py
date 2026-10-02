@@ -90,6 +90,34 @@ def residual_current_device(x: float, top: float, poles: int = 4) -> tuple[list[
     return items, bottom
 
 
+def contactor(x: float, top: float, poles: int = 2) -> tuple[list[Item], float]:
+    """Draw a contactor's main contact: a switch with the contactor's arc mark.
+
+    The arc on the fixed contact (IEC 60617-7) is drawn as a small circle, the
+    closest the sheet's primitives come; it reads the same on a single-line
+    diagram and is unlike the breaker's cross.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    fixed = top + 6.0
+    pivot = top + 14.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, fixed - 1.2),
+        Circle(x, fixed, 1.2),
+        Line(x, pivot, x - 3.5, fixed + 0.8),
+        Line(x, pivot, x, bottom),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
 def cable_end(x: float, top: float, length: float = 8.0) -> tuple[list[Item], float]:
     """Draw an outgoing cable ending in a terminal point.
 

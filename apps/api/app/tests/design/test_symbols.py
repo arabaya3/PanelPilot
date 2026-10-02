@@ -11,7 +11,9 @@ from app.design import symbols
 from app.design.sheet import Circle, Line, Rect, Text
 
 
-@pytest.mark.parametrize("draw", [symbols.circuit_breaker, symbols.residual_current_device])
+@pytest.mark.parametrize(
+    "draw", [symbols.circuit_breaker, symbols.residual_current_device, symbols.contactor]
+)
 def test_a_device_runs_from_its_top_to_its_bottom(draw: object) -> None:
     items, bottom = draw(100.0, 50.0, 3)  # type: ignore[operator]
     assert bottom == 50.0 + symbols.DEVICE_HEIGHT
@@ -25,6 +27,11 @@ def test_the_rcd_has_its_transformer() -> None:
     items, _ = symbols.residual_current_device(0.0, 0.0)
     assert any(isinstance(i, Rect) for i in items)
     assert any(isinstance(i, Line) and i.dashed for i in items)
+
+
+def test_the_contactor_carries_its_mark() -> None:
+    items, _ = symbols.contactor(0.0, 0.0)
+    assert any(isinstance(i, Circle) for i in items)
 
 
 def test_single_pole_marks_carry_no_number() -> None:

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field, round } from '@/components/cable-sizing-panel';
+import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
   designBoard,
@@ -65,6 +66,7 @@ type Load = {
   power: string;
   phases: '1' | '3';
   powerFactor: string;
+  controlled: boolean;
 };
 
 type Info = {
@@ -94,7 +96,15 @@ const INITIAL_INFO: Info = {
 };
 
 function blankLoad(key: number): Load {
-  return { key, description: '', load: 'socket', power: '', phases: '1', powerFactor: '' };
+  return {
+    key,
+    description: '',
+    load: 'socket',
+    power: '',
+    phases: '1',
+    powerFactor: '',
+    controlled: false,
+  };
 }
 
 /** Save a blob under a name, the way a download link does. */
@@ -184,6 +194,7 @@ export function DesignScreen({
       power: load.power_kw,
       phases: load.phases === 3 ? '3' : '1',
       powerFactor: load.power_factor ?? '',
+      controlled: load.controlled,
     }));
     setLoads(imported);
     setNextKey((key) => key + imported.length);
@@ -224,6 +235,7 @@ export function DesignScreen({
       power: load.power_kw,
       phases: load.phases === 3 ? '3' : '1',
       powerFactor: load.power_factor ?? '',
+      controlled: load.controlled,
     }));
     setLoads(suggested);
     setNextKey((key) => key + suggested.length);
@@ -286,6 +298,7 @@ export function DesignScreen({
             power_kw: load.power.trim(),
             phases: Number(load.phases),
             power_factor: load.powerFactor.trim() === '' ? null : load.powerFactor.trim(),
+            controlled: load.controlled,
           })),
         },
         profile,
@@ -470,7 +483,7 @@ export function DesignScreen({
             <div
               key={load.key}
               data-testid={`design-load-${String(index)}`}
-              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-6 lg:items-end"
+              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-7 lg:items-end"
             >
               <Field id={`${id}-desc-${String(load.key)}`} label={t('field.description')}>
                 <input
@@ -536,6 +549,17 @@ export function DesignScreen({
                   className="input w-full"
                 />
               </Field>
+              <label className="flex items-center gap-2 text-sm lg:pb-2">
+                <input
+                  type="checkbox"
+                  data-testid={`design-controlled-${String(index)}`}
+                  checked={load.controlled}
+                  onChange={(event) => {
+                    updateLoad(load.key, { controlled: event.target.checked });
+                  }}
+                />
+                {t('field.controlled')}
+              </label>
               <button
                 type="button"
                 disabled={loads.length === 1}
@@ -615,6 +639,24 @@ export function DesignScreen({
           />
         </div>
       )}
+
+      {result.kind === 'designed' &&
+        session.kind === 'ready' &&
+        (result.response.project.boards ?? []).some((board) =>
+          (board.devices ?? []).some((device) => device.kind === 'contactor'),
+        ) && (
+          <div className="mt-6">
+            <PlcPanel
+              token={session.token}
+              project={result.response.project}
+              profile={(() => {
+                const profile = parsedProfile();
+                return profile === 'invalid' ? null : profile;
+              })()}
+              saveImpl={saveImpl}
+            />
+          </div>
+        )}
     </AppShell>
   );
 }

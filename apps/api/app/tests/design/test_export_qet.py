@@ -44,6 +44,7 @@ def test_every_conductor_joins_terminals_that_exist(hall_project: DesignProject)
     assert set(definitions) == {
         export_qet.BREAKER,
         export_qet.RCD,
+        export_qet.CONTACTOR,
         export_qet.LOAD,
         export_qet.SUPPLY,
     }

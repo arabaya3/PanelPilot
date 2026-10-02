@@ -138,6 +138,29 @@ def test_single_phase_supply() -> None:
         )
 
 
+def test_a_plc_switched_load_gets_a_contactor_after_its_breaker() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[
+            _load(LoadKind.LIGHTING, "0.6", "Lights", controlled=True),
+            _load(LoadKind.AIR_CONDITIONING, "9", "AC", phases=3, controlled=True),
+            _load(LoadKind.SOCKET, "1.5", "Sockets"),
+        ],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    by_name = {c.description: c for c in board.circuits}
+    lights, ac, sockets = by_name["Lights"], by_name["AC"], by_name["Sockets"]
+    assert len(sockets.device_ids) == 1
+    for circuit, poles in ((lights, 2), (ac, 4)):
+        breaker, contactor = (board.device(i) for i in circuit.device_ids)
+        assert contactor.kind is DeviceKind.CONTACTOR
+        assert contactor.upstream_id == breaker.id
+        assert contactor.poles == poles
+        assert contactor.rated_current_a >= breaker.rated_current_a  # type: ignore[operator]
+        assert contactor.rated_current_a in distribution.CONTACTOR_RATINGS
+    assert any("AC-1" in note for note in board.notes)
+
+
 def test_an_unprotectable_load_is_refused_by_name() -> None:
     request = DistributionBoardRequest(
         name="DB", loads=[_load(LoadKind.OTHER, "90", "Chiller", phases=3)]
