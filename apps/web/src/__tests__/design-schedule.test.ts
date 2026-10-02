@@ -10,7 +10,7 @@ import {
   withLanguage,
   type ProjectInfo,
 } from '@/components/design/schedule';
-import type { SavedRequest } from '@/lib/design';
+import { savedName, type SavedRequest } from '@/lib/design';
 
 /** The pure helpers behind the design form. */
 
@@ -122,5 +122,17 @@ describe('motor starters', () => {
     ];
     const loads = toRequest(INFO, [main], null).boards[0]?.loads;
     expect(loads?.map((load) => load.starter)).toEqual(['dol', null]);
+  });
+});
+
+describe('savedName', () => {
+  it('prefers the project’s own name, falling back to the ASCII one', () => {
+    const arabic = encodeURIComponent('برج-القمة.pdf');
+    expect(savedName(`attachment; filename="project.pdf"; filename*=UTF-8''${arabic}`)).toBe(
+      'برج-القمة.pdf',
+    );
+    expect(savedName('attachment; filename="Hall.qet"')).toBe('Hall.qet');
+    expect(savedName('attachment; filename="a.pdf"; filename*=UTF-8\'\'%E0%A4')).toBe('a.pdf');
+    expect(savedName('')).toBeNull();
   });
 });

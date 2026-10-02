@@ -6,6 +6,7 @@ Routes never call ``app.design`` directly — they call the domain service.
 from __future__ import annotations
 
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile
 
@@ -80,8 +81,16 @@ def export_design(
     return Response(
         content=exported.content,
         media_type=exported.media_type,
-        headers={"Content-Disposition": f'attachment; filename="{exported.filename}"'},
+        headers={"Content-Disposition": _disposition(exported.filename, exported.display_name)},
     )
+
+
+def _disposition(filename: str, display_name: str) -> str:
+    """``attachment`` with an ASCII name, and the project's own (RFC 6266/5987)."""
+    header = f'attachment; filename="{filename}"'
+    if display_name and display_name != filename:
+        header += f"; filename*=UTF-8''{quote(display_name, safe='')}"
+    return header
 
 
 @router.post("/load-schedule/import", response_model=LoadScheduleImport)
