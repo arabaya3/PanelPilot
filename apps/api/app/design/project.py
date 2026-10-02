@@ -9,9 +9,10 @@ than from a figure typed in by hand:
 * It is entered as a load of ``power_kw`` at cos phi 1 chosen so that
   P / (k Ur cos phi) gives that current back, so the feeder is protected and
   cabled by the same rule as every other circuit (``distribution``).
-* A feeder is rated at least the company's discrimination ratio times the
-  incomer it supplies, so the two discriminate on overload; its cable is
-  sized for that rating.
+* A sub-board's incomer is a switch-disconnector, protected by its feeder
+  breaker and rated no lower than it. The feeder is rated at least the
+  company's discrimination ratio times the largest breaker that switch
+  feeds, so the two discriminate on overload; its cable is sized for that.
 * A sub-board with no fault level of its own takes the one of the board
   that feeds it, unreduced by the feeder: a safe figure for its breakers'
   breaking capacity, which the engineer can replace with a calculated one.
@@ -185,14 +186,14 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     # Cable sizes do not change a current, so this pass needs no drop budget.
     feeders: dict[str, list[LoadInput]] = {request.name: [] for request in requests}
     strictest: dict[str, Decimal] = {}
-    incomers: dict[str, Decimal] = {}
+    after: dict[str, Decimal] = {}
     for request in order:
         board = distribution.design_distribution_board(
-            _with_feeders(request, feeders), profile, sub_board_incomers_a=incomers
+            _with_feeders(request, feeders), profile, sub_board_after_a=after
         )
-        incomer = board.device(board.incomer_ids[0]).rated_current_a
-        if incomer is not None:
-            incomers[request.name] = incomer
+        largest = _largest_after_incomer(board)
+        if largest is not None:
+            after[request.name] = largest
         strictest[request.name] = min(
             [
                 *(voltage_drop.limit_for(profile, load.load) for load in request.loads),
@@ -204,6 +205,7 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
 
     # From the origin down: each board knows what its feeders dropped.
     upstream: dict[str, Decimal] = {}
+    supply_breakers: dict[str, Decimal] = {}
     designed: dict[str, Board] = {}
     for request in reversed(order):
         inherited = _inherit_fault_level(request, designed)
@@ -214,10 +216,17 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
             feeder_limits={child: strictest[child] for child in children},
         )
         board = distribution.design_distribution_board(
-            _with_feeders(request, feeders), profile, budget, incomers
+            _with_feeders(request, feeders),
+            profile,
+            budget,
+            after,
+            supply_breakers.get(request.name),
         )
         for circuit in board.circuits:
             if circuit.feeds is not None:
+                breaker = board.device(circuit.device_ids[0]).rated_current_a
+                if breaker is not None:
+                    supply_breakers[circuit.feeds] = breaker
                 upstream[circuit.feeds] = budget.upstream_percent + (
                     circuit.voltage_drop_percent or Decimal(0)
                 )
@@ -233,6 +242,16 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
             )
         designed[request.name] = board
     return [designed[request.name] for request in requests]
+
+
+def _largest_after_incomer(board: Board) -> Decimal | None:
+    """The largest protective device the board's incomer feeds directly."""
+    ratings = [
+        device.rated_current_a
+        for device in board.devices
+        if device.upstream_id in board.incomer_ids and device.rated_current_a is not None
+    ]
+    return max(ratings, default=None)
 
 
 def _inherit_fault_level(

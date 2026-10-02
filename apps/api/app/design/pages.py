@@ -150,6 +150,8 @@ def rating_text(device: Device) -> str:
         parts = ["rating not selected", poles]
     elif device.kind is DeviceKind.CONTACTOR:
         parts = [f"{_plain(device.rated_current_a)} A AC-1", poles]
+    elif device.kind is DeviceKind.SWITCH_DISCONNECTOR:
+        parts = [f"{_plain(device.rated_current_a)} A", poles]
     else:
         parts = [f"{device.curve or ''}{_plain(device.rated_current_a)}", poles]
     if device.breaking_capacity_ka:
@@ -506,7 +508,7 @@ def _draw_main(
         top = AREA_TOP + 18.0
         for incomer_id in board.incomer_ids:
             incomer = board.device(incomer_id)
-            items, bottom = symbols.circuit_breaker(x, top, incomer.poles or 4)
+            items, bottom = _symbol(incomer, x, top)
             sheet.add(*items)
             sheet.add(*symbols.labels(x, top + 8, [_product(incomer), rating_text(incomer)]))
             top = bottom
@@ -565,6 +567,8 @@ def _symbol(device: Device, x: float, top: float) -> tuple[list[Item], float]:
         return symbols.overload_relay(x, top, poles)
     if device.kind is DeviceKind.CONTACTOR:
         return symbols.contactor(x, top, device.poles or 2)
+    if device.kind is DeviceKind.SWITCH_DISCONNECTOR:
+        return symbols.switch_disconnector(x, top, poles)
     return symbols.circuit_breaker(x, top, poles)
 
 

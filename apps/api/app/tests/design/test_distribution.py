@@ -423,13 +423,13 @@ def test_a_group_its_rccb_cannot_follow_is_said() -> None:
     assert "discrimination_group_not_met" in [n.code for n in board.notes]
 
 
-def test_a_feeder_discriminates_with_the_incomer_it_supplies() -> None:
+def test_a_feeder_discriminates_with_the_breakers_after_it() -> None:
     request = DistributionBoardRequest(
         name="MDB",
         loads=[_load(LoadKind.SUB_BOARD, "5", "Feeder to DB-1", phases=3, feeds="DB-1")],
     )
     board = distribution.design_distribution_board(
-        request, profile.default_profile(), sub_board_incomers_a={"DB-1": Decimal(25)}
+        request, profile.default_profile(), sub_board_after_a={"DB-1": Decimal(25)}
     )
     breaker = board.device(board.circuits[0].device_ids[0])
     assert breaker.rated_current_a == 40
@@ -441,3 +441,26 @@ def test_a_feeder_discriminates_with_the_incomer_it_supplies() -> None:
 def test_group_rating(after: str, expected: str | None) -> None:
     rating = distribution._group_rating(Decimal(20), Decimal(after), Decimal("1.6"))
     assert rating == (Decimal(expected) if expected else None)
+
+
+def test_a_sub_board_has_a_switch_rated_for_the_breaker_that_feeds_it() -> None:
+    request = _hall().model_copy(update={"fed_from": "MDB"})
+    board = distribution.design_distribution_board(
+        request, profile.default_profile(), supply_breaker_a=Decimal(63)
+    )
+    incomer = board.device("incomer")
+    assert incomer.kind is DeviceKind.SWITCH_DISCONNECTOR
+    assert incomer.rated_current_a == 63
+    assert incomer.breaking_capacity_ka is None
+    assert "incomer_isolator" in [n.code for n in board.notes]
+    # It does not trip, so nothing is raised to discriminate with it.
+    assert "discrimination_incomer_raised" not in [n.code for n in board.notes]
+
+
+def test_a_switch_beyond_every_rating_is_said() -> None:
+    request = _hall().model_copy(update={"fed_from": "MDB"})
+    board = distribution.design_distribution_board(
+        request, profile.default_profile(), supply_breaker_a=Decimal(400)
+    )
+    assert board.device("incomer").rated_current_a is None
+    assert "isolator_unselected" in [n.code for n in board.notes]

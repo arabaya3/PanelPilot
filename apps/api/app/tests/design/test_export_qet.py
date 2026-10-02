@@ -50,6 +50,7 @@ def test_every_conductor_joins_terminals_that_exist(hall_project: DesignProject)
         export_qet.FUSE,
         export_qet.OVERLOAD,
         export_qet.DRIVE,
+        export_qet.SWITCH,
     }
     conductors = 0
     for diagram in root.findall("diagram"):

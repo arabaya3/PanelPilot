@@ -704,8 +704,10 @@
       "discrimination_group_raised": "מפסק קבוצה {group} הוגדל ל-{rated} A, פי {ratio} מהמפסק {after} A שאחריו, לסלקטיביות.",
       "discrimination_group_not_met": "מפסק קבוצה {group}: ‏{rated} A קטן מפי {ratio} מהמפסק {after} A שאחריו, ואין דירוג גדול יותר עבור ה-RCCB שלו; הסלקטיביות בעומס יתר אינה מובטחת.",
       "discrimination_incomer_raised": "המפסק הראשי הוגדל ל-{rated} A, פי {ratio} מהמפסק {after} A שאחריו, לסלקטיביות.",
-      "discrimination_feeder_raised": "ההזנה ל-{board} הוגדלה ל-{rated} A, פי {ratio} מהמפסק הראשי {after} A שהיא מזינה, לסלקטיביות; הכבל שלה מחושב ל-{rated} A.",
-      "discrimination_incomer_not_met": "המפסק הראשי: ‏{rated} A קטן מפי {ratio} מהמפסק {after} A שאחריו, ואין מפסק זעיר גדול יותר; הסלקטיביות בעומס יתר אינה מובטחת."
+      "discrimination_feeder_raised": "ההזנה ל-{board} הוגדלה ל-{rated} A, פי {ratio} מהמפסק {after} A שאחריה ב-{board}, לסלקטיביות; הכבל שלה מחושב ל-{rated} A.",
+      "discrimination_incomer_not_met": "המפסק הראשי: ‏{rated} A קטן מפי {ratio} מהמפסק {after} A שאחריו, ואין מפסק זעיר גדול יותר; הסלקטיביות בעומס יתר אינה מובטחת.",
+      "incomer_isolator": "הכניסה היא מנתק עומס: מפסק ההזנה ב-{board} מגן על הלוח הזה, ולכן המנתק מדורג לא פחות מאותו מפסק ואינו מנתק בתקלה; הסלקטיביות היא בין מפסק ההזנה למפסקי הלוח הזה.",
+      "isolator_unselected": "כניסה: אין מנתק עומס זמין שנושא {current} A (עד 250 A); לא נבחר כאן."
     },
     "errors": {
       "ambient_out_of_table": "טמפרטורת סביבה {ambient} °C מחוץ לטבלת הכבלים לבידוד {insulation} °C ({low}–{high} °C); יש לפנות ליצרן הכבל.",

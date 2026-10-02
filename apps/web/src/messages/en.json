@@ -704,8 +704,10 @@
       "discrimination_group_raised": "Group {group} breaker raised to {rated} A, {ratio} × the {after} A breaker after it, for discrimination.",
       "discrimination_group_not_met": "Group {group} breaker: {rated} A is less than {ratio} × the {after} A breaker after it, and no larger rating is held for its RCCB; overload discrimination is not assured.",
       "discrimination_incomer_raised": "Incomer raised to {rated} A, {ratio} × the {after} A breaker after it, for discrimination.",
-      "discrimination_feeder_raised": "Feeder to {board} raised to {rated} A, {ratio} × the {after} A incomer it supplies, for discrimination; its cable is sized for {rated} A.",
-      "discrimination_incomer_not_met": "Incomer: {rated} A is less than {ratio} × the {after} A breaker after it, and a larger miniature breaker is not held; overload discrimination is not assured."
+      "discrimination_feeder_raised": "Feeder to {board} raised to {rated} A, {ratio} × the {after} A breaker after it on {board}, for discrimination; its cable is sized for {rated} A.",
+      "discrimination_incomer_not_met": "Incomer: {rated} A is less than {ratio} × the {after} A breaker after it, and a larger miniature breaker is not held; overload discrimination is not assured.",
+      "incomer_isolator": "The incomer is a switch-disconnector: {board}’s feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board’s breakers.",
+      "isolator_unselected": "Incomer: no switch-disconnector rating held carries {current} A (up to 250 A); none is selected here."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",

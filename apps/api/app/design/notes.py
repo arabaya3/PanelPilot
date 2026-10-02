@@ -75,8 +75,17 @@ TEMPLATES: dict[str, str] = {
         "miniature breaker is not held; overload discrimination is not assured."
     ),
     "discrimination_feeder_raised": (
-        "Feeder to {board} raised to {rated} A, {ratio} x the {after} A incomer it supplies, for "
-        "discrimination; its cable is sized for {rated} A."
+        "Feeder to {board} raised to {rated} A, {ratio} x the {after} A breaker after it on "
+        "{board}, for discrimination; its cable is sized for {rated} A."
+    ),
+    "incomer_isolator": (
+        "The incomer is a switch-disconnector: {board}'s feeder breaker protects this board, so "
+        "the switch is rated no lower than that breaker and does not trip; the feeder "
+        "discriminates with this board's breakers."
+    ),
+    "isolator_unselected": (
+        "Incomer: no switch-disconnector rating held carries {current} A (up to 250 A); none is "
+        "selected here."
     ),
     "breaking_capacity": (
         "Breakers are rated for at least {rating} kA breaking capacity against {fault} kA "
