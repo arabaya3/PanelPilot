@@ -319,6 +319,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/project': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Design Project
+     * @description Design a project of boards, each sub-board's feeder sized from its design.
+     */
+    post: operations['design_project_api_v1_design_project_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/export': {
     parameters: {
       query?: never;
@@ -789,6 +809,7 @@ export interface components {
      *         cables: Every outgoing cable.
      *         circuits: The outgoing circuits, in the order they are drawn.
      *         notes: What the design could not settle, for the reviewer.
+     *         fed_from: The board that supplies this one, within the project.
      */
     'Board-Input': {
       /** Id */
@@ -810,6 +831,8 @@ export interface components {
       circuits?: components['schemas']['Circuit-Input'][];
       /** Notes */
       notes?: string[];
+      /** Fed From */
+      fed_from?: string | null;
     };
     /**
      * Board
@@ -826,6 +849,7 @@ export interface components {
      *         cables: Every outgoing cable.
      *         circuits: The outgoing circuits, in the order they are drawn.
      *         notes: What the design could not settle, for the reviewer.
+     *         fed_from: The board that supplies this one, within the project.
      */
     'Board-Output': {
       /** Id */
@@ -847,6 +871,8 @@ export interface components {
       circuits?: components['schemas']['Circuit-Output'][];
       /** Notes */
       notes?: string[];
+      /** Fed From */
+      fed_from?: string | null;
     };
     /**
      * BoardDesignRequest
@@ -1095,6 +1121,7 @@ export interface components {
      *             device, say); ``None`` when it hangs off the busbar directly.
      *         device_ids: The circuit's own devices, in order from the busbar.
      *         cable_id: Its outgoing cable, where it has one.
+     *         feeds: The board it supplies, for a feeder to a sub-board.
      */
     'Circuit-Input': {
       /** Id */
@@ -1113,6 +1140,8 @@ export interface components {
       device_ids?: string[];
       /** Cable Id */
       cable_id?: string | null;
+      /** Feeds */
+      feeds?: string | null;
     };
     /**
      * Circuit
@@ -1131,6 +1160,7 @@ export interface components {
      *             device, say); ``None`` when it hangs off the busbar directly.
      *         device_ids: The circuit's own devices, in order from the busbar.
      *         cable_id: Its outgoing cable, where it has one.
+     *         feeds: The board it supplies, for a feeder to a sub-board.
      */
     'Circuit-Output': {
       /** Id */
@@ -1149,6 +1179,8 @@ export interface components {
       device_ids?: string[];
       /** Cable Id */
       cable_id?: string | null;
+      /** Feeds */
+      feeds?: string | null;
     };
     /**
      * CircuitRule
@@ -1773,6 +1805,9 @@ export interface components {
      *         supply: The incoming supply.
      *         loads: The load schedule, in the order the circuits are drawn.
      *         conditions: How the outgoing cables are run.
+     *         fed_from: The board whose feeder supplies this one; ``None`` for a
+     *             board fed from the utility or a main switchboard outside the
+     *             project.
      */
     DistributionBoardRequest: {
       /** Name */
@@ -1783,6 +1818,8 @@ export interface components {
       /** Loads */
       loads: components['schemas']['LoadInput-Input'][];
       conditions?: components['schemas']['InstallationConditions'];
+      /** Fed From */
+      fed_from?: string | null;
     };
     /**
      * DriveRangeSummary
@@ -2176,6 +2213,8 @@ export interface components {
      *             load-current table is drawn up for, and the board says so.
      *         controlled: Switched by a contactor the PLC drives, rather than
      *             live whenever its breaker is closed.
+     *         feeds: The board this circuit feeds, for a feeder to a sub-board;
+     *             set by the project design, not typed in.
      */
     'LoadInput-Input': {
       /** Description */
@@ -2195,6 +2234,8 @@ export interface components {
        * @default false
        */
       controlled: boolean;
+      /** Feeds */
+      feeds?: string | null;
     };
     /**
      * LoadInput
@@ -2209,6 +2250,8 @@ export interface components {
      *             load-current table is drawn up for, and the board says so.
      *         controlled: Switched by a contactor the PLC drives, rather than
      *             live whenever its breaker is closed.
+     *         feeds: The board this circuit feeds, for a feeder to a sub-board;
+     *             set by the project design, not typed in.
      */
     'LoadInput-Output': {
       /** Description */
@@ -2228,6 +2271,8 @@ export interface components {
        * @default false
        */
       controlled: boolean;
+      /** Feeds */
+      feeds?: string | null;
     };
     /**
      * LoadKind
@@ -2686,6 +2731,26 @@ export interface components {
        * @default 0
        */
       vat_percent: number | string;
+    };
+    /**
+     * ProjectDesignRequest
+     * @description A project of one or more boards to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         boards: Each board's schedule. A board naming another in
+     *             ``fed_from`` gets a feeder in that board, sized from its own
+     *             design, so sub-boards need no hand-entered load.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    ProjectDesignRequest: {
+      info: components['schemas']['ProjectInfo'];
+      /** Boards */
+      boards: components['schemas']['DistributionBoardRequest'][];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
     };
     /**
      * ProjectInfo
@@ -3962,6 +4027,39 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['BoardDesignRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BoardDesignResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  design_project_api_v1_design_project_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProjectDesignRequest'];
       };
     };
     responses: {

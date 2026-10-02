@@ -1,51 +1,35 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
-import { Field, round } from '@/components/cable-sizing-panel';
-import { FilePicker } from '@/components/file-picker';
+import { Field } from '@/components/cable-sizing-panel';
+import { DesignResult } from '@/components/design/design-result';
+import { LoadRows } from '@/components/design/load-rows';
+import {
+  blankBoard,
+  blankLoad,
+  isComplete,
+  rowsFrom,
+  toRequest,
+  type BoardForm,
+  type Load,
+  type ProjectInfo,
+} from '@/components/design/schedule';
+import { ScheduleSources } from '@/components/design/schedule-sources';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
-  designBoard,
+  designProject,
   exportDesign,
   importSchedule,
   suggestSchedule,
   type BoardDesignResponse,
   type DesignOutcome,
   type ExportFormat,
-  type LoadKind,
 } from '@/lib/design';
 import { acquireTrial } from '@/lib/session';
-
-const LOAD_KINDS: LoadKind[] = [
-  'lighting',
-  'socket',
-  'air_conditioning',
-  'water_heater',
-  'kitchen',
-  'fan',
-  'motor',
-  'lift',
-  'sub_board',
-  'control',
-  'data',
-  'other',
-];
-
-const FORMATS: ExportFormat[] = [
-  'pdf',
-  'dxf',
-  'qet',
-  'aml',
-  'devices_csv',
-  'parts_csv',
-  'cables_csv',
-  'circuits_csv',
-  'json',
-];
 
 type Session =
   | { kind: 'starting' }
@@ -60,53 +44,13 @@ type Result =
   | { kind: 'designed'; response: BoardDesignResponse }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
 
-type Load = {
-  key: number;
-  description: string;
-  load: LoadKind;
-  power: string;
-  phases: '1' | '3';
-  powerFactor: string;
-  controlled: boolean;
-};
-
-type Info = {
-  name: string;
-  number: string;
-  customer: string;
-  consultant: string;
-  contractor: string;
-  board: string;
-  location: string;
-  voltage: string;
-  phases: '1' | '3';
-  faultLevel: string;
-};
-
-const INITIAL_INFO: Info = {
+const INITIAL_INFO: ProjectInfo = {
   name: '',
   number: '',
   customer: '',
   consultant: '',
   contractor: '',
-  board: 'DB1',
-  location: '',
-  voltage: '400',
-  phases: '3',
-  faultLevel: '',
 };
-
-function blankLoad(key: number): Load {
-  return {
-    key,
-    description: '',
-    load: 'socket',
-    power: '',
-    phases: '1',
-    powerFactor: '',
-    controlled: false,
-  };
-}
 
 /** Save a blob under a name, the way a download link does. */
 function saveBlob(blob: Blob, filename: string) {
@@ -120,51 +64,53 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function parseProfile(text: string): Record<string, unknown> | null | 'invalid' {
+  if (text.trim() === '') return null;
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : 'invalid';
+  } catch {
+    return 'invalid';
+  }
+}
+
 /**
- * `/design`: a distribution board from its load schedule to its drawing set.
+ * `/design`: a project of boards from their load schedules to drawing sets.
  *
- * The board is designed under the company's settings (pasted as JSON, only
- * what differs from the default), and every output -- the PDF drawing set,
- * DXF, QElectroTech, AutomationML and the CSV lists -- is generated from the
- * one designed project.
+ * Each board is a tab. A board fed from another gets a feeder there, sized
+ * from its own design. The project is designed under the company's settings
+ * (pasted as JSON, only what differs from the default), and every output --
+ * the PDF drawing set, DXF, QElectroTech, AutomationML, the CSV lists, the
+ * quotation and the PLC program -- comes from the one designed project.
  */
 export function DesignScreen({
   acquireImpl = acquireTrial,
-  designImpl = designBoard,
+  designImpl = designProject,
   exportImpl = exportDesign,
   importImpl = importSchedule,
   suggestImpl = suggestSchedule,
   saveImpl = saveBlob,
 }: {
   acquireImpl?: typeof acquireTrial;
-  designImpl?: typeof designBoard;
+  designImpl?: typeof designProject;
   exportImpl?: typeof exportDesign;
   importImpl?: typeof importSchedule;
   suggestImpl?: typeof suggestSchedule;
   saveImpl?: typeof saveBlob;
 }) {
   const t = useTranslations('design');
+  const id = useId();
   const [session, setSession] = useState<Session>({ kind: 'starting' });
-  const [info, setInfo] = useState<Info>(INITIAL_INFO);
-  const [loads, setLoads] = useState<Load[]>([blankLoad(0)]);
-  const [nextKey, setNextKey] = useState(1);
+  const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
+  const [boards, setBoards] = useState<BoardForm[]>([blankBoard(0, 1, 'DB1')]);
+  const [activeKey, setActiveKey] = useState(0);
+  // Board keys and row keys both come from this counter, so none collide.
+  const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
-  const [importState, setImportState] = useState<
-    | { kind: 'idle' }
-    | { kind: 'working' }
-    | { kind: 'done'; count: number; warnings: string[] }
-    | { kind: 'error'; detail: string }
-  >({ kind: 'idle' });
-  const [brief, setBrief] = useState('');
-  const [suggestState, setSuggestState] = useState<
-    | { kind: 'idle' }
-    | { kind: 'working' }
-    | { kind: 'done'; assumptions: string[] }
-    | { kind: 'error'; detail: string }
-  >({ kind: 'idle' });
-  const id = useId();
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -176,135 +122,71 @@ export function DesignScreen({
     void connect();
   }, [connect]);
 
-  async function importFile(file: File) {
-    if (session.kind !== 'ready') return;
-    setImportState({ kind: 'working' });
-    const outcome = await importImpl({ token: session.token, file, filename: file.name });
-    if (outcome.kind !== 'imported') {
-      setImportState({
-        kind: 'error',
-        detail: outcome.kind === 'refused' && outcome.detail ? outcome.detail : t('error'),
+  const token = session.kind === 'ready' ? session.token : null;
+  const active = boards.find((board) => board.key === activeKey) ?? boards[0];
+  const parsed = parseProfile(profileText);
+  const profile = parsed === 'invalid' ? null : parsed;
+
+  function takeKeys(count: number): number {
+    const first = nextKey.current;
+    nextKey.current += Math.max(1, count);
+    return first;
+  }
+
+  function updateBoard(key: number, patch: Partial<BoardForm>) {
+    setBoards((current) => {
+      const before = current.find((board) => board.key === key);
+      return current.map((board) => {
+        if (board.key === key) return { ...board, ...patch };
+        // A renamed board stays the supply of the boards it feeds.
+        if (patch.name !== undefined && before && board.fedFrom === before.name) {
+          return { ...board, fedFrom: patch.name };
+        }
+        return board;
       });
-      if (outcome.kind === 'unauthorized') void connect();
-      return;
-    }
-    const imported = outcome.result.loads.map((load, index): Load => ({
-      key: nextKey + index,
-      description: load.description,
-      load: load.load,
-      power: load.power_kw,
-      phases: load.phases === 3 ? '3' : '1',
-      powerFactor: load.power_factor ?? '',
-      controlled: load.controlled,
-    }));
-    setLoads(imported);
-    setNextKey((key) => key + imported.length);
-    setImportState({
-      kind: 'done',
-      count: imported.length,
-      warnings: outcome.result.warnings,
     });
   }
 
-  async function suggestFromBrief() {
-    if (session.kind !== 'ready' || brief.trim().length < 3) return;
-    const profile = parsedProfile();
-    setSuggestState({ kind: 'working' });
-    const outcome = await suggestImpl({
-      token: session.token,
-      description: brief.trim(),
-      supplyPhases: Number(info.phases),
-      profile: profile === 'invalid' ? null : profile,
-    });
-    if (outcome.kind !== 'suggested') {
-      setSuggestState({
-        kind: 'error',
-        detail:
-          outcome.kind === 'refused' && outcome.detail
-            ? outcome.detail
-            : outcome.kind === 'budget'
-              ? t('suggest.budget')
-              : t('error'),
-      });
-      if (outcome.kind === 'unauthorized') void connect();
-      return;
-    }
-    const suggested = outcome.result.loads.map((load, index): Load => ({
-      key: nextKey + index,
-      description: load.description,
-      load: load.load,
-      power: load.power_kw,
-      phases: load.phases === 3 ? '3' : '1',
-      powerFactor: load.power_factor ?? '',
-      controlled: load.controlled,
-    }));
-    setLoads(suggested);
-    setNextKey((key) => key + suggested.length);
-    setSuggestState({ kind: 'done', assumptions: outcome.result.assumptions });
+  function updateLoads(key: number, change: (loads: Load[]) => Load[]) {
+    setBoards((current) =>
+      current.map((board) =>
+        board.key === key ? { ...board, loads: change(board.loads) } : board,
+      ),
+    );
   }
 
-  function updateLoad(key: number, patch: Partial<Load>) {
-    setLoads((current) => current.map((load) => (load.key === key ? { ...load, ...patch } : load)));
+  function addBoard() {
+    const key = takeKeys(2);
+    const main = boards[0]?.name ?? '';
+    setBoards((current) => [
+      ...current,
+      blankBoard(key, key + 1, `DB${String(current.length + 1)}`, main),
+    ]);
+    setActiveKey(key);
   }
 
-  function parsedProfile(): Record<string, unknown> | null | 'invalid' {
-    if (profileText.trim() === '') return null;
-    try {
-      const value: unknown = JSON.parse(profileText);
-      return typeof value === 'object' && value !== null && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : 'invalid';
-    } catch {
-      return 'invalid';
-    }
+  function removeBoard(key: number) {
+    const removed = boards.find((board) => board.key === key);
+    const remaining = boards
+      .filter((board) => board.key !== key)
+      .map((board) =>
+        removed && board.fedFrom === removed.name ? { ...board, fedFrom: removed.fedFrom } : board,
+      );
+    setBoards(remaining);
+    if (activeKey === key && remaining[0]) setActiveKey(remaining[0].key);
   }
 
-  const complete =
-    info.name.trim() !== '' &&
-    info.board.trim() !== '' &&
-    loads.every((load) => load.description.trim() !== '' && load.power.trim() !== '');
+  const complete = isComplete(info, boards);
 
   async function run() {
-    if (session.kind !== 'ready' || !complete) return;
-    const profile = parsedProfile();
-    if (profile === 'invalid') {
+    if (token === null || !complete) return;
+    if (parsed === 'invalid') {
       setResult({ kind: 'error', outcome: { kind: 'refused', detail: t('profile.invalid') } });
       return;
     }
     setResult({ kind: 'working' });
     setExportError(null);
-    const outcome = await designImpl({
-      token: session.token,
-      request: {
-        info: {
-          name: info.name.trim(),
-          number: info.number.trim(),
-          customer: info.customer.trim(),
-          consultant: info.consultant.trim(),
-          contractor: info.contractor.trim(),
-        },
-        board: {
-          name: info.board.trim(),
-          location: info.location.trim() === '' ? null : info.location.trim(),
-          supply: {
-            voltage_v: info.voltage.trim(),
-            phases: Number(info.phases),
-            frequency_hz: '50',
-            earthing: 'TN-S',
-            fault_level_ka: info.faultLevel.trim() === '' ? null : info.faultLevel.trim(),
-          },
-          loads: loads.map((load) => ({
-            description: load.description.trim(),
-            load: load.load,
-            power_kw: load.power.trim(),
-            phases: Number(load.phases),
-            power_factor: load.powerFactor.trim() === '' ? null : load.powerFactor.trim(),
-            controlled: load.controlled,
-          })),
-        },
-        profile,
-      },
-    });
+    const outcome = await designImpl({ token, request: toRequest(info, boards, profile) });
     if (outcome.kind === 'designed') {
       setResult({ kind: 'designed', response: outcome.response });
     } else {
@@ -314,14 +196,13 @@ export function DesignScreen({
   }
 
   async function download(format: ExportFormat) {
-    if (session.kind !== 'ready' || result.kind !== 'designed') return;
-    const profile = parsedProfile();
+    if (token === null || result.kind !== 'designed') return;
     setExportError(null);
     const outcome = await exportImpl({
-      token: session.token,
+      token,
       project: result.response.project,
       format,
-      profile: profile === 'invalid' ? null : profile,
+      profile,
     });
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
@@ -330,13 +211,12 @@ export function DesignScreen({
     }
   }
 
-  function infoField(key: keyof Omit<Info, 'phases'>, unit = '', ltr = false) {
+  function infoField(key: keyof ProjectInfo, ltr = false) {
     return (
-      <Field id={`${id}-${key}`} label={t(`field.${key}`)} unit={unit}>
+      <Field id={`${id}-${key}`} label={t(`field.${key}`)}>
         <input
           id={`${id}-${key}`}
           dir={ltr ? 'ltr' : undefined}
-          inputMode={unit ? 'decimal' : 'text'}
           value={info[key]}
           onChange={(event) => {
             setInfo((current) => ({ ...current, [key]: event.target.value }));
@@ -346,6 +226,33 @@ export function DesignScreen({
       </Field>
     );
   }
+
+  function boardField(
+    key: 'name' | 'location' | 'voltage' | 'faultLevel',
+    label: string,
+    unit = '',
+  ) {
+    if (!active) return null;
+    return (
+      <Field id={`${id}-board-${key}`} label={t(`field.${label}`)} unit={unit}>
+        <input
+          id={`${id}-board-${key}`}
+          dir="ltr"
+          inputMode={unit ? 'decimal' : 'text'}
+          value={active[key]}
+          onChange={(event) => {
+            updateBoard(active.key, { [key]: event.target.value });
+          }}
+          className="input w-full"
+        />
+      </Field>
+    );
+  }
+
+  const designed = result.kind === 'designed' ? result.response.project : null;
+  const hasContactors = (designed?.boards ?? []).some((board) =>
+    (board.devices ?? []).some((device) => device.kind === 'contactor'),
+  );
 
   return (
     <AppShell>
@@ -368,216 +275,130 @@ export function DesignScreen({
         <fieldset className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-5">
           <legend className="px-1 text-sm font-semibold">{t('project')}</legend>
           {infoField('name')}
-          {infoField('number', '', true)}
+          {infoField('number', true)}
           {infoField('customer')}
           {infoField('consultant')}
           {infoField('contractor')}
         </fieldset>
 
-        <fieldset className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-5">
-          <legend className="px-1 text-sm font-semibold">{t('board')}</legend>
-          {infoField('board', '', true)}
-          {infoField('location', '', true)}
-          {infoField('voltage', 'V', true)}
-          <Field id={`${id}-phases`} label={t('field.phases')}>
-            <select
-              id={`${id}-phases`}
-              value={info.phases}
-              onChange={(event) => {
-                setInfo((c) => ({ ...c, phases: event.target.value as '1' | '3' }));
-              }}
-              className="input w-full"
-            >
-              <option value="3">3</option>
-              <option value="1">1</option>
-            </select>
-          </Field>
-          {infoField('faultLevel', 'kA', true)}
-        </fieldset>
-
-        <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
-          <legend className="px-1 text-sm font-semibold">{t('loads')}</legend>
-          <div className="flex flex-col gap-2">
-            <label htmlFor={`${id}-brief`} className="text-sm font-semibold">
-              {t('suggest.label')}
-            </label>
-            <textarea
-              id={`${id}-brief`}
-              rows={3}
-              value={brief}
-              placeholder={t('suggest.placeholder')}
-              onChange={(event) => {
-                setBrief(event.target.value);
-              }}
-              className="input w-full"
-            />
-            <p className="text-sm text-text-muted">{t('suggest.help')}</p>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('boards')}>
+          {boards.map((board) => (
             <button
+              key={board.key}
               type="button"
-              disabled={
-                session.kind !== 'ready' ||
-                brief.trim().length < 3 ||
-                suggestState.kind === 'working'
-              }
+              aria-pressed={board.key === active?.key}
+              data-testid={`board-tab-${String(board.key)}`}
               onClick={() => {
-                void suggestFromBrief();
+                setActiveKey(board.key);
               }}
-              className="btn btn-sm btn-secondary self-start"
+              className={`btn btn-sm ${board.key === active?.key ? 'btn-primary' : 'btn-secondary'}`}
+              dir="ltr"
             >
-              {suggestState.kind === 'working' ? t('suggest.working') : t('suggest.submit')}
+              {board.name || '—'}
             </button>
-            {suggestState.kind === 'error' && (
-              <p role="alert" className="text-sm text-danger" data-testid="suggest-error">
-                {suggestState.detail}
-              </p>
-            )}
-            {suggestState.kind === 'done' && (
-              <div data-testid="suggest-result" className="text-sm">
-                <p>{t('suggest.done')}</p>
-                <ul className="mt-1 list-disc ps-5 text-text-muted">
-                  {suggestState.assumptions.map((assumption, index) => (
-                    <li key={index}>{assumption}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <FilePicker
-              id={`${id}-import`}
-              label={t('import.label')}
-              help={t('import.help')}
-              accept=".xlsx,.csv,.pdf,application/pdf,text/csv"
-              disabled={session.kind !== 'ready' || importState.kind === 'working'}
-              onFile={(file) => {
-                void importFile(file);
-              }}
-            />
-            {importState.kind === 'working' && (
-              <p className="text-sm text-text-muted">{t('import.working')}</p>
-            )}
-            {importState.kind === 'error' && (
-              <p role="alert" className="text-sm text-danger" data-testid="import-error">
-                {importState.detail}
-              </p>
-            )}
-            {importState.kind === 'done' && (
-              <div data-testid="import-result" className="text-sm">
-                <p>{t('import.done', { count: importState.count })}</p>
-                {importState.warnings.length > 0 && (
-                  <ul className="mt-1 list-disc ps-5 text-text-muted" dir="ltr">
-                    {importState.warnings.map((warning, index) => (
-                      <li key={index}>{warning}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-          {loads.map((load, index) => (
-            <div
-              key={load.key}
-              data-testid={`design-load-${String(index)}`}
-              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-7 lg:items-end"
-            >
-              <Field id={`${id}-desc-${String(load.key)}`} label={t('field.description')}>
-                <input
-                  id={`${id}-desc-${String(load.key)}`}
-                  value={load.description}
-                  onChange={(event) => {
-                    updateLoad(load.key, { description: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-kind-${String(load.key)}`} label={t('field.load')}>
-                <select
-                  id={`${id}-kind-${String(load.key)}`}
-                  value={load.load}
-                  onChange={(event) => {
-                    updateLoad(load.key, { load: event.target.value as LoadKind });
-                  }}
-                  className="input w-full"
-                >
-                  {LOAD_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {t(`kind.${kind}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field id={`${id}-pow-${String(load.key)}`} label={t('field.power')} unit="kW">
-                <input
-                  id={`${id}-pow-${String(load.key)}`}
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={load.power}
-                  onChange={(event) => {
-                    updateLoad(load.key, { power: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-ph-${String(load.key)}`} label={t('field.loadPhases')}>
-                <select
-                  id={`${id}-ph-${String(load.key)}`}
-                  value={load.phases}
-                  onChange={(event) => {
-                    updateLoad(load.key, { phases: event.target.value as '1' | '3' });
-                  }}
-                  className="input w-full"
-                >
-                  <option value="1">1</option>
-                  <option value="3">3</option>
-                </select>
-              </Field>
-              <Field id={`${id}-pf-${String(load.key)}`} label={t('field.powerFactor')}>
-                <input
-                  id={`${id}-pf-${String(load.key)}`}
-                  inputMode="decimal"
-                  dir="ltr"
-                  placeholder="0.9"
-                  value={load.powerFactor}
-                  onChange={(event) => {
-                    updateLoad(load.key, { powerFactor: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-sm lg:pb-2">
-                <input
-                  type="checkbox"
-                  data-testid={`design-controlled-${String(index)}`}
-                  checked={load.controlled}
-                  onChange={(event) => {
-                    updateLoad(load.key, { controlled: event.target.checked });
-                  }}
-                />
-                {t('field.controlled')}
-              </label>
-              <button
-                type="button"
-                disabled={loads.length === 1}
-                onClick={() => {
-                  setLoads((current) => current.filter((l) => l.key !== load.key));
-                }}
-                className="btn btn-sm btn-secondary self-start lg:self-end"
-              >
-                {t('remove')}
-              </button>
-            </div>
           ))}
           <button
             type="button"
-            onClick={() => {
-              setLoads((current) => [...current, blankLoad(nextKey)]);
-              setNextKey((key) => key + 1);
-            }}
-            className="btn btn-sm btn-secondary self-start"
+            data-testid="board-add"
+            onClick={addBoard}
+            className="btn btn-sm btn-ghost"
           >
-            {t('add')}
+            {t('addBoard')}
           </button>
-        </fieldset>
+        </div>
+
+        {active && (
+          <>
+            <fieldset className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-6">
+              <legend className="px-1 text-sm font-semibold">{t('board')}</legend>
+              {boardField('name', 'board')}
+              {boardField('location', 'location')}
+              {boardField('voltage', 'voltage', 'V')}
+              <Field id={`${id}-phases`} label={t('field.phases')}>
+                <select
+                  id={`${id}-phases`}
+                  value={active.phases}
+                  onChange={(event) => {
+                    updateBoard(active.key, { phases: event.target.value as '1' | '3' });
+                  }}
+                  className="input w-full"
+                >
+                  <option value="3">3</option>
+                  <option value="1">1</option>
+                </select>
+              </Field>
+              {boardField('faultLevel', 'faultLevel', 'kA')}
+              <Field id={`${id}-fed`} label={t('field.fedFrom')}>
+                <select
+                  id={`${id}-fed`}
+                  value={active.fedFrom}
+                  onChange={(event) => {
+                    updateBoard(active.key, { fedFrom: event.target.value });
+                  }}
+                  className="input w-full"
+                >
+                  <option value="">{t('fedFromNone')}</option>
+                  {boards
+                    .filter((board) => board.key !== active.key && board.name.trim() !== '')
+                    .map((board) => (
+                      <option key={board.key} value={board.name}>
+                        {board.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+              {boards.length > 1 && (
+                <button
+                  type="button"
+                  data-testid="board-remove"
+                  onClick={() => {
+                    removeBoard(active.key);
+                  }}
+                  className="btn btn-sm btn-secondary self-end"
+                >
+                  {t('removeBoard')}
+                </button>
+              )}
+            </fieldset>
+
+            <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
+              <legend className="px-1 text-sm font-semibold">
+                {t('loadsOf', { board: active.name || '—' })}
+              </legend>
+              <ScheduleSources
+                key={active.key}
+                token={token}
+                supplyPhases={Number(active.phases)}
+                profile={profile}
+                importImpl={importImpl}
+                suggestImpl={suggestImpl}
+                onUnauthorized={() => {
+                  void connect();
+                }}
+                onLoads={(loads) => {
+                  const first = takeKeys(loads.length);
+                  updateLoads(active.key, () => rowsFrom(loads, first));
+                }}
+              />
+              <LoadRows
+                idPrefix={`${id}-${String(active.key)}`}
+                loads={active.loads}
+                onChange={(key, patch) => {
+                  updateLoads(active.key, (loads) =>
+                    loads.map((load) => (load.key === key ? { ...load, ...patch } : load)),
+                  );
+                }}
+                onRemove={(key) => {
+                  updateLoads(active.key, (loads) => loads.filter((load) => load.key !== key));
+                }}
+                onAdd={() => {
+                  const key = takeKeys(1);
+                  updateLoads(active.key, (loads) => [...loads, blankLoad(key)]);
+                }}
+              />
+            </fieldset>
+          </>
+        )}
 
         <details className="card p-4 md:p-5">
           <summary className="cursor-pointer text-sm font-semibold">{t('profile.title')}</summary>
@@ -601,7 +422,7 @@ export function DesignScreen({
         <div>
           <button
             type="submit"
-            disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+            disabled={token === null || !complete || result.kind === 'working'}
             className="btn btn-primary"
           >
             {result.kind === 'working' ? t('working') : t('submit')}
@@ -621,140 +442,17 @@ export function DesignScreen({
         <DesignResult response={result.response} onExport={download} exportError={exportError} />
       )}
 
-      {result.kind === 'designed' && session.kind === 'ready' && (
+      {designed && token !== null && (
         <div className="mt-6">
-          <QuotationPanel
-            token={session.token}
-            project={result.response.project}
-            profile={(() => {
-              const profile = parsedProfile();
-              return profile === 'invalid' ? null : profile;
-            })()}
-            saveImpl={saveImpl}
-          />
+          <QuotationPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
         </div>
       )}
 
-      {result.kind === 'designed' &&
-        session.kind === 'ready' &&
-        (result.response.project.boards ?? []).some((board) =>
-          (board.devices ?? []).some((device) => device.kind === 'contactor'),
-        ) && (
-          <div className="mt-6">
-            <PlcPanel
-              token={session.token}
-              project={result.response.project}
-              profile={(() => {
-                const profile = parsedProfile();
-                return profile === 'invalid' ? null : profile;
-              })()}
-              saveImpl={saveImpl}
-            />
-          </div>
-        )}
+      {designed && token !== null && hasContactors && (
+        <div className="mt-6">
+          <PlcPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
+        </div>
+      )}
     </AppShell>
-  );
-}
-
-function DesignResult({
-  response,
-  onExport,
-  exportError,
-}: {
-  response: BoardDesignResponse;
-  onExport: (format: ExportFormat) => Promise<void>;
-  exportError: string | null;
-}) {
-  const t = useTranslations('design');
-  const board = (response.project.boards ?? [])[0];
-  if (!board) return null;
-  const devices = new Map((board.devices ?? []).map((device) => [device.id, device]));
-  const cables = new Map((board.cables ?? []).map((cable) => [cable.id, cable]));
-
-  return (
-    <section className="card flex flex-col gap-5 p-4 md:p-5" data-testid="design-result">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm" dir="ltr">
-          <thead>
-            <tr className="border-b border-border-subtle text-start">
-              <th className="p-2 text-start">{t('col.circuit')}</th>
-              <th className="p-2 text-start">{t('col.phase')}</th>
-              <th className="p-2 text-start">{t('col.current')}</th>
-              <th className="p-2 text-start">{t('col.breaker')}</th>
-              <th className="p-2 text-start">{t('col.rcd')}</th>
-              <th className="p-2 text-start">{t('col.cable')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(board.circuits ?? []).map((circuit) => {
-              const breaker = devices.get(circuit.device_ids?.[0] ?? '');
-              const rcd = circuit.upstream_id ? devices.get(circuit.upstream_id) : undefined;
-              const cable = circuit.cable_id ? cables.get(circuit.cable_id) : undefined;
-              return (
-                <tr key={circuit.id} className="border-b border-border-subtle last:border-b-0">
-                  <td className="p-2">{circuit.description}</td>
-                  <td className="p-2">{circuit.phase}</td>
-                  <td className="p-2">{`${round(circuit.design_current_a)} A`}</td>
-                  <td className="p-2">
-                    {breaker
-                      ? `-${breaker.designation?.product ?? ''} ${breaker.curve ?? ''}${round(
-                          breaker.rated_current_a ?? '',
-                        )}`
-                      : ''}
-                  </td>
-                  <td className="p-2">
-                    {rcd
-                      ? `-${rcd.designation?.product ?? ''} ${round(
-                          rcd.residual_current_ma ?? '',
-                        )} mA`
-                      : '—'}
-                  </td>
-                  <td className="p-2">
-                    {cable
-                      ? `${String(cable.cores)}G${round(cable.cross_section_mm2)} ${cable.material}`
-                      : ''}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {(board.notes ?? []).length > 0 && (
-        <div>
-          <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('notes')}</h2>
-          <ul className="list-disc ps-5 text-sm" dir="ltr" data-testid="design-notes">
-            {(board.notes ?? []).map((note, index) => (
-              <li key={index}>{note}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-text-muted">{t('downloads')}</h2>
-        <div className="flex flex-wrap gap-2">
-          {FORMATS.map((format) => (
-            <button
-              key={format}
-              type="button"
-              data-testid={`design-export-${format}`}
-              onClick={() => {
-                void onExport(format);
-              }}
-              className="btn btn-sm btn-secondary"
-            >
-              {t(`format.${format}`)}
-            </button>
-          ))}
-        </div>
-        {exportError && (
-          <p role="alert" className="mt-2 text-sm text-danger">
-            {exportError}
-          </p>
-        )}
-      </div>
-    </section>
   );
 }

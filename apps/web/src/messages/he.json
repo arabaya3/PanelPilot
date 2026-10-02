@@ -532,7 +532,8 @@
       "power": "הספק",
       "loadPhases": "פאזות",
       "powerFactor": "מקדם הספק",
-      "controlled": "מבוקר PLC"
+      "controlled": "מבוקר PLC",
+      "fedFrom": "מוזן מ"
     },
     "kind": {
       "lighting": "תאורה",
@@ -644,7 +645,13 @@
         "invalid": "הבודק מצא שגיאות בתוכנית.",
         "incomplete": "הבודק לא יכול היה לבדוק את התוכנית במלואה."
       }
-    }
+    },
+    "boards": "לוחות",
+    "addBoard": "+ הוספת לוח",
+    "removeBoard": "הסרת לוח זה",
+    "loadsOf": "עומסים של {board}",
+    "fedFromNone": "הזנת הפרויקט",
+    "fedFromLabel": "מוזן מ-{board}"
   },
   "files": {
     "choose": "בחירת קובץ",

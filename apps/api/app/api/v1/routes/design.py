@@ -21,6 +21,7 @@ from app.models.schemas.design import (
     PlcProgramRequest,
     PlcProgramResponse,
     PriceListEntry,
+    ProjectDesignRequest,
     Quotation,
     QuotationRequest,
     ScheduleSuggestionRequest,
@@ -36,6 +37,16 @@ def design_distribution_board(
     user: CurrentUserDep,
 ) -> BoardDesignResponse:
     return design_domain.design_board(session=session, user=user, request=payload)
+
+
+@router.post("/project", response_model=BoardDesignResponse)
+def design_project(
+    payload: ProjectDesignRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> BoardDesignResponse:
+    """Design a project of boards, each sub-board's feeder sized from its design."""
+    return design_domain.design_project(session=session, user=user, request=payload)
 
 
 @router.post(

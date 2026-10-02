@@ -19,7 +19,6 @@ from app.ai.plc.validation import validate_plc_code
 from app.core.errors import ValidationError
 from app.design import (
     designations,
-    distribution,
     export_aml,
     export_dxf,
     export_lists,
@@ -27,6 +26,7 @@ from app.design import (
     pages,
     plc_program,
     profile,
+    project,
     quotation,
     quotation_pdf,
     render_pdf,
@@ -47,6 +47,7 @@ from app.models.schemas.design import (
     PlcProgramRequest,
     PlcProgramResponse,
     PriceListEntry,
+    ProjectDesignRequest,
     Quotation,
     QuotationRequest,
     ScheduleSuggestionRequest,
@@ -103,7 +104,7 @@ def _slug(name: str) -> str:
 def design_board(
     *, session: Session, user: CurrentUser, request: BoardDesignRequest
 ) -> BoardDesignResponse:
-    """Design a distribution board and issue it under the company's profile.
+    """Design a single distribution board and issue it under the company's profile.
 
     Args:
         session: Open database session. Unused: nothing is persisted.
@@ -117,19 +118,46 @@ def design_board(
         ValidationError: If the profile is malformed or a load cannot be
             protected or cabled from the tables held.
     """
+    return design_project(
+        session=session,
+        user=user,
+        request=ProjectDesignRequest(
+            info=request.info, boards=[request.board], profile=request.profile
+        ),
+    )
+
+
+def design_project(
+    *, session: Session, user: CurrentUser, request: ProjectDesignRequest
+) -> BoardDesignResponse:
+    """Design every board in a project and issue it under the company's profile.
+
+    Args:
+        session: Open database session. Unused: nothing is persisted.
+        user: The authenticated caller, for the log line.
+        request: Title-block data, each board's schedule, and the profile.
+
+    Returns:
+        The designated project and the profile applied.
+
+    Raises:
+        ValidationError: If the profile is malformed, the boards' feeding is
+            inconsistent, or a load cannot be protected or cabled.
+    """
     del session
     company = _profile(request.profile)
-    board = distribution.design_distribution_board(request.board, company)
-    project = designations.designate_project(
-        DesignProject(info=request.info, boards=[board]), company
+    boards = project.design_boards(request.boards, company)
+    designed = designations.designate_project(
+        DesignProject(info=request.info, boards=boards), company
     )
     logger.info(
-        "design.board_designed",
+        "design.project_designed",
         tenant_id=user.tenant_id,
-        circuits=len(board.circuits),
+        boards=len(boards),
+        circuits=sum(len(board.circuits) for board in boards),
         profile=company.key,
     )
-    return BoardDesignResponse(project=project, profile=company)
+    return BoardDesignResponse(project=designed, profile=company)
 
 
 def export_design(

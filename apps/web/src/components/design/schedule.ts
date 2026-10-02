@@ -1,0 +1,143 @@
+import type { LoadKind, LoadScheduleImport, ProjectDesignRequest } from '@/lib/design';
+
+/** One load schedule row as the engineer edits it: every field a string. */
+export type Load = {
+  key: number;
+  description: string;
+  load: LoadKind;
+  power: string;
+  phases: '1' | '3';
+  powerFactor: string;
+  controlled: boolean;
+};
+
+/** One board's header and schedule as the engineer edits it. */
+export type BoardForm = {
+  key: number;
+  name: string;
+  location: string;
+  voltage: string;
+  phases: '1' | '3';
+  faultLevel: string;
+  /** The board that feeds this one; empty for the project's own supply. */
+  fedFrom: string;
+  loads: Load[];
+};
+
+/** Title-block fields for the whole project. */
+export type ProjectInfo = {
+  name: string;
+  number: string;
+  customer: string;
+  consultant: string;
+  contractor: string;
+};
+
+export const LOAD_KINDS: LoadKind[] = [
+  'lighting',
+  'socket',
+  'air_conditioning',
+  'water_heater',
+  'kitchen',
+  'fan',
+  'motor',
+  'lift',
+  'sub_board',
+  'control',
+  'data',
+  'other',
+];
+
+export function blankLoad(key: number): Load {
+  return {
+    key,
+    description: '',
+    load: 'socket',
+    power: '',
+    phases: '1',
+    powerFactor: '',
+    controlled: false,
+  };
+}
+
+/** A new board with one empty row; `loadKey` must be unused like `key`. */
+export function blankBoard(key: number, loadKey: number, name: string, fedFrom = ''): BoardForm {
+  return {
+    key,
+    name,
+    location: '',
+    voltage: '400',
+    phases: '3',
+    faultLevel: '',
+    fedFrom,
+    loads: [blankLoad(loadKey)],
+  };
+}
+
+/** Rows from an imported or suggested schedule, keyed from `firstKey`. */
+export function rowsFrom(loads: LoadScheduleImport['loads'], firstKey: number): Load[] {
+  return loads.map((load, index) => ({
+    key: firstKey + index,
+    description: load.description,
+    load: load.load,
+    power: load.power_kw,
+    phases: load.phases === 3 ? '3' : '1',
+    powerFactor: load.power_factor ?? '',
+    controlled: load.controlled,
+  }));
+}
+
+/** Whether every field the design needs is filled in. */
+export function isComplete(info: ProjectInfo, boards: BoardForm[]): boolean {
+  return (
+    info.name.trim() !== '' &&
+    boards.every(
+      (board) =>
+        board.name.trim() !== '' &&
+        board.loads.every((load) => load.description.trim() !== '' && load.power.trim() !== ''),
+    )
+  );
+}
+
+function optional(text: string): string | null {
+  const trimmed = text.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/** The API request for what the engineer has entered. */
+export function toRequest(
+  info: ProjectInfo,
+  boards: BoardForm[],
+  profile: Record<string, unknown> | null,
+): ProjectDesignRequest {
+  return {
+    info: {
+      name: info.name.trim(),
+      number: info.number.trim(),
+      customer: info.customer.trim(),
+      consultant: info.consultant.trim(),
+      contractor: info.contractor.trim(),
+    },
+    boards: boards.map((board) => ({
+      name: board.name.trim(),
+      location: optional(board.location),
+      fed_from: optional(board.fedFrom),
+      supply: {
+        voltage_v: board.voltage.trim(),
+        phases: Number(board.phases),
+        frequency_hz: '50',
+        earthing: 'TN-S',
+        fault_level_ka: optional(board.faultLevel),
+      },
+      loads: board.loads.map((load) => ({
+        description: load.description.trim(),
+        load: load.load,
+        power_kw: load.power.trim(),
+        phases: Number(load.phases),
+        power_factor: optional(load.powerFactor),
+        controlled: load.controlled,
+      })),
+    })),
+    profile,
+  };
+}

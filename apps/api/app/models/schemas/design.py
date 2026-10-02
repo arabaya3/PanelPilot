@@ -201,6 +201,7 @@ class Circuit(BaseModel):
             device, say); ``None`` when it hangs off the busbar directly.
         device_ids: The circuit's own devices, in order from the busbar.
         cable_id: Its outgoing cable, where it has one.
+        feeds: The board it supplies, for a feeder to a sub-board.
     """
 
     id: str
@@ -212,6 +213,7 @@ class Circuit(BaseModel):
     upstream_id: str | None = None
     device_ids: list[str] = Field(default_factory=list)
     cable_id: str | None = None
+    feeds: str | None = None
 
 
 class Supply(BaseModel):
@@ -246,6 +248,7 @@ class Board(BaseModel):
         cables: Every outgoing cable.
         circuits: The outgoing circuits, in the order they are drawn.
         notes: What the design could not settle, for the reviewer.
+        fed_from: The board that supplies this one, within the project.
     """
 
     id: str
@@ -258,6 +261,7 @@ class Board(BaseModel):
     cables: list[Cable] = Field(default_factory=list)
     circuits: list[Circuit] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    fed_from: str | None = None
 
     @model_validator(mode="after")
     def _references_resolve(self) -> Board:
@@ -525,6 +529,8 @@ class LoadInput(BaseModel):
             load-current table is drawn up for, and the board says so.
         controlled: Switched by a contactor the PLC drives, rather than
             live whenever its breaker is closed.
+        feeds: The board this circuit feeds, for a feeder to a sub-board;
+            set by the project design, not typed in.
     """
 
     description: str = Field(min_length=1)
@@ -533,6 +539,7 @@ class LoadInput(BaseModel):
     phases: int = Field(default=1)
     power_factor: Decimal | None = Field(default=None, gt=0, le=1)
     controlled: bool = False
+    feeds: str | None = None
 
     @model_validator(mode="after")
     def _one_or_three(self) -> LoadInput:
@@ -568,13 +575,17 @@ class DistributionBoardRequest(BaseModel):
         supply: The incoming supply.
         loads: The load schedule, in the order the circuits are drawn.
         conditions: How the outgoing cables are run.
+        fed_from: The board whose feeder supplies this one; ``None`` for a
+            board fed from the utility or a main switchboard outside the
+            project.
     """
 
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=40)
     location: str | None = None
     supply: Supply = Field(default_factory=Supply)
-    loads: list[LoadInput] = Field(min_length=1)
+    loads: list[LoadInput] = Field(min_length=1, max_length=500)
     conditions: InstallationConditions = Field(default_factory=InstallationConditions)
+    fed_from: str | None = None
 
 
 class BoardDesignRequest(BaseModel):
@@ -589,6 +600,22 @@ class BoardDesignRequest(BaseModel):
 
     info: ProjectInfo
     board: DistributionBoardRequest
+    profile: dict[str, Any] | None = None
+
+
+class ProjectDesignRequest(BaseModel):
+    """A project of one or more boards to design, under a company's profile.
+
+    Attributes:
+        info: Title-block data for the project.
+        boards: Each board's schedule. A board naming another in
+            ``fed_from`` gets a feeder in that board, sized from its own
+            design, so sub-boards need no hand-entered load.
+        profile: The company's profile settings; ``None`` for the default.
+    """
+
+    info: ProjectInfo
+    boards: list[DistributionBoardRequest] = Field(min_length=1, max_length=20)
     profile: dict[str, Any] | None = None
 
 

@@ -175,3 +175,28 @@ def test_a_plc_program_is_written(client: TestClient) -> None:
         json={"project": client.post("/design/distribution-board", json=BOARD).json()["project"]},
     )
     assert refused.status_code == 422
+
+
+def test_a_project_of_boards_is_designed(client: TestClient) -> None:
+    loads = [{"description": "Lights", "load": "lighting", "power_kw": "1"}]
+    response = client.post(
+        "/design/project",
+        json={
+            "info": {"name": "Tower"},
+            "boards": [
+                {"name": "MDB", "loads": loads},
+                {"name": "DB-1", "loads": loads, "fed_from": "MDB"},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    boards = response.json()["project"]["boards"]
+    assert [b["name"] for b in boards] == ["MDB", "DB-1"]
+    looped = client.post(
+        "/design/project",
+        json={
+            "info": {"name": "Tower"},
+            "boards": [{"name": "MDB", "loads": loads, "fed_from": "MDB"}],
+        },
+    )
+    assert looped.status_code == 422
