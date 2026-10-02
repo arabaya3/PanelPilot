@@ -96,36 +96,16 @@ export function MarkupsPanel({
                   </span>
                   <span dir="auto">{markup.text}</span>
                   {markup.suggestion && onApply && (
-                    <div
-                      className="flex flex-wrap items-center gap-2"
-                      data-testid={`markup-suggestion-${String(index)}`}
-                    >
-                      <span className="font-medium" dir="auto">
-                        {t(`suggest.${markup.suggestion.field}`, {
-                          circuit: markup.suggestion.circuit,
-                          board: markup.suggestion.board,
-                          value: markup.suggestion.value ?? '',
-                        })}
-                      </span>
-                      {applied[index] ? (
-                        <span className="text-text-muted">{t(applied[index])}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const suggestion = markup.suggestion;
-                            if (!suggestion) return;
-                            setApplied((current) => ({
-                              ...current,
-                              [index]: onApply(suggestion) ? 'applied' : 'missing',
-                            }));
-                          }}
-                          className="btn btn-sm btn-secondary"
-                        >
-                          {t('apply')}
-                        </button>
-                      )}
-                    </div>
+                    <SuggestionRow
+                      index={index}
+                      suggestion={markup.suggestion}
+                      outcome={applied[index]}
+                      onApply={(chosen) => {
+                        // Applied outside the state update: it changes the form's state.
+                        const outcome = onApply(chosen) ? 'applied' : 'missing';
+                        setApplied((current) => ({ ...current, [index]: outcome }));
+                      }}
+                    />
                   )}
                 </li>
               ))}
@@ -134,5 +114,84 @@ export function MarkupsPanel({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * One comment's suggested change and its Apply button. A comment on a
+ * residual current group of several circuits names no circuit: the engineer
+ * picks the one it means first.
+ */
+function SuggestionRow({
+  index,
+  suggestion,
+  outcome,
+  onApply,
+}: {
+  index: number;
+  suggestion: MarkupSuggestion;
+  outcome: 'applied' | 'missing' | undefined;
+  onApply: (chosen: MarkupSuggestion) => void;
+}) {
+  const t = useTranslations('design.markups');
+  const id = useId();
+  const candidates = suggestion.candidates ?? [];
+  const [picked, setPicked] = useState<number | null>(null);
+  const choice = picked === null ? undefined : candidates[picked];
+  const chosen: MarkupSuggestion | null =
+    candidates.length === 0
+      ? suggestion
+      : choice
+        ? { ...suggestion, circuit: choice.circuit, load_index: choice.load_index, candidates: [] }
+        : null;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2"
+      data-testid={`markup-suggestion-${String(index)}`}
+    >
+      <span className="font-medium" dir="auto">
+        {t(`suggest.${suggestion.field}`, {
+          circuit: chosen?.circuit ?? t('whichCircuit'),
+          board: suggestion.board,
+          value: suggestion.value ?? '',
+        })}
+      </span>
+      {candidates.length > 0 && !outcome && (
+        <>
+          <label htmlFor={`${id}-pick`} className="sr-only">
+            {t('whichCircuit')}
+          </label>
+          <select
+            id={`${id}-pick`}
+            value={picked ?? ''}
+            onChange={(event) => {
+              setPicked(event.target.value === '' ? null : Number(event.target.value));
+            }}
+            className="input"
+          >
+            <option value="">{t('whichCircuit')}</option>
+            {candidates.map((candidate, place) => (
+              <option key={candidate.load_index} value={place}>
+                {candidate.circuit}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      {outcome ? (
+        <span className="text-text-muted">{t(outcome)}</span>
+      ) : (
+        <button
+          type="button"
+          disabled={chosen === null}
+          onClick={() => {
+            if (chosen) onApply(chosen);
+          }}
+          className="btn btn-sm btn-secondary"
+        >
+          {t('apply')}
+        </button>
+      )}
+    </div>
   );
 }

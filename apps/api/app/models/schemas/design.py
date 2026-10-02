@@ -1102,6 +1102,18 @@ class SaveCompanySettings(BaseModel):
     settings: dict[str, Any]
 
 
+class MarkupCandidate(BaseModel):
+    """A circuit a comment on a residual current group may mean.
+
+    Attributes:
+        circuit: Its description, as the schedule names it.
+        load_index: Its place in the board's schedule.
+    """
+
+    circuit: str
+    load_index: int
+
+
 class MarkupSuggestion(BaseModel):
     """A change to the load schedule a reviewer's comment asks for.
 
@@ -1112,6 +1124,8 @@ class MarkupSuggestion(BaseModel):
             to the board itself (a feeder length).
         field: What changes.
         value: Its new value; ``None`` for a removal.
+        candidates: For a comment on a group of several circuits, each one
+            it may mean, for the engineer to pick; ``circuit`` is then empty.
     """
 
     board: str
@@ -1121,6 +1135,7 @@ class MarkupSuggestion(BaseModel):
         "remove", "power_kw", "length_m", "power_factor", "phases", "starter", "feeder_length_m"
     ]
     value: str | None = None
+    candidates: list[MarkupCandidate] = Field(default_factory=list)
 
 
 class MarkupItem(BaseModel):
