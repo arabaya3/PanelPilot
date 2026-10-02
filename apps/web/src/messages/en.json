@@ -270,7 +270,8 @@
     "plc": "PLC check",
     "review": "Review",
     "search": "Search",
-    "calc": "Calculations"
+    "calc": "Calculations",
+    "design": "Board design"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -506,6 +507,77 @@
         "delta": "delta",
         "star": "star"
       }
+    }
+  },
+  "design": {
+    "title": "Board design",
+    "intro": "Enter a distribution board's load schedule. Each circuit gets its breaker and cable, loads are grouped under residual current devices and spread across the phases, and the whole drawing set is generated from the result. Every figure names its source; what the design assumed is listed under the result.",
+    "unavailable": "The design service is unavailable. Try again in a moment.",
+    "project": "Project",
+    "board": "Board",
+    "loads": "Load schedule",
+    "field": {
+      "name": "Project name",
+      "number": "Job number",
+      "customer": "Customer",
+      "consultant": "Consultant",
+      "contractor": "Contractor",
+      "board": "Board name",
+      "location": "Location",
+      "voltage": "Supply voltage",
+      "phases": "Supply phases",
+      "faultLevel": "Fault level",
+      "description": "Circuit",
+      "load": "Load type",
+      "power": "Power",
+      "loadPhases": "Phases",
+      "powerFactor": "Power factor"
+    },
+    "kind": {
+      "lighting": "Lighting",
+      "socket": "Sockets",
+      "air_conditioning": "Air conditioning",
+      "water_heater": "Water heater",
+      "kitchen": "Kitchen",
+      "fan": "Fan",
+      "motor": "Motor",
+      "lift": "Lift",
+      "sub_board": "Sub-board",
+      "control": "Control",
+      "data": "Data / IT",
+      "spare": "Spare",
+      "other": "Other"
+    },
+    "add": "Add circuit",
+    "remove": "Remove",
+    "profile": {
+      "title": "Company settings (optional)",
+      "help": "Paste your company's profile as JSON, stating only what differs from the default: designation letters, title block, page order, breaker ratings per load type, circuits per RCD.",
+      "invalid": "The company settings are not valid JSON."
+    },
+    "submit": "Design the board",
+    "working": "Designing…",
+    "error": "The design could not be completed. Try again.",
+    "col": {
+      "circuit": "Circuit",
+      "phase": "Phase",
+      "current": "Ib",
+      "breaker": "Breaker",
+      "rcd": "RCD",
+      "cable": "Cable"
+    },
+    "notes": "What the design assumed",
+    "downloads": "Download",
+    "format": {
+      "pdf": "Drawing set (PDF)",
+      "dxf": "Drawings (DXF)",
+      "qet": "QElectroTech",
+      "aml": "AutomationML",
+      "devices_csv": "Device list (CSV)",
+      "parts_csv": "Parts list (CSV)",
+      "cables_csv": "Cable list (CSV)",
+      "circuits_csv": "Circuit schedule (CSV)",
+      "json": "Project (JSON)"
     }
   }
 }

@@ -244,6 +244,14 @@ Drawing text is in English for now.
 There are no EPLAN or AutoCAD Electrical project exporters yet: their
 formats are undocumented and need testing against a real installation.
 
+The **`/design` page** takes a board's load schedule and, optionally, the
+company's profile settings as JSON. It shows each circuit with its breaker,
+RCD and cable, lists what the design assumed, and downloads every export.
+The API behind it is `POST /api/v1/design/distribution-board` and
+`POST /api/v1/design/export`. The export takes the project back from the
+caller, so an engineer's edits are what gets exported, renumbered under the
+profile.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The
