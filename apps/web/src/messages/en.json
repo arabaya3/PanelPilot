@@ -749,6 +749,11 @@
       "starter_voltage": "{voltage} V: the coordination tables held are for {held} (± 5 %).",
       "three_phase_on_single_phase": "A three-phase load cannot be fed from a single-phase board.",
       "workbook_unreadable": "The Excel workbook could not be read."
+    },
+    "drawingLanguage": "Drawing language",
+    "drawingLanguages": {
+      "en": "English",
+      "ar": "Arabic"
     }
   },
   "files": {

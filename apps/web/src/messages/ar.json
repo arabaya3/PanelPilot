@@ -749,6 +749,11 @@
       "starter_voltage": "{voltage} V: جداول التنسيق المتوفرة هي لجهد {held} (± 5%).",
       "three_phase_on_single_phase": "لا يمكن تغذية حمل ثلاثي الفاز من لوحة أحادية الفاز.",
       "workbook_unreadable": "تعذّرت قراءة ملف الإكسل."
+    },
+    "drawingLanguage": "لغة المخططات",
+    "drawingLanguages": {
+      "en": "الإنجليزية",
+      "ar": "العربية"
     }
   },
   "files": {

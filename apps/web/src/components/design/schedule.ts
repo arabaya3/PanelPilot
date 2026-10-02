@@ -165,3 +165,24 @@ export function toRequest(
     profile,
   };
 }
+
+/** The server's own profile (`DEFAULT_PROFILE_KEY` in app/design/profile.py). */
+export const DEFAULT_PROFILE_KEY = 'iec-default';
+
+/** Languages the drawing set can be written in. */
+export const DRAWING_LANGUAGES = ['en', 'ar'] as const;
+export type DrawingLanguage = (typeof DRAWING_LANGUAGES)[number];
+
+/**
+ * The company settings sent with a request, with the drawing language
+ * chosen on the page. English is the server's default, so it adds nothing; a
+ * language the settings state themselves wins.
+ */
+export function withLanguage(
+  profile: Record<string, unknown> | null,
+  language: DrawingLanguage,
+): Record<string, unknown> | null {
+  if (language === 'en' || (profile && 'language' in profile)) return profile;
+  // Settings name the profile they adjust; with none typed, the default one.
+  return { ...(profile ?? { key: DEFAULT_PROFILE_KEY }), language };
+}

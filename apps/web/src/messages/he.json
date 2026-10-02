@@ -749,6 +749,11 @@
       "starter_voltage": "{voltage} V: טבלאות התיאום הקיימות הן ל-{held} (± 5%).",
       "three_phase_on_single_phase": "לא ניתן להזין עומס תלת-פאזי מלוח חד-פאזי.",
       "workbook_unreadable": "לא ניתן לקרוא את חוברת ה-Excel."
+    },
+    "drawingLanguage": "שפת השרטוטים",
+    "drawingLanguages": {
+      "en": "אנגלית",
+      "ar": "ערבית"
     }
   },
   "files": {

@@ -242,3 +242,16 @@ def test_motor_circuits_are_drawn_with_their_own_symbols() -> None:
     assert "set 32.33 A" in drawn
     assert "ACS880-01-032A-3" in drawn
     assert "63 A aR 3P" in drawn
+
+
+def test_an_arabic_company_gets_its_drawings_in_arabic() -> None:
+    company = profile.default_profile().model_copy(update={"language": "ar"})
+    project = _project()
+    sheets = pages.build_drawing_set(project, company)
+    assert sheets[0].title == "صفحة العنوان"
+    assert sheets[-1].title == "قائمة المواد"
+    assert f"1 من {len(sheets)}" in _texts(sheets[0])
+    notes_page = next(s for s in sheets if s.title == "ملاحظات التصميم")
+    assert any("مخارج" in text or "مخرج" in text for text in _texts(notes_page))
+    # What the engineer typed is drawn as typed.
+    assert any("Sockets 0" in text for sheet in sheets for text in _texts(sheet))

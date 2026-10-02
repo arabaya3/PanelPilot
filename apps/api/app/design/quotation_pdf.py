@@ -3,20 +3,34 @@
 A4 portrait, a table of lines and the totals under it. A quotation with
 unpriced lines says so above the totals, in the same weight as the totals,
 so it cannot be sent as though it were complete.
+
+What was typed (the company, the project, each line's description) is
+escaped before ReportLab reads it as markup, and drawn in a font that holds
+it (``pdf_fonts``): Arabic and Hebrew come out joined and right to left.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from app.design.pdf_fonts import font_for
 from app.models.schemas.design import DesignProject, Quotation
+
+
+def _paragraph(text: str, style: ParagraphStyle, *, bold: bool = False) -> Paragraph:
+    """Typed text as a paragraph: escaped, in a font that holds it."""
+    font, drawn = font_for(text, bold=bold or style.fontName.endswith("Bold"))
+    if font == style.fontName:
+        return Paragraph(escape(drawn), style)
+    return Paragraph(escape(drawn), style.clone(f"{style.name}-{font}", fontName=font))
 
 
 def _plain(value: Decimal | None) -> str:
@@ -46,6 +60,7 @@ def render_quotation_pdf(
     """
     styles = getSampleStyleSheet()
     small = styles["BodyText"].clone("small", fontSize=8, leading=10)
+    tiny = styles["BodyText"].clone("tiny", fontSize=7, leading=9)
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer,
@@ -61,8 +76,8 @@ def render_quotation_pdf(
     )
     story: list[object] = []
     if company:
-        story.append(Paragraph(company, styles["Heading2"]))
-    story.append(Paragraph(f"Quotation: {project.info.name}", styles["Title"]))
+        story.append(_paragraph(company, styles["Heading2"]))
+    story.append(_paragraph(f"Quotation: {project.info.name}", styles["Title"]))
     details = [
         f"Job number: {project.info.number}" if project.info.number else "",
         f"Customer: {project.info.customer}" if project.info.customer else "",
@@ -71,17 +86,17 @@ def render_quotation_pdf(
     ]
     for detail in details:
         if detail:
-            story.append(Paragraph(detail, styles["BodyText"]))
+            story.append(_paragraph(detail, styles["BodyText"]))
     story.append(Spacer(1, 6 * mm))
 
     rows: list[list[object]] = [["Description", "Qty", "Unit", "Unit price", "Total"]]
     for line in quotation.lines:
-        description = line.description
+        description: list[Paragraph] = [_paragraph(line.description, small)]
         if line.designations:
-            description += f"<br/><font size=7>{' '.join(line.designations)}</font>"
+            description.append(_paragraph(" ".join(line.designations), tiny))
         rows.append(
             [
-                Paragraph(description, small),
+                description,
                 _plain(line.quantity),
                 line.unit,
                 _amount(line.unit_price) if line.unit_price is not None else "not priced",
@@ -106,11 +121,11 @@ def render_quotation_pdf(
     if not quotation.complete:
         story.append(
             Paragraph(
-                "<b>Incomplete: these lines have no price and are not in the total:</b> "
-                + "; ".join(quotation.unpriced),
+                "<b>Incomplete: these lines have no price and are not in the total:</b>",
                 styles["BodyText"],
             )
         )
+        story.extend(_paragraph(name, styles["BodyText"]) for name in quotation.unpriced)
         story.append(Spacer(1, 3 * mm))
     totals = Table(
         [

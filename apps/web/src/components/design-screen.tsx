@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
@@ -11,10 +11,13 @@ import { useOutcomeText } from '@/components/design/note-text';
 import {
   blankBoard,
   blankLoad,
+  DRAWING_LANGUAGES,
   isComplete,
   rowsFrom,
   toRequest,
+  withLanguage,
   type BoardForm,
+  type DrawingLanguage,
   type Load,
   type ProjectInfo,
 } from '@/components/design/schedule';
@@ -111,6 +114,11 @@ export function DesignScreen({
   // Board keys and row keys both come from this counter, so none collide.
   const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
+  // Follows the page's language until the engineer picks one: the locale is
+  // read from storage after the first render, so it cannot seed the state.
+  const locale = useLocale();
+  const [chosenLanguage, setDrawingLanguage] = useState<DrawingLanguage | null>(null);
+  const drawingLanguage: DrawingLanguage = chosenLanguage ?? (locale === 'ar' ? 'ar' : 'en');
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -127,7 +135,7 @@ export function DesignScreen({
   const token = session.kind === 'ready' ? session.token : null;
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
   const parsed = parseProfile(profileText);
-  const profile = parsed === 'invalid' ? null : parsed;
+  const profile = withLanguage(parsed === 'invalid' ? null : parsed, drawingLanguage);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -403,6 +411,23 @@ export function DesignScreen({
             </fieldset>
           </>
         )}
+
+        <Field id={`${id}-drawing-language`} label={t('drawingLanguage')}>
+          <select
+            id={`${id}-drawing-language`}
+            value={drawingLanguage}
+            onChange={(event) => {
+              setDrawingLanguage(event.target.value as DrawingLanguage);
+            }}
+            className="input w-full sm:w-64"
+          >
+            {DRAWING_LANGUAGES.map((language) => (
+              <option key={language} value={language}>
+                {t(`drawingLanguages.${language}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
 
         <details className="card p-4 md:p-5">
           <summary className="cursor-pointer text-sm font-semibold">{t('profile.title')}</summary>
