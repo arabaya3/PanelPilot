@@ -127,6 +127,20 @@ TEMPLATES: dict[str, str] = {
         "{load}: {section} mm² is beyond the voltage-drop tables (up to 300 mm²); its drop is "
         "not checked."
     ),
+    "starting_drop_upsized": (
+        "{load}: cable enlarged from {sized} to {section} mm² for starting: {multiple} x Ir at "
+        "cos phi 0.35 drops {total} % from the origin, within the {limit} % allowed while "
+        "starting."
+    ),
+    "starting_drop_exceeded": (
+        "{load}: while starting the drop from the origin is {total} %, above the {limit} % "
+        "allowed, and no tabulated section brings it within; kept at {section} mm². Consider a "
+        "soft starter or a drive."
+    ),
+    "starting_drop_unchecked": (
+        "{load}: the drop while starting is not checked for aluminium cable (no start-up "
+        "column is tabulated)."
+    ),
     "voltage_drop_unchecked": (
         "{count} circuit(s) have no cable length given; their voltage drop is not checked."
     ),

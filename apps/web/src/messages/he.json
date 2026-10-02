@@ -708,7 +708,10 @@
       "discrimination_incomer_not_met": "המפסק הראשי: ‏{rated} A קטן מפי {ratio} מהמפסק {after} A שאחריו, ואין מפסק זעיר גדול יותר; הסלקטיביות בעומס יתר אינה מובטחת.",
       "incomer_isolator": "הכניסה היא מנתק עומס: מפסק ההזנה ב-{board} מגן על הלוח הזה, ולכן המנתק מדורג לא פחות מאותו מפסק ואינו מנתק בתקלה; הסלקטיביות היא בין מפסק ההזנה למפסקי הלוח הזה.",
       "isolator_unselected": "כניסה: אין מנתק עומס זמין שנושא {current} A (עד 250 A); לא נבחר כאן.",
-      "fault_level_calculated": "זרם הקצר {fault} kA, מחושב מ-{upstream} kA ב-{board} דרך כבל הזנה {section} mm² {material} באורך {length} m (לפי IEC 60909, מוליכים ב-20 °C)."
+      "fault_level_calculated": "זרם הקצר {fault} kA, מחושב מ-{upstream} kA ב-{board} דרך כבל הזנה {section} mm² {material} באורך {length} m (לפי IEC 60909, מוליכים ב-20 °C).",
+      "starting_drop_upsized": "{load}: הכבל הוגדל מ-{sized} ל-{section} mm² בגלל ההתנעה: {multiple} × Ir ב-cos φ 0.35 מוריד {total}% מנקודת ההזנה, בתוך {limit}% המותרים בהתנעה.",
+      "starting_drop_exceeded": "{load}: בזמן ההתנעה המפל מנקודת ההזנה הוא {total}%, מעל {limit}% המותרים, ואין חתך בטבלאות שמביא אותו לגבול; נשאר {section} mm². שקלו מתנע רך או ממיר תדר.",
+      "starting_drop_unchecked": "{load}: המפל בזמן ההתנעה לא נבדק לכבל אלומיניום (אין עמודת התנעה בטבלאות)."
     },
     "errors": {
       "ambient_out_of_table": "טמפרטורת סביבה {ambient} °C מחוץ לטבלת הכבלים לבידוד {insulation} °C ({low}–{high} °C); יש לפנות ליצרן הכבל.",

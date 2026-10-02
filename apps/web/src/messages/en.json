@@ -708,7 +708,10 @@
       "discrimination_incomer_not_met": "Incomer: {rated} A is less than {ratio} × the {after} A breaker after it, and a larger miniature breaker is not held; overload discrimination is not assured.",
       "incomer_isolator": "The incomer is a switch-disconnector: {board}’s feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board’s breakers.",
       "isolator_unselected": "Incomer: no switch-disconnector rating held carries {current} A (up to 250 A); none is selected here.",
-      "fault_level_calculated": "Fault level {fault} kA, calculated from {board}’s {upstream} kA through {length} m of {section} mm² {material} feeder (IEC 60909, conductors at 20 °C)."
+      "fault_level_calculated": "Fault level {fault} kA, calculated from {board}’s {upstream} kA through {length} m of {section} mm² {material} feeder (IEC 60909, conductors at 20 °C).",
+      "starting_drop_upsized": "{load}: cable enlarged from {sized} to {section} mm² for starting: {multiple} × Ir at cos φ 0.35 drops {total} % from the origin, within the {limit} % allowed while starting.",
+      "starting_drop_exceeded": "{load}: while starting the drop from the origin is {total} %, above the {limit} % allowed, and no tabulated section brings it within; kept at {section} mm². Consider a soft starter or a drive.",
+      "starting_drop_unchecked": "{load}: the drop while starting is not checked for aluminium cable (no start-up column is tabulated)."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",

@@ -24,6 +24,7 @@ Only a circuit whose length is given is checked; the board counts the rest.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -183,11 +184,40 @@ class Checked:
     within: bool
 
 
+def starting_percent(run: Run, section_mm2: Decimal, conditions: InstallationConditions) -> Decimal:
+    """The drop along a copper run while a motor starts, as a share of its voltage.
+
+    Read from Fig. G28's start-up column (cos phi 0.35), the power factor of
+    a motor's locked-rotor current. Aluminium is not tabulated that low, so
+    only copper is checked.
+
+    Args:
+        run: The starting current and the run; read as three-phase.
+        section_mm2: A section in :data:`SECTIONS`.
+        conditions: How the cable is installed; copper.
+
+    Returns:
+        The drop in percent.
+    """
+    del conditions
+    drop = cable_sizing.voltage_drop(
+        current_a=run.current_a,
+        length_m=run.length_m,
+        cross_section_mm2=section_mm2,
+        conductor_material=ConductorMaterial.COPPER,
+        power_factor=Decimal("0.35"),
+        three_phase=run.three_phase,
+        load_type=cable_sizing.LoadType.MOTOR,
+    )
+    return drop / run.voltage_v * 100
+
+
 def fit(
     run: Run,
     section_mm2: Decimal,
     allowed_percent: Decimal,
     conditions: InstallationConditions,
+    measure: Callable[[Run, Decimal, InstallationConditions], Decimal] = percent,
 ) -> Checked | None:
     """Enlarge a cable until its drop is within what is allowed it.
 
@@ -197,6 +227,8 @@ def fit(
         allowed_percent: What its own drop may be: the limit less what was
             dropped before the board.
         conditions: How the cable is installed.
+        measure: How the drop is read: running (:func:`percent`) or while a
+            motor starts (:func:`starting_percent`).
 
     Returns:
         The smallest section at or above ``section_mm2`` whose drop is within
@@ -206,8 +238,8 @@ def fit(
     if section_mm2 not in SECTIONS:
         return None
     for candidate in SECTIONS[SECTIONS.index(section_mm2) :]:
-        drop = percent(run, candidate, conditions)
+        drop = measure(run, candidate, conditions)
         if drop <= allowed_percent:
             return Checked(candidate, drop.quantize(_HUNDREDTH), within=True)
-    drop = percent(run, section_mm2, conditions)
+    drop = measure(run, section_mm2, conditions)
     return Checked(section_mm2, drop.quantize(_HUNDREDTH), within=False)

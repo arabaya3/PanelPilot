@@ -393,6 +393,12 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
 - **Enlarging:** a cable that drops too much is stepped up to the smallest
   tabulated section that keeps it within the limit, and the board names it.
   If no section is enough, the board says so.
+- **Motor starting:** a direct-on-line or star-delta motor is also checked
+  while it starts (copper). The starting current is taken as 6 × Ir for DOL
+  and 2 × Ir for star-delta, read from Fig. G28's start-up column (cos φ
+  0.35). It is held to the company's `max_starting_voltage_drop_percent`
+  (15 % by default) from the origin, with the cable enlarged where needed.
+  A drive starts at Ir, which the running check covers.
 - **Adding up:** a sub-board's circuits get their limit less what its feeders
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
