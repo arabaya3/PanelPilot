@@ -21,6 +21,9 @@ comes from its profile; what neither settles is left on the board as a note.
   loaded conductor. The resulting imbalance is checked against the profile.
 * The incomer is rated for the most loaded line conductor with no diversity
   applied; a company's demand factors are not assumed.
+* A circuit whose cable length is given has its voltage drop checked against
+  the company's limit from the origin, less what the board's own feeders
+  dropped, and its cable enlarged where that is needed (``voltage_drop``).
 
 No part is selected here: devices carry ratings, not articles, until a
 catalogue is chosen, and the parts list says so rather than naming one.
@@ -33,7 +36,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import motors
+from app.design import motors, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -46,6 +49,7 @@ from app.models.schemas.design import (
     DeviceKind,
     DistributionBoardRequest,
     LoadInput,
+    MotorStarter,
     Phase,
 )
 
@@ -79,6 +83,8 @@ class _Sized:
     #: False when no miniature breaker carries Ib: a moulded-case breaker is
     #: needed, rated_a is then Ib itself, and the breaker is left unselected.
     selected: bool = True
+    #: The drop along its own cable, where its length is given and tabulated.
+    drop_percent: Decimal | None = None
 
 
 def _plain(value: Decimal) -> str:
@@ -98,6 +104,7 @@ def _size(
     load: LoadInput,
     index: int,
     notes: list[DesignNote],
+    budget: voltage_drop.Budget,
 ) -> _Sized:
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
@@ -105,7 +112,7 @@ def _size(
             "a three-phase load on a single-phase supply", code="three_phase_on_single_phase"
         ).about(load.description)
     if load.starter is not None:
-        return _size_motor(request, load, index)
+        return _size_motor(request, profile, load, index, notes, budget)
     power_factor = load.power_factor or DEFAULT_POWER_FACTOR
     current = feeder_protection.load_current(
         power_kw=load.power_kw,
@@ -154,6 +161,9 @@ def _size(
     section = cable.cross_section_mm2
     if rule and rule.cable_mm2 is not None and rule.cable_mm2 > section:
         section = rule.cable_mm2
+    voltage = request.supply.voltage_v if three_phase else _phase_voltage(request)
+    run = voltage_drop.Run(current, load.length_m, three_phase, voltage) if load.length_m else None
+    section, drop = _check_drop(request, profile, budget, load, run, section, notes)
     return _Sized(
         load=load,
         index=index,
@@ -162,15 +172,81 @@ def _size(
         curve=rule.curve if rule else "C",
         section_mm2=section,
         selected=selected,
+        drop_percent=drop,
     )
 
 
-def _size_motor(request: DistributionBoardRequest, load: LoadInput, index: int) -> _Sized:
+def _check_drop(
+    request: DistributionBoardRequest,
+    profile: CompanyProfile,
+    budget: voltage_drop.Budget,
+    load: LoadInput,
+    run: voltage_drop.Run | None,
+    section: Decimal,
+    notes: list[DesignNote],
+) -> tuple[Decimal, Decimal | None]:
+    """Hold a cable's voltage drop within the limit, enlarging it if need be.
+
+    Returns:
+        The cable's section, and the drop along it where it was checked.
+    """
+    if run is None:
+        return section, None
+    checked = voltage_drop.fit(
+        run,
+        section,
+        budget.limit(profile, load.load, load.feeds) - budget.upstream_percent,
+        request.conditions,
+    )
+    if checked is None:
+        notes.append(
+            note("voltage_drop_untabulated", load=load.description, section=_plain(section))
+        )
+        return section, None
+    limit = budget.limit(profile, load.load, load.feeds)
+    total = checked.percent + budget.upstream_percent
+    if not checked.within:
+        notes.append(
+            note(
+                "voltage_drop_exceeded",
+                load=load.description,
+                total=_plain(total),
+                own=_plain(checked.percent),
+                upstream=_plain(budget.upstream_percent),
+                limit=_plain(limit),
+                section=_plain(section),
+            )
+        )
+    elif checked.section_mm2 != section:
+        notes.append(
+            note(
+                "voltage_drop_upsized",
+                load=load.description,
+                sized=_plain(section),
+                section=_plain(checked.section_mm2),
+                length=_plain(run.length_m),
+                total=_plain(total),
+                limit=_plain(limit),
+            )
+        )
+    return checked.section_mm2, checked.percent
+
+
+def _size_motor(
+    request: DistributionBoardRequest,
+    profile: CompanyProfile,
+    load: LoadInput,
+    index: int,
+    notes: list[DesignNote],
+    budget: voltage_drop.Budget,
+) -> _Sized:
     """Size a motor's circuit: its devices from the starter tables, its cable for them.
 
     The breaker in a coordinated starter trips on short circuit only; the
     overload relay protects the cable, so each conductor is sized to carry
-    what the relay is set to (Ib <= Ir <= Iz).
+    what the relay is set to (Ib <= Ir <= Iz). Its voltage drop is taken at
+    Ir running; a star-delta motor's at the winding current Ir/√3 in each of
+    three loops across the line voltage.
     """
     conditions = request.conditions
     motor = motors.motor_circuit(index, load, request.supply, ambient_c=conditions.ambient_temp_c)
@@ -186,14 +262,25 @@ def _size_motor(request: DistributionBoardRequest, load: LoadInput, index: int) 
         )
     except ValidationError as exc:
         raise exc.about(load.description) from exc
+    run = None
+    if load.length_m:
+        star_delta = load.starter is MotorStarter.STAR_DELTA
+        run = voltage_drop.Run(
+            current_a=motor.current_a / _SQRT3 if star_delta else motor.current_a,
+            length_m=load.length_m,
+            three_phase=not star_delta,
+            voltage_v=request.supply.voltage_v,
+        )
+    section, drop = _check_drop(request, profile, budget, load, run, cable.cross_section_mm2, notes)
     return _Sized(
         load=load,
         index=index,
         current_a=motor.current_a,
         rated_a=motor.current_a,
         curve="",
-        section_mm2=cable.cross_section_mm2,
+        section_mm2=section,
         motor=motor,
+        drop_percent=drop,
     )
 
 
@@ -259,6 +346,7 @@ def _motor_circuit(
             "Cu" if request.conditions.conductor_material is ConductorMaterial.COPPER else "Al"
         ),
         insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
+        length_m=item.load.length_m,
     )
     circuit = Circuit(
         id=f"c{number}",
@@ -271,6 +359,7 @@ def _motor_circuit(
         device_ids=[device.id for device in motor.devices],
         cable_id=cable.id,
         starter=item.load.starter,
+        voltage_drop_percent=item.drop_percent,
     )
     return circuit, cable
 
@@ -287,12 +376,18 @@ def _rccb_rating(current: Decimal) -> Decimal:
     )
 
 
-def design_distribution_board(request: DistributionBoardRequest, profile: CompanyProfile) -> Board:
+def design_distribution_board(
+    request: DistributionBoardRequest,
+    profile: CompanyProfile,
+    budget: voltage_drop.Budget | None = None,
+) -> Board:
     """Design a distribution board's protection and cables from its load schedule.
 
     Args:
         request: The board's name, supply, load schedule and cable conditions.
         profile: The company whose rules apply.
+        budget: What its feeders dropped already, and what each of its own
+            feeders is held to; none for a board at the origin.
 
     Returns:
         The board, undesignated: designations are assigned when it is issued
@@ -302,8 +397,13 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
         ValidationError: If a load cannot be protected or cabled from the
             tables held, naming the load.
     """
+    budget = budget or voltage_drop.Budget()
     notes: list[DesignNote] = []
-    sized = [_size(request, profile, load, i, notes) for i, load in enumerate(request.loads)]
+    if budget.upstream_percent > 0:
+        notes.append(note("voltage_drop_upstream", percent=_plain(budget.upstream_percent)))
+    sized = [
+        _size(request, profile, load, i, notes, budget) for i, load in enumerate(request.loads)
+    ]
     single_phase_supply = request.supply.phases == 1
     if single_phase_supply:
         phases = {s.index: Phase.L1 for s in sized}
@@ -409,6 +509,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
                 "Cu" if request.conditions.conductor_material is ConductorMaterial.COPPER else "Al"
             ),
             insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
+            length_m=item.load.length_m,
         )
         devices.append(breaker)
         circuit_devices = [breaker.id]
@@ -445,6 +546,7 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
                 device_ids=circuit_devices,
                 cable_id=cable.id,
                 feeds=item.load.feeds,
+                voltage_drop_percent=item.drop_percent,
             )
         )
 
@@ -494,6 +596,9 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
         notes.append(note("group_discrimination"))
     if request.supply.fault_level_ka is None:
         notes.append(note("no_fault_level"))
+    unchecked = sum(1 for load in request.loads if load.length_m is None)
+    if unchecked:
+        notes.append(note("voltage_drop_unchecked", count=unchecked))
     conditions = request.conditions
     notes.append(
         note(

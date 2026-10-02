@@ -16,6 +16,8 @@ export type Load = {
   controlled: boolean;
   /** How a motor is started; empty for any other load. */
   starter: MotorStarter | '';
+  /** Cable route length in metres; empty leaves voltage drop unchecked. */
+  length: string;
 };
 
 /** One board's header and schedule as the engineer edits it. */
@@ -28,6 +30,8 @@ export type BoardForm = {
   faultLevel: string;
   /** The board that feeds this one; empty for the project's own supply. */
   fedFrom: string;
+  /** Route length of the cable from `fedFrom`, in metres. */
+  feederLength: string;
   loads: Load[];
 };
 
@@ -70,6 +74,7 @@ export function blankLoad(key: number): Load {
     powerFactor: '',
     controlled: false,
     starter: '',
+    length: '',
   };
 }
 
@@ -83,6 +88,7 @@ export function blankBoard(key: number, loadKey: number, name: string, fedFrom =
     phases: '3',
     faultLevel: '',
     fedFrom,
+    feederLength: '',
     loads: [blankLoad(loadKey)],
   };
 }
@@ -98,6 +104,7 @@ export function rowsFrom(loads: LoadScheduleImport['loads'], firstKey: number): 
     powerFactor: load.power_factor ?? '',
     controlled: load.controlled,
     starter: load.starter ?? '',
+    length: load.length_m ?? '',
   }));
 }
 
@@ -136,6 +143,7 @@ export function toRequest(
       name: board.name.trim(),
       location: optional(board.location),
       fed_from: optional(board.fedFrom),
+      feeder_length_m: board.fedFrom.trim() === '' ? null : optional(board.feederLength),
       supply: {
         voltage_v: board.voltage.trim(),
         phases: Number(board.phases),
@@ -151,6 +159,7 @@ export function toRequest(
         power_factor: optional(load.powerFactor),
         controlled: load.controlled,
         starter: load.starter === '' ? null : load.starter,
+        length_m: optional(load.length),
       })),
     })),
     profile,

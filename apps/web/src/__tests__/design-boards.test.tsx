@@ -100,6 +100,18 @@ describe('a project of boards', () => {
     expect(screen.getByLabelText<HTMLSelectElement>('Fed from').value).toBe('MDB');
   });
 
+  it('asks a fed board for its feeder length, and each row for its cable length', () => {
+    render();
+    expect(screen.queryByLabelText(/^Feeder length/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^Cable length/), { target: { value: '40' } });
+    fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'MDB' } });
+    fireEvent.click(screen.getByTestId('board-add'));
+    fireEvent.change(screen.getByLabelText(/^Feeder length/), { target: { value: '80' } });
+    expect(screen.getByLabelText<HTMLInputElement>(/^Feeder length/).value).toBe('80');
+    fireEvent.change(screen.getByLabelText('Fed from'), { target: { value: '' } });
+    expect(screen.queryByLabelText(/^Feeder length/)).toBeNull();
+  });
+
   it('cannot design while a board has an empty row', () => {
     render();
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Tower' } });

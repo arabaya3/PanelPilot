@@ -32,7 +32,7 @@ export function LoadRows({
           <div
             key={load.key}
             data-testid={`design-load-${String(index)}`}
-            className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-8 lg:items-end"
+            className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-9 lg:items-end"
           >
             <Field id={field('desc')} label={t('field.description')}>
               <input
@@ -99,6 +99,18 @@ export function LoadRows({
                 value={load.powerFactor}
                 onChange={(event) => {
                   onChange(load.key, { powerFactor: event.target.value });
+                }}
+                className="input w-full"
+              />
+            </Field>
+            <Field id={field('len')} label={t('field.length')} unit="m">
+              <input
+                id={field('len')}
+                inputMode="decimal"
+                dir="ltr"
+                value={load.length}
+                onChange={(event) => {
+                  onChange(load.key, { length: event.target.value });
                 }}
                 className="input w-full"
               />

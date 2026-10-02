@@ -338,6 +338,23 @@ boards are designed leaves first:
 - **Not checked:** discrimination between a feeder and the incomer it
   supplies is not checked, and the board says so.
 
+**Voltage drop** is checked for every circuit whose cable length is given,
+and for every feeder whose length is given (`app/design/voltage_drop.py`):
+
+- **Limit:** the limit runs from the origin to the load. It is 3 % for
+  lighting and 5 % for anything else (IEC 60364-5-52 Annex G), and the
+  company profile can change it per kind of load.
+- **Tables:** the drop is read from Schneider's Fig. G28 for copper and ABB's
+  §2.2.2 tables for aluminium. Each is taken at the worst power factor the
+  tables hold, with no interpolation. A star-delta motor is read as three
+  loops at Ir/√3 across the line voltage.
+- **Enlarging:** a cable that drops too much is stepped up to the smallest
+  tabulated section that keeps it within the limit, and the board names it.
+  If no section is enough, the board says so.
+- **Adding up:** a sub-board's circuits get their limit less what its feeders
+  dropped. Each feeder is held to the strictest load anywhere below it. The
+  drop shows in the result table and in the cable list.
+
 A designed board can be **priced** from the company's price list (Excel
 or CSV) and rates (`app/design/quotation.py`):
 

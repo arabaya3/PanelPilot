@@ -534,7 +534,9 @@
       "powerFactor": "معامل القدرة",
       "controlled": "يتحكم به PLC",
       "fedFrom": "مغذّاة من",
-      "starter": "طريقة التشغيل"
+      "starter": "طريقة التشغيل",
+      "length": "طول الكيبل",
+      "feederLength": "طول كيبل التغذية"
     },
     "kind": {
       "lighting": "إنارة",
@@ -567,7 +569,8 @@
       "current": "Ib",
       "breaker": "القاطع",
       "rcd": "قاطع التسرّب",
-      "cable": "الكيبل"
+      "cable": "الكيبل",
+      "drop": "هبوط الجهد"
     },
     "notes": "ما افترضه التصميم",
     "downloads": "تنزيل",
@@ -690,7 +693,12 @@
       "import_pf_out_of_range": "الصف {row} ({load}): معامل القدرة {value} خارج المدى؛ تم تجاهله.",
       "import_kva_only": "الصف {row} ({load}): أُعطيت القدرة بـ kVA فقط؛ اعتُبرت kW، أي cos φ = 1.",
       "split_points": "{load}: {points} × {watts} W = {power} kW. {source, select, given {من الوصف} other {قيمة نموذجية}}",
-      "text": "{text}"
+      "text": "{text}",
+      "voltage_drop_upsized": "{load}: كُبّر الكيبل من {sized} إلى {section} mm² بسبب هبوط الجهد على طول {length} m: الهبوط من المصدر {total}%، ضمن الحد {limit}%.",
+      "voltage_drop_exceeded": "{load}: هبوط الجهد من المصدر {total}% ({own}% على كيبله و{upstream}% قبل اللوحة) يتجاوز الحد {limit}%، ولا يوجد مقطع في الجداول يحققه؛ أُبقي على {section} mm². قصّر المسار أو مدّ كيبلات على التوازي أو كبّر كيبلات التغذية.",
+      "voltage_drop_untabulated": "{load}: المقطع {section} mm² أكبر من جداول هبوط الجهد (حتى 300 mm²)؛ لم يُفحص هبوطه.",
+      "voltage_drop_unchecked": "{count, plural, one {دائرة واحدة بلا طول كيبل؛ لم يُفحص هبوط الجهد فيها.} two {دائرتان بلا طول كيبل؛ لم يُفحص هبوط الجهد فيهما.} few {# دوائر بلا طول كيبل؛ لم يُفحص هبوط الجهد فيها.} many {# دائرة بلا طول كيبل؛ لم يُفحص هبوط الجهد فيها.} other {# دائرة بلا طول كيبل؛ لم يُفحص هبوط الجهد فيها.}}",
+      "voltage_drop_upstream": "يهبط {percent}% من الجهد على كيبلات التغذية قبل هذه اللوحة، وقد خُصم من حد كل دائرة."
     },
     "errors": {
       "ambient_out_of_table": "حرارة المحيط {ambient} °C خارج جدول الكيبلات لعزل {insulation} °C ({low}–{high} °C)؛ راجع مصنّع الكيبل.",

@@ -11,6 +11,10 @@ than from a figure typed in by hand:
   cabled by the same rule as every other circuit (``distribution``).
 * A feeder and the incomer it supplies come out the same rating, so the board
   says discrimination between them is not checked.
+* Voltage drop adds up from the origin. Once every feeder's current is known,
+  the boards are designed again from the origin down: each feeder is held to
+  the limit of the strictest load anywhere below it, and each sub-board's
+  circuits to their limit less what its feeders dropped (``voltage_drop``).
 
 Names, the feeding graph (unknown board, a board feeding itself, a loop) and
 supply compatibility are checked before anything is designed, each refusal
@@ -22,7 +26,7 @@ from __future__ import annotations
 from decimal import ROUND_CEILING, Decimal
 
 from app.core.errors import ValidationError
-from app.design import distribution
+from app.design import distribution, voltage_drop
 from app.design.notes import note
 from app.models.schemas.design import (
     Board,
@@ -103,11 +107,12 @@ def design_order(requests: list[DistributionBoardRequest]) -> list[DistributionB
     return order
 
 
-def feeder_load(board: Board) -> LoadInput:
+def feeder_load(board: Board, length_m: Decimal | None = None) -> LoadInput:
     """The load a designed sub-board puts on the board that feeds it.
 
     Args:
         board: The sub-board, designed.
+        length_m: The feeder cable's route length, where given.
 
     Returns:
         A sub-board load whose design current is the sub-board's most loaded
@@ -124,6 +129,7 @@ def feeder_load(board: Board) -> LoadInput:
         phases=3 if three_phase else 1,
         power_factor=Decimal(1),
         feeds=board.name,
+        length_m=length_m,
     )
 
 
@@ -171,17 +177,47 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
     for request in requests:
         if request.fed_from is not None:
             _check_supply(request, by_name[request.fed_from])
+    # Leaves first: each feeder's current from the sub-board it supplies.
+    # Cable sizes do not change a current, so this pass needs no drop budget.
     feeders: dict[str, list[LoadInput]] = {request.name: [] for request in requests}
-    designed: dict[str, Board] = {}
+    strictest: dict[str, Decimal] = {}
     for request in order:
-        loads = [*request.loads, *feeders[request.name]]
-        board = distribution.design_distribution_board(
-            request.model_copy(update={"loads": loads}), profile
+        board = distribution.design_distribution_board(_with_feeders(request, feeders), profile)
+        strictest[request.name] = min(
+            [
+                *(voltage_drop.limit_for(profile, load.load) for load in request.loads),
+                *(strictest[feeder.feeds] for feeder in feeders[request.name] if feeder.feeds),
+            ]
         )
         if request.fed_from is not None:
-            feeders[request.fed_from].append(feeder_load(board))
+            feeders[request.fed_from].append(feeder_load(board, request.feeder_length_m))
+
+    # From the origin down: each board knows what its feeders dropped.
+    upstream: dict[str, Decimal] = {}
+    designed: dict[str, Board] = {}
+    for request in reversed(order):
+        children = [feeder.feeds for feeder in feeders[request.name] if feeder.feeds]
+        budget = voltage_drop.Budget(
+            upstream_percent=upstream.get(request.name, Decimal(0)),
+            feeder_limits={child: strictest[child] for child in children},
+        )
+        board = distribution.design_distribution_board(
+            _with_feeders(request, feeders), profile, budget
+        )
+        for circuit in board.circuits:
+            if circuit.feeds is not None:
+                upstream[circuit.feeds] = budget.upstream_percent + (
+                    circuit.voltage_drop_percent or Decimal(0)
+                )
+        if request.fed_from is not None:
             board.notes.append(note("fed_from", board=request.fed_from))
-        if feeders[request.name]:
+        if children:
             board.notes.append(note("feeder_discrimination"))
         designed[request.name] = board
     return [designed[request.name] for request in requests]
+
+
+def _with_feeders(
+    request: DistributionBoardRequest, feeders: dict[str, list[LoadInput]]
+) -> DistributionBoardRequest:
+    return request.model_copy(update={"loads": [*request.loads, *feeders[request.name]]})

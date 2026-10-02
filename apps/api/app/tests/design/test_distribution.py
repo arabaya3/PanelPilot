@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.errors import ValidationError
-from app.design import designations, distribution, profile
+from app.design import designations, distribution, profile, voltage_drop
 from app.models.schemas.design import (
     Circuit,
     DeviceKind,
@@ -271,3 +271,70 @@ def test_a_motor_gets_its_starter_and_a_cable_for_the_relay_setting() -> None:
     assert any("Fan: Ir 56 A" in note.text for note in board.notes)
     # The incomer carries the motor's line current, not its phase current.
     assert board.device("incomer").rated_current_a >= Decimal(56)  # type: ignore[operator]
+
+
+def test_a_long_cable_is_enlarged_for_voltage_drop() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[_load(LoadKind.LIGHTING, "2", "Car park lights", length_m=Decimal(60))],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (circuit,) = board.circuits
+    cable = board.cable(circuit.cable_id or "")
+    assert cable.length_m == 60
+    assert cable.cross_section_mm2 > Decimal("1.5")
+    assert circuit.voltage_drop_percent is not None
+    assert circuit.voltage_drop_percent <= 3
+    assert "voltage_drop_upsized" in [n.code for n in board.notes]
+    assert "voltage_drop_unchecked" not in [n.code for n in board.notes]
+
+
+def test_drop_beyond_any_section_is_said() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[_load(LoadKind.OTHER, "20", "Pump house", phases=3, length_m=Decimal(10000))],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (exceeded,) = [n for n in board.notes if n.code == "voltage_drop_exceeded"]
+    assert exceeded.params["load"] == "Pump house"
+    assert exceeded.params["upstream"] == "0"
+
+
+def test_upstream_drop_is_taken_from_every_circuit() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[_load(LoadKind.SOCKET, "1", "Sockets", length_m=Decimal(20))],
+    )
+    company = profile.default_profile()
+    alone = distribution.design_distribution_board(request, company)
+    fed = distribution.design_distribution_board(
+        request, company, voltage_drop.Budget(upstream_percent=Decimal("4.5"))
+    )
+    assert alone.cables[0].cross_section_mm2 < fed.cables[0].cross_section_mm2
+    assert "voltage_drop_upstream" in [n.code for n in fed.notes]
+
+
+def test_circuits_without_a_length_are_counted() -> None:
+    board = distribution.design_distribution_board(_hall(), profile.default_profile())
+    (unchecked,) = [n for n in board.notes if n.code == "voltage_drop_unchecked"]
+    assert unchecked.params["count"] == "16"
+
+
+def test_a_star_delta_motor_is_read_as_three_loops() -> None:
+    request = DistributionBoardRequest(
+        name="DB",
+        loads=[
+            _load(
+                LoadKind.MOTOR, "30", "Pump", phases=3, starter="star_delta", length_m=Decimal(50)
+            )
+        ],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (circuit,) = board.circuits
+    section = board.cable(circuit.cable_id or "").cross_section_mm2
+    # Each winding: Ir/√3 out and back, across the 400 V line voltage.
+    loop = voltage_drop.Run(
+        circuit.design_current_a / Decimal(3).sqrt(), Decimal(50), False, Decimal(400)
+    )
+    expected = voltage_drop.percent(loop, section, request.conditions)
+    assert circuit.voltage_drop_percent == expected.quantize(Decimal("0.01"))

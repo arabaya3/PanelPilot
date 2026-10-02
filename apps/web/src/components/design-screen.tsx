@@ -230,7 +230,7 @@ export function DesignScreen({
   }
 
   function boardField(
-    key: 'name' | 'location' | 'voltage' | 'faultLevel',
+    key: 'name' | 'location' | 'voltage' | 'faultLevel' | 'feederLength',
     label: string,
     unit = '',
   ) {
@@ -350,6 +350,7 @@ export function DesignScreen({
                     ))}
                 </select>
               </Field>
+              {active.fedFrom !== '' && boardField('feederLength', 'feederLength', 'm')}
               {boards.length > 1 && (
                 <button
                   type="button"

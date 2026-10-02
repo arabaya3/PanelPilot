@@ -226,6 +226,8 @@ class Circuit(BaseModel):
         cable_id: Its outgoing cable, where it has one.
         feeds: The board it supplies, for a feeder to a sub-board.
         starter: How the motor it feeds is started, for a motor circuit.
+        voltage_drop_percent: The drop along its own cable, where its length
+            is known; the board's notes add what feeds the board.
     """
 
     id: str
@@ -239,6 +241,7 @@ class Circuit(BaseModel):
     cable_id: str | None = None
     feeds: str | None = None
     starter: MotorStarter | None = None
+    voltage_drop_percent: Decimal | None = None
 
 
 class Supply(BaseModel):
@@ -509,6 +512,11 @@ class CompanyProfile(BaseModel):
             circuits.
         max_phase_imbalance_percent: The largest difference between the most
             and least loaded line conductors, as a share of the most loaded.
+        max_voltage_drop_percent: The largest voltage drop from the origin of
+            the installation to a load, by kind of load; a kind not listed
+            takes ``default_max_voltage_drop_percent``. The defaults are IEC
+            60364-5-52 Annex G (Table G.52.1) for a public LV supply.
+        default_max_voltage_drop_percent: The limit for any other load.
         rules_confirmed_by: Who confirmed the design rules. Empty while they
             are this software's defaults, which the drawing then says.
     """
@@ -532,6 +540,10 @@ class CompanyProfile(BaseModel):
     )
     spare_ways_percent: Decimal = Decimal(20)
     max_phase_imbalance_percent: Decimal = Decimal(10)
+    max_voltage_drop_percent: dict[LoadKind, Decimal] = Field(
+        default_factory=lambda: {LoadKind.LIGHTING: Decimal(3)}
+    )
+    default_max_voltage_drop_percent: Decimal = Decimal(5)
     rules_confirmed_by: str = ""
 
     @model_validator(mode="after")
@@ -558,6 +570,8 @@ class LoadInput(BaseModel):
             set by the project design, not typed in.
         starter: For a three-phase motor, how it is started; its
             ``power_kw`` is then the motor's shaft power.
+        length_m: The cable's route length, one way. Given, the cable is
+            checked (and if need be enlarged) for voltage drop.
     """
 
     description: str = Field(min_length=1)
@@ -568,6 +582,7 @@ class LoadInput(BaseModel):
     controlled: bool = False
     feeds: str | None = None
     starter: MotorStarter | None = None
+    length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
     @model_validator(mode="after")
     def _one_or_three(self) -> LoadInput:
@@ -606,6 +621,8 @@ class DistributionBoardRequest(BaseModel):
         fed_from: The board whose feeder supplies this one; ``None`` for a
             board fed from the utility or a main switchboard outside the
             project.
+        feeder_length_m: The route length of the cable feeding this board
+            from ``fed_from``, for that feeder's voltage drop.
     """
 
     name: str = Field(min_length=1, max_length=40)
@@ -614,6 +631,7 @@ class DistributionBoardRequest(BaseModel):
     loads: list[LoadInput] = Field(min_length=1, max_length=500)
     conditions: InstallationConditions = Field(default_factory=InstallationConditions)
     fed_from: str | None = None
+    feeder_length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
 
 class BoardDesignRequest(BaseModel):
