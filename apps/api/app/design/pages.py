@@ -32,7 +32,7 @@ import textwrap
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.design import rtl, symbols
+from app.design import rtl, symbols, terminals
 from app.design.drawing_text import Words
 from app.design.sheet import (
     AREA_BOTTOM,
@@ -254,7 +254,41 @@ def _part_rows(project: DesignProject, say: Words) -> list[list[str]]:
                 ", ".join(names),
             ]
         )
+    # Terminals, counted by article across the project.
+    counts: dict[str, int] = {}
+    places: dict[str, list[str]] = {}
+    pe_articles: set[str] = set()
+    for board in project.boards:
+        where = f"{board.name} -{terminals.STRIP}"
+        for terminal in terminals.strip(board):
+            if terminal.article is None:
+                continue
+            counts[terminal.article] = counts.get(terminal.article, 0) + 1
+            if where not in places.setdefault(terminal.article, []):
+                places[terminal.article].append(where)
+            if terminal.function == "PE":
+                pe_articles.add(terminal.article)
+    for article, count in counts.items():
+        kind = say("PE terminal") if article in pe_articles else say("Terminal")
+        table.append(
+            [str(count), f"{kind} 8WH1", f"Siemens {article}", article, ", ".join(places[article])]
+        )
     return table
+
+
+def _terminal_rows(board: Board, say: Words) -> list[list[str]]:
+    """The board's terminal strip, one row per terminal."""
+    return [
+        [
+            f"-{terminals.STRIP}:{terminal.number}",
+            terminal.function,
+            terminal.circuit,
+            terminal.cable,
+            _plain(terminal.conductor_mm2),
+            terminal.article or say("not selected"),
+        ]
+        for terminal in terminals.strip(board)
+    ]
 
 
 def _cable_rows(project: DesignProject) -> list[list[str]]:
@@ -299,6 +333,11 @@ def _plan(project: DesignProject, profile: CompanyProfile, say: Words) -> list[_
                     plans.append(
                         _Plan(kind, say("Design notes"), board, [say.note(n) for n in board.notes])
                     )
+        elif kind is PageKind.TERMINALS:
+            for board in project.boards:
+                strip_rows = _terminal_rows(board, say)
+                for chunk in _chunks(list(strip_rows), ROWS_PER_TABLE_PAGE):
+                    plans.append(_Plan(kind, say("Terminals"), board, chunk))
         elif kind is PageKind.CABLES:
             rows = _cable_rows(project)
             if rows:
@@ -817,6 +856,20 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
             _draw_distribution(sheet, plan, numbers, say)
         elif plan.kind is PageKind.NOTES:
             _draw_notes(sheet, plan, say)
+        elif plan.kind is PageKind.TERMINALS:
+            _table(
+                sheet,
+                AREA_TOP + 6,
+                [
+                    (say("Terminal"), 25.0),
+                    (say("Conductor"), 22.0),
+                    (say("Circuit"), 140.0),
+                    (say("Cable"), 40.0),
+                    ("mm²", 20.0),
+                    (say("Article"), 60.0),
+                ],
+                [[str(c) for c in row] for row in plan.payload if isinstance(row, list)],
+            )
         elif plan.kind is PageKind.CABLES:
             _table(
                 sheet,

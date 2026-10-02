@@ -60,7 +60,12 @@
     "not selected": "غير مختار",
     "to {target}": "إلى {target}",
     "from {source}": "من {source}",
-    "from busbar": "من الباسبار"
+    "from busbar": "من الباسبار",
+    "Terminals": "الأطراف",
+    "Terminal": "الطرف",
+    "PE terminal": "طرف أرضي",
+    "Conductor": "الموصل",
+    "Circuit": "الدائرة"
   },
   "note": {
     "mccb_needed": "{load}: تيار التصميم Ib = {current} A أكبر من أكبر قاطع صغير (MCB) متوفر (125 A)؛ يلزم قاطع علبي (MCCB) ولم يُختر هنا. الكيبل محسوب على Ib، فراجعه مع تيار القاطع In.",

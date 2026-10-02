@@ -255,3 +255,12 @@ def test_an_arabic_company_gets_its_drawings_in_arabic() -> None:
     assert any("مخارج" in text or "مخرج" in text for text in _texts(notes_page))
     # What the engineer typed is drawn as typed.
     assert any("Sockets 0" in text for sheet in sheets for text in _texts(sheet))
+
+
+def test_each_board_has_its_terminal_strip_and_its_terminals_are_parts() -> None:
+    sheets = pages.build_drawing_set(_project(), profile.default_profile())
+    strip_pages = [s for s in sheets if s.title == "Terminals"]
+    assert strip_pages
+    assert "-X1:1" in _texts(strip_pages[0])
+    parts = next(s for s in sheets if s.title == "Parts list")
+    assert any("8WH1" in text for text in _texts(parts))
