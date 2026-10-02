@@ -25,7 +25,8 @@ from decimal import Decimal, InvalidOperation
 import pdfplumber
 
 from app.core.errors import ValidationError
-from app.models.schemas.design import LoadInput, LoadKind
+from app.design.notes import note
+from app.models.schemas.design import DesignNote, LoadInput, LoadKind
 
 #: The largest schedule accepted, in bytes.
 MAX_SCHEDULE_BYTES = 5 * 1024 * 1024
@@ -130,7 +131,7 @@ class ScheduleImport:
     """
 
     loads: list[LoadInput] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[DesignNote] = field(default_factory=list)
     rows_read: int = 0
 
 
@@ -354,9 +355,8 @@ def import_schedule(data: bytes) -> ScheduleImport:
         if any(_matches(cell, _TOTAL) for cell in row[:3]):
             continue
         result.rows_read += 1
-        where = f"Row {offset}"
         if not description:
-            result.warnings.append(f"{where}: no description; skipped.")
+            result.warnings.append(note("import_no_description", row=offset))
             continue
         if "kw" in columns:
             power = _number(get(row, "kw"))
@@ -374,38 +374,37 @@ def import_schedule(data: bytes) -> ScheduleImport:
             kind = _kind(description)
             inferred = kind is not None
         if kind is LoadKind.SPARE:
-            result.warnings.append(
-                f"{where} ({description}): a spare way; left for the spare count."
-            )
+            result.warnings.append(note("import_spare", row=offset, load=description))
             continue
         if power is None or power <= 0:
-            result.warnings.append(f"{where} ({description}): no power given; skipped.")
+            result.warnings.append(note("import_no_power", row=offset, load=description))
             continue
         power = (power * scale).normalize()
         if kind is None:
             kind = LoadKind.OTHER
-            result.warnings.append(
-                f"{where} ({description}): load type not recognised; taken as other."
-            )
+            result.warnings.append(note("import_kind_unknown", row=offset, load=description))
         elif inferred:
             result.warnings.append(
-                f"{where} ({description}): taken as {kind.value} from its description."
+                note("import_kind_inferred", row=offset, load=description, kind=kind.value)
             )
         phases = _phases(get(row, "phases")) or 1
         if "phases" in columns and _phases(get(row, "phases")) is None:
             result.warnings.append(
-                f"{where} ({description}): phases '{get(row, 'phases')}' not read; taken as 1."
+                note(
+                    "import_phases_unread",
+                    row=offset,
+                    load=description,
+                    value=get(row, "phases"),
+                )
             )
         power_factor = _number(get(row, "pf")) if "pf" in columns else None
         if power_factor is not None and not 0 < power_factor <= 1:
             result.warnings.append(
-                f"{where} ({description}): power factor {power_factor} is out of range; ignored."
+                note("import_pf_out_of_range", row=offset, load=description, value=power_factor)
             )
             power_factor = None
         if "kw" not in columns and "w" not in columns:
-            result.warnings.append(
-                f"{where} ({description}): only kVA given; taken as kW, which assumes cos phi 1."
-            )
+            result.warnings.append(note("import_kva_only", row=offset, load=description))
         result.loads.append(
             LoadInput(
                 description=description[:120],
@@ -418,6 +417,6 @@ def import_schedule(data: bytes) -> ScheduleImport:
     if not result.loads:
         raise ValidationError(
             "no load could be read below the header; "
-            + (result.warnings[0] if result.warnings else "")
+            + (result.warnings[0].text if result.warnings else "")
         )
     return result

@@ -3,8 +3,14 @@
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
+import { useNoteText } from '@/components/design/note-text';
 import { FilePicker } from '@/components/file-picker';
-import { importSchedule, suggestSchedule, type LoadScheduleImport } from '@/lib/design';
+import {
+  importSchedule,
+  suggestSchedule,
+  type DesignNote,
+  type LoadScheduleImport,
+} from '@/lib/design';
 
 type State<T> =
   | { kind: 'idle' }
@@ -35,12 +41,13 @@ export function ScheduleSources({
   suggestImpl?: typeof suggestSchedule;
 }) {
   const t = useTranslations('design');
+  const noteText = useNoteText();
   const id = useId();
   const [brief, setBrief] = useState('');
-  const [suggestState, setSuggestState] = useState<State<{ assumptions: string[] }>>({
+  const [suggestState, setSuggestState] = useState<State<{ assumptions: DesignNote[] }>>({
     kind: 'idle',
   });
-  const [importState, setImportState] = useState<State<{ count: number; warnings: string[] }>>({
+  const [importState, setImportState] = useState<State<{ count: number; warnings: DesignNote[] }>>({
     kind: 'idle',
   });
 
@@ -127,7 +134,7 @@ export function ScheduleSources({
             <p>{t('suggest.done')}</p>
             <ul className="mt-1 list-disc ps-5 text-text-muted">
               {suggestState.assumptions.map((assumption, index) => (
-                <li key={index}>{assumption}</li>
+                <li key={index}>{noteText(assumption)}</li>
               ))}
             </ul>
           </div>
@@ -156,9 +163,9 @@ export function ScheduleSources({
           <div data-testid="import-result" className="text-sm">
             <p>{t('import.done', { count: importState.count })}</p>
             {importState.warnings.length > 0 && (
-              <ul className="mt-1 list-disc ps-5 text-text-muted" dir="ltr">
+              <ul className="mt-1 list-disc ps-5 text-text-muted">
                 {importState.warnings.map((warning, index) => (
-                  <li key={index}>{warning}</li>
+                  <li key={index}>{noteText(warning)}</li>
                 ))}
               </ul>
             )}

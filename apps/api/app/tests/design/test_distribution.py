@@ -81,12 +81,12 @@ def test_phases_are_balanced_within_the_profile() -> None:
     totals = distribution.phase_currents(board.circuits)
     most, least = max(totals.values()), min(totals.values())
     assert (most - least) / most * 100 <= Decimal(10)
-    assert not any("imbalance" in note for note in board.notes)
+    assert not any("imbalance" in note.text for note in board.notes)
 
 
 def test_the_board_states_what_it_assumed() -> None:
     board = distribution.design_distribution_board(_hall(), profile.default_profile())
-    joined = " ".join(board.notes)
+    joined = " ".join(note.text for note in board.notes)
     assert "cos phi 0.9" in joined
     assert "breaking capacity is left to be confirmed" in joined
     assert "not confirmed by the company's engineers" in joined
@@ -109,7 +109,7 @@ def test_a_company_profile_changes_the_design() -> None:
         if d.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE and d.residual_current_ma
     )
     assert sensitivities == [Decimal(30), Decimal(300)]
-    assert not any("not confirmed" in note for note in board.notes)
+    assert not any("not confirmed" in note.text for note in board.notes)
 
 
 def test_a_load_above_the_fixed_rating_is_sized_and_noted() -> None:
@@ -119,7 +119,7 @@ def test_a_load_above_the_fixed_rating_is_sized_and_noted() -> None:
     board = distribution.design_distribution_board(request, profile.default_profile())
     # 4 kW at 231 V is 17.32 A: above the 16 A rule, so 20 A.
     assert board.device(board.circuits[0].device_ids[0]).rated_current_a == Decimal(20)
-    assert any("exceeds the company's 16 A" in note for note in board.notes)
+    assert any("exceeds the company's 16 A" in note.text for note in board.notes)
 
 
 def test_single_phase_supply() -> None:
@@ -158,7 +158,7 @@ def test_a_plc_switched_load_gets_a_contactor_after_its_breaker() -> None:
         assert contactor.poles == poles
         assert contactor.rated_current_a >= breaker.rated_current_a  # type: ignore[operator]
         assert contactor.rated_current_a in distribution.CONTACTOR_RATINGS
-    assert any("AC-1" in note for note in board.notes)
+    assert any("AC-1" in note.text for note in board.notes)
 
 
 def test_a_load_above_the_miniature_breakers_gets_an_unselected_mccb() -> None:
@@ -172,7 +172,9 @@ def test_a_load_above_the_miniature_breakers_gets_an_unselected_mccb() -> None:
     cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
     # Sized for Ib (about 144 A), not refused.
     assert cable.cross_section_mm2 >= Decimal(35)
-    assert any("Chiller" in note and "moulded-case" in note for note in board.notes)
+    assert any(
+        note.code == "mccb_needed" and note.params["load"] == "Chiller" for note in board.notes
+    )
 
 
 def test_an_unprotectable_load_is_refused_by_name() -> None:
@@ -189,7 +191,7 @@ def test_an_incomer_above_125_a_is_left_unselected() -> None:
         DistributionBoardRequest(name="DB", loads=loads), profile.default_profile()
     )
     assert board.device("incomer").rated_current_a is None
-    assert any("moulded-case" in note for note in board.notes)
+    assert any("moulded-case" in note.text for note in board.notes)
 
 
 def test_it_designates_cleanly() -> None:
@@ -266,6 +268,6 @@ def test_a_motor_gets_its_starter_and_a_cable_for_the_relay_setting() -> None:
     assert board.device(fan.device_ids[0]).upstream_id == "incomer"
     cable = board.cable(fan.cable_id)  # type: ignore[arg-type]
     assert cable.cores == 7
-    assert any("Fan: Ir 56 A" in note for note in board.notes)
+    assert any("Fan: Ir 56 A" in note.text for note in board.notes)
     # The incomer carries the motor's line current, not its phase current.
     assert board.device("incomer").rated_current_a >= Decimal(56)  # type: ignore[operator]

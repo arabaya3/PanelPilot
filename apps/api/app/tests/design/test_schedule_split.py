@@ -63,19 +63,25 @@ def test_every_circuit_says_how_its_power_was_reached() -> None:
     _, notes = schedule_split.split_points(
         [_points(LoadKind.SOCKET, 9, "150")], profile.default_profile(), supply_phases=3
     )
-    assert notes == [
+    assert [n.text for n in notes] == [
         "socket 1: 5 x 150 W = 0.75 kW. typical",
         "socket 2: 4 x 150 W = 0.6 kW. typical",
     ]
+    assert notes[0].code == "split_points"
+    assert notes[0].params == {
+        "load": "socket 1",
+        "points": "5",
+        "watts": "150",
+        "power": "0.75",
+        "source": "typical",
+    }
 
 
-def test_notes_say_where_the_power_came_from_in_the_descriptions_language() -> None:
+def test_notes_say_whether_the_power_was_given_or_typical() -> None:
     stated = _points(LoadKind.WATER_HEATER, 1, "3000").model_copy(update={"power_stated": True})
     _, notes = schedule_split.split_points(
         [stated, _points(LoadKind.SOCKET, 1, "150")],
         profile.default_profile(),
         supply_phases=3,
-        language="Arabic",
     )
-    assert notes[0].endswith("kW. من الوصف")
-    assert notes[1].endswith("kW. قيمة نموذجية")
+    assert [n.params["source"] for n in notes] == ["given", "typical"]

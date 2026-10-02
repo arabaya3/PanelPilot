@@ -32,9 +32,11 @@ from decimal import Decimal
 
 from app.ai.tools import motor_starter, vfd_selection
 from app.core.errors import ValidationError
+from app.design.notes import note
 from app.models.schemas.calculations import DutyClass, StartType
 from app.models.schemas.design import (
     Board,
+    DesignNote,
     Device,
     DeviceKind,
     LoadInput,
@@ -70,7 +72,7 @@ class MotorCircuit:
     current_a: Decimal
     cable_current_a: Decimal
     cable_cores: int
-    notes: list[str] = field(default_factory=list)
+    notes: list[DesignNote] = field(default_factory=list)
 
 
 def _start_type(starter: MotorStarter) -> StartType | None:
@@ -80,7 +82,7 @@ def _start_type(starter: MotorStarter) -> StartType | None:
     }.get(starter)
 
 
-def motor_current(load: LoadInput, supply: Supply) -> tuple[Decimal, str]:
+def motor_current(load: LoadInput, supply: Supply) -> tuple[Decimal, DesignNote]:
     """A motor's rated current from its shaft power, and where it came from.
 
     Args:
@@ -88,7 +90,8 @@ def motor_current(load: LoadInput, supply: Supply) -> tuple[Decimal, str]:
         supply: The board's supply.
 
     Returns:
-        Ir in amperes, to the hundredth, and how it was reached.
+        Ir in amperes, to the hundredth, and the note saying how it was
+        reached.
     """
     start = _start_type(load.starter) if load.starter else None
     if load.power_factor is None and start is not None:
@@ -96,7 +99,13 @@ def motor_current(load: LoadInput, supply: Supply) -> tuple[Decimal, str]:
             motor_power_kw=load.power_kw, start=start, supply_voltage_v=supply.voltage_v
         )
         if typical is not None:
-            return typical, f"the typical Ir of a {load.power_kw} kW motor in {_HANDBOOK}"
+            return typical, note(
+                "motor_current_table",
+                load=load.description,
+                current=typical,
+                power=load.power_kw,
+                source=_HANDBOOK,
+            )
     power_factor = load.power_factor or DEFAULT_MOTOR_POWER_FACTOR
     current = vfd_selection.required_drive_current_a(
         motor_power_kw=load.power_kw,
@@ -105,9 +114,14 @@ def motor_current(load: LoadInput, supply: Supply) -> tuple[Decimal, str]:
         motor_power_factor=power_factor,
         duty_class=DutyClass.NORMAL,
     )
-    assumed = "" if load.power_factor else f"cos phi {DEFAULT_MOTOR_POWER_FACTOR}, "
-    return current.quantize(_CENT), (
-        f"{load.power_kw} kW shaft power at {assumed}efficiency {DEFAULT_MOTOR_EFFICIENCY}"
+    current = current.quantize(_CENT)
+    return current, note(
+        "motor_current_formula",
+        load=load.description,
+        current=current,
+        power=load.power_kw,
+        power_factor=power_factor,
+        efficiency=DEFAULT_MOTOR_EFFICIENCY,
     )
 
 
@@ -165,7 +179,7 @@ def _coordinated(
         if role == "line":
             upstream = device.id
     setting = (current / _SQRT3).quantize(_CENT) if star_delta else current
-    notes: list[str] = []
+    notes: list[DesignNote] = []
     if row.overload:
         devices.append(
             Device(
@@ -179,16 +193,17 @@ def _coordinated(
             )
         )
     else:
-        notes.append(f"{load.description}: the table gives no overload relay for this row.")
+        notes.append(note("no_overload_row", load=load.description))
     notes.append(
-        f"{load.description}: {start.value.replace('_', '-')} starter, Type 2 coordination, "
-        f"{_HANDBOOK} {section}."
+        note(
+            "starter_table",
+            load=load.description,
+            starter=load.starter.value if load.starter else start.value,
+            source=f"{_HANDBOOK} {section}",
+        )
     )
     if star_delta:
-        notes.append(
-            f"{load.description}: star and delta contactors need a mechanical interlock; "
-            "the motor is fed by six conductors (U1 V1 W1, U2 V2 W2)."
-        )
+        notes.append(note("star_delta_interlock", load=load.description))
     return MotorCircuit(
         devices=devices,
         current_a=current,
@@ -234,11 +249,15 @@ def _drive(
         cable_current_a=current,
         cable_cores=4,
         notes=[
-            f"{load.description}: {type_code} for normal duty at {ambient_c} °C, "
-            f"behind {fuse.amps} A aR fuses ({_DRIVE_MANUAL}). Use a screened, "
-            "symmetrical motor cable, earthed 360° at both ends.",
-            f"{load.description}: the fuses need at least {fuse.min_short_circuit_a} A "
-            "prospective short-circuit current at the board to operate fast enough.",
+            note(
+                "drive_selected",
+                load=load.description,
+                drive=type_code,
+                ambient=ambient_c,
+                fuse=fuse.amps,
+                source=_DRIVE_MANUAL,
+            ),
+            note("drive_fuse_fault_level", load=load.description, current=fuse.min_short_circuit_a),
         ],
     )
 
@@ -275,9 +294,7 @@ def motor_circuit(
             )
     except ValidationError as exc:
         raise ValidationError(f"{load.description}: {exc}") from exc
-    circuit.notes.insert(
-        0, f"{load.description}: Ir {current} A from {basis}; check against the nameplate."
-    )
+    circuit.notes.insert(0, basis)
     return circuit
 
 

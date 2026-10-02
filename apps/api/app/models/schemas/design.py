@@ -28,6 +28,21 @@ from app.models.schemas.calculations import ConductorMaterial, InstallationMetho
 from app.models.schemas.plc import PlcValidationResult
 
 
+class DesignNote(BaseModel):
+    """Something the design tells its reviewer.
+
+    Attributes:
+        code: Stable identifier, which the page renders in the reader's
+            language (``app.design.notes``).
+        params: The values the note names, as text.
+        text: The note in English, for the drawing set and as a fallback.
+    """
+
+    code: str
+    params: dict[str, str] = Field(default_factory=dict)
+    text: str
+
+
 class MotorStarter(StrEnum):
     """How a motor is started."""
 
@@ -270,7 +285,7 @@ class Board(BaseModel):
     devices: list[Device] = Field(default_factory=list)
     cables: list[Cable] = Field(default_factory=list)
     circuits: list[Circuit] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)
+    notes: list[DesignNote] = Field(default_factory=list)
     fed_from: str | None = None
 
     @model_validator(mode="after")
@@ -688,7 +703,7 @@ class LoadScheduleImport(BaseModel):
     """
 
     loads: list[LoadInput]
-    warnings: list[str]
+    warnings: list[DesignNote]
     rows_read: int
 
 
@@ -747,7 +762,7 @@ class LoadScheduleSuggestion(BaseModel):
     """
 
     loads: list[LoadInput]
-    assumptions: list[str]
+    assumptions: list[DesignNote]
 
 
 class PriceListEntry(BaseModel):

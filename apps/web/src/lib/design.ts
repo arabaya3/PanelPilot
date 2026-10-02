@@ -13,6 +13,7 @@ export type PricingSettings = components['schemas']['PricingSettings'];
 export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
 export type Quotation = components['schemas']['Quotation'];
 export type PlcProgram = components['schemas']['PlcProgramResponse'];
+export type DesignNote = components['schemas']['DesignNote'];
 
 /**
  * How every design call can end besides success. A 400 or 422 is the design

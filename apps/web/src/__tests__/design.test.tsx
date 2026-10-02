@@ -35,7 +35,13 @@ const PROJECT: DesignProject = {
       location: null,
       supply: { voltage_v: '400', phases: 3, frequency_hz: '50', earthing: 'TN-S' },
       incomer_ids: ['incomer'],
-      notes: ['Loads without a power factor were taken at cos phi 0.9.'],
+      notes: [
+        {
+          code: 'default_power_factor',
+          params: {},
+          text: 'Loads without a power factor were taken at cos phi 0.9.',
+        },
+      ],
       devices: [
         {
           id: 'incomer',
@@ -143,7 +149,7 @@ describe('board design', () => {
     expect(screen.getByText('-Q3 C16')).toBeTruthy();
     expect(screen.getByText('-F1 30 mA')).toBeTruthy();
     expect(screen.getByText('3G2.5 Cu')).toBeTruthy();
-    expect(screen.getByTestId('design-notes').textContent).toContain('cos phi 0.9');
+    expect(screen.getByTestId('design-notes').textContent).toContain('cos φ 0.9');
   });
 
   it('sends the company settings, and refuses settings that are not JSON', async () => {
@@ -235,7 +241,13 @@ describe('load schedule import', () => {
             controlled: false,
           },
         ],
-        warnings: ['Row 3 (AC 1): taken as air_conditioning from its description.'],
+        warnings: [
+          {
+            code: 'import_kind_inferred',
+            params: { row: '3', load: 'AC 1', kind: 'air_conditioning' },
+            text: 'Row 3 (AC 1): taken as air_conditioning from its description.',
+          },
+        ],
         rows_read: 2,
       },
     });
@@ -317,7 +329,24 @@ describe('suggest from a description', () => {
             controlled: false,
           },
         ],
-        assumptions: ['Diversity not applied.', 'Hall sockets 1: 7 x 150 W = 1.05 kW. typical'],
+        assumptions: [
+          {
+            code: 'text',
+            params: { text: 'Diversity not applied.' },
+            text: 'Diversity not applied.',
+          },
+          {
+            code: 'split_points',
+            params: {
+              load: 'Hall sockets 1',
+              points: '7',
+              watts: '150',
+              power: '1.05',
+              source: 'typical',
+            },
+            text: 'Hall sockets 1: 7 x 150 W = 1.05 kW. typical',
+          },
+        ],
       },
     });
     renderApp(
@@ -332,7 +361,7 @@ describe('suggest from a description', () => {
     });
     fireEvent.click(button);
     const result = await screen.findByTestId('suggest-result');
-    expect(result.textContent).toContain('7 x 150 W');
+    expect(result.textContent).toContain('7 × 150 W');
     expect(suggestImpl.mock.calls[0]?.[0]).toMatchObject({
       token: 'tok',
       description: 'A hall with 13 sockets',

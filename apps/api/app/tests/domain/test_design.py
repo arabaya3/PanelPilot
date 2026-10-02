@@ -150,8 +150,9 @@ def test_a_suggestion_is_split_under_the_company_rules(
         ),
     )
     assert [load.description for load in result.loads] == ["Sockets 1", "Sockets 2"]
-    assert result.assumptions[0] == "No diversity applied."
-    assert result.assumptions[1] == "Sockets 1: 5 x 150 W = 0.75 kW. typical"
+    assert result.assumptions[0].code == "text"
+    assert result.assumptions[0].text == "No diversity applied."
+    assert result.assumptions[1].text == "Sockets 1: 5 x 150 W = 0.75 kW. typical"
 
 
 def test_a_design_is_priced_and_exported_as_a_quotation() -> None:

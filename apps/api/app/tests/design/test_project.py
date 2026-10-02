@@ -75,8 +75,8 @@ def test_a_feeder_is_sized_from_the_sub_board_as_designed() -> None:
     incomer = sub.device(sub.incomer_ids[0])
     assert breaker.rated_current_a >= incomer.rated_current_a  # type: ignore[operator]
     assert sub.fed_from == "MDB"
-    assert "Fed from MDB." in sub.notes
-    assert any("Discrimination between each sub-board feeder" in n for n in main.notes)
+    assert "Fed from MDB." in [n.text for n in sub.notes]
+    assert any("Discrimination between each sub-board feeder" in n.text for n in main.notes)
 
 
 def test_a_single_phase_sub_board_on_a_three_phase_main() -> None:

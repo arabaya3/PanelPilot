@@ -15,7 +15,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.models.schemas.design import CompanyProfile, LoadInput, LoadKind, SuggestedPoints
+from app.design.notes import note
+from app.models.schemas.design import (
+    CompanyProfile,
+    DesignNote,
+    LoadInput,
+    LoadKind,
+    SuggestedPoints,
+)
 
 #: Kinds wired single-phase whatever a description says about them.
 _ALWAYS_SINGLE = {LoadKind.SOCKET, LoadKind.LIGHTING, LoadKind.FAN, LoadKind.DATA}
@@ -24,16 +31,6 @@ _ALWAYS_SINGLE = {LoadKind.SOCKET, LoadKind.LIGHTING, LoadKind.FAN, LoadKind.DAT
 #: three-phase load however a description is read.
 _SINGLE_BELOW_KW = Decimal(5)
 _SMALL_SINGLE = {LoadKind.AIR_CONDITIONING, LoadKind.WATER_HEATER, LoadKind.KITCHEN}
-
-
-#: How a circuit's note says where its power came from, per language.
-_SOURCE_LABELS: dict[str, tuple[str, str]] = {
-    "English": ("given", "typical"),
-    "Arabic": (
-        "\u0645\u0646 \u0627\u0644\u0648\u0635\u0641",
-        "\u0642\u064a\u0645\u0629 \u0646\u0645\u0648\u0630\u062c\u064a\u0629",
-    ),
-}
 
 
 def _watts(kw: Decimal) -> str:
@@ -45,8 +42,7 @@ def split_points(
     profile: CompanyProfile,
     *,
     supply_phases: int,
-    language: str = "English",
-) -> tuple[list[LoadInput], list[str]]:
+) -> tuple[list[LoadInput], list[DesignNote]]:
     """Split groups of points into circuits under a company's rules.
 
     Args:
@@ -54,16 +50,14 @@ def split_points(
         profile: The company whose points-per-circuit rule applies.
         supply_phases: The board's supply; three-phase circuits only on a
             three-phase supply.
-        language: The language the notes are written in ("English" or
-            "Arabic"); anything else is written in English.
 
     Returns:
         The circuits, and one line per circuit saying how its power was
-        reached ("Hall sockets 1: 7 x 150 W = 1.05 kW. typical").
+        reached ("Hall sockets 1: 7 x 150 W = 1.05 kW. typical"), its
+        ``source`` param "given" or "typical" for the page to render.
     """
-    given, typical = _SOURCE_LABELS.get(language, _SOURCE_LABELS["English"])
     loads: list[LoadInput] = []
-    notes: list[str] = []
+    notes: list[DesignNote] = []
     for item in items:
         per_circuit = profile.max_points_per_circuit.get(item.load, 1)
         cap = profile.max_kw_per_circuit.get(item.load)
@@ -92,7 +86,13 @@ def split_points(
                 )
             )
             notes.append(
-                f"{name}: {points} x {_watts(item.unit_power_kw)} W = "
-                f"{format(power, 'f')} kW. {given if item.power_stated else typical}"
+                note(
+                    "split_points",
+                    load=name,
+                    points=points,
+                    watts=_watts(item.unit_power_kw),
+                    power=format(power, "f"),
+                    source="given" if item.power_stated else "typical",
+                )
             )
     return loads, notes
