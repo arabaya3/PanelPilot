@@ -196,7 +196,10 @@ describe('board design', () => {
     fireEvent.change(screen.getByLabelText('Drawing language'), { target: { value: 'ar' } });
     await submit();
     await screen.findByTestId('design-result');
-    expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({ language: 'ar' });
+    expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({
+      key: 'iec-default',
+      language: 'ar',
+    });
   });
 
   it('shows a refusal in the server’s words', async () => {

@@ -53,7 +53,7 @@ describe('design schedule helpers', () => {
 
   it('adds the drawing language unless the settings state one', () => {
     expect(withLanguage(null, 'en')).toBeNull();
-    expect(withLanguage(null, 'ar')).toEqual({ language: 'ar' });
+    expect(withLanguage(null, 'ar')).toEqual({ key: 'iec-default', language: 'ar' });
     expect(withLanguage({ key: 'acme' }, 'en')).toEqual({ key: 'acme' });
     expect(withLanguage({ key: 'acme' }, 'ar')).toEqual({ key: 'acme', language: 'ar' });
     expect(withLanguage({ language: 'en' }, 'ar')).toEqual({ language: 'en' });
