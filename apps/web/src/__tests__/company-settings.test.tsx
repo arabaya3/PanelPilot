@@ -4,9 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import {
+  moved,
   parseSettings,
+  readList,
   readSetting,
   settingsText,
+  toggled,
+  writeList,
   writeSetting,
 } from '@/components/design/company-settings-model';
 import type { getCompanySettings, saveCompanySettings } from '@/lib/design';
@@ -24,6 +28,23 @@ describe('company settings model', () => {
     expect(written).toEqual({ ...start, demand_factors: { socket: '0.5' } });
     const cleared = writeSetting(written, ['circuit_rules', 'socket', 'breaker_a'], '');
     expect(cleared).toEqual({ key: 'acme', demand_factors: { socket: '0.5' } });
+  });
+
+  it('orders and picks from a list, the default list left unset', () => {
+    const defaults = ['a', 'b', 'c'];
+    expect(readList({}, 'pages', defaults)).toEqual(defaults);
+    expect(readList({ pages: ['c'] }, 'pages', defaults)).toEqual(['c']);
+    expect(moved(['a', 'b', 'c'], 'c', -1)).toEqual(['a', 'c', 'b']);
+    expect(moved(['a', 'b'], 'a', -1)).toEqual(['a', 'b']);
+    expect(toggled(['a', 'b'], 'a')).toEqual(['b']);
+    expect(toggled(['b'], 'a')).toEqual(['b', 'a']);
+    expect(writeList({ key: 'k' }, 'pages', ['b', 'a', 'c'], defaults)).toEqual({
+      key: 'k',
+      pages: ['b', 'a', 'c'],
+    });
+    expect(writeList({ key: 'k', pages: ['b'] }, 'pages', defaults, defaults)).toEqual({
+      key: 'k',
+    });
   });
 
   it('parses text, and says when it is not a JSON object', () => {
@@ -94,6 +115,26 @@ describe('the company settings panel', () => {
     expect(screen.getByTestId('settings-message').textContent).toBe(
       'Saved. New projects start from these settings.',
     );
+  });
+
+  it('sets letters, the title block and the page order', async () => {
+    const load = vi.fn<typeof getCompanySettings>().mockResolvedValue({
+      kind: 'settings',
+      saved: { settings: null, updated_by: '', updated_at: null },
+    });
+    renderApp(<Harness load={load} save={vi.fn<typeof saveCompanySettings>()} />);
+    await waitFor(() => {
+      expect(load).toHaveBeenCalled();
+    });
+    fireEvent.change(screen.getByLabelText('Designation letters: Contactor'), {
+      target: { value: 'k' },
+    });
+    fireEvent.click(screen.getByLabelText('Customer'));
+    fireEvent.click(screen.getByRole('button', { name: 'Move Parts list up' }));
+    const settings = JSON.parse(screen.getByTestId('text').textContent) as Record<string, unknown>;
+    expect(settings.letters).toEqual({ contactor: 'K' });
+    expect((settings.title_fields as string[]).at(-1)).toBe('customer');
+    expect((settings.page_order as string[]).slice(-2)).toEqual(['parts', 'cables']);
   });
 
   it('keeps settings already typed, and holds the form while the JSON is broken', async () => {

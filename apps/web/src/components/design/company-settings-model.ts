@@ -55,3 +55,39 @@ export function writeSetting(settings: Settings, path: string[], value: string):
   const written = writeSetting(isObject(current) ? current : {}, rest, value);
   return Object.keys(written).length === 0 ? others : { ...others, [head]: written };
 }
+
+/** The list at `key`, or `defaults` where the settings leave it unset. */
+export function readList(settings: Settings, key: string, defaults: readonly string[]): string[] {
+  const value = settings[key];
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+    ? value
+    : [...defaults];
+}
+
+/** The settings with the list at `key`; the default list itself is left unset. */
+export function writeList(
+  settings: Settings,
+  key: string,
+  list: string[],
+  defaults: readonly string[],
+): Settings {
+  const others = Object.fromEntries(Object.entries(settings).filter(([name]) => name !== key));
+  const same = list.length === defaults.length && list.every((item, i) => item === defaults[i]);
+  return same ? others : { ...others, [key]: list };
+}
+
+/** `list` with `item` moved one place towards the start (-1) or end (+1). */
+export function moved(list: string[], item: string, step: -1 | 1): string[] {
+  const from = list.indexOf(item);
+  const to = from + step;
+  if (from < 0 || to < 0 || to >= list.length) return list;
+  const next = [...list];
+  next[from] = next[to] ?? item;
+  next[to] = item;
+  return next;
+}
+
+/** `list` with `item` taken out, or put back at the end. */
+export function toggled(list: string[], item: string): string[] {
+  return list.includes(item) ? list.filter((entry) => entry !== item) : [...list, item];
+}
