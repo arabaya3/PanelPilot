@@ -20,6 +20,6 @@ describe('file picker', () => {
 
   it('cannot be used while disabled', () => {
     renderApp(<FilePicker id="f" label="Schedule" accept=".csv" disabled onFile={vi.fn()} />);
-    expect((screen.getByLabelText('Schedule')).disabled).toBe(true);
+    expect(screen.getByLabelText('Schedule').disabled).toBe(true);
   });
 });
