@@ -123,3 +123,27 @@ def test_a_suggestion_is_charged_to_the_month(
     assert response.json() == {"loads": [], "assumptions": ["x"]}
     assert charged == ["t"]
     assert committed == [True]
+
+
+def test_a_board_is_priced(client: TestClient) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    response = client.post(
+        "/design/quotation",
+        json={
+            "project": project,
+            "pricing": {"price_list": [{"key": "circuit_breaker:1P:C16", "unit_price": "4"}]},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currency"] == "JOD"
+    assert body["complete"] is False
+
+
+def test_a_price_list_is_uploaded(client: TestClient) -> None:
+    response = client.post(
+        "/design/price-list/import",
+        files={"file": ("prices.csv", b"Key,Price\nX,2\n", "text/csv")},
+    )
+    assert response.status_code == 200
+    assert response.json() == [{"key": "X", "description": "", "unit_price": "2"}]

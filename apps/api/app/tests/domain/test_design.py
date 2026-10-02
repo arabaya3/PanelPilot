@@ -151,3 +151,40 @@ def test_a_suggestion_is_split_under_the_company_rules(
     assert [load.description for load in result.loads] == ["Sockets 1", "Sockets 2"]
     assert result.assumptions[0] == "No diversity applied."
     assert result.assumptions[1] == "Sockets 1: 5 x 150 W = 0.75 kW. typical"
+
+
+def test_a_design_is_priced_and_exported_as_a_quotation() -> None:
+    from app.models.schemas.design import PriceListEntry, PricingSettings, QuotationRequest
+
+    designed = design.design_board(session=None, user=USER, request=_request())  # type: ignore[arg-type]
+    pricing = PricingSettings(
+        price_list=[PriceListEntry(key="circuit_breaker:1P:C16", unit_price=Decimal(4))],
+        labour_per_circuit=Decimal(5),
+    )
+    priced = design.price_design(
+        user=USER, request=QuotationRequest(project=designed.project, pricing=pricing)
+    )
+    assert not priced.complete
+    assert priced.labour == Decimal(20)
+    exported = design.export_design(
+        session=None,  # type: ignore[arg-type]
+        user=USER,
+        request=DesignExportRequest(
+            project=designed.project, format=ExportFormat.QUOTATION_PDF, pricing=pricing
+        ),
+    )
+    assert exported.content.startswith(b"%PDF")
+    assert exported.filename.endswith(".quotation.pdf")
+    with pytest.raises(ValidationError, match="pricing settings"):
+        design.export_design(
+            session=None,  # type: ignore[arg-type]
+            user=USER,
+            request=DesignExportRequest(
+                project=designed.project, format=ExportFormat.QUOTATION_CSV
+            ),
+        )
+
+
+def test_a_price_list_is_imported() -> None:
+    entries = design.import_price_list(user=USER, data=b"Key,Price\nX,2\n")
+    assert entries[0].key == "X"

@@ -81,6 +81,7 @@ export async function exportDesign(options: {
   project: DesignProject;
   format: ExportFormat;
   profile?: Record<string, unknown> | null;
+  pricing?: PricingSettings | null;
   fetchImpl?: typeof fetch;
   endpoint?: string;
 }): Promise<ExportOutcome> {
@@ -89,6 +90,7 @@ export async function exportDesign(options: {
     project,
     format,
     profile = null,
+    pricing = null,
     fetchImpl = fetch,
     endpoint = '/api/v1/design/export',
   } = options;
@@ -97,7 +99,7 @@ export async function exportDesign(options: {
     response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ project, format, profile }),
+      body: JSON.stringify({ project, format, profile, pricing }),
     });
   } catch {
     return { kind: 'failed' };
@@ -233,4 +235,103 @@ export async function suggestSchedule(options: {
   if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
   if (!('loads' in payload) || !('assumptions' in payload)) return { kind: 'failed' };
   return { kind: 'suggested', result: payload as LoadScheduleSuggestion };
+}
+
+export type PricingSettings = components['schemas']['PricingSettings'];
+export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
+export type Quotation = components['schemas']['Quotation'];
+
+export type PriceOutcome =
+  | { kind: 'priced'; quotation: Quotation }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/** Price a designed project: `POST /api/v1/design/quotation`. */
+export async function priceDesign(options: {
+  token: string;
+  project: DesignProject;
+  pricing: PricingSettings;
+  profile?: Record<string, unknown> | null;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<PriceOutcome> {
+  const {
+    token,
+    project,
+    pricing,
+    profile = null,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/design/quotation',
+  } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ project, pricing, profile }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 400 || response.status === 422) {
+    return { kind: 'refused', detail: detailOf(payload) };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('lines' in payload) || !('total' in payload)) return { kind: 'failed' };
+  return { kind: 'priced', quotation: payload as Quotation };
+}
+
+export type PriceListOutcome =
+  | { kind: 'imported'; entries: PriceListEntry[] }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/** Read a price list (.xlsx or .csv): `POST /api/v1/design/price-list/import`. */
+export async function importPriceList(options: {
+  token: string;
+  file: Blob;
+  filename: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<PriceListOutcome> {
+  const {
+    token,
+    file,
+    filename,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/design/price-list/import',
+  } = options;
+  const body = new FormData();
+  body.append('file', file, filename);
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 400 || response.status === 422) {
+    return { kind: 'refused', detail: detailOf(payload) };
+  }
+  if (!response.ok || !Array.isArray(payload)) return { kind: 'failed' };
+  return { kind: 'imported', entries: payload as PriceListEntry[] };
 }

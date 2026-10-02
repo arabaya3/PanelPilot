@@ -593,6 +593,40 @@
       "working": "Drafting…",
       "done": "Suggested schedule. Assumptions:",
       "budget": "This month's AI allowance is used up."
+    },
+    "quote": {
+      "title": "Quotation",
+      "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (circuit_breaker:1P:C16) until a catalogue is chosen; a line with no price is never guessed.",
+      "priceList": "Price list",
+      "priceListHelp": "Excel or CSV with a key (or order number) column and a price column.",
+      "listLoaded": "{count, plural, one {# price loaded.} other {# prices loaded.}}",
+      "field": {
+        "currency": "Currency",
+        "cableLength": "Cable length when not given",
+        "labourCircuit": "Labour per circuit",
+        "labourBoard": "Labour per board",
+        "enclosure": "Enclosure and accessories",
+        "markup": "Markup",
+        "vat": "VAT"
+      },
+      "submit": "Price the board",
+      "working": "Pricing…",
+      "pdf": "Quotation (PDF)",
+      "csv": "Quotation (CSV)",
+      "error": "The quotation could not be completed. Try again.",
+      "incomplete": "{count, plural, one {# line has no price} other {# lines have no price}} and is left out of the total.",
+      "col": {
+        "item": "Item",
+        "qty": "Qty",
+        "unitPrice": "Unit price",
+        "total": "Total"
+      },
+      "notPriced": "not priced",
+      "materials": "Materials",
+      "labour": "Labour and enclosure",
+      "markup": "Markup",
+      "vat": "VAT",
+      "total": "Total"
     }
   }
 }

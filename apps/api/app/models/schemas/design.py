@@ -611,6 +611,8 @@ class ExportFormat(StrEnum):
     PARTS_CSV = "parts_csv"
     CABLES_CSV = "cables_csv"
     CIRCUITS_CSV = "circuits_csv"
+    QUOTATION_PDF = "quotation_pdf"
+    QUOTATION_CSV = "quotation_csv"
     JSON = "json"
 
 
@@ -621,11 +623,13 @@ class DesignExportRequest(BaseModel):
         project: The project.
         profile: The company's profile settings; ``None`` for the default.
         format: The file to produce.
+        pricing: The company's prices, for a quotation export.
     """
 
     project: DesignProject
     profile: dict[str, Any] | None = None
     format: ExportFormat
+    pricing: PricingSettings | None = None
 
 
 class LoadScheduleImport(BaseModel):
@@ -696,3 +700,111 @@ class LoadScheduleSuggestion(BaseModel):
 
     loads: list[LoadInput]
     assumptions: list[str]
+
+
+class PriceListEntry(BaseModel):
+    """One price from a company's price list.
+
+    Attributes:
+        key: What it prices: a manufacturer's order number or type number,
+            or a rating key ("circuit_breaker:1P:C16",
+            "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
+            metre) for a device whose article is not chosen yet.
+        description: The supplier's description, for the quotation.
+        unit_price: Price of one, or of one metre for a cable.
+    """
+
+    key: str = Field(min_length=1, max_length=120)
+    description: str = ""
+    unit_price: Decimal = Field(ge=0)
+
+
+class PricingSettings(BaseModel):
+    """How a company prices a board.
+
+    Attributes:
+        currency: Printed beside every amount.
+        price_list: The company's prices.
+        cable_length_m: The length priced for an outgoing cable whose own
+            length is not given; ``None`` leaves such cables unpriced.
+        labour_per_circuit: Wiring and testing, per outgoing circuit.
+        labour_per_board: Assembly and testing, per board.
+        enclosure_price: The enclosure, busbars and accessories, per board.
+        markup_percent: Added to materials and labour.
+        vat_percent: Added last.
+    """
+
+    currency: str = Field(default="JOD", min_length=1, max_length=8)
+    price_list: list[PriceListEntry] = Field(default_factory=list)
+    cable_length_m: Decimal | None = Field(default=None, gt=0)
+    labour_per_circuit: Decimal = Field(default=Decimal(0), ge=0)
+    labour_per_board: Decimal = Field(default=Decimal(0), ge=0)
+    enclosure_price: Decimal = Field(default=Decimal(0), ge=0)
+    markup_percent: Decimal = Field(default=Decimal(0), ge=0, le=500)
+    vat_percent: Decimal = Field(default=Decimal(0), ge=0, le=100)
+
+
+class QuotationLine(BaseModel):
+    """One line of a quotation.
+
+    Attributes:
+        description: What it is.
+        designations: The devices or cables it covers.
+        quantity: How many, or metres for a cable.
+        unit: "pcs" or "m".
+        key: The price-list key it was matched by, or would be.
+        unit_price: ``None`` when the price list has no price for it.
+        total: ``None`` when unpriced.
+    """
+
+    description: str
+    designations: list[str]
+    quantity: Decimal
+    unit: str
+    key: str
+    unit_price: Decimal | None
+    total: Decimal | None
+
+
+class Quotation(BaseModel):
+    """A board's price, line by line, with what could not be priced.
+
+    Attributes:
+        currency: Of every amount.
+        lines: Materials, then labour and enclosure.
+        materials: Sum of the priced material lines.
+        labour: Labour and enclosure.
+        markup: On materials and labour.
+        vat: On the marked-up total.
+        total: What the customer pays, for what was priced.
+        unpriced: The lines with no price, by key, for the price list's owner.
+        complete: Whether every line was priced.
+    """
+
+    currency: str
+    lines: list[QuotationLine]
+    materials: Decimal
+    labour: Decimal
+    markup: Decimal
+    vat: Decimal
+    total: Decimal
+    unpriced: list[str]
+    complete: bool
+
+
+class QuotationRequest(BaseModel):
+    """A project to price.
+
+    Attributes:
+        project: The designed project.
+        profile: The company's profile settings; ``None`` for the default.
+        pricing: The company's prices and rates.
+    """
+
+    project: DesignProject
+    profile: dict[str, Any] | None = None
+    pricing: PricingSettings
+
+
+# The export request names the pricing settings, defined after it.
+DesignExportRequest.model_rebuild()

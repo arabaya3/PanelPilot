@@ -376,6 +376,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/quotation': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Price Design */
+    post: operations['price_design_api_v1_design_quotation_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/price-list/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Price List
+     * @description Read a company's price list (.xlsx or .csv).
+     */
+    post: operations['import_price_list_api_v1_design_price_list_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -823,6 +860,11 @@ export interface components {
     };
     /** Body_import_load_schedule_api_v1_design_load_schedule_import_post */
     Body_import_load_schedule_api_v1_design_load_schedule_import_post: {
+      /** File */
+      file: string;
+    };
+    /** Body_import_price_list_api_v1_design_price_list_import_post */
+    Body_import_price_list_api_v1_design_price_list_import_post: {
       /** File */
       file: string;
     };
@@ -1324,6 +1366,7 @@ export interface components {
      *         project: The project.
      *         profile: The company's profile settings; ``None`` for the default.
      *         format: The file to produce.
+     *         pricing: The company's prices, for a quotation export.
      */
     DesignExportRequest: {
       project: components['schemas']['DesignProject-Input'];
@@ -1332,6 +1375,7 @@ export interface components {
         [key: string]: unknown;
       } | null;
       format: components['schemas']['ExportFormat'];
+      pricing?: components['schemas']['PricingSettings'] | null;
     };
     /**
      * DesignProject
@@ -1835,6 +1879,8 @@ export interface components {
       | 'parts_csv'
       | 'cables_csv'
       | 'circuits_csv'
+      | 'quotation_pdf'
+      | 'quotation_csv'
       | 'json';
     /**
      * FaultRecognitionResult
@@ -2452,6 +2498,103 @@ export interface components {
       checked_by: string;
     };
     /**
+     * PriceListEntry
+     * @description One price from a company's price list.
+     *
+     *     Attributes:
+     *         key: What it prices: a manufacturer's order number or type number,
+     *             or a rating key ("circuit_breaker:1P:C16",
+     *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
+     *             metre) for a device whose article is not chosen yet.
+     *         description: The supplier's description, for the quotation.
+     *         unit_price: Price of one, or of one metre for a cable.
+     */
+    'PriceListEntry-Input': {
+      /** Key */
+      key: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Unit Price */
+      unit_price: number | string;
+    };
+    /**
+     * PriceListEntry
+     * @description One price from a company's price list.
+     *
+     *     Attributes:
+     *         key: What it prices: a manufacturer's order number or type number,
+     *             or a rating key ("circuit_breaker:1P:C16",
+     *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
+     *             metre) for a device whose article is not chosen yet.
+     *         description: The supplier's description, for the quotation.
+     *         unit_price: Price of one, or of one metre for a cable.
+     */
+    'PriceListEntry-Output': {
+      /** Key */
+      key: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Unit Price */
+      unit_price: string;
+    };
+    /**
+     * PricingSettings
+     * @description How a company prices a board.
+     *
+     *     Attributes:
+     *         currency: Printed beside every amount.
+     *         price_list: The company's prices.
+     *         cable_length_m: The length priced for an outgoing cable whose own
+     *             length is not given; ``None`` leaves such cables unpriced.
+     *         labour_per_circuit: Wiring and testing, per outgoing circuit.
+     *         labour_per_board: Assembly and testing, per board.
+     *         enclosure_price: The enclosure, busbars and accessories, per board.
+     *         markup_percent: Added to materials and labour.
+     *         vat_percent: Added last.
+     */
+    PricingSettings: {
+      /**
+       * Currency
+       * @default JOD
+       */
+      currency: string;
+      /** Price List */
+      price_list?: components['schemas']['PriceListEntry-Input'][];
+      /** Cable Length M */
+      cable_length_m?: number | string | null;
+      /**
+       * Labour Per Circuit
+       * @default 0
+       */
+      labour_per_circuit: number | string;
+      /**
+       * Labour Per Board
+       * @default 0
+       */
+      labour_per_board: number | string;
+      /**
+       * Enclosure Price
+       * @default 0
+       */
+      enclosure_price: number | string;
+      /**
+       * Markup Percent
+       * @default 0
+       */
+      markup_percent: number | string;
+      /**
+       * Vat Percent
+       * @default 0
+       */
+      vat_percent: number | string;
+    };
+    /**
      * ProjectInfo
      * @description What the title block prints.
      *
@@ -2556,6 +2699,87 @@ export interface components {
       question_limit: number;
       /** Questions Remaining */
       questions_remaining: number;
+    };
+    /**
+     * Quotation
+     * @description A board's price, line by line, with what could not be priced.
+     *
+     *     Attributes:
+     *         currency: Of every amount.
+     *         lines: Materials, then labour and enclosure.
+     *         materials: Sum of the priced material lines.
+     *         labour: Labour and enclosure.
+     *         markup: On materials and labour.
+     *         vat: On the marked-up total.
+     *         total: What the customer pays, for what was priced.
+     *         unpriced: The lines with no price, by key, for the price list's owner.
+     *         complete: Whether every line was priced.
+     */
+    Quotation: {
+      /** Currency */
+      currency: string;
+      /** Lines */
+      lines: components['schemas']['QuotationLine'][];
+      /** Materials */
+      materials: string;
+      /** Labour */
+      labour: string;
+      /** Markup */
+      markup: string;
+      /** Vat */
+      vat: string;
+      /** Total */
+      total: string;
+      /** Unpriced */
+      unpriced: string[];
+      /** Complete */
+      complete: boolean;
+    };
+    /**
+     * QuotationLine
+     * @description One line of a quotation.
+     *
+     *     Attributes:
+     *         description: What it is.
+     *         designations: The devices or cables it covers.
+     *         quantity: How many, or metres for a cable.
+     *         unit: "pcs" or "m".
+     *         key: The price-list key it was matched by, or would be.
+     *         unit_price: ``None`` when the price list has no price for it.
+     *         total: ``None`` when unpriced.
+     */
+    QuotationLine: {
+      /** Description */
+      description: string;
+      /** Designations */
+      designations: string[];
+      /** Quantity */
+      quantity: string;
+      /** Unit */
+      unit: string;
+      /** Key */
+      key: string;
+      /** Unit Price */
+      unit_price: string | null;
+      /** Total */
+      total: string | null;
+    };
+    /**
+     * QuotationRequest
+     * @description A project to price.
+     *
+     *     Attributes:
+     *         project: The designed project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     *         pricing: The company's prices and rates.
+     */
+    QuotationRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      pricing: components['schemas']['PricingSettings'];
     };
     /**
      * RecognisedField
@@ -3750,6 +3974,72 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['LoadScheduleSuggestion'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  price_design_api_v1_design_quotation_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['QuotationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Quotation'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  import_price_list_api_v1_design_price_list_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_import_price_list_api_v1_design_price_list_import_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PriceListEntry-Output'][];
         };
       };
       /** @description Validation Error */

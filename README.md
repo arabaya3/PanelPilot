@@ -279,6 +279,21 @@ circuit's arithmetic is listed ("7 x 150 W = 1.05 kW. typical") for the
 engineer to check, and each suggestion is charged to the tenant's monthly
 model allowance.
 
+A designed board can be **priced** from the company's price list (Excel
+or CSV) and rates (`app/design/quotation.py`):
+
+- **Matching:** each device is matched by its order number or type number.
+  Until a catalogue is chosen it is matched by its rating key
+  (`circuit_breaker:1P:C16`, `residual_current_device:4P:40A:30mA`). Cables
+  are priced per metre (`cable:3G2.5:Cu:PVC`) at their own length or the
+  company's default length.
+- **Rates:** labour per circuit and per board, the enclosure, markup and VAT
+  are added in that order.
+- **No guessing:** a line with no price is never priced at a guess. It stays
+  on the quotation without an amount, the quotation is marked incomplete,
+  and the PDF says so above its totals.
+- **Output:** the quotation exports as PDF or CSV.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The

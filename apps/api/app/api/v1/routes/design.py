@@ -18,6 +18,9 @@ from app.models.schemas.design import (
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    PriceListEntry,
+    Quotation,
+    QuotationRequest,
     ScheduleSuggestionRequest,
 )
 
@@ -79,3 +82,23 @@ def suggest_load_schedule(
     result = design_domain.suggest_load_schedule(user=user, request=payload)
     session.commit()
     return result
+
+
+@router.post("/quotation", response_model=Quotation)
+def price_design(
+    payload: QuotationRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> Quotation:
+    del session
+    return design_domain.price_design(user=user, request=payload)
+
+
+@router.post("/price-list/import", response_model=list[PriceListEntry])
+async def import_price_list(
+    user: CurrentUserDep,
+    file: Annotated[UploadFile, File()],
+) -> list[PriceListEntry]:
+    """Read a company's price list (.xlsx or .csv)."""
+    data = await file.read(design_domain.MAX_SCHEDULE_BYTES + 1)
+    return design_domain.import_price_list(user=user, data=data)
