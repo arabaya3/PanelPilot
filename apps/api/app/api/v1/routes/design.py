@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 
 from app.api.deps import (
     CurrentUserDep,
@@ -23,6 +23,7 @@ from app.models.schemas.design import (
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    MarkupReport,
     PlcProgramRequest,
     PlcProgramResponse,
     PriceListEntry,
@@ -186,3 +187,17 @@ def delete_project(project_id: str, session: SessionDep, user: CurrentUserDep) -
     """Delete a saved project and all its revisions."""
     design_projects.delete_project(session=session, user=user, project_id=project_id)
     return Response(status_code=204)
+
+
+@router.post("/markups", response_model=MarkupReport)
+async def read_markups(
+    user: CurrentUserDep,
+    file: Annotated[UploadFile, File()],
+    project: Annotated[str | None, Form()] = None,
+    profile: Annotated[str | None, Form()] = None,
+) -> MarkupReport:
+    """Read a reviewer's marks off a drawing set PDF, placed on this project's drawings."""
+    data = await file.read(design_domain.MAX_MARKUP_BYTES + 1)
+    return design_domain.read_markups(
+        user=user, data=data, project_json=project, profile_json=profile
+    )

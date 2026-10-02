@@ -23,6 +23,7 @@ import {
   type Load,
   type ProjectInfo,
 } from '@/components/design/schedule';
+import { MarkupsPanel } from '@/components/design/markups-panel';
 import { ProjectsPanel, type OpenedProject } from '@/components/design/projects-panel';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import { PlcPanel } from '@/components/plc-panel';
@@ -512,6 +513,12 @@ export function DesignScreen({
       {designed && token !== null && (
         <div className="mt-6">
           <QuotationPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
+        </div>
+      )}
+
+      {designed && token !== null && (
+        <div className="mt-6">
+          <MarkupsPanel token={token} project={designed} profile={profile} />
         </div>
       )}
 
