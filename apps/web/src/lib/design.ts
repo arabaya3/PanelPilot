@@ -330,6 +330,19 @@ export function openProject(
   );
 }
 
+/** Approve one revision, once, by the engineer's name for the title block. */
+export function approveRevision(
+  options: Transport & { id: string; revision: number; approver: string },
+): Promise<ProjectOutcome> {
+  const { id, revision, approver } = options;
+  return call(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
+    { approver },
+    saved,
+  );
+}
+
 /** Delete a project and all its revisions. */
 export function deleteProject(options: Transport & { id: string }): Promise<DeleteOutcome> {
   return call<DeleteOutcome>(

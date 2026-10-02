@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ProjectsPanel } from '@/components/design/projects-panel';
+import { approvalOf, ProjectsPanel } from '@/components/design/projects-panel';
 import { fromRequest, profileFrom } from '@/components/design/schedule';
 import {
+  type approveRevision,
   deleteProject,
   listProjects,
   openProject,
@@ -83,6 +84,17 @@ function project(revision: number): SavedProject {
   };
 }
 
+function approvedProject(): SavedProject {
+  const saved = project(1);
+  const [first] = saved.revisions;
+  return first
+    ? {
+        ...saved,
+        revisions: [{ ...first, approved_by: 'A. Rabaya', approved_at: '2026-10-02T12:00:00Z' }],
+      }
+    : saved;
+}
+
 describe('a saved project back as the form', () => {
   it('keeps every board, supply, feeder and row, with fresh keys', () => {
     const { info, boards, used } = fromRequest(SAVED_REQUEST, 10);
@@ -123,6 +135,10 @@ describe('the projects panel', () => {
       .fn<typeof openProject>()
       .mockResolvedValue({ kind: 'saved', project: project(2) });
     const remove = vi.fn<typeof deleteProject>().mockResolvedValue({ kind: 'deleted' });
+    const approve = vi.fn<typeof approveRevision>().mockResolvedValue({
+      kind: 'saved',
+      project: approvedProject(),
+    });
     const onOpened = vi.fn();
     renderApp(
       <ProjectsPanel
@@ -130,10 +146,10 @@ describe('the projects panel', () => {
         current={{ name: 'Tower', request: REQUEST }}
         opened={opened}
         onOpened={onOpened}
-        impls={{ list, save, revise, open, remove }}
+        impls={{ list, save, revise, open, remove, approve }}
       />,
     );
-    return { list, save, revise, open, remove, onOpened };
+    return { list, save, revise, open, remove, approve, onOpened };
   }
 
   it('saves a new project, then lists it', async () => {
@@ -154,6 +170,7 @@ describe('the projects panel', () => {
       name: 'Tower',
       revision: 2,
       revisions: [1, 2],
+      approval: null,
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save as new revision' }));
     await waitFor(() => {
@@ -165,6 +182,49 @@ describe('the projects panel', () => {
       expect(open.mock.calls[0]?.[0]).toMatchObject({ id: 'p1', revision: 1 });
     });
     expect(onOpened).toHaveBeenLastCalledWith(project(2), true);
+  });
+
+  it('approves the open revision by name, then says who approved it', async () => {
+    const { approve, onOpened } = render({
+      id: 'p1',
+      name: 'Tower',
+      revision: 1,
+      revisions: [1],
+      approval: null,
+    });
+    const button = screen.getByRole('button', { name: 'Approve revision 1' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Approving engineer'), {
+      target: { value: ' A. Rabaya ' },
+    });
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(onOpened).toHaveBeenCalledWith(approvedProject(), false);
+    });
+    expect(approve.mock.calls[0]?.[0]).toMatchObject({
+      id: 'p1',
+      revision: 1,
+      approver: 'A. Rabaya',
+    });
+    expect(approvalOf(approvedProject())).toEqual({
+      by: 'A. Rabaya',
+      at: '2026-10-02T12:00:00Z',
+    });
+    expect(approvalOf(project(1))).toBeNull();
+  });
+
+  it('shows an approved revision as approved, with nothing to sign', () => {
+    render({
+      id: 'p1',
+      name: 'Tower',
+      revision: 1,
+      revisions: [1],
+      approval: { by: 'A. Rabaya', at: '2026-10-02T12:00:00Z' },
+    });
+    expect(screen.getByTestId('project-approval').textContent).toBe(
+      'Revision 1 approved by A. Rabaya on 2026-10-02.',
+    );
+    expect(screen.queryByLabelText('Approving engineer')).toBeNull();
   });
 
   it('asks before deleting', async () => {

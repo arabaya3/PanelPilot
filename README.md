@@ -487,6 +487,11 @@ whose cable length is given, once the board's `Ze` is entered
 - **Revisions:** every save is a new revision, never an overwrite. Any
   earlier revision can be opened, and a drawing set issued at revision 3 can
   still be reproduced after revision 7.
+- **Approval:** the engineer approves a revision by name, once
+  (`POST /design/projects/{id}/revisions/{n}/approval`). The approver, the
+  account and the time are kept and never cleared. Opening a revision puts
+  the saved revisions up to it in the title block's revision list, with who
+  approved each. A project with an approved revision cannot be deleted.
 - **Isolation:** projects belong to the tenant (ADR 0003). Another tenant's
   project is answered as one that does not exist.
 - **Limits:** the list is paged by cursor. There are at most 1000 projects

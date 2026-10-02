@@ -775,7 +775,9 @@
       "bad_cursor": "The project list could not be continued; reload it.",
       "markups_unreadable": "The file could not be read as a PDF.",
       "markups_too_large": "The PDF is larger than the 5 MB read for markups.",
-      "markups_too_long": "The PDF has more than {limit} pages."
+      "markups_too_long": "The PDF has more than {limit} pages.",
+      "revision_already_approved": "Revision {revision} is approved already, by {approver}.",
+      "project_approved": "This project has an approved revision ({revision}), so it cannot be deleted."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -794,7 +796,11 @@
       "revisions": "{count, plural, one {# revision} other {# revisions}}",
       "open": "Open",
       "delete": "Delete",
-      "confirmDelete": "Delete for good?"
+      "confirmDelete": "Delete for good?",
+      "approver": "Approving engineer",
+      "approve": "Approve revision {revision}",
+      "approvedNow": "Revision {revision} is approved; its title block now carries the approval.",
+      "approvedBy": "Revision {revision} approved by {name} on {date}."
     },
     "markups": {
       "title": "Review markups",

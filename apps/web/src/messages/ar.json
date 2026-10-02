@@ -775,7 +775,9 @@
       "bad_cursor": "تعذّر متابعة قائمة المشاريع؛ أعد تحميلها.",
       "markups_unreadable": "تعذّرت قراءة الملف كملف PDF.",
       "markups_too_large": "ملف PDF أكبر من 5 ميغابايت المسموح بها لقراءة الملاحظات.",
-      "markups_too_long": "ملف PDF أطول من {limit} صفحة."
+      "markups_too_long": "ملف PDF أطول من {limit} صفحة.",
+      "revision_already_approved": "المراجعة {revision} معتمدة مسبقاً من {approver}.",
+      "project_approved": "لهذا المشروع مراجعة معتمدة ({revision})، فلا يمكن حذفه."
     },
     "drawingLanguage": "لغة المخططات",
     "drawingLanguages": {
@@ -794,7 +796,11 @@
       "revisions": "{count, plural, one {مراجعة واحدة} two {مراجعتان} few {# مراجعات} many {# مراجعة} other {# مراجعة}}",
       "open": "افتح",
       "delete": "احذف",
-      "confirmDelete": "تأكيد الحذف نهائياً؟"
+      "confirmDelete": "تأكيد الحذف نهائياً؟",
+      "approver": "المهندس المعتمِد",
+      "approve": "اعتماد المراجعة {revision}",
+      "approvedNow": "اعتُمدت المراجعة {revision}؛ ويظهر الاعتماد الآن في جدول العنوان.",
+      "approvedBy": "المراجعة {revision} معتمدة من {name} بتاريخ {date}."
     },
     "markups": {
       "title": "ملاحظات المراجعة",

@@ -1007,12 +1007,27 @@ class RevisionSummary(BaseModel):
         note: What it is.
         author: Who saved it.
         created_at: When, ISO 8601.
+        approved_by: The engineer who approved it, as the title block
+            prints them; ``None`` while it is not approved.
+        approved_at: When, ISO 8601.
     """
 
     number: int
     note: str
     author: str
     created_at: str
+    approved_by: str | None = None
+    approved_at: str | None = None
+
+
+class ApproveRevisionRequest(BaseModel):
+    """An engineer's approval of one revision.
+
+    Attributes:
+        approver: Their name as the title block is to print it.
+    """
+
+    approver: str = Field(min_length=1, max_length=100)
 
 
 class ProjectSummary(BaseModel):

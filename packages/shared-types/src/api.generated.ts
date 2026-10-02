@@ -521,6 +521,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/approval': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve Revision
+     * @description Approve one revision of a saved project, once; it then cannot be deleted.
+     */
+    post: operations['approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/markups': {
     parameters: {
       query?: never;
@@ -881,6 +901,17 @@ export interface components {
       /** Value */
       value: string;
       source: components['schemas']['Citation'];
+    };
+    /**
+     * ApproveRevisionRequest
+     * @description An engineer's approval of one revision.
+     *
+     *     Attributes:
+     *         approver: Their name as the title block is to print it.
+     */
+    ApproveRevisionRequest: {
+      /** Approver */
+      approver: string;
     };
     /**
      * Board
@@ -3447,6 +3478,9 @@ export interface components {
      *         note: What it is.
      *         author: Who saved it.
      *         created_at: When, ISO 8601.
+     *         approved_by: The engineer who approved it, as the title block
+     *             prints them; ``None`` while it is not approved.
+     *         approved_at: When, ISO 8601.
      */
     RevisionSummary: {
       /** Number */
@@ -3457,6 +3491,10 @@ export interface components {
       author: string;
       /** Created At */
       created_at: string;
+      /** Approved By */
+      approved_by?: string | null;
+      /** Approved At */
+      approved_at?: string | null;
     };
     /**
      * SaveProjectRequest
@@ -4889,6 +4927,42 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ApproveRevisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
         headers: {
           [name: string]: unknown;
         };

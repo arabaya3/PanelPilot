@@ -253,6 +253,7 @@ def test_project_routes_call_the_domain(
     monkeypatch.setattr(design_projects, "revise_project", record("revise", saved))
     monkeypatch.setattr(design_projects, "open_project", record("open", saved))
     monkeypatch.setattr(design_projects, "delete_project", record("delete", None))
+    monkeypatch.setattr(design_projects, "approve_revision", record("approve", saved))
     page = ProjectPage(
         projects=[ProjectSummary(id="p1", name="Pocket", revisions=1, updated_at="now")]
     )
@@ -264,8 +265,14 @@ def test_project_routes_call_the_domain(
     assert client.get("/design/projects/p1?revision=1").json()["revision"] == 1
     revision = {"request": body["request"], "note": "more"}
     assert client.post("/design/projects/p1/revisions", json=revision).status_code == 201
+    approval = client.post("/design/projects/p1/revisions/1/approval", json={"approver": "A"})
+    assert approval.status_code == 200
+    assert (
+        client.post("/design/projects/p1/revisions/0/approval", json={"approver": "A"}).status_code
+        == 422
+    )
     assert client.delete("/design/projects/p1").status_code == 204
-    assert calls == ["save", "list", "open", "revise", "delete"]
+    assert calls == ["save", "list", "open", "revise", "approve", "delete"]
 
 
 def test_a_project_needs_a_name(client: TestClient) -> None:

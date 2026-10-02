@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile
 
 from app.api.deps import (
     CurrentUserDep,
@@ -18,6 +18,7 @@ from app.api.deps import (
 from app.domain import design as design_domain
 from app.domain import design_projects, model_budget
 from app.models.schemas.design import (
+    ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
     DesignExportRequest,
@@ -179,6 +180,20 @@ def revise_project(
     """Save a new revision of a project."""
     return design_projects.revise_project(
         session=session, user=user, project_id=project_id, request=payload
+    )
+
+
+@router.post("/projects/{project_id}/revisions/{number}/approval", response_model=SavedProject)
+def approve_revision(
+    project_id: str,
+    number: Annotated[int, Path(ge=1)],
+    payload: ApproveRevisionRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> SavedProject:
+    """Approve one revision of a saved project, once; it then cannot be deleted."""
+    return design_projects.approve_revision(
+        session=session, user=user, project_id=project_id, number=number, request=payload
     )
 
 
