@@ -60,7 +60,7 @@ def device_key(device: Device) -> str:
 
     Returns:
         "circuit_breaker:1P:C16", "residual_current_device:4P:40A:30mA",
-        "contactor:2P:20A", ...
+        "contactor:2P:20A", "switch_disconnector:4P:63A", ...
     """
     parts = [device.kind.value]
     if device.poles:
@@ -68,7 +68,10 @@ def device_key(device: Device) -> str:
     if device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE:
         parts.append(f"{_plain(device.rated_current_a)}A")
         parts.append(f"{_plain(device.residual_current_ma)}mA")
-    elif device.kind is DeviceKind.CONTACTOR and device.rated_current_a is not None:
+    elif (
+        device.kind in (DeviceKind.CONTACTOR, DeviceKind.SWITCH_DISCONNECTOR)
+        and device.rated_current_a is not None
+    ):
         parts.append(f"{_plain(device.rated_current_a)}A")
     elif device.rated_current_a is not None:
         parts.append(f"{device.curve or ''}{_plain(device.rated_current_a)}")

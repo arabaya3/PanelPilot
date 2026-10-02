@@ -12,7 +12,13 @@ from app.design.sheet import Circle, Line, Rect, Text
 
 
 @pytest.mark.parametrize(
-    "draw", [symbols.circuit_breaker, symbols.residual_current_device, symbols.contactor]
+    "draw",
+    [
+        symbols.circuit_breaker,
+        symbols.residual_current_device,
+        symbols.contactor,
+        symbols.switch_disconnector,
+    ],
 )
 def test_a_device_runs_from_its_top_to_its_bottom(draw: object) -> None:
     items, bottom = draw(100.0, 50.0, 3)  # type: ignore[operator]
@@ -32,6 +38,14 @@ def test_the_rcd_has_its_transformer() -> None:
 def test_the_contactor_carries_its_mark() -> None:
     items, _ = symbols.contactor(0.0, 0.0)
     assert any(isinstance(i, Circle) for i in items)
+
+
+def test_the_switch_disconnector_has_its_bar_and_ring_clear_of_the_pole_mark() -> None:
+    items, _ = symbols.switch_disconnector(0.0, 0.0, 4)
+    (ring,) = [i for i in items if isinstance(i, Circle)]
+    assert any(isinstance(i, Line) and i.y1 == i.y2 and i.x1 < 0 < i.x2 for i in items)
+    mark = next(i for i in symbols.pole_marks(0.0, 3.0, 4) if isinstance(i, Line))
+    assert ring.y - ring.r >= max(mark.y1, mark.y2)
 
 
 def test_single_pole_marks_carry_no_number() -> None:

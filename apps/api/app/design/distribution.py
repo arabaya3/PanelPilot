@@ -15,8 +15,16 @@ comes from its profile; what neither settles is left on the board as a note.
   of its own (handbook §5.7), so each group is fed through a group
   circuit-breaker rated for the group's most loaded line conductor (and no
   lower than the largest breaker it feeds), and the RCCB's rated current is
-  the smallest preferred value at or above it. Discrimination between the
-  group and outgoing breakers is not checked, and the board says so.
+  the smallest preferred value at or above it.
+* Discrimination: each breaker is rated at least the company's ratio (1.6 by
+  default) times the largest breaker after it, so it holds on overload: a
+  group breaker, as far as its RCCB's ratings allow; the incomer; and a
+  feeder, against the breakers its sub-board's switch feeds (``project``).
+  A sub-board's incomer is a switch-disconnector rated no lower than the
+  feeder breaker that protects it: a breaker there would be one more level
+  for the ratio to multiply through. On short circuit,
+  miniature breakers discriminate only up to the upstream one's instantaneous
+  trip (5 In for curve C, IEC 60898-1), which the board says.
 * Single-phase loads are spread over L1-L3 largest first onto the least
   loaded conductor. The resulting imbalance is checked against the profile.
 * The incomer is rated for the most loaded line conductor with no diversity
@@ -77,6 +85,12 @@ BREAKING_CAPACITIES: tuple[Decimal, ...] = tuple(
     Decimal(r) for r in ("6", "10", "15", "25", "36", "50")
 )
 
+#: Rated currents of switch-disconnectors (IEC 60947-3), as the common
+#: ranges list them.
+ISOLATOR_RATINGS: tuple[Decimal, ...] = tuple(
+    Decimal(r) for r in ("16", "25", "32", "40", "63", "80", "100", "125", "160", "200", "250")
+)
+
 _LINES = (Phase.L1, Phase.L2, Phase.L3)
 _SQRT3 = Decimal(3).sqrt()
 
@@ -102,6 +116,14 @@ def _plain(value: Decimal) -> str:
     return format(value.normalize(), "f")
 
 
+def _rating(current: Decimal) -> Decimal | None:
+    """The smallest miniature breaker rating carrying ``current``; none beyond the table."""
+    try:
+        return Decimal(feeder_protection.smallest_rating(current))
+    except ValidationError:
+        return None
+
+
 def _phase_voltage(request: DistributionBoardRequest) -> Decimal:
     supply = request.supply
     if supply.phases == 1:
@@ -116,6 +138,7 @@ def _size(
     index: int,
     notes: list[DesignNote],
     budget: voltage_drop.Budget,
+    sub_board_after_a: dict[str, Decimal],
 ) -> _Sized:
     three_phase = load.phases == 3
     if three_phase and request.supply.phases == 1:
@@ -133,18 +156,32 @@ def _size(
     )
     rule = profile.circuit_rules.get(load.load)
     fixed = rule.breaker_a if rule else None
+    # A feeder is rated for discrimination with the sub-board's breakers.
+    after = sub_board_after_a.get(load.feeds) if load.feeds else None
+    needed = max(current, after * profile.discrimination_ratio) if after else current
     selected = True
-    if fixed is not None and fixed >= current:
+    if fixed is not None and fixed >= needed:
         rated = fixed
     else:
-        try:
-            rated = Decimal(feeder_protection.smallest_rating(current))
-        except ValidationError:
+        rating = _rating(needed)
+        if rating is not None:
+            rated = rating
+        else:
             # A main board's large feeders are moulded-case breakers, which
             # the miniature-breaker table does not hold: left unselected,
             # as the incomer is, rather than refusing the whole board.
-            rated, selected = current, False
-            notes.append(note("mccb_needed", load=load.description, current=_plain(current)))
+            rated, selected = needed, False
+            notes.append(note("mccb_needed", load=load.description, current=_plain(needed)))
+        if after and selected and rated != _rating(current):
+            notes.append(
+                note(
+                    "discrimination_feeder_raised",
+                    board=load.feeds,
+                    rated=_plain(rated),
+                    ratio=_plain(profile.discrimination_ratio),
+                    after=_plain(after),
+                )
+            )
         if fixed is not None and selected:
             notes.append(
                 note(
@@ -409,6 +446,25 @@ def _rate_breaking_capacity(
     return [note("breaking_capacity", rating=_plain(required), fault=_plain(fault_level_ka))]
 
 
+def _group_rating(carrying: Decimal, after: Decimal, ratio: Decimal) -> Decimal | None:
+    """A group breaker's rating for discrimination with the breakers after it.
+
+    Args:
+        carrying: The rating that carries the group.
+        after: The largest breaker it feeds.
+        ratio: The company's discrimination ratio.
+
+    Returns:
+        The smallest rating at or above both ``carrying`` and ``ratio`` times
+        ``after`` that a miniature breaker and an RCCB are held in; ``None``
+        if there is none.
+    """
+    rating = _rating(max(carrying, after * ratio))
+    if rating is None or rating > RCCB_RATINGS[-1]:
+        return None
+    return rating
+
+
 def _rccb_rating(current: Decimal) -> Decimal:
     for rating in RCCB_RATINGS:
         if rating >= current:
@@ -421,10 +477,76 @@ def _rccb_rating(current: Decimal) -> Decimal:
     )
 
 
+def _incomer(
+    request: DistributionBoardRequest,
+    most: Decimal,
+    after: Decimal,
+    ratio: Decimal,
+    supply_breaker_a: Decimal | None,
+    notes: list[DesignNote],
+) -> Device:
+    """The board's incomer.
+
+    A board at the origin has a circuit-breaker, rated to discriminate with
+    what it feeds. A sub-board fed from a board in the project has a
+    switch-disconnector: the feeder breaker protects it, so a second breaker
+    there would only be one more level for discrimination to climb. The
+    switch is rated no lower than that breaker.
+    """
+    poles = 2 if request.supply.phases == 1 else 4
+    if request.fed_from is not None:
+        needed = max(most, supply_breaker_a or Decimal(0))
+        rated = next((r for r in ISOLATOR_RATINGS if r >= needed), None)
+        notes.append(note("incomer_isolator", board=request.fed_from))
+        if rated is None:
+            notes.append(note("isolator_unselected", current=_plain(needed)))
+        return Device(
+            id="incomer",
+            kind=DeviceKind.SWITCH_DISCONNECTOR,
+            poles=poles,
+            rated_current_a=rated,
+            description="Main switch",
+        )
+    incomer_carrying = _rating(most)
+    incomer_rated = _rating(max(most, after * ratio))
+    if incomer_carrying is None:
+        notes.append(note("incomer_mccb", current=_plain(most)))
+    elif incomer_rated is None:
+        # A moulded-case incomer only for discrimination is not assumed.
+        incomer_rated = incomer_carrying
+        notes.append(
+            note(
+                "discrimination_incomer_not_met",
+                rated=_plain(incomer_carrying),
+                ratio=_plain(ratio),
+                after=_plain(after),
+            )
+        )
+    elif incomer_rated != incomer_carrying:
+        notes.append(
+            note(
+                "discrimination_incomer_raised",
+                rated=_plain(incomer_rated),
+                ratio=_plain(ratio),
+                after=_plain(after),
+            )
+        )
+    return Device(
+        id="incomer",
+        kind=DeviceKind.CIRCUIT_BREAKER,
+        poles=poles,
+        rated_current_a=incomer_rated,
+        curve="C" if incomer_rated is not None else None,
+        description="Main incomer",
+    )
+
+
 def design_distribution_board(
     request: DistributionBoardRequest,
     profile: CompanyProfile,
     budget: voltage_drop.Budget | None = None,
+    sub_board_after_a: dict[str, Decimal] | None = None,
+    supply_breaker_a: Decimal | None = None,
 ) -> Board:
     """Design a distribution board's protection and cables from its load schedule.
 
@@ -433,6 +555,11 @@ def design_distribution_board(
         profile: The company whose rules apply.
         budget: What its feeders dropped already, and what each of its own
             feeders is held to; none for a board at the origin.
+        sub_board_after_a: For each sub-board it feeds, by name, the largest
+            breaker that sub-board's switch feeds, which the feeder
+            discriminates with.
+        supply_breaker_a: For a sub-board, the rating of the feeder breaker
+            that protects it, which its switch is rated no lower than.
 
     Returns:
         The board, undesignated: designations are assigned when it is issued
@@ -447,8 +574,10 @@ def design_distribution_board(
     if budget.upstream_percent > 0:
         notes.append(note("voltage_drop_upstream", percent=_plain(budget.upstream_percent)))
     sized = [
-        _size(request, profile, load, i, notes, budget) for i, load in enumerate(request.loads)
+        _size(request, profile, load, i, notes, budget, sub_board_after_a or {})
+        for i, load in enumerate(request.loads)
     ]
+    ratio = profile.discrimination_ratio
     single_phase_supply = request.supply.phases == 1
     if single_phase_supply:
         phases = {s.index: Phase.L1 for s in sized}
@@ -478,6 +607,7 @@ def design_distribution_board(
         chunks[-1].append(item)
 
     upstream: dict[int, str] = {}
+    group_ratings: list[Decimal] = []
     group_number = 0
     for sensitivity, chunks in groups.items():
         for chunk in chunks:
@@ -498,9 +628,32 @@ def design_distribution_board(
             # group breaker under its own outgoing circuits.
             loaded = max(loaded, *(s.rated_a for s in chunk))
             try:
-                group_rated = Decimal(feeder_protection.smallest_rating(loaded))
+                carrying = Decimal(feeder_protection.smallest_rating(loaded))
             except ValidationError as exc:
                 raise exc.about(f"RCD group {group_number}") from exc
+            group_rated = _group_rating(carrying, max(s.rated_a for s in chunk), ratio)
+            if group_rated is None:
+                group_rated = carrying
+                notes.append(
+                    note(
+                        "discrimination_group_not_met",
+                        group=group_number,
+                        rated=_plain(carrying),
+                        ratio=_plain(ratio),
+                        after=_plain(max(s.rated_a for s in chunk)),
+                    )
+                )
+            elif group_rated != carrying:
+                notes.append(
+                    note(
+                        "discrimination_group_raised",
+                        group=group_number,
+                        rated=_plain(group_rated),
+                        ratio=_plain(ratio),
+                        after=_plain(max(s.rated_a for s in chunk)),
+                    )
+                )
+            group_ratings.append(group_rated)
             breaker_id = f"g{group_number}-breaker"
             rcd_id = f"g{group_number}-rcd"
             devices.append(
@@ -613,19 +766,14 @@ def design_distribution_board(
                     limit=_plain(profile.max_phase_imbalance_percent),
                 )
             )
-    try:
-        incomer_rated = Decimal(feeder_protection.smallest_rating(most))
-    except ValidationError:
-        incomer_rated = None
-        notes.append(note("incomer_mccb", current=_plain(most)))
-    incomer = Device(
-        id="incomer",
-        kind=DeviceKind.CIRCUIT_BREAKER,
-        poles=2 if single_phase_supply else 4,
-        rated_current_a=incomer_rated,
-        curve="C" if incomer_rated is not None else None,
-        description="Main incomer",
+    # What the incomer feeds directly: group breakers and ungrouped circuits.
+    after = max(
+        [
+            *group_ratings,
+            *(s.rated_a for s in sized if s.index not in upstream),
+        ]
     )
+    incomer = _incomer(request, most, after, ratio, supply_breaker_a, notes)
     devices.insert(0, incomer)
     starters = {device.id for item in sized if item.motor for device in item.motor.devices}
     notes.extend(_rate_breaking_capacity(devices, starters, request.supply.fault_level_ka))
@@ -638,8 +786,7 @@ def design_distribution_board(
         notes.append(note("default_power_factor"))
     if any(load.controlled for load in request.loads):
         notes.append(note("contactor_ac1"))
-    if groups:
-        notes.append(note("group_discrimination"))
+    notes.append(note("discrimination", ratio=_plain(ratio)))
     unchecked = sum(1 for load in request.loads if load.length_m is None)
     if unchecked:
         notes.append(note("voltage_drop_unchecked", count=unchecked))

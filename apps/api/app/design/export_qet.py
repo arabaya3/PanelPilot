@@ -42,6 +42,7 @@ SUPPLY = "pp_supply.elmt"
 FUSE = "pp_fuse.elmt"
 OVERLOAD = "pp_overload.elmt"
 DRIVE = "pp_drive.elmt"
+SWITCH = "pp_switch.elmt"
 
 #: The element each kind of device is drawn with; anything else is a breaker.
 _ELEMENTS: dict[DeviceKind, str] = {
@@ -50,6 +51,7 @@ _ELEMENTS: dict[DeviceKind, str] = {
     DeviceKind.FUSE: FUSE,
     DeviceKind.OVERLOAD_RELAY: OVERLOAD,
     DeviceKind.DRIVE: DRIVE,
+    DeviceKind.SWITCH_DISCONNECTOR: SWITCH,
 }
 
 
@@ -154,6 +156,15 @@ def _symbols() -> list[ET.Element]:
     _line(body, -9, -2, -4, -2, dashed=True)
     _terminals(body, RCD)
     elements.append(rcd)
+
+    switch, body = _definition(SWITCH, "Switch-disconnector", "مفتاح فاصل")
+    _line(body, 0, -20, 0, -10)
+    _line(body, -3, -8, 3, -8)
+    ET.SubElement(body, "circle", x="-2", y="-12", diameter="4", style=_LINE, antialias="true")
+    _line(body, 0, 6, -6, -7)
+    _line(body, 0, 6, 0, 20)
+    _terminals(body, SWITCH)
+    elements.append(switch)
 
     contactor, body = _definition(CONTACTOR, "Contactor", "كونتاكتر")
     _line(body, 0, -20, 0, -9)
@@ -359,6 +370,8 @@ def _rating(device: Device) -> str:
         return f"not selected {poles}".strip()
     if device.kind is DeviceKind.CONTACTOR:
         return f"{_plain(device.rated_current_a)} A AC-1 {poles}".strip()
+    if device.kind is DeviceKind.SWITCH_DISCONNECTOR:
+        return f"{_plain(device.rated_current_a)} A {poles}".strip()
     return f"{device.curve or ''}{_plain(device.rated_current_a)} {poles}".strip()
 
 
@@ -381,7 +394,12 @@ def _main_diagram(diagram: _Diagram, board: Board) -> None:
     for incomer_id in board.incomer_ids:
         incomer = board.device(incomer_id)
         top, bottom = diagram.element(
-            BREAKER, 60, y, f"{board.id}/{incomer.id}", _label(incomer), _rating(incomer)
+            _ELEMENTS.get(incomer.kind, BREAKER),
+            60,
+            y,
+            f"{board.id}/{incomer.id}",
+            _label(incomer),
+            _rating(incomer),
         )
         diagram.connect(previous, top)
         previous = bottom

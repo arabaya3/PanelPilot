@@ -335,8 +335,24 @@ boards are designed leaves first:
   refusal names the board.
 - **Drawings:** the feeder and the sub-board cross-reference each other by
   page and column ("to DB-1 /4.0", "from MDB -Q5 /6.0").
-- **Not checked:** discrimination between a feeder and the incomer it
-  supplies is not checked, and the board says so.
+- **Discrimination:** a sub-board's incomer is a switch-disconnector,
+  protected by its feeder breaker and rated no lower than it. A breaker there
+  would only add one more level for the ratio to multiply through. The
+  feeder is rated at least the company's ratio times the largest breaker
+  that switch feeds, and its cable is sized for that rating.
+
+**Discrimination** follows the company's ratio (`discrimination_ratio`,
+default 1.6). Every breaker is rated at least that many times the largest
+breaker after it:
+
+- **Group breakers:** raised as far as their RCCB's ratings allow.
+- **The incomer:** raised as far as the miniature-breaker range allows.
+- **Feeders:** raised to discriminate with the sub-board's breakers.
+
+Anything that cannot be raised is named on the board. On short circuit,
+miniature breakers discriminate only up to the upstream one's instantaneous
+trip (about 5 × In for curve C), and the board says to confirm total
+selectivity from the manufacturer's tables.
 
 **Breaking capacity** is set from the fault level (`distribution.breaking_capacity`):
 

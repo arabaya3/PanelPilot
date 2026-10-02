@@ -61,6 +61,35 @@ def circuit_breaker(x: float, top: float, poles: int = 1) -> tuple[list[Item], f
     return items, bottom
 
 
+def switch_disconnector(x: float, top: float, poles: int = 4) -> tuple[list[Item], float]:
+    """Draw a switch-disconnector: a switch with the isolating bar and load-switch ring.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    fixed = top + 6.0
+    pivot = top + 14.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, fixed - 1.6),
+        # The disconnector's bar across the fixed contact, and the ring that
+        # makes it a switch able to break load (IEC 60617 S00288), clear of
+        # the pole mark above.
+        Line(x - 1.5, fixed, x + 1.5, fixed),
+        Circle(x, fixed - 0.8, 0.8),
+        # The blade, open.
+        Line(x, pivot, x - 3.5, fixed + 0.8),
+        Line(x, pivot, x, bottom),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
 def residual_current_device(x: float, top: float, poles: int = 4) -> tuple[list[Item], float]:
     """Draw a residual current circuit-breaker: a switch with a summation transformer.
 

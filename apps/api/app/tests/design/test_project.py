@@ -12,6 +12,7 @@ import pytest
 from app.core.errors import ValidationError
 from app.design import distribution, profile, project
 from app.models.schemas.design import (
+    DeviceKind,
     DistributionBoardRequest,
     LoadInput,
     LoadKind,
@@ -64,7 +65,7 @@ def test_an_inconsistent_feeding_is_refused(
 
 def test_a_feeder_is_sized_from_the_sub_board_as_designed() -> None:
     main, sub = project.design_boards(
-        [_board("MDB"), _board("DB-1", fed_from="MDB", kw="9")], profile.default_profile()
+        [_board("MDB"), _board("DB-1", fed_from="MDB", kw="2")], profile.default_profile()
     )
     feeder = next(c for c in main.circuits if c.feeds == "DB-1")
     sub_current = max(distribution.phase_currents(sub.circuits).values())
@@ -73,10 +74,18 @@ def test_a_feeder_is_sized_from_the_sub_board_as_designed() -> None:
     assert feeder.phase is Phase.THREE_PHASE
     breaker = main.device(feeder.device_ids[0])
     incomer = sub.device(sub.incomer_ids[0])
-    assert breaker.rated_current_a >= incomer.rated_current_a  # type: ignore[operator]
+    after = [d.rated_current_a or 0 for d in sub.devices if d.upstream_id == "incomer"]
+    assert breaker.rated_current_a is not None
+    # Rated to discriminate with the breakers the sub-board's switch feeds.
+    assert breaker.rated_current_a >= max(after) * Decimal("1.6")
+    # The switch is protected by it, so rated no lower.
+    assert incomer.kind is DeviceKind.SWITCH_DISCONNECTOR
+    assert incomer.rated_current_a is not None
+    assert incomer.rated_current_a >= breaker.rated_current_a
+    (raised,) = [n for n in main.notes if n.code == "discrimination_feeder_raised"]
+    assert raised.params["board"] == "DB-1"
     assert sub.fed_from == "MDB"
     assert "Fed from MDB." in [n.text for n in sub.notes]
-    assert any("Discrimination between each sub-board feeder" in n.text for n in main.notes)
 
 
 def test_a_single_phase_sub_board_on_a_three_phase_main() -> None:
@@ -141,10 +150,10 @@ def test_a_sub_board_takes_the_fault_level_that_feeds_it() -> None:
         profile.default_profile(),
     )
     assert sub.supply.fault_level_ka == 30
-    assert sub.device("incomer").breaking_capacity_ka == 36
+    assert sub.device("g1-breaker").breaking_capacity_ka == 36
     (inherited,) = [n for n in sub.notes if n.code == "fault_level_inherited"]
     assert inherited.params == {"fault": "30", "board": "MDB"}
     # A board's own figure is kept.
-    assert own.device("incomer").breaking_capacity_ka == 10
+    assert own.device("g1-breaker").breaking_capacity_ka == 10
     assert "fault_level_inherited" not in [n.code for n in own.notes]
     assert main.device("incomer").breaking_capacity_ka == 36

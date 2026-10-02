@@ -382,3 +382,85 @@ def test_no_fault_level_is_said() -> None:
     board = distribution.design_distribution_board(_hall(), profile.default_profile())
     assert "no_fault_level" in [n.code for n in board.notes]
     assert all(d.breaking_capacity_ka is None for d in board.devices)
+
+
+def test_group_breakers_discriminate_with_the_breakers_after_them() -> None:
+    board = distribution.design_distribution_board(_hall(), profile.default_profile())
+    for group in [d for d in board.devices if d.id.startswith("g") and d.id.endswith("-breaker")]:
+        after = [
+            board.device(c.device_ids[0]).rated_current_a or Decimal(0)
+            for c in board.circuits
+            if c.upstream_id == group.id.replace("-breaker", "-rcd")
+        ]
+        assert group.rated_current_a is not None
+        assert group.rated_current_a >= Decimal("1.6") * max(after)
+        # Its RCCB is rated for it.
+        rcd = board.device(group.id.replace("-breaker", "-rcd"))
+        assert rcd.rated_current_a is not None
+        assert rcd.rated_current_a >= group.rated_current_a
+    assert "discrimination" in [n.code for n in board.notes]
+
+
+def test_the_incomer_discriminates_with_what_it_feeds() -> None:
+    board = distribution.design_distribution_board(_hall(), profile.default_profile())
+    incomer = board.device("incomer").rated_current_a
+    fed = [d.rated_current_a for d in board.devices if d.upstream_id == "incomer"]
+    assert incomer is not None
+    assert all(incomer >= Decimal("1.6") * (rating or 0) for rating in fed)
+
+
+def test_the_company_ratio_applies() -> None:
+    company = profile.default_profile().model_copy(update={"discrimination_ratio": Decimal(1)})
+    board = distribution.design_distribution_board(_hall(), company)
+    codes = [n.code for n in board.notes]
+    assert "discrimination_group_raised" not in codes
+    assert next(n for n in board.notes if n.code == "discrimination").params == {"ratio": "1"}
+
+
+def test_a_group_its_rccb_cannot_follow_is_said() -> None:
+    company = profile.default_profile().model_copy(update={"discrimination_ratio": Decimal(10)})
+    board = distribution.design_distribution_board(_hall(), company)
+    assert "discrimination_group_not_met" in [n.code for n in board.notes]
+
+
+def test_a_feeder_discriminates_with_the_breakers_after_it() -> None:
+    request = DistributionBoardRequest(
+        name="MDB",
+        loads=[_load(LoadKind.SUB_BOARD, "5", "Feeder to DB-1", phases=3, feeds="DB-1")],
+    )
+    board = distribution.design_distribution_board(
+        request, profile.default_profile(), sub_board_after_a={"DB-1": Decimal(25)}
+    )
+    breaker = board.device(board.circuits[0].device_ids[0])
+    assert breaker.rated_current_a == 40
+    (raised,) = [n for n in board.notes if n.code == "discrimination_feeder_raised"]
+    assert raised.params == {"board": "DB-1", "rated": "40", "ratio": "1.6", "after": "25"}
+
+
+@pytest.mark.parametrize(("after", "expected"), [("16", "32"), ("63", "125"), ("80", None)])
+def test_group_rating(after: str, expected: str | None) -> None:
+    rating = distribution._group_rating(Decimal(20), Decimal(after), Decimal("1.6"))
+    assert rating == (Decimal(expected) if expected else None)
+
+
+def test_a_sub_board_has_a_switch_rated_for_the_breaker_that_feeds_it() -> None:
+    request = _hall().model_copy(update={"fed_from": "MDB"})
+    board = distribution.design_distribution_board(
+        request, profile.default_profile(), supply_breaker_a=Decimal(63)
+    )
+    incomer = board.device("incomer")
+    assert incomer.kind is DeviceKind.SWITCH_DISCONNECTOR
+    assert incomer.rated_current_a == 63
+    assert incomer.breaking_capacity_ka is None
+    assert "incomer_isolator" in [n.code for n in board.notes]
+    # It does not trip, so nothing is raised to discriminate with it.
+    assert "discrimination_incomer_raised" not in [n.code for n in board.notes]
+
+
+def test_a_switch_beyond_every_rating_is_said() -> None:
+    request = _hall().model_copy(update={"fed_from": "MDB"})
+    board = distribution.design_distribution_board(
+        request, profile.default_profile(), supply_breaker_a=Decimal(400)
+    )
+    assert board.device("incomer").rated_current_a is None
+    assert "isolator_unselected" in [n.code for n in board.notes]
