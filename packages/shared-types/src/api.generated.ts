@@ -2725,6 +2725,20 @@ export interface components {
       password: string;
     };
     /**
+     * MarkupCandidate
+     * @description A circuit a comment on a residual current group may mean.
+     *
+     *     Attributes:
+     *         circuit: Its description, as the schedule names it.
+     *         load_index: Its place in the board's schedule.
+     */
+    MarkupCandidate: {
+      /** Circuit */
+      circuit: string;
+      /** Load Index */
+      load_index: number;
+    };
+    /**
      * MarkupItem
      * @description One reviewer's mark read off a drawing set PDF.
      *
@@ -2782,6 +2796,8 @@ export interface components {
      *             to the board itself (a feeder length).
      *         field: What changes.
      *         value: Its new value; ``None`` for a removal.
+     *         candidates: For a comment on a group of several circuits, each one
+     *             it may mean, for the engineer to pick; ``circuit`` is then empty.
      */
     MarkupSuggestion: {
       /** Board */
@@ -2804,6 +2820,8 @@ export interface components {
         | 'feeder_length_m';
       /** Value */
       value?: string | null;
+      /** Candidates */
+      candidates?: components['schemas']['MarkupCandidate'][];
     };
     /**
      * MotorStarter

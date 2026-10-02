@@ -320,10 +320,21 @@ def read_markups(
                 sheet=markup.sheet,
                 board=markup.board,
                 near=markup.near,
-                suggestion=MarkupSuggestion.model_validate(vars(made)) if made else None,
+                suggestion=_suggestion(made) if made else None,
             )
         )
     return MarkupReport(markups=items, matched=matched)
+
+
+def _suggestion(made: markup_suggestions.Suggestion) -> MarkupSuggestion:
+    return MarkupSuggestion.model_validate(
+        {
+            **vars(made),
+            "candidates": [
+                {"circuit": circuit, "load_index": index} for circuit, index in made.candidates
+            ],
+        }
+    )
 
 
 def import_load_schedule(*, user: CurrentUser, data: bytes) -> LoadScheduleImport:

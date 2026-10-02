@@ -500,7 +500,9 @@ whose cable length is given, once the board's `Ze` is entered
   Arabic. It can be a removal, a power in kW, a cable length in m, a power
   factor, the phases, or a motor's starter; on a feeder, the sub-board's
   feeder length. The circuit is the one whose label (breaker, cable or
-  description) is nearest the comment.
+  description) is nearest the comment. A comment on a residual current group's RCD or
+  group breaker means the group's circuit when it has one; otherwise the
+  engineer picks which of its circuits it means before applying.
 - **Applying:** each suggestion has an Apply button that changes the form,
   and the engineer then designs again. Nothing is applied without that
   click, and a comment that asks for anything else is left as text.

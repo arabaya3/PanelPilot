@@ -114,6 +114,58 @@ describe('a suggested change', () => {
     expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
   });
 
+  it('on a group of several circuits, asks which one before applying', async () => {
+    const readImpl = vi.fn<typeof readMarkups>().mockResolvedValue({
+      kind: 'read',
+      report: {
+        matched: true,
+        markups: [
+          {
+            page: 3,
+            kind: 'Text',
+            author: '',
+            text: 'remove',
+            sheet: 'Main power',
+            board: 'MDB',
+            near: '-F1',
+            suggestion: {
+              board: 'MDB',
+              circuit: '',
+              load_index: null,
+              field: 'remove',
+              candidates: [
+                { circuit: 'Lights', load_index: 0 },
+                { circuit: 'Pump', load_index: 1 },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const onApply = vi.fn().mockReturnValue(true);
+    renderApp(
+      <MarkupsPanel
+        token="tok"
+        project={PROJECT}
+        profile={null}
+        onApply={onApply}
+        readImpl={readImpl}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Reviewed drawing set (PDF)'), {
+      target: { files: [new File(['%PDF'], 'set.pdf')] },
+    });
+    const offered = await screen.findByTestId('markup-suggestion-0');
+    const apply = screen.getByRole<HTMLButtonElement>('button', { name: 'Apply' });
+    expect(apply.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('which circuit?'), { target: { value: '1' } });
+    expect(offered.textContent).toContain('Suggested: remove Pump.');
+    fireEvent.click(apply);
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ circuit: 'Pump', load_index: 1, field: 'remove' }),
+    );
+  });
+
   it('changes the row it names, found by description when rows moved', () => {
     const changed = applySuggestion(boards(), {
       board: 'MDB',

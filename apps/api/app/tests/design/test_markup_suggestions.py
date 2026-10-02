@@ -55,14 +55,12 @@ def _label(designed: DesignProject, board: str, description: str) -> str:
 def test_find_circuit_by_any_of_its_labels() -> None:
     designed = _project()
     label = _label(designed, "MDB", "Pump")
-    found = markup_suggestions.find_circuit(designed, "MDB", ["16 A", label])
-    assert found is not None
-    assert found.description == "Pump"
-    by_name = markup_suggestions.find_circuit(designed, "MDB", ["Server room"])
-    assert by_name is not None
-    assert by_name.description == "Server room"
-    assert markup_suggestions.find_circuit(designed, "MDB", ["-Z99"]) is None
-    assert markup_suggestions.find_circuit(designed, "NOPE", [label]) is None
+    found = markup_suggestions.find_circuits(designed, "MDB", ["16 A", label])
+    assert [c.description for c in found] == ["Pump"]
+    by_name = markup_suggestions.find_circuits(designed, "MDB", ["Server room"])
+    assert [c.description for c in by_name] == ["Server room"]
+    assert markup_suggestions.find_circuits(designed, "MDB", ["-Z99"]) == []
+    assert markup_suggestions.find_circuits(designed, "NOPE", [label]) == []
 
 
 @pytest.mark.parametrize(
@@ -108,3 +106,57 @@ def test_a_feeder_takes_only_a_length_for_its_sub_board() -> None:
 
 def test_a_comment_on_no_circuit_suggests_nothing() -> None:
     assert markup_suggestions.suggest(_project(), "MDB", [], "5 kW") is None
+
+
+def _grouped(*descriptions: str) -> DesignProject:
+    company = profile.default_profile()
+    boards = project.design_boards(
+        [
+            DistributionBoardRequest(
+                name="DB",
+                loads=[
+                    LoadInput(description=name, load=LoadKind.SOCKET, power_kw=Decimal(1))
+                    for name in descriptions
+                ],
+            )
+        ],
+        company,
+    )
+    designed = DesignProject(info=ProjectInfo(name="T"), boards=boards, parts=[])
+    return designations.designate_project(designed, company)
+
+
+def _group_label(designed: DesignProject) -> str:
+    rcd = designed.boards[0].device("g1-rcd").designation
+    assert rcd is not None
+    return f"-{rcd.product}"
+
+
+def test_a_comment_on_a_group_of_one_circuit_is_about_that_circuit() -> None:
+    designed = _grouped("Kitchen sockets")
+    made = markup_suggestions.suggest(designed, "DB", [_group_label(designed)], "length 25 m")
+    assert made is not None
+    assert (made.circuit, made.load_index, made.field, made.value) == (
+        "Kitchen sockets",
+        0,
+        "length_m",
+        "25",
+    )
+    assert made.candidates == ()
+
+
+def test_a_comment_on_a_group_of_several_offers_its_circuits_to_pick() -> None:
+    designed = _grouped("Hall sockets", "Office sockets")
+    found = markup_suggestions.find_circuits(designed, "DB", [_group_label(designed)])
+    assert [c.description for c in found] == ["Hall sockets", "Office sockets"]
+    made = markup_suggestions.suggest(designed, "DB", [_group_label(designed)], "remove")
+    assert made is not None
+    assert (made.circuit, made.load_index, made.field) == ("", None, "remove")
+    assert made.candidates == (("Hall sockets", 0), ("Office sockets", 1))
+    # A circuit's own label, nearer than its group's, still names the circuit.
+    own = designed.boards[0].device("c2-breaker").designation
+    assert own is not None
+    near = [f"-{own.product}", _group_label(designed)]
+    single = markup_suggestions.suggest(designed, "DB", near, "remove")
+    assert single is not None
+    assert single.circuit == "Office sockets"

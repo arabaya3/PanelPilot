@@ -823,7 +823,8 @@
         "phases": "Suggested: {circuit} on {value} phase(s).",
         "starter": "Suggested: {circuit} started by {value}.",
         "feeder_length_m": "Suggested: feeder to {board} {value} m."
-      }
+      },
+      "whichCircuit": "which circuit?"
     },
     "settings": {
       "help": "What your company does differently from the default. A blank field keeps the default, shown greyed. Save them for the company, and every new project starts from them.",
