@@ -6,6 +6,7 @@ import {
   isComplete,
   rowsFrom,
   toRequest,
+  withLanguage,
   type ProjectInfo,
 } from '@/components/design/schedule';
 
@@ -48,6 +49,14 @@ describe('design schedule helpers', () => {
     expect(request.boards[0]?.feeder_length_m).toBeNull();
     expect(request.boards[1]?.feeder_length_m).toBe('80');
     expect(request.boards[1]?.loads[0]?.length_m).toBeNull();
+  });
+
+  it('adds the drawing language unless the settings state one', () => {
+    expect(withLanguage(null, 'en')).toBeNull();
+    expect(withLanguage(null, 'ar')).toEqual({ language: 'ar' });
+    expect(withLanguage({ key: 'acme' }, 'en')).toEqual({ key: 'acme' });
+    expect(withLanguage({ key: 'acme' }, 'ar')).toEqual({ key: 'acme', language: 'ar' });
+    expect(withLanguage({ language: 'en' }, 'ar')).toEqual({ language: 'en' });
   });
 
   it('is complete only when every board names itself and fills every row', () => {

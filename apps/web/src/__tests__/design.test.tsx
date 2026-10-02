@@ -177,6 +177,21 @@ describe('board design', () => {
     expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({ key: 'acme' });
   });
 
+  it('asks for the drawings in Arabic', async () => {
+    const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
+      kind: 'designed',
+      response: DESIGNED,
+    });
+    renderApp(
+      <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
+    );
+    fillSchedule();
+    fireEvent.change(screen.getByLabelText('Drawing language'), { target: { value: 'ar' } });
+    await submit();
+    await screen.findByTestId('design-result');
+    expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({ language: 'ar' });
+  });
+
   it('shows a refusal in the server’s words', async () => {
     const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'refused',

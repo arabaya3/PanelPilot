@@ -165,3 +165,20 @@ export function toRequest(
     profile,
   };
 }
+
+/** Languages the drawing set can be written in. */
+export const DRAWING_LANGUAGES = ['en', 'ar'] as const;
+export type DrawingLanguage = (typeof DRAWING_LANGUAGES)[number];
+
+/**
+ * The company settings sent with a request, with the drawing language
+ * chosen on the page. English is the server's default, so it adds nothing; a
+ * language the settings state themselves wins.
+ */
+export function withLanguage(
+  profile: Record<string, unknown> | null,
+  language: DrawingLanguage,
+): Record<string, unknown> | null {
+  if (language === 'en' || (profile && 'language' in profile)) return profile;
+  return { ...(profile ?? {}), language };
+}
