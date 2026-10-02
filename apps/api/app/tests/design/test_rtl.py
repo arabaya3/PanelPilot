@@ -61,3 +61,11 @@ def test_visual_in_a_latin_line_reverses_only_the_arabic() -> None:
 def test_visual_joins_the_letters() -> None:
     # Presentation forms, not the isolated letters typed.
     assert all(not ("؀" <= char <= "ۿ") for char in rtl.visual("لوحة"))
+
+
+def test_visual_takes_a_line_right_to_left_when_told() -> None:
+    # An Arabic sentence opening with a Latin name: by its first letter it
+    # would read left to right, the name first at the left.
+    typed = "MDB: لوحة"
+    assert rtl.visual(typed) == "MDB: " + _shaped("لوحة")[::-1]
+    assert rtl.visual(typed, right_to_left=True) == _shaped("لوحة")[::-1] + " :MDB"

@@ -14,6 +14,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
 from app.design.pdf_fonts import font_for
+from app.design.rtl import has_rtl
 from app.design.sheet import (
     SHEET_HEIGHT,
     SHEET_WIDTH,
@@ -63,7 +64,7 @@ def render_pdf(sheets: list[Sheet], *, title: str = "", author: str = "") -> byt
                 canvas.setDash()
                 canvas.circle(item.x * mm, _y(item.y), item.r * mm)
             elif isinstance(item, Text):
-                font, text = font_for(item.text, bold=item.bold)
+                font, text = font_for(item.text, bold=item.bold, right_to_left=has_rtl(item.text))
                 canvas.setFont(font, item.size * mm / 0.72)
                 canvas.saveState()
                 canvas.translate(item.x * mm, _y(item.y))
