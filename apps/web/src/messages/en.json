@@ -707,7 +707,8 @@
       "discrimination_feeder_raised": "Feeder to {board} raised to {rated} A, {ratio} × the {after} A breaker after it on {board}, for discrimination; its cable is sized for {rated} A.",
       "discrimination_incomer_not_met": "Incomer: {rated} A is less than {ratio} × the {after} A breaker after it, and a larger miniature breaker is not held; overload discrimination is not assured.",
       "incomer_isolator": "The incomer is a switch-disconnector: {board}’s feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board’s breakers.",
-      "isolator_unselected": "Incomer: no switch-disconnector rating held carries {current} A (up to 250 A); none is selected here."
+      "isolator_unselected": "Incomer: no switch-disconnector rating held carries {current} A (up to 250 A); none is selected here.",
+      "fault_level_calculated": "Fault level {fault} kA, calculated from {board}’s {upstream} kA through {length} m of {section} mm² {material} feeder (IEC 60909, conductors at 20 °C)."
     },
     "errors": {
       "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",
