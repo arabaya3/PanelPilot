@@ -29,10 +29,11 @@ def _xlsx(rows: list[list[object]]) -> bytes:
     return buffer.getvalue()
 
 
-def _pdf(rows: list[list[str]]) -> bytes:
+def _pdf(rows: list[list[str]], *, ruled: bool = True) -> bytes:
     buffer = io.BytesIO()
     table = Table(rows)
-    table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, (0, 0, 0))]))
+    if ruled:
+        table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, (0, 0, 0))]))
     SimpleDocTemplate(buffer, pagesize=A4).build([table])
     return buffer.getvalue()
 
@@ -98,6 +99,22 @@ def test_a_pdf_table_is_read() -> None:
         ("Water heater", LoadKind.WATER_HEATER),
     ]
     assert [load.power_kw for load in result.loads] == [Decimal("0.37"), Decimal(3)]
+
+
+def test_a_pdf_table_without_rules_is_read_from_its_alignment() -> None:
+    data = _pdf(
+        [
+            ["Circuit", "Description", "Load (kW)", "Phases"],
+            ["C1", "Sockets east", "1.5", "1"],
+            ["C2", "AC unit", "4", "3"],
+        ],
+        ruled=False,
+    )
+    result = schedule_import.import_schedule(data)
+    assert [(load.description, load.power_kw, load.phases) for load in result.loads] == [
+        ("Sockets east", Decimal("1.5"), 1),
+        ("AC unit", Decimal(4), 3),
+    ]
 
 
 def test_kva_only_is_read_and_said() -> None:

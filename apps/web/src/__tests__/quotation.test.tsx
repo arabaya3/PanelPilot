@@ -65,7 +65,7 @@ describe('quotation', () => {
 
     expect((await screen.findByTestId('quote-total')).textContent).toBe('5.22');
     expect(screen.getByText('not priced')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toContain('1 line has no price');
+    expect(screen.getByRole('alert').textContent).toContain('1 line is not priced');
     const pricing = priceImpl.mock.calls[0]?.[0].pricing;
     expect(pricing?.labour_per_circuit).toBe('5');
     expect(pricing?.vat_percent).toBe('16');

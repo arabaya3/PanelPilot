@@ -29,6 +29,10 @@ from app.models.schemas.design import LoadInput, LoadKind
 #: The largest schedule accepted, in bytes.
 MAX_SCHEDULE_BYTES = 5 * 1024 * 1024
 
+#: Pages of a PDF searched for the schedule: a schedule is a few pages, and
+#: table detection is costly enough that a 500-page upload is refused work.
+_MAX_PDF_PAGES = 50
+
 #: How many rows from the top are searched for the header.
 _HEADER_SEARCH_ROWS = 30
 
@@ -166,18 +170,28 @@ def _rows_from_csv(data: bytes) -> list[list[str]]:
     return [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
 
 
+#: Column and row edges taken from the text's alignment, for a table drawn
+#: without rules (a schedule printed from Word or a plain report).
+_UNRULED = {"vertical_strategy": "text", "horizontal_strategy": "text"}
+
+
 def _rows_from_pdf(data: bytes) -> list[list[str]]:
     rows: list[list[str]] = []
     try:
         with pdfplumber.open(io.BytesIO(data)) as pdf:
-            for page in pdf.pages:
-                for table in page.extract_tables():
-                    rows.extend([_cell(c).replace("\n", " ") for c in row] for row in table)
+            for page in pdf.pages[:_MAX_PDF_PAGES]:
+                tables = page.extract_tables() or page.extract_tables(_UNRULED)
+                for table in tables:
+                    for row in table:
+                        cells = [_cell(c).replace("\n", " ") for c in row]
+                        if any(cells):
+                            rows.append(cells)
     except Exception as exc:  # pdfminer raises many types for a bad file
         raise ValidationError(f"the PDF could not be read: {exc}") from exc
     if not rows:
         raise ValidationError(
-            "the PDF holds no ruled table; export the schedule from Excel, or scan it as a table"
+            "no table was found in the PDF; export the schedule from Excel, "
+            "or check that the PDF holds text rather than a scanned image"
         )
     return rows
 

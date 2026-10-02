@@ -78,7 +78,7 @@ export function PlcPanel({
           onClick={() => {
             void download('plc_st');
           }}
-          className="btn btn-sm"
+          className="btn btn-sm btn-secondary"
         >
           {t('st')}
         </button>
@@ -88,7 +88,7 @@ export function PlcPanel({
           onClick={() => {
             void download('plc_io_csv');
           }}
-          className="btn btn-sm"
+          className="btn btn-sm btn-secondary"
         >
           {t('io')}
         </button>

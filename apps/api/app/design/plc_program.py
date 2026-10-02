@@ -83,6 +83,22 @@ def _comment(text: str) -> str:
     return re.sub(r"[^\x20-\x7e]", "?", text).replace("*)", "* )").replace("#", "No.")
 
 
+def _label(description: str, designation: str) -> str:
+    """Name a circuit in the program's comments.
+
+    Not every PLC editor reads non-ASCII source, so a description in Arabic
+    or Hebrew is left to the I/O list (UTF-8) and the comment names the
+    device by its designation instead of printing question marks.
+    """
+    return description if description.isascii() else designation
+
+
+def _declaration(point: IoPoint) -> str:
+    role = "manual on" if point.direction == "input" else "contactor coil"
+    text = point.description if point.description.isascii() else f"{point.device}: {role}"
+    return f"    {point.tag} : BOOL; (* {_comment(text)} *)"
+
+
 def build_program(project: DesignProject) -> PlcProgram | None:
     """Write the control program for a project's PLC-switched circuits.
 
@@ -109,6 +125,7 @@ def build_program(project: DesignProject) -> PlcProgram | None:
                 seen.add(base)
                 coil, manual = f"K_{base}", f"Man_{base}"
                 designation = str(device.designation) if device.designation else device.id
+                label = _label(circuit.description, designation)
                 io_points.append(
                     IoPoint(
                         manual,
@@ -127,23 +144,16 @@ def build_program(project: DesignProject) -> PlcProgram | None:
                         f"{circuit.description}: contactor coil",
                     )
                 )
+                heading = designation if label == designation else f"{designation}: {label}"
                 rungs.append(
-                    f"(* {_comment(designation)}: {_comment(circuit.description)} *)\n"
+                    f"(* {_comment(heading)} *)\n"
                     f"{coil} := EStop_OK AND ({manual} OR (Auto_Mode AND Schedule_On));"
                 )
     if not rungs:
         return None
     name = _identifier(f"{project.info.name}_Control")
-    inputs = "\n".join(
-        f"    {point.tag} : BOOL; (* {_comment(point.description)} *)"
-        for point in io_points
-        if point.direction == "input"
-    )
-    outputs = "\n".join(
-        f"    {point.tag} : BOOL; (* {_comment(point.description)} *)"
-        for point in io_points
-        if point.direction == "output"
-    )
+    inputs = "\n".join(_declaration(point) for point in io_points if point.direction == "input")
+    outputs = "\n".join(_declaration(point) for point in io_points if point.direction == "output")
     body = "\n\n".join(rungs)
     source = (
         f"(* Control of PLC-switched circuits: {_comment(project.info.name)}. *)\n"

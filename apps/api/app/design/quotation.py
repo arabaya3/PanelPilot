@@ -14,7 +14,9 @@ incomplete. The total is the total of what was priced.
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from app.core.errors import ValidationError
 from app.design.schedule_import import read_rows
@@ -23,6 +25,7 @@ from app.models.schemas.design import (
     DesignProject,
     Device,
     DeviceKind,
+    Part,
     PriceListEntry,
     PricingSettings,
     Quotation,
@@ -56,7 +59,8 @@ def device_key(device: Device) -> str:
         device: The device.
 
     Returns:
-        "circuit_breaker:1P:C16", "residual_current_device:4P:40A:30mA", ...
+        "circuit_breaker:1P:C16", "residual_current_device:4P:40A:30mA",
+        "contactor:2P:20A", ...
     """
     parts = [device.kind.value]
     if device.poles:
@@ -64,6 +68,8 @@ def device_key(device: Device) -> str:
     if device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE:
         parts.append(f"{_plain(device.rated_current_a)}A")
         parts.append(f"{_plain(device.residual_current_ma)}mA")
+    elif device.kind is DeviceKind.CONTACTOR and device.rated_current_a is not None:
+        parts.append(f"{_plain(device.rated_current_a)}A")
     elif device.rated_current_a is not None:
         parts.append(f"{device.curve or ''}{_plain(device.rated_current_a)}")
     return ":".join(parts)
@@ -87,6 +93,24 @@ def _normalise(key: str) -> str:
     return key.strip().lower().replace(" ", "")
 
 
+@dataclass
+class _Item:
+    """Identical devices or cable runs gathered onto one quotation line."""
+
+    name: str
+    unit: str
+    quantity: Decimal
+    labels: list[str]
+    entry: PriceListEntry | None
+
+
+def _device_name(device: Device, part: Part | None) -> str:
+    if part:
+        return f"{part.manufacturer} {part.type_number}"
+    rating = device_key(device).split(":", 1)[-1].replace(":", " ")
+    return f"{_KIND_NAMES.get(device.kind, device.kind.value)} {rating}"
+
+
 def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation:
     """Price a designed project.
 
@@ -103,11 +127,18 @@ def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation
         for key in keys:
             if key and _normalise(key) in prices:
                 return key, prices[_normalise(key)]
-        first = next((k for k in keys if k), "")
-        return first, None
+        return next((k for k in keys if k), ""), None
 
-    # Group identical items, keeping first-seen order.
-    groups: dict[str, tuple[str, str, Decimal, list[str], PriceListEntry | None]] = {}
+    # Identical items share a line, in the order first seen.
+    items: dict[str, _Item] = {}
+
+    def add(key: str, item: _Item) -> None:
+        if key in items:
+            items[key].quantity += item.quantity
+            items[key].labels.extend(item.labels)
+        else:
+            items[key] = item
+
     for board in project.boards:
         prefix = f"{board.name} " if len(project.boards) > 1 else ""
         for device in board.devices:
@@ -117,55 +148,43 @@ def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation
                 part.type_number if part else None,
                 device_key(device),
             )
-            name = (
-                f"{part.manufacturer} {part.type_number}"
-                if part
-                else f"{_KIND_NAMES.get(device.kind, device.kind.value)} {device_key(device).split(':', 1)[-1].replace(':', ' ')}"
-            )
             label = f"{prefix}-{device.designation.product}" if device.designation else device.id
-            if key in groups:
-                groups[key][3].append(label)
-                groups[key] = (*groups[key][:2], groups[key][2] + 1, groups[key][3], entry)
-            else:
-                groups[key] = (name, "pcs", Decimal(1), [label], entry)
+            add(key, _Item(_device_name(device, part), "pcs", Decimal(1), [label], entry))
         for cable in board.cables:
             length = cable.length_m or pricing.cable_length_m
             key, entry = find(cable_key(cable))
             label = f"{prefix}-{cable.designation.product}" if cable.designation else cable.id
-            metres = length if length is not None else Decimal(0)
-            if key in groups:
-                name, unit, quantity, labels, _ = groups[key]
-                labels.append(label)
-                groups[key] = (name, unit, quantity + metres, labels, entry)
-            else:
-                groups[key] = (
-                    f"Cable {cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material} {cable.insulation}",
-                    "m",
-                    metres,
-                    [label],
-                    entry,
-                )
+            name = (
+                f"Cable {cable.cores}G{_plain(cable.cross_section_mm2)} "
+                f"{cable.material} {cable.insulation}"
+            )
+            add(key, _Item(name, "m", length or Decimal(0), [label], entry))
 
     lines: list[QuotationLine] = []
     unpriced: list[str] = []
     materials = Decimal(0)
-    for key, (name, unit, quantity, labels, entry) in groups.items():
-        priced = entry is not None and not (unit == "m" and quantity == 0)
-        total = _money(entry.unit_price * quantity) if priced and entry else None
-        if total is not None:
+    for key, item in items.items():
+        missing: Literal["price", "length"] | None = None
+        if item.unit == "m" and not item.quantity:
+            missing = "length"
+        elif item.entry is None:
+            missing = "price"
+        total = None
+        if item.entry is not None and missing is None:
+            total = _money(item.entry.unit_price * item.quantity)
             materials += total
         else:
-            reason = "no length" if unit == "m" and quantity == 0 else "no price"
-            unpriced.append(f"{key} ({reason})")
+            unpriced.append(f"{key} (no {missing})")
         lines.append(
             QuotationLine(
-                description=entry.description if entry and entry.description else name,
-                designations=labels,
-                quantity=quantity,
-                unit=unit,
+                description=(item.entry.description if item.entry else "") or item.name,
+                designations=item.labels,
+                quantity=item.quantity,
+                unit=item.unit,
                 key=key,
-                unit_price=entry.unit_price if entry else None,
+                unit_price=item.entry.unit_price if item.entry else None,
                 total=total,
+                missing=missing,
             )
         )
 

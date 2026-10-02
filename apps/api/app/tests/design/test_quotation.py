@@ -76,6 +76,8 @@ def test_unpriced_lines_are_named_and_not_guessed(hall_project: DesignProject) -
     assert any("(no price)" in item for item in result.unpriced)
     # No default length: cables are unpriced for want of one.
     assert any(item.startswith("cable:") and "(no length)" in item for item in result.unpriced)
+    reasons = {line.unit: line.missing for line in result.lines}
+    assert reasons == {"pcs": "price", "m": "length"}
 
 
 def test_keys() -> None:
@@ -91,6 +93,8 @@ def test_keys() -> None:
     )
     assert quotation.device_key(breaker) == "circuit_breaker:1P:C16"
     assert quotation.device_key(rcd) == "residual_current_device:4P:40A:30mA"
+    contactor = Device(id="k", kind=DeviceKind.CONTACTOR, poles=2, rated_current_a=Decimal(20))
+    assert quotation.device_key(contactor) == "contactor:2P:20A"
     cable = Cable(id="c", cores=3, cross_section_mm2=Decimal("2.5"))
     assert quotation.cable_key(cable) == "cable:3G2.5:Cu:PVC"
 

@@ -26,12 +26,26 @@ _SINGLE_BELOW_KW = Decimal(5)
 _SMALL_SINGLE = {LoadKind.AIR_CONDITIONING, LoadKind.WATER_HEATER, LoadKind.KITCHEN}
 
 
+#: How a circuit's note says where its power came from, per language.
+_SOURCE_LABELS: dict[str, tuple[str, str]] = {
+    "English": ("given", "typical"),
+    "Arabic": (
+        "\u0645\u0646 \u0627\u0644\u0648\u0635\u0641",
+        "\u0642\u064a\u0645\u0629 \u0646\u0645\u0648\u0630\u062c\u064a\u0629",
+    ),
+}
+
+
 def _watts(kw: Decimal) -> str:
     return format((kw * 1000).normalize(), "f")
 
 
 def split_points(
-    items: list[SuggestedPoints], profile: CompanyProfile, *, supply_phases: int
+    items: list[SuggestedPoints],
+    profile: CompanyProfile,
+    *,
+    supply_phases: int,
+    language: str = "English",
 ) -> tuple[list[LoadInput], list[str]]:
     """Split groups of points into circuits under a company's rules.
 
@@ -40,11 +54,14 @@ def split_points(
         profile: The company whose points-per-circuit rule applies.
         supply_phases: The board's supply; three-phase circuits only on a
             three-phase supply.
+        language: The language the notes are written in ("English" or
+            "Arabic"); anything else is written in English.
 
     Returns:
         The circuits, and one line per circuit saying how its power was
-        reached ("مآخذ القاعة 1: 7 x 150 W = 1.05 kW. typical").
+        reached ("Hall sockets 1: 7 x 150 W = 1.05 kW. typical").
     """
+    given, typical = _SOURCE_LABELS.get(language, _SOURCE_LABELS["English"])
     loads: list[LoadInput] = []
     notes: list[str] = []
     for item in items:
@@ -76,6 +93,6 @@ def split_points(
             )
             notes.append(
                 f"{name}: {points} x {_watts(item.unit_power_kw)} W = "
-                f"{format(power, 'f')} kW. {item.assumption}"
+                f"{format(power, 'f')} kW. {given if item.power_stated else typical}"
             )
     return loads, notes

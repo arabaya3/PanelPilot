@@ -81,3 +81,15 @@ def test_io_list_csv() -> None:
     assert text.startswith("﻿Tag,Direction,Type,Board,Device,Description,Address\r\n")
     assert text.count("\r\n") == 1 + len(program.io)
     assert ",output,BOOL,DBG-HALL," in text
+
+
+def test_a_description_in_arabic_is_left_to_the_io_list() -> None:
+    project = _project(controlled=True)
+    for circuit in project.boards[0].circuits:
+        circuit.description = "إنارة"
+    program = plc_program.build_program(project)
+    assert program is not None
+    assert "?" not in program.source
+    assert "=DBG-HALL" in program.source
+    assert "إنارة" in plc_program.io_list_csv(program)
+    assert validate_plc_code(program.source).status is ValidationStatus.VALID
