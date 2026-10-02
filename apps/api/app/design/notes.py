@@ -138,6 +138,9 @@ TEMPLATES: dict[str, str] = {
     "demand_factors": (
         "Incomer rated for {demand} A on the most loaded conductor after the company's demand factors; {connected} A is connected. The factors are the company's, not a standard's."
     ),
+    "parallel_cables": (
+        "{load}: {runs} identical cables in parallel of {section} mm², each carrying {current} A; each run counts as a circuit in its group (ABB handbook Table 5 note 4). Lay them the same length and route so they share equally."
+    ),
     "cable_conditions": (
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."

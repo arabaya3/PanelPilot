@@ -190,6 +190,7 @@ def _cable_rows(board: Board) -> list[list[str]]:
                 circuit.description,
                 str(cable.cores),
                 _plain(cable.cross_section_mm2),
+                str(cable.parallel),
                 cable.material,
                 cable.insulation,
                 _plain(cable.length_m),
@@ -219,6 +220,7 @@ def cable_list(project: DesignProject) -> str:
             "To",
             "Cores",
             "Cross-section mm2",
+            "Runs in parallel",
             "Material",
             "Insulation",
             "Length m",
@@ -282,11 +284,7 @@ def circuit_schedule(project: DesignProject) -> str:
                     _plain(breaker.rated_current_a) if breaker else "",
                     breaker.curve or "" if breaker else "",
                     _designation(upstream) if upstream else "",
-                    (
-                        f"{cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material}"
-                        if cable
-                        else ""
-                    ),
+                    (f"{cable.size} {cable.material}" if cable else ""),
                 ]
             )
     return write_csv(

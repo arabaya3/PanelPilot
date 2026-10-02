@@ -130,6 +130,7 @@ def fit(
     phase_voltage_v: Decimal,
     rated_a: Decimal,
     curve: str,
+    parallel: int = 1,
 ) -> Checked | None:
     """Enlarge a cable until its breaker disconnects an earth fault at its far end.
 
@@ -142,6 +143,9 @@ def fit(
         phase_voltage_v: ``U0``.
         rated_a: The breaker's In.
         curve: Its tripping characteristic.
+        parallel: Identical cables run in parallel, each with its protective
+            conductor; their loops share the fault, so the circuit's is one
+            run's divided by their number.
 
     Returns:
         The smallest section at or above ``section_mm2`` that is within; or,
@@ -153,7 +157,7 @@ def fit(
         return None
 
     def zs(section: Decimal) -> Decimal:
-        return external_ohm + loop_ohm(length_m, section, material, insulation_rating_c)
+        return external_ohm + loop_ohm(length_m, section, material, insulation_rating_c) / parallel
 
     for candidate in SECTIONS[SECTIONS.index(section_mm2) :]:
         impedance = zs(candidate)

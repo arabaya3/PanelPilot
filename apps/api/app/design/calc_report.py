@@ -173,11 +173,7 @@ def _board_section(board: Board, words: Words, styles: dict[str, ParagraphStyle]
     for circuit in board.circuits:
         device = board.device(circuit.device_ids[0]) if circuit.device_ids else None
         cable = board.cable(circuit.cable_id) if circuit.cable_id else None
-        cable_text = (
-            f"{cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material} {cable.insulation}"
-            if cable
-            else "-"
-        )
+        cable_text = f"{cable.size} {cable.material} {cable.insulation}" if cable else "-"
         limit = _max_loop(board, device) if circuit.starter is None else None
         rows.append(
             [

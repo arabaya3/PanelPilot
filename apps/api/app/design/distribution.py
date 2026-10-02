@@ -123,6 +123,8 @@ class _Sized:
     earth_loop_ohm: Decimal | None = None
     #: How it disconnects on an earth fault: "breaker", "rcd" or "unchecked".
     earth_fault: str = "unchecked"
+    #: Identical cables run in parallel, each carrying an equal share.
+    parallel: int = 1
 
 
 def _plain(value: Decimal) -> str:
@@ -206,24 +208,15 @@ def _size(
                     rated=_plain(rated),
                 )
             )
-    conditions = request.conditions
-    try:
-        cable = cable_sizing.size_conductor(
-            design_current_a=rated,
-            installation_method=conditions.installation_method,
-            ambient_temp_c=conditions.ambient_temp_c,
-            grouped_circuits=conditions.grouped_circuits,
-            conductor_material=conditions.conductor_material,
-            insulation_rating_c=conditions.insulation_rating_c,
-            three_phase=three_phase,
-        )
-    except ValidationError as exc:
-        raise exc.about(load.description) from exc
-    section = cable.cross_section_mm2
+    section, parallel = _size_cable(request, load, rated, three_phase, notes)
     if rule and rule.cable_mm2 is not None and rule.cable_mm2 > section:
         section = rule.cable_mm2
     voltage = request.supply.voltage_v if three_phase else _phase_voltage(request)
-    run = voltage_drop.Run(current, load.length_m, three_phase, voltage) if load.length_m else None
+    run = (
+        voltage_drop.Run(current / parallel, load.length_m, three_phase, voltage)
+        if load.length_m
+        else None
+    )
     section, drop = _check_drop(request, profile, budget, load, run, section, notes)
     sized = _Sized(
         load=load,
@@ -234,6 +227,7 @@ def _size(
         section_mm2=section,
         selected=selected,
         drop_percent=drop,
+        parallel=parallel,
     )
     # Short circuit first: the earth fault loop, checked last, only ever
     # enlarges the cable further, which a short circuit trips on sooner.
@@ -284,6 +278,7 @@ def _check_disconnection(
         phase_voltage_v=_phase_voltage(request),
         rated_a=item.rated_a,
         curve=item.curve,
+        parallel=item.parallel,
     )
     if checked is None:
         return
@@ -331,6 +326,7 @@ def _check_short_circuit(
         phase_voltage_v=_phase_voltage(request),
         rated_a=item.rated_a,
         curve=item.curve,
+        parallel=item.parallel,
     )
     if checked is None:
         return
@@ -366,7 +362,7 @@ def _redo_drop(request: DistributionBoardRequest, item: _Sized) -> None:
         return
     three_phase = load.phases == 3
     run = voltage_drop.Run(
-        item.current_a,
+        item.current_a / item.parallel,
         load.length_m,
         three_phase,
         request.supply.voltage_v if three_phase else _phase_voltage(request),
@@ -398,6 +394,61 @@ def _earth_fault_notes(request: DistributionBoardRequest, sized: list[_Sized]) -
     if unchecked:
         made.append(note("earth_fault_unchecked", count=unchecked))
     return made
+
+
+#: The most identical cables run in parallel for one circuit.
+MAX_PARALLEL = 4
+
+
+def _size_cable(
+    request: DistributionBoardRequest,
+    load: LoadInput,
+    current: Decimal,
+    three_phase: bool,
+    notes: list[DesignNote],
+) -> tuple[Decimal, int]:
+    """The section that carries a circuit's current, in parallel runs if one cannot.
+
+    Where no tabulated section carries the current, it is shared by two and
+    then more identical cables, each carrying an equal part. Each run counts
+    as one more circuit in the group it is laid in (ABB handbook Vol. 2,
+    §2.2.1 Table 5 note 4), which lowers the grouping factor.
+
+    Returns:
+        The section of each cable, and how many run in parallel.
+
+    Raises:
+        ValidationError: If not even ``MAX_PARALLEL`` runs carry it, naming
+            the load.
+    """
+    conditions = request.conditions
+    for runs in range(1, MAX_PARALLEL + 1):
+        try:
+            cable = cable_sizing.size_conductor(
+                design_current_a=current / runs,
+                installation_method=conditions.installation_method,
+                ambient_temp_c=conditions.ambient_temp_c,
+                grouped_circuits=conditions.grouped_circuits + runs - 1,
+                conductor_material=conditions.conductor_material,
+                insulation_rating_c=conditions.insulation_rating_c,
+                three_phase=three_phase,
+            )
+        except ValidationError as exc:
+            if exc.code == "no_cable_section" and runs < MAX_PARALLEL:
+                continue
+            raise exc.about(load.description) from exc
+        if runs > 1:
+            notes.append(
+                note(
+                    "parallel_cables",
+                    load=load.description,
+                    runs=runs,
+                    section=_plain(cable.cross_section_mm2),
+                    current=_plain((current / runs).quantize(Decimal("0.1"))),
+                )
+            )
+        return cable.cross_section_mm2, runs
+    raise AssertionError("unreachable")
 
 
 def _check_drop(
@@ -999,6 +1050,7 @@ def design_distribution_board(
             insulation="XLPE" if request.conditions.insulation_rating_c == 90 else "PVC",
             length_m=item.load.length_m,
             withstand_ka2s=_withstand(request, item.section_mm2),
+            parallel=item.parallel,
         )
         devices.append(breaker)
         circuit_devices = [breaker.id]

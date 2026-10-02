@@ -17,8 +17,9 @@ ends:
   fault between line and neutral.
 * At the near end, the breaker's let-through energy at the board's fault
   level must not exceed the cable's ``k²S²``. ``k`` is from the handbook's
-  Table 1 (115 copper and 76 aluminium in PVC, 143 and 94 in XLPE, up to
-  300 mm²). A breaker's let-through energy is read from its maker's curve,
+  Table 1 (115 copper and 76 aluminium in PVC, 103 and 68 above 300 mm²;
+  143 and 94 in XLPE). Conductors in parallel are each checked alone, and
+  their far-end short circuit is raised by the handbook's ``kpar``. A breaker's let-through energy is read from its maker's curve,
   which is not held until a part is selected, so each cable's ``k²S²`` is
   given for that comparison and the board says so.
 """
@@ -47,6 +48,21 @@ RESISTIVITY: dict[ConductorMaterial, Decimal] = {
     ConductorMaterial.ALUMINIUM: Decimal("0.027"),
 }
 
+#: ``kpar`` for conductors in parallel per phase (handbook §2.4); 1 for one.
+PARALLEL_FACTOR: dict[int, Decimal] = {
+    1: Decimal(1),
+    2: Decimal(2),
+    3: Decimal("2.7"),
+    4: Decimal(3),
+    5: Decimal("3.2"),
+}
+
+#: ``k`` for a PVC-insulated conductor above 300 mm² (handbook §2.4 Table 1).
+_K_PVC_ABOVE_300: dict[ConductorMaterial, Decimal] = {
+    ConductorMaterial.COPPER: Decimal(103),
+    ConductorMaterial.ALUMINIUM: Decimal(68),
+}
+
 #: ``ksec`` for the reactance of a large section (handbook §2.4); 1 up to 95 mm².
 REACTANCE_FACTOR: dict[Decimal, Decimal] = {
     Decimal(120): Decimal("0.9"),
@@ -68,12 +84,14 @@ def withstand_ka2s(
         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
 
     Returns:
-        ``k²S²`` in (kA)²s, to a thousandth; ``None`` for an insulation not held
-        or a section above 300 mm², whose ``k`` differs.
+        ``k²S²`` in (kA)²s, to a thousandth, of one conductor (in parallel,
+        each is checked alone); ``None`` for an insulation not held.
     """
     k = K_FACTOR.get((insulation_rating_c, material))
-    if k is None or section_mm2 > 300:
+    if k is None:
         return None
+    if insulation_rating_c == 70 and section_mm2 > 300:
+        k = _K_PVC_ABOVE_300[material]
     return ((k * section_mm2) ** 2 / 1_000_000).quantize(Decimal("0.001"))
 
 
@@ -82,6 +100,7 @@ def min_current_a(
     section_mm2: Decimal,
     material: ConductorMaterial,
     phase_voltage_v: Decimal,
+    parallel: int = 1,
 ) -> Decimal:
     """The smallest short circuit at a cable's far end, line to neutral.
 
@@ -90,15 +109,18 @@ def min_current_a(
         section_mm2: Of the line and neutral conductors alike.
         material: Copper or aluminium.
         phase_voltage_v: ``U0``.
+        parallel: Conductors in parallel per phase, each of ``section_mm2``.
 
     Returns:
         ``Ikmin`` in amperes (handbook formula 2.2, ``m = 1``).
     """
     ksec = REACTANCE_FACTOR.get(section_mm2, Decimal(1))
+    kpar = PARALLEL_FACTOR[parallel]
     return (
         Decimal("0.8")
         * phase_voltage_v
         * ksec
+        * kpar
         / (Decimal("1.5") * RESISTIVITY[material] * 2 * length_m / section_mm2)
     )
 
@@ -128,6 +150,7 @@ def fit(
     phase_voltage_v: Decimal,
     rated_a: Decimal,
     curve: str,
+    parallel: int = 1,
 ) -> Checked | None:
     """Enlarge a cable until a short circuit at its far end trips its breaker at once.
 
@@ -138,6 +161,7 @@ def fit(
         phase_voltage_v: ``U0``.
         rated_a: The breaker's In.
         curve: Its tripping characteristic.
+        parallel: Conductors in parallel per phase (``kpar``).
 
     Returns:
         The smallest section at or above ``section_mm2`` that is within; or,
@@ -149,8 +173,8 @@ def fit(
         return None
     trip = multiple * rated_a
     for candidate in SECTIONS[SECTIONS.index(section_mm2) :]:
-        current = min_current_a(length_m, candidate, material, phase_voltage_v)
+        current = min_current_a(length_m, candidate, material, phase_voltage_v, parallel)
         if current >= trip:
             return Checked(candidate, current.quantize(Decimal(1)), trip, within=True)
-    current = min_current_a(length_m, section_mm2, material, phase_voltage_v)
+    current = min_current_a(length_m, section_mm2, material, phase_voltage_v, parallel)
     return Checked(section_mm2, current.quantize(Decimal(1)), trip, within=False)

@@ -480,9 +480,7 @@ def _group_diagram(
             diagram.connect(bottom, switch_top)
             bottom = switch_bottom
         cable = board.cable(circuit.cable_id) if circuit.cable_id else None
-        section = (
-            f"{cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material}" if cable else ""
-        )
+        section = f"{cable.size} {cable.material}" if cable else ""
         load_top = diagram.element(
             LOAD,
             x,

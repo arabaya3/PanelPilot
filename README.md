@@ -429,6 +429,22 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Cables in parallel** (`app/design/distribution.py`): where no tabulated
+section carries a circuit's current, it is shared by two, then up to four,
+identical cables, each sized for its share (`2x5G240`):
+
+- **Grouping:** each run counts as one more circuit in its group (ABB
+  handbook Table 5 note 4), which lowers the grouping factor.
+- **Checks:** voltage drop is taken per run at I / n. The earth fault loop is
+  one run's divided by n. The far-end short circuit is raised by the
+  handbook's `kpar` (2, 2.7, 3 for 2, 3, 4 runs). `k²S²` is per conductor,
+  with k = 103/68 for PVC above 300 mm².
+- **Downstream:** a sub-board fed in parallel gets its fault level and `Ze`
+  through all runs. The cable list gives the runs, and the quotation buys n
+  lengths.
+- **Installing:** the board says to lay the runs the same length and route,
+  so they share the current equally.
+
 **Short circuit along the cable** (`app/design/short_circuit.py`, ABB
 handbook Vol. 2 §2.4):
 

@@ -45,6 +45,7 @@ def at_feeder_end(
     length_m: Decimal,
     section_mm2: Decimal,
     material: ConductorMaterial,
+    parallel: int = 1,
 ) -> Decimal:
     """The three-phase fault level where a feeder ends.
 
@@ -54,14 +55,16 @@ def at_feeder_end(
         length_m: The feeder's route length.
         section_mm2: Its line conductors' cross-section.
         material: Copper or aluminium.
+        parallel: Identical cables in parallel, which divide both the cable's
+            resistance and its reactance.
 
     Returns:
         The fault level at the far end in kA, rounded up to 0.1 kA, and never
         above ``upstream_ka``.
     """
     source = C_MAX * voltage_v / (_SQRT3 * upstream_ka * 1000)
-    resistance = RESISTIVITY[material] * length_m / section_mm2
-    reactance = source + REACTANCE_PER_M * length_m
+    resistance = RESISTIVITY[material] * length_m / section_mm2 / parallel
+    reactance = source + REACTANCE_PER_M * length_m / parallel
     impedance = (resistance**2 + reactance**2).sqrt()
     current = C_MAX * voltage_v / (_SQRT3 * impedance) / 1000
     return min(upstream_ka, current.quantize(_TENTH, rounding=ROUND_CEILING))

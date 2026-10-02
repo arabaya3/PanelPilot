@@ -40,3 +40,19 @@ def test_a_longer_or_thinner_feeder_lets_through_less() -> None:
 @pytest.mark.parametrize("length", ["0.01", "1"])
 def test_it_never_exceeds_the_supply(length: str) -> None:
     assert _at(length, "300") <= 25
+
+
+def test_parallel_runs_reduce_the_feeder_impedance() -> None:
+    from app.models.schemas.calculations import ConductorMaterial
+
+    def level(parallel: int) -> Decimal:
+        return fault_level.at_feeder_end(
+            upstream_ka=Decimal(25),
+            voltage_v=Decimal(400),
+            length_m=Decimal(100),
+            section_mm2=Decimal(95),
+            material=ConductorMaterial.COPPER,
+            parallel=parallel,
+        )
+
+    assert level(1) < level(2) <= Decimal(25)
