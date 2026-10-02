@@ -27,11 +27,10 @@ PLC writer is held to as well.
 
 from __future__ import annotations
 
-import csv
-import io
 import re
 from dataclasses import dataclass, field
 
+from app.design.export_lists import write_csv
 from app.models.schemas.design import Board, Circuit, DesignProject, DeviceKind, MotorStarter
 
 #: The shared inputs, and what each is for.
@@ -286,11 +285,7 @@ def io_list_csv(program: PlcProgram) -> str:
     Returns:
         The CSV text, with a byte-order mark for Excel.
     """
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\r\n")
-    writer.writerow(["Tag", "Direction", "Type", "Board", "Device", "Description", "Address"])
-    for point in program.io:
-        writer.writerow(
-            [point.tag, point.direction, "BOOL", point.board, point.device, point.description, ""]
-        )
-    return "﻿" + buffer.getvalue()
+    return write_csv(
+        ["Tag", "Direction", "Type", "Board", "Device", "Description", "Address"],
+        [[p.tag, p.direction, "BOOL", p.board, p.device, p.description, ""] for p in program.io],
+    )

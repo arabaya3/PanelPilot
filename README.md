@@ -196,7 +196,10 @@ A **distribution board** is designed from its load schedule
 
 - Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
 - Its breaker is the company's fixed rating for that kind of load, or the
-  smallest curve C rating at or above Ib.
+  smallest curve C rating at or above Ib. Above 125 A, the largest
+  miniature breaker held, the breaker is left unselected as a moulded-case
+  breaker, the cable is sized for Ib, and the board says so. The same holds
+  for the incomer.
 - Its cable is sized to carry In as installed, so Ib ≤ In ≤ Iz holds by
   construction.
 - Loads the company puts under a residual current device are grouped by
@@ -232,7 +235,10 @@ Drawing text is in English for now.
 
 - **CSV lists**: devices, parts, cables and the circuit schedule. These are
   what EPLAN, AutoCAD Electrical, SEE Electrical, WSCAD and PC|SCHEMATIC
-  import from a spreadsheet, and Excel opens directly.
+  import from a spreadsheet, and Excel opens directly. A cell starting with
+  `=`, `+`, `-` or `@` (an IEC 81346 designation such as `=DB1-Q3`) is written
+  with a leading apostrophe. Excel then shows it as text instead of `#NAME?`,
+  and a description can never run as a formula.
 - **DXF (R12)**: the drawing set's geometry, for any CAD tool. It is a
   drawing only, with no device data.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols
@@ -258,7 +264,11 @@ Arabic headers) can be imported instead of typed
 say. Each load type comes from its type column, or failing that from its
 description, and a type inferred that way is reported. Every row skipped
 (totals, spares, no power) and every assumption made is listed by row
-number, so the engineer checks exactly what the import decided.
+number, so the engineer checks exactly what the import decided. A file is
+read up to 5 MiB: the first 5,000 rows, 60 columns and 20 sheets, or 50 PDF
+pages. A PDF table drawn without rules is read from its text alignment. The
+design routes accept request bodies up to 6 MiB
+(`MAX_DESIGN_REQUEST_BODY_BYTES`); everything else keeps the 64 KiB default.
 
 A board can also be **described in words** ("a hall with 20 sockets, 30
 LED lights and two 2-ton split units"). This happens in two stages

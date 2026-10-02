@@ -279,6 +279,16 @@ def test_image_uploads_get_the_larger_body_limit(settings: Settings) -> None:
     assert response.status_code != 413
 
 
+def test_design_uploads_get_the_larger_body_limit(settings: Settings) -> None:
+    """A 1 MiB consultant's schedule reaches the route instead of a 413."""
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/design/load-schedule/import",
+            files={"file": ("schedule.pdf", b"%PDF" + b"x" * (1024 * 1024))},
+        )
+    assert response.status_code != 413
+
+
 # --- CORS ----------------------------------------------------------------------
 
 

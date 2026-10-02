@@ -161,9 +161,23 @@ def test_a_plc_switched_load_gets_a_contactor_after_its_breaker() -> None:
     assert any("AC-1" in note for note in board.notes)
 
 
+def test_a_load_above_the_miniature_breakers_gets_an_unselected_mccb() -> None:
+    request = DistributionBoardRequest(
+        name="MDB", loads=[_load(LoadKind.OTHER, "90", "Chiller", phases=3)]
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    breaker = board.device(board.circuits[0].device_ids[0])
+    assert breaker.rated_current_a is None
+    assert breaker.curve is None
+    cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
+    # Sized for Ib (about 144 A), not refused.
+    assert cable.cross_section_mm2 >= Decimal(35)
+    assert any("Chiller" in note and "moulded-case" in note for note in board.notes)
+
+
 def test_an_unprotectable_load_is_refused_by_name() -> None:
     request = DistributionBoardRequest(
-        name="DB", loads=[_load(LoadKind.OTHER, "90", "Chiller", phases=3)]
+        name="DB", loads=[_load(LoadKind.OTHER, "3000", "Chiller", phases=3)]
     )
     with pytest.raises(ValidationError, match="Chiller"):
         distribution.design_distribution_board(request, profile.default_profile())

@@ -160,3 +160,15 @@ def test_a_pdf_without_a_table_is_refused() -> None:
 
 def test_read_rows_handles_semicolons() -> None:
     assert schedule_import.read_rows(b"a;b\n1;2\n") == [["a", "b"], ["1", "2"]]
+
+
+def test_only_the_first_rows_and_columns_are_read() -> None:
+    wide = ",".join(f"c{i}" for i in range(100))
+    data = ("Description,kW\n" + "Lights,1\n" * (schedule_import.MAX_ROWS + 50) + wide).encode()
+    rows = schedule_import.read_rows(data)
+    assert len(rows) == schedule_import.MAX_ROWS
+    workbook_rows: list[list[object]] = [
+        ["Description", "kW"],
+        *[["Lights", 1] for _ in range(schedule_import.MAX_ROWS + 10)],
+    ]
+    assert len(schedule_import.read_rows(_xlsx(workbook_rows))) == schedule_import.MAX_ROWS
