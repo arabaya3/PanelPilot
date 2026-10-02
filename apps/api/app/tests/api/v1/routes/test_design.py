@@ -90,3 +90,36 @@ def test_an_unreadable_schedule_is_a_client_error(client: TestClient) -> None:
         files={"file": ("x.csv", b"Name,Colour\n", "text/csv")},
     )
     assert response.status_code in (400, 422)
+
+
+def test_a_suggestion_is_charged_to_the_month(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from app.domain import design as design_domain
+    from app.domain import model_budget
+    from app.models.schemas.design import LoadScheduleSuggestion
+
+    charged: list[str] = []
+    committed: list[bool] = []
+
+    def charge(**kwargs: object) -> None:
+        charged.append(str(kwargs["tenant_id"]))
+
+    def suggest(**kwargs: object) -> LoadScheduleSuggestion:
+        del kwargs
+        return LoadScheduleSuggestion(loads=[], assumptions=["x"])
+
+    monkeypatch.setattr(model_budget, "charge_model_call", charge)
+    monkeypatch.setattr(design_domain, "suggest_load_schedule", suggest)
+    app = client.app
+    app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None  # type: ignore[attr-defined]
+    app.dependency_overrides[get_session] = lambda: SimpleNamespace(  # type: ignore[attr-defined]
+        commit=lambda: committed.append(True)
+    )
+    response = client.post("/design/load-schedule/suggest", json={"description": "a hall"})
+    assert response.status_code == 200
+    assert response.json() == {"loads": [], "assumptions": ["x"]}
+    assert charged == ["t"]
+    assert committed == [True]

@@ -83,7 +83,7 @@ def _inline_refs(node: Any, defs: dict[str, Any]) -> Any:
     return {key: _inline_refs(value, defs) for key, value in resolved.items()}
 
 
-def _strip_prose(node: Any) -> Any:
+def _strip_prose(node: Any, *, field_names: bool = False) -> Any:
     """Remove ``title`` and ``description`` keys from a schema fragment.
 
     Pydantic copies each model's full docstring into ``description``. Those are
@@ -92,8 +92,15 @@ def _strip_prose(node: Any) -> Any:
     them on every request. The field names and the tool description carry what
     it actually needs.
 
+    The keys of a ``properties`` mapping are field names, not schema keywords:
+    a field called ``description`` is kept. Stripping it dropped the field
+    from the schema while ``required`` still named it, and a model given that
+    schema left it out every time (found live, drafting a load schedule).
+
     Args:
         node: A JSON Schema fragment.
+        field_names: Whether ``node`` is a ``properties`` mapping, whose keys
+            are field names.
 
     Returns:
         The fragment without human-facing prose.
@@ -103,9 +110,9 @@ def _strip_prose(node: Any) -> Any:
     if not isinstance(node, dict):
         return node
     return {
-        key: _strip_prose(value)
+        key: _strip_prose(value, field_names=key == "properties" and not field_names)
         for key, value in node.items()
-        if key not in {"title", "description"}
+        if field_names or key not in {"title", "description"}
     }
 
 

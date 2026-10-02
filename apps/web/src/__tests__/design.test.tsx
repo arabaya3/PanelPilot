@@ -6,6 +6,7 @@ import {
   designBoard,
   exportDesign,
   importSchedule,
+  suggestSchedule,
   type BoardDesignResponse,
   type DesignProject,
 } from '@/lib/design';
@@ -285,6 +286,80 @@ describe('load schedule import', () => {
     expect(outcome.kind).toBe('imported');
     const init = fetchImpl.mock.calls[0]?.[1];
     expect(init?.body).toBeInstanceOf(FormData);
+  });
+});
+
+describe('suggest from a description', () => {
+  it('sends the description and supply, fills the rows and lists the assumptions', async () => {
+    const suggestImpl = vi.fn<typeof suggestSchedule>().mockResolvedValue({
+      kind: 'suggested',
+      result: {
+        loads: [
+          {
+            description: 'Hall sockets 1',
+            load: 'socket',
+            power_kw: '1.05',
+            phases: 1,
+            power_factor: null,
+          },
+          {
+            description: 'Hall sockets 2',
+            load: 'socket',
+            power_kw: '0.9',
+            phases: 1,
+            power_factor: null,
+          },
+        ],
+        assumptions: ['Diversity not applied.', 'Hall sockets 1: 7 x 150 W = 1.05 kW. typical'],
+      },
+    });
+    renderApp(
+      <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} suggestImpl={suggestImpl} />,
+    );
+    fireEvent.change(screen.getByLabelText('Describe the board'), {
+      target: { value: 'A hall with 13 sockets' },
+    });
+    const button = screen.getByRole('button', { name: 'Suggest a schedule' });
+    await waitFor(() => {
+      expect(button.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.click(button);
+    const result = await screen.findByTestId('suggest-result');
+    expect(result.textContent).toContain('7 x 150 W');
+    expect(suggestImpl.mock.calls[0]?.[0]).toMatchObject({
+      token: 'tok',
+      description: 'A hall with 13 sockets',
+      supplyPhases: 3,
+      profile: null,
+    });
+    expect((screen.getAllByLabelText('Circuit')[1] as HTMLInputElement).value).toBe(
+      'Hall sockets 2',
+    );
+  });
+
+  it('says when the month’s allowance is spent', async () => {
+    renderApp(
+      <DesignScreen
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+        suggestImpl={vi.fn<typeof suggestSchedule>().mockResolvedValue({ kind: 'budget' })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Describe the board'), { target: { value: 'hall' } });
+    const button = screen.getByRole('button', { name: 'Suggest a schedule' });
+    await waitFor(() => {
+      expect(button.hasAttribute('disabled')).toBe(false);
+    });
+    fireEvent.click(button);
+    expect((await screen.findByTestId('suggest-error')).textContent).toBe(
+      "This month's AI allowance is used up.",
+    );
+  });
+
+  it('maps a 429 to the budget outcome', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429 }));
+    expect(
+      await suggestSchedule({ token: 't', description: 'x', supplyPhases: 3, fetchImpl }),
+    ).toEqual({ kind: 'budget' });
   });
 });
 

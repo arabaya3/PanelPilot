@@ -584,6 +584,15 @@
       "help": "An Excel, CSV or PDF schedule from the consultant. Its rows replace the ones below; check each before designing.",
       "working": "Reading the schedule…",
       "done": "{count, plural, one {# circuit read.} other {# circuits read.}} Rows skipped and assumptions made:"
+    },
+    "suggest": {
+      "label": "Describe the board",
+      "placeholder": "A hall with 20 sockets, 30 LED lights, two 2-ton split units and a kitchen exhaust fan",
+      "help": "The points are read from your description and split into circuits by your company's rules. Typical powers are used where you give none; every assumption is listed. Check each row before designing.",
+      "submit": "Suggest a schedule",
+      "working": "Drafting…",
+      "done": "Suggested schedule. Assumptions:",
+      "budget": "This month's AI allowance is used up."
     }
   }
 }

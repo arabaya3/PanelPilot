@@ -9,6 +9,7 @@ import {
   designBoard,
   exportDesign,
   importSchedule,
+  suggestSchedule,
   type BoardDesignResponse,
   type DesignOutcome,
   type ExportFormat,
@@ -120,12 +121,14 @@ export function DesignScreen({
   designImpl = designBoard,
   exportImpl = exportDesign,
   importImpl = importSchedule,
+  suggestImpl = suggestSchedule,
   saveImpl = saveBlob,
 }: {
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designBoard;
   exportImpl?: typeof exportDesign;
   importImpl?: typeof importSchedule;
+  suggestImpl?: typeof suggestSchedule;
   saveImpl?: typeof saveBlob;
 }) {
   const t = useTranslations('design');
@@ -140,6 +143,13 @@ export function DesignScreen({
     | { kind: 'idle' }
     | { kind: 'working' }
     | { kind: 'done'; count: number; warnings: string[] }
+    | { kind: 'error'; detail: string }
+  >({ kind: 'idle' });
+  const [brief, setBrief] = useState('');
+  const [suggestState, setSuggestState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'working' }
+    | { kind: 'done'; assumptions: string[] }
     | { kind: 'error'; detail: string }
   >({ kind: 'idle' });
   const id = useId();
@@ -181,6 +191,42 @@ export function DesignScreen({
       count: imported.length,
       warnings: outcome.result.warnings,
     });
+  }
+
+  async function suggestFromBrief() {
+    if (session.kind !== 'ready' || brief.trim().length < 3) return;
+    const profile = parsedProfile();
+    setSuggestState({ kind: 'working' });
+    const outcome = await suggestImpl({
+      token: session.token,
+      description: brief.trim(),
+      supplyPhases: Number(info.phases),
+      profile: profile === 'invalid' ? null : profile,
+    });
+    if (outcome.kind !== 'suggested') {
+      setSuggestState({
+        kind: 'error',
+        detail:
+          outcome.kind === 'refused' && outcome.detail
+            ? outcome.detail
+            : outcome.kind === 'budget'
+              ? t('suggest.budget')
+              : t('error'),
+      });
+      if (outcome.kind === 'unauthorized') void connect();
+      return;
+    }
+    const suggested = outcome.result.loads.map((load, index): Load => ({
+      key: nextKey + index,
+      description: load.description,
+      load: load.load,
+      power: load.power_kw,
+      phases: load.phases === 3 ? '3' : '1',
+      powerFactor: load.power_factor ?? '',
+    }));
+    setLoads(suggested);
+    setNextKey((key) => key + suggested.length);
+    setSuggestState({ kind: 'done', assumptions: outcome.result.assumptions });
   }
 
   function updateLoad(key: number, patch: Partial<Load>) {
@@ -336,6 +382,51 @@ export function DesignScreen({
 
         <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
           <legend className="px-1 text-sm font-semibold">{t('loads')}</legend>
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`${id}-brief`} className="text-sm font-semibold">
+              {t('suggest.label')}
+            </label>
+            <textarea
+              id={`${id}-brief`}
+              rows={3}
+              value={brief}
+              placeholder={t('suggest.placeholder')}
+              onChange={(event) => {
+                setBrief(event.target.value);
+              }}
+              className="input w-full"
+            />
+            <p className="text-sm text-text-muted">{t('suggest.help')}</p>
+            <button
+              type="button"
+              disabled={
+                session.kind !== 'ready' ||
+                brief.trim().length < 3 ||
+                suggestState.kind === 'working'
+              }
+              onClick={() => {
+                void suggestFromBrief();
+              }}
+              className="btn btn-sm self-start"
+            >
+              {suggestState.kind === 'working' ? t('suggest.working') : t('suggest.submit')}
+            </button>
+            {suggestState.kind === 'error' && (
+              <p role="alert" className="text-sm text-danger" data-testid="suggest-error">
+                {suggestState.detail}
+              </p>
+            )}
+            {suggestState.kind === 'done' && (
+              <div data-testid="suggest-result" className="text-sm">
+                <p>{t('suggest.done')}</p>
+                <ul className="mt-1 list-disc ps-5 text-text-muted">
+                  {suggestState.assumptions.map((assumption, index) => (
+                    <li key={index}>{assumption}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           <div className="flex flex-col gap-2">
             <label htmlFor={`${id}-import`} className="text-sm font-semibold">
               {t('import.label')}
