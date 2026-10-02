@@ -5,7 +5,8 @@ leaves first, so each feeder is sized from the sub-board as designed rather
 than from a figure typed in by hand:
 
 * The feeder's design current is the sub-board's most loaded line conductor,
-  the same current its incomer is rated for, with no diversity applied.
+  the same current its incomer is rated for, after the company's demand
+  factors where it sets any.
 * It is entered as a load of ``power_kw`` at cos phi 1 chosen so that
   P / (k Ur cos phi) gives that current back, so the feeder is protected and
   cabled by the same rule as every other circuit (``distribution``).
@@ -119,18 +120,24 @@ def design_order(requests: list[DistributionBoardRequest]) -> list[DistributionB
     return order
 
 
-def feeder_load(board: Board, length_m: Decimal | None = None) -> LoadInput:
+def feeder_load(
+    board: Board, length_m: Decimal | None = None, profile: CompanyProfile | None = None
+) -> LoadInput:
     """The load a designed sub-board puts on the board that feeds it.
 
     Args:
         board: The sub-board, designed.
         length_m: The feeder cable's route length, where given.
+        profile: The company, whose demand factors apply; none for none.
 
     Returns:
         A sub-board load whose design current is the sub-board's most loaded
         line conductor.
     """
-    current = max(distribution.phase_currents(board.circuits).values())
+    if profile is not None and profile.demand_factors:
+        current = max(distribution.demand_currents(board.circuits, profile).values())
+    else:
+        current = max(distribution.phase_currents(board.circuits).values())
     three_phase = board.supply.phases == 3
     volts = board.supply.voltage_v * (_SQRT3 if three_phase else 1)
     power_kw = (volts * current / 1000).quantize(_HUNDREDTH, rounding=ROUND_CEILING)
@@ -208,7 +215,7 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
             ]
         )
         if request.fed_from is not None:
-            feeders[request.fed_from].append(feeder_load(board, request.feeder_length_m))
+            feeders[request.fed_from].append(feeder_load(board, request.feeder_length_m, profile))
 
     # From the origin down: each board knows what its feeders dropped.
     upstream: dict[str, Decimal] = {}

@@ -341,6 +341,11 @@ boards are designed leaves first:
 - **Feeder sizing:** each feeder is sized from its sub-board as designed. Its
   Ib is the sub-board's most loaded line conductor, the same current that
   board's incomer is rated for, so no feeder load is typed in by hand.
+- **Demand factors:** a company profile can set `demand_factors` by kind of
+  load (0 to 1). Incomers and feeders are then rated for each circuit's Ib
+  times its factor, never below the largest single circuit on a conductor,
+  and the board states the connected and the diversified current. Final
+  circuits are never diversified, and none is assumed without the profile.
 - **Checks:** names, the feeding graph (an unknown board, a board feeding
   itself, a loop) and supply compatibility are checked first, and each
   refusal names the board.

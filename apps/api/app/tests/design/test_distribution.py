@@ -581,3 +581,42 @@ def test_the_board_asks_for_the_breakers_let_through_at_its_fault_level() -> Non
     board = distribution.design_distribution_board(request, profile.default_profile())
     (withstand,) = [n for n in board.notes if n.code == "short_circuit_withstand"]
     assert withstand.params["fault"] == "10"
+
+
+def test_demand_factors_lower_the_incomer() -> None:
+    company = profile.default_profile()
+    full = distribution.design_distribution_board(_hall(), company)
+    diverse = company.model_copy(
+        update={"demand_factors": {LoadKind.SOCKET: Decimal("0.4"), LoadKind.LIGHTING: Decimal(1)}}
+    )
+    board = distribution.design_distribution_board(_hall(), diverse)
+    (made,) = [n for n in board.notes if n.code == "demand_factors"]
+    assert Decimal(made.params["demand"]) < Decimal(made.params["connected"])
+    assert "demand_factors" not in [n.code for n in full.notes]
+
+
+def test_demand_currents_never_drop_below_the_largest_circuit() -> None:
+    circuits = [
+        Circuit(
+            id="c1",
+            description="Heater",
+            load=LoadKind.WATER_HEATER,
+            power_kw=Decimal(3),
+            design_current_a=Decimal(13),
+            phase=Phase.L1,
+        ),
+        Circuit(
+            id="c2",
+            description="Heater 2",
+            load=LoadKind.WATER_HEATER,
+            power_kw=Decimal(1),
+            design_current_a=Decimal(4),
+            phase=Phase.L1,
+        ),
+    ]
+    company = profile.default_profile().model_copy(
+        update={"demand_factors": {LoadKind.WATER_HEATER: Decimal("0.5")}}
+    )
+    currents = distribution.demand_currents(circuits, company)
+    assert currents[Phase.L1] == 13
+    assert currents[Phase.L2] == 0
