@@ -19,6 +19,7 @@ import csv
 from decimal import Decimal
 from io import StringIO
 
+from app.design import terminals
 from app.models.schemas.design import Board, DesignProject, Device
 
 _BOM = "\ufeff"
@@ -223,6 +224,31 @@ def cable_list(project: DesignProject) -> str:
         ],
         rows,
     )
+
+
+def terminal_list(project: DesignProject) -> str:
+    """Write every board's outgoing terminal strip, one row per terminal.
+
+    Args:
+        project: The project, designated.
+
+    Returns:
+        The CSV text.
+    """
+    rows = [
+        [
+            board.name,
+            f"-{terminals.STRIP}:{terminal.number}",
+            terminal.function,
+            terminal.circuit,
+            terminal.cable,
+            _plain(terminal.conductor_mm2),
+            terminal.article or "",
+        ]
+        for board in project.boards
+        for terminal in terminals.strip(board)
+    ]
+    return write_csv(["Board", "Terminal", "Conductor", "Circuit", "Cable", "mm2", "Article"], rows)
 
 
 def circuit_schedule(project: DesignProject) -> str:

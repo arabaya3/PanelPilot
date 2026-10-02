@@ -694,6 +694,7 @@ class ExportFormat(StrEnum):
     PARTS_CSV = "parts_csv"
     CABLES_CSV = "cables_csv"
     CIRCUITS_CSV = "circuits_csv"
+    TERMINALS_CSV = "terminals_csv"
     QUOTATION_PDF = "quotation_pdf"
     QUOTATION_CSV = "quotation_csv"
     PLC_ST = "plc_st"

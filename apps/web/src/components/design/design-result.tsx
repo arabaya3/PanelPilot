@@ -15,6 +15,7 @@ const FORMATS: ExportFormat[] = [
   'parts_csv',
   'cables_csv',
   'circuits_csv',
+  'terminals_csv',
   'json',
 ];
 

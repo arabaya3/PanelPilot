@@ -78,3 +78,11 @@ def test_text_cell(value: str, written: str) -> None:
 def test_write_csv() -> None:
     text = export_lists.write_csv(["A", "B"], [["=x", "y"], ["z"]])
     assert text == "﻿A,B\r\n'=x,y\r\nz\r\n"
+
+
+def test_terminal_list(hall_project: DesignProject) -> None:
+    rows = _rows(export_lists.terminal_list(hall_project))
+    # A leading '-' is quoted, as every cell that could read as a formula.
+    assert rows[0]["Terminal"] == "'-X1:1"
+    assert {r["Conductor"] for r in rows} >= {"N", "PE"}
+    assert all(r["Article"].startswith("8WH1") for r in rows)

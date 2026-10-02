@@ -69,6 +69,7 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.PARTS_CSV: ("text/csv; charset=utf-8", "parts.csv"),
     ExportFormat.CABLES_CSV: ("text/csv; charset=utf-8", "cables.csv"),
     ExportFormat.CIRCUITS_CSV: ("text/csv; charset=utf-8", "circuits.csv"),
+    ExportFormat.TERMINALS_CSV: ("text/csv; charset=utf-8", "terminals.csv"),
     ExportFormat.QUOTATION_PDF: ("application/pdf", "quotation.pdf"),
     ExportFormat.QUOTATION_CSV: ("text/csv; charset=utf-8", "quotation.csv"),
     ExportFormat.PLC_ST: ("text/plain; charset=utf-8", "st"),
@@ -204,6 +205,8 @@ def export_design(
         content = export_lists.cable_list(project).encode("utf-8")
     elif request.format is ExportFormat.CIRCUITS_CSV:
         content = export_lists.circuit_schedule(project).encode("utf-8")
+    elif request.format is ExportFormat.TERMINALS_CSV:
+        content = export_lists.terminal_list(project).encode("utf-8")
     elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
         if request.pricing is None:
             raise ValidationError(

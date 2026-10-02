@@ -583,7 +583,8 @@
       "parts_csv": "רשימת חלקים (CSV)",
       "cables_csv": "רשימת כבלים (CSV)",
       "circuits_csv": "טבלת מעגלים (CSV)",
-      "json": "פרויקט (JSON)"
+      "json": "פרויקט (JSON)",
+      "terminals_csv": "רשימת מהדקים (CSV)"
     },
     "import": {
       "label": "ייבוא טבלת עומסים",

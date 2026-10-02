@@ -403,6 +403,19 @@ and for every feeder whose length is given (`app/design/voltage_drop.py`):
   dropped. Each feeder is held to the strictest load anywhere below it. The
   drop shows in the result table and in the cable list.
 
+**Terminal strips** (`app/design/terminals.py`):
+
+- **Numbering:** every outgoing cable lands on the board's `-X1`, numbered in
+  circuit order with one terminal per core. A single-phase circuit gets
+  L/N/PE; a three-phase one gets L1 L2 L3 (N) PE; a motor gets U V W PE, or
+  U1…W2 PE for star-delta.
+- **Selection:** each terminal is a Siemens 8WH1 through-type terminal (LV 10
+  catalogue) chosen for its conductor and the circuit's rated current, with
+  the PE terminal of the same size for the PE core. Aluminium conductors, and
+  anything beyond the range, are left unselected rather than named wrongly.
+- **Where they appear:** in the drawing set (a Terminals page per board), in
+  `terminals_csv`, and counted in the parts list.
+
 **Saved projects** (`/design/projects`, `app/domain/design_projects.py`):
 
 - **What is kept:** a project is saved as what the engineer entered, not as
