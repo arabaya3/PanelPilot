@@ -74,6 +74,9 @@ class _Sized:
     section_mm2: Decimal
     phase: Phase = Phase.L1
     motor: motors.MotorCircuit | None = None
+    #: False when no miniature breaker carries Ib: a moulded-case breaker is
+    #: needed, rated_a is then Ib itself, and the breaker is left unselected.
+    selected: bool = True
 
 
 def _plain(value: Decimal) -> str:
@@ -108,14 +111,23 @@ def _size(
     )
     rule = profile.circuit_rules.get(load.load)
     fixed = rule.breaker_a if rule else None
+    selected = True
     if fixed is not None and fixed >= current:
         rated = fixed
     else:
         try:
             rated = Decimal(feeder_protection.smallest_rating(current))
-        except ValidationError as exc:
-            raise ValidationError(f"{load.description}: {exc}") from exc
-        if fixed is not None:
+        except ValidationError:
+            # A main board's large feeders are moulded-case breakers, which
+            # the miniature-breaker table does not hold: left unselected,
+            # as the incomer is, rather than refusing the whole board.
+            rated, selected = current, False
+            notes.append(
+                f"{load.description}: Ib {_plain(current)} A is above the largest miniature "
+                "breaker held (125 A); a moulded-case breaker is needed and none is "
+                "selected here. The cable is sized for Ib; check it against the breaker's In."
+            )
+        if fixed is not None and selected:
             notes.append(
                 f"{load.description}: Ib {_plain(current)} A exceeds the company's "
                 f"{_plain(fixed)} A for {load.load.value}; rated {_plain(rated)} A instead."
@@ -143,6 +155,7 @@ def _size(
         rated_a=rated,
         curve=rule.curve if rule else "C",
         section_mm2=section,
+        selected=selected,
     )
 
 
@@ -375,8 +388,8 @@ def design_distribution_board(request: DistributionBoardRequest, profile: Compan
             id=f"c{item.index + 1}-breaker",
             kind=DeviceKind.CIRCUIT_BREAKER,
             poles=3 if three_phase else 1,
-            rated_current_a=item.rated_a,
-            curve=item.curve,
+            rated_current_a=item.rated_a if item.selected else None,
+            curve=item.curve if item.selected else None,
             description=item.load.description,
             upstream_id=upstream.get(item.index, "incomer"),
         )

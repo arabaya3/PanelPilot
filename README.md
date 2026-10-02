@@ -196,7 +196,10 @@ A **distribution board** is designed from its load schedule
 
 - Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
 - Its breaker is the company's fixed rating for that kind of load, or the
-  smallest curve C rating at or above Ib.
+  smallest curve C rating at or above Ib. Above 125 A, the largest
+  miniature breaker held, the breaker is left unselected as a moulded-case
+  breaker, the cable is sized for Ib, and the board says so. The same holds
+  for the incomer.
 - Its cable is sized to carry In as installed, so Ib ≤ In ≤ Iz holds by
   construction.
 - Loads the company puts under a residual current device are grouped by
