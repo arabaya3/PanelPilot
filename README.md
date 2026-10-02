@@ -278,6 +278,15 @@ Drawing text is in English for now.
 There are no EPLAN or AutoCAD Electrical project exporters yet: their
 formats are undocumented and need testing against a real installation.
 
+**Company settings** are a form on the `/design` page rather than JSON. It
+covers the company name and key, who confirmed the rules, the design rules
+(discrimination ratio, circuits per RCD, spare ways, phase imbalance and
+voltage drop limits, usable rail length), and per kind of load the breaker,
+curve, RCD, minimum cable and demand factor. A blank field keeps the default,
+shown greyed. They are saved per company (`GET`/`PUT /design/company-settings`,
+validated as a design would read them), and every new project starts from
+them. The JSON stays underneath for anything the form does not hold.
+
 The **`/design` page** takes a board's load schedule and, optionally, the
 company's profile settings as JSON. It shows each circuit with its breaker,
 RCD and cable, lists what the design assumed, and downloads every export.

@@ -1,4 +1,4 @@
-"""ORM models for saved design projects and their revisions.
+"""ORM models for saved design projects, their revisions, and company settings.
 
 A project is saved as what the engineer entered (the request), not as the
 design it produced: the design is computed from the request, so saving the
@@ -68,3 +68,17 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")
+
+
+class CompanySettingsRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
+    """A tenant's company profile settings: what it does differently from the default.
+
+    One row per tenant, kept as the settings the engineer entered (JSON), so a
+    default corrected later still applies to everything they left unset.
+    """
+
+    __tablename__ = "company_settings"
+    __table_args__ = (UniqueConstraint("tenant_id"),)
+
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(320), nullable=False, default="")

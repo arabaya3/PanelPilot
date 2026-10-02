@@ -558,7 +558,7 @@
     "add": "Add circuit",
     "remove": "Remove",
     "profile": {
-      "title": "Company settings (optional)",
+      "title": "Company settings",
       "help": "Paste your company's profile as JSON, stating only what differs from the default: designation letters, title block, page order, breaker ratings per load type, circuits per RCD.",
       "invalid": "The company settings are not valid JSON."
     },
@@ -812,6 +812,39 @@
       "foundUnmatched": "{count, plural, one {# comment} other {# comments}}. The PDF is not this project's drawing set as designed now, so they are listed by page only.",
       "page": "Page {page}",
       "near": "near {label}"
+    },
+    "settings": {
+      "help": "What your company does differently from the default. A blank field keeps the default, shown greyed. Save them for the company, and every new project starts from them.",
+      "invalid": "The settings below are not valid JSON; fix them there to use the form.",
+      "rules": "Design rules",
+      "perKind": "Per kind of load",
+      "field": {
+        "key": "Profile key",
+        "name": "Company name",
+        "confirmedBy": "Rules confirmed by",
+        "discrimination": "Discrimination ratio",
+        "circuitsPerRcd": "Circuits per RCD",
+        "spareWays": "Spare ways",
+        "imbalance": "Phase imbalance limit",
+        "drop": "Voltage drop limit",
+        "dropLighting": "Lighting drop limit",
+        "dropStarting": "Motor starting drop limit",
+        "rail": "Usable rail length"
+      },
+      "col": {
+        "kind": "Load",
+        "breaker_a": "Breaker A",
+        "curve": "Curve",
+        "residual_current_ma": "RCD mA",
+        "cable_mm2": "Min. cable mm²",
+        "demand": "Demand factor"
+      },
+      "json": "Settings as JSON",
+      "jsonHelp": "Everything the form holds, and anything it does not (designation letters, title block, page order, rail widths).",
+      "save": "Save for the company",
+      "saved": "Saved. New projects start from these settings.",
+      "savedBy": "Last saved by {name} on {date}.",
+      "savedOn": "Last saved on {date}."
     }
   },
   "files": {
