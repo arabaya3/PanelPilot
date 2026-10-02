@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { Field } from '@/components/cable-sizing-panel';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
+  approveRevision,
   deleteProject,
   listProjects,
   openProject,
@@ -17,12 +18,32 @@ import {
 } from '@/lib/design';
 
 /** The project being worked on, once saved or opened. */
-export type OpenedProject = { id: string; name: string; revision: number; revisions: number[] };
+export type OpenedProject = {
+  id: string;
+  name: string;
+  revision: number;
+  revisions: number[];
+  /** Who approved the revision open, and when (ISO 8601); null while not approved. */
+  approval: { by: string; at: string } | null;
+};
+
+/** One line of the title block's revision list. */
+export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions']>[number];
+
+/** Who approved a saved project's open revision, and when; null while not approved. */
+export function approvalOf(project: SavedProject): OpenedProject['approval'] {
+  const revision = project.revisions.find((entry) => entry.number === project.revision);
+  return revision?.approved_by && revision.approved_at
+    ? { by: revision.approved_by, at: revision.approved_at }
+    : null;
+}
 
 /**
  * The engineer's saved projects: save what is on the page (a new project, or
  * a new revision of the one open), open one or an earlier revision of it, or
- * delete one. Saving keeps what was entered; opening designs it afresh.
+ * delete one. Saving keeps what was entered; opening designs it afresh. The
+ * engineer approves the revision open by name, once; its title block then
+ * says so, and a project with an approved revision cannot be deleted.
  */
 export function ProjectsPanel({
   token,
@@ -43,6 +64,7 @@ export function ProjectsPanel({
     revise: typeof reviseProject;
     open: typeof openProject;
     remove: typeof deleteProject;
+    approve: typeof approveRevision;
   }>;
 }) {
   const t = useTranslations('design.projects');
@@ -54,12 +76,14 @@ export function ProjectsPanel({
     revise = reviseProject,
     open = openProject,
     remove = deleteProject,
+    approve = approveRevision,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [approver, setApprover] = useState('');
 
   const refresh = useCallback(async () => {
     const outcome = await list({ token });
@@ -96,6 +120,26 @@ export function ProjectsPanel({
     else setMessage(say(outcome));
   }
 
+  async function sign() {
+    if (opened === null || approver.trim() === '') return;
+    setWorking(true);
+    setMessage(null);
+    const outcome = await approve({
+      token,
+      id: opened.id,
+      revision: opened.revision,
+      approver: approver.trim(),
+    });
+    setWorking(false);
+    if (outcome.kind === 'saved') {
+      setApprover('');
+      setMessage(t('approvedNow', { revision: outcome.project.revision }));
+      onOpened(outcome.project, false);
+    } else {
+      setMessage(say(outcome));
+    }
+  }
+
   async function erase(projectId: string) {
     setConfirming(null);
     const outcome = await remove({ token, id: projectId });
@@ -129,6 +173,40 @@ export function ProjectsPanel({
           )}
         </div>
       )}
+      {opened &&
+        (opened.approval ? (
+          <p className="text-sm font-medium text-accent" data-testid="project-approval">
+            {t('approvedBy', {
+              revision: opened.revision,
+              name: opened.approval.by,
+              date: opened.approval.at.slice(0, 10),
+            })}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Field id={`${id}-approver`} label={t('approver')}>
+              <input
+                id={`${id}-approver`}
+                value={approver}
+                maxLength={100}
+                onChange={(event) => {
+                  setApprover(event.target.value);
+                }}
+                className="input w-full"
+              />
+            </Field>
+            <button
+              type="button"
+              disabled={approver.trim() === '' || working}
+              onClick={() => {
+                void sign();
+              }}
+              className="btn btn-secondary btn-sm self-start sm:self-end"
+            >
+              {t('approve', { revision: opened.revision })}
+            </button>
+          </div>
+        ))}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <Field id={`${id}-note`} label={t('note')}>
           <input

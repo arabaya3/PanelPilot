@@ -7,14 +7,16 @@ re-designs it under the corrected rule rather than serving a stale result.
 
 Every save is a new revision, never an update: a drawing set issued at
 revision 3 must still be reproducible after revision 7 changes the boards.
+A revision's only later change is its approval, set once and never undone.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,5 +61,10 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     author: Mapped[str] = mapped_column(String(320), nullable=False, default="")
     request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    # Set once, when the engineer approves this revision; never cleared. The
+    # name is the one the title block prints; the account is who signed in.
+    approved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    approved_account: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")

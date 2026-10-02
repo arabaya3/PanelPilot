@@ -25,7 +25,12 @@ import {
   type ProjectInfo,
 } from '@/components/design/schedule';
 import { MarkupsPanel } from '@/components/design/markups-panel';
-import { ProjectsPanel, type OpenedProject } from '@/components/design/projects-panel';
+import {
+  approvalOf,
+  ProjectsPanel,
+  type OpenedProject,
+  type TitleRevision,
+} from '@/components/design/projects-panel';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
@@ -128,6 +133,8 @@ export function DesignScreen({
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedProject | null>(null);
+  // The opened revision's title-block revision list, which the form does not edit.
+  const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -201,7 +208,9 @@ export function DesignScreen({
       name: project.name,
       revision: project.revision,
       revisions: project.revisions.map((revision) => revision.number),
+      approval: approvalOf(project),
     });
+    setTitleRevisions(project.request.info.revisions ?? []);
     if (!fill) return;
     const loaded = fromRequest(project.request, nextKey.current);
     nextKey.current += Math.max(1, loaded.used);
@@ -223,7 +232,9 @@ export function DesignScreen({
     }
     setResult({ kind: 'working' });
     setExportError(null);
-    const outcome = await designImpl({ token, request: toRequest(info, boards, profile) });
+    const request = toRequest(info, boards, profile);
+    request.info.revisions = titleRevisions;
+    const outcome = await designImpl({ token, request });
     if (outcome.kind === 'designed') {
       setResult({ kind: 'designed', response: outcome.response });
     } else {

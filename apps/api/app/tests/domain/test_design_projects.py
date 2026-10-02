@@ -19,6 +19,7 @@ from app.core.errors import NotFoundError, ValidationError
 from app.domain import design_projects
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
+    ApproveRevisionRequest,
     DistributionBoardRequest,
     LoadInput,
     LoadKind,
@@ -111,7 +112,10 @@ def test_save_project_keeps_what_was_entered(tenants, as_tenant) -> None:  # typ
     assert [(r.number, r.note, r.author) for r in saved.revisions] == [
         (1, "first issue", "eng@example.com")
     ]
-    assert saved.request == _request()
+    assert saved.request.boards == _request().boards
+    # The title block's revision list is the saved revisions, none approved.
+    (listed,) = saved.request.info.revisions
+    assert (listed.index, listed.description, listed.approved_by) == ("01", "first issue", "")
 
 
 def test_revise_project_adds_a_revision_and_keeps_the_old(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
@@ -237,3 +241,53 @@ def test_a_project_holds_a_bounded_number_of_revisions(  # type: ignore[no-untyp
             request=ReviseProjectRequest(request=_request()),
         )
     assert refused.value.code == "project_revisions_full"
+
+
+def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    user = _user(a)
+    saved = design_projects.save_project(
+        session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
+    )
+    design_projects.revise_project(
+        session=as_tenant(),
+        user=user,
+        project_id=saved.id,
+        request=ReviseProjectRequest(request=_request(kw="5"), note="more sockets"),
+    )
+    approved = design_projects.approve_revision(
+        session=as_tenant(),
+        user=user,
+        project_id=saved.id,
+        number=1,
+        request=ApproveRevisionRequest(approver=" A. Rabaya "),
+    )
+    assert approved.revision == 1
+    assert approved.revisions[0].approved_by == "A. Rabaya"
+    assert approved.revisions[0].approved_at is not None
+    assert approved.revisions[1].approved_by is None
+    # Opened at revision 1, the title block lists only revision 1, approved.
+    (listed,) = approved.request.info.revisions
+    assert listed.approved_by == "A. Rabaya"
+    latest = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert [r.approved_by for r in latest.request.info.revisions] == ["A. Rabaya", ""]
+    with pytest.raises(ValidationError) as again:
+        design_projects.approve_revision(
+            session=as_tenant(),
+            user=user,
+            project_id=saved.id,
+            number=1,
+            request=ApproveRevisionRequest(approver="Someone else"),
+        )
+    assert again.value.code == "revision_already_approved"
+    with pytest.raises(NotFoundError):
+        design_projects.approve_revision(
+            session=as_tenant(),
+            user=user,
+            project_id=saved.id,
+            number=9,
+            request=ApproveRevisionRequest(approver="X"),
+        )
+    with pytest.raises(ValidationError) as locked:
+        design_projects.delete_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert locked.value.code == "project_approved"

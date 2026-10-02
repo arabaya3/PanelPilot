@@ -775,7 +775,9 @@
       "bad_cursor": "לא ניתן להמשיך את רשימת הפרויקטים; טענו אותה מחדש.",
       "markups_unreadable": "לא ניתן היה לקרוא את הקובץ כ-PDF.",
       "markups_too_large": "קובץ ה-PDF גדול מ-5 MB המותרים לקריאת הערות.",
-      "markups_too_long": "לקובץ ה-PDF יותר מ-{limit} עמודים."
+      "markups_too_long": "לקובץ ה-PDF יותר מ-{limit} עמודים.",
+      "revision_already_approved": "גרסה {revision} כבר אושרה על ידי {approver}.",
+      "project_approved": "לפרויקט הזה יש גרסה מאושרת ({revision}), ולכן אי אפשר למחוק אותו."
     },
     "drawingLanguage": "שפת השרטוטים",
     "drawingLanguages": {
@@ -794,7 +796,11 @@
       "revisions": "{count, plural, one {גרסה אחת} other {# גרסאות}}",
       "open": "פתח",
       "delete": "מחק",
-      "confirmDelete": "למחוק לצמיתות?"
+      "confirmDelete": "למחוק לצמיתות?",
+      "approver": "המהנדס המאשר",
+      "approve": "אישור גרסה {revision}",
+      "approvedNow": "גרסה {revision} אושרה; טבלת הכותרת שלה נושאת כעת את האישור.",
+      "approvedBy": "גרסה {revision} אושרה על ידי {name} בתאריך {date}."
     },
     "markups": {
       "title": "הערות סקירה",
