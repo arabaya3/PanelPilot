@@ -1122,6 +1122,7 @@ export interface components {
      *         device_ids: The circuit's own devices, in order from the busbar.
      *         cable_id: Its outgoing cable, where it has one.
      *         feeds: The board it supplies, for a feeder to a sub-board.
+     *         starter: How the motor it feeds is started, for a motor circuit.
      */
     'Circuit-Input': {
       /** Id */
@@ -1142,6 +1143,7 @@ export interface components {
       cable_id?: string | null;
       /** Feeds */
       feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
     };
     /**
      * Circuit
@@ -1161,6 +1163,7 @@ export interface components {
      *         device_ids: The circuit's own devices, in order from the busbar.
      *         cable_id: Its outgoing cable, where it has one.
      *         feeds: The board it supplies, for a feeder to a sub-board.
+     *         starter: How the motor it feeds is started, for a motor circuit.
      */
     'Circuit-Output': {
       /** Id */
@@ -1181,6 +1184,7 @@ export interface components {
       cable_id?: string | null;
       /** Feeds */
       feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
     };
     /**
      * CircuitRule
@@ -2215,6 +2219,8 @@ export interface components {
      *             live whenever its breaker is closed.
      *         feeds: The board this circuit feeds, for a feeder to a sub-board;
      *             set by the project design, not typed in.
+     *         starter: For a three-phase motor, how it is started; its
+     *             ``power_kw`` is then the motor's shaft power.
      */
     'LoadInput-Input': {
       /** Description */
@@ -2236,6 +2242,7 @@ export interface components {
       controlled: boolean;
       /** Feeds */
       feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
     };
     /**
      * LoadInput
@@ -2252,6 +2259,8 @@ export interface components {
      *             live whenever its breaker is closed.
      *         feeds: The board this circuit feeds, for a feeder to a sub-board;
      *             set by the project design, not typed in.
+     *         starter: For a three-phase motor, how it is started; its
+     *             ``power_kw`` is then the motor's shaft power.
      */
     'LoadInput-Output': {
       /** Description */
@@ -2273,6 +2282,7 @@ export interface components {
       controlled: boolean;
       /** Feeds */
       feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
     };
     /**
      * LoadKind
@@ -2372,6 +2382,12 @@ export interface components {
       /** Password */
       password: string;
     };
+    /**
+     * MotorStarter
+     * @description How a motor is started.
+     * @enum {string}
+     */
+    MotorStarter: 'dol' | 'star_delta' | 'drive';
     /**
      * PageKind
      * @description A kind of page in a drawing set.

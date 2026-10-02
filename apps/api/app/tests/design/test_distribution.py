@@ -233,3 +233,25 @@ def test_a_small_split_unit_still_gets_16_a() -> None:
     cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
     assert breaker.rated_current_a == 16
     assert cable.cross_section_mm2 == Decimal("2.5")
+
+
+def test_a_motor_gets_its_starter_and_a_cable_for_the_relay_setting() -> None:
+    request = DistributionBoardRequest(
+        name="MCC",
+        loads=[
+            _load(LoadKind.MOTOR, "30", "Fan", phases=3, starter="star_delta"),
+            _load(LoadKind.LIGHTING, "1", "Lights"),
+        ],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    fan = next(c for c in board.circuits if c.description == "Fan")
+    assert fan.starter == "star_delta"
+    assert fan.design_current_a == Decimal(56)
+    assert fan.upstream_id is None  # Motors take no residual current group by default.
+    assert [board.device(d).kind for d in fan.device_ids][-1] is DeviceKind.OVERLOAD_RELAY
+    assert board.device(fan.device_ids[0]).upstream_id == "incomer"
+    cable = board.cable(fan.cable_id)  # type: ignore[arg-type]
+    assert cable.cores == 7
+    assert any("Fan: Ir 56 A" in note for note in board.notes)
+    # The incomer carries the motor's line current, not its phase current.
+    assert board.device("incomer").rated_current_a >= Decimal(56)  # type: ignore[operator]

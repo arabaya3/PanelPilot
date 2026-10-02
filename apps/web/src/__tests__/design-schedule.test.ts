@@ -57,6 +57,7 @@ describe('design schedule helpers', () => {
           phases: 3,
           power_factor: '0.85',
           controlled: false,
+          starter: null,
         },
       ],
       40,
@@ -70,7 +71,20 @@ describe('design schedule helpers', () => {
         phases: '3',
         powerFactor: '0.85',
         controlled: false,
+        starter: '',
       },
     ]);
+  });
+});
+
+describe('motor starters', () => {
+  it('sends a chosen starter and nothing for other loads', () => {
+    const main = blankBoard(0, 1, 'MCC');
+    main.loads = [
+      { ...blankLoad(1), description: 'Pump', load: 'motor', power: '7.5', starter: 'dol' },
+      { ...blankLoad(2), description: 'Lights', power: '1' },
+    ];
+    const loads = toRequest(INFO, [main], null).boards[0]?.loads;
+    expect(loads?.map((load) => load.starter)).toEqual(['dol', null]);
   });
 });

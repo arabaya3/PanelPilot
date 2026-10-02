@@ -533,7 +533,8 @@
       "loadPhases": "Phases",
       "powerFactor": "Power factor",
       "controlled": "PLC switched",
-      "fedFrom": "Fed from"
+      "fedFrom": "Fed from",
+      "starter": "Starter"
     },
     "kind": {
       "lighting": "Lighting",
@@ -651,7 +652,13 @@
     "removeBoard": "Remove this board",
     "loadsOf": "Loads of {board}",
     "fedFromNone": "Project supply",
-    "fedFromLabel": "fed from {board}"
+    "fedFromLabel": "fed from {board}",
+    "starter": {
+      "none": "None",
+      "dol": "Direct on line",
+      "star_delta": "Star-delta",
+      "drive": "Variable-speed drive"
+    }
   },
   "files": {
     "choose": "Choose file",

@@ -102,9 +102,13 @@ def test_outside_the_tables_is_refused(overrides: dict[str, Decimal], message: s
 def test_a_motor_past_the_table_or_below_star_delta_is_refused() -> None:
     with pytest.raises(ValidationError, match="outside Table 3"):
         _select("400", "700", StartType.DOL)
-    # Star-delta starts at 18.5 kW in the table; a 20 A motor of 11 kW maps
-    # to its first row, which the table does give.
-    assert _select("11", "22", StartType.STAR_DELTA).power_kw == "18.5"
+    # Star-delta starts at 18.5 kW in the table. Its relay sits in the phase
+    # windings: an 11 kW, 22 A motor puts 12.7 A through it, below the
+    # first row's 18-25 A range, so that row would not protect it.
+    with pytest.raises(ValidationError, match=r"12\.7 A at the relay.*TA75DU25"):
+        _select("11", "22", StartType.STAR_DELTA)
+    # A motor at the top of a row's relay range, in star-delta, is accepted.
+    assert _select("30", "56", StartType.STAR_DELTA).overload == "TA75DU42"
     with pytest.raises(ValidationError, match="positive"):
         _select("0", "1", StartType.DOL)
 
@@ -200,3 +204,15 @@ def test_690_v_type_1_rows_are_not_offered() -> None:
     assert row.breaker == "T4L250 PR221-I In100"
     assert row.current_transformer == "4L185R/4, 13 primary turns"
     assert row.overload_range_a == ("6", "8.5")
+
+
+def test_typical_motor_current() -> None:
+    assert motor_starter.typical_motor_current(
+        motor_power_kw=Decimal("7.5"), start=StartType.DOL, supply_voltage_v=Decimal(400)
+    ) == Decimal("15.2")
+    assert (
+        motor_starter.typical_motor_current(
+            motor_power_kw=Decimal(8), start=StartType.DOL, supply_voltage_v=Decimal(400)
+        )
+        is None
+    )

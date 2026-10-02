@@ -47,6 +47,9 @@ def test_every_conductor_joins_terminals_that_exist(hall_project: DesignProject)
         export_qet.CONTACTOR,
         export_qet.LOAD,
         export_qet.SUPPLY,
+        export_qet.FUSE,
+        export_qet.OVERLOAD,
+        export_qet.DRIVE,
     }
     conductors = 0
     for diagram in root.findall("diagram"):
@@ -76,3 +79,48 @@ def test_devices_carry_their_designation_and_rating(hall_project: DesignProject)
 
 def test_export_is_deterministic(hall_project: DesignProject) -> None:
     assert export_qet.export_qet(hall_project) == export_qet.export_qet(hall_project)
+
+
+def test_motor_devices_use_their_own_symbols() -> None:
+    from decimal import Decimal
+
+    from app.design import designations, motors, profile, project
+    from app.models.schemas.design import (
+        DistributionBoardRequest,
+        LoadInput,
+        LoadKind,
+        ProjectInfo,
+    )
+
+    loads = [
+        LoadInput(
+            description="Pump",
+            load=LoadKind.MOTOR,
+            power_kw=Decimal("7.5"),
+            phases=3,
+            starter="dol",
+        ),
+        LoadInput(
+            description="Conveyor",
+            load=LoadKind.MOTOR,
+            power_kw=Decimal(15),
+            phases=3,
+            starter="drive",
+        ),
+    ]
+    boards = project.design_boards(
+        [DistributionBoardRequest(name="MCC", loads=loads)], profile.default_profile()
+    )
+    designed = designations.designate_project(
+        DesignProject(
+            info=ProjectInfo(name="Plant"), boards=boards, parts=motors.parts_for(boards)
+        ),
+        profile.default_profile(),
+    )
+    root = _root(designed)
+    used = {e.get("type", "").rsplit("/", 1)[-1] for e in root.iter("element") if e.get("type")}
+    assert {export_qet.FUSE, export_qet.OVERLOAD, export_qet.DRIVE} <= used
+    texts = {t.text for t in root.iter("text") if t.text} | {
+        i.text for i in root.iter("elementInformation") if i.text
+    }
+    assert any(text and "ACS880-01-032A-3" in text for text in texts)

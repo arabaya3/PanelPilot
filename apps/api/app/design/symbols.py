@@ -118,6 +118,98 @@ def contactor(x: float, top: float, poles: int = 2) -> tuple[list[Item], float]:
     return items, bottom
 
 
+def overload_relay(x: float, top: float, poles: int = 3) -> tuple[list[Item], float]:
+    """Draw a thermal overload relay: a box with the thermal element's step.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    bottom = top + DEVICE_HEIGHT
+    box_top = top + 6.0
+    items: list[Item] = [
+        Line(x, top, x, box_top),
+        Rect(x - 3.0, box_top, 6.0, 8.0),
+        # The thermal element (IEC 60617-7 07-15-01): a step in the conductor.
+        Line(x, box_top, x, box_top + 2.5),
+        Line(x, box_top + 2.5, x + 1.5, box_top + 2.5),
+        Line(x + 1.5, box_top + 2.5, x + 1.5, box_top + 5.5),
+        Line(x + 1.5, box_top + 5.5, x, box_top + 5.5),
+        Line(x, box_top + 5.5, x, bottom),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
+def fuse(x: float, top: float, poles: int = 3) -> tuple[list[Item], float]:
+    """Draw a fuse: a rectangle with the conductor through it (IEC 60617-7 07-21-01).
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+        poles: The number of poles, marked on the upper lead.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, bottom),
+        Rect(x - 1.5, top + 6.0, 3.0, 8.0),
+        *pole_marks(x, top + 3.0, poles),
+    ]
+    return items, bottom
+
+
+def drive(x: float, top: float) -> tuple[list[Item], float]:
+    """Draw a variable-speed drive: a converter box, AC in and AC out (IEC 60617-6).
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    box_top = top + 4.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, box_top),
+        Rect(x - WIDE_HALF_WIDTH, box_top, 2 * WIDE_HALF_WIDTH, 12.0),
+        Line(x - WIDE_HALF_WIDTH, box_top + 12.0, x + WIDE_HALF_WIDTH, box_top),
+        Text(x - 4.5, box_top + 4.0, "~", size=2.5),
+        Text(x + 1.5, box_top + 10.0, "~", size=2.5),
+        Line(x, box_top + 12.0, x, bottom),
+    ]
+    return items, bottom
+
+
+def star_delta(x: float, top: float) -> tuple[list[Item], float]:
+    """Draw a star-delta changeover as one block, the way a single-line diagram shows it.
+
+    Args:
+        x: The conductor's x.
+        top: The upper connection point's y.
+
+    Returns:
+        The geometry, and the lower connection point's y.
+    """
+    box_top = top + 4.0
+    bottom = top + DEVICE_HEIGHT
+    items: list[Item] = [
+        Line(x, top, x, box_top),
+        Rect(x - WIDE_HALF_WIDTH, box_top, 2 * WIDE_HALF_WIDTH, 12.0),
+        # "Y/D": the frame fonts have no delta.
+        Text(x, box_top + 7.5, "Y/D", size=2.8, anchor=Anchor.MIDDLE),
+        Line(x, box_top + 12.0, x, bottom),
+    ]
+    return items, bottom
+
+
 def cable_end(x: float, top: float, length: float = 8.0) -> tuple[list[Item], float]:
     """Draw an outgoing cable ending in a terminal point.
 
@@ -147,14 +239,22 @@ def busbar(x1: float, x2: float, y: float) -> list[Item]:
     return [Line(x1, y, x2, y, width=0.8)]
 
 
-def labels(x: float, y: float, lines: list[str], size: float = 2.2) -> list[Item]:
+#: Half the width of the widest symbol (a drive or a star-delta block).
+WIDE_HALF_WIDTH = 6.0
+
+
+def labels(
+    x: float, y: float, lines: list[str], size: float = 2.2, *, clearance: float = 4.0
+) -> list[Item]:
     """Write a device's labels beside it, one per line.
 
     Args:
-        x: The device's x; text starts just right of it.
+        x: The device's x; text starts ``clearance`` right of it.
         y: The first baseline.
         lines: The labels, top to bottom; empty ones are skipped.
         size: Character height.
+        clearance: How far right of the conductor the text starts; more
+            than the symbol's half-width, for a boxed symbol.
 
     Returns:
         The geometry.
@@ -163,6 +263,6 @@ def labels(x: float, y: float, lines: list[str], size: float = 2.2) -> list[Item
     row = y
     for line in lines:
         if line:
-            items.append(Text(x + 4.0, row, line, size=size, anchor=Anchor.START))
+            items.append(Text(x + clearance, row, line, size=size, anchor=Anchor.START))
             row += size * 1.35
     return items

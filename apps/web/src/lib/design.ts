@@ -6,6 +6,7 @@ export type BoardDesignResponse = components['schemas']['BoardDesignResponse'];
 export type DesignProject = components['schemas']['DesignProject-Output'];
 export type ExportFormat = components['schemas']['ExportFormat'];
 export type LoadKind = components['schemas']['LoadKind'];
+export type MotorStarter = components['schemas']['MotorStarter'];
 export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
 export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
 export type PricingSettings = components['schemas']['PricingSettings'];

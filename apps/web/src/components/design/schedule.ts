@@ -1,4 +1,9 @@
-import type { LoadKind, LoadScheduleImport, ProjectDesignRequest } from '@/lib/design';
+import type {
+  LoadKind,
+  LoadScheduleImport,
+  MotorStarter,
+  ProjectDesignRequest,
+} from '@/lib/design';
 
 /** One load schedule row as the engineer edits it: every field a string. */
 export type Load = {
@@ -9,6 +14,8 @@ export type Load = {
   phases: '1' | '3';
   powerFactor: string;
   controlled: boolean;
+  /** How a motor is started; empty for any other load. */
+  starter: MotorStarter | '';
 };
 
 /** One board's header and schedule as the engineer edits it. */
@@ -48,6 +55,11 @@ export const LOAD_KINDS: LoadKind[] = [
   'other',
 ];
 
+/** The kinds of load a starter can be chosen for. */
+export const MOTOR_KINDS: LoadKind[] = ['motor', 'fan', 'lift'];
+
+export const STARTERS: MotorStarter[] = ['dol', 'star_delta', 'drive'];
+
 export function blankLoad(key: number): Load {
   return {
     key,
@@ -57,6 +69,7 @@ export function blankLoad(key: number): Load {
     phases: '1',
     powerFactor: '',
     controlled: false,
+    starter: '',
   };
 }
 
@@ -84,6 +97,7 @@ export function rowsFrom(loads: LoadScheduleImport['loads'], firstKey: number): 
     phases: load.phases === 3 ? '3' : '1',
     powerFactor: load.power_factor ?? '',
     controlled: load.controlled,
+    starter: load.starter ?? '',
   }));
 }
 
@@ -136,6 +150,7 @@ export function toRequest(
         phases: Number(load.phases),
         power_factor: optional(load.powerFactor),
         controlled: load.controlled,
+        starter: load.starter === '' ? null : load.starter,
       })),
     })),
     profile,

@@ -474,3 +474,41 @@ def test_closed_block_comments_are_unaffected() -> None:
     source = "PROGRAM p\nVAR x : INT; END_VAR\n(* set it *) x := 1; (* done *)\nEND_PROGRAM"
 
     assert validate_plc_code(source).status is ValidationStatus.VALID
+
+
+TIMER_PROGRAM = """
+PROGRAM StarDelta
+VAR_INPUT
+    Start : BOOL;
+END_VAR
+VAR_OUTPUT
+    Star : BOOL;
+    Delta : BOOL;
+END_VAR
+VAR
+    Changeover : TON;
+    Elapsed : TIME;
+END_VAR
+Changeover(IN := Start, PT := T#5S, ET => Elapsed);
+Star := Start AND NOT Changeover.Q;
+Delta := Start AND Changeover.Q AND NOT Star;
+END_PROGRAM
+"""
+
+
+def test_a_timer_instance_is_checked_in_full() -> None:
+    result = validate_plc_code(TIMER_PROGRAM)
+    assert result.status is ValidationStatus.VALID, result.findings
+    assert not [f for f in result.findings if f.code == "unreferenced-tag"]
+
+
+def test_an_undeclared_timer_instance_is_an_error() -> None:
+    source = TIMER_PROGRAM.replace("    Changeover : TON;\n", "")
+    result = validate_plc_code(source)
+    assert result.status is ValidationStatus.INVALID
+    assert any("'Changeover'" in f.message for f in result.findings)
+
+
+def test_a_hash_that_is_not_a_duration_is_still_unsupported() -> None:
+    source = TIMER_PROGRAM.replace("T#5S", "16#FF")
+    assert validate_plc_code(source).status is ValidationStatus.INCOMPLETE

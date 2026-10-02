@@ -205,3 +205,40 @@ def test_a_feeder_and_its_sub_board_point_at_each_other() -> None:
     fed = next(t for t in _texts(sub_main) if t.startswith("from MDB"))
     assert fed.startswith("from MDB -Q")
     assert fed.endswith(f"/{feeder_page.number}.0")
+
+
+def test_motor_circuits_are_drawn_with_their_own_symbols() -> None:
+    from app.design import motors
+
+    loads = [
+        LoadInput(
+            description="Fan",
+            load=LoadKind.MOTOR,
+            power_kw=Decimal(30),
+            phases=3,
+            starter="star_delta",
+        ),
+        LoadInput(
+            description="Conveyor",
+            load=LoadKind.MOTOR,
+            power_kw=Decimal(15),
+            phases=3,
+            starter="drive",
+        ),
+    ]
+    board = distribution.design_distribution_board(
+        DistributionBoardRequest(name="MCC", loads=loads), profile.default_profile()
+    )
+    designed = designations.designate_project(
+        DesignProject(
+            info=ProjectInfo(name="Plant"), boards=[board], parts=motors.parts_for([board])
+        ),
+        profile.default_profile(),
+    )
+    sheets = pages.build_drawing_set(designed, profile.default_profile())
+    drawn = [t for s in sheets if s.title == "Distribution loads" for t in _texts(s)]
+    assert "Y/D" in drawn
+    assert "A63/A30" in drawn
+    assert "set 32.33 A" in drawn
+    assert "ACS880-01-032A-3" in drawn
+    assert "63 A aR 3P" in drawn

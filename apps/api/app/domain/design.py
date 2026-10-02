@@ -23,6 +23,7 @@ from app.design import (
     export_dxf,
     export_lists,
     export_qet,
+    motors,
     pages,
     plc_program,
     profile,
@@ -148,7 +149,7 @@ def design_project(
     company = _profile(request.profile)
     boards = project.design_boards(request.boards, company)
     designed = designations.designate_project(
-        DesignProject(info=request.info, boards=boards), company
+        DesignProject(info=request.info, boards=boards, parts=motors.parts_for(boards)), company
     )
     logger.info(
         "design.project_designed",

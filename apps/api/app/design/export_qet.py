@@ -39,6 +39,18 @@ RCD = "pp_rcd.elmt"
 LOAD = "pp_load.elmt"
 CONTACTOR = "pp_contactor.elmt"
 SUPPLY = "pp_supply.elmt"
+FUSE = "pp_fuse.elmt"
+OVERLOAD = "pp_overload.elmt"
+DRIVE = "pp_drive.elmt"
+
+#: The element each kind of device is drawn with; anything else is a breaker.
+_ELEMENTS: dict[DeviceKind, str] = {
+    DeviceKind.RESIDUAL_CURRENT_DEVICE: RCD,
+    DeviceKind.CONTACTOR: CONTACTOR,
+    DeviceKind.FUSE: FUSE,
+    DeviceKind.OVERLOAD_RELAY: OVERLOAD,
+    DeviceKind.DRIVE: DRIVE,
+}
 
 
 def _plain(value: Decimal | None) -> str:
@@ -156,6 +168,37 @@ def _symbols() -> list[ET.Element]:
     ET.SubElement(body, "circle", x="-3", y="-3", diameter="6", style=_LINE, antialias="true")
     _terminals(body, LOAD)
     elements.append(load)
+
+    fuse, body = _definition(FUSE, "Fuse", "فيوز")
+    _line(body, 0, -20, 0, 20)
+    ET.SubElement(
+        body, "rect", x="-3", y="-8", width="6", height="16", style=_LINE, antialias="true"
+    )
+    _terminals(body, FUSE)
+    elements.append(fuse)
+
+    overload, body = _definition(OVERLOAD, "Thermal overload relay", "ريليه حماية حرارية")
+    _line(body, 0, -20, 0, -8)
+    ET.SubElement(
+        body, "rect", x="-6", y="-8", width="12", height="16", style=_LINE, antialias="true"
+    )
+    _line(body, 0, -8, 0, -4)
+    _line(body, 0, -4, 3, -4)
+    _line(body, 3, -4, 3, 4)
+    _line(body, 3, 4, 0, 4)
+    _line(body, 0, 4, 0, 20)
+    _terminals(body, OVERLOAD)
+    elements.append(overload)
+
+    drive, body = _definition(DRIVE, "Variable-speed drive", "مغيّر سرعة")
+    _line(body, 0, -20, 0, -12)
+    ET.SubElement(
+        body, "rect", x="-12", y="-12", width="24", height="24", style=_LINE, antialias="true"
+    )
+    _line(body, -12, 12, 12, -12)
+    _line(body, 0, 12, 0, 20)
+    _terminals(body, DRIVE)
+    elements.append(drive)
 
     supply, body = _definition(SUPPLY, "Supply", "تغذية")
     _line(body, -8, -6, 8, -6)
@@ -303,8 +346,15 @@ def _label(device: Device) -> str:
 
 def _rating(device: Device) -> str:
     poles = f"{device.poles}P" if device.poles else ""
+    article = device.part_key.split("/", 1)[-1] if device.part_key else None
     if device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE:
         return f"{_plain(device.rated_current_a)} A {_plain(device.residual_current_ma)} mA {poles}".strip()
+    if device.kind is DeviceKind.FUSE:
+        return f"{_plain(device.rated_current_a)} A {device.curve or ''} {poles}".strip()
+    if device.kind is DeviceKind.OVERLOAD_RELAY:
+        return f"{article or ''} set {_plain(device.rated_current_a)} A".strip()
+    if article and (device.kind is DeviceKind.DRIVE or device.rated_current_a is None):
+        return f"{article} {poles}".strip()
     if device.rated_current_a is None:
         return f"not selected {poles}".strip()
     if device.kind is DeviceKind.CONTACTOR:
@@ -351,7 +401,7 @@ def _main_diagram(diagram: _Diagram, board: Board) -> None:
         first_top: _End | None = None
         last_bottom: _End | None = None
         for device in chain:
-            kind = RCD if device.kind is DeviceKind.RESIDUAL_CURRENT_DEVICE else BREAKER
+            kind = _ELEMENTS.get(device.kind, BREAKER)
             top, bottom = diagram.element(
                 kind, x, row, f"{board.id}/main/{device.id}", _label(device), _rating(device)
             )
@@ -388,7 +438,7 @@ def _group_diagram(
         x = _FIRST_X + column * _COLUMN_WIDTH
         breaker = board.device(circuit.device_ids[0])
         top, bottom = diagram.element(
-            BREAKER,
+            _ELEMENTS.get(breaker.kind, BREAKER),
             x,
             200,
             f"{board.id}/{breaker.id}",
@@ -402,7 +452,12 @@ def _group_diagram(
             switch = board.device(device_id)
             row += 80
             switch_top, switch_bottom = diagram.element(
-                CONTACTOR, x, row, f"{board.id}/{switch.id}", _label(switch), _rating(switch)
+                _ELEMENTS.get(switch.kind, CONTACTOR),
+                x,
+                row,
+                f"{board.id}/{switch.id}",
+                _label(switch),
+                _rating(switch),
             )
             diagram.connect(bottom, switch_top)
             bottom = switch_bottom

@@ -279,6 +279,29 @@ circuit's arithmetic is listed ("7 x 150 W = 1.05 kW. typical") for the
 engineer to check, and each suggestion is charged to the tenant's monthly
 model allowance.
 
+A three-phase **motor** load can name its starter (`app/design/motors.py`):
+
+- **Direct on line or star-delta:** gets a Type 2 coordinated set from the
+  coordination tables of ABB's _Electrical installation handbook_ Vol. 2,
+  §3.3: a moulded-case breaker, the contactor(s) and a thermal overload
+  relay. In star-delta the relay sits in the phase windings, so it is set
+  to Ir/√3, and the motor is fed by six conductors.
+- **Drive:** gets the smallest ACS880-01 for normal duty at the board's
+  ambient, behind the aR fuses its manual lists.
+- **Motor current:** Ir comes from the nameplate power factor where one is
+  given. Otherwise it is the table's typical Ir for that power, or
+  P / (√3 U η cos φ) at assumed values. Either way the board says which.
+- **Articles:** each article is a project part (`ABB/A30`), so the drawings,
+  the parts list and the quotation show it before a company catalogue is
+  loaded. The drawings use a fuse, overload relay, drive and Y/D block
+  symbol.
+- **PLC program:** the motor gets start/stop latching in hand and the
+  schedule in auto. A star-delta gets a TON star period and a 100 ms gap
+  before delta, each contactor interlocked against the other. A drive's
+  run command is gated by its ready signal. The PLC checker now reads
+  function-block calls (`T1(IN := x, PT := T#5S)`), instance outputs
+  (`T1.Q`) and duration literals, so these programs are checked in full.
+
 A project can hold several boards (`POST /design/project`,
 `app/design/project.py`). A sub-board names the board that feeds it, and
 boards are designed leaves first:

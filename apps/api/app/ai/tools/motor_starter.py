@@ -25,6 +25,8 @@ HANDBOOK_TITLE = "Electrical installation handbook, Vol. 2: Electrical devices (
 #: The fault level the coordination holds to.
 TABLE_FAULT_LEVEL_KA = Decimal(50)
 
+_SQRT3 = Decimal(3).sqrt()
+
 #: A supply this close to a table's voltage is that table's (IEC 60038).
 _VOLTAGE_TOLERANCE = Decimal("0.05")
 
@@ -472,6 +474,33 @@ def _table_voltage(supply_voltage_v: Decimal) -> Decimal:
     )
 
 
+def typical_motor_current(
+    *, motor_power_kw: Decimal, start: StartType, supply_voltage_v: Decimal
+) -> Decimal | None:
+    """The rated current the coordination table gives a motor of this power.
+
+    Source:
+        ABB, *Electrical installation handbook* Vol. 2 (1SDC010001D0204),
+        §3.3, the Ir column of the table for the supply and start.
+
+    Args:
+        motor_power_kw: Motor rated power.
+        start: How it is started, which picks the table.
+        supply_voltage_v: Line-to-line supply voltage.
+
+    Returns:
+        The row's Ir, or ``None`` when no row is for exactly this power.
+
+    Raises:
+        ValidationError: If no table is for the supply.
+    """
+    rows, _, _ = _TABLES[_table_voltage(supply_voltage_v)][start]
+    for row in rows:
+        if Decimal(row.power_kw) == motor_power_kw:
+            return Decimal(row.current_a)
+    return None
+
+
 def select_starter(
     *,
     motor_power_kw: Decimal,
@@ -521,19 +550,23 @@ def select_starter(
         )
 
     rows, page, section = _TABLES[table_voltage][start]
+    # In star-delta the relay sits in the phase windings and sees Ir / sqrt(3);
+    # its setting range is printed in that current.
+    relay_current = motor_current_a / _SQRT3 if start is StartType.STAR_DELTA else motor_current_a
     for row in rows:
         if Decimal(row.power_kw) >= motor_power_kw and Decimal(row.current_a) >= motor_current_a:
             if (
                 row.overload_range_a is not None
                 and Decimal(row.power_kw) > motor_power_kw
-                and motor_current_a < Decimal(row.overload_range_a[0])
+                and relay_current < Decimal(row.overload_range_a[0])
             ):
                 # Taking the next row up is right for a motor between two
                 # rows, never for one its relay cannot be set down to: the
                 # relay would not protect it. (A motor's own row is kept as
                 # printed even where its Ir sits below the relay's range.)
                 raise ValidationError(
-                    f"a {motor_current_a} A motor is below the {row.overload} setting range "
+                    f"a {motor_current_a} A motor ({relay_current.quantize(Decimal('0.1'))} A "
+                    f"at the relay) is below the {row.overload} setting range "
                     f"({row.overload_range_a[0]}-{row.overload_range_a[1]} A) of the first "
                     f"Type 2 row that carries it in {section}"
                 )
