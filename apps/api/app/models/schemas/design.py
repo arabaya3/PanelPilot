@@ -197,7 +197,10 @@ class Cable(BaseModel):
         length_m: Where known.
         part_key: The cable type, where selected.
         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
-            (kA)²s, for its insulation and material.
+            (kA)²s, for its insulation and material; of one run, where it
+            runs in parallel.
+        parallel: How many identical cables run in parallel, each with every
+            core; 1 for a single cable.
     """
 
     id: str
@@ -209,6 +212,14 @@ class Cable(BaseModel):
     length_m: Decimal | None = None
     part_key: str | None = None
     withstand_ka2s: Decimal | None = None
+    parallel: int = Field(default=1, ge=1, le=6)
+
+    @property
+    def size(self) -> str:
+        """Its cores and section as a cable list writes them: "4G240", or "2x4G240" for two runs."""
+        section = format(self.cross_section_mm2.normalize(), "f")
+        runs = f"{self.parallel}x" if self.parallel > 1 else ""
+        return f"{runs}{self.cores}G{section}"
 
 
 class Circuit(BaseModel):

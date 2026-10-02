@@ -63,3 +63,22 @@ def test_fit_says_when_no_section_is_enough() -> None:
     assert not checked.within
     assert checked.section_mm2 == Decimal("2.5")
     assert _fit("20", section="3") is None
+
+
+def test_parallel_runs_divide_the_cable_loop() -> None:
+    def zs(parallel: int) -> Decimal:
+        checked = disconnection.fit(
+            external_ohm=Decimal("0.1"),
+            length_m=Decimal(100),
+            section_mm2=Decimal(240),
+            material=ConductorMaterial.COPPER,
+            insulation_rating_c=70,
+            phase_voltage_v=Decimal(230),
+            rated_a=Decimal(16),
+            curve="C",
+            parallel=parallel,
+        )
+        assert checked is not None
+        return checked.loop_ohm - Decimal("0.1")
+
+    assert abs(zs(2) - zs(1) / 2) <= Decimal("0.001")

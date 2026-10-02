@@ -291,6 +291,7 @@ def _inherit_fault_level(
             length_m=cable.length_m,
             section_mm2=cable.cross_section_mm2,
             material=material,
+            parallel=cable.parallel,
         )
         made = note(
             "fault_level_calculated",
@@ -330,11 +331,14 @@ def _inherit_earth_loop(
     if upstream is None or cable is None or not cable.length_m:
         return request, None
     material = ConductorMaterial.ALUMINIUM if cable.material == "Al" else ConductorMaterial.COPPER
-    loop = disconnection.loop_ohm(
-        cable.length_m,
-        cable.cross_section_mm2,
-        material,
-        90 if cable.insulation == "XLPE" else 70,
+    loop = (
+        disconnection.loop_ohm(
+            cable.length_m,
+            cable.cross_section_mm2,
+            material,
+            90 if cable.insulation == "XLPE" else 70,
+        )
+        / cable.parallel
     )
     external = (upstream + loop).quantize(Decimal("0.001"), rounding=ROUND_CEILING)
     made = note(

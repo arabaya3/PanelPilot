@@ -20,7 +20,8 @@ def test_withstand_is_k_squared_s_squared() -> None:
     assert short_circuit.withstand_ka2s(Decimal(16), ConductorMaterial.ALUMINIUM, 70) == Decimal(
         "1.479"
     )
-    assert short_circuit.withstand_ka2s(Decimal(400), _CU, 70) is None
+    # Above 300 mm² PVC copper takes k = 103: 103² x 400² = 1697.44 (kA)²s.
+    assert short_circuit.withstand_ka2s(Decimal(400), _CU, 70) == Decimal("1697.440")
     assert short_circuit.withstand_ka2s(Decimal(4), _CU, 105) is None
 
 
@@ -68,3 +69,9 @@ def test_fit_says_when_no_section_is_enough_or_none_is_held() -> None:
     assert not checked.within
     assert _fit("50", curve="K") is None
     assert _fit("50", section="3") is None
+
+
+def test_parallel_conductors_raise_the_far_end_current_by_kpar() -> None:
+    one = short_circuit.min_current_a(Decimal(100), Decimal(240), _CU, Decimal(230))
+    three = short_circuit.min_current_a(Decimal(100), Decimal(240), _CU, Decimal(230), 3)
+    assert three == one * Decimal("2.7")

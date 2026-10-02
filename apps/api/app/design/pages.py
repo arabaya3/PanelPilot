@@ -180,7 +180,7 @@ def cable_text(board: Board, circuit: Circuit) -> str:
     if circuit.cable_id is None:
         return ""
     cable = board.cable(circuit.cable_id)
-    return f"{cable.cores}G{_plain(cable.cross_section_mm2)} {cable.material} {cable.insulation}"
+    return f"{cable.size} {cable.material} {cable.insulation}"
 
 
 @dataclass

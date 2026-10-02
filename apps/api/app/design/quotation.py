@@ -161,7 +161,9 @@ def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation
                 f"Cable {cable.cores}G{_plain(cable.cross_section_mm2)} "
                 f"{cable.material} {cable.insulation}"
             )
-            add(key, _Item(name, "m", length or Decimal(0), [label], entry))
+            # Parallel runs are bought as that many lengths of the one cable.
+            metres = (length or Decimal(0)) * cable.parallel
+            add(key, _Item(name, "m", metres, [label], entry))
 
     lines: list[QuotationLine] = []
     unpriced: list[str] = []

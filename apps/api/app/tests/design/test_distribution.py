@@ -620,3 +620,30 @@ def test_demand_currents_never_drop_below_the_largest_circuit() -> None:
     currents = distribution.demand_currents(circuits, company)
     assert currents[Phase.L1] == 13
     assert currents[Phase.L2] == 0
+
+
+def test_a_load_no_single_cable_carries_runs_in_parallel() -> None:
+    from app.models.schemas.design import InstallationConditions
+
+    request = DistributionBoardRequest(
+        name="DB",
+        conditions=InstallationConditions(installation_method="C"),
+        loads=[
+            _load(
+                LoadKind.OTHER,
+                "500",
+                "Chiller plant",
+                phases=3,
+                power_factor=Decimal("0.9"),
+                length_m=Decimal(60),
+            )
+        ],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    (cable,) = board.cables
+    assert cable.parallel > 1
+    assert cable.size.startswith(f"{cable.parallel}x5G")
+    (made,) = [n for n in board.notes if n.code == "parallel_cables"]
+    assert made.params["runs"] == str(cable.parallel)
+    # Each run carries its share: the drop is that of one run at I / n.
+    assert board.circuits[0].voltage_drop_percent is not None
