@@ -610,3 +610,22 @@ def test_passages_that_answer_are_parsed_as_before() -> None:
         payload, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision()
     )
     assert diagnosis is not None
+
+
+def test_a_field_named_description_survives_the_prose_strip() -> None:
+    """Found live: the strip dropped a ``description`` field but ``required`` kept it."""
+    from pydantic import BaseModel
+
+    from app.ai.structured_output import input_schema_for
+
+    class Row(BaseModel):
+        """Docstring prose the model should not see."""
+
+        description: str
+        title: str
+
+    schema = input_schema_for(Row)
+    assert set(schema["properties"]) == {"description", "title"}
+    assert set(schema["required"]) == set(schema["properties"])
+    assert "Docstring" not in str(schema)
+    assert "description" not in schema["properties"]["description"]

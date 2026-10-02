@@ -178,3 +178,59 @@ export async function importSchedule(options: {
   if (!('loads' in payload) || !('warnings' in payload)) return { kind: 'failed' };
   return { kind: 'imported', result: payload as LoadScheduleImport };
 }
+
+export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
+
+export type SuggestOutcome =
+  | { kind: 'suggested'; result: LoadScheduleSuggestion }
+  | { kind: 'refused'; detail: string }
+  | { kind: 'budget' }
+  | { kind: 'unauthorized' }
+  | { kind: 'failed' };
+
+/**
+ * Draft a load schedule from a plain description:
+ * `POST /api/v1/design/load-schedule/suggest`. Each call is a model request,
+ * so a 429 is the month's allowance spent rather than a fault.
+ */
+export async function suggestSchedule(options: {
+  token: string;
+  description: string;
+  supplyPhases: number;
+  profile?: Record<string, unknown> | null;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}): Promise<SuggestOutcome> {
+  const {
+    token,
+    description,
+    supplyPhases,
+    profile = null,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/design/load-schedule/suggest',
+  } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ description, supply_phases: supplyPhases, profile }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (response.status === 429) return { kind: 'budget' };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 400 || response.status === 422) {
+    return { kind: 'refused', detail: detailOf(payload) };
+  }
+  if (!response.ok || typeof payload !== 'object' || payload === null) return { kind: 'failed' };
+  if (!('loads' in payload) || !('assumptions' in payload)) return { kind: 'failed' };
+  return { kind: 'suggested', result: payload as LoadScheduleSuggestion };
+}

@@ -356,6 +356,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/load-schedule/suggest': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Suggest Load Schedule
+     * @description Draft a load schedule from a plain description. Each call is a paid model request.
+     */
+    post: operations['suggest_load_schedule_api_v1_design_load_schedule_suggest_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/search': {
     parameters: {
       query?: never;
@@ -1131,6 +1151,10 @@ export interface components {
      *         circuit_rules: The company's rule for each kind of load.
      *         max_circuits_per_rcd: How many outgoing circuits one residual current
      *             device may protect.
+     *         max_points_per_circuit: How many points of a kind share a final
+     *             circuit; a kind not listed gets a circuit per point.
+     *         max_kw_per_circuit: The most power a final circuit of a kind may
+     *             carry, which can split points further than the count does.
      *         spare_ways_percent: Spare outgoing ways to leave, as a share of the
      *             circuits.
      *         max_phase_imbalance_percent: The largest difference between the most
@@ -1176,6 +1200,14 @@ export interface components {
        * @default 6
        */
       max_circuits_per_rcd: number;
+      /** Max Points Per Circuit */
+      max_points_per_circuit?: {
+        [key: string]: number;
+      };
+      /** Max Kw Per Circuit */
+      max_kw_per_circuit?: {
+        [key: string]: string;
+      };
       /**
        * Spare Ways Percent
        * @default 20
@@ -2177,6 +2209,20 @@ export interface components {
       start?: components['schemas']['StartType'] | null;
     };
     /**
+     * LoadScheduleSuggestion
+     * @description A proposed load schedule, for the engineer to check before designing.
+     *
+     *     Attributes:
+     *         loads: The proposed circuits.
+     *         assumptions: Every assumption, per circuit and overall.
+     */
+    LoadScheduleSuggestion: {
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      /** Assumptions */
+      assumptions: string[];
+    };
+    /**
      * Locale
      * @description A language a response may be generated in.
      *
@@ -2612,6 +2658,30 @@ export interface components {
        * @default
        */
       approved_by: string;
+    };
+    /**
+     * ScheduleSuggestionRequest
+     * @description A plain description of what a board feeds.
+     *
+     *     Attributes:
+     *         description: "A hall with 20 sockets, 30 lights and two 2-ton ACs".
+     *         supply_phases: The board's supply, so three-phase loads are only
+     *             proposed where there is three-phase.
+     *         profile: The company's settings, whose points-per-circuit rule
+     *             splits the points into circuits.
+     */
+    ScheduleSuggestionRequest: {
+      /** Description */
+      description: string;
+      /**
+       * Supply Phases
+       * @default 3
+       */
+      supply_phases: number;
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
     };
     /**
      * SearchFilters
@@ -3647,6 +3717,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['LoadScheduleImport'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  suggest_load_schedule_api_v1_design_load_schedule_suggest_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ScheduleSuggestionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LoadScheduleSuggestion'];
         };
       };
       /** @description Validation Error */

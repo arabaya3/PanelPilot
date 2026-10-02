@@ -7,15 +7,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Response, UploadFile
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, SessionDep, enforce_trial_rate_limit
 from app.domain import design as design_domain
+from app.domain import model_budget
 from app.models.schemas.design import (
     BoardDesignRequest,
     BoardDesignResponse,
     DesignExportRequest,
     LoadScheduleImport,
+    LoadScheduleSuggestion,
+    ScheduleSuggestionRequest,
 )
 
 router = APIRouter()
@@ -59,3 +62,20 @@ async def import_load_schedule(
     # A ceiling on the read; the domain refuses anything over its limit.
     data = await file.read(design_domain.MAX_SCHEDULE_BYTES + 1)
     return design_domain.import_load_schedule(user=user, data=data)
+
+
+@router.post(
+    "/load-schedule/suggest",
+    response_model=LoadScheduleSuggestion,
+    dependencies=[Depends(enforce_trial_rate_limit)],
+)
+def suggest_load_schedule(
+    payload: ScheduleSuggestionRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> LoadScheduleSuggestion:
+    """Draft a load schedule from a plain description. Each call is a paid model request."""
+    model_budget.charge_model_call(session=session, tenant_id=user.tenant_id)
+    result = design_domain.suggest_load_schedule(user=user, request=payload)
+    session.commit()
+    return result

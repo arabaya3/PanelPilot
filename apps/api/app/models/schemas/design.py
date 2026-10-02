@@ -471,6 +471,10 @@ class CompanyProfile(BaseModel):
         circuit_rules: The company's rule for each kind of load.
         max_circuits_per_rcd: How many outgoing circuits one residual current
             device may protect.
+        max_points_per_circuit: How many points of a kind share a final
+            circuit; a kind not listed gets a circuit per point.
+        max_kw_per_circuit: The most power a final circuit of a kind may
+            carry, which can split points further than the count does.
         spare_ways_percent: Spare outgoing ways to leave, as a share of the
             circuits.
         max_phase_imbalance_percent: The largest difference between the most
@@ -490,6 +494,12 @@ class CompanyProfile(BaseModel):
     preferred_manufacturers: dict[DeviceKind, list[str]] = Field(default_factory=dict)
     circuit_rules: dict[LoadKind, CircuitRule] = Field(default_factory=dict)
     max_circuits_per_rcd: int = Field(default=6, ge=1)
+    max_points_per_circuit: dict[LoadKind, int] = Field(
+        default_factory=lambda: {LoadKind.SOCKET: 8, LoadKind.LIGHTING: 15}
+    )
+    max_kw_per_circuit: dict[LoadKind, Decimal] = Field(
+        default_factory=lambda: {LoadKind.SOCKET: Decimal(2), LoadKind.LIGHTING: Decimal("1.5")}
+    )
     spare_ways_percent: Decimal = Decimal(20)
     max_phase_imbalance_percent: Decimal = Decimal(10)
     rules_confirmed_by: str = ""
@@ -630,3 +640,59 @@ class LoadScheduleImport(BaseModel):
     loads: list[LoadInput]
     warnings: list[str]
     rows_read: int
+
+
+class SuggestedPoints(BaseModel):
+    """A group of like points the model read from a description.
+
+    Attributes:
+        description: What they are, in the description's language
+            ("مآخذ القاعة", "Hall sockets").
+        load: Their kind.
+        quantity: How many points.
+        unit_power_kw: The power of one point.
+        three_phase: Whether one point is a three-phase load.
+        assumption: Where the power came from: given, or typical.
+    """
+
+    description: str = Field(min_length=1, max_length=100)
+    load: LoadKind
+    quantity: int = Field(ge=1, le=500)
+    unit_power_kw: Decimal = Field(gt=0, le=500)
+    three_phase: bool
+    assumption: str = Field(min_length=1, max_length=300)
+
+
+class ScheduleSuggestionOutput(BaseModel):
+    """What the model returns: the points, and assumptions about the whole."""
+
+    items: list[SuggestedPoints] = Field(min_length=1, max_length=40)
+    assumptions: list[str] = Field(max_length=20)
+
+
+class ScheduleSuggestionRequest(BaseModel):
+    """A plain description of what a board feeds.
+
+    Attributes:
+        description: "A hall with 20 sockets, 30 lights and two 2-ton ACs".
+        supply_phases: The board's supply, so three-phase loads are only
+            proposed where there is three-phase.
+        profile: The company's settings, whose points-per-circuit rule
+            splits the points into circuits.
+    """
+
+    description: str = Field(min_length=3, max_length=2000)
+    supply_phases: int = Field(default=3, ge=1, le=3)
+    profile: dict[str, Any] | None = None
+
+
+class LoadScheduleSuggestion(BaseModel):
+    """A proposed load schedule, for the engineer to check before designing.
+
+    Attributes:
+        loads: The proposed circuits.
+        assumptions: Every assumption, per circuit and overall.
+    """
+
+    loads: list[LoadInput]
+    assumptions: list[str]

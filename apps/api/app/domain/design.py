@@ -14,6 +14,7 @@ from typing import Any
 import structlog
 from sqlalchemy.orm import Session
 
+from app.ai import schedule_writer
 from app.design import (
     designations,
     distribution,
@@ -25,6 +26,7 @@ from app.design import (
     profile,
     render_pdf,
     schedule_import,
+    schedule_split,
 )
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
@@ -35,6 +37,8 @@ from app.models.schemas.design import (
     DesignProject,
     ExportFormat,
     LoadScheduleImport,
+    LoadScheduleSuggestion,
+    ScheduleSuggestionRequest,
 )
 
 logger = structlog.get_logger(__name__)
@@ -192,3 +196,32 @@ def import_load_schedule(*, user: CurrentUser, data: bytes) -> LoadScheduleImpor
     return LoadScheduleImport(
         loads=result.loads, warnings=result.warnings, rows_read=result.rows_read
     )
+
+
+def suggest_load_schedule(
+    *, user: CurrentUser, request: ScheduleSuggestionRequest
+) -> LoadScheduleSuggestion:
+    """Draft a load schedule from a plain description, for the engineer to check.
+
+    The model reads the points out of the description; the split into
+    circuits follows the company's rule, so it is the same every time.
+
+    Args:
+        user: The authenticated caller, for the log line.
+        request: The description, the supply and the company's settings.
+
+    Returns:
+        The proposed loads, and every assumption behind them: overall first,
+        then one per circuit.
+
+    Raises:
+        ValidationError: If nothing usable came back, or the profile is bad.
+        ServiceUnavailableError: If the model could not be reached.
+    """
+    company = _profile(request.profile)
+    drafted = schedule_writer.write_schedule(request)
+    loads, notes = schedule_split.split_points(
+        drafted.items, company, supply_phases=request.supply_phases
+    )
+    logger.info("design.schedule_suggested", tenant_id=user.tenant_id, loads=len(loads))
+    return LoadScheduleSuggestion(loads=loads, assumptions=[*drafted.assumptions, *notes])

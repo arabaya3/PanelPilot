@@ -260,6 +260,25 @@ description, and a type inferred that way is reported. Every row skipped
 (totals, spares, no power) and every assumption made is listed by row
 number, so the engineer checks exactly what the import decided.
 
+A board can also be **described in words** ("a hall with 20 sockets, 30
+LED lights and two 2-ton split units"). This happens in two stages
+(`app/ai/schedule_writer.py`, `app/design/schedule_split.py`):
+
+1. **The model only reads the points:** how many, of what kind, and the
+   power of one. It marks a power as typical when the description gives
+   none, and answers in the description's language, which is detected in
+   code and named to it.
+2. **Code splits the points into circuits** under the company's rules
+   (`max_points_per_circuit`, `max_kw_per_circuit`). The same description
+   therefore always gives the same circuits. Small appliances are kept
+   single-phase whatever the model says.
+
+In live tests, a model asked to do the grouping itself put 20 sockets on one
+circuit and answered English in Arabic, so it is not asked to. Every
+circuit's arithmetic is listed ("7 x 150 W = 1.05 kW. typical") for the
+engineer to check, and each suggestion is charged to the tenant's monthly
+model allowance.
+
 ### Local development notes
 
 **Migrations run automatically under `docker compose`, and only there.** The

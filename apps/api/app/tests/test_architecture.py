@@ -462,6 +462,10 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
         # Writes PLC code: no retrieved evidence, nothing to cite. Its gate is
         # the parser-based validator `generate_plc_code` always runs.
         APP_ROOT / "ai" / "plc" / "writer.py",
+        # Drafts a load schedule for the engineer to check: answers nothing,
+        # cites nothing, sizes nothing. Its gate is the engineer's review
+        # before the sourced design runs; see the module docstring.
+        APP_ROOT / "ai" / "schedule_writer.py",
         # Turns a question into an English search query: answers nothing,
         # cites nothing. See the test below that keeps it so.
         APP_ROOT / "ai" / "query_translation.py",

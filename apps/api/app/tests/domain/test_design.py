@@ -111,3 +111,43 @@ def test_a_schedule_file_is_imported() -> None:
     assert [load.description for load in result.loads] == ["Sockets hall", "Lights"]
     assert result.rows_read == 2
     assert design.MAX_SCHEDULE_BYTES == 5 * 1024 * 1024
+
+
+def test_a_suggestion_is_split_under_the_company_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.ai import schedule_writer
+    from app.models.schemas.design import (
+        ScheduleSuggestionOutput,
+        ScheduleSuggestionRequest,
+        SuggestedPoints,
+    )
+
+    drafted = ScheduleSuggestionOutput(
+        items=[
+            SuggestedPoints(
+                description="Sockets",
+                load=LoadKind.SOCKET,
+                quantity=10,
+                unit_power_kw=Decimal("0.15"),
+                three_phase=False,
+                assumption="typical",
+            )
+        ],
+        assumptions=["No diversity applied."],
+    )
+
+    def write(request: ScheduleSuggestionRequest) -> ScheduleSuggestionOutput:
+        del request
+        return drafted
+
+    monkeypatch.setattr(schedule_writer, "write_schedule", write)
+    result = design.suggest_load_schedule(
+        user=USER,
+        request=ScheduleSuggestionRequest(
+            description="hall", profile={"key": "acme", "max_points_per_circuit": {"socket": 5}}
+        ),
+    )
+    assert [load.description for load in result.loads] == ["Sockets 1", "Sockets 2"]
+    assert result.assumptions[0] == "No diversity applied."
+    assert result.assumptions[1] == "Sockets 1: 5 x 150 W = 0.75 kW. typical"
