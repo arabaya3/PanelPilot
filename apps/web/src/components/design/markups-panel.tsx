@@ -101,10 +101,9 @@ export function MarkupsPanel({
                       suggestion={markup.suggestion}
                       outcome={applied[index]}
                       onApply={(chosen) => {
-                        setApplied((current) => ({
-                          ...current,
-                          [index]: onApply(chosen) ? 'applied' : 'missing',
-                        }));
+                        // Applied outside the state update: it changes the form's state.
+                        const outcome = onApply(chosen) ? 'applied' : 'missing';
+                        setApplied((current) => ({ ...current, [index]: outcome }));
                       }}
                     />
                   )}
