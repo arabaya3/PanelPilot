@@ -7,9 +7,11 @@ outgoing terminal strip.
 
 A device's width is its kind's width a pole, from the company profile
 (``rail_widths_mm``), times its poles; for a breaker, only a modular one up to
-63 A, and never for a device with a selected article, whose width is its own. Only what is sourced is given by
-default (ABB S200 miniature breakers, 17.5 mm a pole, ``din_module_width``);
-a device of another kind has no width here, is drawn as a dashed slot and
+63 A. A device with a selected article has its own width: a moulded-case
+breaker this design selected, its catalogue's (``mccb``); any other, none.
+Only what is sourced is given by default (ABB S200 miniature breakers and
+F200 RCCBs, 17.5 mm a pole, ``din_module_width``); a device of another kind
+has no width here, is drawn as a dashed slot and
 counted, and the total rail length leaves it out, so a short figure cannot
 pass for a measured one. With a usable rail length per row, a row longer
 than that continues on the next.
@@ -20,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.design import terminals
+from app.design import mccb, terminals
 from app.models.schemas.design import Board, CompanyProfile, Device, DeviceKind
 
 #: The largest modular (miniature) breaker the per-pole width covers: ABB's
@@ -76,6 +78,11 @@ def width(device: Device, profile: CompanyProfile) -> Decimal | None:
     Returns:
         The width in mm, or ``None`` where its kind's width is not given.
     """
+    if device.part_key is not None:
+        # A moulded-case breaker this design selected has its catalogue width.
+        maker, _, type_number = device.part_key.partition("/")
+        if maker == "ABB" and (moulded := mccb.width_mm(type_number, device.poles or 3)):
+            return moulded
     per_pole = profile.rail_widths_mm.get(device.kind)
     if per_pole is None or device.part_key is not None:
         # A selected article (a motor starter's breaker, a drive) has its own

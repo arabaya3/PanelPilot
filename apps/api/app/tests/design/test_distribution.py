@@ -161,19 +161,38 @@ def test_a_plc_switched_load_gets_a_contactor_after_its_breaker() -> None:
     assert any("AC-1" in note.text for note in board.notes)
 
 
-def test_a_load_above_the_miniature_breakers_gets_an_unselected_mccb() -> None:
+def test_a_load_above_the_miniature_breakers_gets_a_moulded_case_breaker() -> None:
     request = DistributionBoardRequest(
-        name="MDB", loads=[_load(LoadKind.OTHER, "90", "Chiller", phases=3)]
+        name="MDB",
+        supply=Supply(fault_level_ka=Decimal(25)),
+        loads=[_load(LoadKind.OTHER, "90", "Chiller", phases=3, length_m=Decimal(40))],
+    )
+    board = distribution.design_distribution_board(request, profile.default_profile())
+    breaker = board.device(board.circuits[0].device_ids[0])
+    # Ib about 144 A: XT3 TMD 160, I3 fixed at 10 In.
+    assert breaker.part_key == "ABB/XT3N 250 TMD 160"
+    assert breaker.rated_current_a == 160
+    assert breaker.curve is None
+    assert breaker.breaking_capacity_ka == 36
+    (selected,) = [n for n in board.notes if n.code == "mccb_selected"]
+    assert selected.params["trip"] == "1600"
+    assert "1SDC210033D0203" in selected.params["source"]
+    cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
+    assert cable.cross_section_mm2 >= Decimal(50)
+
+
+def test_a_load_beyond_the_moulded_case_breakers_is_left_unselected() -> None:
+    request = DistributionBoardRequest(
+        name="MDB",
+        supply=Supply(voltage_v=Decimal(230), phases=1),
+        loads=[_load(LoadKind.OTHER, "30", "Heater")],
     )
     board = distribution.design_distribution_board(request, profile.default_profile())
     breaker = board.device(board.circuits[0].device_ids[0])
     assert breaker.rated_current_a is None
     assert breaker.curve is None
-    cable = board.cable(board.circuits[0].cable_id)  # type: ignore[arg-type]
-    # Sized for Ib (about 144 A), not refused.
-    assert cable.cross_section_mm2 >= Decimal(35)
     assert any(
-        note.code == "mccb_needed" and note.params["load"] == "Chiller" for note in board.notes
+        note.code == "mccb_needed" and note.params["load"] == "Heater" for note in board.notes
     )
 
 
@@ -185,13 +204,16 @@ def test_an_unprotectable_load_is_refused_by_name() -> None:
         distribution.design_distribution_board(request, profile.default_profile())
 
 
-def test_an_incomer_above_125_a_is_left_unselected() -> None:
+def test_an_incomer_above_125_a_is_a_moulded_case_breaker() -> None:
     loads = [_load(LoadKind.OTHER, "40", f"Load {i}", phases=3) for i in range(3)]
     board = distribution.design_distribution_board(
         DistributionBoardRequest(name="DB", loads=loads), profile.default_profile()
     )
-    assert board.device("incomer").rated_current_a is None
-    assert any("moulded-case" in note.text for note in board.notes)
+    incomer = board.device("incomer")
+    assert incomer.part_key is not None
+    assert incomer.part_key.startswith("ABB/XT3N 250 TMD ")
+    assert incomer.poles == 4
+    assert any(n.code == "mccb_selected" and n.params["load"] == "Incomer" for n in board.notes)
 
 
 def test_it_designates_cleanly() -> None:
@@ -558,6 +580,31 @@ def test_earth_fault_without_ze_or_length_is_said() -> None:
         _earthed("0.35", _load(LoadKind.DATA, "1", "Data rack")), profile.default_profile()
     )
     (unchecked,) = [n for n in no_length.notes if n.code == "earth_fault_unchecked"]
+    assert unchecked.params["count"] == "1"
+
+
+def test_a_starter_breaker_disconnects_at_its_magnetic_threshold() -> None:
+    motor = _load(LoadKind.MOTOR, "7.5", "Fan", phases=3, starter="dol", length_m=Decimal(30))
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    codes = [n.code for n in board.notes]
+    assert "earth_fault_motor_basis" in codes
+    assert "earth_fault_unchecked" not in codes
+    assert board.circuits[0].earth_loop_ohm is not None
+
+    far = distribution.design_distribution_board(_earthed("1.5", motor), profile.default_profile())
+    (exceeded,) = [n for n in far.notes if n.code == "earth_fault_magnetic_exceeded"]
+    assert exceeded.params["load"] == "Fan"
+    assert Decimal(exceeded.params["trip"]) > 0
+
+
+def test_a_drive_circuit_stays_unchecked_for_earth_fault() -> None:
+    motor = _load(LoadKind.MOTOR, "7.5", "Fan", phases=3, starter="drive", length_m=Decimal(30))
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    (unchecked,) = [n for n in board.notes if n.code == "earth_fault_unchecked"]
     assert unchecked.params["count"] == "1"
 
 

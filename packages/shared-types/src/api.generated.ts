@@ -1461,7 +1461,10 @@ export interface components {
      *         rail_widths_mm: The DIN-rail width of one pole of each kind of
      *             device, from the datasheets of the ranges the company fits. A
      *             kind not given has no width on the layout; the default holds only
-     *             what is sourced (ABB S200 miniature breakers, 17.5 mm a pole).
+     *             what is sourced: ABB S200 miniature breakers and F200 RCCBs,
+     *             17.5 mm a pole (35 mm 2P, 70 mm 4P;
+     *             ABB's 2020 residual current device catalogue, A_ELSB_Cat 2020_2 p. 8,
+     *             gives 72 mm for the 4P 125 A).
      *         usable_rail_mm: The usable rail length per row of the company's
      *             enclosure; a row longer than this continues on the next.
      *         demand_factors: The share of each kind of load's design current
@@ -2257,6 +2260,9 @@ export interface components {
       | 'cables_csv'
       | 'circuits_csv'
       | 'terminals_csv'
+      | 'eplan_devices_csv'
+      | 'ace_components_csv'
+      | 'ace_terminals_csv'
       | 'quotation_pdf'
       | 'calculations_pdf'
       | 'quotation_csv'

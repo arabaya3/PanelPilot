@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.design import designations, distribution, pages, profile
+from app.design import designations, distribution, motors, pages, profile
 from app.design.sheet import Text
 from app.models.schemas.design import (
     DesignProject,
@@ -40,6 +40,7 @@ def _project(lights: int = 14) -> DesignProject:
             name="Pocket", number="J-1", revisions=[Revision(index="01", date="2026-10-02")]
         ),
         boards=[board],
+        parts=motors.parts_for([board]),
     )
     return designations.designate_project(project, profile.default_profile())
 

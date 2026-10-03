@@ -69,6 +69,18 @@ def test_a_board_is_designed_then_exported(client: TestClient) -> None:
     assert report.content.startswith(b"%PDF")
 
 
+def test_the_ecad_lists_are_exported(client: TestClient) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    for format_, name in (
+        ("eplan_devices_csv", "Pocket.eplan-devices.csv"),
+        ("ace_components_csv", "Pocket.ace-components.csv"),
+        ("ace_terminals_csv", "Pocket.ace-terminals.csv"),
+    ):
+        exported = client.post("/design/export", json={"project": project, "format": format_})
+        assert exported.status_code == 200
+        assert f'filename="{name}"' in exported.headers["content-disposition"]
+
+
 def test_an_arabic_project_name_is_kept_for_the_download(client: TestClient) -> None:
     from urllib.parse import quote
 

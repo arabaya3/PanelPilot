@@ -82,3 +82,22 @@ def test_parallel_runs_divide_the_cable_loop() -> None:
         return checked.loop_ohm - Decimal("0.1")
 
     assert abs(zs(2) - zs(1) / 2) <= Decimal("0.001")
+
+
+def test_a_magnetic_only_breaker_is_checked_at_its_threshold_with_tolerance() -> None:
+    checked = disconnection.fit(
+        external_ohm=Decimal("0.35"),
+        length_m=Decimal(20),
+        section_mm2=Decimal("2.5"),
+        material=ConductorMaterial.COPPER,
+        insulation_rating_c=70,
+        phase_voltage_v=Decimal(230),
+        rated_a=Decimal(20),
+        curve="MA",
+        magnetic_trip_a=Decimal(210),
+    )
+    assert checked is not None
+    # 0.95 x 230 / (1.2 x 210 A).
+    assert checked.max_ohm == Decimal("0.867")
+    assert checked.within
+    assert checked.section_mm2 == Decimal("2.5")

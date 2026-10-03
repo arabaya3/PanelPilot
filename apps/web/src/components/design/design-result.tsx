@@ -17,6 +17,9 @@ const FORMATS: ExportFormat[] = [
   'cables_csv',
   'circuits_csv',
   'terminals_csv',
+  'eplan_devices_csv',
+  'ace_components_csv',
+  'ace_terminals_csv',
   'json',
 ];
 

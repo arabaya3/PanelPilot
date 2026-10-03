@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from app.ai.tools import motor_starter, vfd_selection
 from app.core.errors import ValidationError
+from app.design import mccb
 from app.design.notes import note
 from app.models.schemas.calculations import DutyClass, StartType
 from app.models.schemas.design import (
@@ -66,6 +67,8 @@ class MotorCircuit:
         cable_current_a: What each conductor to the motor carries.
         cable_cores: Cores of the motor cable, protective conductor included.
         notes: What the board should say about it.
+        magnetic_trip_a: The starter breaker's magnetic threshold I3, as its
+            coordination table prints it; ``None`` behind a drive's fuses.
     """
 
     devices: list[Device]
@@ -73,6 +76,7 @@ class MotorCircuit:
     cable_current_a: Decimal
     cable_cores: int
     notes: list[DesignNote] = field(default_factory=list)
+    magnetic_trip_a: Decimal | None = None
 
 
 def _start_type(starter: MotorStarter) -> StartType | None:
@@ -210,6 +214,7 @@ def _coordinated(
         cable_current_a=setting,
         cable_cores=7 if star_delta else 4,
         notes=notes,
+        magnetic_trip_a=Decimal(row.magnetic_trip_a),
     )
 
 
@@ -310,7 +315,7 @@ _PART_NAMES: dict[DeviceKind, str] = {
 
 
 def parts_for(boards: list[Board]) -> list[Part]:
-    """The articles motor circuits name, once each, in the order first named.
+    """The articles the boards name, once each, in the order first named.
 
     Args:
         boards: The designed boards.
@@ -326,13 +331,19 @@ def parts_for(boards: list[Board]) -> list[Part]:
                 continue
             manufacturer, type_number = key.split("/", 1)
             from_drive_manual = device.kind in (DeviceKind.DRIVE, DeviceKind.FUSE)
-            source = _DRIVE_MANUAL if from_drive_manual else _HANDBOOK
+            source = mccb.source_of(type_number) or (
+                _DRIVE_MANUAL if from_drive_manual else _HANDBOOK
+            )
             parts[key] = Part(
                 key=key,
                 manufacturer=manufacturer,
                 type_number=type_number,
                 order_number=None,
-                description=_PART_NAMES.get(device.kind, device.kind.value),
+                description=(
+                    "Moulded-case circuit-breaker, thermomagnetic"
+                    if mccb.source_of(type_number)
+                    else _PART_NAMES.get(device.kind, device.kind.value)
+                ),
                 source=source,
             )
     return list(parts.values())

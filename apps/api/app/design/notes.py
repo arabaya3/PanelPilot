@@ -22,10 +22,29 @@ from app.models.schemas.design import DesignNote
 #: The English text of every code. Params in braces.
 TEMPLATES: dict[str, str] = {
     # Distribution boards.
+    "mccb_selected": (
+        "{load}: {type}, In {rated} A, I3 fixed at {trip} A, Icu {icu} kA ({source})."
+    ),
+    "mccb_selected_adjustable": (
+        "{load}: {type}, In {rated} A, Icu {icu} kA ({source}); its I3 (5 to 10 In) is taken at the top, {trip} A, for the short circuit and earth fault checks; set lower, a longer cable passes."
+    ),
+    "short_circuit_min_magnetic_exceeded": (
+        "{load}: a short circuit at the far end draws only {current} A, below the {trip} A at which its breaker trips at once (I3 with its 20 % tolerance), at every cable size held; shorten the run or set I3 lower."
+    ),
+    "enclosure_selected": (
+        "Enclosure: ABB Mini Center compact {type} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted."
+    ),
+    "enclosure_unknown_widths": (
+        "Enclosure: none named, since {count} devices have no width (rail_widths_mm in the company settings)."
+    ),
+    "enclosure_not_modular": (
+        "Enclosure: none named; a moulded-case breaker, starter or drive is not a modular device, so the board needs a panel enclosure sized from its layout."
+    ),
+    "enclosure_beyond": (
+        "Enclosure: none named; the board is beyond the largest modular enclosure held (5 rows of 16 modules, busbar {busbar} A, {fault} kA)."
+    ),
     "mccb_needed": (
-        "{load}: Ib {current} A is above the largest miniature breaker held (125 A); a "
-        "moulded-case breaker is needed and none is selected here. The cable is sized for Ib; "
-        "check it against the breaker's In."
+        "{load}: Ib {current} A is above every breaker held (miniature to 125 A, moulded-case to 800 A at 380-415 V); one is needed and none is selected here. The cable is sized for Ib; check it against the breaker's In."
     ),
     "above_company_rating": (
         "{load}: Ib {current} A exceeds the company's {fixed} A for {kind}; rated {rated} A "
@@ -40,8 +59,7 @@ TEMPLATES: dict[str, str] = {
         "spread more evenly as given."
     ),
     "incomer_mccb": (
-        "Incomer: {current} A on the most loaded conductor exceeds 125 A; a moulded-case "
-        "breaker is needed and none is selected here."
+        "Incomer: {current} A on the most loaded conductor is above every breaker held (moulded-case to 800 A at 380-415 V); one is needed and none is selected here."
     ),
     "spare_ways": "Leave {count} spare outgoing ways ({percent} %).",
     "default_power_factor": "Loads without a power factor were taken at cos phi 0.9.",
@@ -113,6 +131,12 @@ TEMPLATES: dict[str, str] = {
     ),
     "earth_fault_exceeded": (
         "{load}: Zs {loop} Ω is above the {limit} Ω at which its {rated} A curve {curve} breaker trips at once, at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5)."
+    ),
+    "earth_fault_magnetic_exceeded": (
+        "{load}: Zs {loop} Ω is above the {limit} Ω at which its breaker trips at once (I3 {trip} A, with its 20 % tolerance), at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5)."
+    ),
+    "earth_fault_motor_basis": (
+        "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 §8.3.3.1.2)."
     ),
     "earth_fault_tt_no_rcd": (
         "{load}: in a TT system only a residual current device disconnects an earth fault in time (IEC 60364-4-41 §411.5); put this circuit under one."

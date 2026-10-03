@@ -25,6 +25,7 @@ from app.design import (
     designations,
     export_aml,
     export_dxf,
+    export_ecad,
     export_lists,
     export_qet,
     markup_suggestions,
@@ -79,6 +80,9 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.CABLES_CSV: ("text/csv; charset=utf-8", "cables.csv"),
     ExportFormat.CIRCUITS_CSV: ("text/csv; charset=utf-8", "circuits.csv"),
     ExportFormat.TERMINALS_CSV: ("text/csv; charset=utf-8", "terminals.csv"),
+    ExportFormat.EPLAN_DEVICES_CSV: ("text/csv; charset=utf-8", "eplan-devices.csv"),
+    ExportFormat.ACE_COMPONENTS_CSV: ("text/csv; charset=utf-8", "ace-components.csv"),
+    ExportFormat.ACE_TERMINALS_CSV: ("text/csv; charset=utf-8", "ace-terminals.csv"),
     ExportFormat.QUOTATION_PDF: ("application/pdf", "quotation.pdf"),
     ExportFormat.CALCULATIONS_PDF: ("application/pdf", "calculations.pdf"),
     ExportFormat.QUOTATION_CSV: ("text/csv; charset=utf-8", "quotation.csv"),
@@ -235,6 +239,12 @@ def export_design(
         content = export_lists.circuit_schedule(project).encode("utf-8")
     elif request.format is ExportFormat.TERMINALS_CSV:
         content = export_lists.terminal_list(project).encode("utf-8")
+    elif request.format is ExportFormat.EPLAN_DEVICES_CSV:
+        content = export_ecad.eplan_device_list(project).encode("utf-8")
+    elif request.format is ExportFormat.ACE_COMPONENTS_CSV:
+        content = export_ecad.ace_component_list(project).encode("utf-8")
+    elif request.format is ExportFormat.ACE_TERMINALS_CSV:
+        content = export_ecad.ace_terminal_list(project).encode("utf-8")
     elif request.format is ExportFormat.CALCULATIONS_PDF:
         content = calc_report.render_calculations_pdf(project, company)
     elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):

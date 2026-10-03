@@ -196,10 +196,18 @@ A **distribution board** is designed from its load schedule
 
 - Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
 - Its breaker is the company's fixed rating for that kind of load, or the
-  smallest curve C rating at or above Ib. Above 125 A, the largest
-  miniature breaker held, the breaker is left unselected as a moulded-case
-  breaker, the cable is sized for Ib, and the board says so. The same holds
-  for the incomer.
+  smallest curve C rating at or above Ib.
+- Above 125 A, the largest miniature breaker held, it is an ABB SACE Tmax
+  thermomagnetic breaker (`app/design/mccb.py`): XT3 TMD for 160-250 A, or
+  XT4 TMA where the fault is above XT3's 50 kA; T5 TMA for 320-500 A; T6 TMA
+  for 630 and 800 A. The version letter is the lowest whose Icu at
+  380-415 V clears the fault level. The values come from the Tmax XT
+  catalogue 1SDC210033D0203 and the Tmax T catalogue 1SDC210015D0208:
+  rated currents, `I3`, Icu and widths. An adjustable `I3` (5-10 In) is
+  taken at 10 In for the far-end short-circuit and earth-fault checks, with
+  the 20 % tolerance of IEC 60947-2 §8.3.3.1.2. The incomer is chosen the
+  same way. Beyond 800 A, or on a supply other than 380-415 V, the breaker is
+  left unselected, the cable is sized for Ib, and the board says so.
 - Its cable is sized to carry In as installed, so Ib ≤ In ≤ Iz holds by
   construction.
 - Loads the company puts under a residual current device are grouped by
@@ -276,11 +284,25 @@ Drawing text is in English for now.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols
   embedded. It was checked by opening it in QElectroTech 0.9.
 - **AutomationML (CAEX 3.0)**: the device hierarchy, ratings and power
-  links. These are the parts of AutomationML that EPLAN and E3.series
-  import.
+  links, as a neutral archive. EPLAN's AutomationML import (AR APC) covers
+  PLC and bus devices only, so this file is not an EPLAN hand-off.
+- **EPLAN Electric P8** (`eplan_devices_csv`, `app/design/export_ecad.py`):
+  the device list for _File > Import > Project data > Devices_. It holds
+  one row per device and cable and one per terminal, with DT (full) as
+  `=DB1+HALL-Q3`, order number, type designation, manufacturer, function
+  text and ratings. Map the columns once in EPLAN's scheme: DT (full) to
+  20006, Order number to 20919, Type designation to 20200, Terminal / pin
+  designation to 20030. Devices arrive unplaced, and dragging one onto a
+  page places its part's macro.
+- **AutoCAD Electrical** (`ace_components_csv`, `ace_terminals_csv`): the
+  28-column component and 30-column terminal spreadsheets of _Insert
+  Footprint / Insert Terminal (Schematic List)_, in Autodesk's documented
+  column order. They give TAG/INST/LOC from the IEC designation, MFG/CAT
+  from the part and RATING1-5 from the ratings.
 
-There are no EPLAN or AutoCAD Electrical project exporters yet: their
-formats are undocumented and need testing against a real installation.
+The EPLAN and AutoCAD Electrical files follow the vendors' published
+import formats but have not been opened in either program here. Neither
+publishes its project format, so no native project file is written.
 
 **Company settings** are a form on the `/design` page rather than JSON. It
 covers the company name and key, who confirmed the rules, the design rules
@@ -466,6 +488,10 @@ whose cable length is given, once the board's `Ze` is entered
 - **Rule:** `Zs × Ia ≤ 0.95 U0`, with `Ia` the top of the breaker's
   instantaneous band (5, 10, 20 In for curves B, C, D; IEC 60898-1). That
   trips within 0.1 s, inside both the 0.4 s and 5 s limits.
+- **Motor starters:** a coordinated starter's breaker is magnetic only, so
+  its `Ia` is the threshold `I3` printed in ABB's coordination table, raised
+  by 20 % for the tolerance of an instantaneous release (IEC 60947-2
+  §8.3.3.1.2). A drive's circuit, behind aR fuses, stays unchecked.
 - **Loop:** `Zs = Ze + |R1 + R2 + jX|`. The protective conductor is the size
   of the line conductors (multicore cable). Resistance is taken at the
   insulation's maximum operating temperature (IEC 60287-1-1 Table 1), and
@@ -486,13 +512,27 @@ whose cable length is given, once the board's `Ze` is entered
   the terminal strip. There is a Layout page per board in the drawing set.
 - **Widths:** a device's width is the company's figure a pole for its kind
   (`rail_widths_mm`) times its poles.
-  - The default holds only what is sourced: ABB S200 modular breakers, 17.5
-    mm a pole, up to 63 A.
-  - A device with no width, including any with a selected article (a motor
+  - The default holds only what is sourced: ABB S200 modular breakers up to
+    63 A and F200 RCCBs, 17.5 mm a pole (ABB's 2020 RCD catalogue gives
+    72 mm for the 4P 125 A, not 70).
+  - A moulded-case breaker the design selected takes its catalogue width
+    (fixed version, 3P or 4P).
+  - A device with no width, including any other selected article (a motor
     starter's breaker), is drawn dashed and counted separately. It is never
     added to the rail length as a guess.
 - **Rail length:** with `usable_rail_mm`, a row longer than the enclosure's
   rail continues on the next.
+- **Enclosure** (`app/design/enclosure.py`): when the company sets no rail
+  length of its own, the board names the smallest ABB Mini Center compact
+  multi-row board that fits. These have 2-5 rows of 16 modules of 17.5 mm,
+  220-440 V, a 200/250 A busbar, 35 kA and IP41 (catalogue 1SKC802027C0201,
+  pp. 5 and 7). The layout must fit with room left for the company's spare
+  ways. None is named, and the board says why, when:
+  - a device has no width;
+  - a device is not modular (a moulded-case breaker, a starter or a drive);
+  - the incomer is above 200 A or the fault level above 35 kA.
+
+  The outgoing terminal strip is not counted.
 
 **Terminal strips** (`app/design/terminals.py`):
 

@@ -75,3 +75,18 @@ def test_parallel_conductors_raise_the_far_end_current_by_kpar() -> None:
     one = short_circuit.min_current_a(Decimal(100), Decimal(240), _CU, Decimal(230))
     three = short_circuit.min_current_a(Decimal(100), Decimal(240), _CU, Decimal(230), 3)
     assert three == one * Decimal("2.7")
+
+
+def test_a_magnetic_breaker_trips_at_its_threshold_with_tolerance() -> None:
+    checked = short_circuit.fit(
+        length_m=Decimal(100),
+        section_mm2=Decimal(50),
+        material=ConductorMaterial.COPPER,
+        phase_voltage_v=Decimal(230),
+        rated_a=Decimal(160),
+        curve="",
+        magnetic_trip_a=Decimal(1600),
+    )
+    assert checked is not None
+    assert checked.trip_a == Decimal(1920)
+    assert checked.within
