@@ -31,6 +31,18 @@ TEMPLATES: dict[str, str] = {
     "short_circuit_min_magnetic_exceeded": (
         "{load}: a short circuit at the far end draws only {current} A, below the {trip} A at which its breaker trips at once (I3 with its 20 % tolerance), at every cable size held; shorten the run or set I3 lower."
     ),
+    "enclosure_selected": (
+        "Enclosure: ABB Mini Center compact {type} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted."
+    ),
+    "enclosure_unknown_widths": (
+        "Enclosure: none named, since {count} devices have no width (rail_widths_mm in the company settings)."
+    ),
+    "enclosure_not_modular": (
+        "Enclosure: none named; a moulded-case breaker, starter or drive is not a modular device, so the board needs a panel enclosure sized from its layout."
+    ),
+    "enclosure_beyond": (
+        "Enclosure: none named; the board is beyond the largest modular enclosure held (5 rows of 16 modules, busbar {busbar} A, {fault} kA)."
+    ),
     "mccb_needed": (
         "{load}: Ib {current} A is above every breaker held (miniature to 125 A, moulded-case to 800 A at 380-415 V); one is needed and none is selected here. The cable is sized for Ib; check it against the breaker's In."
     ),

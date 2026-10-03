@@ -7,9 +7,11 @@ outgoing terminal strip.
 
 A device's width is its kind's width a pole, from the company profile
 (``rail_widths_mm``), times its poles; for a breaker, only a modular one up to
-63 A, and never for a device with a selected article, whose width is its own. Only what is sourced is given by
-default (ABB S200 miniature breakers, 17.5 mm a pole, ``din_module_width``);
-a device of another kind has no width here, is drawn as a dashed slot and
+63 A. A device with a selected article has its own width: a moulded-case
+breaker this design selected, its catalogue's (``mccb``); any other, none.
+Only what is sourced is given by default (ABB S200 miniature breakers and
+F200 RCCBs, 17.5 mm a pole, ``din_module_width``); a device of another kind
+has no width here, is drawn as a dashed slot and
 counted, and the total rail length leaves it out, so a short figure cannot
 pass for a measured one. With a usable rail length per row, a row longer
 than that continues on the next.

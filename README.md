@@ -512,13 +512,27 @@ whose cable length is given, once the board's `Ze` is entered
   the terminal strip. There is a Layout page per board in the drawing set.
 - **Widths:** a device's width is the company's figure a pole for its kind
   (`rail_widths_mm`) times its poles.
-  - The default holds only what is sourced: ABB S200 modular breakers, 17.5
-    mm a pole, up to 63 A.
-  - A device with no width, including any with a selected article (a motor
+  - The default holds only what is sourced: ABB S200 modular breakers up to
+    63 A and F200 RCCBs, 17.5 mm a pole (ABB's 2020 RCD catalogue gives
+    72 mm for the 4P 125 A, not 70).
+  - A moulded-case breaker the design selected takes its catalogue width
+    (fixed version, 3P or 4P).
+  - A device with no width, including any other selected article (a motor
     starter's breaker), is drawn dashed and counted separately. It is never
     added to the rail length as a guess.
 - **Rail length:** with `usable_rail_mm`, a row longer than the enclosure's
   rail continues on the next.
+- **Enclosure** (`app/design/enclosure.py`): when the company sets no rail
+  length of its own, the board names the smallest ABB Mini Center compact
+  multi-row board that fits. These have 2-5 rows of 16 modules of 17.5 mm,
+  220-440 V, a 200/250 A busbar, 35 kA and IP41 (catalogue 1SKC802027C0201,
+  pp. 5 and 7). The layout must fit with room left for the company's spare
+  ways. None is named, and the board says why, when:
+  - a device has no width;
+  - a device is not modular (a moulded-case breaker, a starter or a drive);
+  - the incomer is above 200 A or the fault level above 35 kA.
+
+  The outgoing terminal strip is not counted.
 
 **Terminal strips** (`app/design/terminals.py`):
 

@@ -59,7 +59,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import disconnection, mccb, motors, short_circuit, voltage_drop
+from app.design import disconnection, enclosure, mccb, motors, short_circuit, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -1259,7 +1259,7 @@ def design_distribution_board(
     )
     if not profile.rules_confirmed_by:
         notes.append(note("rules_unconfirmed"))
-    return Board(
+    board = Board(
         id=request.name,
         name=request.name,
         location=request.location,
@@ -1271,3 +1271,5 @@ def design_distribution_board(
         notes=notes,
         fed_from=request.fed_from,
     )
+    board.notes.extend(enclosure.notes_for(board, profile))
+    return board

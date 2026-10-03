@@ -38,11 +38,12 @@ def test_width_is_the_kinds_width_a_pole() -> None:
     starter = breaker.model_copy(update={"part_key": "ABB/MS132-16"})
     assert layout.width(starter, company) is None
     rcd = Device(id="f", kind=DeviceKind.RESIDUAL_CURRENT_DEVICE, poles=4)
-    assert layout.width(rcd, company) is None
-    sourced = company.model_copy(
-        update={"rail_widths_mm": {DeviceKind.RESIDUAL_CURRENT_DEVICE: Decimal("17.5")}}
-    )
-    assert layout.width(rcd, sourced) == 70
+    # ABB F200, 17.5 mm a pole.
+    assert layout.width(rcd, company) == 70
+    contactor = Device(id="k", kind=DeviceKind.CONTACTOR, poles=2)
+    assert layout.width(contactor, company) is None
+    sourced = company.model_copy(update={"rail_widths_mm": {DeviceKind.CONTACTOR: Decimal(18)}})
+    assert layout.width(contactor, sourced) == 36
     moulded = breaker.model_copy(
         update={"part_key": "ABB/XT3N 250 TMD 160", "rated_current_a": Decimal(160), "poles": 4}
     )
@@ -53,9 +54,9 @@ def test_rails_follow_the_single_line() -> None:
     rows = layout.rails(_board(), profile.default_profile())
     assert [r.name.split(":")[0] for r in rows] == ["incomer", "group", "busbar", "terminals"]
     group = rows[1]
-    # The group breaker, its RCCB (no width given), then three socket breakers.
+    # The group breaker, its RCCB, then three socket breakers, all of known width.
     assert len(group.slots) == 5
-    assert group.unknown == 1
+    assert group.unknown == 0
     assert rows[-1].unknown == len(rows[-1].slots)
 
 
