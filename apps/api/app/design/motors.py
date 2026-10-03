@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from app.ai.tools import motor_starter, vfd_selection
 from app.core.errors import ValidationError
+from app.design import mccb
 from app.design.notes import note
 from app.models.schemas.calculations import DutyClass, StartType
 from app.models.schemas.design import (
@@ -314,7 +315,7 @@ _PART_NAMES: dict[DeviceKind, str] = {
 
 
 def parts_for(boards: list[Board]) -> list[Part]:
-    """The articles motor circuits name, once each, in the order first named.
+    """The articles the boards name, once each, in the order first named.
 
     Args:
         boards: The designed boards.
@@ -330,13 +331,19 @@ def parts_for(boards: list[Board]) -> list[Part]:
                 continue
             manufacturer, type_number = key.split("/", 1)
             from_drive_manual = device.kind in (DeviceKind.DRIVE, DeviceKind.FUSE)
-            source = _DRIVE_MANUAL if from_drive_manual else _HANDBOOK
+            source = mccb.source_of(type_number) or (
+                _DRIVE_MANUAL if from_drive_manual else _HANDBOOK
+            )
             parts[key] = Part(
                 key=key,
                 manufacturer=manufacturer,
                 type_number=type_number,
                 order_number=None,
-                description=_PART_NAMES.get(device.kind, device.kind.value),
+                description=(
+                    "Moulded-case circuit-breaker, thermomagnetic"
+                    if mccb.source_of(type_number)
+                    else _PART_NAMES.get(device.kind, device.kind.value)
+                ),
                 source=source,
             )
     return list(parts.values())

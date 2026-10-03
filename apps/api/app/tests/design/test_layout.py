@@ -43,6 +43,10 @@ def test_width_is_the_kinds_width_a_pole() -> None:
         update={"rail_widths_mm": {DeviceKind.RESIDUAL_CURRENT_DEVICE: Decimal("17.5")}}
     )
     assert layout.width(rcd, sourced) == 70
+    moulded = breaker.model_copy(
+        update={"part_key": "ABB/XT3N 250 TMD 160", "rated_current_a": Decimal(160), "poles": 4}
+    )
+    assert layout.width(moulded, company) == 140
 
 
 def test_rails_follow_the_single_line() -> None:

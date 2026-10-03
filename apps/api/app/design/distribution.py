@@ -59,7 +59,7 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.ai.tools import cable_sizing, feeder_protection
 from app.core.errors import ValidationError
-from app.design import disconnection, motors, short_circuit, voltage_drop
+from app.design import disconnection, mccb, motors, short_circuit, voltage_drop
 from app.design.notes import note
 from app.models.schemas.calculations import ConductorMaterial
 from app.models.schemas.design import (
@@ -126,6 +126,15 @@ class _Sized:
     earth_fault: str = "unchecked"
     #: Identical cables run in parallel, each carrying an equal share.
     parallel: int = 1
+    #: The moulded-case breaker selected beyond the largest miniature one.
+    moulded: mccb.Mccb | None = None
+
+    @property
+    def magnetic_trip_a(self) -> Decimal | None:
+        """``I3`` of a breaker that trips at once at a setting, not a curve."""
+        if self.motor is not None:
+            return self.motor.magnetic_trip_a
+        return self.moulded.magnetic_trip_a if self.moulded else None
 
 
 def _plain(value: Decimal) -> str:
@@ -176,6 +185,7 @@ def _size(
     after = sub_board_after_a.get(load.feeds) if load.feeds else None
     needed = max(current, after * profile.discrimination_ratio) if after else current
     selected = True
+    moulded: mccb.Mccb | None = None
     if fixed is not None and fixed >= needed:
         rated = fixed
     else:
@@ -183,12 +193,16 @@ def _size(
         if rating is not None:
             rated = rating
         else:
-            # A main board's large feeders are moulded-case breakers, which
-            # the miniature-breaker table does not hold: left unselected,
-            # as the incomer is, rather than refusing the whole board.
-            rated, selected = needed, False
-            notes.append(note("mccb_needed", load=load.description, current=_plain(needed)))
-        if after and selected and rated != _rating(current):
+            moulded = _moulded(request, needed)
+            if moulded is not None:
+                rated = moulded.rated_a
+                notes.append(_moulded_note(load.description, moulded))
+            else:
+                # Beyond the moulded-case breakers held too: left unselected,
+                # as the incomer is, rather than refusing the whole board.
+                rated, selected = needed, False
+                notes.append(note("mccb_needed", load=load.description, current=_plain(needed)))
+        if after and selected and rated != _carrying(request, current):
             notes.append(
                 note(
                     "discrimination_feeder_raised",
@@ -224,11 +238,12 @@ def _size(
         index=index,
         current_a=current,
         rated_a=rated,
-        curve=rule.curve if rule else "C",
+        curve="" if moulded else (rule.curve if rule else "C"),
         section_mm2=section,
         selected=selected,
         drop_percent=drop,
         parallel=parallel,
+        moulded=moulded,
     )
     # Short circuit first: the earth fault loop, checked last, only ever
     # enlarges the cable further, which a short circuit trips on sooner.
@@ -238,6 +253,32 @@ def _size(
         # A larger cable drops less; the drop shown is the one it has.
         _redo_drop(request, sized)
     return sized
+
+
+def _moulded(request: DistributionBoardRequest, current: Decimal) -> mccb.Mccb | None:
+    supply = request.supply
+    return mccb.select(current, supply.fault_level_ka, supply.voltage_v)
+
+
+def _carrying(request: DistributionBoardRequest, current: Decimal) -> Decimal | None:
+    """The smallest breaker rating, miniature or moulded-case, carrying a current."""
+    rating = _rating(current)
+    if rating is not None:
+        return rating
+    moulded = _moulded(request, current)
+    return moulded.rated_a if moulded else None
+
+
+def _moulded_note(load: str, moulded: mccb.Mccb) -> DesignNote:
+    return note(
+        "mccb_selected" if not moulded.adjustable else "mccb_selected_adjustable",
+        load=load,
+        type=moulded.type_number,
+        rated=_plain(moulded.rated_a),
+        trip=_plain(moulded.magnetic_trip_a),
+        icu=_plain(moulded.icu_ka),
+        source=moulded.source,
+    )
 
 
 def _under_rcd(profile: CompanyProfile, load: LoadInput) -> bool:
@@ -267,7 +308,7 @@ def _check_disconnection(
         notes.append(note("earth_fault_tt_no_rcd", load=load.description))
         return
     external = request.supply.earth_loop_ohm
-    trip = item.motor.magnetic_trip_a if item.motor else None
+    trip = item.magnetic_trip_a
     if external is None or load.length_m is None or not item.selected:
         return
     if item.motor and trip is None:
@@ -292,7 +333,7 @@ def _check_disconnection(
     if not checked.within and trip is not None:
         notes.append(
             note(
-                "earth_fault_motor_exceeded",
+                "earth_fault_magnetic_exceeded",
                 load=load.description,
                 loop=_plain(checked.loop_ohm),
                 limit=_plain(checked.max_ohm),
@@ -334,6 +375,7 @@ def _check_short_circuit(
     load = item.load
     if load.length_m is None or not item.selected or item.motor:
         return
+    trip = item.magnetic_trip_a
     checked = short_circuit.fit(
         length_m=load.length_m,
         section_mm2=item.section_mm2,
@@ -342,10 +384,20 @@ def _check_short_circuit(
         rated_a=item.rated_a,
         curve=item.curve,
         parallel=item.parallel,
+        magnetic_trip_a=trip,
     )
     if checked is None:
         return
-    if not checked.within:
+    if not checked.within and trip is not None:
+        notes.append(
+            note(
+                "short_circuit_min_magnetic_exceeded",
+                load=load.description,
+                current=_plain(checked.min_current_a),
+                trip=_plain(checked.trip_a),
+            )
+        )
+    elif not checked.within:
         notes.append(
             note(
                 "short_circuit_min_exceeded",
@@ -847,7 +899,7 @@ def _incomer(
     """The board's incomer.
 
     A board at the origin has a circuit-breaker, rated to discriminate with
-    what it feeds. A sub-board fed from a board in the project has a
+    what it feeds: a moulded-case one (``mccb``) beyond the miniature ones. A sub-board fed from a board in the project has a
     switch-disconnector: the feeder breaker protects it, so a second breaker
     there would only be one more level for discrimination to climb. The
     switch is rated no lower than that breaker.
@@ -868,6 +920,28 @@ def _incomer(
         )
     incomer_carrying = _rating(most)
     incomer_rated = _rating(max(most, after * ratio))
+    if incomer_rated is None:
+        moulded = _moulded(request, max(most, after * ratio))
+        if moulded is not None:
+            notes.append(_moulded_note("Incomer", moulded))
+            if moulded.rated_a != _carrying(request, most):
+                notes.append(
+                    note(
+                        "discrimination_incomer_raised",
+                        rated=_plain(moulded.rated_a),
+                        ratio=_plain(ratio),
+                        after=_plain(after),
+                    )
+                )
+            return Device(
+                id="incomer",
+                kind=DeviceKind.CIRCUIT_BREAKER,
+                part_key=f"ABB/{moulded.type_number}",
+                poles=poles,
+                rated_current_a=moulded.rated_a,
+                breaking_capacity_ka=moulded.icu_ka,
+                description="Main incomer",
+            )
     if incomer_carrying is None:
         notes.append(note("incomer_mccb", current=_plain(most)))
     elif incomer_rated is None:
@@ -1049,12 +1123,15 @@ def design_distribution_board(
             cables.append(cable)
             circuits.append(circuit)
             continue
+        moulded = item.moulded
         breaker = Device(
             id=f"c{item.index + 1}-breaker",
             kind=DeviceKind.CIRCUIT_BREAKER,
-            poles=3 if three_phase else 1,
+            part_key=f"ABB/{moulded.type_number}" if moulded else None,
+            poles=3 if three_phase else (2 if moulded else 1),
             rated_current_a=item.rated_a if item.selected else None,
-            curve=item.curve if item.selected else None,
+            curve=item.curve if item.selected and item.curve else None,
+            breaking_capacity_ka=moulded.icu_ka if moulded else None,
             description=item.load.description,
             upstream_id=upstream.get(item.index, "incomer"),
         )
@@ -1149,6 +1226,10 @@ def design_distribution_board(
     incomer = _incomer(request, most, after, ratio, supply_breaker_a, notes)
     devices.insert(0, incomer)
     starters = {device.id for item in sized if item.motor for device in item.motor.devices}
+    # A moulded-case breaker carries its own Icu from the catalogue.
+    starters |= {f"c{item.index + 1}-breaker" for item in sized if item.moulded}
+    if incomer.part_key:
+        starters.add(incomer.id)
     notes.extend(_rate_breaking_capacity(devices, starters, request.supply.fault_level_ka))
 
     spare = (len(circuits) * profile.spare_ways_percent / 100).to_integral_value(ROUND_CEILING)

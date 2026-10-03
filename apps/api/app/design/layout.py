@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.design import terminals
+from app.design import mccb, terminals
 from app.models.schemas.design import Board, CompanyProfile, Device, DeviceKind
 
 #: The largest modular (miniature) breaker the per-pole width covers: ABB's
@@ -76,6 +76,11 @@ def width(device: Device, profile: CompanyProfile) -> Decimal | None:
     Returns:
         The width in mm, or ``None`` where its kind's width is not given.
     """
+    if device.part_key is not None:
+        # A moulded-case breaker this design selected has its catalogue width.
+        maker, _, type_number = device.part_key.partition("/")
+        if maker == "ABB" and (moulded := mccb.width_mm(type_number, device.poles or 3)):
+            return moulded
     per_pole = profile.rail_widths_mm.get(device.kind)
     if per_pole is None or device.part_key is not None:
         # A selected article (a motor starter's breaker, a drive) has its own

@@ -196,10 +196,18 @@ A **distribution board** is designed from its load schedule
 
 - Each load's Ib is P / (k Ur cos φ) (ABB handbook Annex B).
 - Its breaker is the company's fixed rating for that kind of load, or the
-  smallest curve C rating at or above Ib. Above 125 A, the largest
-  miniature breaker held, the breaker is left unselected as a moulded-case
-  breaker, the cable is sized for Ib, and the board says so. The same holds
-  for the incomer.
+  smallest curve C rating at or above Ib.
+- Above 125 A, the largest miniature breaker held, it is an ABB SACE Tmax
+  thermomagnetic breaker (`app/design/mccb.py`): XT3 TMD for 160-250 A, or
+  XT4 TMA where the fault is above XT3's 50 kA; T5 TMA for 320-500 A; T6 TMA
+  for 630 and 800 A. The version letter is the lowest whose Icu at
+  380-415 V clears the fault level. The values come from the Tmax XT
+  catalogue 1SDC210033D0203 and the Tmax T catalogue 1SDC210015D0208:
+  rated currents, `I3`, Icu and widths. An adjustable `I3` (5-10 In) is
+  taken at 10 In for the far-end short-circuit and earth-fault checks, with
+  the 20 % tolerance of IEC 60947-2 §8.3.3.1.2. The incomer is chosen the
+  same way. Beyond 800 A, or on a supply other than 380-415 V, the breaker is
+  left unselected, the cable is sized for Ib, and the board says so.
 - Its cable is sized to carry In as installed, so Ib ≤ In ≤ Iz holds by
   construction.
 - Loads the company puts under a residual current device are grouped by

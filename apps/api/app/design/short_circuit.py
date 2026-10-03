@@ -29,7 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.design.disconnection import INSTANTANEOUS_MULTIPLE
+from app.design.disconnection import INSTANTANEOUS_MULTIPLE, MAGNETIC_TOLERANCE
 from app.design.voltage_drop import SECTIONS
 from app.models.schemas.calculations import ConductorMaterial
 
@@ -151,6 +151,7 @@ def fit(
     rated_a: Decimal,
     curve: str,
     parallel: int = 1,
+    magnetic_trip_a: Decimal | None = None,
 ) -> Checked | None:
     """Enlarge a cable until a short circuit at its far end trips its breaker at once.
 
@@ -162,16 +163,24 @@ def fit(
         rated_a: The breaker's In.
         curve: Its tripping characteristic.
         parallel: Conductors in parallel per phase (``kpar``).
+        magnetic_trip_a: A moulded-case or starter breaker's ``I3``; when
+            given, it trips at once at ``I3`` with its 20 % tolerance
+            (``disconnection.MAGNETIC_TOLERANCE``), and ``curve`` is not read.
 
     Returns:
         The smallest section at or above ``section_mm2`` that is within; or,
         where none is, ``section_mm2`` itself with ``within`` false. ``None``
         for a curve not held or a section beyond the tables.
     """
-    multiple = INSTANTANEOUS_MULTIPLE.get(curve.upper())
-    if multiple is None or section_mm2 not in SECTIONS:
+    if magnetic_trip_a is not None:
+        trip = MAGNETIC_TOLERANCE * magnetic_trip_a
+    else:
+        multiple = INSTANTANEOUS_MULTIPLE.get(curve.upper())
+        if multiple is None:
+            return None
+        trip = multiple * rated_a
+    if section_mm2 not in SECTIONS:
         return None
-    trip = multiple * rated_a
     for candidate in SECTIONS[SECTIONS.index(section_mm2) :]:
         current = min_current_a(length_m, candidate, material, phase_voltage_v, parallel)
         if current >= trip:
