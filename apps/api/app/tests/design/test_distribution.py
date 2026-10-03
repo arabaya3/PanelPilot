@@ -561,6 +561,31 @@ def test_earth_fault_without_ze_or_length_is_said() -> None:
     assert unchecked.params["count"] == "1"
 
 
+def test_a_starter_breaker_disconnects_at_its_magnetic_threshold() -> None:
+    motor = _load(LoadKind.MOTOR, "7.5", "Fan", phases=3, starter="dol", length_m=Decimal(30))
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    codes = [n.code for n in board.notes]
+    assert "earth_fault_motor_basis" in codes
+    assert "earth_fault_unchecked" not in codes
+    assert board.circuits[0].earth_loop_ohm is not None
+
+    far = distribution.design_distribution_board(_earthed("1.5", motor), profile.default_profile())
+    (exceeded,) = [n for n in far.notes if n.code == "earth_fault_motor_exceeded"]
+    assert exceeded.params["load"] == "Fan"
+    assert Decimal(exceeded.params["trip"]) > 0
+
+
+def test_a_drive_circuit_stays_unchecked_for_earth_fault() -> None:
+    motor = _load(LoadKind.MOTOR, "7.5", "Fan", phases=3, starter="drive", length_m=Decimal(30))
+    board = distribution.design_distribution_board(
+        _earthed("0.35", motor), profile.default_profile()
+    )
+    (unchecked,) = [n for n in board.notes if n.code == "earth_fault_unchecked"]
+    assert unchecked.params["count"] == "1"
+
+
 def test_a_long_cable_is_enlarged_until_a_far_short_circuit_trips_at_once() -> None:
     # Under an RCD, so only the short circuit check can enlarge it for its breaker.
     request = DistributionBoardRequest(

@@ -44,7 +44,8 @@ comes from its profile; what neither settles is left on the board as a note.
   withstands for the breaker's let-through energy (``short_circuit``).
 * Where the board's ``Ze`` is known too, its breaker is checked to disconnect
   an earth fault at the cable's far end, and the cable enlarged where it
-  would not (``disconnection``). A circuit under a residual current device
+  would not (``disconnection``); a motor starter's breaker at the magnetic
+  threshold its coordination table prints. A circuit under a residual current device
   disconnects by it; in a TT system every circuit needs one.
 
 No part is selected here: devices carry ratings, not articles, until a
@@ -266,7 +267,10 @@ def _check_disconnection(
         notes.append(note("earth_fault_tt_no_rcd", load=load.description))
         return
     external = request.supply.earth_loop_ohm
-    if external is None or load.length_m is None or not item.selected or item.motor:
+    trip = item.motor.magnetic_trip_a if item.motor else None
+    if external is None or load.length_m is None or not item.selected:
+        return
+    if item.motor and trip is None:
         return
     conditions = request.conditions
     checked = disconnection.fit(
@@ -279,12 +283,23 @@ def _check_disconnection(
         rated_a=item.rated_a,
         curve=item.curve,
         parallel=item.parallel,
+        magnetic_trip_a=trip,
     )
     if checked is None:
         return
     item.earth_fault = "breaker"
     item.earth_loop_ohm = checked.loop_ohm
-    if not checked.within:
+    if not checked.within and trip is not None:
+        notes.append(
+            note(
+                "earth_fault_motor_exceeded",
+                load=load.description,
+                loop=_plain(checked.loop_ohm),
+                limit=_plain(checked.max_ohm),
+                trip=_plain(trip),
+            )
+        )
+    elif not checked.within:
         notes.append(
             note(
                 "earth_fault_exceeded",
@@ -390,6 +405,8 @@ def _earth_fault_notes(request: DistributionBoardRequest, sized: list[_Sized]) -
                 voltage=_plain(_phase_voltage(request)),
             )
         )
+    if any(item.earth_fault == "breaker" and item.motor for item in sized):
+        made.append(note("earth_fault_motor_basis"))
     unchecked = sum(1 for item in sized if item.earth_fault == "unchecked")
     if unchecked:
         made.append(note("earth_fault_unchecked", count=unchecked))
@@ -559,8 +576,9 @@ def _size_motor(
         motor=motor,
         drop_percent=drop,
     )
-    # A starter's breaker trips on short circuit only, at a setting its
-    # tables do not give here: such a circuit is counted as unchecked.
+    # A starter's breaker trips on short circuit only, at the threshold I3 its
+    # coordination table prints; a drive's fuses are not checked, and such a
+    # circuit is counted as unchecked.
     _check_disconnection(request, profile, sized, notes)
     return sized
 

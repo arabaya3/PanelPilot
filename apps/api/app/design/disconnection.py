@@ -9,6 +9,9 @@ device in time: ``Zs x Ia <= U0``. Here:
   meets the 0.4 s of Table 41.1 for a final circuit and, with room to spare,
   the 5 s of §411.3.2.3 for a distribution circuit; reading a breaker's time
   curve for 5 s would allow a longer feeder, but no curve is held here.
+  A motor starter's breaker is magnetic only, and its ``Ia`` is the
+  threshold ``I3`` its coordination table prints, raised by the 20 % an
+  instantaneous release may trip above its setting (IEC 60947-2 §8.3.3.1.2).
 * ``U0`` is reduced by ``Cmin = 0.95`` for the supply's lowest voltage
   (CENELEC TR 50480; BS 7671 Table 41.3 is drawn up the same way).
 * ``Zs`` is the impedance outside the board, ``Ze``, plus the circuit's own
@@ -58,6 +61,10 @@ TEMPERATURE_COEFFICIENT: dict[ConductorMaterial, Decimal] = {
     ConductorMaterial.COPPER: Decimal("0.00393"),
     ConductorMaterial.ALUMINIUM: Decimal("0.00403"),
 }
+
+#: How far above its setting an instantaneous release may trip (IEC 60947-2
+#: §8.3.3.1.2, ±20 %).
+MAGNETIC_TOLERANCE = Decimal("1.2")
 
 _THOUSANDTH = Decimal("0.001")
 
@@ -131,6 +138,7 @@ def fit(
     rated_a: Decimal,
     curve: str,
     parallel: int = 1,
+    magnetic_trip_a: Decimal | None = None,
 ) -> Checked | None:
     """Enlarge a cable until its breaker disconnects an earth fault at its far end.
 
@@ -146,13 +154,18 @@ def fit(
         parallel: Identical cables run in parallel, each with its protective
             conductor; their loops share the fault, so the circuit's is one
             run's divided by their number.
+        magnetic_trip_a: A magnetic-only breaker's threshold ``I3``; when
+            given, ``Ia`` is it with its tolerance, and ``curve`` is not read.
 
     Returns:
         The smallest section at or above ``section_mm2`` that is within; or,
         where none is, ``section_mm2`` itself with ``within`` false. ``None``
         for a curve not held or a section beyond the tables.
     """
-    limit = max_loop_ohm(phase_voltage_v, rated_a, curve)
+    if magnetic_trip_a is not None:
+        limit: Decimal | None = C_MIN * phase_voltage_v / (MAGNETIC_TOLERANCE * magnetic_trip_a)
+    else:
+        limit = max_loop_ohm(phase_voltage_v, rated_a, curve)
     if limit is None or section_mm2 not in SECTIONS:
         return None
 

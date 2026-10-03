@@ -66,6 +66,8 @@ class MotorCircuit:
         cable_current_a: What each conductor to the motor carries.
         cable_cores: Cores of the motor cable, protective conductor included.
         notes: What the board should say about it.
+        magnetic_trip_a: The starter breaker's magnetic threshold I3, as its
+            coordination table prints it; ``None`` behind a drive's fuses.
     """
 
     devices: list[Device]
@@ -73,6 +75,7 @@ class MotorCircuit:
     cable_current_a: Decimal
     cable_cores: int
     notes: list[DesignNote] = field(default_factory=list)
+    magnetic_trip_a: Decimal | None = None
 
 
 def _start_type(starter: MotorStarter) -> StartType | None:
@@ -210,6 +213,7 @@ def _coordinated(
         cable_current_a=setting,
         cable_cores=7 if star_delta else 4,
         notes=notes,
+        magnetic_trip_a=Decimal(row.magnetic_trip_a),
     )
 
 

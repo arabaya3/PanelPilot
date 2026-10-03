@@ -480,6 +480,10 @@ whose cable length is given, once the board's `Ze` is entered
 - **Rule:** `Zs × Ia ≤ 0.95 U0`, with `Ia` the top of the breaker's
   instantaneous band (5, 10, 20 In for curves B, C, D; IEC 60898-1). That
   trips within 0.1 s, inside both the 0.4 s and 5 s limits.
+- **Motor starters:** a coordinated starter's breaker is magnetic only, so
+  its `Ia` is the threshold `I3` printed in ABB's coordination table, raised
+  by 20 % for the tolerance of an instantaneous release (IEC 60947-2
+  §8.3.3.1.2). A drive's circuit, behind aR fuses, stays unchecked.
 - **Loop:** `Zs = Ze + |R1 + R2 + jX|`. The protective conductor is the size
   of the line conductors (multicore cable). Resistance is taken at the
   insulation's maximum operating temperature (IEC 60287-1-1 Table 1), and

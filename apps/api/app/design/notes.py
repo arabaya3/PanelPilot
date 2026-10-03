@@ -114,6 +114,12 @@ TEMPLATES: dict[str, str] = {
     "earth_fault_exceeded": (
         "{load}: Zs {loop} Ω is above the {limit} Ω at which its {rated} A curve {curve} breaker trips at once, at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5)."
     ),
+    "earth_fault_motor_exceeded": (
+        "{load}: Zs {loop} Ω is above the {limit} Ω at which its motor breaker trips at once (I3 {trip} A), at every cable size held; protect the circuit with a residual current device (IEC 60364-4-41 §411.4.5)."
+    ),
+    "earth_fault_motor_basis": (
+        "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 §8.3.3.1.2)."
+    ),
     "earth_fault_tt_no_rcd": (
         "{load}: in a TT system only a residual current device disconnects an earth fault in time (IEC 60364-4-41 §411.5); put this circuit under one."
     ),
