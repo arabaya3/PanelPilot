@@ -276,11 +276,25 @@ Drawing text is in English for now.
 - **QElectroTech (`.qet`)**: an editable schematic, with its symbols
   embedded. It was checked by opening it in QElectroTech 0.9.
 - **AutomationML (CAEX 3.0)**: the device hierarchy, ratings and power
-  links. These are the parts of AutomationML that EPLAN and E3.series
-  import.
+  links, as a neutral archive. EPLAN's AutomationML import (AR APC) covers
+  PLC and bus devices only, so this file is not an EPLAN hand-off.
+- **EPLAN Electric P8** (`eplan_devices_csv`, `app/design/export_ecad.py`):
+  the device list for _File > Import > Project data > Devices_. It holds
+  one row per device and cable and one per terminal, with DT (full) as
+  `=DB1+HALL-Q3`, order number, type designation, manufacturer, function
+  text and ratings. Map the columns once in EPLAN's scheme: DT (full) to
+  20006, Order number to 20919, Type designation to 20200, Terminal / pin
+  designation to 20030. Devices arrive unplaced, and dragging one onto a
+  page places its part's macro.
+- **AutoCAD Electrical** (`ace_components_csv`, `ace_terminals_csv`): the
+  28-column component and 30-column terminal spreadsheets of _Insert
+  Footprint / Insert Terminal (Schematic List)_, in Autodesk's documented
+  column order. They give TAG/INST/LOC from the IEC designation, MFG/CAT
+  from the part and RATING1-5 from the ratings.
 
-There are no EPLAN or AutoCAD Electrical project exporters yet: their
-formats are undocumented and need testing against a real installation.
+The EPLAN and AutoCAD Electrical files follow the vendors' published
+import formats but have not been opened in either program here. Neither
+publishes its project format, so no native project file is written.
 
 **Company settings** are a form on the `/design` page rather than JSON. It
 covers the company name and key, who confirmed the rules, the design rules

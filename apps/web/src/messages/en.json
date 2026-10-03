@@ -588,7 +588,10 @@
       "circuits_csv": "Circuit schedule (CSV)",
       "json": "Project (JSON)",
       "terminals_csv": "Terminal list (CSV)",
-      "calculations_pdf": "Calculations report (PDF)"
+      "calculations_pdf": "Calculations report (PDF)",
+      "eplan_devices_csv": "EPLAN device import (CSV)",
+      "ace_components_csv": "AutoCAD Electrical components (CSV)",
+      "ace_terminals_csv": "AutoCAD Electrical terminals (CSV)"
     },
     "import": {
       "label": "Import a load schedule",

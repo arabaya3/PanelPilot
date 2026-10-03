@@ -588,7 +588,10 @@
       "circuits_csv": "טבלת מעגלים (CSV)",
       "json": "פרויקט (JSON)",
       "terminals_csv": "רשימת מהדקים (CSV)",
-      "calculations_pdf": "דוח חישובים (PDF)"
+      "calculations_pdf": "דוח חישובים (PDF)",
+      "eplan_devices_csv": "ייבוא רכיבים ל-EPLAN (CSV)",
+      "ace_components_csv": "רכיבי AutoCAD Electrical (CSV)",
+      "ace_terminals_csv": "מהדקי AutoCAD Electrical (CSV)"
     },
     "import": {
       "label": "ייבוא טבלת עומסים",

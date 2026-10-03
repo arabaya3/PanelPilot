@@ -588,7 +588,10 @@
       "circuits_csv": "جدول الدوائر (CSV)",
       "json": "المشروع (JSON)",
       "terminals_csv": "جدول الأطراف (CSV)",
-      "calculations_pdf": "تقرير الحسابات (PDF)"
+      "calculations_pdf": "تقرير الحسابات (PDF)",
+      "eplan_devices_csv": "استيراد أجهزة EPLAN (CSV)",
+      "ace_components_csv": "مكونات AutoCAD Electrical (CSV)",
+      "ace_terminals_csv": "أطراف AutoCAD Electrical (CSV)"
     },
     "import": {
       "label": "استيراد جدول الأحمال",
