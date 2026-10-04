@@ -740,6 +740,18 @@ Free includes the quotation only.
   - Lahza, for local payments;
   - Cardcom or Tranzila, for an Israeli company.
 
+**Teams** (`app/domain/team.py`, the `/team` page):
+
+- The account's first engineer is its owner. Only the owner invites,
+  withdraws an invitation or removes a member.
+- An invitation names one email and gives a link to send. The link is shown
+  once, works for 14 days, and only its hash is stored.
+- The colleague opens `/join?invite=…` and signs up with that email. Their
+  account then joins the inviting tenant, sharing its projects and its
+  model-call pool.
+- Once billing is enforced, members plus open invitations may not exceed the
+  plan's seats (`team_seats_full`).
+
 **Enforcement** is off until `BILLING_ENFORCED=true`. Until then:
 
 - every account may use every feature;

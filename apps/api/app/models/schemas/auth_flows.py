@@ -28,6 +28,8 @@ class SignupRequest(BaseModel):
     # proves the claimer owns the session. Without it, any leaked session id
     # was a takeover of that session's tenant.
     claim_secret: str | None = Field(default=None, max_length=_MAX_SECRET_LENGTH)
+    # An invitation to join a team instead of getting a tenant of one's own.
+    invite_token: str | None = Field(default=None, max_length=_MAX_SECRET_LENGTH)
 
 
 class TrialStart(BaseModel):

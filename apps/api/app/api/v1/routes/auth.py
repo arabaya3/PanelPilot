@@ -50,6 +50,7 @@ def signup(payload: SignupRequest, session: SessionDep) -> TokenPair:
         full_name=payload.full_name,
         claim_session_id=payload.claim_session_id,
         claim_secret=payload.claim_secret,
+        invite_token=payload.invite_token,
     )
     session.commit()
     return tokens

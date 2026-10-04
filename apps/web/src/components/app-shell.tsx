@@ -14,6 +14,7 @@ import {
   CodeIcon,
   SearchIcon,
   TagIcon,
+  UserIcon,
 } from '@/components/icons';
 import { LangSwitcher } from '@/components/lang-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -25,6 +26,7 @@ const NAV = [
   { href: '/calc', key: 'calc', Icon: CalculatorIcon },
   { href: '/design', key: 'design', Icon: BoardIcon },
   { href: '/review', key: 'review', Icon: CheckCircleIcon },
+  { href: '/team', key: 'team', Icon: UserIcon },
   { href: '/pricing', key: 'pricing', Icon: TagIcon },
 ] as const;
 

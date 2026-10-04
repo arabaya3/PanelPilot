@@ -690,6 +690,90 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/team': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Team
+     * @description The caller's team and its seats.
+     */
+    get: operations['get_team_api_v1_team_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/invitations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Invitations
+     * @description The invitations still open.
+     */
+    get: operations['list_invitations_api_v1_team_invitations_get'];
+    put?: never;
+    /**
+     * Invite
+     * @description Invite a colleague; the token is shown this once, for the owner to send.
+     */
+    post: operations['invite_api_v1_team_invitations_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/invitations/{invitation_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke
+     * @description Withdraw an open invitation.
+     */
+    delete: operations['revoke_api_v1_team_invitations__invitation_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/members/{member_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove
+     * @description Take a member out of the team.
+     */
+    delete: operations['remove_api_v1_team_members__member_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ingestion/crawl-jobs': {
     parameters: {
       query?: never;
@@ -2607,6 +2691,57 @@ export interface components {
      */
     Interval: 'monthly' | 'annual';
     /**
+     * InvitationCreated
+     * @description A new invitation, with the token to send: shown this once.
+     *
+     *     Attributes:
+     *         id: The invitation.
+     *         email: Who it is for.
+     *         token: What the colleague signs up with.
+     *         expires_at: When it lapses (ISO 8601).
+     */
+    InvitationCreated: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Token */
+      token: string;
+      /** Expires At */
+      expires_at: string;
+    };
+    /**
+     * InvitationOut
+     * @description An invitation still open.
+     *
+     *     Attributes:
+     *         id: The invitation.
+     *         email: Who it is for.
+     *         invited_by: Who sent it.
+     *         expires_at: When it lapses (ISO 8601).
+     */
+    InvitationOut: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Invited By */
+      invited_by: string;
+      /** Expires At */
+      expires_at: string;
+    };
+    /**
+     * InviteRequest
+     * @description Invite a colleague by email.
+     */
+    InviteRequest: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string;
+    };
+    /**
      * LabelRequest
      * @description A verifier's judgement on one item.
      */
@@ -3035,6 +3170,26 @@ export interface components {
       value?: string | null;
       /** Candidates */
       candidates?: components['schemas']['MarkupCandidate'][];
+    };
+    /**
+     * Member
+     * @description One account in the team.
+     *
+     *     Attributes:
+     *         id: The account.
+     *         email: Its address.
+     *         full_name: Its name, if given.
+     *         owner: Whether it manages the team.
+     */
+    Member: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Full Name */
+      full_name?: string | null;
+      /** Owner */
+      owner: boolean;
     };
     /**
      * MotorStarter
@@ -4042,6 +4197,8 @@ export interface components {
       claim_session_id?: string | null;
       /** Claim Secret */
       claim_secret?: string | null;
+      /** Invite Token */
+      invite_token?: string | null;
     };
     /**
      * StaleDocument
@@ -4212,6 +4369,27 @@ export interface components {
       low_v: string;
       /** High V */
       high_v: string;
+    };
+    /**
+     * Team
+     * @description The caller's team.
+     *
+     *     Attributes:
+     *         members: Its active accounts, owner first.
+     *         owner: Whether the caller manages it.
+     *         seats: The seats the plan holds; ``None`` while billing is not
+     *             enforced.
+     *         seats_taken: Members plus invitations still open.
+     */
+    Team: {
+      /** Members */
+      members: components['schemas']['Member'][];
+      /** Owner */
+      owner: boolean;
+      /** Seats */
+      seats: number | null;
+      /** Seats Taken */
+      seats_taken: number;
     };
     /**
      * TitleField
@@ -5590,6 +5768,137 @@ export interface operations {
         content: {
           'application/json': components['schemas']['SearchResponse'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_team_api_v1_team_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
+      };
+    };
+  };
+  list_invitations_api_v1_team_invitations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InvitationOut'][];
+        };
+      };
+    };
+  };
+  invite_api_v1_team_invitations_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InviteRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InvitationCreated'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revoke_api_v1_team_invitations__invitation_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        invitation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_api_v1_team_members__member_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {
