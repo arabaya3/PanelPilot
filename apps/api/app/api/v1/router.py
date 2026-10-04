@@ -20,6 +20,7 @@ from app.api.v1.routes import (
     ingestion,
     plc,
     search,
+    team,
     verification,
 )
 
@@ -50,6 +51,7 @@ api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(design.router, prefix="/design", tags=["design"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
+api_router.include_router(team.router, prefix="/team", tags=["team"])
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
 api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])

@@ -39,6 +39,8 @@ TENANT_SCOPED = {
     "company_settings",
     # What a customer pays for, and the plan it asked for.
     "subscriptions",
+    # Who a customer invited into its team.
+    "invitations",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would

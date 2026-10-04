@@ -272,7 +272,8 @@
     "search": "Search",
     "calc": "Calculations",
     "design": "Board design",
-    "pricing": "Pricing"
+    "pricing": "Pricing",
+    "team": "Team"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -1001,5 +1002,47 @@
         "for": "Large firms and distributors."
       }
     }
+  },
+  "team": {
+    "title": "Team",
+    "intro": "The engineers on your account. The owner invites colleagues by email and sends them the link.",
+    "signIn": "Sign in to see your team.",
+    "loading": "Loading the team…",
+    "error": "The team could not be loaded or changed; try again.",
+    "seats": "{taken} of {seats} seats taken (invitations included).",
+    "seatsOpen": "{taken} seats taken (invitations included).",
+    "members": "Members",
+    "owner": "Owner",
+    "remove": "Remove",
+    "invite": "Invite a colleague",
+    "email": "Email",
+    "send": "Create invitation",
+    "linkReady": "Send this link to your colleague; it is shown only now and works for 14 days:",
+    "waiting": "Waiting",
+    "withdraw": "Withdraw",
+    "notOwner": "Only the account's owner invites colleagues.",
+    "errors": {
+      "team_owner_only": "Only the account's owner manages the team.",
+      "team_seats_full": "Your plan holds {seats} seats, all taken; change plan to add more.",
+      "team_member_exists": "That email already has an account.",
+      "team_invitation_invalid": "This invitation is not valid: it was used, withdrawn or has expired.",
+      "team_invitation_email": "This invitation is for another email address.",
+      "team_invitation_not_found": "That invitation is not there.",
+      "team_member_not_found": "That member is not there.",
+      "team_remove_self": "The owner cannot remove themselves."
+    }
+  },
+  "join": {
+    "title": "Join your team",
+    "intro": "Create your account with the email you were invited at.",
+    "noInvite": "This page needs an invitation link from your team's owner.",
+    "email": "Email",
+    "name": "Full name",
+    "password": "Password (12 characters or more)",
+    "submit": "Create my account",
+    "joined": "Your account is ready and in your team.",
+    "signIn": "Sign in",
+    "emailTaken": "That email already has an account; sign in instead.",
+    "failed": "The account could not be created; try again."
   }
 }

@@ -37,6 +37,7 @@ from app.core.security import (
     verify_password,
 )
 from app.core.tenancy import TenantScopeError, bind_tenant, cross_tenant
+from app.domain import team
 from app.domain.roles import IMPLICIT_ROLES, roles_of
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
@@ -89,6 +90,7 @@ def signup(
     full_name: str | None = None,
     claim_session_id: str | None = None,
     claim_secret: str | None = None,
+    invite_token: str | None = None,
 ) -> TokenPair:
     """Create an account, its implicit tenant, and a token pair.
 
@@ -111,6 +113,10 @@ def signup(
             Required alongside ``claim_session_id``: the session id travels
             in URLs and is not secret, so accepting it alone let anyone who
             learned one join that session's tenant as a full user.
+        invite_token: An invitation to a team (``team.invite``): the account
+            joins the inviting tenant instead of getting its own. The
+            invitation must be for this email, and cannot be combined with a
+            trial claim.
 
     Returns:
         A fresh access/refresh token pair.
@@ -137,13 +143,25 @@ def signup(
             raise ValidationError(_EMAIL_TAKEN)
 
         claimed: AnonymousSessionRow | None = None
-        if claim_session_id:
+        if invite_token and claim_session_id:
+            raise ValidationError(
+                "an invitation and a trial cannot both be used", code="team_invitation_with_trial"
+            )
+        if invite_token:
+            joined = session.get(
+                TenantRow, team.accept(session=session, token=invite_token, email=normalised)
+            )
+            if joined is None:  # pragma: no cover — FK guarantees this
+                raise NotFoundError("the invitation's tenant is missing")
+            tenant = joined
+        elif claim_session_id:
             claimed = _load_claimable_session(
                 session=session, session_id=claim_session_id, claim_secret=claim_secret
             )
-            tenant = session.get(TenantRow, claimed.tenant_id)
-            if tenant is None:  # pragma: no cover — FK guarantees this
+            found = session.get(TenantRow, claimed.tenant_id)
+            if found is None:  # pragma: no cover — FK guarantees this
                 raise NotFoundError("the anonymous session's tenant is missing")
+            tenant = found
         else:
             tenant = TenantRow(
                 slug=f"{_slugify_email(normalised)}-{uuid.uuid4().hex[:8]}",

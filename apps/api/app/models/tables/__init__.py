@@ -16,6 +16,7 @@ from app.models.tables import (  # noqa: F401
     escalation,
     ingestion,
     session,
+    team,
     tenant,
     user,
 )

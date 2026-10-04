@@ -149,6 +149,27 @@ def require_feature(*, session: Session, user: CurrentUser, feature: Feature) ->
         )
 
 
+def seat_limit(*, session: Session, tenant_id: str | uuid.UUID) -> int | None:
+    """The accounts a tenant may hold.
+
+    Args:
+        session: Open database session.
+        tenant_id: The tenant.
+
+    Returns:
+        The seats paid for, or the plan's included seats, once billing is
+        enforced; ``None`` (no limit) until then.
+    """
+    if not enforced():
+        return None
+    bind_tenant(session, _tenant(tenant_id))
+    row = _row(session)
+    plan, status = _in_force(row, datetime.now(UTC))
+    if status == "active" and row is not None:
+        return row.seats
+    return plan.seats_included
+
+
 def require_project_room(*, session: Session, user: CurrentUser) -> None:
     """Refuse a new saved project beyond the caller's plan.
 
