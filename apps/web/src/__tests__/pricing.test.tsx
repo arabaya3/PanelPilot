@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PricingScreen } from '@/components/pricing-screen';
 import type { fetchPlans } from '@/lib/billing';
-import { periodPrice, requestPlan, type PlanCatalogue } from '@/lib/billing';
+import { periodPrice, requestPlan, type PlanCatalogue, type PlanOut } from '@/lib/billing';
 
 import { renderApp } from './helpers';
 
@@ -17,45 +17,44 @@ const READY = {
   conversationId: null,
 };
 
-const CATALOGUE: PlanCatalogue = {
-  currency: 'USD',
-  annual_months_charged: 10,
-  plans: [
-    {
-      key: 'free',
-      monthly_usd: '0',
-      annual_usd: '0',
-      seats_included: 1,
-      extra_seat_usd: null,
-      max_seats: 1,
-      model_calls_per_month: 30,
-      saved_projects: 3,
-      features: ['quotation'],
-    },
-    {
-      key: 'team',
-      monthly_usd: '79',
-      annual_usd: '790',
-      seats_included: 3,
-      extra_seat_usd: '25',
-      max_seats: 10,
-      model_calls_per_month: 2000,
-      saved_projects: null,
-      features: ['approval_workflow', 'company_settings', 'ecad_export', 'quotation'],
-    },
-    {
-      key: 'enterprise',
-      monthly_usd: null,
-      annual_usd: null,
-      seats_included: 50,
-      extra_seat_usd: null,
-      max_seats: null,
-      model_calls_per_month: null,
-      saved_projects: null,
-      features: ['quotation'],
-    },
-  ],
-};
+const PLANS: PlanCatalogue['plans'] = [
+  {
+    key: 'free',
+    monthly_usd: '0',
+    annual_usd: '0',
+    seats_included: 1,
+    extra_seat_usd: null,
+    max_seats: 1,
+    model_calls_per_month: 30,
+    saved_projects: 3,
+    features: ['quotation'],
+  },
+  {
+    key: 'team',
+    monthly_usd: '79',
+    annual_usd: '790',
+    seats_included: 3,
+    extra_seat_usd: '25',
+    max_seats: 10,
+    model_calls_per_month: 2000,
+    saved_projects: null,
+    features: ['approval_workflow', 'company_settings', 'ecad_export', 'quotation'],
+  },
+  {
+    key: 'enterprise',
+    monthly_usd: null,
+    annual_usd: null,
+    seats_included: 50,
+    extra_seat_usd: null,
+    max_seats: null,
+    model_calls_per_month: null,
+    saved_projects: null,
+    features: ['quotation'],
+  },
+];
+const [, TEAM, ENTERPRISE] = PLANS as [PlanOut, PlanOut, PlanOut];
+
+const CATALOGUE: PlanCatalogue = { currency: 'USD', annual_months_charged: 10, plans: PLANS };
 
 const listed = vi
   .fn<typeof fetchPlans>()
@@ -63,11 +62,11 @@ const listed = vi
 
 describe('pricing', () => {
   it('prices extra seats and annual billing', () => {
-    const team = CATALOGUE.plans[1];
+    const team = TEAM;
     expect(periodPrice(team, 'monthly', 3, 10)).toBe(79);
     expect(periodPrice(team, 'monthly', 5, 10)).toBe(129);
     expect(periodPrice(team, 'annual', 3, 10)).toBe(790);
-    expect(periodPrice(CATALOGUE.plans[2], 'annual', 60, 10)).toBeNull();
+    expect(periodPrice(ENTERPRISE, 'annual', 60, 10)).toBeNull();
   });
 
   it('shows each plan and switches to annual prices', async () => {
