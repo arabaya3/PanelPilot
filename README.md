@@ -663,6 +663,42 @@ rather than settled unilaterally.
 
 ---
 
+## Markets
+
+A board is designed for a market: the country whose supply and code it
+answers to (`app/design/markets.py`, `GET /api/v1/design/markets`).
+
+**Choosing it.** The design page picks the market by itself on a first
+visit, from the browser's time zone; nothing is asked and nothing is sent.
+
+- `Asia/Hebron` and `Asia/Gaza` read as Palestine and `Asia/Amman` as Jordan.
+- `Asia/Jerusalem` reads as Palestine when the browser's first language is
+  Arabic, Israel otherwise.
+- The engineer can change the market on the page, and the choice is
+  remembered.
+- The page's language also follows the browser's on a first visit.
+
+**What it sets.** The market sets:
+
+- a new board's supply: voltage, frequency (Saudi Arabia is 60 Hz) and
+  earthing;
+- the quotation's currency;
+- the profile's `market`, under which the server lays the code's stated
+  limits beneath the company's own settings:
+  - Israel: 3 % voltage drop, and 30 mA on every final circuit;
+  - Saudi Arabia and the UAE: 4 %;
+  - Kuwait: 2.5 %.
+- A general limit never relaxes one the default already holds lower.
+- The board names the market and its code in its notes.
+
+**Markets held:** Palestine, Israel, Jordan, Saudi Arabia, UAE, Qatar,
+Kuwait, Egypt, Lebanon and Iraq. Each value is cited in the module.
+
+**Gaps.** Where the research found no code (Palestine, Lebanon, Iraq) or no
+earthing system, the market keeps IEC 60364's defaults and says so. Palestine
+has no national wiring code found; its Standards Institution adopts IEC and
+EN.
+
 ## Plans and pricing
 
 The plans live in one catalogue, `app/domain/plans.py`, and the pricing page

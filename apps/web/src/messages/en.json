@@ -689,6 +689,7 @@
       "contactor_ac1": "Contactors are rated at least their breaker’s current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads.",
       "no_fault_level": "No fault level given: every breaker’s breaking capacity is left to be confirmed.",
       "cable_conditions": "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), {insulation} °C insulation.",
+      "market_rules": "Designed for {market}, under {regulation}: its stated limits apply beneath the company's own settings.",
       "rules_unconfirmed": "Circuit rules are this software’s defaults, not confirmed by the company’s engineers.",
       "fed_from": "Fed from {board}.",
       "motor_current_table": "{load}: Ir {current} A, the typical Ir of a {power} kW motor in {source}; check it against the nameplate.",
@@ -794,7 +795,8 @@
       "revision_already_approved": "Revision {revision} is approved already, by {approver}.",
       "project_approved": "This project has an approved revision ({revision}), so it cannot be deleted.",
       "plan_feature": "Your plan does not include this; see Pricing to change it.",
-      "plan_projects": "Your plan keeps {limit} projects; delete one or change plan."
+      "plan_projects": "Your plan keeps {limit} projects; delete one or change plan.",
+      "market_unknown": "There is no market {market}."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -927,6 +929,21 @@
         "cables": "Cable list",
         "parts": "Parts list"
       }
+    },
+    "market": "Market",
+    "marketBasis": "New boards start at {voltage} V, {frequency} Hz, {earthing}; designed under {regulation}.",
+    "markets": {
+      "iec": "International (IEC 60364)",
+      "PS": "Palestine",
+      "IL": "Israel",
+      "JO": "Jordan",
+      "SA": "Saudi Arabia",
+      "AE": "United Arab Emirates",
+      "QA": "Qatar",
+      "KW": "Kuwait",
+      "EG": "Egypt",
+      "LB": "Lebanon",
+      "IQ": "Iraq"
     }
   },
   "files": {

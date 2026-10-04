@@ -26,6 +26,7 @@ from app.models.schemas.design import (
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    MarketInfo,
     MarkupReport,
     PlcProgramRequest,
     PlcProgramResponse,
@@ -213,6 +214,12 @@ def delete_project(project_id: str, session: SessionDep, user: CurrentUserDep) -
     """Delete a saved project and all its revisions."""
     design_projects.delete_project(session=session, user=user, project_id=project_id)
     return Response(status_code=204)
+
+
+@router.get("/markets", response_model=list[MarketInfo])
+def list_markets() -> list[MarketInfo]:
+    """Every market and its supply defaults; public, for a new visitor's board."""
+    return design_domain.list_markets()
 
 
 @router.get("/company-settings", response_model=CompanySettings)

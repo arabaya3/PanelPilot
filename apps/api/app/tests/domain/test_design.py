@@ -369,3 +369,9 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
         design.read_markups(user=USER, data=b"x" * (design.MAX_MARKUP_BYTES + 1))
     with pytest.raises(ValidationError):
         design.read_markups(user=USER, data=buffer.getvalue(), project_json="{}")
+
+
+def test_list_markets_gives_each_market_its_supply() -> None:
+    listed = {m.code: m for m in design.list_markets()}
+    assert listed["IL"].rcd_every_final_circuit
+    assert listed["KW"].voltage_v == 415

@@ -601,6 +601,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/markets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Markets
+     * @description Every market and its supply defaults; public, for a new visitor's board.
+     */
+    get: operations['list_markets_api_v1_design_markets_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/company-settings': {
     parameters: {
       query?: never;
@@ -1530,6 +1550,9 @@ export interface components {
      *         demand_factors: The share of each kind of load's design current
      *             taken as running at once, for rating incomers and feeders; a
      *             kind not listed counts in full. Empty assumes no diversity.
+     *         market: The country the company designs for (ISO 3166-1 alpha-2,
+     *             ``app.design.markets``); its code's stated rules apply under the
+     *             company's own. Empty for IEC 60364 as the default applies it.
      *         rules_confirmed_by: Who confirmed the design rules. Empty while they
      *             are this software's defaults, which the drawing then says.
      */
@@ -1543,6 +1566,11 @@ export interface components {
        * @default en
        */
       language: string;
+      /**
+       * Market
+       * @default
+       */
+      market: string;
       /** Letters */
       letters: {
         [key: string]: string;
@@ -2867,6 +2895,47 @@ export interface components {
       email: string;
       /** Password */
       password: string;
+    };
+    /**
+     * MarketInfo
+     * @description A market's supply and stated rules, for a new board's defaults.
+     *
+     *     Attributes:
+     *         code: ISO 3166-1 alpha-2.
+     *         name: In English.
+     *         voltage_v: Line to line, three-phase.
+     *         phase_voltage_v: Line to neutral.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The usual earthing system.
+     *         currency: ISO 4217, for a quotation.
+     *         regulation: The code a design there answers to.
+     *         max_voltage_drop_percent: Its stated limit for every load, if any.
+     *         rcd_every_final_circuit: Whether it asks 30 mA on every final circuit.
+     *         languages: Customary drawing languages, first preferred.
+     */
+    MarketInfo: {
+      /** Code */
+      code: string;
+      /** Name */
+      name: string;
+      /** Voltage V */
+      voltage_v: number;
+      /** Phase Voltage V */
+      phase_voltage_v: number;
+      /** Frequency Hz */
+      frequency_hz: number;
+      /** Earthing */
+      earthing: string;
+      /** Currency */
+      currency: string;
+      /** Regulation */
+      regulation: string;
+      /** Max Voltage Drop Percent */
+      max_voltage_drop_percent: string | null;
+      /** Rcd Every Final Circuit */
+      rcd_every_final_circuit: boolean;
+      /** Languages */
+      languages: string[];
     };
     /**
      * MarkupCandidate
@@ -5390,6 +5459,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_markets_api_v1_design_markets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MarketInfo'][];
         };
       };
     };

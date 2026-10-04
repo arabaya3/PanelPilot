@@ -21,6 +21,7 @@ from decimal import Decimal
 from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ValidationError
+from app.design import markets
 from app.models.schemas.design import (
     CircuitRule,
     CompanyProfile,
@@ -119,13 +120,32 @@ def default_profile() -> CompanyProfile:
     return DEFAULT_PROFILE.model_copy(deep=True)
 
 
+def _merge(base: dict[str, object], data: dict[str, object]) -> dict[str, object]:
+    """Lay settings over a profile's, a mapping entry by entry."""
+    merged: dict[str, object] = dict(base)
+    for name, value in data.items():
+        below = base.get(name)
+        if isinstance(value, dict) and isinstance(below, dict):
+            current = dict(below)
+            for entry, setting in value.items():
+                if isinstance(setting, dict) and isinstance(current.get(entry), dict):
+                    current[entry] = {**current[entry], **setting}
+                else:
+                    current[entry] = setting
+            merged[name] = current
+        else:
+            merged[name] = value
+    return merged
+
+
 def load_profile(data: dict[str, object]) -> CompanyProfile:
     """Build a company's profile from its settings, over the default.
 
     A company states only what it does differently: a key it leaves out keeps
     the default's value, and a mapping (letters, circuit rules, preferred
     manufacturers) is merged entry by entry, so overriding the lighting rule
-    does not drop the socket rule.
+    does not drop the socket rule. Its ``market`` lays that market's rules
+    (``markets``) over the default first, so the company's own still win.
 
     Args:
         data: The company's settings, as stored (JSON-shaped).
@@ -140,6 +160,13 @@ def load_profile(data: dict[str, object]) -> CompanyProfile:
         raise ValidationError("a company profile needs a key", code="profile_no_key")
     base = DEFAULT_PROFILE.model_dump(mode="json")
     known = set(base)
+    market_code = data.get("market")
+    if isinstance(market_code, str) and market_code.strip():
+        base = _merge(
+            base,
+            markets.profile_settings(market_code, DEFAULT_PROFILE.max_voltage_drop_percent),
+        )
+        base["market"] = market_code.strip().upper()
     unknown = sorted(set(data) - known)
     if unknown:
         raise ValidationError(
@@ -147,18 +174,7 @@ def load_profile(data: dict[str, object]) -> CompanyProfile:
             code="profile_unknown_settings",
             params={"settings": unknown},
         )
-    merged: dict[str, object] = dict(base)
-    for name, value in data.items():
-        if isinstance(value, dict) and isinstance(base.get(name), dict):
-            current = dict(base[name])
-            for entry, setting in value.items():
-                if isinstance(setting, dict) and isinstance(current.get(entry), dict):
-                    current[entry] = {**current[entry], **setting}
-                else:
-                    current[entry] = setting
-            merged[name] = current
-        else:
-            merged[name] = value
+    merged = _merge(base, {k: v for k, v in data.items() if k != "market"})
     try:
         return CompanyProfile.model_validate(merged)
     except PydanticValidationError as exc:

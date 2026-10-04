@@ -28,6 +28,7 @@ from app.design import (
     export_ecad,
     export_lists,
     export_qet,
+    markets,
     markup_suggestions,
     markups,
     motors,
@@ -54,6 +55,7 @@ from app.models.schemas.design import (
     ExportFormat,
     LoadScheduleImport,
     LoadScheduleSuggestion,
+    MarketInfo,
     MarkupItem,
     MarkupReport,
     MarkupSuggestion,
@@ -532,3 +534,27 @@ def write_plc_program(*, user: CurrentUser, request: PlcProgramRequest) -> PlcPr
         ],
         validation=verdict,
     )
+
+
+def list_markets() -> list[MarketInfo]:
+    """Every market a board can be designed for, with its supply and rules.
+
+    Returns:
+        The markets, as ``app.design.markets`` holds them.
+    """
+    return [
+        MarketInfo(
+            code=found.code,
+            name=found.name,
+            voltage_v=found.voltage_v,
+            phase_voltage_v=found.phase_voltage_v,
+            frequency_hz=found.frequency_hz,
+            earthing=found.earthing,
+            currency=found.currency,
+            regulation=found.regulation,
+            max_voltage_drop_percent=found.max_voltage_drop_percent,
+            rcd_every_final_circuit=found.rcd_every_final_circuit,
+            languages=list(found.languages),
+        )
+        for found in markets.MARKETS.values()
+    ]

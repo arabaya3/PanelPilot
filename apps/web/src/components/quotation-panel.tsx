@@ -57,6 +57,7 @@ export function QuotationPanel({
   importImpl = importPriceList,
   exportImpl = exportDesign,
   saveImpl,
+  currency,
 }: {
   token: string;
   project: DesignProject;
@@ -65,11 +66,15 @@ export function QuotationPanel({
   importImpl?: typeof importPriceList;
   exportImpl?: typeof exportDesign;
   saveImpl: (blob: Blob, filename: string) => void;
+  /** The market's currency, which the rates start from. */
+  currency?: string;
 }) {
   const t = useTranslations('design.quote');
   const say = useOutcomeText();
   const id = useId();
-  const [rates, setRates] = useState<Rates>(INITIAL_RATES);
+  const [rates, setRates] = useState<Rates>(
+    currency ? { ...INITIAL_RATES, currency } : INITIAL_RATES,
+  );
   const [entries, setEntries] = useState<PriceListEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
