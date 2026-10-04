@@ -1,7 +1,8 @@
 """The monthly ceiling on model calls, per tenant.
 
 Every paid model call -- a diagnosis, a photo read, a PLC program -- charges
-one unit against its tenant's month before it is made. The free-question
+one unit against its tenant's month before it is made. The ceiling is the
+tenant's plan's allowance once billing is enforced (``billing``). The free-question
 count bounds what a trial may ask; this bounds what any account may cost.
 
 Charged under a row lock, so two requests racing for the last call cannot
@@ -19,9 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.errors import TooManyRequestsError
 from app.core.tenancy import bind_tenant
+from app.domain import billing
 from app.models.tables.tenant import ModelUsageRow
 
 logger = structlog.get_logger(__name__)
@@ -75,8 +76,9 @@ def charge_model_call(
     Args:
         session: Open database session. The caller commits.
         tenant_id: Whose month.
-        limit: The ceiling; ``MODEL_CALLS_PER_MONTH`` by default, and none
-            when that is unset.
+        limit: The ceiling; by default the tenant's plan's allowance once
+            billing is enforced, ``MODEL_CALLS_PER_MONTH`` until then, and
+            none when that is unset.
         now: Injected for tests.
 
     Returns:
@@ -88,7 +90,11 @@ def charge_model_call(
     """
     tenant = tenant_id if isinstance(tenant_id, uuid.UUID) else uuid.UUID(tenant_id)
     bind_tenant(session, tenant)
-    ceiling = limit if limit is not None else get_settings().model_calls_per_month
+    ceiling = (
+        limit
+        if limit is not None
+        else billing.model_call_ceiling(session=session, tenant_id=tenant)
+    )
     period = current_period(now)
 
     row = _locked_row(session, tenant, period)

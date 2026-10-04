@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from app.core.errors import NotFoundError
 from app.core.tenancy import bind_tenant
 from app.design import profile
+from app.domain import billing
+from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import CompanySettings
 from app.models.tables.design_projects import CompanySettingsRow
@@ -68,8 +70,10 @@ def save_settings(
 
     Raises:
         ValidationError: If a setting is unknown or malformed, naming it.
+        AuthorizationError: If the caller's plan does not include them.
     """
     tenant = _scope_to(session, user)
+    billing.require_feature(session=session, user=user, feature=Feature.COMPANY_SETTINGS)
     profile.load_profile(settings)
     row = session.scalars(select(CompanySettingsRow)).one_or_none()
     if row is None:

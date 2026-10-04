@@ -271,7 +271,8 @@
     "review": "Review",
     "search": "Search",
     "calc": "Calculations",
-    "design": "Board design"
+    "design": "Board design",
+    "pricing": "Pricing"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -791,7 +792,9 @@
       "markups_too_large": "The PDF is larger than the 5 MB read for markups.",
       "markups_too_long": "The PDF has more than {limit} pages.",
       "revision_already_approved": "Revision {revision} is approved already, by {approver}.",
-      "project_approved": "This project has an approved revision ({revision}), so it cannot be deleted."
+      "project_approved": "This project has an approved revision ({revision}), so it cannot be deleted.",
+      "plan_feature": "Your plan does not include this; see Pricing to change it.",
+      "plan_projects": "Your plan keeps {limit} projects; delete one or change plan."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -929,5 +932,57 @@
   "files": {
     "choose": "Choose file",
     "none": "No file chosen"
+  },
+  "pricing": {
+    "title": "Plans and pricing",
+    "intro": "Design boards free, then choose the plan that fits: on your own, as a team or as a company. Prices are in US dollars; annual billing charges ten months for twelve.",
+    "billing": "Billing",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "perMonth": "/ month",
+    "perYear": "/ year",
+    "byAgreement": "By agreement",
+    "seats": "{count, plural, one {# engineer} other {# engineers}} included",
+    "extraSeat": "{price} / month each further engineer",
+    "ai": "{count} AI requests a month",
+    "aiUnlimited": "AI requests by agreement",
+    "projects": "{count} saved projects",
+    "projectsUnlimited": "Unlimited saved projects",
+    "seatCount": "Engineers",
+    "choose": "Choose this plan",
+    "contact": "Contact us",
+    "requested": "Request received. We will contact you to activate it once paid; nothing changes until then.",
+    "requestFailed": "The request could not be sent; try again.",
+    "loading": "Loading plans…",
+    "loadFailed": "The plans could not be loaded; reload the page.",
+    "activation": "A plan is activated once it is paid. Until then every account may use every feature.",
+    "feature": {
+      "ecad_export": "EPLAN, AutoCAD Electrical, DXF and QElectroTech files",
+      "company_settings": "Your company's settings and title block",
+      "approval_workflow": "Approve and sign revisions",
+      "quotation": "Quotation from the parts list"
+    },
+    "plan": {
+      "free": {
+        "name": "Free",
+        "for": "Try it on a few projects."
+      },
+      "engineer": {
+        "name": "Engineer",
+        "for": "One engineer, every feature."
+      },
+      "team": {
+        "name": "Team",
+        "for": "A small office sharing projects."
+      },
+      "company": {
+        "name": "Company",
+        "for": "A firm with many engineers."
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "for": "Large firms and distributors."
+      }
+    }
   }
 }

@@ -42,6 +42,8 @@ from app.design import (
     schedule_split,
 )
 from app.design.notes import note
+from app.domain import billing
+from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     BoardDesignRequest,
@@ -90,6 +92,18 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.PLC_IO_CSV: ("text/csv; charset=utf-8", "io.csv"),
     ExportFormat.JSON: ("application/json", "json"),
 }
+
+#: The formats another drawing program opens: on plans with ``ECAD_EXPORT``.
+ECAD_FORMATS = frozenset(
+    {
+        ExportFormat.DXF,
+        ExportFormat.QET,
+        ExportFormat.AML,
+        ExportFormat.EPLAN_DEVICES_CSV,
+        ExportFormat.ACE_COMPONENTS_CSV,
+        ExportFormat.ACE_TERMINALS_CSV,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -142,7 +156,7 @@ def design_board(
     """Design a single distribution board and issue it under the company's profile.
 
     Args:
-        session: Open database session. Unused: nothing is persisted.
+        session: Open database session, for the plan; nothing is persisted.
         user: The authenticated caller, for the log line.
         request: Title-block data, the load schedule, and the profile settings.
 
@@ -168,7 +182,7 @@ def design_project(
     """Design every board in a project and issue it under the company's profile.
 
     Args:
-        session: Open database session. Unused: nothing is persisted.
+        session: Open database session, for the plan; nothing is persisted.
         user: The authenticated caller, for the log line.
         request: Title-block data, each board's schedule, and the profile.
 
@@ -204,7 +218,7 @@ def export_design(
     added or removed since the design renumbers cleanly.
 
     Args:
-        session: Open database session. Unused: nothing is persisted.
+        session: Open database session, for the plan; nothing is persisted.
         user: The authenticated caller, for the log line.
         request: The project, the profile settings and the format.
 
@@ -215,8 +229,12 @@ def export_design(
         ValidationError: If the profile is malformed, a quotation is asked
             for without pricing settings, or a control program for a project
             with no PLC-switched circuit.
+        AuthorizationError: If the caller's plan does not include the format.
     """
-    del session
+    if request.format in ECAD_FORMATS:
+        billing.require_feature(session=session, user=user, feature=Feature.ECAD_EXPORT)
+    elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
+        billing.require_feature(session=session, user=user, feature=Feature.QUOTATION)
     company = _profile(request.profile)
     project = designations.designate_project(request.project, company)
     content: bytes

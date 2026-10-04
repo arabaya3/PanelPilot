@@ -520,6 +520,66 @@ def _change_role(args: list[str], *, grant: bool) -> int:
     return 0
 
 
+def run_set_plan(args: list[str]) -> int:
+    """Put a tenant on a plan: ``set-plan <tenant-slug> <plan> <interval> <seats> [<until>]``.
+
+    How a subscription is activated until a payment provider is chosen: an
+    operator runs it once the customer has paid. ``until`` is the last day of
+    the paid period (``YYYY-MM-DD``, UTC, exclusive of nothing: the plan ends
+    at the start of the next day); omit it for the free plan or an agreement
+    without an end.
+
+    Args:
+        args: ``[slug, plan, interval, seats]`` and optionally ``until``.
+
+    Returns:
+        ``0`` on success, ``1`` if the domain refuses, ``2`` on bad arguments.
+    """
+    from contextlib import closing
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import billing
+
+    usage = "usage: set-plan <tenant-slug> <plan> <monthly|annual> <seats> [YYYY-MM-DD]"
+    if len(args) not in (4, 5):
+        print(usage, file=sys.stderr)
+        return 2
+    slug, plan_key, interval, seats_text, *rest = args
+    try:
+        seats = int(seats_text)
+        until = (
+            datetime.strptime(rest[0], "%Y-%m-%d").replace(tzinfo=UTC) + timedelta(days=1)
+            if rest
+            else None
+        )
+    except ValueError:
+        print(usage, file=sys.stderr)
+        return 2
+
+    sessions = get_session()
+    session = next(sessions)
+    # An operator acts for no tenant: the tenant is found by its slug (ADR 0003).
+    with closing(session), cross_tenant(session, reason="an operator activates a subscription"):
+        try:
+            row = billing.activate(
+                session=session,
+                tenant_slug=slug,
+                plan_key=plan_key,
+                interval=interval,
+                seats=seats,
+                until=until,
+            )
+        except (NotFoundError, ValidationError) as exc:
+            print(f"set-plan: {exc}", file=sys.stderr)
+            return 1
+        session.commit()
+        ends = row.current_period_end.date().isoformat() if row.current_period_end else "no end"
+        print(f"set-plan {slug}: {row.plan} {row.interval}, {row.seats} seats, until {ends}")
+    return 0
+
+
 def run_calibrate_relevance(args: list[str]) -> int:
     """Recommend a retrieval similarity floor from an eval set.
 
@@ -611,6 +671,7 @@ REGISTRY: dict[str, JobSpec] = {
             "grant-role", "Give an account a role (reviewer, ingestion, admin).", run_grant_role
         ),
         JobSpec("revoke-role", "Take a role away from an account.", run_revoke_role),
+        JobSpec("set-plan", "Put a tenant on a subscription plan.", run_set_plan),
         JobSpec(
             "calibrate-relevance",
             "Recommend RETRIEVAL_MIN_SIMILARITY from an eval set.",

@@ -15,6 +15,18 @@ from app.core.config import Environment, Settings
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _billing_not_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hold every test to an unenforced plan, as a deployment starts.
+
+    Reading ``BILLING_ENFORCED`` needs the whole configuration, which most
+    tests do not set; a test of the plans' limits switches them on itself.
+    """
+    from app.domain import billing
+
+    monkeypatch.setattr(billing, "enforced", lambda: False)
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Return settings suitable for tests, with no real credentials."""
