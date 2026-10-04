@@ -134,8 +134,12 @@ def test_no_ceiling_means_no_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(model_budget, "_locked_row", lambda *_a: _Row())
     monkeypatch.setattr(model_budget, "bind_tenant", lambda *_a: None)
+    from app.domain import billing
+
     monkeypatch.setattr(
-        model_budget, "get_settings", lambda: type("S", (), {"model_calls_per_month": None})()
+        billing,
+        "get_settings",
+        lambda: type("S", (), {"model_calls_per_month": None, "billing_enforced": False})(),
     )
 
     class _Session:

@@ -234,6 +234,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/billing/plans': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Plans
+     * @description Every plan and its price; public, for the pricing page.
+     */
+    get: operations['plans_api_v1_billing_plans_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/billing/entitlements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Entitlements
+     * @description What the caller's account is on and has used.
+     */
+    get: operations['entitlements_api_v1_billing_entitlements_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/billing/request': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request Plan
+     * @description Ask to move the caller's account to a plan; an operator activates it.
+     */
+    post: operations['request_plan_api_v1_billing_request_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/calculations/cable-sizing': {
     parameters: {
       query?: never;
@@ -2223,6 +2283,56 @@ export interface components {
       | 'suite_middle_wall'
       | 'suite_middle_wall_covered_roof';
     /**
+     * Entitlements
+     * @description What the caller's account is on, and what it has used.
+     *
+     *     Attributes:
+     *         plan: The plan in force.
+     *         interval: How it is billed.
+     *         status: "free", "active" or "expired".
+     *         current_period_end: Until when a paid plan holds (ISO 8601).
+     *         seats: The accounts paid for.
+     *         seats_used: The accounts the tenant holds.
+     *         model_calls_per_month: The pooled AI allowance; ``None`` for none.
+     *         model_calls_used: Calls made this month.
+     *         saved_projects: The projects it may keep; ``None`` for no limit.
+     *         saved_projects_used: The projects it keeps.
+     *         features: What it switches on.
+     *         enforced: Whether the plan's limits are applied yet; until billing
+     *             opens, every account may use every feature.
+     *         requested_plan: A plan asked for and not yet active.
+     *         requested_interval: Its interval.
+     *         requested_seats: Its seats.
+     */
+    Entitlements: {
+      plan: components['schemas']['PlanKey'];
+      interval: components['schemas']['Interval'];
+      /** Status */
+      status: string;
+      /** Current Period End */
+      current_period_end?: string | null;
+      /** Seats */
+      seats: number;
+      /** Seats Used */
+      seats_used: number;
+      /** Model Calls Per Month */
+      model_calls_per_month: number | null;
+      /** Model Calls Used */
+      model_calls_used: number;
+      /** Saved Projects */
+      saved_projects: number | null;
+      /** Saved Projects Used */
+      saved_projects_used: number;
+      /** Features */
+      features: components['schemas']['Feature'][];
+      /** Enforced */
+      enforced: boolean;
+      requested_plan?: components['schemas']['PlanKey'] | null;
+      requested_interval?: components['schemas']['Interval'] | null;
+      /** Requested Seats */
+      requested_seats?: number | null;
+    };
+    /**
      * EquipmentContext
      * @description What the engineer is working on.
      */
@@ -2291,6 +2401,12 @@ export interface components {
       /** Note */
       note?: string | null;
     };
+    /**
+     * Feature
+     * @description What a plan may switch on beyond designing a board.
+     * @enum {string}
+     */
+    Feature: 'ecad_export' | 'company_settings' | 'approval_workflow' | 'quotation';
     /**
      * FindingSeverity
      * @description How much a finding matters.
@@ -2456,6 +2572,12 @@ export interface components {
      * @enum {string}
      */
     InstallationMethod: 'A1' | 'A2' | 'B1' | 'B2' | 'C' | 'D1' | 'D2' | 'E' | 'F' | 'G';
+    /**
+     * Interval
+     * @description How often a subscription is billed.
+     * @enum {string}
+     */
+    Interval: 'monthly' | 'annual';
     /**
      * LabelRequest
      * @description A verifier's judgement on one item.
@@ -2973,6 +3095,86 @@ export interface components {
      * @enum {string}
      */
     Phase: 'L1' | 'L2' | 'L3' | 'L1L2L3';
+    /**
+     * PlanCatalogue
+     * @description Every plan, cheapest first.
+     *
+     *     Attributes:
+     *         plans: The plans.
+     *         currency: The currency prices are in.
+     *         annual_months_charged: Months charged for a year paid at once.
+     */
+    PlanCatalogue: {
+      /** Plans */
+      plans: components['schemas']['PlanOut'][];
+      /**
+       * Currency
+       * @default USD
+       */
+      currency: string;
+      /** Annual Months Charged */
+      annual_months_charged: number;
+    };
+    /**
+     * PlanKey
+     * @description The plans, by the key stored on a subscription.
+     * @enum {string}
+     */
+    PlanKey: 'free' | 'engineer' | 'team' | 'company' | 'enterprise';
+    /**
+     * PlanOut
+     * @description One plan, as the pricing page shows it.
+     *
+     *     Attributes:
+     *         key: Its key.
+     *         monthly_usd: The price a month for the seats included, billed monthly;
+     *             ``None`` where it is agreed per customer.
+     *         annual_usd: The price a year for the seats included, billed annually.
+     *         seats_included: The accounts the price covers.
+     *         extra_seat_usd: The price a month of each further seat, if sold.
+     *         max_seats: The most accounts it holds.
+     *         model_calls_per_month: The pooled AI allowance a month.
+     *         saved_projects: The projects it may keep; ``None`` for no limit.
+     *         features: What it switches on.
+     */
+    PlanOut: {
+      key: components['schemas']['PlanKey'];
+      /** Monthly Usd */
+      monthly_usd: string | null;
+      /** Annual Usd */
+      annual_usd: string | null;
+      /** Seats Included */
+      seats_included: number;
+      /** Extra Seat Usd */
+      extra_seat_usd: string | null;
+      /** Max Seats */
+      max_seats: number | null;
+      /** Model Calls Per Month */
+      model_calls_per_month: number | null;
+      /** Saved Projects */
+      saved_projects: number | null;
+      /** Features */
+      features: components['schemas']['Feature'][];
+    };
+    /**
+     * PlanRequest
+     * @description Ask to move the account to a plan.
+     *
+     *     Attributes:
+     *         plan: The plan.
+     *         interval: Monthly or annual.
+     *         seats: The accounts to pay for.
+     */
+    PlanRequest: {
+      plan: components['schemas']['PlanKey'];
+      /** @default monthly */
+      interval: components['schemas']['Interval'];
+      /**
+       * Seats
+       * @default 1
+       */
+      seats: number;
+    };
     /**
      * PlcDialect
      * @description Which vendor's flavour a request targets.
@@ -4525,6 +4727,79 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['DiagnosticSessionPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  plans_api_v1_billing_plans_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlanCatalogue'];
+        };
+      };
+    };
+  };
+  entitlements_api_v1_billing_entitlements_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Entitlements'];
+        };
+      };
+    };
+  };
+  request_plan_api_v1_billing_request_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlanRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Entitlements'];
         };
       };
       /** @description Validation Error */

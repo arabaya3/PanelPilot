@@ -125,7 +125,7 @@ async function call<T>(
   if (special) return special;
   // 429 too: the design routes' per-address budget, said with a code; and
   // 404, a saved project that is not (or no longer) there.
-  if ([400, 404, 422, 429].includes(response.status)) {
+  if ([400, 403, 404, 422, 429].includes(response.status)) {
     return refusalOf(await readJson(response));
   }
   if (!response.ok) return { kind: 'failed' };

@@ -663,6 +663,61 @@ rather than settled unilaterally.
 
 ---
 
+## Plans and pricing
+
+The plans live in one catalogue, `app/domain/plans.py`, and the pricing page
+`/pricing` reads them from `GET /api/v1/billing/plans`. Prices are in US
+dollars. Annual billing charges ten months for twelve.
+
+| Plan       | Monthly | Seats                        | AI requests a month | Saved projects |
+| ---------- | ------- | ---------------------------- | ------------------- | -------------- |
+| Free       | $0      | 1                            | 30                  | 3              |
+| Engineer   | $29     | 1                            | 500                 | unlimited      |
+| Team       | $79     | 3 included, $25 each, to 10  | 2,000 pooled        | unlimited      |
+| Company    | $249    | 10 included, $22 each, to 50 | 8,000 pooled        | unlimited      |
+| Enterprise | agreed  | 50+                          | agreed              | unlimited      |
+
+The prices are pitched below the paid independent tools: SEE Electrical
+starts at about $396 a year, and EPLAN at about $2,000 per user a year
+(neither verified on the vendor's own site). The manufacturers' own tools
+(Ecodial, SIMARIS, ABB e-Design) are free.
+
+**Features.** Every paid plan includes:
+
+- the ECAD files (DXF, QElectroTech, AutomationML, EPLAN and AutoCAD
+  Electrical);
+- the company settings;
+- approving (signing) a revision.
+
+Free includes the quotation only.
+
+**How a plan becomes active:**
+
+- The account asks for a plan (`POST /api/v1/billing/request`). This changes
+  nothing until it is activated.
+- An operator activates it once the customer has paid:
+  `python -m app.worker set-plan <tenant-slug> <plan> <monthly|annual> <seats> [YYYY-MM-DD]`.
+- No payment provider is wired yet. Stripe does not serve businesses in
+  Palestine, Israel or Jordan. The candidates are:
+  - Paddle, as merchant of record, once it confirms it pays out to a
+    Palestinian bank;
+  - Lahza, for local payments;
+  - Cardcom or Tranzila, for an Israeli company.
+
+**Enforcement** is off until `BILLING_ENFORCED=true`. Until then:
+
+- every account may use every feature;
+- the model-call ceiling stays `MODEL_CALLS_PER_MONTH`.
+
+Once it is on, each plan's limits apply (`app/domain/billing.py`):
+
+- **Model calls:** a tenant's month is capped at its plan's pooled
+  allowance.
+- **Saved projects:** a save beyond the plan's limit is refused with
+  `plan_projects`.
+- **Features:** a feature outside the plan is refused with `plan_feature`
+  (HTTP 403).
+
 ## The two rules worth knowing before you write any code
 
 **1. Cite or refuse.** PanelPilot answers from cited documentation or it

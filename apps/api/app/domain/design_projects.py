@@ -24,6 +24,8 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
+from app.domain import billing
+from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
@@ -162,8 +164,10 @@ def save_project(
 
     Raises:
         ValidationError: If the tenant already holds the most projects allowed.
+        AuthorizationError: If its plan keeps no more projects.
     """
     tenant = _scope_to(session, user)
+    billing.require_project_room(session=session, user=user)
     held = session.scalars(select(DesignProjectRow.id).limit(MAX_PROJECTS)).all()
     if len(held) >= MAX_PROJECTS:
         raise ValidationError(
@@ -257,7 +261,9 @@ def approve_revision(
     Raises:
         NotFoundError: If no such project or revision is the caller's.
         ValidationError: If the revision is approved already.
+        AuthorizationError: If the caller's plan does not include approval.
     """
+    billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)
     tenant = _scope_to(session, user)
     project = _load(session, project_id)
     row = session.scalars(

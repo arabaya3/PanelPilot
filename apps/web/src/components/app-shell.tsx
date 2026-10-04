@@ -13,6 +13,7 @@ import {
   CheckCircleIcon,
   CodeIcon,
   SearchIcon,
+  TagIcon,
 } from '@/components/icons';
 import { LangSwitcher } from '@/components/lang-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -24,6 +25,7 @@ const NAV = [
   { href: '/calc', key: 'calc', Icon: CalculatorIcon },
   { href: '/design', key: 'design', Icon: BoardIcon },
   { href: '/review', key: 'review', Icon: CheckCircleIcon },
+  { href: '/pricing', key: 'pricing', Icon: TagIcon },
 ] as const;
 
 /**

@@ -105,6 +105,10 @@ class Settings(BaseSettings):
     # Model calls one tenant may make per UTC calendar month, across
     # diagnosis, photo recognition and PLC generation. Unset for no ceiling.
     model_calls_per_month: int | None = Field(default=1000, ge=1)
+    # Whether each plan's limits apply (app.domain.billing). Off until a way
+    # to pay exists: until then every account may use every feature, under
+    # MODEL_CALLS_PER_MONTH.
+    billing_enforced: bool = False
 
     @property
     def generation_model(self) -> str:

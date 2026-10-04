@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import enforce_trial_rate_limit, enforce_trial_rate_limit_on_writes
 from app.api.v1.routes import (
     auth,
+    billing,
     calculations,
     design,
     diagnostics,
@@ -45,6 +46,7 @@ api_router.include_router(
 # `sessions_router` for why reading your own conversation list is not throttled
 # like asking a question is.
 api_router.include_router(diagnostics.sessions_router, prefix="/sessions", tags=["diagnostics"])
+api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(calculations.router, prefix="/calculations", tags=["calculations"])
 api_router.include_router(design.router, prefix="/design", tags=["design"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
