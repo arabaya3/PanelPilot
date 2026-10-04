@@ -13,9 +13,11 @@ import {
   applySuggestion,
   blankBoard,
   blankLoad,
+  DEFAULT_PROFILE_KEY,
   DRAWING_LANGUAGES,
   EARTHING,
   fromRequest,
+  IEC_SUPPLY,
   isComplete,
   profileFrom,
   rowsFrom,
@@ -25,6 +27,7 @@ import {
   type DrawingLanguage,
   type Load,
   type ProjectInfo,
+  type SupplyDefaults,
 } from '@/components/design/schedule';
 import { MarkupsPanel } from '@/components/design/markups-panel';
 import {
@@ -46,6 +49,7 @@ import {
   type DesignOutcome,
   type ExportFormat,
 } from '@/lib/design';
+import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import { acquireTrial } from '@/lib/session';
 
 type Session =
@@ -81,6 +85,17 @@ function saveBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/** A market's supply as a board's defaults; IEC 60364's without one. */
+function supplyOf(market: MarketInfo | null): SupplyDefaults {
+  if (market === null) return IEC_SUPPLY;
+  const earthing = EARTHING.find((system) => system === market.earthing) ?? 'TN-S';
+  return {
+    voltage: String(market.voltage_v),
+    earthing,
+    frequency: market.frequency_hz === 60 ? '60' : '50',
+  };
+}
+
 function parseProfile(text: string): Record<string, unknown> | null | 'invalid' {
   if (text.trim() === '') return null;
   try {
@@ -109,6 +124,8 @@ export function DesignScreen({
   importImpl = importSchedule,
   suggestImpl = suggestSchedule,
   saveImpl = saveBlob,
+  marketsImpl = fetchMarkets,
+  readMarketImpl = readMarket,
 }: {
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
@@ -116,6 +133,8 @@ export function DesignScreen({
   importImpl?: typeof importSchedule;
   suggestImpl?: typeof suggestSchedule;
   saveImpl?: typeof saveBlob;
+  marketsImpl?: typeof fetchMarkets;
+  readMarketImpl?: typeof readMarket;
 }) {
   const t = useTranslations('design');
   const say = useOutcomeText();
@@ -138,6 +157,10 @@ export function DesignScreen({
   const [opened, setOpened] = useState<OpenedProject | null>(null);
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
+  // The market sets a new board's supply and the rules its code states; read
+  // after the first render, from the engineer's last choice or the browser.
+  const [market, setMarket] = useState('');
+  const [markets, setMarkets] = useState<MarketInfo[]>([]);
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
@@ -149,10 +172,39 @@ export function DesignScreen({
     void connect();
   }, [connect]);
 
+  const marketInfo = markets.find((entry) => entry.code === market) ?? null;
+  const supply = supplyOf(marketInfo);
+
+  useEffect(() => {
+    let live = true;
+    void marketsImpl().then((listed) => {
+      if (!live || listed === null) return;
+      setMarkets(listed);
+      const code = readMarketImpl();
+      if (listed.some((entry) => entry.code === code)) chooseMarket(code, listed, false);
+    });
+    return () => {
+      live = false;
+    };
+    // Once, on arrival: a later choice is the engineer's.
+  }, [marketsImpl, readMarketImpl]);
+
+  /** Use a market: its supply on every board, remembered when the engineer chose it. */
+  function chooseMarket(code: string, listed: MarketInfo[], chosen: boolean) {
+    setMarket(code);
+    if (chosen) storeMarket(code);
+    const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
+    setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
+  }
+
   const token = session.kind === 'ready' ? session.token : null;
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
   const parsed = parseProfile(profileText);
-  const profile = withLanguage(parsed === 'invalid' ? null : parsed, drawingLanguage);
+  const profile = withMarket(
+    withLanguage(parsed === 'invalid' ? null : parsed, drawingLanguage),
+    market,
+    DEFAULT_PROFILE_KEY,
+  );
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -187,7 +239,7 @@ export function DesignScreen({
     const main = boards[0]?.name ?? '';
     setBoards((current) => [
       ...current,
-      blankBoard(key, key + 1, `DB${String(current.length + 1)}`, main),
+      blankBoard(key, key + 1, `DB${String(current.length + 1)}`, main, supply),
     ]);
     setActiveKey(key);
   }
@@ -487,6 +539,34 @@ export function DesignScreen({
           </>
         )}
 
+        <Field id={`${id}-market`} label={t('market')}>
+          <select
+            id={`${id}-market`}
+            value={market}
+            onChange={(event) => {
+              chooseMarket(event.target.value, markets, true);
+            }}
+            className="input w-full sm:w-64"
+          >
+            <option value="">{t('markets.iec')}</option>
+            {markets.map((entry) => (
+              <option key={entry.code} value={entry.code}>
+                {t.has(`markets.${entry.code}`) ? t(`markets.${entry.code}`) : entry.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {marketInfo && (
+          <p className="text-sm text-text-muted" data-testid="market-basis">
+            {t('marketBasis', {
+              voltage: marketInfo.voltage_v,
+              frequency: marketInfo.frequency_hz,
+              earthing: marketInfo.earthing,
+              regulation: marketInfo.regulation,
+            })}
+          </p>
+        )}
+
         <Field id={`${id}-drawing-language`} label={t('drawingLanguage')}>
           <select
             id={`${id}-drawing-language`}
@@ -544,7 +624,13 @@ export function DesignScreen({
 
       {designed && token !== null && (
         <div className="mt-6">
-          <QuotationPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
+          <QuotationPanel
+            token={token}
+            project={designed}
+            profile={profile}
+            saveImpl={saveImpl}
+            {...(marketInfo ? { currency: marketInfo.currency } : {})}
+          />
         </div>
       )}
 

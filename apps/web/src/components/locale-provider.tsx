@@ -49,6 +49,13 @@ export const localeInitScript = `
 (function () {
   try {
     var stored = window.localStorage.getItem('${LOCALE_STORAGE_KEY}');
+    if (stored === null) {
+      var langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+      for (var i = 0; i < langs.length && stored === null; i++) {
+        var code = String(langs[i] || '').slice(0, 2).toLowerCase();
+        if (code === 'ar' || code === 'he' || code === 'en') stored = code;
+      }
+    }
     var locale = stored === 'ar' || stored === 'he' || stored === 'en' ? stored : '${DEFAULT_LOCALE}';
     document.documentElement.setAttribute('lang', locale);
     document.documentElement.setAttribute('dir', locale === 'en' ? 'ltr' : 'rtl');
@@ -59,9 +66,24 @@ export const localeInitScript = `
 })();
 `.trim();
 
+/**
+ * The browser's first language the app speaks, for a first visit: a visitor
+ * in Amman or Ramallah whose browser is in Arabic opens the app in Arabic.
+ */
+export function preferredLocale(languages: readonly string[]): Locale | null {
+  for (const language of languages) {
+    const code = language.slice(0, 2).toLowerCase();
+    if (code === 'ar' || code === 'he' || code === 'en') return code;
+  }
+  return null;
+}
+
 function readStoredLocale(): Locale {
   try {
-    return toLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY));
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (stored !== null) return toLocale(stored);
+    const languages = navigator.languages.length ? navigator.languages : [navigator.language];
+    return preferredLocale(languages) ?? DEFAULT_LOCALE;
   } catch {
     return DEFAULT_LOCALE;
   }

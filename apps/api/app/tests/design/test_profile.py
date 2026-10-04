@@ -60,3 +60,21 @@ def test_a_company_states_only_what_differs() -> None:
 def test_a_bad_setting_is_named(data: dict[str, object], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         profile.load_profile(data)
+
+
+def test_a_market_lays_its_rules_under_the_companys() -> None:
+    israel = profile.load_profile({"key": "acme", "market": "il"})
+    assert israel.market == "IL"
+    assert israel.default_max_voltage_drop_percent == 3
+    assert israel.circuit_rules[LoadKind.DATA].residual_current_ma == 30
+    # The company's own setting still wins over its market's.
+    own = profile.load_profile(
+        {"key": "acme", "market": "IL", "default_max_voltage_drop_percent": "2"}
+    )
+    assert own.default_max_voltage_drop_percent == 2
+
+
+def test_an_unknown_market_is_refused() -> None:
+    with pytest.raises(ValidationError) as caught:
+        profile.load_profile({"key": "acme", "market": "ZZ"})
+    assert caught.value.code == "market_unknown"

@@ -35,6 +35,8 @@ export type BoardForm = {
   phases: '1' | '3';
   faultLevel: string;
   earthing: Earthing;
+  /** The supply's frequency; 50 Hz where not given. */
+  frequency?: '50' | '60';
   /** Ze in ohms; empty leaves earth fault disconnection unchecked. */
   earthLoop: string;
   /** The board that feeds this one; empty for the project's own supply. */
@@ -87,16 +89,32 @@ export function blankLoad(key: number): Load {
   };
 }
 
-/** A new board with one empty row; `loadKey` must be unused like `key`. */
-export function blankBoard(key: number, loadKey: number, name: string, fedFrom = ''): BoardForm {
+/** A market's supply, as a new board starts from it. */
+export type SupplyDefaults = { voltage: string; earthing: Earthing; frequency: '50' | '60' };
+
+/** IEC 60364's usual supply: 230/400 V, TN-S, 50 Hz. */
+export const IEC_SUPPLY: SupplyDefaults = { voltage: '400', earthing: 'TN-S', frequency: '50' };
+
+/**
+ * A new board with one empty row; `loadKey` must be unused like `key`. Its
+ * supply starts from the market's (`supply`), which the engineer then edits.
+ */
+export function blankBoard(
+  key: number,
+  loadKey: number,
+  name: string,
+  fedFrom = '',
+  supply: SupplyDefaults = IEC_SUPPLY,
+): BoardForm {
   return {
     key,
     name,
     location: '',
-    voltage: '400',
+    voltage: supply.voltage,
     phases: '3',
     faultLevel: '',
-    earthing: 'TN-S',
+    earthing: supply.earthing,
+    frequency: supply.frequency,
     earthLoop: '',
     fedFrom,
     feederLength: '',
@@ -158,7 +176,7 @@ export function toRequest(
       supply: {
         voltage_v: board.voltage.trim(),
         phases: Number(board.phases),
-        frequency_hz: '50',
+        frequency_hz: board.frequency ?? '50',
         earthing: board.earthing,
         fault_level_ka: optional(board.faultLevel),
         earth_loop_ohm: optional(board.earthLoop),

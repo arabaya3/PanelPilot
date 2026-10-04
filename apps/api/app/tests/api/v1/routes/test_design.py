@@ -355,3 +355,11 @@ def test_company_settings_routes_call_the_domain(
     assert response.status_code == 200
     assert seen == [{"key": "acme"}]
     assert client.put("/design/company-settings", json={}).status_code == 422
+
+
+def test_the_markets_are_listed(client: TestClient) -> None:
+    response = client.get("/design/markets")
+    assert response.status_code == 200
+    codes = {m["code"]: m for m in response.json()}
+    assert codes["PS"]["currency"] == "ILS"
+    assert codes["SA"]["frequency_hz"] == 60

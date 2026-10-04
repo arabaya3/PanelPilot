@@ -694,3 +694,14 @@ def test_a_load_no_single_cable_carries_runs_in_parallel() -> None:
     assert made.params["runs"] == str(cable.parallel)
     # Each run carries its share: the drop is that of one run at I / n.
     assert board.circuits[0].voltage_drop_percent is not None
+
+
+def test_a_market_is_named_on_the_board() -> None:
+    company = profile.load_profile({"key": "acme", "market": "IL"})
+    board = distribution.design_distribution_board(_hall(), company)
+    (named,) = [n for n in board.notes if n.code == "market_rules"]
+    assert named.params["market"] == "Israel"
+    assert "market_rules" not in [
+        n.code
+        for n in distribution.design_distribution_board(_hall(), profile.default_profile()).notes
+    ]

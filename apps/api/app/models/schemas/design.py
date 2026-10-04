@@ -554,6 +554,9 @@ class CompanyProfile(BaseModel):
         demand_factors: The share of each kind of load's design current
             taken as running at once, for rating incomers and feeders; a
             kind not listed counts in full. Empty assumes no diversity.
+        market: The country the company designs for (ISO 3166-1 alpha-2,
+            ``app.design.markets``); its code's stated rules apply under the
+            company's own. Empty for IEC 60364 as the default applies it.
         rules_confirmed_by: Who confirmed the design rules. Empty while they
             are this software's defaults, which the drawing then says.
     """
@@ -561,6 +564,7 @@ class CompanyProfile(BaseModel):
     key: str
     name: str
     language: str = "en"
+    market: str = ""
     letters: dict[DeviceKind, str]
     start_number: int = Field(default=1, ge=0)
     title_fields: list[TitleField]
@@ -1095,6 +1099,36 @@ class SavedProject(BaseModel):
     revisions: list[RevisionSummary]
     revision: int
     request: ProjectDesignRequest
+
+
+class MarketInfo(BaseModel):
+    """A market's supply and stated rules, for a new board's defaults.
+
+    Attributes:
+        code: ISO 3166-1 alpha-2.
+        name: In English.
+        voltage_v: Line to line, three-phase.
+        phase_voltage_v: Line to neutral.
+        frequency_hz: 50 or 60.
+        earthing: The usual earthing system.
+        currency: ISO 4217, for a quotation.
+        regulation: The code a design there answers to.
+        max_voltage_drop_percent: Its stated limit for every load, if any.
+        rcd_every_final_circuit: Whether it asks 30 mA on every final circuit.
+        languages: Customary drawing languages, first preferred.
+    """
+
+    code: str
+    name: str
+    voltage_v: int
+    phase_voltage_v: int
+    frequency_hz: int
+    earthing: str
+    currency: str
+    regulation: str
+    max_voltage_drop_percent: Decimal | None
+    rcd_every_final_circuit: bool
+    languages: list[str]
 
 
 class CompanySettings(BaseModel):

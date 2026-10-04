@@ -169,6 +169,9 @@ TEMPLATES: dict[str, str] = {
         "Cables sized for method {method}, {ambient} °C, {grouped} grouped circuit(s), "
         "{insulation} °C insulation."
     ),
+    "market_rules": (
+        "Designed for {market}, under {regulation}: its stated limits apply beneath the company's own settings."
+    ),
     "rules_unconfirmed": (
         "Circuit rules are this software's defaults, not confirmed by the company's engineers."
     ),
