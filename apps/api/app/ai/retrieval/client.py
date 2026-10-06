@@ -234,6 +234,31 @@ def iter_staged_contents(
         yield batch
 
 
+def staged_chunk_ids(*, content_hash: str) -> list[str]:
+    """The ids of one staged document's chunks, in id order.
+
+    Args:
+        content_hash: The document's hash, which every one of its chunks
+            carries.
+
+    Returns:
+        The chunk ids; empty when nothing is staged.
+
+    Staging only, like ``stage_chunk``.
+    """
+    client = get_client()
+    index = resolve_index(IndexTarget.STAGING)
+    if not client.indices.exists(index=index):
+        return []
+    hits = scan(
+        client,
+        index=index,
+        query={"query": {"term": {"content_hash": content_hash}}, "_source": False},
+        size=500,
+    )
+    return sorted(str(hit["_id"]) for hit in hits)
+
+
 def restage_vectors(vectors: dict[str, list[float]]) -> int:
     """Replace the ``content_vector`` of staged chunks, leaving the rest as is.
 

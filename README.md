@@ -1068,6 +1068,18 @@ again through the crawler into `data/_fetched/`, and are kept only if they
 are byte-for-byte the file that was staged (`--no-fetch` skips this). The
 command is never scheduled, because it clears in a person's name.
 
+**A crawl queues at most 500 passages per source for review**; the rest wait
+in staging. A re-crawl skips documents already staged, so it does not bring
+them forward. Queue them a batch at a time, from staging, with nothing
+fetched or embedded again, and review each batch:
+
+```bash
+docker compose exec api python -m app.worker enqueue-deferred abb
+docker compose exec api python -m app.worker review-staged you@example.com
+```
+
+Repeat until `enqueue-deferred` reports `left 0`.
+
 **6. Read what is left.** Passages that fail the check (weak or no match on
 their page, navigation) stay pending, so a person decides on them in the
 review console. The corpus answers questions without them.

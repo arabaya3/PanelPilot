@@ -800,3 +800,65 @@ def test_only_a_reviewer_may_retract_a_flag() -> None:
             document_id=uuid.uuid4(),
             note="x",
         )
+
+
+@requires_postgres
+def test_deferred_passages_are_queued_a_batch_at_a_time(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from functools import partial
+
+    from app.domain import corpus_maintenance
+    from app.domain.ingestion_wiring import populate_queue_from_staging
+
+    tag = uuid.uuid4().hex[:8]
+    first = _staged(session, f"https://x/{tag}/a.pdf", f"{tag}a")
+    second = _staged(session, f"https://x/{tag}/b.pdf", f"{tag}b")
+    chunks = {
+        first.content_hash: [f"{tag}-a{i}" for i in range(3)],
+        second.content_hash: [f"{tag}-b{i}" for i in range(3)],
+    }
+    monkeypatch.setattr(
+        corpus_maintenance,
+        "staged_chunk_ids",
+        lambda *, content_hash: chunks.get(content_hash, []),
+    )
+    # Only this test's documents, and a batch of four instead of 500.
+    monkeypatch.setattr(
+        corpus_maintenance,
+        "populate_queue_from_staging",
+        lambda **kw: partial(populate_queue_from_staging, max_per_run=4)(
+            **{**kw, "chunk_ids": [c for c in kw["chunk_ids"] if c.startswith(tag)]}
+        ),
+    )
+
+    every = {chunk for ids in chunks.values() for chunk in ids}
+    batch = corpus_maintenance.enqueue_deferred(session=session, source_id="schneider")
+    assert len(batch.queued) == 4
+    assert len(batch.deferred) == 2
+    # A document's passages stay together, in their own order.
+    assert batch.queued[:3] in (chunks[first.content_hash], chunks[second.content_hash])
+
+    rest = corpus_maintenance.enqueue_deferred(session=session, source_id="schneider")
+    assert rest.queued == batch.deferred
+    assert set(batch.queued) | set(rest.queued) == every
+    assert rest.deferred == []
+    assert corpus_maintenance.enqueue_deferred(session=session, source_id="schneider").queued == []
+
+    with pytest.raises(ValidationError):
+        corpus_maintenance.enqueue_deferred(session=session, source_id="nobody")
+
+
+@requires_opensearch
+def test_a_staged_documents_chunk_ids_are_listed(indices: tuple[str, str]) -> None:
+    from app.ai.retrieval.client import get_client, staged_chunk_ids
+
+    staging, _production = indices
+    client = get_client()
+    doc = _chunk(brand="ABB", url=MANUAL, content_hash="listed", content="a passage")
+    other = _chunk(brand="ABB", url=GUIDE, content_hash="elsewhere", content="other")
+    client.index(index=staging, id="listed-2", body=doc, refresh=True)
+    client.index(index=staging, id="listed-1", body=doc, refresh=True)
+    client.index(index=staging, id="elsewhere-1", body=other, refresh=True)
+    assert staged_chunk_ids(content_hash="listed") == ["listed-1", "listed-2"]
+    assert staged_chunk_ids(content_hash="none") == []
