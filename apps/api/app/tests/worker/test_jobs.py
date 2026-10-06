@@ -837,3 +837,11 @@ def test_set_plan_refuses_bad_arguments(capsys: pytest.CaptureFixture[str]) -> N
     assert jobs.run_set_plan(["acme", "team", "monthly", "three"]) == 2
     assert jobs.run_set_plan(["acme", "team", "monthly", "3", "next week"]) == 2
     assert "usage: set-plan" in capsys.readouterr().err
+
+
+def test_enqueue_deferred_needs_one_source(capsys: pytest.CaptureFixture[str]) -> None:
+    from app.worker import jobs
+
+    assert jobs.run_enqueue_deferred([]) == 2
+    assert jobs.run_enqueue_deferred(["abb", "siemens"]) == 2
+    assert "usage: enqueue-deferred" in capsys.readouterr().err

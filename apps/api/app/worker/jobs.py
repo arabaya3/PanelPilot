@@ -520,6 +520,46 @@ def _change_role(args: list[str], *, grant: bool) -> int:
     return 0
 
 
+def run_enqueue_deferred(args: list[str]) -> int:
+    """Queue the next batch of a source's deferred passages: ``enqueue-deferred <source>``.
+
+    A crawl queues at most 500 passages for review and defers the rest; a
+    re-crawl skips documents already staged, so this is how the rest reach
+    review. Run it, then ``review-staged``, until it says none are left.
+
+    Args:
+        args: ``[source]``.
+
+    Returns:
+        ``0`` on success, ``1`` if the domain refuses, ``2`` on bad arguments.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import corpus_maintenance
+
+    if len(args) != 1:
+        print("usage: enqueue-deferred <source>", file=sys.stderr)
+        return 2
+    (source,) = args
+    sessions = get_session()
+    session = next(sessions)
+    # Staging and the review queue are shared corpus infrastructure (ADR 0003).
+    with closing(session), cross_tenant(session, reason="the review queue spans no tenant"):
+        try:
+            result = corpus_maintenance.enqueue_deferred(session=session, source_id=source)
+        except ValidationError as exc:
+            print(f"enqueue-deferred: {exc}", file=sys.stderr)
+            return 1
+        session.commit()
+    print(
+        f"enqueue-deferred {source}: queued {len(result.queued)}, "
+        f"already queued {result.already_present}, left {len(result.deferred)}"
+    )
+    return 0
+
+
 def run_set_plan(args: list[str]) -> int:
     """Put a tenant on a plan: ``set-plan <tenant-slug> <plan> <interval> <seats> [<until>]``.
 
@@ -672,6 +712,11 @@ REGISTRY: dict[str, JobSpec] = {
         ),
         JobSpec("revoke-role", "Take a role away from an account.", run_revoke_role),
         JobSpec("set-plan", "Put a tenant on a subscription plan.", run_set_plan),
+        JobSpec(
+            "enqueue-deferred",
+            "Queue the next batch of a source's staged passages a crawl deferred.",
+            run_enqueue_deferred,
+        ),
         JobSpec(
             "calibrate-relevance",
             "Recommend RETRIEVAL_MIN_SIMILARITY from an eval set.",

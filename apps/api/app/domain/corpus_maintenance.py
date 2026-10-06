@@ -38,12 +38,14 @@ from app.ai.retrieval.client import (
     published_sources,
     restage_vectors,
     retitle_staged,
+    staged_chunk_ids,
     unstage_document,
 )
 from app.ai.retrieval.embedding import embed_documents
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.domain import promotion as promotion_domain
 from app.domain.ingestion import EMBEDDING_BATCH_SIZE
+from app.domain.ingestion_wiring import QueuePopulationResult, populate_queue_from_staging
 from app.ingestion.crawler import DocumentCheck, check_documents
 from app.ingestion.known_documents import KNOWN_DOCUMENTS
 from app.ingestion.sources import CRAWLERS, crawler_for
@@ -193,6 +195,53 @@ def purge_unreviewed(*, session: Session, source_id: str) -> PurgeReport:
         kept=len(report.kept),
     )
     return report
+
+
+def enqueue_deferred(*, session: Session, source_id: str) -> QueuePopulationResult:
+    """Queue the next batch of one source's staged passages left out of review.
+
+    A crawl queues at most ``MAX_CHUNKS_PER_RUN`` passages and defers the
+    rest, on the understanding that the next run presents them again. It does
+    not: a crawl skips every document whose hash is already staged, so the
+    deferred passages were never offered again. This offers them, a batch at
+    a time, from what is already in staging -- nothing is fetched or embedded.
+
+    Args:
+        session: Open database session. The caller commits.
+        source_id: The allow-listed source.
+
+    Returns:
+        What was queued, what was already queued, and what is still left for
+        the next run.
+
+    Raises:
+        ValidationError: If the source is not on the allow-list.
+    """
+    if crawler_for(source_id) is None:
+        raise ValidationError(f"source {source_id!r} is not on the allow-list")
+    documents = session.scalars(
+        select(StagedDocumentRow)
+        .join(CrawlJobRow, StagedDocumentRow.crawl_job_id == CrawlJobRow.id)
+        .where(CrawlJobRow.source_id == source_id)
+        .order_by(StagedDocumentRow.created_at, StagedDocumentRow.id)
+    ).all()
+    chunk_ids: list[str] = []
+    owners: dict[str, uuid.UUID] = {}
+    for document in documents:
+        if not document.content_hash:
+            continue
+        for chunk_id in staged_chunk_ids(content_hash=document.content_hash):
+            if chunk_id not in owners:
+                chunk_ids.append(chunk_id)
+                owners[chunk_id] = document.id
+    result = populate_queue_from_staging(session=session, chunk_ids=chunk_ids, documents=owners)
+    logger.info(
+        "enqueue_deferred.done",
+        source_id=source_id,
+        queued=len(result.queued),
+        left=len(result.deferred),
+    )
+    return result
 
 
 @dataclass
