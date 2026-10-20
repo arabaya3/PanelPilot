@@ -161,7 +161,7 @@ describe('the search page', () => {
 
   it('is in the main navigation', async () => {
     renderSearch(vi.fn());
-    const link = await screen.findByRole('link', { name: 'Search' });
+    const link = await screen.findByRole('link', { name: 'Documents' });
     expect(link.getAttribute('href')).toBe('/search');
   });
 });

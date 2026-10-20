@@ -488,3 +488,54 @@ describe('an answer an engineer reported', () => {
     expect(screen.getByText('No reason given.')).toBeTruthy();
   });
 });
+
+// --- the queue overview ---------------------------------------------------------
+
+describe('the queue table', () => {
+  const QUEUE = {
+    label: 'Items waiting',
+    position: '#',
+    kind: 'Item',
+    location: 'Where',
+    status: 'Status',
+    kindFlag: 'Reported answer',
+    kindContent: 'Proposed passage',
+    current: 'Open below',
+    waiting: 'Waiting',
+  };
+
+  it('lists every remaining item as a row, the open one first and marked', () => {
+    render(
+      <VerificationConsole
+        items={
+          items(2).map((item, index) =>
+            index === 0 ? { ...item, section: '6.3', page: 27 } : item,
+          ) as never
+        }
+        api={api()}
+        sourceUrlFor={() => null}
+        labels={{ ...LABELS, queue: QUEUE }}
+      />,
+    );
+
+    const first = screen.getByTestId('queue-row-item-0');
+    expect(first.getAttribute('aria-current')).toBe('true');
+    expect(first.textContent).toContain('Open below');
+    expect(first.textContent).toContain('6.3, p. 27');
+    const second = screen.getByTestId('queue-row-item-1');
+    expect(second.getAttribute('aria-current')).toBeNull();
+    expect(second.textContent).toContain('Waiting');
+  });
+
+  it('shows no table when the caller gives it no strings', () => {
+    render(
+      <VerificationConsole
+        items={items(2) as never}
+        api={api()}
+        sourceUrlFor={() => null}
+        labels={LABELS}
+      />,
+    );
+    expect(screen.queryByTestId('queue-table')).toBeNull();
+  });
+});

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
 import { useLocale } from '@/components/locale-provider';
+import { EmptyState, StatusBadge, TableFrame } from '@/components/ui';
 
 type StaleDocument = components['schemas']['StaleDocument'];
 
@@ -39,28 +40,38 @@ export function StaleDocuments({
 
   if (items.length === 0) {
     return (
-      <p data-testid="stale-empty" className="card p-6 text-center text-sm text-text-muted">
-        {t('empty')}
-      </p>
+      <div data-testid="stale-empty">
+        <EmptyState title={t('empty')} />
+      </div>
     );
   }
 
   return (
-    <ul className="flex flex-col gap-4" data-testid="stale-list">
-      {items.map((item) => (
-        <li key={item.id}>
-          <StaleCard
-            item={item}
-            onDismiss={(note) => onDismiss(item.id, note)}
-            onRetract={(note) => onRetract(item.id, note)}
-          />
-        </li>
-      ))}
-    </ul>
+    <TableFrame label={t('heading')}>
+      <table className="data-table" data-testid="stale-list">
+        <thead>
+          <tr>
+            <th scope="col">{t('columns.status')}</th>
+            <th scope="col">{t('columns.source')}</th>
+            <th scope="col">{t('columns.decision')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <StaleRow
+              key={item.id}
+              item={item}
+              onDismiss={(note) => onDismiss(item.id, note)}
+              onRetract={(note) => onRetract(item.id, note)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </TableFrame>
   );
 }
 
-function StaleCard({
+function StaleRow({
   item,
   onDismiss,
   onRetract,
@@ -97,119 +108,113 @@ function StaleCard({
   }
 
   return (
-    <article
-      data-testid={`stale-${item.id}`}
-      className={`card border-s-4 p-4 md:p-5 ${
-        withdrawn ? 'border-s-severity-critical' : 'border-s-severity-warning'
-      }`}
-    >
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            withdrawn
-              ? 'bg-severity-critical-surface text-severity-critical'
-              : 'bg-severity-warning-surface text-severity-warning'
-          }`}
-        >
-          {withdrawn ? t('withdrawn') : t('superseded')}
-        </span>
-        <span className="text-xs text-text-muted">
-          {(t.raw('since') as string).replace('{date}', formatDay(item.first_flagged_at, locale))}
-        </span>
-      </div>
-      {/* LTR whatever the page direction: a URL reordered by the bidi
+    <tr data-testid={`stale-${item.id}`}>
+      <td className="align-top">
+        <div className="flex flex-col items-start gap-2">
+          <StatusBadge tone={withdrawn ? 'critical' : 'warning'}>
+            {withdrawn ? t('withdrawn') : t('superseded')}
+          </StatusBadge>
+          <span className="text-xs text-text-muted">
+            {(t.raw('since') as string).replace('{date}', formatDay(item.first_flagged_at, locale))}
+          </span>
+        </div>
+      </td>
+      <td className="min-w-64 max-w-md align-top">
+        {/* LTR whatever the page direction: a URL reordered by the bidi
           algorithm is a different URL to anyone copying it by eye. */}
-      <a
-        href={item.source_url}
-        target="_blank"
-        rel="noreferrer"
-        dir="ltr"
-        className="link block break-all font-mono text-sm"
-      >
-        {item.source_url}
-      </a>
-      <p className="mt-2 text-sm text-text-muted">
-        {withdrawn ? t('withdrawnHelp') : t('supersededHelp')}
-      </p>
-
-      <form
-        className="mt-4 flex flex-col gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void decide('dismiss');
-        }}
-      >
-        <label htmlFor={noteId} className="text-sm font-medium text-text">
-          {t('noteLabel')}
-        </label>
-        <textarea
-          id={noteId}
-          rows={2}
-          value={note}
-          onChange={(event) => {
-            setNote(event.target.value);
+        <a
+          href={item.source_url}
+          target="_blank"
+          rel="noreferrer"
+          dir="ltr"
+          className="link block break-all font-mono text-sm"
+        >
+          {item.source_url}
+        </a>
+        <p className="mt-2 text-sm text-text-muted">
+          {withdrawn ? t('withdrawnHelp') : t('supersededHelp')}
+        </p>
+      </td>
+      <td className="min-w-64 align-top">
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void decide('dismiss');
           }}
-          placeholder={t('notePlaceholder')}
-          className="input font-sans text-sm"
-        />
-        {error !== null && (
-          <p role="alert" className="text-sm text-severity-critical">
-            {error}
-          </p>
-        )}
-        {confirming ? (
-          <div
-            role="group"
-            aria-describedby={warningId}
-            className="flex flex-col gap-3 rounded-md border border-severity-critical bg-severity-critical-surface p-3"
-          >
-            <p id={warningId} className="text-sm text-severity-critical">
-              {t('retractWarning')}
+        >
+          <label htmlFor={noteId} className="text-sm font-medium text-text">
+            {t('noteLabel')}
+          </label>
+          <textarea
+            id={noteId}
+            rows={2}
+            value={note}
+            onChange={(event) => {
+              setNote(event.target.value);
+            }}
+            placeholder={t('notePlaceholder')}
+            className="input font-sans text-sm"
+          />
+          {error !== null && (
+            <p role="alert" className="text-sm text-severity-critical">
+              {error}
             </p>
+          )}
+          {confirming ? (
+            <div
+              role="group"
+              aria-describedby={warningId}
+              className="flex flex-col gap-3 rounded-md border border-severity-critical bg-severity-critical-surface p-3"
+            >
+              <p id={warningId} className="text-sm text-severity-critical">
+                {t('retractWarning')}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy !== null || !noted}
+                  onClick={() => void decide('retract')}
+                  className="btn btn-sm btn-danger"
+                >
+                  {busy === 'retract' ? t('retracting') : t('confirmRetract')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    setConfirming(false);
+                  }}
+                  className="btn btn-sm btn-ghost"
+                >
+                  {t('cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
             <div className="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={busy !== null || !noted}
+                className="btn btn-sm btn-secondary"
+              >
+                {busy === 'dismiss' ? t('dismissing') : t('dismiss')}
+              </button>
               <button
                 type="button"
                 disabled={busy !== null || !noted}
-                onClick={() => void decide('retract')}
+                onClick={() => {
+                  setConfirming(true);
+                }}
                 className="btn btn-sm btn-danger"
               >
-                {busy === 'retract' ? t('retracting') : t('confirmRetract')}
-              </button>
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={() => {
-                  setConfirming(false);
-                }}
-                className="btn btn-sm btn-ghost"
-              >
-                {t('cancel')}
+                {t('retract')}
               </button>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={busy !== null || !noted}
-              className="btn btn-sm btn-secondary"
-            >
-              {busy === 'dismiss' ? t('dismissing') : t('dismiss')}
-            </button>
-            <button
-              type="button"
-              disabled={busy !== null || !noted}
-              onClick={() => {
-                setConfirming(true);
-              }}
-              className="btn btn-sm btn-danger"
-            >
-              {t('retract')}
-            </button>
-          </div>
-        )}
-      </form>
-    </article>
+          )}
+        </form>
+      </td>
+    </tr>
   );
 }
 

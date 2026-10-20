@@ -6,11 +6,14 @@ import { useId, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { CableSizingPanel } from '@/components/cable-sizing-panel';
 import { PanelBomPanel } from '@/components/panel-bom-panel';
+import { PageHeader, Tabs, tabId, tabPanelId } from '@/components/ui';
 import { VfdSelectionPanel } from '@/components/vfd-selection-panel';
 import type { buildBom, listDriveRanges, selectVfd, sizeCable } from '@/lib/calculations';
 import type { acquireTrial } from '@/lib/session';
 
 type Tab = 'cable' | 'vfd' | 'bom';
+
+const TABS: readonly Tab[] = ['cable', 'vfd', 'bom'];
 
 /**
  * `/calc`: the engineering calculations, one tab each.
@@ -37,37 +40,28 @@ export function CalcScreen({
 
   return (
     <AppShell>
-      <h1 className="mb-4 text-2xl font-bold tracking-tight">{t('title')}</h1>
+      <PageHeader title={t('title')} description={t('description')} />
 
-      <div
-        role="tablist"
-        aria-label={t('title')}
-        className="mb-5 flex flex-wrap gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
-      >
-        {(['cable', 'vfd', 'bom'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`${tabsId}-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`${tabsId}-panel`}
-            data-testid={`calc-tab-${key}`}
-            onClick={() => {
-              setTab(key);
-            }}
-            className={`rounded-md px-3 py-2 text-sm transition-colors ${
-              tab === key
-                ? 'bg-accent-subtle font-semibold text-accent-hover'
-                : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
-            }`}
-          >
-            {t(`tab.${key}`)}
-          </button>
-        ))}
+      <div className="mb-5">
+        <Tabs
+          items={TABS.map((key) => ({
+            key,
+            // The test id rides on the label; a click on it reaches the tab.
+            label: <span data-testid={`calc-tab-${key}`}>{t(`tab.${key}`)}</span>,
+          }))}
+          selected={tab}
+          onSelect={setTab}
+          label={t('title')}
+          idBase={tabsId}
+        />
       </div>
 
-      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+      <div
+        role="tabpanel"
+        id={tabPanelId(tabsId, tab)}
+        aria-labelledby={tabId(tabsId, tab)}
+        tabIndex={0}
+      >
         {tab === 'cable' && (
           <CableSizingPanel
             {...(acquireImpl ? { acquireImpl } : {})}

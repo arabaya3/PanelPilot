@@ -155,7 +155,9 @@ describe('drive selection', () => {
 
   it('opens on cable sizing', () => {
     renderApp(<CalcScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />);
-    expect(screen.getByTestId('calc-tab-cable').getAttribute('aria-selected')).toBe('true');
+    // The test id is on the tab's label; the selection state is on the tab.
+    const tab = screen.getByTestId('calc-tab-cable').closest('[role="tab"]');
+    expect(tab?.getAttribute('aria-selected')).toBe('true');
   });
 });
 
@@ -199,5 +201,28 @@ describe('listDriveRanges', () => {
     expect(await listDriveRanges({ token: 't', fetchImpl: down })).toEqual({ kind: 'failed' });
     const odd = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     expect(await listDriveRanges({ token: 't', fetchImpl: odd })).toEqual({ kind: 'failed' });
+  });
+});
+
+describe('calculation tabs', () => {
+  it('moves focus between tabs with the arrow keys and switches only on activation', () => {
+    renderApp(<CalcScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    const [cable, vfd] = tabs as [HTMLElement, HTMLElement, HTMLElement];
+
+    cable.focus();
+    fireEvent.keyDown(cable, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(vfd);
+    // Manual activation: focus alone does not switch the panel.
+    expect(cable.getAttribute('aria-selected')).toBe('true');
+
+    fireEvent.click(vfd);
+    expect(vfd.getAttribute('aria-selected')).toBe('true');
+    expect(cable.getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(vfd.id);
+
+    fireEvent.keyDown(vfd, { key: 'End' });
+    expect(document.activeElement).toBe(tabs[2]);
   });
 });

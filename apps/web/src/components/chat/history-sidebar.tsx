@@ -33,12 +33,18 @@ export function HistorySidebar({
   listImpl = listSessions,
   /** Bumped by the parent when a turn completes, so the list can refresh. */
   refreshKey = 0,
+  variant = 'column',
 }: {
   token: string;
   activeSessionId: string | null;
   onSelect: (sessionId: string) => void;
   listImpl?: typeof listSessions;
   refreshKey?: number;
+  /**
+   * `column`: the side column, from `md` up only. `drawer`: the same list
+   * inside the phone's history drawer, which supplies its own heading.
+   */
+  variant?: 'column' | 'drawer';
 }) {
   const t = useTranslations('history');
   const { locale } = useLocale();
@@ -90,11 +96,15 @@ export function HistorySidebar({
     <nav
       aria-label={t('label')}
       data-testid="history-sidebar"
-      // Above the conversation on a phone, capped so a long history cannot
-      // push the question box off the screen; beside it from `md` up.
-      className="flex max-h-40 w-full shrink-0 flex-col gap-2 overflow-y-auto border-b border-border-subtle bg-surface-raised p-3 md:max-h-none md:w-64 md:border-b-0 md:border-e"
+      // Beside the conversation from `md` up; below that the parent opens it
+      // in a drawer, so on a phone the transcript gets the screen.
+      className={
+        variant === 'drawer'
+          ? 'flex w-full flex-col gap-2'
+          : 'hidden w-72 shrink-0 flex-col gap-2 overflow-y-auto border-e border-border-subtle bg-surface p-3 md:flex'
+      }
     >
-      <h2 className="eyebrow px-2 pt-1">{t('label')}</h2>
+      {variant === 'column' && <h2 className="eyebrow px-2 pt-1">{t('label')}</h2>}
 
       {status === 'loading' && (
         <p className="px-2 text-sm text-text-muted" data-testid="history-loading">
@@ -138,8 +148,8 @@ export function HistorySidebar({
                   data-active={active ? 'true' : 'false'}
                   className={
                     active
-                      ? 'w-full rounded-md border border-border-subtle bg-surface px-3 py-2 text-start text-sm font-semibold text-text shadow-sm'
-                      : 'w-full rounded-md border border-transparent px-3 py-2 text-start text-sm font-medium text-text transition-colors hover:bg-surface'
+                      ? 'w-full rounded-md border border-border bg-accent-subtle px-3 py-2 text-start text-sm font-semibold text-text'
+                      : 'w-full rounded-md border border-transparent px-3 py-2 text-start text-sm font-medium text-text transition-colors hover:bg-surface-raised'
                   }
                 >
                   {/* `line-clamp` rather than a truncated string: the full
@@ -151,7 +161,8 @@ export function HistorySidebar({
                   </span>
                   {session.equipmentModel !== null && (
                     <span
-                      className="mt-1 block font-mono text-xs text-text-muted"
+                      dir="ltr"
+                      className="mt-1 block text-start font-mono text-xs text-text-muted"
                       data-testid={`history-model-${session.id}`}
                     >
                       {session.equipmentModel}

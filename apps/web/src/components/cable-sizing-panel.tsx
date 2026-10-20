@@ -10,6 +10,7 @@ import {
   type CableSizingResponse,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
+import { EmptyState, Notice } from '@/components/ui';
 
 /** The methods the tables are transcribed for; the API refuses the rest. */
 const METHODS = ['A1', 'A2', 'B1', 'B2', 'C', 'E', 'F'] as const;
@@ -135,113 +136,123 @@ export function CableSizingPanel({
     <>
       <p className="mb-5 max-w-3xl text-text-muted">{t('intro')}</p>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void run();
-        }}
-        className="card mb-6 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-4"
-      >
-        {field('current', 'A')}
-        {field('length', 'm')}
-        {field('voltage', 'V')}
-        {field('ambient', '°C')}
-        <Field id={`${id}-method`} label={t('field.method')}>
-          <select
-            id={`${id}-method`}
-            value={form.method}
-            onChange={(event) => {
-              set('method', event.target.value as Form['method']);
-            }}
-            className="input w-full"
-          >
-            {METHODS.map((method) => (
-              <option key={method} value={method}>
-                {t(`method.${method}`)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {field('grouped', '')}
-        <Field id={`${id}-insulation`} label={t('field.insulation')}>
-          <select
-            id={`${id}-insulation`}
-            value={form.insulation}
-            onChange={(event) => {
-              set('insulation', event.target.value as Form['insulation']);
-            }}
-            className="input w-full"
-          >
-            <option value="90">{t('insulation.90')}</option>
-            <option value="70">{t('insulation.70')}</option>
-          </select>
-        </Field>
-        <Field id={`${id}-material`} label={t('field.material')}>
-          <select
-            id={`${id}-material`}
-            value={form.material}
-            onChange={(event) => {
-              set('material', event.target.value as Form['material']);
-            }}
-            className="input w-full"
-          >
-            <option value="copper">{t('material.copper')}</option>
-            <option value="aluminium">{t('material.aluminium')}</option>
-          </select>
-        </Field>
-        <Field id={`${id}-phases`} label={t('field.phases')}>
-          <select
-            id={`${id}-phases`}
-            value={form.phases}
-            onChange={(event) => {
-              set('phases', event.target.value as Form['phases']);
-            }}
-            className="input w-full"
-          >
-            <option value="3">{t('phases.3')}</option>
-            <option value="1">{t('phases.1')}</option>
-          </select>
-        </Field>
-        <div className="sm:col-span-2 lg:col-span-4">
-          <button
-            type="submit"
-            disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
-            className="btn btn-primary"
-          >
-            {result.kind === 'working' ? t('working') : t('submit')}
-          </button>
-        </div>
-      </form>
-
-      {session.kind !== 'ready' && session.kind !== 'starting' && (
-        <div
-          role="alert"
-          data-testid="calc-session-failed"
-          className="mb-6 flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+      {/* Inputs beside results from `lg` up; stacked, inputs first, below. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run();
+          }}
+          className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5"
         >
-          <p>{t(`session.${session.kind}`)}</p>
-          <button type="button" onClick={() => void connect()} className="btn btn-sm btn-primary">
-            {t('retry')}
-          </button>
-        </div>
-      )}
+          {field('current', 'A')}
+          {field('length', 'm')}
+          {field('voltage', 'V')}
+          {field('ambient', '°C')}
+          <Field id={`${id}-method`} label={t('field.method')}>
+            <select
+              id={`${id}-method`}
+              value={form.method}
+              onChange={(event) => {
+                set('method', event.target.value as Form['method']);
+              }}
+              className="input w-full"
+            >
+              {METHODS.map((method) => (
+                <option key={method} value={method}>
+                  {t(`method.${method}`)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {field('grouped', '')}
+          <Field id={`${id}-insulation`} label={t('field.insulation')}>
+            <select
+              id={`${id}-insulation`}
+              value={form.insulation}
+              onChange={(event) => {
+                set('insulation', event.target.value as Form['insulation']);
+              }}
+              className="input w-full"
+            >
+              <option value="90">{t('insulation.90')}</option>
+              <option value="70">{t('insulation.70')}</option>
+            </select>
+          </Field>
+          <Field id={`${id}-material`} label={t('field.material')}>
+            <select
+              id={`${id}-material`}
+              value={form.material}
+              onChange={(event) => {
+                set('material', event.target.value as Form['material']);
+              }}
+              className="input w-full"
+            >
+              <option value="copper">{t('material.copper')}</option>
+              <option value="aluminium">{t('material.aluminium')}</option>
+            </select>
+          </Field>
+          <Field id={`${id}-phases`} label={t('field.phases')}>
+            <select
+              id={`${id}-phases`}
+              value={form.phases}
+              onChange={(event) => {
+                set('phases', event.target.value as Form['phases']);
+              }}
+              className="input w-full"
+            >
+              <option value="3">{t('phases.3')}</option>
+              <option value="1">{t('phases.1')}</option>
+            </select>
+          </Field>
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              className="btn btn-primary"
+            >
+              {result.kind === 'working' ? t('working') : t('submit')}
+            </button>
+          </div>
+        </form>
 
-      {result.kind === 'error' && (
-        <div
-          role="alert"
-          data-testid="calc-error"
-          className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-        >
-          <p>{t(`error.${result.outcome.kind}`)}</p>
-          {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-            <p dir="ltr" className="mt-2 font-mono text-xs">
-              {result.outcome.detail}
-            </p>
+        <div className="flex min-w-0 flex-col gap-4">
+          {result.kind === 'idle' && session.kind === 'ready' && (
+            <EmptyState title={t('result.idle')} />
           )}
-        </div>
-      )}
 
-      {result.kind === 'sized' && <CableResult response={result.response} />}
+          {session.kind !== 'ready' && session.kind !== 'starting' && (
+            <Notice
+              tone="warning"
+              testId="calc-session-failed"
+              action={
+                <button
+                  type="button"
+                  onClick={() => void connect()}
+                  className="btn btn-sm btn-primary"
+                >
+                  {t('retry')}
+                </button>
+              }
+            >
+              {t(`session.${session.kind}`)}
+            </Notice>
+          )}
+
+          {result.kind === 'error' && (
+            <Notice tone="critical" testId="calc-error">
+              <p>{t(`error.${result.outcome.kind}`)}</p>
+              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
+                <p dir="ltr" className="mt-2 font-mono text-xs">
+                  {result.outcome.detail}
+                </p>
+              )}
+            </Notice>
+          )}
+
+          {result.kind === 'sized' && <CableResult response={result.response} />}
+        </div>
+      </div>
     </>
   );
 }
@@ -258,10 +269,14 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-semibold">
+    <div className="field min-w-0">
+      <label htmlFor={id} className="field-label">
         {label}
-        {unit ? <span className="ms-1 font-normal text-text-muted">({unit})</span> : null}
+        {unit ? (
+          <span className="ms-1 font-normal text-text-muted">
+            (<bdi dir="ltr">{unit}</bdi>)
+          </span>
+        ) : null}
       </label>
       {children}
     </div>

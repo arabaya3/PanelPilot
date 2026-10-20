@@ -12,6 +12,7 @@ import {
   type VfdSelectionResponse,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
+import { EmptyState, Notice } from '@/components/ui';
 
 type Session =
   | { kind: 'starting' }
@@ -153,109 +154,119 @@ export function VfdSelectionPanel({
     <>
       <p className="mb-5 max-w-3xl text-text-muted">{t('vfd.intro')}</p>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void run();
-        }}
-        className="card mb-6 grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-4"
-      >
-        <Field id={`${id}-range`} label={t('vfd.field.range')}>
-          <select
-            id={`${id}-range`}
-            value={form.range}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, range: event.target.value }));
-            }}
-            className="input w-full"
-          >
-            <option value="">{t('vfd.range.default')}</option>
-            {ranges
-              .filter((range) => range.key !== 'abb-acs880-01')
-              .map((range) => (
-                <option key={range.key} value={range.key}>
-                  {`${range.manufacturer} ${range.series}`}
-                </option>
-              ))}
-          </select>
-        </Field>
-        {field('power')}
-        {field('voltage')}
-        {field('efficiency')}
-        {field('powerFactor')}
-        <Field id={`${id}-duty`} label={t('vfd.field.duty')}>
-          <select
-            id={`${id}-duty`}
-            value={form.duty}
-            onChange={(event) => {
-              setForm((current) => ({ ...current, duty: event.target.value as Form['duty'] }));
-            }}
-            className="input w-full"
-          >
-            <option value="normal">{t('vfd.duty.normal')}</option>
-            <option value="heavy">{t('vfd.duty.heavy')}</option>
-          </select>
-        </Field>
-        {field('altitude')}
-        {field('ambient')}
-        <div className="sm:col-span-2 lg:col-span-4">
-          <button
-            type="submit"
-            disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
-            className="btn btn-primary"
-          >
-            {result.kind === 'working' ? t('working') : t('vfd.submit')}
-          </button>
-        </div>
-      </form>
-
-      {session.kind !== 'ready' && session.kind !== 'starting' && (
-        <div
-          role="alert"
-          className="mb-6 flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+      {/* Inputs beside results from `lg` up; stacked, inputs first, below. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run();
+          }}
+          className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5"
         >
-          <p>{t(`session.${session.kind}`)}</p>
-          <button type="button" onClick={() => void connect()} className="btn btn-sm btn-primary">
-            {t('retry')}
-          </button>
-        </div>
-      )}
+          <Field id={`${id}-range`} label={t('vfd.field.range')}>
+            <select
+              id={`${id}-range`}
+              value={form.range}
+              onChange={(event) => {
+                setForm((current) => ({ ...current, range: event.target.value }));
+              }}
+              className="input w-full"
+            >
+              <option value="">{t('vfd.range.default')}</option>
+              {ranges
+                .filter((range) => range.key !== 'abb-acs880-01')
+                .map((range) => (
+                  <option key={range.key} value={range.key}>
+                    {`${range.manufacturer} ${range.series}`}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          {field('power')}
+          {field('voltage')}
+          {field('efficiency')}
+          {field('powerFactor')}
+          <Field id={`${id}-duty`} label={t('vfd.field.duty')}>
+            <select
+              id={`${id}-duty`}
+              value={form.duty}
+              onChange={(event) => {
+                setForm((current) => ({ ...current, duty: event.target.value as Form['duty'] }));
+              }}
+              className="input w-full"
+            >
+              <option value="normal">{t('vfd.duty.normal')}</option>
+              <option value="heavy">{t('vfd.duty.heavy')}</option>
+            </select>
+          </Field>
+          {field('altitude')}
+          {field('ambient')}
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              className="btn btn-primary"
+            >
+              {result.kind === 'working' ? t('working') : t('vfd.submit')}
+            </button>
+          </div>
+        </form>
 
-      {result.kind === 'error' && (
-        <div
-          role="alert"
-          data-testid="vfd-error"
-          className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-        >
-          <p>{t(`error.${result.outcome.kind}`)}</p>
-          {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-            <p dir="ltr" className="mt-2 font-mono text-xs">
-              {result.outcome.detail}
-            </p>
+        <div className="flex min-w-0 flex-col gap-4">
+          {result.kind === 'idle' && session.kind === 'ready' && (
+            <EmptyState title={t('result.idle')} />
+          )}
+
+          {session.kind !== 'ready' && session.kind !== 'starting' && (
+            <Notice
+              tone="warning"
+              action={
+                <button
+                  type="button"
+                  onClick={() => void connect()}
+                  className="btn btn-sm btn-primary"
+                >
+                  {t('retry')}
+                </button>
+              }
+            >
+              {t(`session.${session.kind}`)}
+            </Notice>
+          )}
+
+          {result.kind === 'error' && (
+            <Notice tone="critical" testId="vfd-error">
+              <p>{t(`error.${result.outcome.kind}`)}</p>
+              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
+                <p dir="ltr" className="mt-2 font-mono text-xs">
+                  {result.outcome.detail}
+                </p>
+              )}
+            </Notice>
+          )}
+
+          {result.kind === 'selected' && (
+            <section className="card flex flex-col gap-5 p-4 md:p-5" data-testid="vfd-result">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Figure
+                  label={t('vfd.result.drive')}
+                  value={`${result.response.result.manufacturer} ${result.response.result.frame_reference}`}
+                />
+                <Figure
+                  label={t('vfd.result.motorCurrent')}
+                  value={`${round(result.response.motor_current_a, 1)} A`}
+                />
+                <Figure
+                  label={t('vfd.result.driveCurrent')}
+                  value={`${round(result.response.result.rated_output_current_a, 1)} A`}
+                />
+              </div>
+              <Factors factors={result.response.result.applied_factors} />
+              <Sources sources={result.response.sources} />
+            </section>
           )}
         </div>
-      )}
-
-      {result.kind === 'selected' && (
-        <section className="card flex flex-col gap-5 p-4 md:p-5" data-testid="vfd-result">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Figure
-              label={t('vfd.result.drive')}
-              value={`${result.response.result.manufacturer} ${result.response.result.frame_reference}`}
-            />
-            <Figure
-              label={t('vfd.result.motorCurrent')}
-              value={`${round(result.response.motor_current_a, 1)} A`}
-            />
-            <Figure
-              label={t('vfd.result.driveCurrent')}
-              value={`${round(result.response.result.rated_output_current_a, 1)} A`}
-            />
-          </div>
-          <Factors factors={result.response.result.applied_factors} />
-          <Sources sources={result.response.sources} />
-        </section>
-      )}
+      </div>
     </>
   );
 }

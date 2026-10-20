@@ -161,7 +161,18 @@
     "reportedNoReason": "No reason given.",
     "reportedPassages": "Passages the answer was built on",
     "reportedNoPassages": "The answer cited no passages.",
-    "reportedContextMissing": "The passages behind this answer could not be read. Do not label it until they can."
+    "reportedContextMissing": "The passages behind this answer could not be read. Do not label it until they can.",
+    "queue": {
+      "label": "Items waiting in your queue",
+      "position": "#",
+      "kind": "Item",
+      "location": "Where in the source",
+      "status": "Status",
+      "kindFlag": "Reported answer",
+      "kindContent": "Proposed passage",
+      "current": "Open below",
+      "waiting": "Waiting"
+    }
   },
   "landing": {
     "starting": "Starting your trial…",
@@ -182,7 +193,8 @@
     "failed": "History could not be loaded.",
     "unavailable": "History is unavailable.",
     "loadMore": "Load more",
-    "untitled": "New conversation"
+    "untitled": "New conversation",
+    "close": "Close history"
   },
   "plc": {
     "heading": "PLC code",
@@ -234,7 +246,12 @@
     "ladderLabel": "{count, plural, one {Ladder diagram, # rung} other {Ladder diagram, # rungs}}",
     "noRungs": "No rungs to display.",
     "noCode": "No code to display.",
-    "codeLabel": "Program source"
+    "codeLabel": "Program source",
+    "generalFindings": "Findings about the whole program",
+    "severity": {
+      "error": "Error",
+      "warning": "Warning"
+    }
   },
   "signIn": {
     "open": "Sign in",
@@ -267,13 +284,26 @@
   "nav": {
     "label": "Main",
     "diagnose": "Diagnose",
-    "plc": "PLC check",
+    "plc": "PLC",
     "review": "Review",
-    "search": "Search",
-    "calc": "Calculations",
-    "design": "Board design",
-    "pricing": "Pricing",
+    "search": "Documents",
+    "calc": "Calculate",
+    "design": "Projects",
+    "pricing": "Plans",
     "team": "Team"
+  },
+  "shell": {
+    "openMenu": "Open navigation",
+    "menuTitle": "Navigation",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "There is nothing at this address. It may have moved, or the link may be mistyped.",
+    "errorTitle": "Something went wrong",
+    "errorBody": "This screen hit an unexpected error. Try again, or go back to the start.",
+    "retry": "Try again",
+    "home": "Go to Diagnose"
+  },
+  "ui": {
+    "close": "Close"
   },
   "stale": {
     "empty": "No live document has changed upstream.",
@@ -292,7 +322,13 @@
     "retracting": "Retracting…",
     "cancel": "Cancel",
     "retractFailed": "Nothing was retracted. Try again.",
-    "retractWarning": "Every passage from this document leaves live answers now. Engineers asking about it will be told there is no verified source, until a new revision is reviewed. This is recorded with your name and note."
+    "retractWarning": "Every passage from this document leaves live answers now. Engineers asking about it will be told there is no verified source, until a new revision is reviewed. This is recorded with your name and note.",
+    "heading": "Stale documents",
+    "columns": {
+      "status": "Status",
+      "source": "Source",
+      "decision": "Decision"
+    }
   },
   "search": {
     "heading": "Search the manuals",
@@ -347,7 +383,12 @@
     "working": "Saving…",
     "yours": "You escalated this, so another lead must resolve it.",
     "failed": "The resolution could not be saved. Try again.",
-    "heading": "Escalated items"
+    "heading": "Escalated items",
+    "columns": {
+      "verdict": "Verdict",
+      "content": "Content",
+      "decision": "Decision"
+    }
   },
   "calc": {
     "heading": "Cable sizing",
@@ -392,7 +433,8 @@
       "ampacity": "Capacity as installed",
       "drop": "Voltage drop",
       "factors": "Correction factors applied",
-      "sources": "Sources"
+      "sources": "Sources",
+      "idle": "Results appear here once the inputs are complete and you run the calculation."
     },
     "session": {
       "unavailable": "Calculations are unavailable right now. Please try again shortly.",
@@ -405,6 +447,7 @@
       "failed": "The calculation did not complete. Try again."
     },
     "title": "Calculations",
+    "description": "Size cables, select drives and build a panel BOM from sourced manufacturer tables.",
     "tab": {
       "cable": "Cable sizing",
       "vfd": "Drive selection",
@@ -508,6 +551,107 @@
         "line": "line",
         "delta": "delta",
         "star": "star"
+      },
+      "linesLabel": "BOM lines",
+      "column": {
+        "part": "Part reference",
+        "quantity": "Quantity",
+        "description": "Description"
+      }
+    }
+  },
+  "workspace": {
+    "views": {
+      "label": "Project views",
+      "overview": "Overview",
+      "schedule": "Load schedule",
+      "drawings": "Drawings",
+      "layout": "Panel layout",
+      "materials": "Materials",
+      "revisions": "Revisions",
+      "review": "Review & export"
+    },
+    "context": {
+      "label": "Current project",
+      "untitled": "Untitled project",
+      "revision": "Rev. {revision}",
+      "approved": "Approved",
+      "draft": "Not approved"
+    },
+    "save": {
+      "unsaved": "Unsaved changes",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "failed": "Save failed",
+      "failedHint": "The project could not be saved. What you entered is still here; try saving again from the overview."
+    },
+    "retry": "Try again",
+    "connecting": "Connecting to the design service…",
+    "basis": "Design basis",
+    "designFirst": {
+      "title": "Nothing designed yet",
+      "body": "Complete the load schedule and design the project; its outputs appear here.",
+      "action": "Open the load schedule"
+    },
+    "designed": {
+      "body": "{count, plural, one {Designed: # board.} other {Designed: # boards.}}",
+      "action": "View the sheets"
+    },
+    "drawings": {
+      "controls": "Sheet controls",
+      "sheet": "Sheet",
+      "sheetLabel": "Sheet: {board}",
+      "zoom": "Zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fit": "Fit to width",
+      "inspector": "Selected board",
+      "board": "Board",
+      "location": "Location",
+      "supply": "Supply",
+      "fedFrom": "Fed from",
+      "incomer": "Incomer",
+      "circuits": "Circuits",
+      "devices": "Devices",
+      "cables": "Cables",
+      "previewNote": "This is the designed schedule each sheet is drawn from. The drawings themselves are the drawing set (PDF) and DXF under Review & export."
+    },
+    "layout": {
+      "title": "Panel layout preview is not available yet",
+      "body": "The workspace cannot show or edit a panel layout. Where a board can be laid out on DIN rails, the layout pages are part of the drawing set (PDF).",
+      "action": "Go to Review & export"
+    },
+    "revisions": {
+      "history": "Revision history",
+      "number": "Revision",
+      "note": "Note",
+      "author": "Saved by",
+      "date": "Date",
+      "approval": "Approval",
+      "approvedBy": "Approved by {name}, {date}",
+      "noneTitle": "No revisions yet",
+      "noneBody": "Save the project to start its revision history.",
+      "noneAction": "Go to the overview",
+      "titleBlock": "Title block revisions",
+      "index": "Index",
+      "description": "Description",
+      "drawn": "Drawn",
+      "checked": "Checked",
+      "approved": "Approved",
+      "markupsAfterDesign": "Design the project to read a reviewer's PDF markups against it."
+    },
+    "review": {
+      "approval": "Approval",
+      "notSaved": "This project is not saved, so it cannot be approved.",
+      "saveAction": "Save it in the overview",
+      "notApproved": "Revision {revision} is not approved yet.",
+      "approveAction": "Approve in the overview"
+    },
+    "schedule": {
+      "tableLabel": "Load schedule rows",
+      "problem": {
+        "positive": "Enter a number above 0.",
+        "powerFactor": "Enter a value above 0, up to 1."
       }
     }
   },
