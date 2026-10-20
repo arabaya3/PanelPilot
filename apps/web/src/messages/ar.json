@@ -806,7 +806,7 @@
       }
     },
     "boards": "اللوحات",
-    "addBoard": "+ إضافة لوحة",
+    "addBoard": "إضافة لوحة",
     "removeBoard": "حذف هذه اللوحة",
     "loadsOf": "أحمال {board}",
     "fedFromNone": "مصدر المشروع",

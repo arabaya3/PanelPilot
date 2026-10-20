@@ -806,7 +806,7 @@
       }
     },
     "boards": "Boards",
-    "addBoard": "+ Add board",
+    "addBoard": "Add board",
     "removeBoard": "Remove this board",
     "loadsOf": "Loads of {board}",
     "fedFromNone": "Project supply",

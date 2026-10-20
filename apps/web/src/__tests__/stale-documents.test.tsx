@@ -169,7 +169,7 @@ describe('the review page’s second tab', () => {
     renderReview(vi.fn().mockResolvedValue({ kind: 'loaded', items: [CHANGED, GONE] }));
 
     const queueTab = await screen.findByTestId('review-tab-queue');
-    expect(queueTab.getAttribute('aria-selected')).toBe('true');
+    expect(queueTab.closest('[role="tab"]')?.getAttribute('aria-selected')).toBe('true');
     expect(screen.getByTestId('review-tab-stale').textContent).toContain('2');
     expect(screen.queryByTestId('stale-list')).toBeNull();
   });

@@ -16,6 +16,10 @@
  */
 
 :root {
+  /* The application header's height at md and up (40px controls + 2 x 8px
+   * padding + 1px border); the sticky rail sits directly beneath it. */
+  --shell-header-height: 3.5625rem;
+
   /* --- Surfaces and text ------------------------------------------------
    * Graphite Workbench, light variant: neutral greys rather than slate blue,
    * so the light theme is the same product as the default dark one. Every

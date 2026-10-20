@@ -158,7 +158,9 @@ export function Tabs<K extends string>({
             role="tab"
             id={tabId(idBase, item.key)}
             aria-selected={active}
-            aria-controls={tabPanelId(idBase, item.key)}
+            // Only the selected tab's panel is guaranteed to exist: screens
+            // that render one panel at a time would otherwise point at nothing.
+            aria-controls={active ? tabPanelId(idBase, item.key) : undefined}
             tabIndex={active ? 0 : -1}
             disabled={item.disabled}
             onClick={() => {

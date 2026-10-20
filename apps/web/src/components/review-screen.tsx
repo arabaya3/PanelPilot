@@ -5,7 +5,7 @@ import { useCallback, useId, useState } from 'react';
 import type { components } from '@panelpilot/shared-types';
 
 import { AppShell } from '@/components/app-shell';
-import { LoadingState, Notice, PageHeader } from '@/components/ui';
+import { LoadingState, Notice, PageHeader, tabId, tabPanelId, Tabs } from '@/components/ui';
 import { CheckCircleIcon } from '@/components/icons';
 import { SignInForm } from '@/components/sign-in-form';
 import type { signIn } from '@/lib/auth';
@@ -196,7 +196,7 @@ export function ReviewScreen({
       {phase.kind === 'forbidden' && (
         <div className="mx-auto w-full max-w-lg">
           <Notice
-            tone="warning"
+            tone="critical"
             testId="review-forbidden"
             action={
               <button
@@ -241,8 +241,12 @@ export function ReviewScreen({
         <div className="flex flex-col gap-5">
           {/* The page's one h1 once signed in; the signed-out view has its own. */}
           <PageHeader title={t('heading')} />
-          <div role="tablist" aria-label={t('heading')} className="tabs">
-            {(['queue', 'stale', 'escalations'] as const).map((key) => {
+          <Tabs
+            label={t('heading')}
+            idBase={tabsId}
+            selected={tab}
+            onSelect={setTab}
+            items={(['queue', 'stale', 'escalations'] as const).map((key) => {
               const list = key === 'stale' ? phase.stale : phase.escalations;
               const count =
                 key === 'queue'
@@ -250,33 +254,25 @@ export function ReviewScreen({
                   : list.kind === 'loaded'
                     ? list.items.length
                     : null;
-              const selected = tab === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  id={`${tabsId}-${key}`}
-                  aria-selected={selected}
-                  aria-controls={`${tabsId}-${key}-panel`}
-                  data-testid={`review-tab-${key}`}
-                  onClick={() => {
-                    setTab(key);
-                  }}
-                  className="tab"
-                >
-                  {key === 'queue'
-                    ? t('tabQueue')
-                    : key === 'stale'
-                      ? t('tabStale')
-                      : t('tabEscalations')}
-                  {count !== null && <span className="tab-badge">{count}</span>}
-                </button>
-              );
+              return {
+                key,
+                // The test id sits on the label with its count, which tests
+                // read; the tab element itself carries role and aria-selected.
+                label: (
+                  <span data-testid={`review-tab-${key}`}>
+                    {key === 'queue'
+                      ? t('tabQueue')
+                      : key === 'stale'
+                        ? t('tabStale')
+                        : t('tabEscalations')}
+                    {count !== null && <span className="tab-badge ms-2">{count}</span>}
+                  </span>
+                ),
+              };
             })}
-          </div>
+          />
 
-          <div role="tabpanel" id={`${tabsId}-${tab}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+          <div role="tabpanel" id={tabPanelId(tabsId, tab)} aria-labelledby={tabId(tabsId, tab)}>
             {tab === 'queue' ? (
               <VerificationConsole
                 items={phase.items}

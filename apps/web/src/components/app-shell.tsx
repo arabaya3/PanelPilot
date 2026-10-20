@@ -184,8 +184,17 @@ export function AppShell({
 
       <div className="flex flex-1">
         <aside
-          className="hidden shrink-0 flex-col border-e border-border-subtle bg-chrome md:flex"
-          style={{ width: '5.5rem' }}
+          className="hidden shrink-0 flex-col overflow-y-auto border-e border-border-subtle bg-chrome md:flex"
+          // Sticky under the header and exactly one viewport tall, so Team
+          // and Plans at its foot stay reachable on a long page and a short
+          // window scrolls the rail rather than clipping it. 6rem holds the
+          // longest label ("Documents") without breaking inside the word.
+          style={{
+            width: '6rem',
+            position: 'sticky',
+            top: 'var(--shell-header-height)',
+            height: 'calc(100dvh - var(--shell-header-height))',
+          }}
         >
           {renderNav('rail')}
         </aside>

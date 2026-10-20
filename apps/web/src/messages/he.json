@@ -806,7 +806,7 @@
       }
     },
     "boards": "לוחות",
-    "addBoard": "+ הוספת לוח",
+    "addBoard": "הוספת לוח",
     "removeBoard": "הסרת לוח זה",
     "loadsOf": "עומסים של {board}",
     "fedFromNone": "הזנת הפרויקט",

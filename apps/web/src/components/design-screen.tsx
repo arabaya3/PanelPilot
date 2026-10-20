@@ -372,11 +372,10 @@ export function DesignScreen({
     });
     setHistory(project.revisions);
     setTitleRevisions(project.request.info.revisions ?? []);
-    if (!fill) {
-      // Saved: what is on the page is what the project now holds.
-      setClean(snapshot);
-      return;
-    }
+    // Saved or approved: the form is left as it is. Only a save rebaselines
+    // it (in `onSaveState`); an approval signs the stored revision, not
+    // whatever has been typed since.
+    if (!fill) return;
     const loaded = fromRequest(project.request, nextKey.current);
     nextKey.current += Math.max(1, loaded.used);
     setInfo(loaded.info);
@@ -663,7 +662,12 @@ export function DesignScreen({
                 }
                 opened={opened}
                 onOpened={onOpened}
-                onSaveState={setLastSave}
+                onSaveState={(state) => {
+                  setLastSave(state);
+                  // This closure is the one the save started from, so its
+                  // snapshot is exactly the request that was stored.
+                  if (state === 'saved') setClean(snapshot);
+                }}
               />
             ) : (
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>

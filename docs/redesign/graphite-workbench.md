@@ -128,8 +128,60 @@ C keeps that export's signature.
 
 ## Route coverage
 
-See the table filled in at integration (section below).
+Every route the app router serves, plus the significant states inside each.
+"Browser" = rendered by the integrated branch in headless Chromium against the
+live API; "Unit" = covered by vitest in jsdom.
+
+| Route                | Surface and states                                                                                                                                                                                                     | Redesign                                                                          | Verified                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/`                  | Landing + anonymous trial chat; starting / ready / rate-limited / unavailable / failed; sign-in; trial-limit modal; history column (drawer < md); image capture; diagnostic cards with citations, uncertainty, refusal | Shell, landing frame, chat workspace, history drawer, `SourceReference` citations | Browser 1440/390 en, 390 ar (rate-limited state); Unit (chat, trial, page, history, refusal)                     |
+| `/design`            | Project workspace: Overview, Load schedule, Drawings, Panel layout, Materials, Revisions, Review & export (`?view=`); session states; save states; unsaved-changes guard                                               | Rebuilt as tabbed workspace with project context in the top bar                   | Browser 1440/1024/390 en, 1440 ar (session rate-limited); Unit (10 new workspace tests + existing design suites) |
+| `/calc`              | Cable sizing, Drive selection, Panel BOM tabs; idle / error / result                                                                                                                                                   | Tabs, two-column inputs/results, `data-table` BOM                                 | Browser 1440/768/360 en, 1440 he; Unit                                                                           |
+| `/plc`               | Generate / Review tabs, verdict, findings with severity text, ladder view                                                                                                                                              | `PageHeader`, Tabs, severity badges                                               | Browser 1440 en, 1024 he; Unit                                                                                   |
+| `/search`            | Document search, loading, empty, results with source link                                                                                                                                                              | `SourceReference` results                                                         | Browser 1440; Unit                                                                                               |
+| `/review`            | Reviewer sign-in, forbidden, failed, queue / stale / escalations tabs                                                                                                                                                  | Shared Tabs, `data-table` queues                                                  | Browser 1440/360 (signed-out); Unit (queues, tabs, forbidden)                                                    |
+| `/team`              | Members, invitations, seat limits                                                                                                                                                                                      | `PageHeader`, `Panel`, `StatusBadge`                                              | Browser 1440; Unit                                                                                               |
+| `/pricing`           | Plans from the catalogue API, subscription request                                                                                                                                                                     | Restyled; prices from API only                                                    | Browser 1440; Unit                                                                                               |
+| `/join`              | Invitation acceptance                                                                                                                                                                                                  | Restyled                                                                          | Browser 1440; Unit                                                                                               |
+| `/tokens`            | Design-token reference                                                                                                                                                                                                 | Restyled to new tokens                                                            | Unit                                                                                                             |
+| not found (new)      | Any unknown URL                                                                                                                                                                                                        | New `not-found.tsx` in shell                                                      | Browser 1440                                                                                                     |
+| error boundary (new) | Unhandled render error, with reset                                                                                                                                                                                     | New `error.tsx`; logs, never shows the message                                    | Not exercised in browser                                                                                         |
+| Shared               | Dialog / drawer, notices, save indicator, status, fields, tables, tabs                                                                                                                                                 | `src/components/ui`                                                               | Unit (app-shell, chat drawer, tabs keyboard)                                                                     |
+
+No existing URL changed. `/design?view=` is additive; unknown values fall back
+to Overview.
 
 ## Gaps
 
-Filled in at integration.
+Shown in the reference screenshots but not backed by the backend, so built
+honestly or left out, not faked:
+
+- **Drawing preview.** The API returns the designed schedule, not sheet images;
+  the Drawings view renders the real circuit schedule per board in a paper
+  sheet frame with zoom/fit and a read-only inspector. The drawings themselves
+  are the PDF/DXF exports. No drawing editor and no editable properties.
+- **Panel layout.** Layout pages exist only inside the exported PDF; the view is
+  an explicit empty state pointing to Review & export.
+- **Workflow states.** Approval is per saved revision by a named engineer; there
+  is no Draft / In review / Issued state machine, issue list or assignees.
+- **Top-bar project switcher.** The context shows the open project and returns to
+  the Overview list; there is no global dropdown, because the project list
+  needs the page's own session token.
+- **Review in the rail for permitted users only.** Roles are known only after
+  signing in on `/review`, so the rail always shows Review and the page gates
+  access (forbidden notice). A shell-level role would need a shared session.
+- **Equipment-context side panel (Diagnose).** Equipment is held as a context
+  chip, not structured fields; no side panel was added.
+- **"Sample result" badges** from the references are not used: results are
+  either real API output or absent.
+- **Serif display face** from the references not added; Noto Sans families are
+  kept for script parity across en/ar/he.
+
+Known limitations:
+
+- `useUnsavedChangesGuard` calls `preventDefault()` only (no deprecated
+  `returnValue`), which all current evergreen browsers honour.
+- An edit made while a save is in flight is marked clean when that save lands.
+- Three existing tests (`design-boards` ×2, `market` ×1) exceed vitest's 5 s
+  default under full-suite load on this machine, before and after the redesign;
+  they pass in isolation.
