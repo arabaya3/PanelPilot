@@ -219,6 +219,10 @@ def _strict(schema: Any) -> Any:
     constraint that matters on the wire. Dropping it let the model send
     ``summary_citation_ids: []`` -- schema-valid, and refused by the parser
     for citing nothing.
+
+    A limit that is dropped is still said, in the field's description, because
+    the parser still enforces it. Dropped silently, the model was told nothing
+    about ``maxLength: 4000`` and wrote a longer summary, which was refused.
     """
     if isinstance(schema, list):
         return [_strict(item) for item in schema]
@@ -229,9 +233,29 @@ def _strict(schema: Any) -> Any:
         for key, value in schema.items()
         if key not in _STRICT_UNSUPPORTED and not (key == "minItems" and value not in (0, 1))
     }
+    limits = _limits_in_words(schema)
+    if limits:
+        described = str(strict.get("description", "")).strip()
+        strict["description"] = f"{described} {limits}".strip()
     if strict.get("type") == "object" or "properties" in strict:
         strict["additionalProperties"] = False
     return strict
+
+
+def _limits_in_words(schema: dict[str, Any]) -> str:
+    """The limits strict mode cannot carry, as a sentence the model can follow."""
+    said = []
+    if "maxLength" in schema:
+        said.append(f"At most {schema['maxLength']} characters.")
+    if "maxItems" in schema:
+        said.append(f"At most {schema['maxItems']} items.")
+    if schema.get("minItems", 0) > 1:
+        said.append(f"At least {schema['minItems']} items.")
+    if "minimum" in schema:
+        said.append(f"At least {schema['minimum']}.")
+    if "maximum" in schema:
+        said.append(f"At most {schema['maximum']}.")
+    return " ".join(said)
 
 
 def diagnosis_tool_definition() -> dict[str, Any]:
@@ -255,6 +279,14 @@ def diagnosis_tool_definition() -> dict[str, Any]:
     # request, so the compiled schema is reused rather than rebuilt per turn.
     label = {"type": "string", "enum": list(CITATION_LABELS)}
     properties = schema["properties"]
+    # What the summary is for. The model was told only its name, and now and
+    # then wrote the whole diagnosis into it -- steps and all, past 4,000
+    # characters -- and the turn was refused. The steps have a field of their
+    # own; saying so keeps the summary the paragraph the card shows.
+    properties["summary"]["description"] = (
+        "The answer in one short paragraph. Each action goes in steps, not here. "
+        + str(properties["summary"].get("description", ""))
+    ).strip()
     properties["summary_citation_ids"]["items"] = label
     properties["steps"]["items"]["properties"]["citation_ids"]["items"] = dict(label)
     return {

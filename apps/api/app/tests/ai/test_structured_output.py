@@ -184,6 +184,29 @@ def test_the_strict_schema_carries_only_what_strict_mode_accepts() -> None:
         assert f'"{keyword}"' not in rendered, keyword
 
 
+def test_a_limit_strict_mode_drops_is_still_said() -> None:
+    """The parser still enforces it, so the model has to be told.
+
+    Dropped silently, ``maxLength: 4000`` reached the model as nothing at all,
+    and a summary past it was refused.
+    """
+    properties = diagnosis_tool_definition()["input_schema"]["properties"]
+    assert "At most 4000 characters." in properties["summary"]["description"]
+    assert "At most 50 items." in properties["steps"]["description"]
+    step = properties["steps"]["items"]["properties"]
+    assert "At most 4000 characters." in step["instruction"]["description"]
+    assert "At least 1." in step["order"]["description"]
+
+
+def test_the_summary_says_what_it_is_for() -> None:
+    """Told only its name, the model now and then wrote every step into it."""
+    description = diagnosis_tool_definition()["input_schema"]["properties"]["summary"][
+        "description"
+    ]
+    assert "one short paragraph" in description
+    assert "steps" in description
+
+
 def test_the_strict_schema_still_demands_a_citation_and_a_step() -> None:
     """The one constraint worth keeping on the wire.
 
