@@ -183,6 +183,15 @@ def diagnosis_input_schema() -> dict[str, Any]:
     return schema
 
 
+#: Extra attempts after a generation is cut off at the output limit.
+CUT_OFF_RETRIES = 1
+
+#: The ids the prompt shows its passages under, in order: ``P1`` for the first.
+#: A generous ceiling -- retrieval returns a dozen -- so a larger top-k never
+#: runs out of labels; the caller refuses more passages than this rather than
+#: leave one uncitable.
+CITATION_LABELS: tuple[str, ...] = tuple(f"P{n}" for n in range(1, 51))
+
 #: Keywords strict tool use does not accept. They stay enforced: the payload is
 #: still parsed by ``StructuredDiagnosis``, which carries every one of them.
 _STRICT_UNSUPPORTED = frozenset(
@@ -238,10 +247,20 @@ def diagnosis_tool_definition() -> dict[str, Any]:
     Returns:
         A tool definition in the shape the Claude API expects.
     """
+    schema = _strict(diagnosis_input_schema())
+    # A citation can only be one of the labels the prompt gives its passages.
+    # Asked to copy the real ids -- 45-character hashes -- the model now and
+    # then wrote one it had not been shown ("x", ">["), and the turn was
+    # refused as citing a passage never supplied. The enum is the same on every
+    # request, so the compiled schema is reused rather than rebuilt per turn.
+    label = {"type": "string", "enum": list(CITATION_LABELS)}
+    properties = schema["properties"]
+    properties["summary_citation_ids"]["items"] = label
+    properties["steps"]["items"]["properties"]["citation_ids"]["items"] = dict(label)
     return {
         "name": DIAGNOSIS_TOOL_NAME,
         "description": TOOL_DESCRIPTION,
-        "input_schema": _strict(diagnosis_input_schema()),
+        "input_schema": schema,
         "strict": True,
     }
 
@@ -459,15 +478,26 @@ def generate_diagnosis(
         # Asking a model to decline is another generation, not a refusal.
         return None, decision
 
-    message = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": question}],
-        tools=[diagnosis_tool_definition()],
-        tool_choice={"type": "tool", "name": DIAGNOSIS_TOOL_NAME},
-    )
-    if getattr(message, "stop_reason", None) == "max_tokens":
+    # One more attempt when a generation runs into the output limit. A real
+    # diagnosis is a few thousand tokens (1.7k-3.7k measured, Arabic the
+    # longest); one that reaches the cap has run away inside the tool call --
+    # it came back as 8,192 tokens and an empty input -- which is a sampling
+    # failure, not a verdict on the evidence, and the next sample usually
+    # answers. Once only: a second runaway is refused rather than retried
+    # while the engineer waits.
+    for attempt in range(1 + CUT_OFF_RETRIES):
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": question}],
+            tools=[diagnosis_tool_definition()],
+            tool_choice={"type": "tool", "name": DIAGNOSIS_TOOL_NAME},
+        )
+        if getattr(message, "stop_reason", None) != "max_tokens":
+            break
+        logger.warning("diagnosis.cut_off", attempt=attempt + 1, max_tokens=max_tokens)
+    else:
         # Cut off mid-answer. The truncated tool input can still validate — a
         # diagnosis that lost its last steps is schema-valid and silently
         # incomplete, and on a panel the missing step can be the isolation one.

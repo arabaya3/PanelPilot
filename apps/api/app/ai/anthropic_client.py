@@ -19,10 +19,14 @@ from typing import Any
 
 from app.core.config import get_settings
 
-#: Seconds to wait for a response. A structured diagnosis is a few hundred
-#: output tokens; a call that has produced nothing in this long is stalled,
-#: and failing it lets the caller show a terminal refusal instead of a spinner.
-LLM_READ_TIMEOUT_S = 90.0
+#: Seconds to wait for a response. Long enough for a full ``LLM_MAX_OUTPUT_TOKENS``
+#: generation: at the ~90 tokens a second measured, 6,144 tokens is ~70 s, and
+#: a runaway generation does run to the cap before it is cut off and retried.
+#: A call silent past this is stalled, and failing it gives the caller a
+#: terminal refusal instead of a spinner. With one retry the worst case is
+#: 300 s, the ceiling the client test holds this to; the stream sends a
+#: keep-alive every 15 s meanwhile, so no proxy cuts it first.
+LLM_READ_TIMEOUT_S = 150.0
 
 #: Seconds to establish a connection. Short: a provider that cannot accept a
 #: connection in this long will not answer in time either.
