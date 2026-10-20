@@ -6,13 +6,42 @@ belongs in a ``conftest.py`` next to those tests, not in this file.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
-import pytest
-from fastapi.testclient import TestClient
+#: What makes an index name safe for a test to create and delete.
+_THROWAWAY_MARKERS = ("-ci-", "test")
 
-from app.core.config import Environment, Settings
-from app.main import create_app
+
+def _keep_tests_off_real_indices() -> None:
+    """Point the suite at throwaway indices unless it already is.
+
+    The OpenSearch tests build their corpus with ``ensure_index(...,
+    recreate=True)`` and drop it afterwards, on whatever names are configured.
+    CI configures ``panelpilot-ci-*``. Inside the compose ``api`` container the
+    configured names are the real ones, so ``docker compose exec api pytest``
+    deleted the published library and staging -- 6,376 and 6,610 passages,
+    restored from a backup on 2026-10-20. Renaming here, before anything reads
+    the settings, makes the safe names the default rather than a flag to
+    remember.
+    """
+    for variable, target in (
+        ("OPENSEARCH_STAGING_INDEX", "staging"),
+        ("OPENSEARCH_PRODUCTION_INDEX", "production"),
+    ):
+        name = os.environ.get(variable, "")
+        if not any(marker in name for marker in _THROWAWAY_MARKERS):
+            os.environ[variable] = f"panelpilot-test-{target}"
+
+
+# Before the app imports below: settings are read once and cached.
+_keep_tests_off_real_indices()
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.core.config import Environment, Settings  # noqa: E402
+from app.main import create_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
