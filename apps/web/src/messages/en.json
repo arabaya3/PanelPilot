@@ -566,6 +566,7 @@
     },
     "submit": "Design the board",
     "working": "Designing…",
+    "incomplete": "To design, name the project, and give every board a name and every circuit a description and a power.",
     "error": "The design could not be completed. Try again.",
     "col": {
       "circuit": "Circuit",

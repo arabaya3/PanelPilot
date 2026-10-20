@@ -119,6 +119,19 @@ async function submit() {
 }
 
 describe('board design', () => {
+  it('says why the design button is disabled, and stops once the form is complete', async () => {
+    renderApp(<DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />);
+    const hint = await screen.findByTestId('design-incomplete');
+    const button = screen.getByRole('button', { name: 'Design the board' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(button.getAttribute('aria-describedby')).toBe(hint.id);
+    fillSchedule();
+    await waitFor(() => {
+      expect(screen.queryByTestId('design-incomplete')).toBeNull();
+    });
+    expect(button.hasAttribute('aria-describedby')).toBe(false);
+  });
+
   it('sends the schedule and shows each circuit with its protection', async () => {
     const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'designed',
