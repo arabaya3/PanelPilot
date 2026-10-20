@@ -56,12 +56,12 @@ export function SignInForm({
         event.preventDefault();
         void submit();
       }}
-      className="card flex w-full max-w-sm flex-col gap-3 p-5"
+      className="panel flex w-full max-w-sm flex-col gap-3 p-5"
     >
-      <h2 id={headingId} className="mb-1 text-xl font-bold text-text">
+      <h2 id={headingId} className="mb-1 text-lg font-semibold text-text">
         {t('heading')}
       </h2>
-      <label htmlFor={emailId} className="text-sm font-medium text-text">
+      <label htmlFor={emailId} className="field-label">
         {t('email')}
       </label>
       <input
@@ -76,7 +76,7 @@ export function SignInForm({
         }}
         className="input"
       />
-      <label htmlFor={passwordId} className="text-sm font-medium text-text">
+      <label htmlFor={passwordId} className="field-label">
         {t('password')}
       </label>
       <input

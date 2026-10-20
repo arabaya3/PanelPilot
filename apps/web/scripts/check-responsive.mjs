@@ -113,7 +113,13 @@ function findUnwrappedTables(source) {
   const problems = [];
   if (!source.includes('<table')) return problems;
 
-  const scrolls = source.includes('overflow-x-auto') || source.includes('overflow-x-scroll');
+  // `TableFrame` and its `.table-frame` class (globals.css) are the shared
+  // scroll container, so a table inside one is wrapped.
+  const scrolls =
+    source.includes('overflow-x-auto') ||
+    source.includes('overflow-x-scroll') ||
+    source.includes('<TableFrame') ||
+    source.includes('table-frame');
   const stacks = /\b(hidden|block|flex)\s+(sm|md|lg):(table|block|hidden|flex)\b/.test(source);
   if (scrolls || stacks) return problems;
 

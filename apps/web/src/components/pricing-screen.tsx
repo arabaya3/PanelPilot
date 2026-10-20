@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { PageHeader } from '@/components/ui';
 import {
   fetchPlans,
   periodPrice,
@@ -101,13 +102,13 @@ export function PricingScreen({
       <li
         key={plan.key}
         data-testid={`plan-${plan.key}`}
-        className={`flex flex-col gap-3 rounded-lg border bg-surface p-4 ${
+        className={`flex flex-col gap-3 rounded-lg border bg-surface p-5 ${
           plan.key === 'team' ? 'border-accent' : 'border-border-subtle'
         }`}
       >
-        <h2 className="text-lg font-semibold">{t(`plan.${plan.key}.name`)}</h2>
+        <h2 className="text-base font-semibold">{t(`plan.${plan.key}.name`)}</h2>
         <p className="text-sm text-text-muted">{t(`plan.${plan.key}.for`)}</p>
-        <p className="text-2xl font-bold" dir="ltr">
+        <p className="text-2xl font-semibold tabular-nums" dir="ltr">
           {price === null ? t('byAgreement') : money.format(price)}
           {price !== null && price > 0 && (
             <span className="ms-1 text-sm font-normal text-text-muted">
@@ -115,7 +116,7 @@ export function PricingScreen({
             </span>
           )}
         </p>
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul className="flex flex-col gap-1 border-t border-border-subtle pt-3 text-sm text-text-muted">
           <li>{t('seats', { count: plan.seats_included })}</li>
           {plan.extra_seat_usd !== null && (
             <li>{t('extraSeat', { price: money.format(Number(plan.extra_seat_usd)) })}</li>
@@ -168,7 +169,7 @@ export function PricingScreen({
           </p>
         )}
         {status === 'error' && (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-sm text-severity-critical">
             {t('requestFailed')}
           </p>
         )}
@@ -178,12 +179,11 @@ export function PricingScreen({
 
   return (
     <AppShell>
-      <h1 className="mb-2 text-2xl font-bold tracking-tight">{t('title')}</h1>
-      <p className="mb-5 max-w-3xl text-text-muted">{t('intro')}</p>
+      <PageHeader title={t('title')} description={t('intro')} />
       <div
         role="radiogroup"
         aria-label={t('billing')}
-        className="mb-5 flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
+        className="mb-5 flex gap-1 self-start rounded-md border border-border-subtle bg-surface p-1"
       >
         {(['monthly', 'annual'] as const).map((value) => (
           <button
@@ -194,9 +194,9 @@ export function PricingScreen({
             onClick={() => {
               setInterval(value);
             }}
-            className={`rounded-md px-3 py-2 text-sm transition-colors ${
+            className={`rounded-sm px-3 py-2 text-sm transition-colors duration-150 ${
               interval === value
-                ? 'bg-accent-subtle font-semibold text-accent-hover'
+                ? 'bg-surface-raised font-semibold text-text'
                 : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
             }`}
           >
@@ -206,7 +206,7 @@ export function PricingScreen({
       </div>
       {loaded.kind === 'loading' && <p className="text-text-muted">{t('loading')}</p>}
       {loaded.kind === 'failed' && (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-severity-critical">
           {t('loadFailed')}
         </p>
       )}

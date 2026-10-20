@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { PageHeader, Panel, StatusBadge } from '@/components/ui';
 import { SignInForm } from '@/components/sign-in-form';
 import {
   getTeam,
@@ -111,11 +112,10 @@ export function TeamScreen({
 
   return (
     <AppShell>
-      <h1 className="mb-2 text-2xl font-bold tracking-tight">{t('title')}</h1>
-      <p className="mb-5 max-w-3xl text-text-muted">{t('intro')}</p>
+      <PageHeader title={t('title')} description={t('intro')} />
 
       {token === null && (
-        <div className="card max-w-md p-4">
+        <div className="panel max-w-md p-4">
           <p className="mb-3 text-sm">{t('signIn')}</p>
           <SignInForm
             onSignedIn={(tokens) => {
@@ -128,7 +128,7 @@ export function TeamScreen({
 
       {loaded.kind === 'loading' && <p className="text-text-muted">{t('loading')}</p>}
       {loaded.kind === 'failed' && (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="text-severity-critical">
           {t('error')}
         </p>
       )}
@@ -141,22 +141,21 @@ export function TeamScreen({
               : t('seats', { taken: loaded.team.seats_taken, seats: loaded.team.seats })}
           </p>
 
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">{t('members')}</h2>
-            <ul className="flex flex-col gap-2" data-testid="team-members">
+          <Panel title={t('members')} bodyClassName="p-0">
+            <ul className="flex flex-col" data-testid="team-members">
               {loaded.team.members.map((member) => (
                 <li
                   key={member.id}
-                  className="flex items-center gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2"
+                  className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-4 py-2 last:border-b-0"
                 >
-                  <span className="flex-1" dir="ltr">
+                  <span className="min-w-0 flex-1 break-words" dir="ltr">
                     {member.full_name ? `${member.full_name} · ${member.email}` : member.email}
                   </span>
-                  {member.owner && <span className="text-sm text-text-muted">{t('owner')}</span>}
+                  {member.owner && <StatusBadge tone="accent">{t('owner')}</StatusBadge>}
                   {loaded.team.owner && !member.owner && (
                     <button
                       type="button"
-                      className="btn btn-sm"
+                      className="btn btn-sm btn-secondary"
                       onClick={() => void act(() => removeImpl({ token, id: member.id }))}
                     >
                       {t('remove')}
@@ -165,11 +164,10 @@ export function TeamScreen({
                 </li>
               ))}
             </ul>
-          </section>
+          </Panel>
 
           {loaded.team.owner ? (
-            <section>
-              <h2 className="mb-2 text-lg font-semibold">{t('invite')}</h2>
+            <Panel title={t('invite')}>
               <form
                 className="flex flex-wrap items-end gap-2"
                 onSubmit={(event) => {
@@ -177,7 +175,7 @@ export function TeamScreen({
                   void sendInvite();
                 }}
               >
-                <label className="flex flex-col gap-1 text-sm" htmlFor={`${id}-email`}>
+                <label className="field field-label max-w-full" htmlFor={`${id}-email`}>
                   {t('email')}
                   <input
                     id={`${id}-email`}
@@ -188,7 +186,7 @@ export function TeamScreen({
                     onChange={(event) => {
                       setEmail(event.target.value);
                     }}
-                    className="input w-64"
+                    className="input w-64 max-w-full"
                   />
                 </label>
                 <button type="submit" className="btn btn-primary" disabled={email.trim() === ''}>
@@ -196,7 +194,7 @@ export function TeamScreen({
                 </button>
               </form>
               {link && (
-                <div className="mt-3 rounded-md border border-border-subtle bg-surface p-3 text-sm">
+                <div className="mt-3 rounded-md border border-border-subtle bg-surface-raised p-3 text-sm">
                   <p className="mb-1">{t('linkReady')}</p>
                   <code dir="ltr" className="break-all" data-testid="team-link">
                     {link}
@@ -210,10 +208,10 @@ export function TeamScreen({
                       <span className="flex-1" dir="ltr">
                         {open.email}
                       </span>
-                      <span className="text-text-muted">{t('waiting')}</span>
+                      <StatusBadge tone="warning">{t('waiting')}</StatusBadge>
                       <button
                         type="button"
-                        className="btn btn-sm"
+                        className="btn btn-sm btn-secondary"
                         onClick={() => void act(() => revokeImpl({ token, id: open.id }))}
                       >
                         {t('withdraw')}
@@ -222,13 +220,13 @@ export function TeamScreen({
                   ))}
                 </ul>
               )}
-            </section>
+            </Panel>
           ) : (
             <p className="text-sm text-text-muted">{t('notOwner')}</p>
           )}
 
           {message && (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-sm text-severity-critical">
               {message}
             </p>
           )}
