@@ -39,7 +39,7 @@ type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
 export type ExportOutcome = { kind: 'exported'; blob: Blob; filename: string } | Failure;
 export type ImportOutcome = { kind: 'imported'; result: LoadScheduleImport } | Failure;
-/** `budget`: the month's model allowance is spent (a 429), not a fault. */
+/** `budget`: the month's model allowance is spent, not a fault. */
 export type SuggestOutcome =
   { kind: 'suggested'; result: LoadScheduleSuggestion } | { kind: 'budget' } | Failure;
 export type PriceOutcome = { kind: 'priced'; quotation: Quotation } | Failure;
@@ -228,12 +228,20 @@ export function importSchedule(
   );
 }
 
+/** The code the server gives a 429 when the month's model calls are spent. */
+export const MODEL_BUDGET_EXCEEDED = 'model_budget_exceeded';
+
 /**
  * Draft a load schedule from a plain description:
- * `POST /api/v1/design/load-schedule/suggest`. Each call is a model request,
- * so a 429 is the month's allowance spent rather than a fault.
+ * `POST /api/v1/design/load-schedule/suggest`.
+ *
+ * Two different limits answer this route with a 429, and only the code tells
+ * them apart: the month's model allowance (`budget` -- nothing to do but wait
+ * for next month or change plan) and the per-address design limit
+ * (`rate_limited` -- wait a few minutes). Reading every 429 as the first told
+ * an engineer their month was gone when a short wait would have done.
  */
-export function suggestSchedule(
+export async function suggestSchedule(
   options: Transport & {
     description: string;
     supplyPhases: number;
@@ -241,7 +249,7 @@ export function suggestSchedule(
   },
 ): Promise<SuggestOutcome> {
   const { description, supplyPhases, profile = null } = options;
-  return call<SuggestOutcome>(
+  const outcome = await call<SuggestOutcome>(
     options,
     '/api/v1/design/load-schedule/suggest',
     { description, supply_phases: supplyPhases, profile },
@@ -249,8 +257,10 @@ export function suggestSchedule(
       has(payload, 'loads', 'assumptions')
         ? { kind: 'suggested', result: payload as LoadScheduleSuggestion }
         : null,
-    (response) => (response.status === 429 ? { kind: 'budget' } : null),
   );
+  return outcome.kind === 'refused' && outcome.code === MODEL_BUDGET_EXCEEDED
+    ? { kind: 'budget' }
+    : outcome;
 }
 
 /** Price a designed project: `POST /api/v1/design/quotation`. */

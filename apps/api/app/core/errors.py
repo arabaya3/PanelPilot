@@ -93,15 +93,24 @@ class TooManyRequestsError(PanelPilotError):
     rather than to slow down.
     """
 
-    def __init__(self, message: str, *, retry_after_seconds: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: int | None = None,
+        code: str = "rate_limited",
+    ) -> None:
         """Record the message and, when known, how long to wait.
 
         Args:
             message: Human-readable explanation, including the wait.
             retry_after_seconds: Whole seconds until a retry can succeed,
                 sent as ``Retry-After`` so a client need not parse the text.
+            code: Which limit was hit. A subclass names its own, so a page can
+                tell "wait a few minutes" apart from "the month is used up" --
+                both are 429s, and only the code says which one applies.
         """
-        super().__init__(message, code="rate_limited")
+        super().__init__(message, code=code)
         self.retry_after_seconds = retry_after_seconds
 
 
