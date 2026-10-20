@@ -486,3 +486,38 @@ def embed_query(query: str) -> list[float]:
     in `app.ai.retrieval.embedding`.
     """
     return _embed_query(query)
+
+
+def published_titles_by_brand() -> dict[str, list[str]]:
+    """Every distinct document title in production, grouped by brand.
+
+    A read, kept here with the module's other production reads so the index
+    stays named in one sanctioned place (see the architecture test on
+    production access). ``equipment_hint`` builds its vocabulary from this.
+
+    Returns:
+        Brand -> the titles of the documents published under it.
+    """
+    body: dict[str, Any] = {
+        "size": 0,
+        "aggs": {
+            "brand": {
+                "terms": {"field": "brand", "size": 100},
+                "aggs": {
+                    "documents": {
+                        "terms": {"field": "source_url", "size": 1000},
+                        "aggs": {"title": {"top_hits": {"size": 1, "_source": ["document_title"]}}},
+                    }
+                },
+            }
+        },
+    }
+    response = get_client().search(index=resolve_index(IndexTarget.PRODUCTION), body=body)
+    titles: dict[str, list[str]] = {}
+    for brand in response["aggregations"]["brand"]["buckets"]:
+        for document in brand["documents"]["buckets"]:
+            hits = document["title"]["hits"]["hits"]
+            title = hits[0]["_source"].get("document_title") if hits else None
+            if title:
+                titles.setdefault(brand["key"], []).append(str(title))
+    return titles

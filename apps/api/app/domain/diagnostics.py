@@ -47,6 +47,7 @@ from app.ai.guardrails.refusal_text import render_refusal
 from app.ai.localisation import generate_localised_diagnosis
 from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
 from app.ai.query_translation import english_search_query
+from app.ai.retrieval.equipment_hint import infer_manufacturer
 from app.ai.retrieval.hybrid_search import search
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
@@ -148,10 +149,20 @@ def run_diagnosis(
                 request.symptom, client=_anthropic_client(), model=get_settings().generation_model
             )
 
+    # The equipment the engineer set wins. Without it, a question that names
+    # one manufacturer's product is searched within that manufacturer's
+    # manuals -- see `equipment_hint` for what that fixed and why it holds back
+    # when the question names several. Read from the question as written:
+    # model names are Latin script in every language, and the translation is
+    # free to drop one.
+    brand = request.equipment.manufacturer if request.equipment else None
+    if brand is None:
+        brand = infer_manufacturer(request.symptom)
+
     with timed("retrieval"):
         passages = search(
             query,
-            brand=request.equipment.manufacturer if request.equipment else None,
+            brand=brand,
             model=request.equipment.model if request.equipment else None,
         )
     # Counts and lengths, never the question or the passages themselves.

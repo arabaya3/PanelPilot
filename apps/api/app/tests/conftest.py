@@ -27,6 +27,19 @@ def _billing_not_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(billing, "enforced", lambda: False)
 
 
+@pytest.fixture(autouse=True)
+def _no_brand_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the diagnosis path off the index unless a test asks for the hint.
+
+    Reading the brand vocabulary queries OpenSearch, which the unit job does
+    not run, and a test that stubs ``search`` means the passages it supplies.
+    A test of the hint itself sets it back, or calls ``equipment_hint`` directly.
+    """
+    from app.domain import diagnostics
+
+    monkeypatch.setattr(diagnostics, "infer_manufacturer", lambda _question: None)
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Return settings suitable for tests, with no real credentials."""
