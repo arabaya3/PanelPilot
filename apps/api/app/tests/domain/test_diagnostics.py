@@ -2267,6 +2267,63 @@ def test_a_question_in_another_language_is_searched_in_english(
     assert searched == [f"EN({_request().symptom})"]
 
 
+def test_a_question_naming_one_brands_drive_is_searched_in_its_manuals(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Unfiltered, a SINAMICS fault outranked ABB's own row for 3220.
+
+    The engineer had set no equipment, so the brand came from nowhere.
+    """
+    brands: list[object] = []
+
+    def _search(_query: str, **kw: object) -> list[RetrievedPassage]:
+        brands.append(kw.get("brand"))
+        return [_passage()]
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
+    monkeypatch.setattr(
+        diagnostics_domain,
+        "infer_manufacturer",
+        lambda question: "ABB" if "ACS880" in question else None,
+    )
+
+    diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()),
+        user=_user(),
+        request=_request(symptom="ACS880 shows 3220 DC link undervoltage", equipment=None),
+    )
+
+    assert brands == ["ABB"]
+
+
+def test_the_equipment_the_engineer_set_wins_over_the_hint(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The hint fills a gap; it never overrides a stated manufacturer."""
+    brands: list[object] = []
+
+    def _search(_query: str, **kw: object) -> list[RetrievedPassage]:
+        brands.append(kw.get("brand"))
+        return [_passage()]
+
+    def _never(_question: str) -> str:
+        raise AssertionError("the hint was consulted though the engineer named a manufacturer")
+
+    monkeypatch.setattr(diagnostics_domain, "search", _search)
+    monkeypatch.setattr(diagnostics_domain, "infer_manufacturer", _never)
+
+    diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()),
+        user=_user(),
+        request=_request(
+            symptom="ACS880 trips",
+            equipment=EquipmentContext(manufacturer="Siemens", model=None),
+        ),
+    )
+
+    assert brands == ["Siemens"]
+
+
 def test_an_english_question_is_searched_as_asked(
     monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
 ) -> None:

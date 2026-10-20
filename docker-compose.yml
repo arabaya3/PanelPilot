@@ -237,6 +237,11 @@ services:
       # origin, which is what keeps the requests same-origin and out of CORS
       # entirely.
       API_PROXY_TARGET: http://api:8000
+      # Poll for source changes. A bind mount from a Windows or macOS host
+      # delivers no file-change events into the container, so `next dev`
+      # otherwise keeps serving the code it compiled at start -- an edit
+      # looks applied on disk and is not, until the container restarts.
+      WATCHPACK_POLLING: 'true'
     volumes:
       - ./apps/web:/repo/apps/web
       - ./packages:/repo/packages

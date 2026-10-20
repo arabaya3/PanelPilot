@@ -256,6 +256,8 @@ export function DesignScreen({
   }
 
   const complete = isComplete(info, boards);
+  // The form, not the session, is what keeps the button disabled.
+  const incomplete = token !== null && !complete;
 
   function onOpened(project: SavedProject, fill: boolean) {
     setOpened({
@@ -605,10 +607,22 @@ export function DesignScreen({
           <button
             type="submit"
             disabled={token === null || !complete || result.kind === 'working'}
+            aria-describedby={incomplete ? `${id}-incomplete` : undefined}
             className="btn btn-primary"
           >
             {result.kind === 'working' ? t('working') : t('submit')}
           </button>
+          {/* A disabled button says nothing about why. Said only for what the
+              engineer can fix: a session still starting is not their doing. */}
+          {incomplete && (
+            <p
+              id={`${id}-incomplete`}
+              className="mt-2 text-sm text-text-muted"
+              data-testid="design-incomplete"
+            >
+              {t('incomplete')}
+            </p>
+          )}
         </div>
       </form>
 

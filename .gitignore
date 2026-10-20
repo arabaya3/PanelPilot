@@ -40,3 +40,7 @@ apps/api/var/
 # Manuals downloaded by hand for `ingest-files`; only their list is committed.
 apps/api/data/*/*.pdf
 apps/api/data/*/*.zip
+# The bundle of every source's folder, for handing over in one file.
+apps/api/data/*.zip
+# Output a crawl or review run was redirected to; local to the run.
+apps/api/data/*.log
