@@ -27,12 +27,16 @@ cannot vouch for.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
+import structlog
 from pydantic import BaseModel, ValidationError
 
 from app.models.schemas.guardrail import ConfidenceDecision, DecisionOutcome, RefusalReason
 from app.models.schemas.responses import StructuredDiagnosis
+
+logger = structlog.get_logger(__name__)
 
 # Name the model sees. Stable: it appears in stored tool-call transcripts, so
 # renaming it makes historical turns harder to interpret.
@@ -179,8 +183,57 @@ def diagnosis_input_schema() -> dict[str, Any]:
     return schema
 
 
+#: Keywords strict tool use does not accept. They stay enforced: the payload is
+#: still parsed by ``StructuredDiagnosis``, which carries every one of them.
+_STRICT_UNSUPPORTED = frozenset(
+    {
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "maxItems",
+        "uniqueItems",
+    }
+)
+
+
+def _strict(schema: Any) -> Any:
+    """A copy of ``schema`` that strict tool use accepts.
+
+    Drops the keywords it rejects and closes every object with
+    ``additionalProperties: false``, which strict mode requires of all of them.
+
+    ``minItems`` of 0 or 1 is kept: strict mode accepts it, and it is the one
+    constraint that matters on the wire. Dropping it let the model send
+    ``summary_citation_ids: []`` -- schema-valid, and refused by the parser
+    for citing nothing.
+    """
+    if isinstance(schema, list):
+        return [_strict(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    strict = {
+        key: _strict(value)
+        for key, value in schema.items()
+        if key not in _STRICT_UNSUPPORTED and not (key == "minItems" and value not in (0, 1))
+    }
+    if strict.get("type") == "object" or "properties" in strict:
+        strict["additionalProperties"] = False
+    return strict
+
+
 def diagnosis_tool_definition() -> dict[str, Any]:
     """Return the tool definition constraining the model's output.
+
+    ``strict`` makes the API hold the call to the schema. Without it the model
+    treated ``required`` as a suggestion: on questions the evidence plainly
+    answered (retrieval scores of 0.9 to 1.0) it often sent a ``summary`` and
+    nothing else, and the turn was refused as unvalidatable -- an answer that
+    existed, withheld at random, for want of three fields the schema already
+    demanded.
 
     Returns:
         A tool definition in the shape the Claude API expects.
@@ -188,7 +241,8 @@ def diagnosis_tool_definition() -> dict[str, Any]:
     return {
         "name": DIAGNOSIS_TOOL_NAME,
         "description": TOOL_DESCRIPTION,
-        "input_schema": diagnosis_input_schema(),
+        "input_schema": _strict(diagnosis_input_schema()),
+        "strict": True,
     }
 
 
@@ -287,11 +341,13 @@ def structured_or_refuse(
         return None, _to_refusal(decision, "the model returned no structured output")
 
     payload = dict(payload)
+    fields = sorted(payload)
     if payload.pop(ANSWERS_FIELD, True) is False:
         return None, _to_refusal(
             decision,
             "the supplied passages do not answer this question",
             reason=RefusalReason.NOT_IN_SOURCES,
+            fields=fields,
         )
 
     try:
@@ -299,7 +355,17 @@ def structured_or_refuse(
     except (ValidationError, ValueError) as exc:
         # Never repaired and never partially rendered. A response the system
         # could not parse is one it cannot vouch for.
-        return None, _to_refusal(decision, str(exc))
+        return None, _to_refusal(decision, str(exc), fields=fields)
+
+
+#: Pydantic quotes the offending value (``input_value='...'``); for model
+#: output that is answer text, which does not belong in a log line.
+_INPUT_VALUE = re.compile(r"input_value=.*?(?=, input_type=|\]$|$)", re.MULTILINE)
+
+
+def _without_values(detail: str) -> str:
+    """A validation message with the quoted values removed, locations kept."""
+    return _INPUT_VALUE.sub("input_value=<omitted>", detail)
 
 
 def _to_refusal(
@@ -307,6 +373,7 @@ def _to_refusal(
     detail: str,
     *,
     reason: RefusalReason = RefusalReason.UNVALIDATABLE_OUTPUT,
+    fields: list[str] | None = None,
 ) -> ConfidenceDecision:
     """Convert a permitting decision into a refusal carrying the failure.
 
@@ -315,6 +382,8 @@ def _to_refusal(
         detail: What went wrong, for the refusal template.
         reason: Why; ``NOT_IN_SOURCES`` when the model declined because the
             passages do not answer the question.
+        fields: The names the model's tool call did carry, when it made one --
+            logged so a missing field can be told from a renamed one.
 
     Returns:
         A refusal preserving the original score and threshold, so the turn can
@@ -324,6 +393,20 @@ def _to_refusal(
         malformed generation look like a retrieval-quality problem to whoever
         reads the escalation rows.
     """
+    # Logged here, the one exit every rejected generation passes through. The
+    # engineer is told only "asking again will usually succeed"; without this
+    # line nobody can tell a schema mismatch from a cut-off answer from a
+    # citation the evidence does not contain, so a refusal that recurs cannot
+    # be diagnosed. The reason and the scores only -- never the answer text,
+    # which may quote a customer's question back.
+    logger.warning(
+        "diagnosis.output_rejected",
+        reason=reason.value,
+        detail=_without_values(detail)[:500],
+        fields=fields,
+        score=decision.score,
+        threshold=decision.threshold,
+    )
     return ConfidenceDecision(
         outcome=DecisionOutcome.UNCERTAIN,
         score=decision.score,
