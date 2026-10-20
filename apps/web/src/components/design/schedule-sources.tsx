@@ -121,7 +121,7 @@ export function ScheduleSources({
           {suggestState.kind === 'working' ? t('suggest.working') : t('suggest.submit')}
         </button>
         {suggestState.kind === 'error' && (
-          <p role="alert" className="text-sm text-danger" data-testid="suggest-error">
+          <p role="alert" className="text-sm text-severity-critical" data-testid="suggest-error">
             {suggestState.detail}
           </p>
         )}
@@ -151,7 +151,7 @@ export function ScheduleSources({
           <p className="text-sm text-text-muted">{t('import.working')}</p>
         )}
         {importState.kind === 'error' && (
-          <p role="alert" className="text-sm text-danger" data-testid="import-error">
+          <p role="alert" className="text-sm text-severity-critical" data-testid="import-error">
             {importState.detail}
           </p>
         )}

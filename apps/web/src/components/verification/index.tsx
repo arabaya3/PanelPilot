@@ -3,6 +3,8 @@
 import type { components } from '@panelpilot/shared-types';
 import { useId, useState } from 'react';
 
+import { EmptyState, Notice, StatusBadge, TableFrame } from '@/components/ui';
+
 import { Labeller } from './labeller';
 
 type QueueItem = components['schemas']['QueueItem'];
@@ -52,8 +54,24 @@ export class ClaimConflict extends Error {
 }
 
 /** The strings this component renders. */
+/** Strings for the queue overview table. */
+export interface QueueTableLabels {
+  /** Accessible name of the scrolling table region. */
+  label: string;
+  position: string;
+  kind: string;
+  location: string;
+  status: string;
+  kindFlag: string;
+  kindContent: string;
+  current: string;
+  waiting: string;
+}
+
 export interface VerificationLabels {
   heading: string;
+  /** Absent, the console shows the current item only, with no overview. */
+  queue?: QueueTableLabels;
   empty: string;
   itemCount: string;
   proposed: string;
@@ -314,21 +332,27 @@ export function VerificationConsole({
         <h2 id={headingId} className="text-xl font-bold text-text">
           {labels.heading}
         </h2>
-        <p data-testid="remaining" className="chip">
-          {labels.itemCount.replace('{count}', String(remaining.length))}
+        <p data-testid="remaining">
+          <StatusBadge tone="accent">
+            {labels.itemCount.replace('{count}', String(remaining.length))}
+          </StatusBadge>
         </p>
       </div>
 
       {error !== null && current === undefined && (
-        <p role="alert" data-testid="queue-error" className="text-sm text-severity-critical">
+        <Notice tone="critical" testId="queue-error">
           {error}
-        </p>
+        </Notice>
+      )}
+
+      {labels.queue && remaining.length > 0 && (
+        <QueueTable items={remaining} labels={labels} queue={labels.queue} />
       )}
 
       {current === undefined ? (
-        <p data-testid="queue-empty" className="card p-6 text-center text-sm text-text-muted">
-          {labels.empty}
-        </p>
+        <div data-testid="queue-empty">
+          <EmptyState title={labels.empty} />
+        </div>
       ) : (
         <ReviewPane
           key={current.id}
@@ -343,5 +367,62 @@ export function VerificationConsole({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The queue at a glance: what is waiting and in what order. The first row is
+ * the item open below; labelling it moves the next one up.
+ */
+function QueueTable({
+  items,
+  labels,
+  queue,
+}: {
+  items: readonly QueueItem[];
+  labels: VerificationLabels;
+  queue: QueueTableLabels;
+}) {
+  return (
+    <TableFrame label={queue.label}>
+      <table className="data-table" data-testid="queue-table">
+        <thead>
+          <tr>
+            <th scope="col">{queue.position}</th>
+            <th scope="col">{queue.kind}</th>
+            <th scope="col">{queue.location}</th>
+            <th scope="col">{queue.status}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => {
+            const location = [
+              item.section ?? null,
+              typeof item.page === 'number'
+                ? labels.page.replace('{page}', String(item.page))
+                : null,
+            ].filter((part): part is string => part !== null && part !== '');
+            return (
+              <tr
+                key={item.id}
+                data-testid={`queue-row-${item.id}`}
+                aria-current={index === 0 ? 'true' : undefined}
+              >
+                <td className="tabular-nums">{index + 1}</td>
+                <td>{item.flag ? queue.kindFlag : queue.kindContent}</td>
+                <td dir="auto">{location.length > 0 ? location.join(', ') : '—'}</td>
+                <td>
+                  {index === 0 ? (
+                    <StatusBadge tone="accent">{queue.current}</StatusBadge>
+                  ) : (
+                    <StatusBadge>{queue.waiting}</StatusBadge>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </TableFrame>
   );
 }

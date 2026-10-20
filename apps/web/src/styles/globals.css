@@ -18,6 +18,11 @@
     font-family: var(--font-sans);
   }
 
+  :root[data-theme='dark'] {
+    /* Native scrollbars, form controls and the date picker follow. */
+    color-scheme: dark;
+  }
+
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
@@ -45,16 +50,22 @@
 }
 
 /**
- * The handful of shapes every screen repeats.
+ * The handful of shapes every screen repeats, and the vocabulary the shared
+ * components in `src/components/ui` emit.
  *
  * Classes rather than a component per shape, because each one is a button, a
  * link or an input underneath and wrapping them would hide the element a
  * screen reader and a test both need to see. Built from the same tokens as
  * everything else, so both themes follow.
+ *
+ * Graphite Workbench: opaque panels a step lighter than the page, hairline
+ * separators, modest radii, and gold only where something is primary or
+ * selected.
  */
 @layer components {
+  /* ------------------------------------------------------------ Buttons --- */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
     /* 40px: comfortably a fingertip, and the height of `.input` beside it. */
     min-height: 2.5rem;
   }
@@ -64,12 +75,13 @@
     min-height: 2.25rem;
   }
 
+  /* Gold is reserved for the one primary action on a screen. */
   .btn-primary {
-    @apply bg-accent text-accent-contrast shadow-sm hover:bg-accent-hover;
+    @apply bg-accent text-accent-contrast hover:bg-accent-hover;
   }
 
   .btn-secondary {
-    @apply border border-border bg-surface text-text hover:bg-surface-raised;
+    @apply border border-border bg-surface-raised text-text hover:bg-surface;
   }
 
   .btn-ghost {
@@ -81,22 +93,28 @@
   }
 
   .btn-icon {
-    @apply inline-flex items-center justify-center rounded-md border border-border-subtle text-text-muted transition-colors hover:bg-surface-raised hover:text-text;
+    @apply inline-flex items-center justify-center rounded-md border border-border-subtle text-text-muted transition-colors duration-150 hover:bg-surface-raised hover:text-text disabled:cursor-not-allowed disabled:opacity-50;
     min-height: 2.25rem;
     min-width: 2.25rem;
   }
 
+  /* ------------------------------------------------------------- Inputs --- */
   .input {
-    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-base text-text transition-colors placeholder:text-text-muted;
+    @apply w-full rounded-md border border-border bg-bg px-3 py-2 text-base text-text transition-colors duration-150 placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60;
     min-height: 2.5rem;
   }
 
+  .input[aria-invalid='true'] {
+    @apply border-severity-critical;
+  }
+
+  /* -------------------------------------------------------------- Cards --- */
   .card {
-    @apply rounded-lg border border-border-subtle bg-surface shadow-md;
+    @apply rounded-lg border border-border-subtle bg-surface;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full bg-accent-subtle px-3 py-1 text-xs font-medium text-accent-hover;
+    @apply inline-flex items-center gap-1 rounded-full border border-border-subtle bg-surface-raised px-3 py-1 text-xs font-medium text-text;
   }
 
   .eyebrow {
@@ -105,5 +123,330 @@
 
   .link {
     @apply font-medium text-accent underline-offset-4 hover:text-accent-hover hover:underline;
+  }
+
+  /* -------------------------------------------------------- Page header --- */
+  .page-header {
+    @apply mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-border-subtle pb-4;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold text-text;
+    line-height: 1.25;
+  }
+
+  .page-description {
+    @apply mt-1 max-w-prose text-sm text-text-muted;
+  }
+
+  .page-actions {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  /* -------------------------------------------------------------- Panel --- */
+  .panel {
+    @apply min-w-0 rounded-lg border border-border-subtle bg-surface;
+  }
+
+  .panel-header {
+    @apply flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3;
+  }
+
+  .panel-title {
+    @apply text-base font-semibold text-text;
+  }
+
+  .panel-body {
+    @apply p-4;
+  }
+
+  /* --------------------------------------------------------------- Tabs --- */
+  /* Underlined: the active tab is gold text over a gold rule, the rest muted.
+   * The list scrolls rather than wraps on a phone. */
+  .tabs {
+    @apply flex items-end gap-1 overflow-x-auto border-b border-border-subtle;
+    scrollbar-width: thin;
+  }
+
+  .tab {
+    @apply -mb-px inline-flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-3 py-2 text-sm font-medium text-text-muted transition-colors duration-150 hover:text-text disabled:cursor-not-allowed disabled:opacity-50;
+    min-height: 2.5rem;
+  }
+
+  .tab[aria-selected='true'] {
+    @apply border-accent font-semibold text-accent;
+  }
+
+  .tab-badge {
+    @apply rounded-full bg-surface-raised px-2 text-xs font-medium text-text-muted;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------- Status --- */
+  /* Dot plus word: the word carries the meaning, colour only reinforces. */
+  .status {
+    @apply inline-flex items-center gap-2 whitespace-nowrap rounded-sm border border-border-subtle bg-surface-raised px-2 py-px text-xs font-semibold text-text;
+  }
+
+  .status-dot {
+    @apply inline-block shrink-0 rounded-full;
+    width: 0.5rem;
+    height: 0.5rem;
+    background-color: currentColor;
+  }
+
+  .status-neutral {
+    @apply text-text-muted;
+  }
+
+  .status-accent {
+    @apply text-accent;
+  }
+
+  .status-info {
+    @apply bg-severity-info-surface text-severity-info;
+  }
+
+  .status-warning {
+    @apply bg-severity-warning-surface text-severity-warning;
+  }
+
+  .status-critical {
+    @apply bg-severity-critical-surface text-severity-critical;
+  }
+
+  .status-success {
+    @apply bg-success-surface text-success;
+  }
+
+  /* ------------------------------------------------------ Async states --- */
+  .empty-state {
+    @apply flex flex-col items-center gap-2 rounded-lg border border-dashed border-border-subtle px-4 py-7 text-center;
+  }
+
+  .empty-state-icon {
+    @apply mb-1 flex items-center justify-center rounded-full bg-surface-raised p-3 text-text-muted;
+  }
+
+  .loading-state {
+    @apply flex items-center gap-2 text-sm text-text-muted;
+  }
+
+  .spinner {
+    @apply inline-block shrink-0 rounded-full border-2 border-border-subtle;
+    width: 1rem;
+    height: 1rem;
+    border-top-color: var(--color-accent);
+    animation: pp-spin 0.8s linear infinite;
+  }
+
+  .notice {
+    @apply flex items-start gap-3 rounded-md border px-4 py-3 text-text;
+  }
+
+  .notice-icon {
+    @apply mt-px shrink-0;
+  }
+
+  .notice-info {
+    @apply border-severity-info bg-severity-info-surface;
+  }
+
+  .notice-info .notice-icon {
+    @apply text-severity-info;
+  }
+
+  .notice-warning {
+    @apply border-severity-warning bg-severity-warning-surface;
+  }
+
+  .notice-warning .notice-icon {
+    @apply text-severity-warning;
+  }
+
+  .notice-critical {
+    @apply border-severity-critical bg-severity-critical-surface;
+  }
+
+  .notice-critical .notice-icon {
+    @apply text-severity-critical;
+  }
+
+  .notice-success {
+    @apply border-success bg-success-surface;
+  }
+
+  .notice-success .notice-icon {
+    @apply text-success;
+  }
+
+  .save-indicator {
+    @apply inline-flex items-center;
+  }
+
+  /* -------------------------------------------------------------- Field --- */
+  .field {
+    @apply flex min-w-0 flex-col gap-1;
+  }
+
+  .field-label {
+    @apply text-sm font-medium text-text;
+  }
+
+  .field-control {
+    @apply flex items-center gap-2;
+  }
+
+  .field-unit {
+    @apply shrink-0 font-mono text-sm text-text-muted;
+  }
+
+  .field-hint {
+    @apply text-xs text-text-muted;
+  }
+
+  .field-error {
+    @apply text-xs font-medium text-severity-critical;
+  }
+
+  /* -------------------------------------------------------------- Table --- */
+  .table-frame {
+    @apply max-w-full overflow-x-auto rounded-md border border-border-subtle bg-surface;
+  }
+
+  /* Dense engineering tables: sticky header, hairline rows, aligned digits.
+   * No card per row. */
+  .data-table {
+    @apply w-full border-collapse text-sm;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .data-table th {
+    @apply sticky top-0 whitespace-nowrap border-b border-border-subtle bg-surface-raised px-3 py-2 text-start text-xs font-semibold uppercase tracking-wide text-text-muted;
+    z-index: 1;
+  }
+
+  .data-table td {
+    @apply border-b border-border-subtle px-3 py-2 align-top text-text;
+  }
+
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .data-table tbody tr:hover td {
+    @apply bg-surface-raised;
+  }
+
+  /* ----------------------------------------------------- Dialog/drawer --- */
+  .dialog {
+    @apply max-h-full max-w-full bg-transparent p-0 text-text;
+  }
+
+  .dialog::backdrop {
+    background-color: var(--color-backdrop);
+  }
+
+  .dialog-surface {
+    @apply flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-lg;
+  }
+
+  .dialog-dialog {
+    margin: auto;
+    width: min(36rem, calc(100vw - 2rem));
+  }
+
+  .dialog-dialog .dialog-surface {
+    max-height: calc(100vh - 2rem);
+  }
+
+  /* Drawers pin to one inline edge; logical insets flip them in RTL. */
+  .dialog-drawer,
+  .dialog-drawer-start {
+    position: fixed;
+    inset-block: 0;
+    margin: 0;
+    height: 100%;
+    max-height: none;
+    width: min(22rem, calc(100vw - 3rem));
+  }
+
+  .dialog-drawer {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+  }
+
+  .dialog-drawer-start {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+  }
+
+  .dialog-drawer .dialog-surface,
+  .dialog-drawer-start .dialog-surface {
+    @apply h-full rounded-none border-y-0;
+  }
+
+  .dialog-drawer .dialog-surface {
+    @apply border-e-0;
+  }
+
+  .dialog-drawer-start .dialog-surface {
+    @apply border-s-0;
+  }
+
+  .dialog-header {
+    @apply flex items-center gap-2 border-b border-border-subtle px-4 py-3;
+  }
+
+  .dialog-body {
+    @apply min-h-0 flex-1 overflow-y-auto p-4;
+  }
+
+  .dialog-footer {
+    @apply flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle px-4 py-3;
+  }
+
+  /* --------------------------------------------------- Source reference --- */
+  .source-ref {
+    @apply flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm;
+  }
+
+  .source-ref-excerpt {
+    @apply border-s-2 border-border ps-3 text-sm text-text-muted;
+  }
+
+  /* ------------------------------------------------------------ Toolbar --- */
+  .toolbar {
+    @apply flex flex-wrap items-center gap-2 border-b border-border-subtle bg-surface px-3 py-2;
+  }
+
+  /* -------------------------------------------------------------- Sheet --- */
+  /* The paper a drawing sits on: paper and ink in both themes, so a schematic
+   * reads the same on screen as on the printout. */
+  .sheet-frame {
+    @apply max-w-full overflow-auto rounded-sm border border-border bg-sheet p-4 text-sheet-ink shadow-md;
+  }
+}
+
+@keyframes pp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Motion is decoration here, never information: honour the preference
+ * everywhere. The spinner stays visible as a static ring. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spinner {
+    animation: none !important;
   }
 }

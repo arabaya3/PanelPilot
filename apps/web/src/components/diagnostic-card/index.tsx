@@ -7,6 +7,7 @@ import { useId } from 'react';
 import { useChecklist } from '@/components/chat/checklist-provider';
 import { StateIcon } from '@/components/state-icon';
 import { TechnicalToken } from '@/components/technical-token';
+import { SourceReference } from '@/components/ui';
 
 import { decideVariant, type CardVariant, type ResolvedStep } from './citations';
 
@@ -79,9 +80,17 @@ function CitationLine({ citation }: { citation: Citation }) {
 
   return (
     <li className="text-sm text-text-muted">
-      <TechnicalToken>{citation.manufacturer}</TechnicalToken>{' '}
-      <TechnicalToken className="font-sans">{citation.document_title}</TechnicalToken>
-      {locator.length > 0 ? <span> — {locator.join(', ')}</span> : null}
+      {/* The locator stays in the title rather than in `detail`: it is
+          translated prose ("page 214"), and `detail` forces LTR. */}
+      <SourceReference
+        title={
+          <>
+            <TechnicalToken>{citation.manufacturer}</TechnicalToken>{' '}
+            <TechnicalToken className="font-sans">{citation.document_title}</TechnicalToken>
+            {locator.length > 0 ? <span> — {locator.join(', ')}</span> : null}
+          </>
+        }
+      />
     </li>
   );
 }

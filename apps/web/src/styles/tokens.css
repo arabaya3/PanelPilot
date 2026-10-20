@@ -16,44 +16,59 @@
  */
 
 :root {
-  /* --- Surfaces and text ------------------------------------------------ */
-  --color-bg: #f8fafc;
+  /* The application header's height at md and up (40px controls + 2 x 8px
+   * padding + 1px border); the sticky rail sits directly beneath it. */
+  --shell-header-height: 3.5625rem;
+
+  /* --- Surfaces and text ------------------------------------------------
+   * Graphite Workbench, light variant: neutral greys rather than slate blue,
+   * so the light theme is the same product as the default dark one. Every
+   * pairing is measured in src/__tests__/tokens.test.ts. */
+  --color-bg: #f4f5f6;
   --color-surface: #ffffff;
-  --color-surface-raised: #f1f5f9;
-  /* 4.8:1 on surface. A border separating two cards is a UI component
-   * boundary, so 3:1 applies — the first version scored 1.48:1, which is a
-   * suggestion of an edge rather than an edge. */
-  --color-border: #64748b;
-  /* Decorative only: card outlines and dividers that sit beside a real
-   * boundary (a shadow, a fill change). Never the only edge of a control —
-   * that is --color-border, which clears 3:1. */
-  --color-border-subtle: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #475569;
+  --color-surface-raised: #eef0f2;
+  /* The navigation rail and top bar. */
+  --color-chrome: #ffffff;
+  /* 4.6:1 on surface, 4.1:1 on raised: a control boundary needs 3:1. */
+  --color-border: #6b7680;
+  /* Decorative only: dividers and card outlines that sit beside a real
+   * boundary (a fill change). Never the only edge of a control. */
+  --color-border-subtle: #dde1e5;
+  --color-text: #14191e;
+  /* 7.3:1 on surface, 6.4:1 on raised. */
+  --color-text-muted: #4d5862;
 
   /* --- Severity ---------------------------------------------------------
-   * Three levels, no more. A diagnostic card maps each to exactly one of
-   * these, so an engineer learns the colour once.
-   *
-   * Every pairing in this file is measured rather than eyeballed, and the
-   * numbers are asserted in src/__tests__/tokens.test.ts so a future edit
-   * that breaks one fails the build. A warning nobody can read on a phone in
-   * a plant room is not a warning.
-   */
+   * Three levels, plus success for a completed check. A diagnostic card maps
+   * each to exactly one of these, so an engineer learns the colour once.
+   * A warning nobody can read on a phone in a plant room is not a warning. */
   --color-severity-critical: #b91c1c;
   --color-severity-warning: #b45309;
   --color-severity-info: #1d4ed8;
+  --color-success: #15803d;
 
   --color-severity-critical-surface: #fef2f2;
   --color-severity-warning-surface: #fffbeb;
   --color-severity-info-surface: #eff6ff;
+  --color-success-surface: #f0fdf4;
 
-  /* --- Accent ----------------------------------------------------------- */
-  --color-accent: #0f766e;
-  --color-accent-hover: #115e59;
+  /* --- Accent -----------------------------------------------------------
+   * A deep amber: the dark theme's gold cannot carry white text or read as
+   * text on white, so light uses the same hue darkened to 5.9:1. */
+  --color-accent: #8a5a00;
+  --color-accent-hover: #6e4700;
   --color-accent-contrast: #ffffff;
-  /* A tint for selected navigation and chips. accent-hover on it is 6.8:1. */
-  --color-accent-subtle: #e6f5f3;
+  /* Selected navigation tint. accent-hover on it is 7.3:1. */
+  --color-accent-subtle: #fbf1dc;
+
+  /* --- Drawing sheet ----------------------------------------------------
+   * The paper a schematic is drawn on stays paper in both themes: drawings
+   * are printed and compared against prints. Ink on sheet is 15.8:1. */
+  --color-sheet: #ffffff;
+  --color-sheet-ink: #1f2328;
+
+  /* Behind a modal dialog or drawer. Not text, so no contrast pairing. */
+  --color-backdrop: rgb(20 25 30 / 0.45);
 
   /* --- Focus -------------------------------------------------------------
    * Two tokens, not one, because no single colour works.
@@ -67,7 +82,7 @@
    * So the ring is drawn in --color-focus with a --color-focus-offset gap
    * between it and the element. Whichever the ring is touching, one of the
    * two separates it: measured 19.8:1 ring-on-offset, 5.5:1 offset-on-accent
-   * and 18.9:1 ring-on-background in light; 17.9 / 9.6 / 14.6 in dark.
+   * and 18.1:1 ring-on-background in light; 18.1 / 10.6 / 18.1 in dark.
    */
   --color-focus: #0c0a09;
   --color-focus-offset: #ffffff;
@@ -126,18 +141,22 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* --- Radii and elevation ----------------------------------------------- */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 0.875rem;
-  --radius-xl: 1.25rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 
-  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
-  --shadow-md: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 4px 12px -2px rgb(15 23 42 / 0.08);
-  --shadow-lg: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 12px 32px -8px rgb(15 23 42 / 0.12);
+  --shadow-sm: 0 1px 2px 0 rgb(20 25 30 / 0.05);
+  --shadow-md: 0 1px 3px 0 rgb(20 25 30 / 0.06), 0 4px 12px -2px rgb(20 25 30 / 0.08);
+  --shadow-lg: 0 1px 3px 0 rgb(20 25 30 / 0.06), 0 12px 32px -8px rgb(20 25 30 / 0.12);
 }
 
 /**
- * Dark mode.
+ * Dark mode: Graphite, the DEFAULT theme.
+ *
+ * The server renders `data-theme="dark"` on <html> and the init script keeps
+ * it unless the user chose light, so a first visit paints Graphite with no
+ * flash. `:root` above holds the light values for the user who picks them.
  *
  * Selected by a `data-theme="dark"` attribute on the root element rather than
  * by `prefers-color-scheme`, so the choice is the user's and survives a page
@@ -149,36 +168,46 @@
  * as a smudge is worse than no colour at all.
  */
 :root[data-theme='dark'] {
-  /* A blue-black rather than slate: the surfaces step up in lightness so a
-   * card reads as raised without needing a visible outline. */
-  --color-bg: #0b1220;
-  --color-surface: #111a2e;
-  --color-surface-raised: #1c2740;
-  --color-border: #8b9ab3;
-  --color-border-subtle: #243251;
-  --color-text: #f1f5f9;
-  /* Measured against surface-raised as well as surface. The first version
-   * cleared AA on surface and scored 4.04:1 on raised — the contrast claim
-   * was checked against one surface and not the other. */
-  --color-text-muted: #b8c4d6;
+  /* Graphite: a blue-grey near-black, surfaces stepping up in lightness so a
+   * panel reads as raised without a heavy outline. The chrome (rail, top
+   * bar) sits a step below the page. */
+  --color-bg: #10171c;
+  --color-surface: #172127;
+  --color-surface-raised: #1d2931;
+  --color-chrome: #0c1216;
+  /* 3.6:1 on raised, 4.0:1 on surface. */
+  --color-border: #6e808b;
+  --color-border-subtle: #304048;
+  --color-text: #f1f3f4;
+  /* 7.3:1 on raised, the lowest of the four grounds. */
+  --color-text-muted: #acb8c0;
 
   --color-severity-critical: #fca5a5;
   --color-severity-warning: #fcd34d;
   --color-severity-info: #93c5fd;
+  --color-success: #86efac;
 
-  --color-severity-critical-surface: #3b0d0d;
-  --color-severity-warning-surface: #3a1a05;
-  --color-severity-info-surface: #13204a;
+  --color-severity-critical-surface: #3b1414;
+  --color-severity-warning-surface: #382a0a;
+  --color-severity-info-surface: #14243f;
+  --color-success-surface: #0f2e1d;
 
-  --color-accent: #2dd4bf;
-  --color-accent-hover: #5eead4;
-  --color-accent-contrast: #042f2e;
-  --color-accent-subtle: #0b2e2c;
+  /* Warm gold, kept for primary actions and the active navigation item
+   * only. Graphite ink on it is 10.0:1. */
+  --color-accent: #f5bd45;
+  --color-accent-hover: #f8cd6e;
+  --color-accent-contrast: #171c20;
+  --color-accent-subtle: #2e2617;
 
+  --color-sheet: #f4f1e8;
+  --color-sheet-ink: #1f2328;
+  --color-backdrop: rgb(0 0 0 / 0.6);
+
+  /* White ring, graphite gap: 18.1:1 ring-on-gap, 10.6:1 gap-on-gold. */
   --color-focus: #ffffff;
-  --color-focus-offset: #0b1220;
+  --color-focus-offset: #10171c;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 4px 12px -2px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  --shadow-md: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 4px 12px -2px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 12px 32px -8px rgb(0 0 0 / 0.55);
 }

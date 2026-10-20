@@ -298,7 +298,7 @@ export function ImageCapture({
       className={
         dragging
           ? 'flex flex-wrap items-center gap-2 rounded-md border-2 border-dashed border-accent bg-accent-subtle px-3 py-2 text-sm text-text'
-          : 'flex flex-wrap items-center gap-2 rounded-md border-2 border-dashed border-border-subtle px-3 py-2 text-sm text-text-muted transition-colors hover:border-border'
+          : 'flex flex-wrap items-center gap-2 rounded-md border-2 border-dashed border-border-subtle px-3 py-2 text-sm text-text-muted transition-colors hover:border-border has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus'
       }
     >
       <CameraIcon width="18" height="18" className="shrink-0 text-accent" />

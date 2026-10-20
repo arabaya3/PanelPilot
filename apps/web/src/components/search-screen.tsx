@@ -5,7 +5,15 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
-import { SearchIcon } from '@/components/icons';
+import { ExternalLinkIcon, SearchIcon } from '@/components/icons';
+import {
+  EmptyState,
+  LoadingState,
+  Notice,
+  PageHeader,
+  SourceReference,
+  StatusBadge,
+} from '@/components/ui';
 import { acquireTrial } from '@/lib/session';
 import { passageSourceUrl, searchDocuments, type SearchOutcome } from '@/lib/search';
 
@@ -111,10 +119,7 @@ export function SearchScreen({
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
-        <p className="max-w-3xl text-text-muted">{t('intro')}</p>
-      </div>
+      <PageHeader title={t('heading')} description={t('intro')} />
 
       <form
         role="search"
@@ -125,7 +130,7 @@ export function SearchScreen({
         className="card mb-6 flex flex-col gap-3 p-4 md:flex-row md:items-end md:p-5"
       >
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <label htmlFor={fieldId} className="text-sm font-semibold">
+          <label htmlFor={fieldId} className="field-label">
             {t('label')}
           </label>
           <input
@@ -141,7 +146,7 @@ export function SearchScreen({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor={brandId} className="text-sm font-semibold">
+          <label htmlFor={brandId} className="field-label">
             {t('manufacturer')}
           </label>
           <select
@@ -171,27 +176,32 @@ export function SearchScreen({
       </form>
 
       {session.kind !== 'ready' && session.kind !== 'starting' && (
-        <div
-          role="alert"
-          data-testid="search-session-failed"
-          className="mb-6 flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
-        >
-          <p>{t(`session.${session.kind}`)}</p>
-          <button type="button" onClick={() => void connect()} className="btn btn-sm btn-primary">
-            {t('retry')}
-          </button>
+        <div className="mb-6">
+          <Notice
+            tone="warning"
+            testId="search-session-failed"
+            action={
+              <button
+                type="button"
+                onClick={() => void connect()}
+                className="btn btn-sm btn-primary"
+              >
+                {t('retry')}
+              </button>
+            }
+          >
+            {t(`session.${session.kind}`)}
+          </Notice>
         </div>
       )}
 
       {results.kind === 'error' && (
-        <p
-          role="alert"
-          data-testid="search-error"
-          className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-        >
+        <Notice tone="critical" testId="search-error">
           {t(`error.${results.reason}`)}
-        </p>
+        </Notice>
       )}
+
+      {results.kind === 'searching' && <LoadingState>{t('searching')}</LoadingState>}
 
       {results.kind === 'done' && (
         <section aria-labelledby={`${fieldId}-results`} className="flex flex-col gap-4">
@@ -201,9 +211,9 @@ export function SearchScreen({
               .replace('{query}', results.query)}
           </h2>
           {results.passages.length === 0 ? (
-            <p data-testid="search-empty" className="card p-6 text-center text-sm text-text-muted">
-              {t('empty')}
-            </p>
+            <div data-testid="search-empty">
+              <EmptyState icon={<SearchIcon width="24" height="24" />} title={t('empty')} />
+            </div>
           ) : (
             <ol className="flex flex-col gap-4" data-testid="search-results">
               {results.passages.map((passage) => (
@@ -227,14 +237,9 @@ function PassageCard({ passage }: { passage: RetrievedPassage }) {
   return (
     <article className="card p-4 md:p-5" data-testid={`passage-${passage.id}`}>
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-        {manufacturer && <span className="chip">{manufacturer}</span>}
-        {section && (
-          <span dir="auto" className="font-semibold text-text">
-            {section}
-          </span>
-        )}
+        {manufacturer && <StatusBadge tone="accent">{manufacturer}</StatusBadge>}
         {typeof page === 'number' && (
-          <span className="text-text-muted">
+          <span dir="auto" className="font-mono text-text-muted">
             {(t.raw('page') as string).replace('{page}', String(page))}
           </span>
         )}
@@ -244,18 +249,27 @@ function PassageCard({ passage }: { passage: RetrievedPassage }) {
           own language: laid out in an Arabic or Hebrew page's direction,
           "23.12 Acceleration time 1" came out as "Acceleration time 1 23.12"
           -- the parameter number moved to the other end of the line. */}
-      <p dir="auto" className="whitespace-pre-line break-words text-sm leading-relaxed text-text">
-        {passage.text}
-      </p>
+      <SourceReference
+        title={<span dir="auto">{section || manufacturer || ''}</span>}
+        excerpt={
+          <p
+            dir="auto"
+            className="whitespace-pre-line break-words text-sm leading-relaxed text-text"
+          >
+            {passage.text}
+          </p>
+        }
+      />
       {source !== null && (
         <a
           href={source}
           target="_blank"
           rel="noreferrer"
-          className="link mt-3 inline-block text-sm"
+          className="link mt-3 inline-flex items-center gap-1 text-sm"
           data-testid={`passage-source-${passage.id}`}
         >
           {t('openSource')}
+          <ExternalLinkIcon width="14" height="14" aria-hidden="true" />
         </a>
       )}
     </article>

@@ -524,3 +524,27 @@ describe('empty states', () => {
     expect(screen.getByTestId('verdict-banner')).not.toBeNull();
   });
 });
+
+// --- severity in words --------------------------------------------------------
+
+describe('finding severity', () => {
+  it("names each finding's severity in text, not colour alone", () => {
+    renderApp(
+      <PlcView
+        language="structured-text"
+        source={VALID_ST}
+        validation={validation({
+          status: 'invalid',
+          findings: [
+            finding(),
+            finding({ severity: 'warning', message: 'unused tag Spare', line: null }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('finding-line-6').textContent).toContain('Error');
+    expect(screen.getByTestId('general-finding').textContent).toContain('Warning');
+    expect(screen.getByTestId('general-finding').textContent).toContain('unused tag Spare');
+  });
+});

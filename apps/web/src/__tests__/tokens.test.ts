@@ -85,6 +85,9 @@ function contrast(a: string, b: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/** Every ground text sits on, including the rail and top bar. */
+const GROUNDS = ['--color-bg', '--color-surface', '--color-surface-raised', '--color-chrome'];
+
 const THEMES: ReadonlyArray<readonly [string, Record<string, string>]> = [
   ['light', LIGHT],
   ['dark', DARK],
@@ -112,6 +115,11 @@ const REQUIRED_TOKENS = [
   '--color-accent-subtle',
   '--color-focus',
   '--color-focus-offset',
+  '--color-chrome',
+  '--color-success',
+  '--color-success-surface',
+  '--color-sheet',
+  '--color-sheet-ink',
 ];
 
 describe('tokens.css', () => {
@@ -197,7 +205,7 @@ describe('tokens.css', () => {
 
 describe('contrast', () => {
   it.each(THEMES)('%s: body text clears AA on every surface', (_name, theme) => {
-    for (const surface of ['--color-bg', '--color-surface', '--color-surface-raised']) {
+    for (const surface of GROUNDS) {
       expect(contrast(token(theme, '--color-text'), token(theme, surface))).toBeGreaterThanOrEqual(
         4.5,
       );
@@ -208,7 +216,7 @@ describe('contrast', () => {
     // Including surface-raised. The first version checked only `surface` and
     // scored 4.04:1 on raised, below AA — the comment said contrast was
     // checked, and it had been, against one of the three.
-    for (const surface of ['--color-bg', '--color-surface', '--color-surface-raised']) {
+    for (const surface of GROUNDS) {
       expect(
         contrast(token(theme, '--color-text-muted'), token(theme, surface)),
       ).toBeGreaterThanOrEqual(4.5);
@@ -223,6 +231,14 @@ describe('contrast', () => {
       );
       expect(ratio, `${level} on its surface`).toBeGreaterThanOrEqual(4.5);
     }
+    expect(
+      contrast(token(theme, '--color-success'), token(theme, '--color-success-surface')),
+      'success on its surface',
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(token(theme, '--color-success'), token(theme, '--color-surface')),
+      'success on surface',
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   it.each(THEMES)('%s: severity is readable on the plain surface too', (_name, theme) => {
@@ -257,7 +273,7 @@ describe('contrast', () => {
 
   it.each(THEMES)('%s: the accent reads as text on every surface', (_name, theme) => {
     // Links and the logo mark's label use the accent as a text colour.
-    for (const surface of ['--color-bg', '--color-surface', '--color-surface-raised']) {
+    for (const surface of GROUNDS) {
       expect(
         contrast(token(theme, '--color-accent'), token(theme, surface)),
         `accent on ${surface}`,
@@ -268,7 +284,7 @@ describe('contrast', () => {
   it.each(THEMES)('%s: borders meet the 3:1 UI boundary threshold', (_name, theme) => {
     // WCAG 1.4.11. A border separating two cards is a component boundary, and
     // the first version scored 1.48:1 — a suggestion of an edge, not an edge.
-    for (const surface of ['--color-bg', '--color-surface', '--color-surface-raised']) {
+    for (const surface of GROUNDS) {
       expect(
         contrast(token(theme, '--color-border'), token(theme, surface)),
       ).toBeGreaterThanOrEqual(3);
@@ -294,6 +310,18 @@ describe('contrast', () => {
       );
       expect(ringOrOffset, `focus ring on ${behind}`).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  it.each(THEMES)('%s: drawing ink reads on the sheet', (_name, theme) => {
+    expect(
+      contrast(token(theme, '--color-sheet-ink'), token(theme, '--color-sheet')),
+    ).toBeGreaterThanOrEqual(7);
+  });
+
+  it.each(THEMES)('%s: the accent reads on its selected-nav tint', (_name, theme) => {
+    expect(
+      contrast(token(theme, '--color-accent'), token(theme, '--color-accent-subtle')),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 });
 

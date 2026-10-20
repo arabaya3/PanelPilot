@@ -8,10 +8,21 @@ import { AppShell } from '@/components/app-shell';
 import { CheckCircleIcon, CodeIcon } from '@/components/icons';
 import { PlcGenerate } from '@/components/plc-generate';
 import { PlcView } from '@/components/plc-view';
+import {
+  EmptyState,
+  LoadingState,
+  Notice,
+  PageHeader,
+  Tabs,
+  tabId,
+  tabPanelId,
+} from '@/components/ui';
 import { generatePlc, reviewPlc } from '@/lib/plc';
 import { acquireTrial } from '@/lib/session';
 
 type PlcValidationResult = components['schemas']['PlcValidationResult'];
+
+const PLC_TABS = ['check', 'generate'] as const;
 
 type Review =
   | { kind: 'idle' }
@@ -59,42 +70,35 @@ export function PlcReview({
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
-        <p className="max-w-3xl text-text-muted">
-          {tab === 'check' ? t('intro') : t('generateIntro')}
-        </p>
+      <PageHeader
+        title={t('heading')}
+        description={tab === 'check' ? t('intro') : t('generateIntro')}
+      />
+
+      <div className="mb-5">
+        <Tabs
+          items={PLC_TABS.map((key) => ({
+            key,
+            // The test id rides on the label; a click on it reaches the tab.
+            label: (
+              <span data-testid={`plc-tab-${key}`}>
+                {key === 'check' ? t('tabCheck') : t('tabGenerate')}
+              </span>
+            ),
+          }))}
+          selected={tab}
+          onSelect={setTab}
+          label={t('heading')}
+          idBase={tabsId}
+        />
       </div>
 
       <div
-        role="tablist"
-        aria-label={t('heading')}
-        className="mb-5 flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
+        role="tabpanel"
+        id={tabPanelId(tabsId, tab)}
+        aria-labelledby={tabId(tabsId, tab)}
+        tabIndex={0}
       >
-        {(['check', 'generate'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            id={`${tabsId}-${key}`}
-            aria-selected={tab === key}
-            aria-controls={`${tabsId}-panel`}
-            data-testid={`plc-tab-${key}`}
-            onClick={() => {
-              setTab(key);
-            }}
-            className={`rounded-md px-3 py-2 text-sm transition-colors ${
-              tab === key
-                ? 'bg-accent-subtle font-semibold text-accent-hover'
-                : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
-            }`}
-          >
-            {key === 'check' ? t('tabCheck') : t('tabGenerate')}
-          </button>
-        ))}
-      </div>
-
-      <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
         {tab === 'generate' ? (
           <PlcGenerate generateImpl={generateImpl} acquireImpl={acquireImpl} />
         ) : (
@@ -108,7 +112,7 @@ export function PlcReview({
               }}
               className="card flex flex-col gap-3 p-4 md:p-5"
             >
-              <label htmlFor={fieldId} className="text-sm font-semibold">
+              <label htmlFor={fieldId} className="field-label">
                 {t('label')}
               </label>
               <textarea
@@ -144,35 +148,18 @@ export function PlcReview({
                 />
               )}
               {review.kind === 'rejected' && (
-                <p
-                  role="alert"
-                  data-testid="plc-rejected"
-                  className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
-                >
-                  {review.detail ?? t('rejected')}
-                </p>
+                <Notice tone="warning" testId="plc-rejected">
+                  <span dir="auto">{review.detail ?? t('rejected')}</span>
+                </Notice>
               )}
               {review.kind === 'failed' && (
-                <p
-                  role="alert"
-                  data-testid="plc-failed"
-                  className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-                >
+                <Notice tone="critical" testId="plc-failed">
                   {t('failed')}
-                </p>
+                </Notice>
               )}
-              {(review.kind === 'idle' || review.kind === 'checking') && (
-                <div className="flex min-h-96 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border-subtle p-6 text-center text-sm text-text-muted">
-                  {review.kind === 'checking' ? (
-                    <span
-                      aria-hidden="true"
-                      className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
-                    />
-                  ) : (
-                    <CodeIcon width="28" height="28" className="text-accent" />
-                  )}
-                  <p className="max-w-sm">{t('emptyResult')}</p>
-                </div>
+              {review.kind === 'checking' && <LoadingState>{t('checking')}</LoadingState>}
+              {review.kind === 'idle' && (
+                <EmptyState icon={<CodeIcon width="28" height="28" />} title={t('emptyResult')} />
               )}
             </div>
           </div>

@@ -4,6 +4,8 @@ import type { components } from '@panelpilot/shared-types';
 import { useTranslations } from 'next-intl';
 import { useId } from 'react';
 
+import { StatusBadge } from '@/components/ui';
+
 import { LadderDiagram } from './ladder-svg';
 import { tokeniseProgram, type Token } from './tokenise';
 
@@ -68,6 +70,19 @@ const STATUS_CLASSES: Record<string, StatusClasses> = {
     text: 'text-severity-info',
   },
 };
+
+/**
+ * A finding's severity in words as well as colour, so it never depends on
+ * colour alone.
+ */
+function SeverityBadge({ severity }: { severity: ValidationFinding['severity'] }) {
+  const t = useTranslations('plcView');
+  return (
+    <StatusBadge tone={severity === 'error' ? 'critical' : 'warning'}>
+      {t(`severity.${severity}`)}
+    </StatusBadge>
+  );
+}
 
 /**
  * Group findings by the line they are about.
@@ -209,10 +224,11 @@ function CodeLine({
         <p
           key={index}
           data-testid={`finding-line-${String(number)}`}
-          className={`ms-[2.75rem] ps-3 text-xs ${
+          className={`ms-[2.75rem] flex flex-wrap items-center gap-2 py-1 ps-3 text-xs ${
             finding.severity === 'error' ? 'text-severity-critical' : 'text-severity-warning'
           }`}
         >
+          <SeverityBadge severity={finding.severity} />
           {/* Attached under the line rather than as a tooltip: a finding
               behind a hover is a finding nobody on a tablet ever sees, and
               this is read on a tablet next to a panel. */}
@@ -249,16 +265,17 @@ export function PlcView({
       <VerdictBanner result={validation} headingId={headingId} />
 
       {general.length > 0 && (
-        <ul className="mb-3 space-y-1">
+        <ul className="mb-3 space-y-1" aria-label={t('generalFindings')}>
           {general.map((finding, index) => (
             <li
               key={index}
               data-testid="general-finding"
-              className={`text-xs ${
+              className={`flex flex-wrap items-center gap-2 text-xs ${
                 finding.severity === 'error' ? 'text-severity-critical' : 'text-severity-warning'
               }`}
             >
-              {finding.message}
+              <SeverityBadge severity={finding.severity} />
+              <span dir="auto">{finding.message}</span>
             </li>
           ))}
         </ul>

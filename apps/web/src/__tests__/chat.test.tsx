@@ -1010,3 +1010,54 @@ describe('hydrating a stored session', () => {
     expect(state).toEqual({ sessionId: 'old-session', messages: [] });
   });
 });
+
+// --- refusal survives the restyle --------------------------------------------
+
+describe('a refused turn', () => {
+  it('renders the refusal card with the backend wording, not an answer', async () => {
+    const refused: DiagnosticResponse = {
+      ...RESPONSE,
+      diagnosis: null,
+      refusal_message: 'No supporting passage was found.',
+    };
+    async function* streamImpl(): AsyncGenerator<StreamEvent> {
+      await Promise.resolve();
+      yield { kind: 'result', response: refused };
+    }
+    renderApp(<Chat token="t" streamImpl={streamImpl} />);
+
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Fault F0001 on a drive' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    const card = await screen.findByTestId('diagnostic-card');
+    expect(card.getAttribute('data-variant')).toBe('refusal');
+    expect(card.textContent).toContain('No supporting passage was found.');
+    expect(screen.queryByTestId('step-checkbox')).toBeNull();
+  });
+});
+
+// --- history drawer on a phone -------------------------------------------------
+
+describe('the history drawer', () => {
+  it('opens the history in a drawer and returns focus to its button on close', async () => {
+    const listImpl = vi.fn().mockResolvedValue({ kind: 'loaded', sessions: [], nextCursor: null });
+    renderApp(<Chat token="t" streamImpl={controllableStream().generator} listImpl={listImpl} />);
+
+    const toggle = screen.getByRole('button', { name: 'Conversation history' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    toggle.focus();
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    // The column and the drawer's copy of the list.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('history-sidebar')).toHaveLength(2);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getAllByTestId('history-sidebar')).toHaveLength(1);
+    expect(document.activeElement).toBe(toggle);
+  });
+});

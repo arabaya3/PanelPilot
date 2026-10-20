@@ -13,6 +13,7 @@ import {
   type PanelBomResponse,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
+import { EmptyState, Notice, TableFrame } from '@/components/ui';
 
 type Constraints = PanelBomRequest['constraints'];
 type Placement = Constraints['placement'];
@@ -214,246 +215,258 @@ export function PanelBomPanel({
     <>
       <p className="mb-5 max-w-3xl text-text-muted">{t('bom.intro')}</p>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void run();
-        }}
-        className="mb-6 flex flex-col gap-4"
-      >
-        <fieldset className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-4">
-          <legend className="px-1 text-sm font-semibold">{t('bom.enclosure')}</legend>
-          {enclosureField('width', 'mm')}
-          {enclosureField('height', 'mm')}
-          {enclosureField('depth', 'mm')}
-          {enclosureField('ingress', '')}
-          <Field id={`${id}-placement`} label={t('bom.field.placement')}>
-            <select
-              id={`${id}-placement`}
-              value={enclosure.placement}
-              onChange={(event) => {
-                setEnclosure((c) => ({ ...c, placement: event.target.value as Placement }));
-              }}
-              className="input w-full"
-            >
-              {PLACEMENTS.map((placement) => (
-                <option key={placement} value={placement}>
-                  {t(`bom.placement.${placement}`)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field id={`${id}-method`} label={t('bom.field.method')}>
-            <select
-              id={`${id}-method`}
-              value={enclosure.method}
-              onChange={(event) => {
-                setEnclosure((c) => ({ ...c, method: event.target.value as Method }));
-              }}
-              className="input w-full"
-            >
-              {METHODS.map((method) => (
-                <option key={method} value={method}>
-                  {t(`method.${method}`)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {enclosureField('ambient', '°C')}
-          {enclosureField('maxInternal', '°C')}
-          {enclosureField('voltage', 'V')}
-          <Field id={`${id}-material`} label={t('bom.field.material')}>
-            <select
-              id={`${id}-material`}
-              value={enclosure.material}
-              onChange={(event) => {
-                setEnclosure((c) => ({ ...c, material: event.target.value as Material }));
-              }}
-              className="input w-full"
-            >
-              <option value="copper">{t('material.copper')}</option>
-              <option value="aluminium">{t('material.aluminium')}</option>
-            </select>
-          </Field>
-          <Field id={`${id}-range`} label={t('vfd.field.range')}>
-            <select
-              id={`${id}-range`}
-              value={enclosure.range}
-              onChange={(event) => {
-                setEnclosure((c) => ({ ...c, range: event.target.value }));
-              }}
-              className="input w-full"
-            >
-              <option value="">{t('vfd.range.default')}</option>
-              {ranges
-                .filter((range) => range.key !== 'abb-acs880-01')
-                .map((range) => (
-                  <option key={range.key} value={range.key}>
-                    {`${range.manufacturer} ${range.series}`}
+      {/* Inputs beside results from `lg` up; stacked, inputs first, below. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run();
+          }}
+          className="flex min-w-0 flex-col gap-4"
+        >
+          <fieldset className="card grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5">
+            <legend className="px-1 text-sm font-semibold">{t('bom.enclosure')}</legend>
+            {enclosureField('width', 'mm')}
+            {enclosureField('height', 'mm')}
+            {enclosureField('depth', 'mm')}
+            {enclosureField('ingress', '')}
+            <Field id={`${id}-placement`} label={t('bom.field.placement')}>
+              <select
+                id={`${id}-placement`}
+                value={enclosure.placement}
+                onChange={(event) => {
+                  setEnclosure((c) => ({ ...c, placement: event.target.value as Placement }));
+                }}
+                className="input w-full"
+              >
+                {PLACEMENTS.map((placement) => (
+                  <option key={placement} value={placement}>
+                    {t(`bom.placement.${placement}`)}
                   </option>
                 ))}
-            </select>
-          </Field>
-        </fieldset>
-
-        <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
-          <legend className="px-1 text-sm font-semibold">{t('bom.loads')}</legend>
-          {loads.map((load, index) => (
-            <div
-              key={load.key}
-              data-testid={`bom-load-${String(index)}`}
-              className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
-            >
-              <Field id={`${id}-tag-${String(load.key)}`} label={t('bom.field.tag')}>
-                <input
-                  id={`${id}-tag-${String(load.key)}`}
-                  dir="ltr"
-                  value={load.tag}
-                  onChange={(event) => {
-                    updateLoad(load.key, { tag: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-desc-${String(load.key)}`} label={t('bom.field.description')}>
-                <input
-                  id={`${id}-desc-${String(load.key)}`}
-                  value={load.description}
-                  onChange={(event) => {
-                    updateLoad(load.key, { description: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-pow-${String(load.key)}`} label={t('bom.field.power')} unit="kW">
-                <input
-                  id={`${id}-pow-${String(load.key)}`}
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={load.power}
-                  onChange={(event) => {
-                    updateLoad(load.key, { power: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-cur-${String(load.key)}`} label={t('bom.field.current')} unit="A">
-                <input
-                  id={`${id}-cur-${String(load.key)}`}
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={load.current}
-                  onChange={(event) => {
-                    updateLoad(load.key, { current: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field
-                id={`${id}-heat-${String(load.key)}`}
-                label={t('bom.field.dissipation')}
-                unit="W"
+              </select>
+            </Field>
+            <Field id={`${id}-method`} label={t('bom.field.method')}>
+              <select
+                id={`${id}-method`}
+                value={enclosure.method}
+                onChange={(event) => {
+                  setEnclosure((c) => ({ ...c, method: event.target.value as Method }));
+                }}
+                className="input w-full"
               >
-                <input
-                  id={`${id}-heat-${String(load.key)}`}
-                  inputMode="decimal"
-                  dir="ltr"
-                  value={load.dissipation}
-                  onChange={(event) => {
-                    updateLoad(load.key, { dissipation: event.target.value });
-                  }}
-                  className="input w-full"
-                />
-              </Field>
-              <Field id={`${id}-start-${String(load.key)}`} label={t('bom.field.start')}>
-                <select
-                  id={`${id}-start-${String(load.key)}`}
-                  value={load.start}
-                  onChange={(event) => {
-                    updateLoad(load.key, { start: event.target.value as Start });
-                  }}
-                  className="input w-full"
-                >
-                  {(['', 'dol', 'star_delta', 'dol_heavy'] as const).map((start) => (
-                    <option key={start} value={start}>
-                      {t(`bom.start.${start === '' ? 'none' : start}`)}
+                {METHODS.map((method) => (
+                  <option key={method} value={method}>
+                    {t(`method.${method}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {enclosureField('ambient', '°C')}
+            {enclosureField('maxInternal', '°C')}
+            {enclosureField('voltage', 'V')}
+            <Field id={`${id}-material`} label={t('bom.field.material')}>
+              <select
+                id={`${id}-material`}
+                value={enclosure.material}
+                onChange={(event) => {
+                  setEnclosure((c) => ({ ...c, material: event.target.value as Material }));
+                }}
+                className="input w-full"
+              >
+                <option value="copper">{t('material.copper')}</option>
+                <option value="aluminium">{t('material.aluminium')}</option>
+              </select>
+            </Field>
+            <Field id={`${id}-range`} label={t('vfd.field.range')}>
+              <select
+                id={`${id}-range`}
+                value={enclosure.range}
+                onChange={(event) => {
+                  setEnclosure((c) => ({ ...c, range: event.target.value }));
+                }}
+                className="input w-full"
+              >
+                <option value="">{t('vfd.range.default')}</option>
+                {ranges
+                  .filter((range) => range.key !== 'abb-acs880-01')
+                  .map((range) => (
+                    <option key={range.key} value={range.key}>
+                      {`${range.manufacturer} ${range.series}`}
                     </option>
                   ))}
-                </select>
-              </Field>
-              <label className="flex items-center gap-2 py-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={load.variableSpeed}
-                  onChange={(event) => {
-                    updateLoad(load.key, { variableSpeed: event.target.checked });
-                  }}
-                />
-                {t('bom.field.variableSpeed')}
-              </label>
-              <button
-                type="button"
-                disabled={loads.length === 1}
-                onClick={() => {
-                  setLoads((current) => current.filter((l) => l.key !== load.key));
-                }}
-                className="btn btn-sm btn-secondary self-start lg:self-end"
+              </select>
+            </Field>
+          </fieldset>
+
+          <fieldset className="card flex flex-col gap-4 p-4 md:p-5">
+            <legend className="px-1 text-sm font-semibold">{t('bom.loads')}</legend>
+            {loads.map((load, index) => (
+              <div
+                key={load.key}
+                data-testid={`bom-load-${String(index)}`}
+                className="grid grid-cols-1 gap-3 border-b border-border-subtle pb-4 last:border-b-0 last:pb-0 sm:grid-cols-2 sm:items-end"
               >
-                {t('bom.remove')}
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setLoads((current) => [...current, blankLoad(nextKey)]);
-              setNextKey((key) => key + 1);
-            }}
-            className="btn btn-sm btn-secondary self-start"
-          >
-            {t('bom.add')}
-          </button>
-        </fieldset>
+                <Field id={`${id}-tag-${String(load.key)}`} label={t('bom.field.tag')}>
+                  <input
+                    id={`${id}-tag-${String(load.key)}`}
+                    dir="ltr"
+                    value={load.tag}
+                    onChange={(event) => {
+                      updateLoad(load.key, { tag: event.target.value });
+                    }}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field id={`${id}-desc-${String(load.key)}`} label={t('bom.field.description')}>
+                  <input
+                    id={`${id}-desc-${String(load.key)}`}
+                    value={load.description}
+                    onChange={(event) => {
+                      updateLoad(load.key, { description: event.target.value });
+                    }}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field id={`${id}-pow-${String(load.key)}`} label={t('bom.field.power')} unit="kW">
+                  <input
+                    id={`${id}-pow-${String(load.key)}`}
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={load.power}
+                    onChange={(event) => {
+                      updateLoad(load.key, { power: event.target.value });
+                    }}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field id={`${id}-cur-${String(load.key)}`} label={t('bom.field.current')} unit="A">
+                  <input
+                    id={`${id}-cur-${String(load.key)}`}
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={load.current}
+                    onChange={(event) => {
+                      updateLoad(load.key, { current: event.target.value });
+                    }}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field
+                  id={`${id}-heat-${String(load.key)}`}
+                  label={t('bom.field.dissipation')}
+                  unit="W"
+                >
+                  <input
+                    id={`${id}-heat-${String(load.key)}`}
+                    inputMode="decimal"
+                    dir="ltr"
+                    value={load.dissipation}
+                    onChange={(event) => {
+                      updateLoad(load.key, { dissipation: event.target.value });
+                    }}
+                    className="input w-full"
+                  />
+                </Field>
+                <Field id={`${id}-start-${String(load.key)}`} label={t('bom.field.start')}>
+                  <select
+                    id={`${id}-start-${String(load.key)}`}
+                    value={load.start}
+                    onChange={(event) => {
+                      updateLoad(load.key, { start: event.target.value as Start });
+                    }}
+                    className="input w-full"
+                  >
+                    {(['', 'dol', 'star_delta', 'dol_heavy'] as const).map((start) => (
+                      <option key={start} value={start}>
+                        {t(`bom.start.${start === '' ? 'none' : start}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="flex items-center gap-2 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={load.variableSpeed}
+                    onChange={(event) => {
+                      updateLoad(load.key, { variableSpeed: event.target.checked });
+                    }}
+                  />
+                  {t('bom.field.variableSpeed')}
+                </label>
+                <button
+                  type="button"
+                  disabled={loads.length === 1}
+                  onClick={() => {
+                    setLoads((current) => current.filter((l) => l.key !== load.key));
+                  }}
+                  className="btn btn-sm btn-secondary self-start lg:self-end"
+                >
+                  {t('bom.remove')}
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setLoads((current) => [...current, blankLoad(nextKey)]);
+                setNextKey((key) => key + 1);
+              }}
+              className="btn btn-sm btn-secondary self-start"
+            >
+              {t('bom.add')}
+            </button>
+          </fieldset>
 
-        <div>
-          <button
-            type="submit"
-            disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
-            className="btn btn-primary"
-          >
-            {result.kind === 'working' ? t('working') : t('bom.submit')}
-          </button>
-        </div>
-      </form>
+          <div>
+            <button
+              type="submit"
+              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              className="btn btn-primary"
+            >
+              {result.kind === 'working' ? t('working') : t('bom.submit')}
+            </button>
+          </div>
+        </form>
 
-      {session.kind !== 'ready' && session.kind !== 'starting' && (
-        <div
-          role="alert"
-          className="mb-6 flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
-        >
-          <p>{t(`session.${session.kind}`)}</p>
-          <button type="button" onClick={() => void connect()} className="btn btn-sm btn-primary">
-            {t('retry')}
-          </button>
-        </div>
-      )}
-
-      {result.kind === 'error' && (
-        <div
-          role="alert"
-          data-testid="bom-error"
-          className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-        >
-          <p>{t(`error.${result.outcome.kind}`)}</p>
-          {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-            <p dir="ltr" className="mt-2 font-mono text-xs">
-              {result.outcome.detail}
-            </p>
+        <div className="flex min-w-0 flex-col gap-4">
+          {result.kind === 'idle' && session.kind === 'ready' && (
+            <EmptyState title={t('result.idle')} />
           )}
-        </div>
-      )}
 
-      {result.kind === 'built' && <BomResult response={result.response} />}
+          {session.kind !== 'ready' && session.kind !== 'starting' && (
+            <div>
+              <Notice
+                tone="warning"
+                action={
+                  <button
+                    type="button"
+                    onClick={() => void connect()}
+                    className="btn btn-sm btn-primary"
+                  >
+                    {t('retry')}
+                  </button>
+                }
+              >
+                {t(`session.${session.kind}`)}
+              </Notice>
+            </div>
+          )}
+
+          {result.kind === 'error' && (
+            <Notice tone="critical" testId="bom-error">
+              <p>{t(`error.${result.outcome.kind}`)}</p>
+              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
+                <p dir="ltr" className="mt-2 font-mono text-xs">
+                  {result.outcome.detail}
+                </p>
+              )}
+            </Notice>
+          )}
+
+          {result.kind === 'built' && <BomResult response={result.response} />}
+        </div>
+      </div>
     </>
   );
 }
@@ -545,22 +558,36 @@ function BomResult({ response }: { response: PanelBomResponse }) {
         </div>
       </div>
 
-      {/* A list of cards rather than a table: it reads the same at 360px. */}
-      <ol className="flex flex-col gap-2" data-testid="bom-lines">
-        {result.lines.map((line, index) => (
-          <li key={index} className="rounded-md border border-border-subtle p-3 text-sm">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span dir="ltr" className="font-mono font-semibold">
-                {line.part_reference}
-              </span>
-              <span className="text-text-muted">×{line.quantity}</span>
-            </div>
-            <p dir="auto" className="mt-1">
-              {lineText(t, line)}
-            </p>
-          </li>
-        ))}
-      </ol>
+      {/* A table in its own scrolling frame: the rows are wide, and on a
+          phone the frame scrolls rather than the page. */}
+      <TableFrame label={t('bom.linesLabel')}>
+        <table className="data-table" data-testid="bom-lines">
+          <thead>
+            <tr>
+              <th scope="col">{t('bom.column.part')}</th>
+              <th scope="col">{t('bom.column.quantity')}</th>
+              <th scope="col">{t('bom.column.description')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.lines.map((line, index) => (
+              <tr key={index}>
+                <td>
+                  <bdi dir="ltr" className="whitespace-nowrap font-mono font-semibold">
+                    {line.part_reference}
+                  </bdi>
+                </td>
+                <td dir="ltr" className="text-end tabular-nums">
+                  ×{line.quantity}
+                </td>
+                <td dir="auto" className="min-w-64">
+                  {lineText(t, line)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableFrame>
 
       {result.note_keys.length > 0 && (
         <ul className="flex list-disc flex-col gap-1 ps-5 text-sm text-text-muted">

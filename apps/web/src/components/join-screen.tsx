@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useId, useState } from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { Notice, PageHeader } from '@/components/ui';
 import { signupWithInvite, type JoinOutcome } from '@/lib/team';
 
 /**
@@ -51,26 +52,28 @@ export function JoinScreen({
 
   return (
     <AppShell>
-      <h1 className="mb-2 text-2xl font-bold tracking-tight">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       {inviteToken === '' ? (
-        <p className="text-text-muted">{t('noInvite')}</p>
+        <Notice tone="info" live={false}>
+          {t('noInvite')}
+        </Notice>
       ) : outcome?.kind === 'joined' ? (
         <p role="status" className="max-w-xl">
           {t('joined')}{' '}
-          <Link href="/" className="font-semibold underline">
+          <Link href="/" className="link">
             {t('signIn')}
           </Link>
         </p>
       ) : (
         <form
-          className="card flex max-w-md flex-col gap-3 p-4"
+          className="panel flex max-w-md flex-col gap-3 p-5"
           onSubmit={(event) => {
             event.preventDefault();
             void join();
           }}
         >
           <p className="text-sm text-text-muted">{t('intro')}</p>
-          <label className="flex flex-col gap-1 text-sm" htmlFor={`${id}-email`}>
+          <label className="field field-label" htmlFor={`${id}-email`}>
             {t('email')}
             <input
               id={`${id}-email`}
@@ -84,7 +87,7 @@ export function JoinScreen({
               className="input w-full"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm" htmlFor={`${id}-name`}>
+          <label className="field field-label" htmlFor={`${id}-name`}>
             {t('name')}
             <input
               id={`${id}-name`}
@@ -95,7 +98,7 @@ export function JoinScreen({
               className="input w-full"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm" htmlFor={`${id}-password`}>
+          <label className="field field-label" htmlFor={`${id}-password`}>
             {t('password')}
             <input
               id={`${id}-password`}
@@ -118,7 +121,7 @@ export function JoinScreen({
             {t('submit')}
           </button>
           {outcome && (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-sm text-severity-critical">
               {problem(outcome)}
             </p>
           )}

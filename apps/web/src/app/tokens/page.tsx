@@ -18,7 +18,9 @@ const SURFACES = [
   { token: '--color-bg', className: 'bg-bg', label: 'Background' },
   { token: '--color-surface', className: 'bg-surface', label: 'Surface' },
   { token: '--color-surface-raised', className: 'bg-surface-raised', label: 'Surface raised' },
+  { token: '--color-chrome', className: 'bg-chrome', label: 'Chrome (rail, top bar)' },
   { token: '--color-border', className: 'bg-border', label: 'Border' },
+  { token: '--color-sheet', className: 'bg-sheet', label: 'Drawing sheet' },
 ];
 
 const TEXT = [
@@ -45,6 +47,12 @@ const SEVERITIES = [
     text: 'text-severity-info',
     surface: 'bg-severity-info-surface',
   },
+  {
+    label: 'Success',
+    token: '--color-success',
+    text: 'text-success',
+    surface: 'bg-success-surface',
+  },
 ];
 
 // Strings rather than numbers: these are interpolated into a token name and
@@ -65,7 +73,7 @@ const TYPE_SCALE = [
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-7">
-      <h2 className="mb-4 text-xl">{title}</h2>
+      <h2 className="mb-4 border-b border-border-subtle pb-2 text-lg font-semibold">{title}</h2>
       {children}
     </section>
   );
@@ -73,9 +81,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function TokensPage() {
   return (
-    <main className="bg-bg p-6 text-text">
+    <main className="min-h-screen bg-bg p-4 text-text md:p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl">Design tokens</h1>
+        <h1 className="text-2xl font-semibold">Design tokens</h1>
         <ThemeToggle />
       </div>
 
@@ -161,14 +169,12 @@ export default function TokensPage() {
 
       <Section title="Accent">
         <div className="flex flex-wrap gap-4">
-          <button
-            type="button"
-            className="rounded-md bg-accent px-4 py-2 text-accent-contrast hover:bg-accent-hover"
-          >
+          <button type="button" className="btn btn-primary">
             Accent action
           </button>
-          <div className="rounded-md border border-border bg-surface px-4 py-2 shadow-md">
-            Raised surface
+          <div className="panel px-4 py-2">Panel surface</div>
+          <div className="sheet-frame text-sm">
+            Drawing ink on the sheet — <code>--color-sheet-ink</code>
           </div>
         </div>
       </Section>

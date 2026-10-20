@@ -26,7 +26,8 @@ import {
 export type Theme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'panelpilot-theme';
-export const DEFAULT_THEME: Theme = 'light';
+// Graphite (dark) is the product's identity; light is an opt-in preference.
+export const DEFAULT_THEME: Theme = 'dark';
 
 interface ThemeContextValue {
   theme: Theme;

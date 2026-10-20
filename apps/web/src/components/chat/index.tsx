@@ -2,7 +2,11 @@
 
 import type { components } from '@panelpilot/shared-types';
 
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { useCallback, useEffect, useId, useReducer, useRef, useState } from 'react';
+
+import { HistoryIcon } from '@/components/icons';
+import { Dialog } from '@/components/ui';
 
 import { useLocale } from '@/components/locale-provider';
 import { flagAnswer } from '@/lib/feedback';
@@ -113,6 +117,10 @@ function ChatSurface({
   const checklist = useChecklist();
   const [context, setContext] = useState<EquipmentContext | null>(null);
   const [dismissedLimit, setDismissedLimit] = useState(false);
+  // The history column's state below `md`, where it is a toggled panel.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyId = useId();
+  const tHistory = useTranslations('history');
 
   // The count the limit modal reads. Seeded from the caller and then kept
   // current from the server after every answer — the charge happens after
@@ -372,12 +380,51 @@ function ChatSurface({
         listImpl={listImpl}
         refreshKey={historyKey}
       />
+      <Dialog
+        open={historyOpen}
+        onClose={() => {
+          setHistoryOpen(false);
+        }}
+        title={tHistory('label')}
+        variant="drawer-start"
+        closeLabel={tHistory('close')}
+      >
+        <div id={historyId}>
+          {/* Mounted only while open: the column above is the same list, and
+              two mounted copies would fetch twice and repeat every row. */}
+          {historyOpen && (
+            <HistorySidebar
+              token={token}
+              activeSessionId={state.sessionId}
+              onSelect={(id) => {
+                setHistoryOpen(false);
+                void openSession(id);
+              }}
+              listImpl={listImpl}
+              refreshKey={historyKey}
+              variant="drawer"
+            />
+          )}
+        </div>
+      </Dialog>
       <div className="flex h-full min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
+        <header className="flex flex-wrap items-center gap-2 border-b border-border-subtle bg-surface px-4 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              setHistoryOpen(true);
+            }}
+            aria-expanded={historyOpen}
+            aria-controls={historyId}
+            className="btn btn-sm btn-ghost md:hidden"
+          >
+            <HistoryIcon width="16" height="16" />
+            {tHistory('label')}
+          </button>
           <ContextChip context={context} onChange={setContext} />
         </header>
         <MessageList messages={state.messages} onRetry={retry} onReport={report} />
-        <div className="flex flex-col gap-2 border-t border-border-subtle p-3 md:p-4">
+        <div className="flex flex-col gap-2 border-t border-border-subtle bg-surface p-3 md:p-4">
           <ImageCapture
             token={token}
             onConfirm={ask}

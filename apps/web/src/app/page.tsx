@@ -205,12 +205,10 @@ export default function HomePage() {
     <AppShell actions={signInButton}>
       {/* Pared down on a phone to the headline alone, so the question box is
           on the first screen rather than under the pitch. */}
-      <section className="mx-auto mb-4 flex max-w-3xl flex-col items-center gap-3 text-center md:mb-6">
-        <span className="chip max-sm:hidden">{tl('eyebrow')}</span>
-        <h1 className="text-xl font-bold tracking-tight sm:text-2xl md:text-3xl">
-          {tl('headline')}
-        </h1>
-        <p className="max-w-2xl text-base text-text-muted max-sm:hidden md:text-lg">
+      <section className="mx-auto mb-4 flex w-full max-w-screen-lg flex-col gap-2 md:mb-5">
+        <span className="eyebrow max-sm:hidden">{tl('eyebrow')}</span>
+        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{tl('headline')}</h1>
+        <p className="max-w-2xl text-sm text-text-muted max-sm:hidden md:text-base">
           {tl('subhead')}
         </p>
       </section>
@@ -228,11 +226,8 @@ export default function HomePage() {
 
       <div className="mx-auto w-full max-w-screen-lg">
         {phase.kind === 'starting' && (
-          <div className="card flex items-center justify-center gap-3 p-7">
-            <span
-              aria-hidden="true"
-              className="h-4 w-4 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
-            />
+          <div className="panel flex items-center justify-center gap-3 p-7">
+            <span aria-hidden="true" className="spinner" />
             <p data-testid="landing-starting" className="text-sm text-text-muted">
               {tl('starting')}
             </p>
@@ -243,7 +238,7 @@ export default function HomePage() {
           <p
             role="alert"
             data-testid="landing-unavailable"
-            className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+            className="rounded-md border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
           >
             {tl('unavailable')}
           </p>
@@ -253,7 +248,7 @@ export default function HomePage() {
           <div
             role="alert"
             data-testid="landing-rate-limited"
-            className="flex flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+            className="flex flex-col items-start gap-3 rounded-md border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
           >
             <p>{tl('rateLimited')}</p>
             <button type="button" onClick={() => void begin()} className="btn btn-sm btn-primary">
@@ -266,7 +261,7 @@ export default function HomePage() {
           <div
             role="alert"
             data-testid="landing-failed"
-            className="flex flex-col items-start gap-3 rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
+            className="flex flex-col items-start gap-3 rounded-md border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
           >
             <p>{tl('failed')}</p>
             <button type="button" onClick={() => void begin()} className="btn btn-sm btn-primary">
@@ -279,7 +274,7 @@ export default function HomePage() {
           // A fixed height, so the transcript scrolls inside the card with the
           // question box pinned under it, rather than the page growing a
           // screen per answer.
-          <div className="card h-[calc(100dvh-13rem)] min-h-96 md:h-[calc(100dvh-19rem)] overflow-hidden rounded-xl shadow-lg">
+          <div className="panel h-[calc(100dvh-13rem)] min-h-96 md:h-[calc(100dvh-19rem)] overflow-hidden">
             <Chat
               key={chatKey}
               token={phase.token}

@@ -2,7 +2,7 @@ import { Noto_Sans, Noto_Sans_Arabic, Noto_Sans_Hebrew } from 'next/font/google'
 import type { ReactNode } from 'react';
 
 import { LocaleProvider, localeInitScript } from '@/components/locale-provider';
-import { ThemeProvider, themeInitScript } from '@/components/theme-provider';
+import { DEFAULT_THEME, ThemeProvider, themeInitScript } from '@/components/theme-provider';
 import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
 import he from '@/messages/he.json';
@@ -54,6 +54,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html
       lang="en"
       dir="ltr"
+      // The default theme, rendered by the server so a first visit (or one
+      // without JavaScript) paints Graphite; the init script switches it to
+      // a stored "light" before paint.
+      data-theme={DEFAULT_THEME}
       suppressHydrationWarning
       className={`${notoSans.variable} ${notoSansArabic.variable} ${notoSansHebrew.variable}`}
     >

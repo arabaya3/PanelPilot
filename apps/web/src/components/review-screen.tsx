@@ -5,6 +5,7 @@ import { useCallback, useId, useState } from 'react';
 import type { components } from '@panelpilot/shared-types';
 
 import { AppShell } from '@/components/app-shell';
+import { LoadingState, Notice, PageHeader, tabId, tabPanelId, Tabs } from '@/components/ui';
 import { CheckCircleIcon } from '@/components/icons';
 import { SignInForm } from '@/components/sign-in-form';
 import type { signIn } from '@/lib/auth';
@@ -126,6 +127,17 @@ export function ReviewScreen({
   // made next-intl fall back to printing the message key.
   const labels: VerificationLabels = {
     heading: tv('heading'),
+    queue: {
+      label: tv('queue.label'),
+      position: tv('queue.position'),
+      kind: tv('queue.kind'),
+      location: tv('queue.location'),
+      status: tv('queue.status'),
+      kindFlag: tv('queue.kindFlag'),
+      kindContent: tv('queue.kindContent'),
+      current: tv('queue.current'),
+      waiting: tv('queue.waiting'),
+    },
     empty: tv('empty'),
     itemCount: tv.raw('itemCount') as string,
     proposed: tv('proposed'),
@@ -176,65 +188,65 @@ export function ReviewScreen({
       )}
 
       {phase.kind === 'loading' && (
-        <div className="card flex items-center justify-center gap-3 p-7">
-          <span
-            aria-hidden="true"
-            className="h-4 w-4 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
-          />
-          <p data-testid="review-loading" className="text-sm text-text-muted">
-            {t('loading')}
-          </p>
+        <div data-testid="review-loading">
+          <LoadingState>{t('loading')}</LoadingState>
         </div>
       )}
 
       {phase.kind === 'forbidden' && (
-        <div
-          role="alert"
-          data-testid="review-forbidden"
-          className="mx-auto flex w-full max-w-lg flex-col items-start gap-3 rounded-lg border border-severity-warning bg-severity-warning-surface p-4"
-        >
-          <p className="text-sm text-severity-warning">{t('forbidden')}</p>
-          <button
-            type="button"
-            onClick={() => {
-              setPhase({ kind: 'signed-out' });
-            }}
-            className="btn btn-sm btn-secondary"
+        <div className="mx-auto w-full max-w-lg">
+          <Notice
+            tone="critical"
+            testId="review-forbidden"
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  setPhase({ kind: 'signed-out' });
+                }}
+                className="btn btn-sm btn-secondary"
+              >
+                {t('otherAccount')}
+              </button>
+            }
           >
-            {t('otherAccount')}
-          </button>
+            {t('forbidden')}
+          </Notice>
         </div>
       )}
 
       {phase.kind === 'failed' && (
-        <div
-          role="alert"
-          data-testid="review-failed"
-          className="mx-auto flex w-full max-w-lg flex-col items-start gap-3 rounded-lg border border-severity-critical bg-severity-critical-surface p-4"
-        >
-          <p className="text-sm text-severity-critical">{t('failed')}</p>
-          <button
-            type="button"
-            onClick={() => {
-              void load(phase.token);
-            }}
-            className="btn btn-sm btn-primary"
+        <div className="mx-auto w-full max-w-lg">
+          <Notice
+            tone="critical"
+            testId="review-failed"
+            action={
+              <button
+                type="button"
+                onClick={() => {
+                  void load(phase.token);
+                }}
+                className="btn btn-sm btn-primary"
+              >
+                {t('retry')}
+              </button>
+            }
           >
-            {t('retry')}
-          </button>
+            {t('failed')}
+          </Notice>
         </div>
       )}
 
       {phase.kind === 'loaded' && (
         <div className="flex flex-col gap-5">
           {/* The page's one h1 once signed in; the signed-out view has its own. */}
-          <h1 className="text-2xl font-bold tracking-tight">{t('heading')}</h1>
-          <div
-            role="tablist"
-            aria-label={t('heading')}
-            className="flex gap-1 self-start rounded-lg border border-border-subtle bg-surface p-1"
-          >
-            {(['queue', 'stale', 'escalations'] as const).map((key) => {
+          <PageHeader title={t('heading')} />
+          <Tabs
+            label={t('heading')}
+            idBase={tabsId}
+            selected={tab}
+            onSelect={setTab}
+            items={(['queue', 'stale', 'escalations'] as const).map((key) => {
               const list = key === 'stale' ? phase.stale : phase.escalations;
               const count =
                 key === 'queue'
@@ -242,41 +254,25 @@ export function ReviewScreen({
                   : list.kind === 'loaded'
                     ? list.items.length
                     : null;
-              const selected = tab === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  id={`${tabsId}-${key}`}
-                  aria-selected={selected}
-                  aria-controls={`${tabsId}-${key}-panel`}
-                  data-testid={`review-tab-${key}`}
-                  onClick={() => {
-                    setTab(key);
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                    selected
-                      ? 'bg-accent-subtle font-semibold text-accent-hover'
-                      : 'font-medium text-text-muted hover:bg-surface-raised hover:text-text'
-                  }`}
-                >
-                  {key === 'queue'
-                    ? t('tabQueue')
-                    : key === 'stale'
-                      ? t('tabStale')
-                      : t('tabEscalations')}
-                  {count !== null && (
-                    <span className="rounded-full bg-surface-raised px-2 text-xs text-text">
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
+              return {
+                key,
+                // The test id sits on the label with its count, which tests
+                // read; the tab element itself carries role and aria-selected.
+                label: (
+                  <span data-testid={`review-tab-${key}`}>
+                    {key === 'queue'
+                      ? t('tabQueue')
+                      : key === 'stale'
+                        ? t('tabStale')
+                        : t('tabEscalations')}
+                    {count !== null && <span className="tab-badge ms-2">{count}</span>}
+                  </span>
+                ),
+              };
             })}
-          </div>
+          />
 
-          <div role="tabpanel" id={`${tabsId}-${tab}-panel`} aria-labelledby={`${tabsId}-${tab}`}>
+          <div role="tabpanel" id={tabPanelId(tabsId, tab)} aria-labelledby={tabId(tabsId, tab)}>
             {tab === 'queue' ? (
               <VerificationConsole
                 items={phase.items}
@@ -310,13 +306,9 @@ export function ReviewScreen({
                   }}
                 />
               ) : (
-                <p
-                  role="alert"
-                  data-testid="escalations-failed"
-                  className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-                >
+                <Notice tone="critical" testId="escalations-failed">
                   {t('escalationsFailed')}
-                </p>
+                </Notice>
               )
             ) : phase.stale.kind === 'loaded' ? (
               <StaleDocuments
@@ -331,13 +323,9 @@ export function ReviewScreen({
                 }}
               />
             ) : (
-              <p
-                role="alert"
-                data-testid="stale-failed"
-                className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-              >
+              <Notice tone="critical" testId="stale-failed">
                 {t('staleFailed')}
-              </p>
+              </Notice>
             )}
           </div>
         </div>

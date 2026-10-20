@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 
 import { BoltIcon, CodeIcon } from '@/components/icons';
 import { PlcView } from '@/components/plc-view';
+import { EmptyState, LoadingState, Notice } from '@/components/ui';
 import { generatePlc, type GenerateOutcome, type PlcDialect, type PlcLanguage } from '@/lib/plc';
 import { acquireTrial } from '@/lib/session';
 
@@ -81,7 +82,7 @@ export function PlcGenerate({
         }}
         className="card flex flex-col gap-3 p-4 md:p-5"
       >
-        <label htmlFor={descriptionId} className="text-sm font-semibold">
+        <label htmlFor={descriptionId} className="field-label">
           {t('describeLabel')}
         </label>
         <textarea
@@ -98,7 +99,7 @@ export function PlcGenerate({
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <label htmlFor={dialectId} className="text-sm font-semibold">
+            <label htmlFor={dialectId} className="field-label">
               {t('dialect')}
             </label>
             <select
@@ -117,7 +118,7 @@ export function PlcGenerate({
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor={languageId} className="text-sm font-semibold">
+            <label htmlFor={languageId} className="field-label">
               {t('language')}
             </label>
             <select
@@ -160,35 +161,18 @@ export function PlcGenerate({
           </>
         )}
         {generation.kind === 'rejected' && (
-          <p
-            role="alert"
-            data-testid="plc-generate-rejected"
-            className="rounded-lg border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
-          >
-            {generation.detail ?? t('generateRejected')}
-          </p>
+          <Notice tone="warning" testId="plc-generate-rejected">
+            <span dir="auto">{generation.detail ?? t('generateRejected')}</span>
+          </Notice>
         )}
         {generation.kind === 'error' && (
-          <p
-            role="alert"
-            data-testid="plc-generate-error"
-            className="rounded-lg border border-severity-critical bg-severity-critical-surface p-4 text-sm text-severity-critical"
-          >
+          <Notice tone="critical" testId="plc-generate-error">
             {t(`generateError.${generation.reason}`)}
-          </p>
+          </Notice>
         )}
-        {(generation.kind === 'idle' || generation.kind === 'generating') && (
-          <div className="flex min-h-96 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border-subtle p-6 text-center text-sm text-text-muted">
-            {generation.kind === 'generating' ? (
-              <span
-                aria-hidden="true"
-                className="h-6 w-6 animate-spin rounded-full border-2 border-border-subtle border-t-accent"
-              />
-            ) : (
-              <CodeIcon width="28" height="28" className="text-accent" />
-            )}
-            <p className="max-w-sm">{t('emptyGenerated')}</p>
-          </div>
+        {generation.kind === 'generating' && <LoadingState>{t('generating')}</LoadingState>}
+        {generation.kind === 'idle' && (
+          <EmptyState icon={<CodeIcon width="28" height="28" />} title={t('emptyGenerated')} />
         )}
       </div>
     </div>

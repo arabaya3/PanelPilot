@@ -28,6 +28,8 @@ const config: Config = {
         DEFAULT: 'var(--color-surface)',
         raised: 'var(--color-surface-raised)',
       },
+      // The navigation rail and top bar.
+      chrome: 'var(--color-chrome)',
       border: {
         DEFAULT: 'var(--color-border)',
         subtle: 'var(--color-border-subtle)',
@@ -43,6 +45,19 @@ const config: Config = {
         'critical-surface': 'var(--color-severity-critical-surface)',
         'warning-surface': 'var(--color-severity-warning-surface)',
         'info-surface': 'var(--color-severity-info-surface)',
+      },
+      // An alias, not a fourth severity: screens wrote `text-danger` for an
+      // error line before any `danger` colour existed, and Tailwind silently
+      // generated nothing. It resolves to the critical severity.
+      danger: 'var(--color-severity-critical)',
+      success: {
+        DEFAULT: 'var(--color-success)',
+        surface: 'var(--color-success-surface)',
+      },
+      // Paper and ink for drawing frames, which stay paper in both themes.
+      sheet: {
+        DEFAULT: 'var(--color-sheet)',
+        ink: 'var(--color-sheet-ink)',
       },
       accent: {
         DEFAULT: 'var(--color-accent)',
@@ -99,9 +114,10 @@ const config: Config = {
     // Only the sizes in use, at Tailwind's own values; `tailwind-classes.test`
     // fails on any other.
     extend: {
-      width: { 24: '6rem', 40: '10rem', 56: '14rem', 64: '16rem' },
+      width: { 20: '5rem', 24: '6rem', 40: '10rem', 56: '14rem', 64: '16rem', 72: '18rem' },
       height: { 96: '24rem' },
-      maxHeight: { 40: '10rem', 96: '24rem' },
+      minWidth: { 14: '3.5rem', 32: '8rem', 40: '10rem', 48: '12rem', 64: '16rem' },
+      maxHeight: { 40: '10rem', 64: '16rem', 96: '24rem' },
       minHeight: { 96: '24rem' },
     },
   },

@@ -107,7 +107,7 @@ export function PlcPanel({
           <p
             role={status === 'valid' ? 'status' : 'alert'}
             data-testid="plc-status"
-            className={`text-sm font-semibold ${status === 'valid' ? 'text-accent' : 'text-danger'}`}
+            className={`text-sm font-semibold ${status === 'valid' ? 'text-accent' : 'text-severity-critical'}`}
           >
             {t(`status.${status}`)}
           </p>
