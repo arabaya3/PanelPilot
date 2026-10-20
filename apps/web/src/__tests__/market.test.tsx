@@ -47,7 +47,18 @@ const MARKETS: MarketInfo[] = [
   },
 ];
 
-describe('markets', () => {
+/**
+ * These tests drive the whole /design workspace end to end -- every board,
+ * row and view rendered -- so they take ~2-2.6 s alone on a developer machine
+ * and crossed vitest's 5 s default on CI under full-suite load (5.16 s in run
+ * 39444575313). Measured before the Graphite redesign they took ~1.4-1.7 s; the
+ * richer workspace costs ~50% more render time, with no single hot spot
+ * (rendering only the visible view did not change it). The limit is raised for
+ * this suite only, not globally, so a genuine hang still fails.
+ */
+const WHOLE_SCREEN_TIMEOUT_MS = 15_000;
+
+describe('markets', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
   it('reads the market from the time zone, and Jerusalem from the language', () => {
     expect(detectMarket('Asia/Hebron', ['en'])).toBe('PS');
     expect(detectMarket('Asia/Amman', ['ar-JO'])).toBe('JO');
