@@ -15,6 +15,8 @@ import json
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
+from structlog.testing import capture_logs
 
 from app.ai.structured_output import (
     ANSWERS_FIELD,
@@ -159,6 +161,91 @@ def test_the_schema_still_describes_the_nested_step_fields() -> None:
 def test_the_schema_is_serialisable_for_the_api() -> None:
     """It travels to the model as JSON; an unserialisable schema fails at runtime."""
     json.dumps(diagnosis_tool_definition())
+
+
+# --- strict tool use ----------------------------------------------------------
+
+
+def test_the_tool_is_strict() -> None:
+    """``required`` alone was a suggestion the model often ignored.
+
+    It sent a bare ``summary`` on questions the evidence answered, and the turn
+    was refused as unvalidatable. Strict mode makes the API hold it to the schema.
+    """
+    assert diagnosis_tool_definition()["strict"] is True
+
+
+def test_the_strict_schema_carries_only_what_strict_mode_accepts() -> None:
+    """A keyword strict mode rejects turns every diagnosis into a 400."""
+    rendered = json.dumps(diagnosis_tool_definition()["input_schema"])
+    for keyword in ("minLength", "maxLength", "minimum", "maximum", "maxItems"):
+        assert f'"{keyword}"' not in rendered, keyword
+
+
+def test_the_strict_schema_still_demands_a_citation_and_a_step() -> None:
+    """The one constraint worth keeping on the wire.
+
+    Without it the model sent ``summary_citation_ids: []`` -- valid against the
+    schema, refused by the parser for citing nothing.
+    """
+    properties = diagnosis_tool_definition()["input_schema"]["properties"]
+    assert properties["summary_citation_ids"]["minItems"] == 1
+    assert properties["steps"]["minItems"] == 1
+
+
+def test_every_object_in_the_strict_schema_is_closed() -> None:
+    """Strict mode refuses a schema with any object left open."""
+
+    def check(node: object) -> None:
+        if isinstance(node, list):
+            for item in node:
+                check(item)
+        elif isinstance(node, dict):
+            if node.get("type") == "object" or "properties" in node:
+                assert node.get("additionalProperties") is False
+            for value in node.values():
+                check(value)
+
+    check(diagnosis_tool_definition()["input_schema"])
+
+
+def test_the_constraints_dropped_from_the_wire_are_still_enforced() -> None:
+    """Stripped for the API only; the parser still refuses what they forbid."""
+    payload = _valid_payload()
+    payload["summary"] = ""
+    with pytest.raises((ValidationError, ValueError)):
+        parse_tool_output(payload, evidence_ids=EVIDENCE_IDS)
+
+
+# --- a rejected generation is explained in the log -------------------------------
+
+
+def test_a_rejected_generation_is_logged_with_its_reason_and_fields() -> None:
+    """The engineer sees "ask again"; whoever runs the service needs the why."""
+    payload = _valid_payload()
+    del payload["steps"]
+    with capture_logs() as logs:
+        diagnosis, refusal = structured_or_refuse(
+            payload, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision()
+        )
+    assert diagnosis is None
+    assert refusal.reason is RefusalReason.UNVALIDATABLE_OUTPUT
+    [entry] = [log for log in logs if log["event"] == "diagnosis.output_rejected"]
+    assert entry["reason"] == refusal.reason.value
+    assert "steps" not in entry["fields"]
+    assert "summary" in entry["fields"]
+
+
+def test_the_log_never_carries_the_answer_text() -> None:
+    """Pydantic quotes the offending value; for model output that is the answer."""
+    payload = _valid_payload()
+    payload["summary"] = "SECRET-ANSWER-TEXT " * 3
+    payload["steps"] = "not a list SECRET-ANSWER-TEXT"
+    with capture_logs() as logs:
+        structured_or_refuse(payload, evidence_ids=EVIDENCE_IDS, decision=_permitting_decision())
+    [entry] = [log for log in logs if log["event"] == "diagnosis.output_rejected"]
+    assert "SECRET-ANSWER-TEXT" not in entry["detail"]
+    assert "input_value=<omitted>" in entry["detail"]
 
 
 # --- the acceptance criterion: 100 varied queries, zero failures ------------
@@ -494,7 +581,7 @@ def test_generation_sends_the_derived_schema() -> None:
     """Not a hand-written one that could disagree with the response type."""
     client = _client_returning(_valid_payload())
     _generate(client)
-    assert client.calls[0]["tools"][0]["input_schema"] == diagnosis_input_schema()
+    assert client.calls[0]["tools"][0] == diagnosis_tool_definition()
 
 
 def test_generation_returns_the_validated_diagnosis() -> None:

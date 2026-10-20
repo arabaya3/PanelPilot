@@ -66,6 +66,16 @@ def test_the_refusal_is_a_429() -> None:
     assert issubclass(ModelBudgetExceededError, TooManyRequestsError)
 
 
+def test_the_refusal_names_its_own_limit() -> None:
+    """Not ``rate_limited``: a page told to "wait a few minutes" would be wrong.
+
+    Both are 429s, so the code is the only thing that tells a spent month
+    apart from the per-address limit.
+    """
+    assert ModelBudgetExceededError("spent").code == "model_budget_exceeded"
+    assert TooManyRequestsError("slow down").code == "rate_limited"
+
+
 @requires_postgres
 def test_calls_are_counted_up_to_the_ceiling_and_then_refused(
     engine: Engine, tenant: uuid.UUID

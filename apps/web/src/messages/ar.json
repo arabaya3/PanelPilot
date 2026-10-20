@@ -775,6 +775,7 @@
       "profile_unknown_settings": "إعدادات شركة غير معروفة: {settings}.",
       "quotation_needs_pricing": "عرض السعر يحتاج أسعار الشركة وأجورها.",
       "rate_limited": "طلبات تصميم كثيرة من هذه الشبكة؛ انتظر بضع دقائق.",
+      "model_budget_exceeded": "انتهى رصيد الذكاء الاصطناعي لهذا الشهر.",
       "rccb_group_too_large": "مجموعة قاطع تسرّب تحمل {current} A أكبر من أكبر قاطع تسرّب متوفر ({largest} A).",
       "relay_range": "محرك {current} A يمرّر {relay_current} A في الريليه، وهذا أقل من مدى الريليه {relay} ({low}–{high} A) في أول صف تنسيق يحمله.",
       "schedule_no_header": "لا يوجد في أول 30 صفاً صف عناوين فيه عمود للوصف وعمود للقدرة (kW أو W).",

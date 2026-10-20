@@ -775,6 +775,7 @@
       "profile_unknown_settings": "הגדרות חברה לא מוכרות: {settings}.",
       "quotation_needs_pricing": "הצעת מחיר צריכה את מחירי החברה ותעריפיה.",
       "rate_limited": "יותר מדי בקשות תכנון מרשת זו; המתינו כמה דקות.",
+      "model_budget_exceeded": "מכסת ה-AI לחודש זה נוצלה.",
       "rccb_group_too_large": "קבוצת ממסר פחת הנושאת {current} A גבוהה מממסר הפחת הגדול ביותר הקיים ({largest} A).",
       "relay_range": "מנוע {current} A מעביר {relay_current} A דרך הממסר, מתחת לטווח {relay} ({low}–{high} A) בשורת התיאום הראשונה הנושאת אותו.",
       "schedule_no_header": "אין ב-30 השורות הראשונות שורת כותרת עם עמודת תיאור ועמודת הספק (kW או W).",

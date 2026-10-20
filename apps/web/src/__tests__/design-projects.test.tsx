@@ -164,6 +164,44 @@ describe('the projects panel', () => {
     expect(screen.getByTestId('projects-message').textContent).toBe('Saved as revision 1.');
   });
 
+  it('lists once, not on every render', async () => {
+    // Typing re-renders the panel. The list depends only on who is signed in,
+    // so a keystroke must not refetch it.
+    const { list } = render();
+    expect(await screen.findByText('Tower')).toBeTruthy();
+    for (const value of ['i', 'is', 'iss', 'issue']) {
+      fireEvent.change(screen.getByLabelText('Revision note'), { target: { value } });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a failed list once instead of retrying it in a loop', async () => {
+    // The loop this guards against: the failure set a message, the message
+    // re-rendered the panel, a new `say` closure gave `refresh` a new
+    // identity, and the effect fetched again -- until the per-address design
+    // limit refused every request on the page, the design itself included.
+    const list = vi.fn<typeof listProjects>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'too many design requests from this network',
+      code: 'rate_limited',
+    });
+    renderApp(
+      <ProjectsPanel
+        token="tok"
+        current={{ name: 'Tower', request: REQUEST }}
+        opened={null}
+        onOpened={vi.fn()}
+        impls={{ list }}
+      />,
+    );
+    expect((await screen.findByTestId('projects-message')).textContent).toBe(
+      'Too many design requests from this network; wait a few minutes.',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
   it('saves the open project as a new revision, and opens an earlier one', async () => {
     const { revise, open, onOpened } = render({
       id: 'p1',

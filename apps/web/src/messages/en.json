@@ -775,6 +775,7 @@
       "profile_unknown_settings": "Unknown company settings: {settings}.",
       "quotation_needs_pricing": "A quotation needs the company’s prices and rates.",
       "rate_limited": "Too many design requests from this network; wait a few minutes.",
+      "model_budget_exceeded": "This month's AI allowance is used up.",
       "rccb_group_too_large": "A residual current group carrying {current} A is above the largest RCCB held ({largest} A).",
       "relay_range": "A {current} A motor puts {relay_current} A through its relay, below the {relay} range ({low}–{high} A) of the first coordinated row that carries it.",
       "schedule_no_header": "No header row in the first 30 rows names both a description and a power (kW or W) column.",

@@ -31,6 +31,19 @@ logger = structlog.get_logger(__name__)
 class ModelBudgetExceededError(TooManyRequestsError):
     """The tenant has used this month's model calls."""
 
+    #: Distinct from the per-address ``rate_limited``: waiting a few minutes
+    #: does not help here, so the page must not say it will.
+    CODE = "model_budget_exceeded"
+
+    def __init__(self, message: str, *, retry_after_seconds: int | None = None) -> None:
+        """Record the message under this limit's own code.
+
+        Args:
+            message: Human-readable explanation, including when it resets.
+            retry_after_seconds: Whole seconds until a retry can succeed.
+        """
+        super().__init__(message, retry_after_seconds=retry_after_seconds, code=self.CODE)
+
 
 def current_period(now: datetime | None = None) -> str:
     """Return the UTC calendar month a call is charged to.

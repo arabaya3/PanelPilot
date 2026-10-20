@@ -425,11 +425,26 @@ describe('suggest from a description', () => {
     );
   });
 
-  it('maps a 429 to the budget outcome', async () => {
-    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429 }));
+  /** A 429 as the API sends it: the same status for both limits, told apart by code. */
+  function tooMany(code: string): typeof fetch {
+    const body = { error: 'TooManyRequestsError', detail: 'slow down', code };
+    return vi.fn<typeof fetch>().mockResolvedValue(Response.json(body, { status: 429 }));
+  }
+
+  it('maps a spent monthly allowance to the budget outcome', async () => {
+    const fetchImpl = tooMany('model_budget_exceeded');
     expect(
       await suggestSchedule({ token: 't', description: 'x', supplyPhases: 3, fetchImpl }),
     ).toEqual({ kind: 'budget' });
+  });
+
+  it('does not call the per-address limit a spent allowance', async () => {
+    // Both are 429s. Only the code says which: waiting a few minutes clears
+    // this one, and telling the engineer their month is gone is wrong.
+    const fetchImpl = tooMany('rate_limited');
+    expect(
+      await suggestSchedule({ token: 't', description: 'x', supplyPhases: 3, fetchImpl }),
+    ).toMatchObject({ kind: 'refused', code: 'rate_limited' });
   });
 });
 

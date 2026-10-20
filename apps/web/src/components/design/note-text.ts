@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { useCallback } from 'react';
 
 import type { DesignNote, Refusal } from '@/lib/design';
 
@@ -45,18 +46,28 @@ export function useNoteText(): (note: DesignNote) => string {
  * with what it is about (`Pump: ...`) when the server named it; one without
  * falls back to the server's English reason, and anything else to the
  * generic error.
+ *
+ * The function keeps its identity across renders (it changes only with the
+ * language). Callers list it as an effect dependency -- the projects panel
+ * refetches whenever its `refresh` changes -- and a fresh closure on every
+ * render made that effect fire on every render: a failed fetch set a message,
+ * the message re-rendered, the new closure refetched, and the panel looped
+ * until the per-address design limit cut the whole page off.
  */
 export function useOutcomeText(): (outcome: { kind: string }) => string {
   const t = useTranslations('design');
-  return (outcome) => {
-    if (outcome.kind !== 'refused') return t('error');
-    const refusal = outcome as Refusal;
-    const key = `errors.${refusal.code ?? ''}`;
-    if (refusal.code && t.has(key)) {
-      const { subject, ...values } = refusal.params ?? {};
-      const sentence = t(key, values);
-      return subject ? `${subject}: ${sentence}` : sentence;
-    }
-    return refusal.detail || t('error');
-  };
+  return useCallback(
+    (outcome) => {
+      if (outcome.kind !== 'refused') return t('error');
+      const refusal = outcome as Refusal;
+      const key = `errors.${refusal.code ?? ''}`;
+      if (refusal.code && t.has(key)) {
+        const { subject, ...values } = refusal.params ?? {};
+        const sentence = t(key, values);
+        return subject ? `${subject}: ${sentence}` : sentence;
+      }
+      return refusal.detail || t('error');
+    },
+    [t],
+  );
 }
