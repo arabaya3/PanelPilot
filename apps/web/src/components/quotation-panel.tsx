@@ -210,7 +210,7 @@ export function QuotationPanel({
       {quotation && (
         <div data-testid="quote-result" className="flex flex-col gap-3">
           {!quotation.complete && (
-            <p role="alert" className="text-sm font-semibold text-danger">
+            <p role="alert" className="text-sm font-semibold text-severity-critical">
               {t('incomplete', { count: quotation.unpriced.length })}
             </p>
           )}

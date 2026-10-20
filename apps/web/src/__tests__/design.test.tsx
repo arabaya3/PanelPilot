@@ -399,6 +399,7 @@ describe('suggest from a description', () => {
     renderApp(
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} suggestImpl={suggestImpl} />,
     );
+    fireEvent.click(screen.getByRole('tab', { name: /Load schedule/ }));
     fireEvent.change(screen.getByLabelText('Describe the board'), {
       target: { value: 'A hall with 13 sockets' },
     });
@@ -427,6 +428,7 @@ describe('suggest from a description', () => {
         suggestImpl={vi.fn<typeof suggestSchedule>().mockResolvedValue({ kind: 'budget' })}
       />,
     );
+    fireEvent.click(screen.getByRole('tab', { name: /Load schedule/ }));
     fireEvent.change(screen.getByLabelText('Describe the board'), { target: { value: 'hall' } });
     const button = screen.getByRole('button', { name: 'Suggest a schedule' });
     await waitFor(() => {

@@ -276,7 +276,7 @@ export function CompanySettingsPanel({
     <div className="flex flex-col gap-4" data-testid="company-settings">
       <p className="text-sm text-text-muted">{t('help')}</p>
       {parsed === 'invalid' && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-sm text-severity-critical">
           {t('invalid')}
         </p>
       )}

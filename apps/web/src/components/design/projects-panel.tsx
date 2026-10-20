@@ -50,6 +50,7 @@ export function ProjectsPanel({
   current,
   opened,
   onOpened,
+  onSaveState,
   impls = {},
 }: {
   token: string;
@@ -58,6 +59,8 @@ export function ProjectsPanel({
   opened: OpenedProject | null;
   /** `fill` is true when the project was opened, so the form takes it. */
   onOpened: (project: SavedProject, fill: boolean) => void;
+  /** Told when a save starts and how it ended, so the page can show where the work stands. */
+  onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
   impls?: Partial<{
     list: typeof listProjects;
     save: typeof saveProject;
@@ -99,10 +102,12 @@ export function ProjectsPanel({
     if (current === null) return;
     setWorking(true);
     setMessage(null);
+    onSaveState?.('saving');
     const outcome = opened
       ? await revise({ token, id: opened.id, request: current.request, note })
       : await save({ token, name: current.name, request: current.request, note });
     setWorking(false);
+    onSaveState?.(outcome.kind === 'saved' ? 'saved' : 'failed');
     if (outcome.kind === 'saved') {
       setNote('');
       setMessage(t('saved', { revision: outcome.project.revision }));

@@ -82,6 +82,8 @@ describe('a project of boards', () => {
 
   it('keeps a sub-board fed when its supply is renamed, and lifts it when removed', () => {
     render();
+    // The board tabs live in the load schedule view.
+    fireEvent.click(screen.getByRole('tab', { name: /Load schedule/ }));
     fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'MDB' } });
     fireEvent.click(screen.getByTestId('board-add'));
     fireEvent.click(screen.getByTestId('board-add'));
