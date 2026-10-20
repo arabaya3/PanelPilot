@@ -101,7 +101,12 @@ class Settings(BaseSettings):
     llm_model: str = "claude-sonnet-5"
     openai_api_key: SecretStr | None = Field(default=None, description="API key for OpenAI.")
     openai_model: str = "gpt-4o-mini"
-    llm_max_output_tokens: int = 4096
+    # Room for a real diagnosis with headroom: 1.7k-3.7k tokens measured, Arabic
+    # the longest, which 4096 cut off. No higher, because a generation that
+    # reaches the cap has run away rather than run long, and a lower cap ends
+    # it sooner before the one retry generate_diagnosis gives it.
+    # LLM_READ_TIMEOUT_S lets a full generation at this cap finish.
+    llm_max_output_tokens: int = 6144
     # Model calls one tenant may make per UTC calendar month, across
     # diagnosis, photo recognition and PLC generation. Unset for no ceiling.
     model_calls_per_month: int | None = Field(default=1000, ge=1)

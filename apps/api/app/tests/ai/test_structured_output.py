@@ -20,6 +20,8 @@ from structlog.testing import capture_logs
 
 from app.ai.structured_output import (
     ANSWERS_FIELD,
+    CITATION_LABELS,
+    CUT_OFF_RETRIES,
     DIAGNOSIS_TOOL_NAME,
     diagnosis_input_schema,
     diagnosis_tool_definition,
@@ -662,6 +664,56 @@ def test_an_answer_cut_off_at_the_output_limit_is_refused() -> None:
 
     assert diagnosis is None
     assert decision.reason is RefusalReason.UNVALIDATABLE_OUTPUT
+
+
+class _SequenceClient:
+    """Returns its messages in turn, one per call, recording each request."""
+
+    def __init__(self, *messages: _Message) -> None:
+        self._messages = list(messages)
+        self.calls: list[dict[str, Any]] = []
+        self.messages = self
+
+    def create(self, **kwargs: Any) -> _Message:
+        self.calls.append(kwargs)
+        return self._messages[len(self.calls) - 1]
+
+
+def _answer(stop_reason: str) -> _Message:
+    message = _Message(_Block(kind="tool_use", name=DIAGNOSIS_TOOL_NAME, payload=_valid_payload()))
+    message.stop_reason = stop_reason  # type: ignore[attr-defined]
+    return message
+
+
+def test_a_runaway_generation_is_tried_once_more() -> None:
+    """A diagnosis that reaches the cap ran away; the next sample usually answers.
+
+    Measured: an Arabic answer came back as 8,192 tokens and an empty input,
+    one sample in four, where real answers are 1.7k-3.7k.
+    """
+    client = _SequenceClient(_answer("max_tokens"), _answer("tool_use"))
+    diagnosis, _decision = _generate(client)  # type: ignore[arg-type]
+    assert diagnosis is not None
+    assert len(client.calls) == 2
+
+
+def test_a_second_runaway_is_refused_not_retried_again() -> None:
+    """Once only: the engineer is waiting through every attempt."""
+    client = _SequenceClient(*(_answer("max_tokens") for _ in range(5)))
+    diagnosis, decision = _generate(client)  # type: ignore[arg-type]
+    assert diagnosis is None
+    assert decision.reason is RefusalReason.UNVALIDATABLE_OUTPUT
+    assert len(client.calls) == 1 + CUT_OFF_RETRIES
+
+
+def test_citations_can_only_be_the_passage_labels() -> None:
+    """Asked to copy 45-character ids, the model now and then wrote "x"."""
+    properties = diagnosis_tool_definition()["input_schema"]["properties"]
+    summary = properties["summary_citation_ids"]["items"]
+    step = properties["steps"]["items"]["properties"]["citation_ids"]["items"]
+    assert summary["enum"] == list(CITATION_LABELS)
+    assert step["enum"] == list(CITATION_LABELS)
+    assert CITATION_LABELS[:2] == ("P1", "P2")
 
 
 def test_a_normally_finished_answer_is_not_refused_for_its_stop_reason() -> None:

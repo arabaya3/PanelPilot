@@ -49,6 +49,7 @@ from app.ai.prompts.diagnostic import SYSTEM_PROMPT, build_diagnostic_prompt
 from app.ai.query_translation import english_search_query
 from app.ai.retrieval.equipment_hint import infer_manufacturer
 from app.ai.retrieval.hybrid_search import search
+from app.ai.structured_output import CITATION_LABELS
 from app.core.config import get_settings
 from app.core.errors import NotFoundError, ValidationError
 from app.core.observability import record_latency, timed
@@ -188,19 +189,36 @@ def run_diagnosis(
     # `verify_citations` resolved a citation to it because it was "evidence".
     # The prompt, the allowed ids, citation checking and scoring must all see
     # the same set, or one of them is judging a different answer.
-    evidence = [passage for passage in passages if passage.score >= decision.threshold]
+    #
+    # A passage that contains the very code the question names (`anchored`)
+    # is admitted below the threshold too. Scores are relative to the best
+    # hit, and the best hit for a code is often a table that merely lists it:
+    # for "ACS880 fault 2310" an ACS800 fault-bit table scored 1.0 by
+    # repeating "OVERCURRENT 2310", and the fault-tracing row that explains
+    # 2310 and what to do (p.519) scored 0.57 -- below 0.6, so the model was
+    # shown only the bit table and rightly said it did not answer. A code
+    # match is not a 0.06 passage that happens to share words; retrieval's own
+    # floor still applies, and the brand filter keeps another maker's 2310 out.
+    evidence = [
+        passage for passage in passages if passage.score >= decision.threshold or passage.anchored
+    ]
 
     # Charged before the call is made, against the month's ceiling; refused
     # here, nothing reaches the model. Rolled back with the turn if it fails.
     charge_model_call(session=session, tenant_id=user.tenant_id)
+
+    # The model cites passages by short label (P1, P2, ...), not by their real
+    # ids, and the labels are mapped back before anything checks a citation.
+    # See CITATION_LABELS for what copying the real ids got wrong.
+    labelled, real_ids = _labelled(evidence)
 
     with timed("generation", locale=request.locale.value):
         diagnosis, decision = generate_localised_diagnosis(
             _anthropic_client(),
             model=get_settings().generation_model,
             system=SYSTEM_PROMPT,
-            question=build_diagnostic_prompt(request=request, evidence=evidence),
-            evidence_ids={passage.id for passage in evidence},
+            question=build_diagnostic_prompt(request=request, evidence=labelled),
+            evidence_ids={passage.id for passage in labelled},
             decision=decision,
             # From the request, never a server-side default: the engineer's
             # language is theirs to state.
@@ -218,6 +236,7 @@ def run_diagnosis(
             request=request,
             response=_refusal_response(conversation_id, decision, passages),
         )
+    diagnosis = _with_real_ids(diagnosis, real_ids)
 
     answer = verify_citations(
         GeneratedAnswer(
@@ -261,6 +280,55 @@ def run_diagnosis(
     if charge:
         consume_free_question(session=session, tenant_id=user.tenant_id)
     return response
+
+
+def _labelled(
+    evidence: list[RetrievedPassage],
+) -> tuple[list[RetrievedPassage], dict[str, str]]:
+    """The evidence under the short labels the model cites, and the way back.
+
+    Args:
+        evidence: The passages the model will be shown, in order.
+
+    Returns:
+        The same passages with ``id`` replaced by ``P1``, ``P2``, ... and a map
+        from each label to the passage's real id.
+    """
+    # Retrieval returns far fewer than there are labels; more would mean a
+    # passage the model could not cite, so it is not shown at all.
+    shown = evidence[: len(CITATION_LABELS)]
+    labelled = [
+        passage.model_copy(update={"id": label})
+        for label, passage in zip(CITATION_LABELS, shown, strict=False)
+    ]
+    return labelled, {
+        label: passage.id for label, passage in zip(CITATION_LABELS, shown, strict=False)
+    }
+
+
+def _with_real_ids(diagnosis: StructuredDiagnosis, real_ids: dict[str, str]) -> StructuredDiagnosis:
+    """The diagnosis with each cited label replaced by the passage's real id.
+
+    Every label is known here: generation has already refused a citation of
+    one the prompt did not show.
+
+    Args:
+        diagnosis: As the model returned it, citing labels.
+        real_ids: From ``_labelled``.
+
+    Returns:
+        The same diagnosis, citing real ids -- what citation checking, scoring
+        and the stored turn all work in.
+    """
+    return diagnosis.model_copy(
+        update={
+            "summary_citation_ids": [real_ids[c] for c in diagnosis.summary_citation_ids],
+            "steps": [
+                step.model_copy(update={"citation_ids": [real_ids[c] for c in step.citation_ids]})
+                for step in diagnosis.steps
+            ],
+        }
+    )
 
 
 def _anthropic_client() -> object:

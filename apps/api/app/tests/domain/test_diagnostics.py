@@ -71,15 +71,20 @@ def _other_passage(doc_id: str) -> RetrievedPassage:
 
 
 def _valid_tool_payload() -> dict[str, Any]:
+    """A model's answer citing the first passage it was shown.
+
+    By its label, ``P1``, as the real model does: the prompt never shows it
+    the passage's real id (``p1`` here), which the turn maps back to.
+    """
     return {
         "summary": "The acceleration time is too short for the load inertia.",
-        "summary_citation_ids": ["p1"],
+        "summary_citation_ids": ["P1"],
         "steps": [
             {
                 "order": 1,
                 "instruction": "Isolate the drive and verify zero voltage.",
                 "rationale": "Work on a live DC link is fatal.",
-                "citation_ids": ["p1"],
+                "citation_ids": ["P1"],
                 "severity": "critical",
             }
         ],
@@ -2178,8 +2183,10 @@ def test_a_passage_below_the_threshold_is_not_citable(
         citation=Citation(document_id="weak-doc", document_title="Weak", manufacturer="ABB"),
     )
     payload = _valid_tool_payload()
-    payload["summary_citation_ids"] = ["weak"]
-    payload["steps"][0]["citation_ids"] = ["weak"]
+    # P2 is the label the weak passage would carry had it been admitted as
+    # evidence, so this fails if it was rather than for an unknown label.
+    payload["summary_citation_ids"] = ["P2"]
+    payload["steps"][0]["citation_ids"] = ["P2"]
     client = _CountingClient(payload)
     monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
     _retrieving(monkeypatch, [_passage(), weak])
@@ -2190,6 +2197,71 @@ def test_a_passage_below_the_threshold_is_not_citable(
 
     assert client.calls == 1
     assert response.diagnosis is None, "a sub-threshold passage was accepted as a citation"
+
+
+class _RecordingClient(_CountingClient):
+    """Also keeps each request, to read the prompt the model was shown."""
+
+    def __init__(self, payload: Any = None) -> None:
+        super().__init__(payload)
+        self.requests: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> _Message:
+        self.requests.append(kwargs)
+        return super().create(**kwargs)
+
+
+def test_a_passage_naming_the_asked_code_is_evidence_below_the_threshold(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """Scores are relative to the best hit, and that is often a mere listing.
+
+    "ACS880 fault 2310": an ACS800 fault-bit table scored 1.0 by repeating
+    "OVERCURRENT 2310", and the row explaining 2310 and what to do scored 0.57
+    -- below 0.6, so the model was shown only the table and said it did not
+    answer. The row names the code, so it is evidence.
+    """
+    listing = _passage(score=0.9)
+    row = RetrievedPassage(
+        id="row-2310",
+        text="2310 Overcurrent. Output current has exceeded internal fault limit. Check motor load.",
+        score=0.57,
+        anchored=True,
+        citation=Citation(document_id="fw", document_title="Firmware manual", manufacturer="ABB"),
+    )
+    payload = _valid_tool_payload()
+    payload["summary_citation_ids"] = ["P2"]
+    payload["steps"][0]["citation_ids"] = ["P2"]
+    client = _CountingClient(payload)
+    monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
+    _retrieving(monkeypatch, [listing, row])
+
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+
+    assert response.diagnosis is not None, "the row naming the code was not shown as evidence"
+    assert response.diagnosis.summary_citation_ids == ["row-2310"]
+
+
+def test_the_model_cites_labels_and_the_answer_cites_real_ids(
+    monkeypatch: pytest.MonkeyPatch, wired: _CountingClient
+) -> None:
+    """The prompt shows P1, P2, ...; everything after generation sees real ids."""
+    client = _RecordingClient()
+    monkeypatch.setattr(diagnostics_domain, "_anthropic_client", lambda: client)
+    _retrieving(monkeypatch, [_passage()])
+
+    response = diagnostics_domain.run_diagnosis(
+        session=cast(Session, _FakeSession()), user=_user(), request=_request()
+    )
+
+    prompt = client.requests[0]["messages"][0]["content"]
+    assert 'id="P1"' in prompt
+    assert 'id="p1"' not in prompt, "the real id reached the model"
+    assert response.diagnosis is not None
+    assert response.diagnosis.summary_citation_ids == ["p1"]
+    assert response.diagnosis.steps[0].citation_ids == ["p1"]
 
 
 def test_the_post_path_refuses_a_spent_allowance_before_paying(
