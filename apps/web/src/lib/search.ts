@@ -77,3 +77,78 @@ export function passageSourceUrl(passage: RetrievedPassage): string | null {
     ? `${url}#page=${String(passage.citation.page)}`
     : url;
 }
+
+/**
+ * Words too common to say anything about a match: a passage sharing only
+ * "the" or "how" with a search does not contain what was searched for.
+ */
+const STOPWORDS = new Set([
+  'about',
+  'all',
+  'and',
+  'any',
+  'are',
+  'but',
+  'can',
+  'does',
+  'for',
+  'from',
+  'has',
+  'have',
+  'how',
+  'into',
+  'its',
+  'not',
+  'off',
+  'out',
+  'that',
+  'the',
+  'then',
+  'this',
+  'too',
+  'was',
+  'what',
+  'when',
+  'where',
+  'which',
+  'who',
+  'why',
+  'will',
+  'with',
+  'you',
+  'your',
+]);
+
+const WORD = /[\p{L}\p{N}]+/gu;
+
+/** A word that can identify a match: three letters or more, or holding a digit (F30001, S7). */
+function significant(word: string): boolean {
+  return !STOPWORDS.has(word) && (word.length >= 3 || /\p{N}/u.test(word));
+}
+
+/**
+ * The searched-for words a passage contains, in the order they were typed.
+ *
+ * Search ranks every passage it returns; it also always returns the nearest
+ * passages by meaning, even for a search the manuals have nothing on. Whether
+ * a passage contains the words searched for is a plain fact the reader can
+ * check, unlike the ranking score, so it is what the page says about each
+ * result. Words, not substrings: "F0001" is not found in "F00010".
+ *
+ * @param query - What was searched for.
+ * @param text - The passage.
+ * @returns The query's significant words found in the passage, lower-cased.
+ */
+export function matchedTerms(query: string, text: string): string[] {
+  const words = new Set((text.toLowerCase().match(WORD) ?? []).filter(significant).map(singular));
+  const found: string[] = [];
+  for (const word of query.toLowerCase().match(WORD) ?? []) {
+    if (significant(word) && words.has(singular(word)) && !found.includes(word)) found.push(word);
+  }
+  return found;
+}
+
+/** "faults" and "fault" are the same word to a reader; folded on both sides. */
+function singular(word: string): string {
+  return word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word;
+}

@@ -125,28 +125,29 @@ function groupByLine(findings: readonly ValidationFinding[]): {
  * The banner shown above the code.
  *
  * @param props - The verdict and the findings behind it.
- * @returns The banner, or nothing when the code passed cleanly.
+ * @returns The banner, for every verdict.
  *
  * `role="alert"` so a screen reader is told without having to reach the code
  * first. The visual block and the announcement are the same decision: a
  * failure must arrive before the content it is about, not after it.
+ *
+ * A pass is shown too, with what the checker covers: a clean program used to
+ * get no banner at all, which left the reader unsure whether anything had
+ * been checked -- and a bare "valid" would claim more than a parser can. It
+ * is a `status` rather than an alert: news, not a warning.
  */
 function VerdictBanner({ result, headingId }: { result: PlcValidationResult; headingId: string }) {
   const t = useTranslations('plcView');
-  const status = result.status;
+  // An unrecognised status is treated as not verified: the cautious reading
+  // of a verdict nobody anticipated.
+  const status: 'valid' | 'invalid' | 'incomplete' =
+    result.status === 'valid' || result.status === 'invalid' ? result.status : 'incomplete';
   // Defaulted server-side, so the generated type has it optional. Treated as
   // empty rather than asserted non-null: a response that genuinely omitted it
   // would crash the banner, and the banner is the part that must survive.
   const findings = result.findings ?? [];
-  if (status === 'valid' && findings.length === 0) {
-    return null;
-  }
 
-  // Total rather than optional: an unrecognised status must still render a
-  // banner, and the cautious styling is the right default for one nobody
-  // anticipated.
-  const classes: StatusClasses = STATUS_CLASSES[status] ??
-    STATUS_CLASSES.incomplete ?? { border: '', surface: '', text: '' };
+  const classes: StatusClasses = STATUS_CLASSES[status] ?? { border: '', surface: '', text: '' };
   const errors = findings.filter((f) => f.severity === 'error');
   const warnings = findings.filter((f) => f.severity === 'warning');
 
@@ -155,11 +156,13 @@ function VerdictBanner({ result, headingId }: { result: PlcValidationResult; hea
       ? t('failed', { count: errors.length })
       : status === 'incomplete'
         ? t('notVerified')
-        : t('passed', { count: warnings.length });
+        : warnings.length === 0
+          ? t('passedClean')
+          : t('passed', { count: warnings.length });
 
   return (
     <div
-      role={status === 'valid' ? undefined : 'alert'}
+      role={status === 'valid' ? 'status' : 'alert'}
       data-testid="verdict-banner"
       data-status={status}
       className={`mb-4 rounded-md border ${classes.border} ${classes.surface} p-3`}
@@ -167,6 +170,8 @@ function VerdictBanner({ result, headingId }: { result: PlcValidationResult; hea
       <p id={headingId} className={`text-sm font-semibold ${classes.text}`}>
         {headline}
       </p>
+      {status === 'valid' && <p className="mt-1 text-xs text-text">{t('validScope')}</p>}
+      {status === 'invalid' && <p className="mt-1 text-xs text-text">{t('invalidAction')}</p>}
       {status === 'incomplete' && (
         <p className="mt-1 text-xs text-text">
           {/* Said in words, because "incomplete" alone reads as a smaller
@@ -236,6 +241,10 @@ function CodeLine({
               behind a hover is a finding nobody on a tablet ever sees, and
               this is read on a tablet next to a panel. */}
           {t('finding', { line: number, message: finding.message })}
+          {/* The parser names where it stopped, not why; say what to look for. */}
+          {finding.code === 'syntax-error' && (
+            <span className="basis-full text-text">{t('syntaxHint')}</span>
+          )}
         </p>
       ))}
     </>

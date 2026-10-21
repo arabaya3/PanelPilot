@@ -15,7 +15,7 @@ import {
   StatusBadge,
 } from '@/components/ui';
 import { acquireTrial } from '@/lib/session';
-import { passageSourceUrl, searchDocuments, type SearchOutcome } from '@/lib/search';
+import { matchedTerms, passageSourceUrl, searchDocuments, type SearchOutcome } from '@/lib/search';
 
 type RetrievedPassage = components['schemas']['RetrievedPassage'];
 
@@ -215,13 +215,7 @@ export function SearchScreen({
               <EmptyState icon={<SearchIcon width="24" height="24" />} title={t('empty')} />
             </div>
           ) : (
-            <ol className="flex flex-col gap-4" data-testid="search-results">
-              {results.passages.map((passage) => (
-                <li key={passage.id}>
-                  <PassageCard passage={passage} />
-                </li>
-              ))}
-            </ol>
+            <SearchResults query={results.query} passages={results.passages} />
           )}
         </section>
       )}
@@ -229,7 +223,51 @@ export function SearchScreen({
   );
 }
 
-function PassageCard({ passage }: { passage: RetrievedPassage }) {
+/**
+ * The passages, each saying whether it contains what was searched for.
+ *
+ * Retrieval always returns the nearest passages by meaning, so a search the
+ * manuals have nothing on -- a typo, gibberish, a question in a language the
+ * manuals are not written in -- still gets a full page of them. Measured
+ * against the live index, neither the ranking score (normalised within each
+ * result set, so the best hit always scores high) nor the embedding similarity
+ * separates those from real matches, so no cut-off is drawn from them. What
+ * the page says instead is checkable: whether each passage contains the
+ * searched-for code (the server's `anchored`) or words.
+ */
+function SearchResults({ query, passages }: { query: string; passages: RetrievedPassage[] }) {
+  const t = useTranslations('search');
+  const matches = passages.map((passage) =>
+    passage.anchored ? null : matchedTerms(query, passage.text),
+  );
+  const noneContain = matches.every((terms) => terms !== null && terms.length === 0);
+
+  return (
+    <>
+      {noneContain && (
+        <Notice tone="warning" testId="search-weak">
+          {t('weak')}
+        </Notice>
+      )}
+      <ol className="flex flex-col gap-4" data-testid="search-results">
+        {passages.map((passage, index) => (
+          <li key={passage.id}>
+            <PassageCard passage={passage} terms={matches[index] ?? null} />
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+function PassageCard({
+  passage,
+  terms,
+}: {
+  passage: RetrievedPassage;
+  /** The searched-for words it contains; `null` when it holds the searched-for code. */
+  terms: string[] | null;
+}) {
   const t = useTranslations('search');
   const source = passageSourceUrl(passage);
   const { manufacturer, section, page } = passage.citation;
@@ -243,6 +281,17 @@ function PassageCard({ passage }: { passage: RetrievedPassage }) {
             {(t.raw('page') as string).replace('{page}', String(page))}
           </span>
         )}
+        <span data-testid={`passage-match-${passage.id}`} className="text-text-muted">
+          {terms === null ? (
+            t('match.code')
+          ) : terms.length > 0 ? (
+            <>
+              {t('match.words')} <bdi dir="auto">{terms.join(', ')}</bdi>
+            </>
+          ) : (
+            t('match.meaningOnly')
+          )}
+        </span>
       </div>
       {/* Manual text keeps its line breaks: a parameter table flattened into
           one paragraph is unreadable. `dir="auto"` because the manual has its
