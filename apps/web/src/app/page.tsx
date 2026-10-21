@@ -192,7 +192,7 @@ export default function HomePage() {
         onClick={() => {
           setSigningIn(true);
         }}
-        className="btn btn-sm btn-secondary"
+        className="btn btn-sm btn-secondary max-sm:px-2"
       >
         <UserIcon width="16" height="16" />
         {/* Icon-only on a phone, where the header is short of room; the

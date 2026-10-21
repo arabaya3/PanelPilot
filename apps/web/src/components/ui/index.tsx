@@ -124,6 +124,12 @@ export function Tabs<K extends string>({
   idBase: string;
 }) {
   const refs = useRef(new Map<K, HTMLButtonElement>());
+  // The one tab in the page's tab order. A disabled button cannot take focus,
+  // so if the selected tab is disabled the first enabled one stands in;
+  // otherwise the whole tab list would be unreachable by keyboard.
+  const selectedItem = items.find((item) => item.key === selected);
+  const tabStop =
+    selectedItem && !selectedItem.disabled ? selected : items.find((item) => !item.disabled)?.key;
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const enabled = items.filter((item) => !item.disabled);
@@ -161,7 +167,7 @@ export function Tabs<K extends string>({
             // Only the selected tab's panel is guaranteed to exist: screens
             // that render one panel at a time would otherwise point at nothing.
             aria-controls={active ? tabPanelId(idBase, item.key) : undefined}
-            tabIndex={active ? 0 : -1}
+            tabIndex={item.key === tabStop ? 0 : -1}
             disabled={item.disabled}
             onClick={() => {
               onSelect(item.key);

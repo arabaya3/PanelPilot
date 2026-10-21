@@ -70,6 +70,28 @@ async function openTab() {
 }
 
 describe('the escalated tab', () => {
+  it('tells a non-reviewer escalations need the reviewer role, not that loading failed', async () => {
+    renderApp(
+      <ReviewScreen
+        fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
+        fetchStaleImpl={vi.fn().mockResolvedValue({ kind: 'forbidden' })}
+        fetchEscalationsImpl={vi.fn().mockResolvedValue({ kind: 'forbidden' })}
+        signInImpl={vi
+          .fn()
+          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'v@example.com' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.submit(screen.getByTestId('sign-in-form'));
+    await openTab();
+
+    expect(screen.queryByTestId('escalations-failed')).toBeNull();
+    const notice = screen.getByTestId('escalations-forbidden');
+    expect(notice.textContent).toMatch(/reviewer role/);
+    expect(notice.getAttribute('role')).not.toBe('alert');
+  });
+
   it('counts the escalations and shows each with the verifier’s label and note', async () => {
     renderReview();
     expect((await screen.findByTestId('review-tab-escalations')).textContent).toContain('2');

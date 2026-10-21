@@ -75,13 +75,16 @@ const STATUS_CLASSES: Record<string, StatusClasses> = {
  * A finding's severity in words as well as colour, so it never depends on
  * colour alone.
  */
+// Exhaustive over the API's severities, so a new one fails type-checking
+// instead of quietly being shown as some other severity.
+const SEVERITY_TONE: Record<ValidationFinding['severity'], 'critical' | 'warning'> = {
+  error: 'critical',
+  warning: 'warning',
+};
+
 function SeverityBadge({ severity }: { severity: ValidationFinding['severity'] }) {
   const t = useTranslations('plcView');
-  return (
-    <StatusBadge tone={severity === 'error' ? 'critical' : 'warning'}>
-      {t(`severity.${severity}`)}
-    </StatusBadge>
-  );
+  return <StatusBadge tone={SEVERITY_TONE[severity]}>{t(`severity.${severity}`)}</StatusBadge>;
 }
 
 /**

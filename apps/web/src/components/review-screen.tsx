@@ -272,7 +272,12 @@ export function ReviewScreen({
             })}
           />
 
-          <div role="tabpanel" id={tabPanelId(tabsId, tab)} aria-labelledby={tabId(tabsId, tab)}>
+          <div
+            role="tabpanel"
+            id={tabPanelId(tabsId, tab)}
+            aria-labelledby={tabId(tabsId, tab)}
+            tabIndex={0}
+          >
             {tab === 'queue' ? (
               <VerificationConsole
                 items={phase.items}
@@ -305,6 +310,12 @@ export function ReviewScreen({
                     }
                   }}
                 />
+              ) : phase.escalations.kind === 'forbidden' ? (
+                // A permission boundary, not a fault: the queue is open to every
+                // verifier, but these two lists are for reviewers only.
+                <Notice tone="info" testId="escalations-forbidden">
+                  {t('forbidden')}
+                </Notice>
               ) : (
                 <Notice tone="critical" testId="escalations-failed">
                   {t('escalationsFailed')}
@@ -322,6 +333,10 @@ export function ReviewScreen({
                   removeFlag(id);
                 }}
               />
+            ) : phase.stale.kind === 'forbidden' ? (
+              <Notice tone="info" testId="stale-forbidden">
+                {t('forbidden')}
+              </Notice>
             ) : (
               <Notice tone="critical" testId="stale-failed">
                 {t('staleFailed')}
