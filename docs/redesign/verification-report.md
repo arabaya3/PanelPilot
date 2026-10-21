@@ -181,9 +181,10 @@ All files are in `docs/redesign/evidence/`.
 **Environment:**
 
 - `deps audit (python)` fails in CI on new advisories for `certifi` 2026.7.22
-  and `pillow` 12.3.0 (fix: 13.0.0, a major version). These are independent of
-  this PR and also fail on `main`; the Pillow major upgrade needs its own PR
-  and image-recognition testing.
+  and `pillow` 12.3.0 (fix: 13.0.0, a major version). This PR changes no
+  dependencies; `main`'s last CI run predates the advisories, so it has not
+  yet been shown failing there. The Pillow major upgrade needs its own PR and
+  image-recognition testing.
 - The shared trial allowance (60 requests per 5 min per IP) returned 429 for
   long stretches while three agents tested at once. Paths blocked at the time
   were re-run once the window cleared.
