@@ -2243,9 +2243,9 @@ def test_the_quota_is_charged_after_the_turn_is_written(
 
     assert "flush" in db.events
     assert "charge" in db.events
-    assert db.events.index("charge") > max(i for i, e in enumerate(db.events) if e == "flush"), (
-        "the tenant was locked before the conversation"
-    )
+    assert db.events.index("charge") > max(
+        i for i, e in enumerate(db.events) if e == "flush"
+    ), "the tenant was locked before the conversation"
 
 
 def test_a_passage_below_the_threshold_is_not_citable(

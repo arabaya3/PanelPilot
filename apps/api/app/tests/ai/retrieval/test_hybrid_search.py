@@ -660,9 +660,9 @@ def test_expected_chunk_appears_in_top_three(
     monkeypatch.setattr(hybrid_search, "embed_query", _fake_embed)
     results = hybrid_search.search(query, top_k=3, min_score=0.0)
     assert results, f"no results at all for {query!r}"
-    assert expected_id in [p.id for p in results[:3]], (
-        f"{expected_id!r} not in top 3 for {query!r}: {[p.id for p in results]}"
-    )
+    assert expected_id in [
+        p.id for p in results[:3]
+    ], f"{expected_id!r} not in top 3 for {query!r}: {[p.id for p in results]}"
 
 
 @requires_opensearch
@@ -721,9 +721,9 @@ def test_vector_leg_is_load_bearing(indexed_corpus: str, monkeypatch: pytest.Mon
 
     # With both legs, the paraphrase resolves.
     both = hybrid_search.search(query, top_k=3, min_score=0.0)
-    assert expected in [p.id for p in both[:3]], (
-        f"hybrid failed the paraphrase query: {[p.id for p in both]}"
-    )
+    assert expected in [
+        p.id for p in both[:3]
+    ], f"hybrid failed the paraphrase query: {[p.id for p in both]}"
 
     # Lexical only: the target shares no content word with the query, so it
     # must NOT be reachable. If it is, the pair is not actually testing fusion.
@@ -808,9 +808,9 @@ def test_scores_are_normalised_into_the_unit_range(
     for query in ("overcurrent F0001", "cooling", "ampacity correction factor"):
         results = hybrid_search.search(query, top_k=5, min_score=0.0)
         assert results, query
-        assert all(0.0 <= p.score <= 1.0 for p in results), (
-            f"{query}: scores outside [0,1]: {[p.score for p in results]}"
-        )
+        assert all(
+            0.0 <= p.score <= 1.0 for p in results
+        ), f"{query}: scores outside [0,1]: {[p.score for p in results]}"
 
 
 @requires_opensearch
