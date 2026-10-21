@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.models.schemas.locale import Locale
 from app.models.schemas.responses import NonBlankText, StructuredDiagnosis
@@ -110,7 +110,19 @@ class DiagnosticResponse(BaseModel):
             text it was built on, not whatever the index returns by then.
             Empty on a refusal, and on a turn replayed from history, whose
             passages were not stored.
+        refusal_citations: On a refusal, the closest passage the guardrail
+            found -- shown so the engineer can judge it, and explicitly not
+            support for any answer. Empty when nothing came close enough to
+            name, on an answer, and on a turn replayed from history. The
+            refusal text never claims a citation itself: whether one is shown
+            is decided by this list alone, so the words cannot promise a
+            reference the response does not carry.
     """
+
+    # Forbidden rather than ignored: a closest-match citation passed under a
+    # name this model did not declare was silently dropped, and the refusal
+    # text went on promising a reference the engineer never received.
+    model_config = ConfigDict(extra="forbid")
 
     session_id: str
     answer: VerifiedAnswer | None = None
@@ -120,6 +132,7 @@ class DiagnosticResponse(BaseModel):
     refusal_message: str | None = None
     turn_id: str | None = None
     evidence: list[RetrievedPassage] = Field(default_factory=list)
+    refusal_citations: list[Citation] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _answers_or_refuses(self) -> DiagnosticResponse:
@@ -146,6 +159,10 @@ class DiagnosticResponse(BaseModel):
             raise ValueError("a diagnosing response must carry its prose answer")
         if self.diagnosis is None and self.answer is not None:
             raise ValueError("a refusing response must not carry an answer")
+        # The closest-match reference belongs to a refusal only. On an answer
+        # it would sit beside the real citations looking like one of them.
+        if self.diagnosis is not None and self.refusal_citations:
+            raise ValueError("an answering response must not carry refusal citations")
         return self
 
 

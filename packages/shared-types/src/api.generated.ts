@@ -2144,6 +2144,13 @@ export interface components {
      *             text it was built on, not whatever the index returns by then.
      *             Empty on a refusal, and on a turn replayed from history, whose
      *             passages were not stored.
+     *         refusal_citations: On a refusal, the closest passage the guardrail
+     *             found -- shown so the engineer can judge it, and explicitly not
+     *             support for any answer. Empty when nothing came close enough to
+     *             name, on an answer, and on a turn replayed from history. The
+     *             refusal text never claims a citation itself: whether one is shown
+     *             is decided by this list alone, so the words cannot promise a
+     *             reference the response does not carry.
      */
     DiagnosticResponse: {
       /** Session Id */
@@ -2159,6 +2166,8 @@ export interface components {
       turn_id?: string | null;
       /** Evidence */
       evidence?: components['schemas']['RetrievedPassage'][];
+      /** Refusal Citations */
+      refusal_citations?: components['schemas']['Citation'][];
     };
     /**
      * DiagnosticSession

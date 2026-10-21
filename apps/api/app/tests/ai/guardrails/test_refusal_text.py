@@ -108,12 +108,17 @@ def test_rendering_a_permitting_decision_is_refused() -> None:
         render_refusal(answering)
 
 
-def test_the_below_threshold_text_points_at_the_closest_match() -> None:
-    """The uncertain path cites its nearest passage, so the text must say so."""
-    text = render_refusal(
-        _refusal(RefusalReason.BELOW_THRESHOLD, outcome=DecisionOutcome.UNCERTAIN)
-    )
-    assert "cited" in text or "nearest" in text
+def test_no_template_promises_a_citation() -> None:
+    """The text must not claim a passage is cited.
+
+    It is stored and replayed without citations, and whether a closest match is
+    shown is the response's ``refusal_citations`` alone. "The nearest passage
+    is cited" beside an empty reference list is the misleading refusal this pins.
+    """
+    for reason, text in _TEMPLATES.items():
+        lowered = text.lower()
+        assert "cited" not in lowered, f"{reason.value} promises a citation"
+        assert "nearest passage" not in lowered, f"{reason.value} promises a citation"
 
 
 def test_no_template_speculates_or_offers_a_partial_answer() -> None:
