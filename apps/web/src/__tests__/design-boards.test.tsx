@@ -1,10 +1,20 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
 import type { designProject, BoardDesignResponse } from '@/lib/design';
 
 import { renderApp } from './helpers';
+
+/*
+ * Queries are scoped to the part of the view they read: the whole workspace is rendered,
+ * and a page-wide label or role query costs tens of milliseconds a call in
+ * jsdom.
+ */
+const overviewView = () => within(screen.getByTestId('view-overview'));
+const boardTabs = () => within(screen.getByTestId('board-tabs'));
+const boardDetails = () => within(screen.getByTestId('board-details'));
+const firstRow = () => within(screen.getByTestId('design-load-0'));
 
 /** `/design` with more than one board: tabs, a feeding board, one request. */
 
@@ -38,8 +48,9 @@ const DESIGNED = {
 } as unknown as BoardDesignResponse;
 
 function fillRow(description: string, power: string) {
-  fireEvent.change(screen.getByLabelText('Circuit'), { target: { value: description } });
-  fireEvent.change(screen.getByLabelText(/^Power.*kW/), { target: { value: power } });
+  const row = within(screen.getByTestId('design-load-0'));
+  fireEvent.change(row.getByLabelText('Circuit'), { target: { value: description } });
+  fireEvent.change(row.getByLabelText(/^Power.*kW/), { target: { value: power } });
 }
 
 function render(designImpl = vi.fn<typeof designProject>()) {
@@ -49,33 +60,22 @@ function render(designImpl = vi.fn<typeof designProject>()) {
   return designImpl;
 }
 
-/**
- * These tests drive the whole /design workspace end to end -- every board,
- * row and view rendered -- so they take ~2-2.6 s alone on a developer machine
- * and crossed vitest's 5 s default on CI under full-suite load (5.16 s in run
- * 39444575313). Measured before the Graphite redesign they took ~1.4-1.7 s; the
- * richer workspace costs ~50% more render time, with no single hot spot
- * (rendering only the visible view did not change it). The limit is raised for
- * this suite only, not globally, so a genuine hang still fails.
- */
-const WHOLE_SCREEN_TIMEOUT_MS = 15_000;
-
-describe('a project of boards', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
+describe('a project of boards', () => {
   it('sends every board, a sub-board naming the board that feeds it', async () => {
     const designImpl = render(
       vi.fn<typeof designProject>().mockResolvedValue({ kind: 'designed', response: DESIGNED }),
     );
-    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Tower' } });
-    fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'MDB' } });
+    fireEvent.change(overviewView().getByLabelText('Project name'), { target: { value: 'Tower' } });
+    fireEvent.change(boardDetails().getByLabelText('Board name'), { target: { value: 'MDB' } });
     fillRow('Lights', '1');
 
     fireEvent.click(screen.getByTestId('board-add'));
     // The new board is the one being edited, fed from the main board.
-    expect(screen.getByLabelText<HTMLInputElement>('Board name').value).toBe('DB2');
-    expect(screen.getByLabelText<HTMLSelectElement>('Fed from').value).toBe('MDB');
+    expect(boardDetails().getByLabelText<HTMLInputElement>('Board name').value).toBe('DB2');
+    expect(boardDetails().getByLabelText<HTMLSelectElement>('Fed from').value).toBe('MDB');
     fillRow('Sockets', '2');
 
-    const submit = screen.getByRole('button', { name: 'Design the board' });
+    const submit = screen.getByText('Design the board', { selector: 'button' });
     await waitFor(() => {
       expect(submit.hasAttribute('disabled')).toBe(false);
     });
@@ -94,59 +94,61 @@ describe('a project of boards', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
   it('keeps a sub-board fed when its supply is renamed, and lifts it when removed', () => {
     render();
     // The board tabs live in the load schedule view.
-    fireEvent.click(screen.getByRole('tab', { name: /Load schedule/ }));
-    fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'MDB' } });
+    fireEvent.click(
+      screen.getByText('Load schedule', { selector: '[role="tab"], [role="tab"] *' }),
+    );
+    fireEvent.change(boardDetails().getByLabelText('Board name'), { target: { value: 'MDB' } });
     fireEvent.click(screen.getByTestId('board-add'));
     fireEvent.click(screen.getByTestId('board-add'));
     // DB3 is fed from MDB too; feed it from DB2 instead.
-    fireEvent.change(screen.getByLabelText('Fed from'), { target: { value: 'DB2' } });
+    fireEvent.change(boardDetails().getByLabelText('Fed from'), { target: { value: 'DB2' } });
 
-    const tabs = screen.getAllByRole('button', { pressed: false });
+    const tabs = boardTabs().getAllByRole('button', { pressed: false });
     fireEvent.click(tabs.find((tab) => tab.textContent === 'DB2') as HTMLElement);
-    fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'DB-EAST' } });
-    fireEvent.click(screen.getByRole('button', { name: 'DB3' }));
-    expect(screen.getByLabelText<HTMLSelectElement>('Fed from').value).toBe('DB-EAST');
+    fireEvent.change(boardDetails().getByLabelText('Board name'), { target: { value: 'DB-EAST' } });
+    fireEvent.click(boardTabs().getByRole('button', { name: 'DB3' }));
+    expect(boardDetails().getByLabelText<HTMLSelectElement>('Fed from').value).toBe('DB-EAST');
 
-    fireEvent.click(screen.getByRole('button', { name: 'DB-EAST' }));
+    fireEvent.click(boardTabs().getByRole('button', { name: 'DB-EAST' }));
     fireEvent.click(screen.getByTestId('board-remove'));
-    fireEvent.click(screen.getByRole('button', { name: 'DB3' }));
-    expect(screen.getByLabelText<HTMLSelectElement>('Fed from').value).toBe('MDB');
+    fireEvent.click(boardTabs().getByRole('button', { name: 'DB3' }));
+    expect(boardDetails().getByLabelText<HTMLSelectElement>('Fed from').value).toBe('MDB');
   });
 
   it('asks a fed board for its feeder length, and each row for its cable length', () => {
     render();
-    expect(screen.queryByLabelText(/^Feeder length/)).toBeNull();
-    fireEvent.change(screen.getByLabelText(/^Cable length/), { target: { value: '40' } });
-    fireEvent.change(screen.getByLabelText('Board name'), { target: { value: 'MDB' } });
+    expect(boardDetails().queryByLabelText(/^Feeder length/)).toBeNull();
+    fireEvent.change(firstRow().getByLabelText(/^Cable length/), { target: { value: '40' } });
+    fireEvent.change(boardDetails().getByLabelText('Board name'), { target: { value: 'MDB' } });
     fireEvent.click(screen.getByTestId('board-add'));
-    fireEvent.change(screen.getByLabelText(/^Feeder length/), { target: { value: '80' } });
-    expect(screen.getByLabelText<HTMLInputElement>(/^Feeder length/).value).toBe('80');
-    fireEvent.change(screen.getByLabelText('Fed from'), { target: { value: '' } });
-    expect(screen.queryByLabelText(/^Feeder length/)).toBeNull();
+    fireEvent.change(boardDetails().getByLabelText(/^Feeder length/), { target: { value: '80' } });
+    expect(boardDetails().getByLabelText<HTMLInputElement>(/^Feeder length/).value).toBe('80');
+    fireEvent.change(boardDetails().getByLabelText('Fed from'), { target: { value: '' } });
+    expect(boardDetails().queryByLabelText(/^Feeder length/)).toBeNull();
   });
 
   it('cannot design while a board has an empty row', () => {
     render();
-    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Tower' } });
+    fireEvent.change(overviewView().getByLabelText('Project name'), { target: { value: 'Tower' } });
     fillRow('Lights', '1');
     fireEvent.click(screen.getByTestId('board-add'));
-    expect(screen.getByRole('button', { name: 'Design the board' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(
+      screen.getByText('Design the board', { selector: 'button' }).hasAttribute('disabled'),
+    ).toBe(true);
   });
 });
 
 describe('a motor row', () => {
   it('offers a starter only for a motor, and a starter makes it three-phase', () => {
     render();
-    const starter = screen.getByLabelText<HTMLSelectElement>('Starter');
+    const starter = firstRow().getByLabelText<HTMLSelectElement>('Starter');
     expect(starter.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Load type'), { target: { value: 'motor' } });
+    fireEvent.change(firstRow().getByLabelText('Load type'), { target: { value: 'motor' } });
     expect(starter.disabled).toBe(false);
     fireEvent.change(starter, { target: { value: 'star_delta' } });
-    expect(screen.getByLabelText<HTMLSelectElement>('Phases').value).toBe('3');
+    expect(firstRow().getByLabelText<HTMLSelectElement>('Phases').value).toBe('3');
     // Back to sockets: the starter goes with the motor.
-    fireEvent.change(screen.getByLabelText('Load type'), { target: { value: 'socket' } });
+    fireEvent.change(firstRow().getByLabelText('Load type'), { target: { value: 'socket' } });
     expect(starter.value).toBe('');
   });
 });

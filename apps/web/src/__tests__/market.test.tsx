@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -7,6 +7,15 @@ import type { designProject, BoardDesignResponse } from '@/lib/design';
 import { detectMarket, withMarket, type MarketInfo } from '@/lib/market';
 
 import { renderApp } from './helpers';
+
+/*
+ * Queries are scoped to the view they read: the whole workspace is rendered,
+ * and a page-wide label or role query costs tens of milliseconds a call in
+ * jsdom.
+ */
+const overviewView = () => within(screen.getByTestId('view-overview'));
+const scheduleView = () => within(screen.getByTestId('view-schedule'));
+const firstRow = () => within(screen.getByTestId('design-load-0'));
 
 /** Markets: a visitor's country sets a new board's supply and its code's rules. */
 
@@ -47,18 +56,7 @@ const MARKETS: MarketInfo[] = [
   },
 ];
 
-/**
- * These tests drive the whole /design workspace end to end -- every board,
- * row and view rendered -- so they take ~2-2.6 s alone on a developer machine
- * and crossed vitest's 5 s default on CI under full-suite load (5.16 s in run
- * 39444575313). Measured before the Graphite redesign they took ~1.4-1.7 s; the
- * richer workspace costs ~50% more render time, with no single hot spot
- * (rendering only the visible view did not change it). The limit is raised for
- * this suite only, not globally, so a genuine hang still fails.
- */
-const WHOLE_SCREEN_TIMEOUT_MS = 15_000;
-
-describe('markets', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
+describe('markets', () => {
   it('reads the market from the time zone, and Jerusalem from the language', () => {
     expect(detectMarket('Asia/Hebron', ['en'])).toBe('PS');
     expect(detectMarket('Asia/Amman', ['ar-JO'])).toBe('JO');
@@ -98,10 +96,10 @@ describe('markets', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
       />,
     );
     expect((await screen.findByTestId('market-basis')).textContent).toContain('60 Hz');
-    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'P' } });
-    fireEvent.change(screen.getByLabelText('Circuit'), { target: { value: 'Sockets' } });
-    fireEvent.change(screen.getByLabelText(/^Power.*kW/), { target: { value: '1' } });
-    const button = screen.getByRole('button', { name: 'Design the board' });
+    fireEvent.change(overviewView().getByLabelText('Project name'), { target: { value: 'P' } });
+    fireEvent.change(firstRow().getByLabelText('Circuit'), { target: { value: 'Sockets' } });
+    fireEvent.change(firstRow().getByLabelText(/^Power.*kW/), { target: { value: '1' } });
+    const button = screen.getByText('Design the board', { selector: 'button' });
     await waitFor(() => {
       expect(button.hasAttribute('disabled')).toBe(false);
     });
@@ -113,7 +111,7 @@ describe('markets', { timeout: WHOLE_SCREEN_TIMEOUT_MS }, () => {
     expect(request?.boards[0]?.supply?.frequency_hz).toBe('60');
     expect(request?.profile).toEqual({ key: 'iec-default', market: 'SA' });
 
-    fireEvent.change(screen.getByLabelText('Market'), { target: { value: 'PS' } });
+    fireEvent.change(scheduleView().getByLabelText('Market'), { target: { value: 'PS' } });
     expect(screen.getByTestId('market-basis').textContent).toContain('50 Hz');
   });
 });
