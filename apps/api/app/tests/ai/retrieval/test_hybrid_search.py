@@ -205,10 +205,51 @@ def test_filters_do_not_contribute_to_score() -> None:
     lexical = legs[0]["bool"]["filter"]
     vector = legs[1]["knn"]["content_vector"]["filter"]["bool"]["filter"]
     for filters in (lexical, vector):
-        assert {"terms": {"brand": ["ABB"]}} in filters
+        assert hybrid_search._brand_clause(["ABB"]) in filters
         assert {"terms": {"doc_type": ["manual"]}} in filters
     # Both legs must filter identically, or they score different candidate sets.
     assert lexical == vector
+
+
+def test_a_brand_matches_whatever_its_case() -> None:
+    """An equipment chip's "abb" matched nothing against the indexed "ABB"."""
+    clause = hybrid_search._brand_clause(["abb", "Siemens"])
+    assert clause == {
+        "bool": {
+            "should": [
+                {"term": {"brand": {"value": "abb", "case_insensitive": True}}},
+                {"term": {"brand": {"value": "Siemens", "case_insensitive": True}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def test_a_model_keeps_chunks_of_unrecorded_model_and_prefers_its_own(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every production chunk is model "unknown"; an exact model term found none.
+
+    The model narrows away chunks recorded for other equipment, keeps those
+    whose model is not recorded, and on the lexical leg scores its own above them.
+    """
+    body = _capture_request(monkeypatch, "fault 2310", brand="ABB", model="ACS880")["body"]
+    lexical, vector = body["query"]["hybrid"]["queries"]
+    lexical_filters = lexical["bool"]["filter"]
+    vector_filters = vector["knn"]["content_vector"]["filter"]["bool"]["filter"]
+
+    model_clause = hybrid_search._model_clause("ACS880")
+    allowed = model_clause["bool"]["should"]
+    assert {"term": {"model": "unknown"}} in allowed
+    assert {"term": {"model": {"value": "ACS880", "case_insensitive": True}}} in allowed
+    assert model_clause["bool"]["minimum_should_match"] == 1
+    # Once, on each leg, identically -- not appended twice to a shared list.
+    assert lexical_filters.count(model_clause) == 1
+    assert vector_filters.count(model_clause) == 1
+    assert lexical_filters == vector_filters
+    assert not any(clause == {"term": {"model": "ACS880"}} for clause in lexical_filters)
+    # A scoring preference, not a filter, and only where a leg can score.
+    assert lexical["bool"]["should"] == [hybrid_search._model_preference("ACS880")]
 
 
 def test_passages_below_min_score_are_dropped() -> None:
@@ -619,9 +660,9 @@ def test_expected_chunk_appears_in_top_three(
     monkeypatch.setattr(hybrid_search, "embed_query", _fake_embed)
     results = hybrid_search.search(query, top_k=3, min_score=0.0)
     assert results, f"no results at all for {query!r}"
-    assert expected_id in [
-        p.id for p in results[:3]
-    ], f"{expected_id!r} not in top 3 for {query!r}: {[p.id for p in results]}"
+    assert expected_id in [p.id for p in results[:3]], (
+        f"{expected_id!r} not in top 3 for {query!r}: {[p.id for p in results]}"
+    )
 
 
 @requires_opensearch
@@ -680,9 +721,9 @@ def test_vector_leg_is_load_bearing(indexed_corpus: str, monkeypatch: pytest.Mon
 
     # With both legs, the paraphrase resolves.
     both = hybrid_search.search(query, top_k=3, min_score=0.0)
-    assert expected in [
-        p.id for p in both[:3]
-    ], f"hybrid failed the paraphrase query: {[p.id for p in both]}"
+    assert expected in [p.id for p in both[:3]], (
+        f"hybrid failed the paraphrase query: {[p.id for p in both]}"
+    )
 
     # Lexical only: the target shares no content word with the query, so it
     # must NOT be reachable. If it is, the pair is not actually testing fusion.
@@ -767,9 +808,9 @@ def test_scores_are_normalised_into_the_unit_range(
     for query in ("overcurrent F0001", "cooling", "ampacity correction factor"):
         results = hybrid_search.search(query, top_k=5, min_score=0.0)
         assert results, query
-        assert all(
-            0.0 <= p.score <= 1.0 for p in results
-        ), f"{query}: scores outside [0,1]: {[p.score for p in results]}"
+        assert all(0.0 <= p.score <= 1.0 for p in results), (
+            f"{query}: scores outside [0,1]: {[p.score for p in results]}"
+        )
 
 
 @requires_opensearch
