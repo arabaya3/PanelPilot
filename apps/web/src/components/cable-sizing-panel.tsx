@@ -1,16 +1,20 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 
 import {
+  checkNumber,
   sizeCable,
   type CableSizingOutcome,
   type CableSizingRequest,
   type CableSizingResponse,
+  type CalcRefusal,
+  type NumberProblem,
+  type NumberRule,
 } from '@/lib/calculations';
 import { acquireTrial } from '@/lib/session';
-import { EmptyState, Notice } from '@/components/ui';
+import { EmptyState, fieldDescribedBy, Notice } from '@/components/ui';
 
 /** The methods the tables are transcribed for; the API refuses the rest. */
 const METHODS = ['A1', 'A2', 'B1', 'B2', 'C', 'E', 'F'] as const;
@@ -38,6 +42,27 @@ type Form = {
   insulation: '70' | '90';
   material: 'copper' | 'aluminium';
   phases: '3' | '1';
+};
+
+type NumberKey = 'current' | 'length' | 'voltage' | 'ambient' | 'grouped';
+
+/** In the order the form shows them, for focusing the first in error. */
+const NUMBER_KEYS: readonly NumberKey[] = ['current', 'length', 'voltage', 'ambient', 'grouped'];
+
+/** The request fields a schema check can reject, by the input that holds them. */
+const API_FIELDS: Partial<Record<string, NumberKey>> = {
+  design_current_a: 'current',
+  length_m: 'length',
+  supply_voltage_v: 'voltage',
+  ambient_temp_c: 'ambient',
+  grouped_circuits: 'grouped',
+};
+
+/** The coded refusals that are about one input. */
+const CODE_FIELDS: Partial<Record<string, NumberKey>> = {
+  ambient_out_of_table: 'ambient',
+  grouped_out_of_table: 'grouped',
+  no_cable_section: 'current',
 };
 
 const INITIAL: Form = {
@@ -71,6 +96,8 @@ export function CableSizingPanel({
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [form, setForm] = useState<Form>(INITIAL);
   const [result, setResult] = useState<Result>({ kind: 'idle' });
+  const [errors, setErrors] = useState<Partial<Record<NumberKey, FieldError>>>({});
+  const text = useCalcText();
   const id = useId();
 
   const connect = useCallback(async () => {
@@ -85,12 +112,24 @@ export function CableSizingPanel({
 
   function set<K extends keyof Form>(key: K, value: Form[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => clearedFor(current, key, !NUMBER_KEYS.includes(key as NumberKey)));
   }
 
-  const complete = form.current.trim() !== '' && form.length.trim() !== '';
-
   async function run() {
-    if (session.kind !== 'ready' || !complete) return;
+    if (session.kind !== 'ready') return;
+    const invalid = checkInputs<NumberKey>([
+      ['current', form.current, 'positive'],
+      ['length', form.length, 'positive'],
+      ['voltage', form.voltage, 'positive'],
+      ['ambient', form.ambient, 'finite'],
+      ['grouped', form.grouped, 'count'],
+    ]);
+    setErrors(invalid);
+    if (Object.keys(invalid).length > 0) {
+      setResult({ kind: 'idle' });
+      focusFirst(id, NUMBER_KEYS, invalid);
+      return;
+    }
     setResult({ kind: 'working' });
     const request: CableSizingRequest = {
       design_current_a: form.current.trim(),
@@ -111,17 +150,24 @@ export function CableSizingPanel({
       setResult({ kind: 'sized', response: outcome.response });
     } else {
       setResult({ kind: 'error', outcome });
+      if (outcome.kind === 'refused') {
+        const refused = fieldErrorsFrom(outcome, { codes: CODE_FIELDS, fields: API_FIELDS });
+        setErrors(refused);
+        focusFirst(id, NUMBER_KEYS, refused);
+      }
       if (outcome.kind === 'unauthorized') void connect();
     }
   }
 
-  function field(key: 'current' | 'length' | 'voltage' | 'ambient' | 'grouped', unit: string) {
+  function field(key: NumberKey, unit: string) {
+    const error = text.fieldError(errors[key]);
     return (
-      <Field id={`${id}-${key}`} label={t(`field.${key}`)} unit={unit}>
+      <Field id={`${id}-${key}`} label={t(`field.${key}`)} unit={unit} error={error}>
         <input
           id={`${id}-${key}`}
           inputMode="decimal"
           dir="ltr"
+          {...fieldDescribedBy(`${id}-${key}`, { error })}
           value={form[key]}
           onChange={(event) => {
             set(key, event.target.value);
@@ -208,7 +254,7 @@ export function CableSizingPanel({
           <div className="sm:col-span-2">
             <button
               type="submit"
-              disabled={session.kind !== 'ready' || !complete || result.kind === 'working'}
+              disabled={session.kind !== 'ready' || result.kind === 'working'}
               className="btn btn-primary"
             >
               {result.kind === 'working' ? t('working') : t('submit')}
@@ -240,14 +286,11 @@ export function CableSizingPanel({
           )}
 
           {result.kind === 'error' && (
-            <Notice tone="critical" testId="calc-error">
-              <p>{t(`error.${result.outcome.kind}`)}</p>
-              {result.outcome.kind === 'refused' && result.outcome.detail !== '' && (
-                <p dir="ltr" className="mt-2 font-mono text-xs">
-                  {result.outcome.detail}
-                </p>
-              )}
-            </Notice>
+            <CalcErrorNotice
+              outcome={result.outcome}
+              hasFieldErrors={Object.keys(errors).length > 0}
+              testId="calc-error"
+            />
           )}
 
           {result.kind === 'sized' && <CableResult response={result.response} />}
@@ -257,15 +300,22 @@ export function CableSizingPanel({
   );
 }
 
+/**
+ * A labelled calculator input. When `error` is given it is shown under the
+ * control as `${id}-error`; the control spreads `fieldDescribedBy(id, { error })`
+ * so it is announced and marked `aria-invalid`.
+ */
 export function Field({
   id,
   label,
   unit,
+  error,
   children,
 }: {
   id: string;
   label: string;
   unit?: string;
+  error?: string | undefined;
   children: ReactNode;
 }) {
   return (
@@ -279,8 +329,123 @@ export function Field({
         ) : null}
       </label>
       {children}
+      {error ? (
+        <p id={`${id}-error`} className="field-error">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
+}
+
+/** Why one input cannot be calculated with: a local check, or the server's coded refusal. */
+export type FieldError =
+  | { problem: NumberProblem | 'tagRequired' | 'notAboveAmbient' }
+  | { code: string; params: Record<string, string> };
+
+/** Check each `[key, raw, rule]` input; the errors by key, empty when all pass. */
+export function checkInputs<K extends string>(
+  inputs: readonly (readonly [K, string, NumberRule, { optional?: boolean }?])[],
+): Partial<Record<K, FieldError>> {
+  const errors: Partial<Record<K, FieldError>> = {};
+  for (const [key, raw, rule, options] of inputs) {
+    const problem = checkNumber(raw, rule, options);
+    if (problem) errors[key] = { problem };
+  }
+  return errors;
+}
+
+/**
+ * The errors left once `key` is edited: its own goes, and when a choice
+ * changed (`tableChanged`: method, insulation, series...) so do the server's
+ * coded refusals, which were about the table that choice picked.
+ */
+export function clearedFor<K extends string>(
+  errors: Partial<Record<K, FieldError>>,
+  key: string,
+  tableChanged: boolean,
+): Partial<Record<K, FieldError>> {
+  const next: Partial<Record<K, FieldError>> = {};
+  for (const [name, error] of Object.entries(errors) as [K, FieldError][]) {
+    if (name === key || (tableChanged && 'code' in error)) continue;
+    next[name] = error;
+  }
+  return next;
+}
+
+/** The field errors a refusal points at, by the page's own field keys. */
+export function fieldErrorsFrom<K extends string>(
+  refusal: CalcRefusal,
+  { codes, fields }: { codes: Partial<Record<string, K>>; fields: Partial<Record<string, K>> },
+): Partial<Record<K, FieldError>> {
+  const errors: Partial<Record<K, FieldError>> = {};
+  for (const field of refusal.fields ?? []) {
+    const key = fields[field];
+    if (key) errors[key] = { problem: 'notANumber' };
+  }
+  const coded = refusal.code ? codes[refusal.code] : undefined;
+  if (refusal.code && coded) errors[coded] = { code: refusal.code, params: refusal.params ?? {} };
+  return errors;
+}
+
+/** Say a field error, and a coded refusal, in the reader's language. */
+export function useCalcText() {
+  const t = useTranslations('calc');
+  return useMemo(
+    () => ({
+      fieldError(error: FieldError | undefined): string | undefined {
+        if (!error) return undefined;
+        if ('problem' in error) return t(`invalid.${error.problem}`);
+        return t.has(`errors.${error.code}`)
+          ? t(`errors.${error.code}`, error.params)
+          : t('error.refused');
+      },
+      /** The refusal as a sentence, or `null` when its code is not one the page says. */
+      refusal(refusal: CalcRefusal): string | null {
+        if (!refusal.code || !t.has(`errors.${refusal.code}`)) return null;
+        const { subject, ...values } = refusal.params ?? {};
+        const sentence = t(`errors.${refusal.code}`, values);
+        return subject ? `${subject}: ${sentence}` : sentence;
+      },
+    }),
+    [t],
+  );
+}
+
+/**
+ * Why a calculation did not complete. The server's English `detail` is never
+ * shown -- it can name internal fields -- so a coded refusal is said in the
+ * page's language, one that marked fields points at them, and anything else
+ * gets the generic sentence.
+ */
+export function CalcErrorNotice({
+  outcome,
+  hasFieldErrors,
+  testId,
+}: {
+  outcome: CalcRefusal | { kind: 'unauthorized' } | { kind: 'failed' };
+  hasFieldErrors: boolean;
+  testId: string;
+}) {
+  const t = useTranslations('calc');
+  const text = useCalcText();
+  const sentence = outcome.kind === 'refused' ? text.refusal(outcome) : null;
+  return (
+    <Notice tone="critical" testId={testId}>
+      <p>{t(`error.${outcome.kind}`)}</p>
+      {sentence ? (
+        <p className="mt-2">{sentence}</p>
+      ) : hasFieldErrors ? (
+        <p className="mt-2">{t('fixFields')}</p>
+      ) : null}
+    </Notice>
+  );
+}
+
+/** Move focus to the first of `keys` with an error, so a keyboard user lands on it. */
+export function focusFirst(idPrefix: string, keys: readonly string[], errors: object) {
+  const first = keys.find((key) => key in errors);
+  if (first !== undefined) document.getElementById(`${idPrefix}-${first}`)?.focus();
 }
 
 /** Trim a decimal string for display: "111.8124" -> "111.81", "95" -> "95". */
