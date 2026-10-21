@@ -46,6 +46,14 @@ import {
 } from '@/components/design/projects-panel';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
+  clearDraft,
+  draftBoards,
+  formBoards,
+  readDraft,
+  writeDraft,
+  type DesignDraft,
+} from '@/components/design/draft';
+import {
   DEFAULT_VIEW,
   pushView,
   useUnsavedChangesGuard,
@@ -75,6 +83,7 @@ import {
   designProject,
   exportDesign,
   importSchedule,
+  openProject,
   suggestSchedule,
   type BoardDesignResponse,
   type SavedProject,
@@ -83,6 +92,7 @@ import {
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import { acquireTrial } from '@/lib/session';
+import { readTrial } from '@/lib/trial';
 
 type Session =
   | { kind: 'starting' }
@@ -187,8 +197,11 @@ export function DesignScreen({
   saveImpl = saveBlob,
   marketsImpl = fetchMarkets,
   readMarketImpl = readMarket,
+  openImpl = openProject,
   leaveImpl,
 }: {
+  /** Reopens the saved project a restored draft belongs to. */
+  openImpl?: typeof openProject;
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
   exportImpl?: typeof exportDesign;
@@ -208,6 +221,7 @@ export function DesignScreen({
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
   const [session, setSession] = useState<Session>({ kind: 'starting' });
+  const [trialId, setTrialId] = useState<string | null>(null);
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
   const [boards, setBoards] = useState<BoardForm[]>([blankBoard(0, 1, 'DB1')]);
   const [activeKey, setActiveKey] = useState(0);
@@ -248,6 +262,9 @@ export function DesignScreen({
   }
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
+  // Set once a draft is restored, so a market detected afterwards does not
+  // overwrite the supply the draft brought back.
+  const restoredDraft = useRef(false);
   const dirty = snapshot !== clean;
   // A layout effect, so a market detected straight after a keystroke cannot
   // read the state from before it.
@@ -289,6 +306,12 @@ export function DesignScreen({
     setSession({ kind: 'starting' });
     const outcome = await acquireImpl();
     setSession(outcome.kind === 'ready' ? { kind: 'ready', token: outcome.accessToken } : outcome);
+    // The trial the work is typed in, which a draft is kept for. When the
+    // trial cannot be resumed just now (rate limited, offline) it is still the
+    // one this browser holds, so work typed meanwhile is kept for it too.
+    setTrialId(
+      outcome.kind === 'ready' ? outcome.trial.sessionId : (readTrial()?.sessionId ?? null),
+    );
   }, [acquireImpl]);
 
   useEffect(() => {
@@ -303,6 +326,8 @@ export function DesignScreen({
     void marketsImpl().then((listed) => {
       if (!live || listed === null) return;
       setMarkets(listed);
+      // A restored draft brings its own market and supply.
+      if (restoredDraft.current) return;
       const code = readMarketImpl();
       if (listed.some((entry) => entry.code === code)) chooseMarket(code, listed, false);
     });
@@ -323,6 +348,92 @@ export function DesignScreen({
   }
 
   const token = session.kind === 'ready' ? session.token : null;
+
+  // Unsaved work is kept as a draft for this tab and session, for the ways of
+  // leaving the guard cannot hold. On arrival, a draft left by an earlier
+  // visit is offered back; until the session is known and that is settled,
+  // nothing is written or cleared, so the page starting clean cannot wipe a
+  // draft it is about to offer.
+  const [draftChecked, setDraftChecked] = useState<string | null>(null);
+  const [draftOffer, setDraftOffer] = useState<DesignDraft | null>(null);
+  const [draftProjectGone, setDraftProjectGone] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  // The snapshot the engineer chose to discard: not kept unless edited again.
+  const discardedSnapshot = useRef<string | null>(null);
+  const lastWritten = useRef<string | null>(null);
+  useEffect(() => {
+    if (trialId === null || draftChecked === trialId) return;
+    setDraftOffer(readDraft(trialId));
+    setDraftChecked(trialId);
+  }, [trialId, draftChecked]);
+  // Every render: cheap next to the snapshot, and only written when changed.
+  useEffect(() => {
+    if (trialId === null || draftChecked !== trialId || draftOffer !== null) return;
+    if (!dirty || discardedSnapshot.current === snapshot) {
+      if (lastWritten.current !== '') clearDraft();
+      lastWritten.current = '';
+      return;
+    }
+    const draft: DesignDraft = {
+      session: trialId,
+      project: opened ? { id: opened.id, revision: opened.revision } : null,
+      clean,
+      info,
+      boards: draftBoards(boards),
+      profileText,
+      language: chosenLanguage,
+      market,
+    };
+    const text = JSON.stringify(draft);
+    if (text === lastWritten.current) return;
+    if (writeDraft(draft)) lastWritten.current = text;
+    else console.warn('Unsaved work could not be kept in session storage.');
+  });
+
+  async function restoreDraft(draft: DesignDraft) {
+    // The offer (and so the stored draft) stays until the work is back on the page.
+    setRestoring(true);
+    restoredDraft.current = true;
+    let reopened = draft.project === null;
+    if (draft.project !== null && token !== null) {
+      const outcome = await openImpl({
+        token,
+        id: draft.project.id,
+        revision: draft.project.revision,
+      });
+      if (outcome.kind === 'saved') {
+        onOpened(outcome.project, false);
+        reopened = true;
+      }
+    }
+    setDraftProjectGone(!reopened);
+    setRestoring(false);
+    setDraftOffer(null);
+    const keyed = formBoards(draft.boards, nextKey.current);
+    nextKey.current += Math.max(1, keyed.used);
+    setInfo(draft.info);
+    setBoards(keyed.boards);
+    if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
+    setProfileText(draft.profileText);
+    setDrawingLanguage(draft.language);
+    setMarket(draft.market);
+    setClean(draft.clean);
+    setLastSave(null);
+    setResult({ kind: 'idle' });
+    setExportError(null);
+  }
+
+  function dismissDraft() {
+    setDraftOffer(null);
+    clearDraft();
+  }
+
+  function discardChanges() {
+    discardedSnapshot.current = snapshot;
+    clearDraft();
+    lastWritten.current = '';
+    unsaved.discard();
+  }
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
   const parsed = parseProfile(profileText);
   const profile = withMarket(
@@ -396,6 +507,7 @@ export function DesignScreen({
       approval: approvalOf(project),
     });
     setHistory(project.revisions);
+    setDraftProjectGone(false);
     setTitleRevisions(project.request.info.revisions ?? []);
     // Saved or approved: the form is left as it is. Only a save rebaselines
     // it (in `onSaveState`); an approval signs the stored revision, not
@@ -654,7 +766,47 @@ export function DesignScreen({
               </button>
             }
           >
-            {t('unavailable')}
+            {session.kind === 'rate-limited' ? t('rateLimited') : t('unavailable')}
+          </Notice>
+        )}
+        {draftOffer !== null && (
+          <Notice
+            tone="warning"
+            title={tw('draft.title')}
+            testId="draft-offer"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  // A draft of a saved project waits for the session that can reopen it.
+                  disabled={restoring || (draftOffer.project !== null && token === null)}
+                  onClick={() => {
+                    const offered = draftOffer;
+                    unsaved.guard(() => {
+                      void restoreDraft(offered);
+                    });
+                  }}
+                >
+                  {tw('draft.restore')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  disabled={restoring}
+                  onClick={dismissDraft}
+                >
+                  {tw('draft.dismiss')}
+                </button>
+              </div>
+            }
+          >
+            {tw('draft.body')}
+          </Notice>
+        )}
+        {draftProjectGone && (
+          <Notice tone="warning" live={false} testId="draft-project-gone">
+            {tw('draft.projectGone')}
           </Notice>
         )}
         {dirty && lastSave === 'failed' && (
@@ -1185,7 +1337,7 @@ export function DesignScreen({
             <button type="button" className="btn btn-sm btn-secondary" onClick={unsaved.stay}>
               {tw('leave.stay')}
             </button>
-            <button type="button" className="btn btn-sm btn-danger" onClick={unsaved.discard}>
+            <button type="button" className="btn btn-sm btn-danger" onClick={discardChanges}>
               {tw('leave.discard')}
             </button>
           </div>

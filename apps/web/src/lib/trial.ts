@@ -26,6 +26,13 @@ type QuotaStatus = components['schemas']['QuotaStatus'];
 
 export const TRIAL_STORAGE_KEY = 'panelpilot.trial';
 
+/**
+ * Where /design keeps unsaved work for this tab (see components/design/draft).
+ * Declared here so ending the trial can remove it without this module
+ * depending on a component: a draft belongs to the session that typed it.
+ */
+export const DESIGN_DRAFT_STORAGE_KEY = 'panelpilot.design.draft';
+
 /** What the browser holds for an in-progress trial. */
 export interface TrialSession {
   sessionId: string;
@@ -78,6 +85,12 @@ export type TrialResume =
    * conversation that is still reachable.
    */
   | { kind: 'gone' }
+  /**
+   * Too many trial requests from this network for now. The trial itself is
+   * fine, so it is kept: forgetting it would strand the conversation, and a
+   * new trial would be refused for the same reason.
+   */
+  | { kind: 'rate-limited' }
   | { kind: 'failed' };
 
 /**
@@ -127,6 +140,12 @@ export function clearTrial(): void {
     window.localStorage.removeItem(TRIAL_STORAGE_KEY);
   } catch {
     // Nothing to do; the secret is single-use at the server anyway.
+  }
+  try {
+    window.sessionStorage.removeItem(DESIGN_DRAFT_STORAGE_KEY);
+  } catch {
+    // Storage unavailable: no draft was kept either. A draft that survives is
+    // still never offered to another session (see readDraft).
   }
 }
 
@@ -213,6 +232,7 @@ export async function resumeTrial(
   // or already claimed. 405 is an API without the resume route at all, which
   // leaves the same remedy: a new trial rather than no trial.
   if ([401, 404, 405, 422].includes(response.status)) return { kind: 'gone' };
+  if (response.status === 429) return { kind: 'rate-limited' };
   if (!response.ok) return { kind: 'failed' };
 
   let payload: unknown;

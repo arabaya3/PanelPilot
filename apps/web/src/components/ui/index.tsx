@@ -399,6 +399,9 @@ export function TableFrame({ label, children }: { label: string; children: React
 
 /* ------------------------------------------------------- Dialog / Drawer --- */
 
+/** A double click is two clicks within roughly this long. */
+const BACKDROP_GRACE_MS = 400;
+
 /**
  * A modal dialog or side drawer on the native `<dialog>`, which gives focus
  * trapping, Escape and the inert background for free. Focus returns to the
@@ -425,6 +428,9 @@ export function Dialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
+  // When it last opened. The second click of a double click on whatever
+  // opened it lands on the backdrop and must not count as dismissing it.
+  const openedAt = useRef(0);
   const headingId = useId();
 
   useEffect(() => {
@@ -434,6 +440,7 @@ export function Dialog({
       returnTo.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
       // jsdom lacks showModal; fall back to the attribute so tests can render.
+      openedAt.current = Date.now();
       if (typeof dialog.showModal === 'function') dialog.showModal();
       else dialog.setAttribute('open', '');
     } else if (!open && dialog.open) {
@@ -454,7 +461,9 @@ export function Dialog({
       }}
       onClick={(event) => {
         // A click on the backdrop lands on the dialog element itself.
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current && Date.now() - openedAt.current > BACKDROP_GRACE_MS) {
+          onClose();
+        }
       }}
     >
       <div className="dialog-surface">

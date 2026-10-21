@@ -77,8 +77,12 @@ function bufferEntryState(): Record<string, unknown> {
  */
 export function workspaceEntryState(): Record<string, unknown> {
   const current: unknown = window.history.state;
-  const base = typeof current === 'object' && current !== null ? current : {};
-  return { ...base, [WORKSPACE_ENTRY]: true };
+  const base: Record<string, unknown> =
+    typeof current === 'object' && current !== null ? { ...current } : {};
+  // Pushed from the buffer, an entry would otherwise be taken for the buffer
+  // and stepped back over once the work is clean.
+  const { [BUFFER_ENTRY]: _buffer, ...rest } = base;
+  return { ...rest, [WORKSPACE_ENTRY]: true };
 }
 
 /** Go to a view with its own history entry, so Back and Forward move between views. */
@@ -127,6 +131,9 @@ export type UnsavedChangesGuard = {
  * - Back out of the page: while dirty, an entry for this page sits above the
  *   one it was opened on. Back onto that entry puts it back and asks; to
  *   discard, the history goes back past it.
+ * - A jump straight to another page's entry (several at once, from the
+ *   browser's history menu) cannot be held; the page keeps a draft for that
+ *   (see `draft.ts`).
  * - Anything else that would replace the work (opening a project) asks
  *   through `guard`.
  */
@@ -141,6 +148,10 @@ export function useUnsavedChangesGuard(
   // Set while the guard steps back over its own buffer, so that pop is not
   // mistaken for the engineer pressing Back.
   const unwinding = useRef(false);
+  // Set while a buffer this page pushed may be the current entry. A page
+  // opened onto a buffer left by an earlier visit (Forward into it) does not
+  // own it, and stepping back from there would leave the page.
+  const ownsBuffer = useRef(false);
   useLayoutEffect(() => {
     dirtyRef.current = dirty;
   });
@@ -167,13 +178,16 @@ export function useUnsavedChangesGuard(
   useEffect(() => {
     if (dirty && !isWorkspaceEntry(window.history.state)) {
       window.history.pushState(bufferEntryState(), '', window.location.href);
-    } else if (!dirty && isBufferEntry(window.history.state)) {
+      ownsBuffer.current = true;
+    } else if (!dirty && ownsBuffer.current && isBufferEntry(window.history.state)) {
+      ownsBuffer.current = false;
       unwinding.current = true;
       window.history.back();
     }
   }, [dirty]);
 
   useEffect(() => {
+    const home = window.location.pathname;
     function onClick(event: MouseEvent) {
       if (!dirtyRef.current || leaving.current) return;
       const href = leavingHref(event);
@@ -194,8 +208,15 @@ export function useUnsavedChangesGuard(
         return;
       }
       if (!dirtyRef.current || leaving.current || isWorkspaceEntry(event.state)) return;
+      // A jump of several entries (the browser's history menu) can land on
+      // another page outright. The router is already showing it and a
+      // traversal cannot be cancelled, so nothing is pushed: an entry for this
+      // page under that page's address would only corrupt the history. The
+      // work survives as the page's draft, offered back on return.
+      if (window.location.pathname !== home) return;
       // Back onto the entry the page was opened on: put the buffer back, then ask.
       window.history.pushState(bufferEntryState(), '', window.location.href);
+      ownsBuffer.current = true;
       setPending({
         run: () => {
           leaving.current = true;

@@ -112,6 +112,10 @@ export default function HomePage() {
         setPhase({ kind: 'failed' });
         return;
       }
+      if (resumed.kind === 'rate-limited') {
+        setPhase({ kind: 'rate-limited' });
+        return;
+      }
       // Gone: expired, claimed, or unknown. Nothing can resume it, so it is
       // forgotten and a new trial takes its place.
       clearTrial();

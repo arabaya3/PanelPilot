@@ -13,6 +13,9 @@ import { afterEach } from 'vitest';
 
 afterEach(() => {
   cleanup();
+  // jsdom keeps one session storage per file: a draft `/design` kept for
+  // unsaved work in one test must not be offered back in the next.
+  window.sessionStorage.clear();
 });
 
 /**
