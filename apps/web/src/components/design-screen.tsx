@@ -1,7 +1,15 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field } from '@/components/cable-sizing-panel';
@@ -39,7 +47,7 @@ import {
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
   DEFAULT_VIEW,
-  urlForView,
+  pushView,
   useUnsavedChangesGuard,
   viewFromSearch,
   VIEWS,
@@ -49,6 +57,7 @@ import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
+  Dialog,
   EmptyState,
   LoadingState,
   Notice,
@@ -85,7 +94,14 @@ type Session =
 type Result =
   | { kind: 'idle' }
   | { kind: 'working' }
-  | { kind: 'designed'; response: BoardDesignResponse }
+  | {
+      kind: 'designed';
+      response: BoardDesignResponse;
+      /** The settings it was designed with, so its exports match what is shown. */
+      profile: Record<string, unknown> | null;
+      /** What the inputs were when it was designed, to tell when it no longer matches them. */
+      basis: string;
+    }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
 
 type RevisionSummary = SavedProject['revisions'][number];
@@ -171,6 +187,7 @@ export function DesignScreen({
   saveImpl = saveBlob,
   marketsImpl = fetchMarkets,
   readMarketImpl = readMarket,
+  leaveImpl,
 }: {
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
@@ -180,9 +197,12 @@ export function DesignScreen({
   saveImpl?: typeof saveBlob;
   marketsImpl?: typeof fetchMarkets;
   readMarketImpl?: typeof readMarket;
+  /** Follows a link the engineer chose to leave for with changes discarded. */
+  leaveImpl?: (href: string) => void;
 }) {
   const t = useTranslations('design');
   const tw = useTranslations('workspace');
+  const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
   const formId = `${id}-form`;
@@ -229,10 +249,12 @@ export function DesignScreen({
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
   const dirty = snapshot !== clean;
-  useEffect(() => {
+  // A layout effect, so a market detected straight after a keystroke cannot
+  // read the state from before it.
+  useLayoutEffect(() => {
     pristine.current = !dirty;
   });
-  useUnsavedChangesGuard(dirty);
+  const unsaved = useUnsavedChangesGuard(dirty, leaveImpl);
 
   const saveState: SaveState =
     lastSave === 'saving'
@@ -260,7 +282,7 @@ export function DesignScreen({
 
   function selectView(next: View) {
     setView(next);
-    window.history.replaceState(window.history.state, '', urlForView(window.location.href, next));
+    pushView(next);
   }
 
   const connect = useCallback(async () => {
@@ -308,6 +330,9 @@ export function DesignScreen({
     market,
     DEFAULT_PROFILE_KEY,
   );
+  // Everything a design is made from: the inputs, the language as it is used,
+  // and the title block's revisions, which an approval changes.
+  const basis = `${snapshot}|${drawingLanguage}|${JSON.stringify(titleRevisions)}`;
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -402,7 +427,7 @@ export function DesignScreen({
     request.info.revisions = titleRevisions;
     const outcome = await designImpl({ token, request });
     if (outcome.kind === 'designed') {
-      setResult({ kind: 'designed', response: outcome.response });
+      setResult({ kind: 'designed', response: outcome.response, profile, basis });
     } else {
       // The schedule stays as entered, so the engineer can correct and retry.
       setResult({ kind: 'error', outcome });
@@ -411,13 +436,14 @@ export function DesignScreen({
   }
 
   async function download(format: ExportFormat) {
-    if (token === null || result.kind !== 'designed') return;
+    // A design the inputs have moved on from is not exported as if current.
+    if (token === null || result.kind !== 'designed' || result.basis !== basis) return;
     setExportError(null);
     const outcome = await exportImpl({
       token,
       project: result.response.project,
       format,
-      profile,
+      profile: result.profile,
     });
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
@@ -466,6 +492,9 @@ export function DesignScreen({
   }
 
   const designed = result.kind === 'designed' ? result.response.project : null;
+  const designedProfile = result.kind === 'designed' ? result.profile : profile;
+  // The inputs have changed since the design shown was made.
+  const stale = result.kind === 'designed' && result.basis !== basis;
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -513,6 +542,20 @@ export function DesignScreen({
       action={goTo('schedule', tw('designFirst.action'))}
     >
       {result.kind === 'working' ? null : tw('designFirst.body')}
+    </EmptyState>
+  );
+
+  const designAgain = (
+    <EmptyState
+      icon={<LayersIcon />}
+      title={tw('stale.title')}
+      action={
+        <button type="submit" form={formId} className="btn btn-sm btn-secondary">
+          {tw('stale.action')}
+        </button>
+      }
+    >
+      {tw('stale.outputs')}
     </EmptyState>
   );
 
@@ -624,7 +667,20 @@ export function DesignScreen({
             {say(result.outcome)}
           </Notice>
         )}
-        {result.kind === 'designed' && view !== 'drawings' && (
+        {stale && (
+          <Notice
+            tone="warning"
+            testId="design-stale"
+            action={
+              <button type="submit" form={formId} className="btn btn-sm btn-secondary">
+                {tw('stale.action')}
+              </button>
+            }
+          >
+            {tw('stale.body')}
+          </Notice>
+        )}
+        {result.kind === 'designed' && !stale && view !== 'drawings' && (
           <Notice tone="success" action={goTo('drawings', tw('designed.action'))}>
             {tw('designed.body', { count: sheetCount })}
           </Notice>
@@ -662,6 +718,8 @@ export function DesignScreen({
                 }
                 opened={opened}
                 onOpened={onOpened}
+                beforeOpen={unsaved.guard}
+                dirty={dirty}
                 onSaveState={(state) => {
                   setLastSave(state);
                   // This closure is the one the save started from, so its
@@ -694,6 +752,7 @@ export function DesignScreen({
               className="flex flex-wrap items-center gap-2"
               role="group"
               aria-label={t('boards')}
+              data-testid="board-tabs"
             >
               {boards.map((board) => (
                 <button
@@ -723,7 +782,10 @@ export function DesignScreen({
 
             {active && (
               <>
-                <fieldset className="panel grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-6">
+                <fieldset
+                  className="panel grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-6"
+                  data-testid="board-details"
+                >
                   <legend className="px-1 text-sm font-semibold">{t('board')}</legend>
                   {boardField('name', 'board')}
                   {boardField('location', 'location')}
@@ -927,14 +989,16 @@ export function DesignScreen({
 
         {viewPanel(
           'materials',
-          designed && token !== null ? (
+          designed && token !== null && !stale ? (
             <QuotationPanel
               token={token}
               project={designed}
-              profile={profile}
+              profile={designedProfile}
               saveImpl={saveImpl}
               {...(marketInfo ? { currency: marketInfo.currency } : {})}
             />
+          ) : stale ? (
+            designAgain
           ) : (
             designFirst
           ),
@@ -1046,7 +1110,7 @@ export function DesignScreen({
               <MarkupsPanel
                 token={token}
                 project={designed}
-                profile={profile}
+                profile={designedProfile}
                 onApply={(suggestion) => {
                   const changed = applySuggestion(boards, suggestion);
                   if (changed === null) return false;
@@ -1091,18 +1155,44 @@ export function DesignScreen({
               )}
             </Panel>
             <Panel title={t('downloads')}>
-              {result.kind === 'designed' ? (
+              {result.kind === 'designed' && !stale ? (
                 <ExportPanel onExport={download} exportError={exportError} />
+              ) : stale ? (
+                designAgain
               ) : (
                 designFirst
               )}
             </Panel>
-            {designed && token !== null && hasPlcOutputs && (
-              <PlcPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
+            {designed && token !== null && !stale && hasPlcOutputs && (
+              <PlcPanel
+                token={token}
+                project={designed}
+                profile={designedProfile}
+                saveImpl={saveImpl}
+              />
             )}
           </>,
         )}
       </div>
+
+      <Dialog
+        open={unsaved.asking}
+        onClose={unsaved.stay}
+        title={tw('leave.title')}
+        closeLabel={tUi('close')}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2" data-testid="unsaved-dialog">
+            <button type="button" className="btn btn-sm btn-secondary" onClick={unsaved.stay}>
+              {tw('leave.stay')}
+            </button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={unsaved.discard}>
+              {tw('leave.discard')}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm">{tw('leave.body')}</p>
+      </Dialog>
     </AppShell>
   );
 }

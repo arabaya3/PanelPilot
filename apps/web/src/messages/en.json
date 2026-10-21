@@ -586,6 +586,18 @@
       "failedHint": "The project could not be saved. What you entered is still here; try saving again from the overview."
     },
     "retry": "Try again",
+    "leave": {
+      "title": "Discard unsaved changes?",
+      "body": "Changes to this project have not been saved. Leaving or opening another project discards them.",
+      "stay": "Keep editing",
+      "discard": "Discard changes"
+    },
+    "stale": {
+      "title": "The design is out of date",
+      "body": "The inputs have changed since this design was made. Its sheets are shown for reference; design again before exporting or pricing.",
+      "action": "Design again",
+      "outputs": "Exports and pricing come from a design that matches the inputs. Design again to bring them up to date."
+    },
     "connecting": "Connecting to the design service…",
     "basis": "Design basis",
     "designFirst": {
@@ -967,7 +979,9 @@
       "approver": "Approving engineer",
       "approve": "Approve revision {revision}",
       "approvedNow": "Revision {revision} is approved; its title block now carries the approval.",
-      "approvedBy": "Revision {revision} approved by {name} on {date}."
+      "approvedBy": "Revision {revision} approved by {name} on {date}.",
+      "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
+      "saveFailed": "The project could not be saved. What you entered is still here; try again."
     },
     "markups": {
       "title": "Review markups",
