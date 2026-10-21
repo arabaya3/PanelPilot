@@ -5,7 +5,9 @@ covered by tests, and the integrated app was exercised against the real local
 backend. Limitations are listed in [Remaining gaps](#remaining-gaps).
 
 - **Tested code commit:** `a8b29dc` on `fix/redesign-e2e-verification` (PR #199).
-  This report and its screenshots were committed after it.
+  This report and its screenshots were committed after it, followed by
+  `9d9120c`, which only reformats two API test files with black (CI's
+  `api (format)` check). No behaviour changed after `a8b29dc`.
 - **Stack:** web `next dev` → API container built from the same worktree →
   shared Postgres 16, Redis, OpenSearch (`panelpilot-production`: 6,376 verified
   manual passages), worker; LLM provider Anthropic, embeddings Voyage.
@@ -78,7 +80,8 @@ key regression test was shown to fail with its fix reverted.
 | `next build`                                           | pass                     | pass                               |
 
 - No timeouts were raised, no tests were skipped and no assertions were weakened.
-- `ruff format --check` flags 3 files, all pre-existing and outside this diff.
+- CI formats Python with `black --check`: clean on all 411 files after `9d9120c`.
+  Two test files this pass added to were unformatted at `a8b29dc`; CI caught it.
 - `market.test.tsx` failed once at 5.7 s while pytest and a browser run shared
   the machine. It passed on every other run; this is load-sensitive, not a
   logic failure.
