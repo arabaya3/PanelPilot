@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -104,14 +104,27 @@ const DESIGNED = {
   profile: { key: 'iec-default' },
 } as unknown as BoardDesignResponse;
 
+/*
+ * Queries are scoped to the view or row they read: the whole workspace is
+ * rendered, and a page-wide label or role query costs tens of milliseconds a
+ * call in jsdom.
+ */
+const scheduleView = () => within(screen.getByTestId('view-schedule'));
+const firstRow = () => within(screen.getByTestId('design-load-0'));
+
 function fillSchedule() {
-  fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Pocket' } });
-  fireEvent.change(screen.getByLabelText('Circuit'), { target: { value: 'Sockets hall' } });
-  fireEvent.change(screen.getByLabelText(/^Power.*kW/), { target: { value: '1.5' } });
+  const overview = within(screen.getByTestId('view-overview'));
+  fireEvent.change(overview.getByLabelText('Project name'), { target: { value: 'Pocket' } });
+  fireEvent.change(firstRow().getByLabelText('Circuit'), { target: { value: 'Sockets hall' } });
+  fireEvent.change(firstRow().getByLabelText(/^Power.*kW/), { target: { value: '1.5' } });
+}
+
+function designButton(): HTMLElement {
+  return screen.getByText('Design the board', { selector: 'button' });
 }
 
 async function submit() {
-  const button = screen.getByRole('button', { name: 'Design the board' });
+  const button = designButton();
   await waitFor(() => {
     expect(button.hasAttribute('disabled')).toBe(false);
   });
@@ -122,7 +135,7 @@ describe('board design', () => {
   it('says why the design button is disabled, and stops once the form is complete', async () => {
     renderApp(<DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} />);
     const hint = await screen.findByTestId('design-incomplete');
-    const button = screen.getByRole('button', { name: 'Design the board' });
+    const button = designButton();
     expect(button.hasAttribute('disabled')).toBe(true);
     expect(button.getAttribute('aria-describedby')).toBe(hint.id);
     fillSchedule();
@@ -141,7 +154,7 @@ describe('board design', () => {
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
     );
     fillSchedule();
-    fireEvent.click(screen.getByLabelText('PLC switched'));
+    fireEvent.click(firstRow().getByLabelText('PLC switched'));
     await submit();
 
     await screen.findByTestId('design-result');
@@ -176,7 +189,7 @@ describe('board design', () => {
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
     );
     fillSchedule();
-    const settings = screen.getByLabelText('Settings as JSON');
+    const settings = scheduleView().getByLabelText('Settings as JSON');
     fireEvent.change(settings, { target: { value: '{not json' } });
     await submit();
     expect((await screen.findByTestId('design-error')).textContent).toBe(
@@ -213,7 +226,9 @@ describe('board design', () => {
       <DesignScreen acquireImpl={vi.fn().mockResolvedValue(READY)} designImpl={designImpl} />,
     );
     fillSchedule();
-    fireEvent.change(screen.getByLabelText('Drawing language'), { target: { value: 'ar' } });
+    fireEvent.change(scheduleView().getByLabelText('Drawing language'), {
+      target: { value: 'ar' },
+    });
     await submit();
     await screen.findByTestId('design-result');
     expect(designImpl.mock.calls[0]?.[0].request.profile).toEqual({

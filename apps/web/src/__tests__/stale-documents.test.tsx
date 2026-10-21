@@ -242,6 +242,19 @@ describe('the review page’s second tab', () => {
     fireEvent.click(screen.getByTestId('review-tab-stale'));
     expect(screen.getByTestId('stale-failed').textContent).toMatch(/could not be loaded/);
   });
+
+  // The verifier queue is open to every account, but the flags are for
+  // reviewers: a 403 is a permission boundary, not a fault to report.
+  it('tells a non-reviewer the flags need the reviewer role, not that loading failed', async () => {
+    renderReview(vi.fn().mockResolvedValue({ kind: 'forbidden' }));
+
+    expect(await screen.findByTestId('review-tab-queue')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('review-tab-stale'));
+    expect(screen.queryByTestId('stale-failed')).toBeNull();
+    const notice = screen.getByTestId('stale-forbidden');
+    expect(notice.textContent).toMatch(/reviewer role/);
+    expect(notice.getAttribute('role')).not.toBe('alert');
+  });
 });
 
 // --- the client ---------------------------------------------------------------

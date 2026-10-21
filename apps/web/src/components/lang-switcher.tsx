@@ -33,7 +33,7 @@ export function LangSwitcher() {
         onChange={(event) => {
           setLocale(event.target.value as Locale);
         }}
-        className="h-[2.25rem] cursor-pointer rounded-md border border-border-subtle bg-surface py-0 pe-2 ps-2 text-sm sm:ps-6 font-medium text-text transition-colors hover:bg-surface-raised"
+        className="h-[2.25rem] cursor-pointer rounded-md border border-border-subtle bg-surface py-0 pe-1 ps-2 text-sm sm:pe-2 sm:ps-6 font-medium text-text transition-colors hover:bg-surface-raised"
       >
         {LOCALES.map((option) => (
           // `lang` on each option so a screen reader pronounces the name in

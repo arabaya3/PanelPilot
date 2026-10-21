@@ -112,6 +112,10 @@ export default function HomePage() {
         setPhase({ kind: 'failed' });
         return;
       }
+      if (resumed.kind === 'rate-limited') {
+        setPhase({ kind: 'rate-limited' });
+        return;
+      }
       // Gone: expired, claimed, or unknown. Nothing can resume it, so it is
       // forgotten and a new trial takes its place.
       clearTrial();
@@ -192,7 +196,7 @@ export default function HomePage() {
         onClick={() => {
           setSigningIn(true);
         }}
-        className="btn btn-sm btn-secondary"
+        className="btn btn-sm btn-secondary max-sm:px-2"
       >
         <UserIcon width="16" height="16" />
         {/* Icon-only on a phone, where the header is short of room; the

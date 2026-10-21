@@ -120,8 +120,13 @@ function Citations({
         {label}
       </Heading>
       <ul className="space-y-1">
-        {citations.map((citation) => (
-          <CitationLine key={citation.document_id} citation={citation} />
+        {/* Not keyed by document alone: two passages of one manual (different
+            pages) are two lines with the same document_id. */}
+        {citations.map((citation, position) => (
+          <CitationLine
+            key={`${citation.document_id}#${String(citation.page)}#${String(position)}`}
+            citation={citation}
+          />
         ))}
       </ul>
     </div>
@@ -254,7 +259,7 @@ function UncertainCard({ variant }: { variant: Extract<CardVariant, { kind: 'unc
 }
 
 /** The refusal variant: the backend declined, and this states that plainly. */
-function RefusalCard({ message }: { message: string }) {
+function RefusalCard({ message, closest }: { message: string; closest: Citation[] }) {
   const t = useTranslations('diagnosticCard');
   const headingId = useId();
   const classes = SEVERITY_CLASSES.info;
@@ -278,6 +283,10 @@ function RefusalCard({ message }: { message: string }) {
       {/* The backend's own wording, not a paraphrase. It is written to explain
           the specific reason, and restating it here would drift from it. */}
       <p className="mt-1 text-text-muted">{message || t('refusalFallback')}</p>
+      {/* Only when the response carries one: the message never promises a
+          reference, so an absent one is not a broken promise. Labelled as
+          what it is -- the closest match, which does not answer this. */}
+      <Citations citations={closest} label={t('refusalClosestSource')} />
     </section>
   );
 }
@@ -390,7 +399,7 @@ export function DiagnosticCard({
 
   switch (variant.kind) {
     case 'refusal':
-      return <RefusalCard message={variant.message} />;
+      return <RefusalCard message={variant.message} closest={variant.closest} />;
     case 'uncertain':
       return <UncertainCard variant={variant} />;
     case 'diagnosis':

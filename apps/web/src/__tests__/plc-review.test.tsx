@@ -99,6 +99,43 @@ describe('the PLC check screen', () => {
 
     expect((await screen.findByTestId('plc-rejected')).textContent).toBe('too long');
   });
+
+  it('gives a clean program an explicit verdict that says what was checked', async () => {
+    // As the API answers a declared-and-used program: valid, no findings.
+    renderApp(
+      <PlcReview
+        reviewImpl={vi.fn().mockResolvedValue({
+          kind: 'reviewed',
+          result: {
+            status: 'valid',
+            findings: [],
+            dialect: 'iec-61131-3',
+            checked_by: 'lark-iec61131-3-subset',
+          },
+        })}
+      />,
+    );
+
+    submit(PROGRAM);
+
+    const verdict = await screen.findByTestId('verdict-banner');
+    expect(verdict.getAttribute('role')).toBe('status');
+    expect(verdict.textContent).toContain('Passed — the checker found no problems');
+    expect(verdict.textContent).toContain('does not test what the program does when it runs');
+  });
+
+  it('says a program over the limit is too long, in characters, without sending it', async () => {
+    const reviewImpl = vi.fn();
+    renderApp(<PlcReview reviewImpl={reviewImpl} />);
+
+    submit(`PROGRAM Main\n${'x := 1;\n'.repeat(12_500)}END_PROGRAM`);
+
+    expect(screen.queryByTestId('plc-rejected')).toBeNull();
+    expect((await screen.findByTestId('plc-too-long')).textContent).toBe(
+      'The program is 100,024 characters; the check takes up to 100,000. Check it in parts.',
+    );
+    expect(reviewImpl).not.toHaveBeenCalled();
+  });
 });
 
 describe('reviewPlc', () => {

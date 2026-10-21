@@ -120,6 +120,10 @@ const REQUIRED_TOKENS = [
   '--color-success-surface',
   '--color-sheet',
   '--color-sheet-ink',
+  '--color-sheet-ink-muted',
+  '--color-sheet-rule',
+  '--color-sheet-rule-subtle',
+  '--color-sheet-raised',
 ];
 
 describe('tokens.css', () => {
@@ -316,6 +320,22 @@ describe('contrast', () => {
     expect(
       contrast(token(theme, '--color-sheet-ink'), token(theme, '--color-sheet')),
     ).toBeGreaterThanOrEqual(7);
+  });
+
+  // .sheet-frame re-points text, muted text and borders at these, so every
+  // table and label drawn on the paper is held to the page's own standards.
+  it.each(THEMES)('%s: secondary ink and rules read on the sheet', (_name, theme) => {
+    for (const ground of ['--color-sheet', '--color-sheet-raised']) {
+      expect(
+        contrast(token(theme, '--color-sheet-ink'), token(theme, ground)),
+      ).toBeGreaterThanOrEqual(7);
+      expect(
+        contrast(token(theme, '--color-sheet-ink-muted'), token(theme, ground)),
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(token(theme, '--color-sheet-rule'), token(theme, ground)),
+      ).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it.each(THEMES)('%s: the accent reads on its selected-nav tint', (_name, theme) => {

@@ -8,7 +8,9 @@ unit-tested against its manufacturer guide without a database.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from collections.abc import Iterator
+from contextlib import contextmanager
+from decimal import Decimal, InvalidOperation, Overflow
 
 import structlog
 from sqlalchemy.orm import Session
@@ -37,6 +39,32 @@ def _require_positive(name: str, value: Decimal) -> None:
         raise ValidationError(f"{name} must be a positive number, got {value}")
 
 
+@contextmanager
+def _within_decimal_precision() -> Iterator[None]:
+    """Refuse an input too large to calculate with, rather than failing with a 500.
+
+    ``Decimal("1e999")`` is finite, so it passes every positivity check, but
+    the default context carries 28 significant digits: quantizing a result
+    that large raises ``InvalidOperation``. That is the caller's input being
+    out of range, not a fault in the server, so it is refused as one.
+
+    Raises:
+        ValidationError: Code ``number_too_large``, when Decimal arithmetic on
+            the inputs cannot be carried out.
+    """
+    try:
+        yield
+    # Only the signals an oversized input raises. DivisionByZero and the rest
+    # would be a fault in a calculation, which must surface as one rather than
+    # be reported to the engineer as their input being too large.
+    except (InvalidOperation, Overflow) as exc:
+        logger.info("calculation.decimal_overflow", error_type=type(exc).__name__)
+        raise ValidationError(
+            "an input is too large to calculate with", code="number_too_large"
+        ) from exc
+
+
+@_within_decimal_precision()
 def size_cable(
     *,
     session: Session,
@@ -96,6 +124,7 @@ def size_cable(
     )
 
 
+@_within_decimal_precision()
 def select_vfd(
     *,
     session: Session,
@@ -165,6 +194,7 @@ def drive_ranges() -> list[DriveRangeSummary]:
     ]
 
 
+@_within_decimal_precision()
 def build_panel_bom(
     *,
     session: Session,

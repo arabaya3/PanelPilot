@@ -1,7 +1,15 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { AppShell } from '@/components/app-shell';
 import { Field } from '@/components/cable-sizing-panel';
@@ -38,8 +46,16 @@ import {
 } from '@/components/design/projects-panel';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
+  clearDraft,
+  draftBoards,
+  formBoards,
+  readDraft,
+  writeDraft,
+  type DesignDraft,
+} from '@/components/design/draft';
+import {
   DEFAULT_VIEW,
-  urlForView,
+  pushView,
   useUnsavedChangesGuard,
   viewFromSearch,
   VIEWS,
@@ -49,6 +65,7 @@ import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
+  Dialog,
   EmptyState,
   LoadingState,
   Notice,
@@ -66,6 +83,7 @@ import {
   designProject,
   exportDesign,
   importSchedule,
+  openProject,
   suggestSchedule,
   type BoardDesignResponse,
   type SavedProject,
@@ -74,6 +92,7 @@ import {
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import { acquireTrial } from '@/lib/session';
+import { readTrial } from '@/lib/trial';
 
 type Session =
   | { kind: 'starting' }
@@ -85,7 +104,14 @@ type Session =
 type Result =
   | { kind: 'idle' }
   | { kind: 'working' }
-  | { kind: 'designed'; response: BoardDesignResponse }
+  | {
+      kind: 'designed';
+      response: BoardDesignResponse;
+      /** The settings it was designed with, so its exports match what is shown. */
+      profile: Record<string, unknown> | null;
+      /** What the inputs were when it was designed, to tell when it no longer matches them. */
+      basis: string;
+    }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
 
 type RevisionSummary = SavedProject['revisions'][number];
@@ -171,7 +197,11 @@ export function DesignScreen({
   saveImpl = saveBlob,
   marketsImpl = fetchMarkets,
   readMarketImpl = readMarket,
+  openImpl = openProject,
+  leaveImpl,
 }: {
+  /** Reopens the saved project a restored draft belongs to. */
+  openImpl?: typeof openProject;
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
   exportImpl?: typeof exportDesign;
@@ -180,14 +210,18 @@ export function DesignScreen({
   saveImpl?: typeof saveBlob;
   marketsImpl?: typeof fetchMarkets;
   readMarketImpl?: typeof readMarket;
+  /** Follows a link the engineer chose to leave for with changes discarded. */
+  leaveImpl?: (href: string) => void;
 }) {
   const t = useTranslations('design');
   const tw = useTranslations('workspace');
+  const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
   const [session, setSession] = useState<Session>({ kind: 'starting' });
+  const [trialId, setTrialId] = useState<string | null>(null);
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
   const [boards, setBoards] = useState<BoardForm[]>([blankBoard(0, 1, 'DB1')]);
   const [activeKey, setActiveKey] = useState(0);
@@ -228,11 +262,16 @@ export function DesignScreen({
   }
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
+  // Set once a draft is restored, so a market detected afterwards does not
+  // overwrite the supply the draft brought back.
+  const restoredDraft = useRef(false);
   const dirty = snapshot !== clean;
-  useEffect(() => {
+  // A layout effect, so a market detected straight after a keystroke cannot
+  // read the state from before it.
+  useLayoutEffect(() => {
     pristine.current = !dirty;
   });
-  useUnsavedChangesGuard(dirty);
+  const unsaved = useUnsavedChangesGuard(dirty, leaveImpl);
 
   const saveState: SaveState =
     lastSave === 'saving'
@@ -260,13 +299,19 @@ export function DesignScreen({
 
   function selectView(next: View) {
     setView(next);
-    window.history.replaceState(window.history.state, '', urlForView(window.location.href, next));
+    pushView(next);
   }
 
   const connect = useCallback(async () => {
     setSession({ kind: 'starting' });
     const outcome = await acquireImpl();
     setSession(outcome.kind === 'ready' ? { kind: 'ready', token: outcome.accessToken } : outcome);
+    // The trial the work is typed in, which a draft is kept for. When the
+    // trial cannot be resumed just now (rate limited, offline) it is still the
+    // one this browser holds, so work typed meanwhile is kept for it too.
+    setTrialId(
+      outcome.kind === 'ready' ? outcome.trial.sessionId : (readTrial()?.sessionId ?? null),
+    );
   }, [acquireImpl]);
 
   useEffect(() => {
@@ -281,6 +326,8 @@ export function DesignScreen({
     void marketsImpl().then((listed) => {
       if (!live || listed === null) return;
       setMarkets(listed);
+      // A restored draft brings its own market and supply.
+      if (restoredDraft.current) return;
       const code = readMarketImpl();
       if (listed.some((entry) => entry.code === code)) chooseMarket(code, listed, false);
     });
@@ -301,6 +348,92 @@ export function DesignScreen({
   }
 
   const token = session.kind === 'ready' ? session.token : null;
+
+  // Unsaved work is kept as a draft for this tab and session, for the ways of
+  // leaving the guard cannot hold. On arrival, a draft left by an earlier
+  // visit is offered back; until the session is known and that is settled,
+  // nothing is written or cleared, so the page starting clean cannot wipe a
+  // draft it is about to offer.
+  const [draftChecked, setDraftChecked] = useState<string | null>(null);
+  const [draftOffer, setDraftOffer] = useState<DesignDraft | null>(null);
+  const [draftProjectGone, setDraftProjectGone] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  // The snapshot the engineer chose to discard: not kept unless edited again.
+  const discardedSnapshot = useRef<string | null>(null);
+  const lastWritten = useRef<string | null>(null);
+  useEffect(() => {
+    if (trialId === null || draftChecked === trialId) return;
+    setDraftOffer(readDraft(trialId));
+    setDraftChecked(trialId);
+  }, [trialId, draftChecked]);
+  // Every render: cheap next to the snapshot, and only written when changed.
+  useEffect(() => {
+    if (trialId === null || draftChecked !== trialId || draftOffer !== null) return;
+    if (!dirty || discardedSnapshot.current === snapshot) {
+      if (lastWritten.current !== '') clearDraft();
+      lastWritten.current = '';
+      return;
+    }
+    const draft: DesignDraft = {
+      session: trialId,
+      project: opened ? { id: opened.id, revision: opened.revision } : null,
+      clean,
+      info,
+      boards: draftBoards(boards),
+      profileText,
+      language: chosenLanguage,
+      market,
+    };
+    const text = JSON.stringify(draft);
+    if (text === lastWritten.current) return;
+    if (writeDraft(draft)) lastWritten.current = text;
+    else console.warn('Unsaved work could not be kept in session storage.');
+  });
+
+  async function restoreDraft(draft: DesignDraft) {
+    // The offer (and so the stored draft) stays until the work is back on the page.
+    setRestoring(true);
+    restoredDraft.current = true;
+    let reopened = draft.project === null;
+    if (draft.project !== null && token !== null) {
+      const outcome = await openImpl({
+        token,
+        id: draft.project.id,
+        revision: draft.project.revision,
+      });
+      if (outcome.kind === 'saved') {
+        onOpened(outcome.project, false);
+        reopened = true;
+      }
+    }
+    setDraftProjectGone(!reopened);
+    setRestoring(false);
+    setDraftOffer(null);
+    const keyed = formBoards(draft.boards, nextKey.current);
+    nextKey.current += Math.max(1, keyed.used);
+    setInfo(draft.info);
+    setBoards(keyed.boards);
+    if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
+    setProfileText(draft.profileText);
+    setDrawingLanguage(draft.language);
+    setMarket(draft.market);
+    setClean(draft.clean);
+    setLastSave(null);
+    setResult({ kind: 'idle' });
+    setExportError(null);
+  }
+
+  function dismissDraft() {
+    setDraftOffer(null);
+    clearDraft();
+  }
+
+  function discardChanges() {
+    discardedSnapshot.current = snapshot;
+    clearDraft();
+    lastWritten.current = '';
+    unsaved.discard();
+  }
   const active = boards.find((board) => board.key === activeKey) ?? boards[0];
   const parsed = parseProfile(profileText);
   const profile = withMarket(
@@ -308,6 +441,9 @@ export function DesignScreen({
     market,
     DEFAULT_PROFILE_KEY,
   );
+  // Everything a design is made from: the inputs, the language as it is used,
+  // and the title block's revisions, which an approval changes.
+  const basis = `${snapshot}|${drawingLanguage}|${JSON.stringify(titleRevisions)}`;
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -371,6 +507,7 @@ export function DesignScreen({
       approval: approvalOf(project),
     });
     setHistory(project.revisions);
+    setDraftProjectGone(false);
     setTitleRevisions(project.request.info.revisions ?? []);
     // Saved or approved: the form is left as it is. Only a save rebaselines
     // it (in `onSaveState`); an approval signs the stored revision, not
@@ -402,7 +539,7 @@ export function DesignScreen({
     request.info.revisions = titleRevisions;
     const outcome = await designImpl({ token, request });
     if (outcome.kind === 'designed') {
-      setResult({ kind: 'designed', response: outcome.response });
+      setResult({ kind: 'designed', response: outcome.response, profile, basis });
     } else {
       // The schedule stays as entered, so the engineer can correct and retry.
       setResult({ kind: 'error', outcome });
@@ -411,13 +548,14 @@ export function DesignScreen({
   }
 
   async function download(format: ExportFormat) {
-    if (token === null || result.kind !== 'designed') return;
+    // A design the inputs have moved on from is not exported as if current.
+    if (token === null || result.kind !== 'designed' || result.basis !== basis) return;
     setExportError(null);
     const outcome = await exportImpl({
       token,
       project: result.response.project,
       format,
-      profile,
+      profile: result.profile,
     });
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
@@ -466,6 +604,9 @@ export function DesignScreen({
   }
 
   const designed = result.kind === 'designed' ? result.response.project : null;
+  const designedProfile = result.kind === 'designed' ? result.profile : profile;
+  // The inputs have changed since the design shown was made.
+  const stale = result.kind === 'designed' && result.basis !== basis;
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -513,6 +654,20 @@ export function DesignScreen({
       action={goTo('schedule', tw('designFirst.action'))}
     >
       {result.kind === 'working' ? null : tw('designFirst.body')}
+    </EmptyState>
+  );
+
+  const designAgain = (
+    <EmptyState
+      icon={<LayersIcon />}
+      title={tw('stale.title')}
+      action={
+        <button type="submit" form={formId} className="btn btn-sm btn-secondary">
+          {tw('stale.action')}
+        </button>
+      }
+    >
+      {tw('stale.outputs')}
     </EmptyState>
   );
 
@@ -611,7 +766,47 @@ export function DesignScreen({
               </button>
             }
           >
-            {t('unavailable')}
+            {session.kind === 'rate-limited' ? t('rateLimited') : t('unavailable')}
+          </Notice>
+        )}
+        {draftOffer !== null && (
+          <Notice
+            tone="warning"
+            title={tw('draft.title')}
+            testId="draft-offer"
+            action={
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  // A draft of a saved project waits for the session that can reopen it.
+                  disabled={restoring || (draftOffer.project !== null && token === null)}
+                  onClick={() => {
+                    const offered = draftOffer;
+                    unsaved.guard(() => {
+                      void restoreDraft(offered);
+                    });
+                  }}
+                >
+                  {tw('draft.restore')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  disabled={restoring}
+                  onClick={dismissDraft}
+                >
+                  {tw('draft.dismiss')}
+                </button>
+              </div>
+            }
+          >
+            {tw('draft.body')}
+          </Notice>
+        )}
+        {draftProjectGone && (
+          <Notice tone="warning" live={false} testId="draft-project-gone">
+            {tw('draft.projectGone')}
           </Notice>
         )}
         {dirty && lastSave === 'failed' && (
@@ -624,7 +819,20 @@ export function DesignScreen({
             {say(result.outcome)}
           </Notice>
         )}
-        {result.kind === 'designed' && view !== 'drawings' && (
+        {stale && (
+          <Notice
+            tone="warning"
+            testId="design-stale"
+            action={
+              <button type="submit" form={formId} className="btn btn-sm btn-secondary">
+                {tw('stale.action')}
+              </button>
+            }
+          >
+            {tw('stale.body')}
+          </Notice>
+        )}
+        {result.kind === 'designed' && !stale && view !== 'drawings' && (
           <Notice tone="success" action={goTo('drawings', tw('designed.action'))}>
             {tw('designed.body', { count: sheetCount })}
           </Notice>
@@ -662,6 +870,8 @@ export function DesignScreen({
                 }
                 opened={opened}
                 onOpened={onOpened}
+                beforeOpen={unsaved.guard}
+                dirty={dirty}
                 onSaveState={(state) => {
                   setLastSave(state);
                   // This closure is the one the save started from, so its
@@ -694,6 +904,7 @@ export function DesignScreen({
               className="flex flex-wrap items-center gap-2"
               role="group"
               aria-label={t('boards')}
+              data-testid="board-tabs"
             >
               {boards.map((board) => (
                 <button
@@ -723,7 +934,10 @@ export function DesignScreen({
 
             {active && (
               <>
-                <fieldset className="panel grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-6">
+                <fieldset
+                  className="panel grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 md:p-5 lg:grid-cols-6"
+                  data-testid="board-details"
+                >
                   <legend className="px-1 text-sm font-semibold">{t('board')}</legend>
                   {boardField('name', 'board')}
                   {boardField('location', 'location')}
@@ -927,14 +1141,16 @@ export function DesignScreen({
 
         {viewPanel(
           'materials',
-          designed && token !== null ? (
+          designed && token !== null && !stale ? (
             <QuotationPanel
               token={token}
               project={designed}
-              profile={profile}
+              profile={designedProfile}
               saveImpl={saveImpl}
               {...(marketInfo ? { currency: marketInfo.currency } : {})}
             />
+          ) : stale ? (
+            designAgain
           ) : (
             designFirst
           ),
@@ -1046,7 +1262,7 @@ export function DesignScreen({
               <MarkupsPanel
                 token={token}
                 project={designed}
-                profile={profile}
+                profile={designedProfile}
                 onApply={(suggestion) => {
                   const changed = applySuggestion(boards, suggestion);
                   if (changed === null) return false;
@@ -1091,18 +1307,44 @@ export function DesignScreen({
               )}
             </Panel>
             <Panel title={t('downloads')}>
-              {result.kind === 'designed' ? (
+              {result.kind === 'designed' && !stale ? (
                 <ExportPanel onExport={download} exportError={exportError} />
+              ) : stale ? (
+                designAgain
               ) : (
                 designFirst
               )}
             </Panel>
-            {designed && token !== null && hasPlcOutputs && (
-              <PlcPanel token={token} project={designed} profile={profile} saveImpl={saveImpl} />
+            {designed && token !== null && !stale && hasPlcOutputs && (
+              <PlcPanel
+                token={token}
+                project={designed}
+                profile={designedProfile}
+                saveImpl={saveImpl}
+              />
             )}
           </>,
         )}
       </div>
+
+      <Dialog
+        open={unsaved.asking}
+        onClose={unsaved.stay}
+        title={tw('leave.title')}
+        closeLabel={tUi('close')}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2" data-testid="unsaved-dialog">
+            <button type="button" className="btn btn-sm btn-secondary" onClick={unsaved.stay}>
+              {tw('leave.stay')}
+            </button>
+            <button type="button" className="btn btn-sm btn-danger" onClick={discardChanges}>
+              {tw('leave.discard')}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-sm">{tw('leave.body')}</p>
+      </Dialog>
     </AppShell>
   );
 }

@@ -295,14 +295,51 @@ describe('panel BOM', () => {
     expect(screen.getByRole('button', { name: 'Remove' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('shows why a schedule was refused', async () => {
-    const buildImpl = vi
-      .fn()
-      .mockResolvedValue({ kind: 'refused', detail: 'M-101: no ACS880-01 400 V type supplies' });
+  it('shows why a schedule was refused, naming the load, in the page language', async () => {
+    const buildImpl = vi.fn().mockResolvedValue({
+      kind: 'refused',
+      detail: 'M-101: no ACS880-01-xxxx-3 type supplies 400.0 A for normal duty at this site',
+      code: 'no_drive_type',
+      params: { current: '400.0', subject: 'M-101' },
+    });
     await openBomTab(buildImpl);
     fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
     const alert = await screen.findByTestId('bom-error');
-    expect(alert.textContent).toContain('M-101: no ACS880-01');
+    expect(alert.textContent).toContain(
+      'M-101: No drive in the range supplies 400.0 A for this duty at this site.',
+    );
+    expect(alert.textContent).not.toContain('ACS880-01-xxxx');
+  });
+
+  it('checks the enclosure and every load before sending, keeping what was typed', async () => {
+    const buildImpl = vi.fn();
+    await openBomTab(buildImpl);
+    fireEvent.click(screen.getByRole('button', { name: 'Add a load' }));
+    fireEvent.change(screen.getByLabelText(/^Width/), { target: { value: '-800' } });
+    fireEvent.change(screen.getByLabelText(/^Max. internal temperature/), {
+      target: { value: '30' },
+    });
+    fireEvent.change(screen.getAllByLabelText(/^Nameplate current/)[0] as HTMLElement, {
+      target: { value: '-5' },
+    });
+    fireEvent.change(screen.getAllByLabelText(/^Heat given off/)[0] as HTMLElement, {
+      target: { value: 'abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Build the BOM' }));
+
+    const width = screen.getByLabelText(/^Width/);
+    await waitFor(() => {
+      expect(width.getAttribute('aria-invalid')).toBe('true');
+    });
+    expect(document.activeElement).toBe(width);
+    expect(screen.getByText('Enter a whole number above zero.')).toBeTruthy();
+    expect(screen.getByText('Must be above the room temperature.')).toBeTruthy();
+    expect(screen.getByText('Enter a number above zero.')).toBeTruthy();
+    expect(screen.getByText('Enter a number, such as 12.5.')).toBeTruthy();
+    // The added row has no tag.
+    expect(screen.getByText('Give each load a tag.')).toBeTruthy();
+    expect((width as HTMLInputElement).value).toBe('-800');
+    expect(buildImpl).not.toHaveBeenCalled();
   });
 });
 

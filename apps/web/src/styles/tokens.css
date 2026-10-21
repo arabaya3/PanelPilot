@@ -66,6 +66,14 @@
    * are printed and compared against prints. Ink on sheet is 15.8:1. */
   --color-sheet: #ffffff;
   --color-sheet-ink: #1f2328;
+  /* Secondary ink and ruled lines on the sheet. Worst case is the dark
+   * theme's paper with its raised band: muted ink 5.8:1, the rule (a
+   * boundary, not text) 3.7:1. */
+  --color-sheet-ink-muted: #4d5862;
+  --color-sheet-rule: #6b7680;
+  --color-sheet-rule-subtle: #c9c5b8;
+  /* A header row or zebra band on the sheet; ink on it is 12.5:1. */
+  --color-sheet-raised: #e9e5d9;
 
   /* Behind a modal dialog or drawer. Not text, so no contrast pairing. */
   --color-backdrop: rgb(20 25 30 / 0.45);
@@ -201,6 +209,10 @@
 
   --color-sheet: #f4f1e8;
   --color-sheet-ink: #1f2328;
+  --color-sheet-ink-muted: #4d5862;
+  --color-sheet-rule: #6b7680;
+  --color-sheet-rule-subtle: #c9c5b8;
+  --color-sheet-raised: #e9e5d9;
   --color-backdrop: rgb(0 0 0 / 0.6);
 
   /* White ring, graphite gap: 18.1:1 ring-on-gap, 10.6:1 gap-on-gold. */

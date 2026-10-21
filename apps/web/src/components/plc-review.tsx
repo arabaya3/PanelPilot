@@ -30,7 +30,11 @@ type Review =
   /** The source as submitted, so the lines match the findings' numbers. */
   | { kind: 'reviewed'; source: string; result: PlcValidationResult }
   | { kind: 'rejected'; detail: string | null }
+  | { kind: 'too-long'; length: number }
   | { kind: 'failed' };
+
+/** `PlcValidationRequest.source`'s `max_length`: longer is refused unread. */
+const MAX_SOURCE_LENGTH = 100_000;
 
 /**
  * Paste Structured Text, get it checked.
@@ -59,6 +63,12 @@ export function PlcReview({
 
   async function check() {
     const submitted = source;
+    // Said here, in characters: past the limit the server answers about
+    // request bytes, which is not a size the reader can act on.
+    if (submitted.length > MAX_SOURCE_LENGTH) {
+      setReview({ kind: 'too-long', length: submitted.length });
+      return;
+    }
     setReview({ kind: 'checking' });
     const outcome = await reviewImpl({ source: submitted });
     if (outcome.kind === 'reviewed') {
@@ -150,6 +160,11 @@ export function PlcReview({
               {review.kind === 'rejected' && (
                 <Notice tone="warning" testId="plc-rejected">
                   <span dir="auto">{review.detail ?? t('rejected')}</span>
+                </Notice>
+              )}
+              {review.kind === 'too-long' && (
+                <Notice tone="warning" testId="plc-too-long">
+                  {t('tooLong', { length: review.length, limit: MAX_SOURCE_LENGTH })}
                 </Notice>
               )}
               {review.kind === 'failed' && (

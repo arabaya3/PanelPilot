@@ -434,3 +434,24 @@ def test_keepalive_never_asks_for_a_frame_the_client_has_not_taken() -> None:
     stream.close()
 
     assert produced == ["retrieving", "generated"], "a frame was produced ahead of demand"
+
+
+def test_a_streamed_turn_logs_under_its_request_correlation_id() -> None:
+    """The frames are produced after the middleware has unbound the id.
+
+    Every retrieval, generation and output-rejection line of a streamed turn
+    was logged with no correlation id, so a refusal seen in the browser could
+    not be traced to the reason behind it.
+    """
+    seen: list[str | None] = []
+
+    def _frames() -> Iterator[str]:
+        for name in ("retrieving", "result"):
+            seen.append(observability.current_correlation_id())
+            yield f"event: {name}\ndata: {{}}\n\n"
+
+    list(diagnostics_route._with_keepalive(_frames(), interval_s=5, correlation_id="req-42"))
+
+    assert seen == ["req-42", "req-42"]
+    # Bound around each frame only: the worker does not keep it afterwards.
+    assert observability.current_correlation_id() is None

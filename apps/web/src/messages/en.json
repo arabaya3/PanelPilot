@@ -41,6 +41,7 @@
     "uncertainNoSources": "There is not enough supporting evidence to give steps for this. Check the equipment documentation before acting.",
     "refusalHeading": "No answer given",
     "refusalFallback": "This question could not be answered from the available documentation.",
+    "refusalClosestSource": "Closest match found — it does not answer this",
     "markDone": "Mark step {step} done",
     "progress": "{done} of {total} steps done",
     "refusalBadge": "No answer"
@@ -197,6 +198,7 @@
     "close": "Close history"
   },
   "plc": {
+    "tooLong": "The program is {length, number} characters; the check takes up to {limit, number}. Check it in parts.",
     "heading": "PLC code",
     "intro": "Paste IEC 61131-3 Structured Text. It is checked for syntax errors, undeclared or unused tags, type mismatches and unreachable code, each shown on its line. Nothing is stored.",
     "label": "Structured Text",
@@ -237,6 +239,10 @@
     }
   },
   "plcView": {
+    "passedClean": "Passed — the checker found no problems",
+    "validScope": "This checks a subset of IEC 61131-3 Structured Text: syntax, that every tag is declared and used, simple type mismatches and unreachable branches. It does not test what the program does when it runs, or that the machine is safe — review and test it before use.",
+    "invalidAction": "Correct the errors marked below, then check again.",
+    "syntaxHint": "The parser stopped here. Look on this line or the one before it for a missing ;, THEN, END_IF or bracket.",
     "failed": "{count, plural, one {Validation failed — # error} other {Validation failed — # errors}}",
     "notVerified": "Not verified — this code was not checked",
     "passed": "{count, plural, one {Passed with # warning} other {Passed with # warnings}}",
@@ -331,6 +337,12 @@
     }
   },
   "search": {
+    "match": {
+      "code": "Contains the code you searched for",
+      "words": "Contains:",
+      "meaningOnly": "Close in meaning only: none of your search words is in it"
+    },
+    "weak": "None of these passages contains what you searched for. Search always lists the passages closest in meaning, so these may be unrelated. Try an exact fault code, parameter number or model; the manuals are in English.",
     "heading": "Search the manuals",
     "intro": "Look up a fault code, a parameter or a wiring detail directly. Every result is a passage a reviewer verified, with a link to the page it came from.",
     "label": "What are you looking for?",
@@ -391,6 +403,34 @@
     }
   },
   "calc": {
+    "invalid": {
+      "required": "Enter a value.",
+      "notANumber": "Enter a number, such as 12.5.",
+      "tooLarge": "This number is too large to calculate with.",
+      "notPositive": "Enter a number above zero.",
+      "negative": "Enter zero or more.",
+      "notFraction": "Enter a value above 0 and at most 1, such as 0.93.",
+      "notCount": "Enter a whole number, 1 or more.",
+      "notWholePositive": "Enter a whole number above zero.",
+      "tagRequired": "Give each load a tag.",
+      "notAboveAmbient": "Must be above the room temperature."
+    },
+    "errors": {
+      "ambient_out_of_table": "An ambient of {ambient} °C is outside the cable table for {insulation} °C insulation ({low}–{high} °C); ask the cable manufacturer.",
+      "breaker_too_large": "{current} A is above the largest miniature breaker held ({largest} A).",
+      "drive_altitude": "An altitude of {altitude} m is outside the drive’s permitted installation altitude ({low}–{high} m).",
+      "drive_ambient": "An ambient of {ambient} °C is outside the drive’s range ({low} to {high} °C).",
+      "drive_voltage": "{voltage} V is outside the {series} supply ranges held ({bands}).",
+      "grouped_out_of_table": "{grouped} grouped circuits is outside the grouping table (1–{largest}).",
+      "motor_outside_table": "A {power} kW motor is outside the coordination table ({low}–{high} kW).",
+      "no_cable_section": "No tabulated {material} cable carries {current} A by method {method}; use parallel conductors.",
+      "no_drive_type": "No drive in the range supplies {current} A for this duty at this site.",
+      "number_too_large": "An input is too large to calculate with.",
+      "relay_range": "A {current} A motor puts {relay_current} A through its relay, below the {relay} range ({low}–{high} A) of the first coordinated row that carries it.",
+      "starter_fault_level": "A {fault} kA fault level is above the 50 kA the coordination tables hold to.",
+      "starter_voltage": "{voltage} V: the coordination tables held are for {held} (± 5 %)."
+    },
+    "fixFields": "Correct the marked fields, then calculate again.",
     "heading": "Cable sizing",
     "intro": "Size a copper or aluminium feeder from the IEC 60364-5-52 tables as ABB's installation handbook publishes them. Every figure names the table and page it came from; an input the tables do not cover is refused, not guessed.",
     "field": {
@@ -586,6 +626,25 @@
       "failedHint": "The project could not be saved. What you entered is still here; try saving again from the overview."
     },
     "retry": "Try again",
+    "draft": {
+      "title": "Unsaved work was kept",
+      "body": "This tab kept work you had not saved when you last left the workspace.",
+      "restore": "Restore unsaved work",
+      "dismiss": "Discard it",
+      "projectGone": "The saved project this work belonged to could not be opened. Saving will store it as a new project."
+    },
+    "leave": {
+      "title": "Discard unsaved changes?",
+      "body": "Changes to this project have not been saved. Leaving or opening another project discards them.",
+      "stay": "Keep editing",
+      "discard": "Discard changes"
+    },
+    "stale": {
+      "title": "The design is out of date",
+      "body": "The inputs have changed since this design was made. Its sheets are shown for reference; design again before exporting or pricing.",
+      "action": "Design again",
+      "outputs": "Exports and pricing come from a design that matches the inputs. Design again to bring them up to date."
+    },
     "connecting": "Connecting to the design service…",
     "basis": "Design basis",
     "designFirst": {
@@ -659,6 +718,7 @@
     "title": "Board design",
     "intro": "Enter a distribution board's load schedule. Each circuit gets its breaker and cable, loads are grouped under residual current devices and spread across the phases, and the whole drawing set is generated from the result. Every figure names its source; what the design assumed is listed under the result.",
     "unavailable": "The design service is unavailable. Try again in a moment.",
+    "rateLimited": "Too many requests from this network just now. Wait a few minutes, then try again.",
     "project": "Project",
     "board": "Board",
     "loads": "Load schedule",
@@ -901,6 +961,7 @@
       "board_voltage_mismatch": "{board} is supplied at {voltage} V, but {supply} gives it {expected} V.",
       "boards_loop": "The boards feed one another in a loop through {board}.",
       "breaker_too_large": "{current} A is above the largest miniature breaker held ({largest} A).",
+      "drive_altitude": "An altitude of {altitude} m is outside the drive’s permitted installation altitude ({low}–{high} m).",
       "drive_ambient": "An ambient of {ambient} °C is outside the drive’s range ({low} to {high} °C).",
       "drive_voltage": "{voltage} V is outside the {series} supply ranges held ({bands}).",
       "file_empty": "The file is empty.",
@@ -967,7 +1028,9 @@
       "approver": "Approving engineer",
       "approve": "Approve revision {revision}",
       "approvedNow": "Revision {revision} is approved; its title block now carries the approval.",
-      "approvedBy": "Revision {revision} approved by {name} on {date}."
+      "approvedBy": "Revision {revision} approved by {name} on {date}.",
+      "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
+      "saveFailed": "The project could not be saved. What you entered is still here; try again."
     },
     "markups": {
       "title": "Review markups",

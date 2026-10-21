@@ -51,6 +51,10 @@ export function ProjectsPanel({
   opened,
   onOpened,
   onSaveState,
+  beforeOpen = (open) => {
+    open();
+  },
+  dirty = false,
   impls = {},
 }: {
   token: string;
@@ -61,6 +65,10 @@ export function ProjectsPanel({
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
   onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
+  /** Asked before opening a project replaces what is on the page; calls `open` to go ahead. */
+  beforeOpen?: (open: () => void) => void;
+  /** Whether the page has changes not saved, which an approval would not include. */
+  dirty?: boolean;
   impls?: Partial<{
     list: typeof listProjects;
     save: typeof saveProject;
@@ -114,11 +122,19 @@ export function ProjectsPanel({
       onOpened(outcome.project, false);
       void refresh();
     } else {
-      setMessage(say(outcome));
+      // A refusal says what the API objected to; anything else is a save that
+      // did not happen, not a design that failed.
+      setMessage(outcome.kind === 'refused' ? say(outcome) : t('saveFailed'));
     }
   }
 
-  async function load(projectId: string, revision?: number) {
+  function load(projectId: string, revision?: number) {
+    beforeOpen(() => {
+      void fetchAndOpen(projectId, revision);
+    });
+  }
+
+  async function fetchAndOpen(projectId: string, revision?: number) {
     setMessage(null);
     const outcome = await open({ token, id: projectId, revision: revision ?? null });
     if (outcome.kind === 'saved') onOpened(outcome.project, true);
@@ -126,7 +142,7 @@ export function ProjectsPanel({
   }
 
   async function sign() {
-    if (opened === null || approver.trim() === '') return;
+    if (opened === null || approver.trim() === '' || dirty) return;
     setWorking(true);
     setMessage(null);
     const outcome = await approve({
@@ -164,7 +180,7 @@ export function ProjectsPanel({
                 id={`${id}-revision`}
                 value={opened.revision}
                 onChange={(event) => {
-                  void load(opened.id, Number(event.target.value));
+                  load(opened.id, Number(event.target.value));
                 }}
                 className="input w-full sm:w-64"
               >
@@ -188,29 +204,41 @@ export function ProjectsPanel({
             })}
           </p>
         ) : (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <Field id={`${id}-approver`} label={t('approver')}>
-              <input
-                id={`${id}-approver`}
-                value={approver}
-                maxLength={100}
-                onChange={(event) => {
-                  setApprover(event.target.value);
+          <>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <Field id={`${id}-approver`} label={t('approver')}>
+                <input
+                  id={`${id}-approver`}
+                  value={approver}
+                  maxLength={100}
+                  onChange={(event) => {
+                    setApprover(event.target.value);
+                  }}
+                  className="input w-full"
+                />
+              </Field>
+              <button
+                type="button"
+                disabled={approver.trim() === '' || working || dirty}
+                aria-describedby={dirty ? `${id}-approve-dirty` : undefined}
+                onClick={() => {
+                  void sign();
                 }}
-                className="input w-full"
-              />
-            </Field>
-            <button
-              type="button"
-              disabled={approver.trim() === '' || working}
-              onClick={() => {
-                void sign();
-              }}
-              className="btn btn-secondary btn-sm self-start sm:self-end"
-            >
-              {t('approve', { revision: opened.revision })}
-            </button>
-          </div>
+                className="btn btn-secondary btn-sm self-start sm:self-end"
+              >
+                {t('approve', { revision: opened.revision })}
+              </button>
+            </div>
+            {dirty && (
+              <p
+                id={`${id}-approve-dirty`}
+                className="text-sm text-text-muted"
+                data-testid="approve-dirty"
+              >
+                {t('approveDirty', { revision: opened.revision })}
+              </p>
+            )}
+          </>
         ))}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <Field id={`${id}-note`} label={t('note')}>
@@ -258,7 +286,7 @@ export function ProjectsPanel({
               <button
                 type="button"
                 onClick={() => {
-                  void load(project.id);
+                  load(project.id);
                 }}
                 className="btn btn-sm btn-secondary"
               >
