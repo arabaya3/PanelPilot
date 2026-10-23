@@ -728,7 +728,7 @@
     "field": {
       "name": "اسم المشروع",
       "number": "رقم العمل",
-      "customer": "المالك",
+      "customer": "العميل",
       "consultant": "الاستشاري",
       "contractor": "المقاول",
       "board": "اسم اللوحة",
@@ -1226,7 +1226,7 @@
         "checked_by": "دقّق",
         "approved_by": "اعتمد",
         "page_number": "رقم الصفحة",
-        "customer": "المالك",
+        "customer": "العميل",
         "consultant": "الاستشاري",
         "contractor": "المقاول"
       },

@@ -276,6 +276,7 @@ The owner authorized this inspection. It was read-only: one `BEGIN READ ONLY …
    - The Contents page lists drawing pages but not the appended findings sheets; the "N of M" counts are correct.
    - The quotation PDF and CSV are English throughout.
    - Units and catalogue or supplier text stay as entered.
+   - Under the drawing, in Arabic and Hebrew, the enclosure note's nested English citation (ABB Mini Center, its document number and pages) is reordered. The same finding reads correctly on the Review & export tab. This was found in the final browser re-check (D10) and is cosmetic.
 
 ## Environments left in place
 

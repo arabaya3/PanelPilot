@@ -1623,7 +1623,9 @@ function DesignWorkspace({
                     voltage: marketInfo.voltage_v,
                     frequency: marketInfo.frequency_hz,
                     earthing: marketInfo.earthing,
-                    regulation: marketInfo.regulation,
+                    regulation: t.has(`regulation.${marketInfo.code}`)
+                      ? t(`regulation.${marketInfo.code}`)
+                      : marketInfo.regulation,
                   })}
                 </p>
               )}
