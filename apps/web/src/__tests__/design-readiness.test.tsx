@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
 import {
+  executionBlockersOf,
   executionRefusalOf,
-  parseFinding,
   readinessOf,
   rowOf,
   validationOf,
@@ -12,6 +12,8 @@ import {
 } from '@/components/design/readiness';
 import {
   exportRevision,
+  tooLargeOf,
+  tooLongOf,
   unknownFieldsOf,
   type approveRevision,
   type BoardDesignResponse,
@@ -117,7 +119,18 @@ function saved(fields: Record<string, unknown> = {}): SavedProject {
     id: 'p1',
     name: 'Stored tower',
     revision: 1,
-    revisions: [{ number: 1, note: '', author: 'e', created_at: '2026-10-02T10:00:00Z' }],
+    validated: true,
+    export_status: 'draft',
+    revisions: [
+      {
+        number: 1,
+        note: '',
+        author: 'e',
+        created_at: '2026-10-02T10:00:00Z',
+        validated: true,
+        export_status: 'draft',
+      },
+    ],
     request: REQUEST,
     ...({
       validated: true,
@@ -207,25 +220,26 @@ afterEach(() => {
 });
 
 describe('reading what the server recorded', () => {
-  it('reads findings defensively, blocking first, skipping what is not a finding', () => {
-    const validation = validationOf(
-      saved({ findings: [WARNING, { code: 'x', severity: 'fatal' }, 'junk', BLOCKING] }),
-    );
+  it('lists the findings blocking first', () => {
+    const validation = validationOf(saved({ findings: [WARNING, BLOCKING] }));
     expect(validation.findings.map((finding) => finding.code)).toEqual([
       'integrity_device_above_cable_capacity',
       'rules_unconfirmed',
     ]);
     expect(validation.validated).toBe(true);
-    // An absent confirmation flag is read as needing an engineer, never as cleared.
-    expect(parseFinding({ code: 'new_code', severity: 'warning' })).toMatchObject({
-      requires_engineering_confirmation: true,
-      board_id: null,
-    });
   });
 
   it('takes a revision with no validation fields as not validated (saved before Phase 1)', () => {
     const { id, name, revision, revisions, request } = saved();
-    const legacy: SavedProject = { id, name, revision, revisions, request };
+    const legacy: SavedProject = {
+      id,
+      name,
+      revision,
+      revisions,
+      request,
+      validated: false,
+      export_status: 'not_validated',
+    };
     expect(validationOf(legacy)).toMatchObject({ validated: false, findings: [] });
   });
 
@@ -255,16 +269,34 @@ describe('reading what the server recorded', () => {
         kind: 'refused',
         detail: '',
         code: 'execution_package_incomplete',
-        values: {
+        params: {
           missing: 'wiring_and_terminal_connectivity',
           approval: 'missing',
           blocking_findings: 'a,b',
+          blockers: 'wiring_and_terminal_connectivity,stale,approval,finding:a,finding:b',
         },
       }),
     ).toEqual({
       missing: ['wiring_and_terminal_connectivity'],
-      blockingFindings: 2,
+      blockingFindings: ['a', 'b'],
       approvalMissing: true,
+      notValidated: false,
+      stale: true,
+    });
+    // Present approval and no blockers read as nothing else in the way.
+    expect(
+      executionRefusalOf({
+        kind: 'refused',
+        detail: '',
+        code: 'execution_package_incomplete',
+        params: { missing: 'control_schematics', approval: 'present', blocking_findings: '' },
+      }),
+    ).toEqual({
+      missing: ['control_schematics'],
+      blockingFindings: [],
+      approvalMissing: false,
+      notValidated: false,
+      stale: false,
     });
   });
 });
@@ -276,7 +308,8 @@ describe('the readiness steps', () => {
     snapshotSha256: SHA,
     approvedSnapshotSha256: null,
     rulesVersion: 'r1',
-    exportStatus: null,
+    exportStatus: 'draft',
+    executionBlockers: [],
     ...fields,
   });
   const by = { by: 'A. Engineer', at: '2026-10-03' };
@@ -450,7 +483,7 @@ describe('the review view', () => {
         kind: 'refused',
         detail: 'incomplete',
         code: 'execution_package_incomplete',
-        values: {
+        params: {
           missing:
             'wiring_and_terminal_connectivity,control_schematics,orderable_parts,mechanical_layout',
           approval: 'missing',
@@ -647,5 +680,247 @@ describe('a revision the server reads as stale', () => {
     );
     expect(stepState('validated')).toBe('stale');
     expect(overview().getByTestId('approve-held-stale')).toBeTruthy();
+  });
+});
+
+describe('the backend’s finding codes and approval refusals', () => {
+  const CODES = [
+    'integrity_device_above_cable_capacity',
+    'integrity_unknown_device',
+    'integrity_unknown_cable',
+    'integrity_protection_unchecked',
+    'integrity_cable_untabulated',
+    'integrity_drive_cable_unchecked',
+  ];
+
+  it.each(Object.entries(MESSAGES))('%s translates every finding code', (_locale, bundle) => {
+    const design = bundle.design as {
+      finding: Record<string, unknown>;
+      errors: Record<string, unknown>;
+    };
+    for (const code of CODES) expect(typeof design.finding[code], code).toBe('string');
+    expect(typeof design.errors.design_refused).toBe('string');
+  });
+
+  it('says a refused design with its refusal, and the approval refusals by code', async () => {
+    const refused = {
+      code: 'design_refused',
+      severity: 'blocking',
+      board_id: null,
+      values: { refusal: 'three_phase_on_single_phase' },
+      message: 'The design was refused: ...',
+      source: 'policy',
+    };
+    api.open.mockResolvedValue({ kind: 'saved', project: saved({ findings: [refused] }) });
+    api.approve
+      .mockResolvedValueOnce({
+        kind: 'refused',
+        detail: 'conflict',
+        code: 'revision_conflict',
+      })
+      .mockResolvedValueOnce({
+        kind: 'refused',
+        detail: 'already',
+        code: 'revision_already_approved',
+        params: { revision: '1', approver: 'B. Other' },
+      });
+    renderScreen();
+    await openStored();
+    expect(review().getByTestId('findings').textContent).toContain(
+      'The design was refused, so this revision holds no validated design. Correct the inputs and save again. A three-phase load cannot be fed from a single-phase board.',
+    );
+
+    // With nothing blocking, the approval refusals the server sends are said.
+    api.open.mockResolvedValue({ kind: 'saved', project: saved() });
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(review().queryByTestId('findings')).toBeNull();
+    });
+    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+      target: { value: 'A. Engineer' },
+    });
+    fireEvent.click(overview().getByText('Approve revision 1'));
+    expect((await overview().findByTestId('projects-message')).textContent).toBe(
+      'Another revision was saved at the same time; save again.',
+    );
+    fireEvent.click(overview().getByText('Approve revision 1'));
+    await waitFor(() => {
+      expect(overview().getByTestId('projects-message').textContent).toBe(
+        'Revision 1 is approved already, by B. Other.',
+      );
+    });
+  });
+});
+
+describe('execution blockers, a second approver, and over-long fields', () => {
+  const BLOCKERS = [
+    'wiring_and_terminal_connectivity',
+    'control_schematics',
+    'orderable_parts',
+    'mechanical_layout',
+    'approval',
+    'finding:integrity_device_above_cable_capacity',
+  ];
+
+  it('reads a saved project’s execution blockers', () => {
+    const validation = validationOf(saved({ execution_blockers: [...BLOCKERS, 'not_validated'] }));
+    expect(executionBlockersOf(validation)).toEqual({
+      missing: BLOCKERS.slice(0, 4),
+      blockingFindings: ['integrity_device_above_cable_capacity'],
+      approvalMissing: true,
+      notValidated: true,
+      stale: false,
+    });
+  });
+
+  it('shows why execution is blocked before any export is tried', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: saved({ execution_blockers: BLOCKERS }),
+    });
+    const exportRevisionImpl = vi.fn<typeof exportRevision>();
+    renderScreen({ exportRevisionImpl });
+    await openStored();
+    const blockers = await review().findByTestId('execution-blockers');
+    expect(blockers.textContent).toContain('Execution export blocked');
+    for (const text of [
+      'Wiring and terminal connectivity',
+      'Control schematics',
+      'Orderable parts with order numbers',
+      'A dimensioned mechanical layout',
+      '1 blocking finding resolved',
+      'Review approval of this revision',
+    ]) {
+      expect(blockers.textContent).toContain(text);
+    }
+    expect(exportRevisionImpl).not.toHaveBeenCalled();
+    expect(review().queryByTestId('execution-refused')).toBeNull();
+  });
+
+  it('shows the first approval when a second approver is refused', async () => {
+    api.open
+      .mockResolvedValueOnce({ kind: 'saved', project: saved() })
+      .mockResolvedValue({ kind: 'saved', project: approved() });
+    api.approve.mockResolvedValue({
+      kind: 'refused',
+      detail: 'already',
+      code: 'revision_already_approved',
+      params: { revision: '1', approver: 'A. Engineer' },
+    });
+    renderScreen();
+    await openStored();
+    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+      target: { value: 'B. Second' },
+    });
+    fireEvent.click(overview().getByText('Approve revision 1'));
+    expect((await overview().findByTestId('project-approval')).textContent).toContain(
+      'A. Engineer',
+    );
+    expect(overview().getByTestId('projects-message').textContent).toBe(
+      'Revision 1 is approved already, by A. Engineer.',
+    );
+    // The form is kept as it was, not replaced by the reopened revision.
+    expect(api.open).toHaveBeenCalledTimes(2);
+    expect(overview().getByLabelText<HTMLInputElement>('Project name').value).toBe('Stored tower');
+  });
+
+  it('reads over-long fields from a strict 422, by path and limit', () => {
+    expect(
+      tooLongOf({
+        detail: [
+          {
+            type: 'string_too_long',
+            loc: ['body', 'request', 'info', 'customer'],
+            msg: 'String should have at most 200 characters',
+            ctx: { max_length: 200 },
+          },
+          { type: 'missing', loc: ['body', 'format'], msg: 'Field required' },
+        ],
+      }),
+    ).toEqual([{ path: 'request.info.customer', max: 200 }]);
+    // The same errors inside an envelope are read too.
+    expect(
+      unknownFieldsOf({
+        error: 'validation_error',
+        detail: 'invalid',
+        errors: [{ type: 'extra_forbidden', loc: ['body', 'colour'], msg: 'Extra inputs' }],
+      }),
+    ).toEqual(['colour']);
+  });
+
+  it('says an over-long project field at the field, keeping what was typed', async () => {
+    const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'String should have at most 200 characters',
+      tooLong: [{ path: 'info.customer', max: 200 }],
+    });
+    renderScreen({ designImpl });
+    await openStored();
+    const long = 'x'.repeat(250);
+    fireEvent.change(overview().getByLabelText('Customer'), { target: { value: long } });
+    fireEvent.click(screen.getByText('Design the board', { selector: 'button' }));
+    const field = overview().getByLabelText<HTMLInputElement>('Customer');
+    await waitFor(() => {
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+    });
+    expect(overview().getByText('Too long: at most 200 characters.')).toBeTruthy();
+    expect(field.value).toBe(long);
+  });
+});
+
+describe('the strict 422 envelope (request_invalid)', () => {
+  const ENVELOPE = {
+    error: 'RequestValidationError',
+    code: 'request_invalid',
+    params: { count: 3 },
+    detail: [
+      {
+        loc: ['body', 'request', 'info', 'customer'],
+        msg: 'String should have at most 200 characters',
+        type: 'string_too_long',
+        ctx: { max_length: 200 },
+      },
+      {
+        loc: ['body', 'request', 'boards', 0, 'loads', 1, 'length_m'],
+        msg: 'Input should be less than or equal to 2000',
+        type: 'less_than_equal',
+        ctx: { le: 2000 },
+      },
+      {
+        loc: ['body', 'request', 'info', 'standby_supply'],
+        msg: 'Extra inputs are not permitted',
+        type: 'extra_forbidden',
+      },
+    ],
+  };
+
+  it('reads each field at fault from the envelope', () => {
+    expect(tooLongOf(ENVELOPE)).toEqual([{ path: 'request.info.customer', max: 200 }]);
+    expect(tooLargeOf(ENVELOPE)).toEqual([
+      { path: 'request.boards[0].loads[1].length_m', max: '2000' },
+    ]);
+    expect(unknownFieldsOf(ENVELOPE)).toEqual(['request.info.standby_supply']);
+  });
+
+  it('reads a refused save’s field limits from the exact 422 response', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ ...ENVELOPE, detail: ENVELOPE.detail.slice(0, 2) }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const actual = await vi.importActual<typeof DesignModule>('@/lib/design');
+    const outcome = await actual.reviseProject({
+      token: 't',
+      id: 'p1',
+      request: REQUEST,
+      fetchImpl,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'refused',
+      code: 'request_invalid',
+      tooLong: [{ path: 'request.info.customer', max: 200 }],
+      tooLarge: [{ path: 'request.boards[0].loads[1].length_m', max: '2000' }],
+    });
   });
 });

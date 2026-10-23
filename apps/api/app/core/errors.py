@@ -11,6 +11,8 @@ from collections.abc import Mapping
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
@@ -199,3 +201,29 @@ def install_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=status, content=content, headers=headers or None)
 
     app.add_exception_handler(PanelPilotError, handle_panelpilot_error)
+
+    async def handle_request_invalid(_request: Request, exc: Exception) -> JSONResponse:
+        """A refused request body, path or query in the shared envelope.
+
+        ``detail`` stays FastAPI's list of errors, each with its ``loc`` and
+        ``type`` (``extra_forbidden`` for an unknown field), so a client that
+        reads the list keeps working; ``error``, ``code`` and ``params`` are
+        added so every error carries the same keys.
+        """
+        assert isinstance(exc, RequestValidationError)
+        # The rejected input is not echoed back: it may be megabytes.
+        errors = jsonable_encoder(
+            [
+                {key: value for key, value in found.items() if key != "input"}
+                for found in exc.errors()
+            ]
+        )
+        content: dict[str, object] = {
+            "error": "RequestValidationError",
+            "detail": errors,
+            "code": "request_invalid",
+            "params": {"count": len(errors)},
+        }
+        return JSONResponse(status_code=HTTPStatus.UNPROCESSABLE_ENTITY, content=content)
+
+    app.add_exception_handler(RequestValidationError, handle_request_invalid)

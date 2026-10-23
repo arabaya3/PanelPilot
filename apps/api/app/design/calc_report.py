@@ -77,8 +77,8 @@ PHRASES: tuple[str, ...] = (
     "Customer: {value}",
     "Consultant: {value}",
     "Revision {index}, {date}",
-    "Approved by {name}",
-    "NOT APPROVED: issued for review only.",
+    "Review approved by {name}: a study, not for execution.",
+    "NOT APPROVED: for review only, not for execution.",
     "The design rules are this software's defaults; the company has not confirmed them.",
     "Basis of calculation",
     "Board",
@@ -89,7 +89,7 @@ PHRASES: tuple[str, ...] = (
     "not selected",
     "Prepared",
     "Checked",
-    "Approved",
+    "Review approved",
 )
 
 _HEAD = colors.HexColor("#e7eef4")
@@ -269,10 +269,12 @@ def render_calculations_pdf(
     ]
     story.extend(_paragraph(d, styles["body"]) for d in details if d)
     if latest and latest.approved_by:
-        approved = words("Approved by {name}", name=latest.approved_by)
+        approved = words(
+            "Review approved by {name}: a study, not for execution.", name=latest.approved_by
+        )
         story.append(_paragraph(approved, styles["body"], bold=True))
     else:
-        refused = words("NOT APPROVED: issued for review only.")
+        refused = words("NOT APPROVED: for review only, not for execution.")
         story.append(_paragraph(refused, styles["body"], bold=True))
     if not company.rules_confirmed_by:
         story.append(
@@ -294,7 +296,7 @@ def render_calculations_pdf(
         [
             [
                 _paragraph(words(role), styles["head"])
-                for role in ("Prepared", "Checked", "Approved")
+                for role in ("Prepared", "Checked", "Review approved")
             ],
             [
                 _paragraph(name, styles["body"])

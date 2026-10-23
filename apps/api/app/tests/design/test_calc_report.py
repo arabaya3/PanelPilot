@@ -60,7 +60,7 @@ def test_render_calculations_pdf_lists_every_circuit_and_its_figures() -> None:
     assert data.startswith(b"%PDF")
     text = _text(data)
     assert "Calculations report: Tower" in text
-    assert "Approved by A. Rabaya" in text
+    assert "Review approved by A. Rabaya: a study, not for execution." in text
     assert "Board MDB" in text
     assert "Server room" in text
     # The breaker's C16 and the most Zs it allows at U0 231 V.
@@ -71,7 +71,7 @@ def test_render_calculations_pdf_lists_every_circuit_and_its_figures() -> None:
 
 def test_an_unapproved_report_says_so() -> None:
     text = _text(calc_report.render_calculations_pdf(_project(), profile.default_profile()))
-    assert "NOT APPROVED" in text
+    assert "NOT APPROVED: for review only, not for execution." in text
 
 
 def test_every_phrase_has_an_arabic_one() -> None:

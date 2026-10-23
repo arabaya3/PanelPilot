@@ -6,9 +6,9 @@ import json
 
 from app.design import marking
 from app.design.sheet import Sheet, Text
-from app.models.schemas.design import FindingSeverity, ValidationFinding
+from app.models.schemas.design import DesignFinding, FindingSeverity
 
-_FINDING = ValidationFinding(
+_FINDING = DesignFinding(
     code="integrity_device_above_cable_capacity",
     severity=FindingSeverity.BLOCKING,
     board_id="DB1",

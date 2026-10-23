@@ -15,6 +15,7 @@ import {
   saveProject,
   type ProjectDesignRequest,
   type ProjectPage,
+  type Refusal,
   type SavedProject,
 } from '@/lib/design';
 
@@ -52,6 +53,7 @@ export function ProjectsPanel({
   opened,
   onOpened,
   onSaveState,
+  onRefused,
   beforeOpen = (open) => {
     open();
   },
@@ -69,6 +71,8 @@ export function ProjectsPanel({
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
   onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
+  /** Told what a refused save objected to, so the page can mark the fields at fault. */
+  onRefused?: (refusal: Refusal) => void;
   /** Asked before opening a project replaces what is on the page; calls `open` to go ahead. */
   beforeOpen?: (open: () => void) => void;
   /** Whether the page has changes not saved, which an approval would not include. */
@@ -140,7 +144,8 @@ export function ProjectsPanel({
       void refresh();
     } else {
       // A refusal says what the API objected to; anything else is a save that
-      // did not happen, not a design that failed.
+      // did not happen, not a design that failed. What was entered stays.
+      if (outcome.kind === 'refused') onRefused?.(outcome);
       setMessage(outcome.kind === 'refused' ? say(outcome) : t('saveFailed'));
     }
   }
@@ -173,8 +178,13 @@ export function ProjectsPanel({
       setApprover('');
       setMessage(t('approvedNow', { revision: outcome.project.revision }));
       onOpened(outcome.project, false);
-    } else {
-      setMessage(say(outcome));
+      return;
+    }
+    setMessage(say(outcome));
+    // Someone else approved it first: show their approval, keeping the form as it is.
+    if (outcome.kind === 'refused' && outcome.code === 'revision_already_approved') {
+      const reopened = await open({ token, id: opened.id, revision: opened.revision });
+      if (reopened.kind === 'saved') onOpened(reopened.project, false);
     }
   }
 

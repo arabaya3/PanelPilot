@@ -34,6 +34,7 @@ from app.models.schemas.design import (
     Board,
     Cable,
     Circuit,
+    DesignFinding,
     DesignNote,
     DesignProject,
     Device,
@@ -42,7 +43,6 @@ from app.models.schemas.design import (
     InstallationConditions,
     MotorStarter,
     Phase,
-    ValidationFinding,
 )
 
 _CAPACITY_SOURCE = (
@@ -74,8 +74,8 @@ def _finding(
     device: Device | None = None,
     values: Mapping[str, object] | None = None,
     confirm: bool = False,
-) -> ValidationFinding:
-    return ValidationFinding(
+) -> DesignFinding:
+    return DesignFinding(
         code=code,
         severity=severity,
         board_id=board.id,
@@ -88,7 +88,7 @@ def _finding(
     )
 
 
-def note_findings(project: DesignProject) -> list[ValidationFinding]:
+def note_findings(project: DesignProject) -> list[DesignFinding]:
     """Each board note as a finding, its severity from ``findings_policy``.
 
     A note about a load (its ``load`` param) is placed on the circuit of
@@ -100,7 +100,7 @@ def note_findings(project: DesignProject) -> list[ValidationFinding]:
     Returns:
         One finding per note, in board and note order.
     """
-    found: list[ValidationFinding] = []
+    found: list[DesignFinding] = []
     for board in project.boards:
         by_description = {circuit.description: circuit for circuit in board.circuits}
         for item in board.notes:
@@ -110,10 +110,10 @@ def note_findings(project: DesignProject) -> list[ValidationFinding]:
 
 def _from_note(
     board: Board, item: DesignNote, by_description: Mapping[str, Circuit]
-) -> ValidationFinding:
+) -> DesignFinding:
     rule = findings_policy.classify(item.code)
     circuit = by_description.get(item.params.get("load", ""))
-    return ValidationFinding(
+    return DesignFinding(
         code=item.code,
         severity=rule.severity,
         board_id=board.id,
@@ -205,7 +205,7 @@ def _protecting(circuit: Circuit, devices: Mapping[str, Device]) -> list[Device]
 
 def integrity_findings(
     project: DesignProject, conditions: Mapping[str, InstallationConditions] | None = None
-) -> list[ValidationFinding]:
+) -> list[DesignFinding]:
     """Re-check a project's references and its protection against its cables.
 
     Args:
@@ -218,17 +218,15 @@ def integrity_findings(
     Returns:
         The findings, in board and circuit order.
     """
-    found: list[ValidationFinding] = []
+    found: list[DesignFinding] = []
     for board in project.boards:
         given = (conditions or {}).get(board.id)
         found.extend(_board_findings(board, given or conditions_from_notes(board)))
     return found
 
 
-def _board_findings(
-    board: Board, conditions: InstallationConditions | None
-) -> list[ValidationFinding]:
-    found: list[ValidationFinding] = []
+def _board_findings(board: Board, conditions: InstallationConditions | None) -> list[DesignFinding]:
+    found: list[DesignFinding] = []
     devices = {device.id: device for device in board.devices}
     cables = {cable.id: cable for cable in board.cables}
     for circuit in board.circuits:
@@ -272,7 +270,7 @@ def _capacity_findings(
     cable: Cable,
     devices: Mapping[str, Device],
     conditions: InstallationConditions | None,
-) -> list[ValidationFinding]:
+) -> list[DesignFinding]:
     if circuit.starter is MotorStarter.DRIVE:
         # The drive's own motor overload protects its output cable; its input
         # fuses protect the drive, and are not the cable's overload device.
@@ -320,7 +318,7 @@ def _capacity_findings(
             )
         ]
     iz, basis = capacity
-    found: list[ValidationFinding] = []
+    found: list[DesignFinding] = []
     for device in rated:
         assert device.rated_current_a is not None
         if device.rated_current_a > iz + _SLACK:
@@ -348,7 +346,7 @@ def _capacity_findings(
 
 def project_findings(
     project: DesignProject, conditions: Mapping[str, InstallationConditions] | None = None
-) -> list[ValidationFinding]:
+) -> list[DesignFinding]:
     """Every finding for a project: its integrity checks, then its notes.
 
     Args:
@@ -361,7 +359,7 @@ def project_findings(
     return [*integrity_findings(project, conditions), *note_findings(project)]
 
 
-def blocking(findings: list[ValidationFinding]) -> list[ValidationFinding]:
+def blocking(findings: list[DesignFinding]) -> list[DesignFinding]:
     """The blocking findings among some.
 
     Args:

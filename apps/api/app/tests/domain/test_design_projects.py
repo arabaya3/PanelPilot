@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
@@ -276,7 +277,7 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
     assert listed.approved_by == "A. Rabaya"
     latest = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
     assert [r.approved_by for r in latest.request.info.revisions] == ["A. Rabaya", ""]
-    with pytest.raises(ValidationError) as again:
+    with pytest.raises(ConflictError) as again:
         design_projects.approve_revision(
             session=as_tenant(),
             user=user,
@@ -518,3 +519,134 @@ def test_a_stored_request_shape_still_opens() -> None:
         "profile": {"key": "iec-default", "market": "PS"},
     }
     assert ProjectDesignRequest.model_validate(stored).model_dump(mode="json") == stored
+
+
+def test_execution_is_refused_even_for_a_legacy_revision(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _set(engine, design_snapshot=None, snapshot_sha256=None, findings=None)
+    with pytest.raises(ConflictError) as refused:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert refused.value.code == "execution_package_incomplete"
+    assert "not_validated" in refused.value.params["blockers"]
+    assert refused.value.params["approval"] == "missing"
+
+
+def test_execution_names_an_altered_snapshot(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _set(engine, snapshot_sha256="0" * 64)
+    with pytest.raises(ConflictError) as refused:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert refused.value.code == "execution_package_incomplete"
+    assert "snapshot_integrity_failed" in refused.value.params["blockers"]
+
+
+def _hold_revision_lock(engine: Engine) -> Any:
+    """A connection holding revision 1's row lock, as an approval in progress does."""
+    conn = engine.connect()
+    conn.begin()
+    conn.execute(text("SELECT id FROM design_project_revisions WHERE number = 1 FOR UPDATE"))
+    return conn
+
+
+def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    """Two sessions: the second approval blocks on the row lock, then sees the first."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    holder = _hold_revision_lock(engine)
+    outcome: dict[str, BaseException | Any] = {}
+
+    def second() -> None:
+        try:
+            outcome["result"] = _approve(as_tenant, a, saved, approver="Second Approver")
+        except BaseException as exc:
+            outcome["result"] = exc
+
+    worker = threading.Thread(target=second)
+    worker.start()
+    worker.join(timeout=2)
+    # Still waiting: the lock holder has not finished.
+    assert worker.is_alive()
+    holder.execute(
+        text(
+            "UPDATE design_project_revisions SET approved_by = 'First Approver', "
+            "approved_account = 'first@example.com', approved_at = now(), "
+            "approved_snapshot_sha256 = snapshot_sha256 WHERE number = 1"
+        )
+    )
+    holder.commit()
+    holder.close()
+    worker.join(timeout=30)
+    assert not worker.is_alive()
+    refused = outcome["result"]
+    assert isinstance(refused, ConflictError)
+    assert refused.code == "revision_already_approved"
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.revisions[0].approved_by == "First Approver"
+    assert opened.approved_snapshot_sha256 == saved.snapshot_sha256
+
+
+def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A save does not wait on, or change, the revision being approved."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    approving = threading.Event()
+    release = threading.Event()
+    outcome: dict[str, Any] = {}
+    original = design_projects._approvable
+
+    def slow(row: Any, number: int) -> None:
+        original(row, number)
+        approving.set()
+        release.wait(timeout=30)
+
+    def approve() -> None:
+        outcome["approved"] = _approve(as_tenant, a, saved)
+
+    monkeypatch.setattr(design_projects, "_approvable", slow)
+    try:
+        worker = threading.Thread(target=approve)
+        worker.start()
+        assert approving.wait(timeout=30)
+        revised = design_projects.revise_project(
+            session=as_tenant(),
+            user=_user(a),
+            project_id=saved.id,
+            request=ReviseProjectRequest(request=_request(kw="4"), note="more sockets"),
+        )
+        release.set()
+        worker.join(timeout=30)
+    finally:
+        release.set()
+    assert revised.revision == 2
+    assert revised.export_status is ExportStatus.DRAFT
+    assert revised.approved_snapshot_sha256 is None
+    approved = outcome["approved"]
+    assert approved.revision == 1
+    assert approved.approved_snapshot_sha256 == saved.snapshot_sha256
+    second = design_projects.export_revision(
+        session=as_tenant(),
+        user=_user(a),
+        project_id=saved.id,
+        number=2,
+        request=RevisionExportRequest.model_validate({"format": "circuits_csv"}),
+    )
+    assert "DRAFT — NOT FOR EXECUTION" in _first_line(second)
+
+
+def test_revision_endpoints_answer_revision_not_found_across_tenants(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, b = tenants
+    saved = _saved(as_tenant, a)
+    with pytest.raises(NotFoundError) as approving:
+        _approve(as_tenant, b, saved)
+    assert approving.value.code == "revision_not_found"
+    with pytest.raises(NotFoundError) as opening:
+        design_projects.open_project(
+            session=as_tenant(), user=_user(b), project_id=saved.id, revision=1
+        )
+    assert opening.value.code == "revision_not_found"
+    # Opened without a revision, the answer is about the project.
+    with pytest.raises(NotFoundError) as project:
+        design_projects.open_project(session=as_tenant(), user=_user(b), project_id=saved.id)
+    assert project.value.code == "project_not_found"

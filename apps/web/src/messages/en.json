@@ -454,16 +454,16 @@
       "F": "F — single-core in free air / on a tray"
     },
     "insulation": {
-      "90": "XLPE / EPR (90 °C)",
-      "70": "PVC (70 °C)"
+      "70": "PVC (70 °C)",
+      "90": "XLPE / EPR (90 °C)"
     },
     "material": {
       "copper": "Copper",
       "aluminium": "Aluminium"
     },
     "phases": {
-      "3": "Three-phase",
-      "1": "Single-phase"
+      "1": "Single-phase",
+      "3": "Three-phase"
     },
     "submit": "Size the cable",
     "working": "Calculating…",
@@ -1009,10 +1009,15 @@
       "revision_stale": "The rules or company profile changed since this revision — save a new revision.",
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
-      "execution_package_incomplete": "An execution package cannot be issued yet: it is incomplete.",
+      "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
       "snapshot_integrity_failed": "The stored design of this revision does not match its recorded fingerprint, so it is not exported. Save a new revision.",
       "unknown_fields": "{count, plural, one {The server does not accept the field {fields}; remove it} other {The server does not accept the fields {fields}; remove them}}, or reload the page if PanelPilot was updated.",
-      "revision_conflict": "Another revision was saved at the same time; save again."
+      "revision_conflict": "Another revision was saved at the same time; save again.",
+      "design_refused": "The design was refused, so this revision holds no validated design. Correct the inputs and save again.",
+      "too_long": "{field} is too long: at most {max} characters.",
+      "too_long_here": "Too long: at most {max} characters.",
+      "too_large": "{field} is too large: at most {max}.",
+      "request_invalid": "The server did not accept this request as entered. Check the fields and try again."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1063,7 +1068,7 @@
       },
       "dirty": "The page has changes revision {revision} does not hold. Its validation, findings and approval do not cover them; save a new revision.",
       "notValidated": "Revision {revision} was saved before validation: save again to validate it.",
-      "executionBlocked": "Execution ready is not available yet: PanelPilot does not produce wiring and terminal connectivity, control schematics, orderable parts or a mechanical layout, so nothing is issued for execution."
+      "executionBlocked": "Execution ready is not available yet: PanelPilot does not produce wiring and terminal connectivity, control schematics, orderable parts or a mechanical layout, so nothing is exported for execution."
     },
     "findings": {
       "title": "Findings",
@@ -1090,10 +1095,10 @@
       "revisionTitle": "Revision {revision} export",
       "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
       "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
-      "executionBody": "An execution package is checked for completeness before it is issued.",
+      "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
       "execution": "Request execution export",
       "executionRefused": "Execution export refused",
-      "executionIntro": "No execution package was issued. Still needed:",
+      "executionIntro": "No execution package was exported. Still needed:",
       "gaps": {
         "wiring": "Wiring and terminal connectivity",
         "control_schematics": "Control schematics",
@@ -1101,7 +1106,10 @@
         "mechanical_layout": "A dimensioned mechanical layout"
       },
       "gapBlocking": "{count, plural, one {# blocking finding resolved} other {# blocking findings resolved}}",
-      "gapApproval": "Review approval of this revision"
+      "gapApproval": "Review approval of this revision",
+      "executionBlockedTitle": "Execution export blocked",
+      "gapNotValidated": "A validated revision (save again to validate)",
+      "gapStale": "A revision saved under the current rules and company settings"
     },
     "finding": {
       "integrity_unknown_device": "Device {device} is not on this board.",

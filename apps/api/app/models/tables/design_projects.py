@@ -79,7 +79,7 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    # The findings (``ValidationFinding``) recorded when it was saved.
+    # The findings (``DesignFinding``) recorded when it was saved.
     findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     # Set with the approval, in the same locked transaction: the snapshot
     # hash approved. An approval counts only while it equals snapshot_sha256.

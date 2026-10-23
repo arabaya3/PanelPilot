@@ -45,6 +45,7 @@ import {
   type TitleRevision,
 } from '@/components/design/projects-panel';
 import {
+  executionBlockersOf,
   executionRefusalOf,
   readinessOf,
   rowOf,
@@ -104,6 +105,7 @@ import {
   type DesignOutcome,
   type ExportFormat,
   type ExportPurpose,
+  type TooLong,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import { acquireTrial } from '@/lib/session';
@@ -203,6 +205,15 @@ export function snapshotOf(
  * -- the PDF drawing set, DXF, QElectroTech, AutomationML, the CSV lists, the
  * quotation and the PLC program -- comes from the one designed project.
  */
+/**
+ * The most a refused text field takes, when the server refused the one at
+ * `path` (`info.name`) as too long, under whichever request it was sent in.
+ */
+export function tooLongAt(refused: readonly TooLong[], path: string): number | null {
+  const hit = refused.find((entry) => entry.path === path || entry.path.endsWith(`.${path}`));
+  return hit ? hit.max : null;
+}
+
 export function DesignScreen({
   acquireImpl = acquireTrial,
   designImpl = designProject,
@@ -272,6 +283,9 @@ export function DesignScreen({
   const [markets, setMarkets] = useState<MarketInfo[]>([]);
   const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [lastSave, setLastSave] = useState<'saving' | 'saved' | 'failed' | null>(null);
+  // Project fields the server refused as too long, said at the field; the
+  // entered text stays, so it can be shortened.
+  const [tooLong, setTooLong] = useState<TooLong[]>([]);
 
   const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market);
   // What the work looked like when last saved or opened (or when the page
@@ -569,6 +583,7 @@ export function DesignScreen({
     const request = toRequest(info, boards, profile);
     request.info.revisions = titleRevisions;
     const outcome = await designImpl({ token, request });
+    setTooLong(outcome.kind === 'refused' ? (outcome.tooLong ?? []) : []);
     if (outcome.kind === 'designed') {
       setResult({ kind: 'designed', response: outcome.response, profile, basis });
     } else {
@@ -591,6 +606,7 @@ export function DesignScreen({
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
+      if (outcome.kind === 'refused') setTooLong(outcome.tooLong ?? []);
       setExportError(say(outcome));
     }
   }
@@ -648,10 +664,19 @@ export function DesignScreen({
   });
 
   function infoField(key: keyof ProjectInfo, ltr = false) {
+    // The project is saved under its name, too, which the save checks on its own.
+    const limit =
+      tooLongAt(tooLong, `info.${key}`) ??
+      (key === 'name' ? (tooLong.find((entry) => entry.path === 'name')?.max ?? null) : null);
     return (
-      <Field id={`${id}-${key}`} label={t(`field.${key}`)}>
+      <Field
+        id={`${id}-${key}`}
+        label={t(`field.${key}`)}
+        error={limit === null ? undefined : t('errors.too_long_here', { max: limit })}
+      >
         <input
           id={`${id}-${key}`}
+          aria-invalid={limit === null ? undefined : true}
           form={formId}
           dir={ltr ? 'ltr' : undefined}
           value={info[key]}
@@ -968,8 +993,12 @@ export function DesignScreen({
                 blockers={readiness.approvalBlockers}
                 blockingCount={readiness.blockingCount}
                 approvalCovers={readiness.approvalCovers}
+                onRefused={(refusal) => {
+                  setTooLong(refusal.tooLong ?? []);
+                }}
                 onSaveState={(state) => {
                   setLastSave(state);
+                  if (state === 'saved') setTooLong([]);
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
@@ -1478,7 +1507,16 @@ export function DesignScreen({
                             {t('exports.execution')}
                           </button>
                         </div>
-                        {executionRefusal && <ExecutionRefused refusal={executionRefusal} />}
+                        {executionRefusal ? (
+                          <ExecutionRefused refusal={executionRefusal} />
+                        ) : (
+                          validation !== null && (
+                            <ExecutionRefused
+                              refusal={executionBlockersOf(validation)}
+                              refused={false}
+                            />
+                          )
+                        )}
                       </div>
                     </>
                   )}

@@ -4,6 +4,7 @@ Working agreement for the three Phase 1 agents. The lead owns this file; ask the
 
 - **Branch:** `feat/phase1-trustworthy-export`
 - **Base:** PR #199, `fix/redesign-e2e-verification` at `73ce76c`, chosen because #199 already changes the design screen's stale-result handling.
+- **Rebased baseline (2026-10-23):** `f27b01a` = #199 + #202 (dependency advisories: Pillow 13.0.0, certifi 2026.10.19, opentelemetry-api 1.45.1, black 26.10.1, next 15.5.28) + checkpoint `bef3581` of the Phase 1 work so far. The compose `api` and `worker` images were rebuilt from it, and the dev database is migrated to `b4e7a9c2d1f6`.
 
 ## Findings reproduced on the base (`repro.cjs base` → `repro-base.json`)
 
@@ -126,8 +127,11 @@ Errors use the existing envelope `{error, detail, code, params}`, so the fronten
   cd "/c/Users/UnclePC/Desktop/Snorkel- proj/PanelPilot"
   E='env -i PATH=/opt/venv/bin:/usr/bin:/bin HOME=/tmp ENVIRONMENT=dev DATABASE_URL=postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot_phase1_test TEST_DATABASE_URL=postgresql+psycopg://panelpilot:panelpilot@postgres:5432/panelpilot_phase1_test OPENSEARCH_URL=http://127.0.0.1:9 REDIS_URL=redis://127.0.0.1:9/0 JWT_SECRET=phase1-disposable-test-secret-not-real-0123456789abcdef OPENAI_API_KEY=test-key ANTHROPIC_API_KEY=test-key'
   docker compose run --rm --no-deps -T --entrypoint sh api -c "$E alembic upgrade head"     # after adding a migration
-  docker compose run --rm --no-deps -T --entrypoint sh api -c "$E pytest -p no:cacheprovider -rs <paths>"
+  MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps -T -v "$(pwd -W)/apps/web/src/messages:/web/src/messages:ro" --entrypoint sh api -c "$E pytest -p no:cacheprovider -o addopts= -rs <paths>"
   ```
   Baseline on `73ce76c`: `test_design_projects.py` plus `routes/test_design.py` gave 26 passed, 0 skipped.
+  The `-v …/messages` mount is required: several design tests read the web message catalogues at `/web/src/messages`, as CI's full checkout provides.
+- Under Git Bash, `MSYS_NO_PATHCONV=1` and `$(pwd -W)` are required, or the mount path is rewritten and `/web/src/messages` is empty.
+- Each agent uses its **own** disposable database (`panelpilot_phase1_backend`, `panelpilot_phase1_test` for the adversarial agent), because the `TRUNCATE` fixtures deadlock when two runs share one.
 - **Never** run tests against the dev database `panelpilot` or through `docker compose exec api`.
 - Database-backed approval, locking and tenant tests must **run, not be skipped**. Report any skip.

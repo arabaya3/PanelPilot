@@ -38,7 +38,7 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, PanelPilotError, ValidationError
 from app.core.tenancy import bind_tenant
 from app.design import CATALOGUE_VERSION, RULES_VERSION, integrity, marking, snapshot
 from app.domain import billing
@@ -47,6 +47,7 @@ from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
+    DesignFinding,
     DesignProject,
     ExportPurpose,
     ExportStatus,
@@ -61,7 +62,6 @@ from app.models.schemas.design import (
     RevisionSummary,
     SavedProject,
     SaveProjectRequest,
-    ValidationFinding,
 )
 from app.models.tables.design_projects import DesignProjectRow, DesignRevisionRow
 
@@ -112,14 +112,14 @@ class _Validation:
     """What a revision's stored design says now: its status and why."""
 
     status: ExportStatus
-    findings: list[ValidationFinding]
+    findings: list[DesignFinding]
     approval_bound: bool
     #: What changed since it was saved, for a stale revision.
     changed: tuple[str, ...] = ()
 
 
-def _stored_findings(row: DesignRevisionRow) -> list[ValidationFinding]:
-    return [ValidationFinding.model_validate(found) for found in row.findings or []]
+def _stored_findings(row: DesignRevisionRow) -> list[DesignFinding]:
+    return [DesignFinding.model_validate(found) for found in row.findings or []]
 
 
 def _approval_bound(row: DesignRevisionRow) -> bool:
@@ -222,8 +222,8 @@ def _title_revisions(
     ]
 
 
-def _design_refused(exc: ValidationError) -> ValidationFinding:
-    return ValidationFinding(
+def _design_refused(exc: ValidationError) -> DesignFinding:
+    return DesignFinding(
         code="design_refused",
         severity=FindingSeverity.BLOCKING,
         values={**exc.params, **({"refusal": exc.code} if exc.code else {})},
@@ -385,7 +385,14 @@ def revise_project(
     project = _load(session, project_id, lock=True)
     # Raising the revision count updates the row, which moves its
     # ``updated_at`` (the list's order) to now.
-    _add_revision(session, project, tenant, user, request.request, request.note)
+    try:
+        _add_revision(session, project, tenant, user, request.request, request.note)
+    except PanelPilotError:
+        session.rollback()
+        raise
+    # The number this save took: by the time it is opened, a concurrent save
+    # may have added a later one.
+    number = project.revision_count
     try:
         session.commit()
     except IntegrityError as exc:
@@ -398,9 +405,9 @@ def revise_project(
         "design.project_revised",
         tenant_id=str(tenant),
         project_id=str(project.id),
-        revision=project.revision_count,
+        revision=number,
     )
-    return _opened(session, project, None)
+    return _opened(session, project, number)
 
 
 def open_project(
@@ -423,7 +430,24 @@ def open_project(
         NotFoundError: If no such project or revision is the caller's.
     """
     _scope_to(session, user)
-    return _opened(session, _load(session, project_id), revision)
+    # Asked for a revision, the answer is about that revision, as approve and
+    # export answer: a project that is not the caller's is revision_not_found.
+    project = (
+        _load(session, project_id) if revision is None else _revision_project(session, project_id)
+    )
+    return _opened(session, project, revision)
+
+
+def _revision_project(session: Session, project_id: str) -> DesignProjectRow:
+    """The project a revision endpoint names; a missing one is ``revision_not_found``.
+
+    Approve and export answer for a revision, so a project that is not the
+    caller's (another tenant's, or none) is refused as its revision would be.
+    """
+    try:
+        return _load(session, project_id)
+    except NotFoundError as exc:
+        raise NotFoundError("no such revision", code="revision_not_found") from exc
 
 
 def _locked_revision(session: Session, project: DesignProjectRow, number: int) -> DesignRevisionRow:
@@ -500,7 +524,7 @@ def approve_revision(
 
     Raises:
         NotFoundError: If no such project or revision is the caller's.
-        ValidationError: If the revision is approved already.
+        ConflictError: If the revision is approved already (``revision_already_approved``).
         ConflictError: If it holds no validated design
             (``revision_not_validated``), its design was altered
             (``snapshot_integrity_failed``), its rules or settings changed
@@ -510,10 +534,33 @@ def approve_revision(
     """
     billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)
     tenant = _scope_to(session, user)
-    project = _load(session, project_id)
+    project = _revision_project(session, project_id)
     row = _locked_revision(session, project, number)
+    try:
+        _approvable(row, number)
+    except PanelPilotError:
+        # Release the row lock now, not when the session is closed.
+        session.rollback()
+        raise
+    row.approved_by = request.approver.strip()
+    row.approved_account = user.email
+    row.approved_at = datetime.now(UTC)
+    row.approved_snapshot_sha256 = row.snapshot_sha256
+    session.commit()
+    logger.info(
+        "design.revision_approved",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=number,
+        snapshot_sha256=row.snapshot_sha256,
+    )
+    return _opened(session, project, number)
+
+
+def _approvable(row: DesignRevisionRow, number: int) -> None:
+    """Refuse approving a revision that is approved, unvalidated, stale or blocked."""
     if row.approved_at is not None:
-        raise ValidationError(
+        raise ConflictError(
             f"revision {number} is approved already, by {row.approved_by}",
             code="revision_already_approved",
             params={"revision": str(number), "approver": row.approved_by or ""},
@@ -532,23 +579,10 @@ def approve_revision(
                 "codes": ",".join(sorted({found.code for found in blocking})),
             },
         )
-    row.approved_by = request.approver.strip()
-    row.approved_account = user.email
-    row.approved_at = datetime.now(UTC)
-    row.approved_snapshot_sha256 = row.snapshot_sha256
-    session.commit()
-    logger.info(
-        "design.revision_approved",
-        tenant_id=str(tenant),
-        project_id=str(project.id),
-        revision=number,
-        snapshot_sha256=row.snapshot_sha256,
-    )
-    return _opened(session, project, number)
 
 
 def _revision_mark(
-    project: DesignProjectRow, row: DesignRevisionRow, findings: list[ValidationFinding]
+    project: DesignProjectRow, row: DesignRevisionRow, findings: list[DesignFinding]
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
@@ -599,19 +633,22 @@ def export_revision(
         AuthorizationError: If the caller's plan does not include the format.
     """
     tenant = _scope_to(session, user)
-    try:
-        project = _load(session, project_id)
-    except NotFoundError as exc:
-        raise NotFoundError("no such revision", code="revision_not_found") from exc
+    project = _revision_project(session, project_id)
     revisions = _revisions(session, project)
     row = next((r for r in revisions if r.number == number), None)
     if row is None:
         raise NotFoundError("no such revision", code="revision_not_found")
-    stored = _check_snapshot(row, number)
-    _refuse_stale(row, number)
     findings = _stored_findings(row)
     if request.purpose is ExportPurpose.EXECUTION:
+        # Refused before anything else is checked: whatever state the revision
+        # is in, no execution package exists, and the refusal says all of why.
         missing = _execution_blockers(_validation(row))
+        if (
+            row.design_snapshot is not None
+            and row.snapshot_sha256 is not None
+            and snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256
+        ):
+            missing.append("snapshot_integrity_failed")
         raise ConflictError(
             "an execution package cannot be exported yet: "
             + ", ".join(marking.EXECUTION_PACKAGE_MISSING)
@@ -627,6 +664,8 @@ def export_revision(
                 "blockers": ",".join(missing),
             },
         )
+    stored = _check_snapshot(row, number)
+    _refuse_stale(row, number)
     design_domain.require_format(session=session, user=user, export_format=request.format)
     try:
         designed = DesignProject.model_validate(stored)

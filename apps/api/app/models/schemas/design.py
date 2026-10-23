@@ -41,6 +41,18 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Bounds on free text a client sends in a design, so an oversized field is a
+# 422 rather than a page-long title block. They match the limits a saved
+# project already has: its name (200), a revision note (500), an approver (100).
+_NAME_TEXT = 200
+_NOTE_TEXT = 500
+_PERSON_TEXT = 100
+_SHORT_TEXT = 40
+#: A title block lists at most every revision a project holds
+#: (``app.domain.design_projects.MAX_REVISIONS``).
+_MAX_TITLE_REVISIONS = 200
+
+
 class DesignNote(StrictModel):
     """Something the design tells its reviewer.
 
@@ -67,7 +79,7 @@ class FindingSeverity(StrEnum):
     INFO = "info"
 
 
-class ValidationFinding(StrictModel):
+class DesignFinding(StrictModel):
     """One thing a check of a design found, with where to fix it.
 
     Attributes:
@@ -425,12 +437,12 @@ class Revision(StrictModel):
         approved_by: Initials or name.
     """
 
-    index: str
-    date: str
-    description: str = ""
-    drawn_by: str = ""
-    checked_by: str = ""
-    approved_by: str = ""
+    index: str = Field(max_length=_SHORT_TEXT)
+    date: str = Field(max_length=_SHORT_TEXT)
+    description: str = Field(default="", max_length=_NOTE_TEXT)
+    drawn_by: str = Field(default="", max_length=_PERSON_TEXT)
+    checked_by: str = Field(default="", max_length=_PERSON_TEXT)
+    approved_by: str = Field(default="", max_length=_PERSON_TEXT)
 
 
 class ProjectInfo(StrictModel):
@@ -445,12 +457,12 @@ class ProjectInfo(StrictModel):
         revisions: Issues of the drawing set, oldest first.
     """
 
-    name: str
-    number: str = ""
-    customer: str = ""
-    consultant: str = ""
-    contractor: str = ""
-    revisions: list[Revision] = Field(default_factory=list)
+    name: str = Field(max_length=_NAME_TEXT)
+    number: str = Field(default="", max_length=_NAME_TEXT)
+    customer: str = Field(default="", max_length=_NAME_TEXT)
+    consultant: str = Field(default="", max_length=_NAME_TEXT)
+    contractor: str = Field(default="", max_length=_NAME_TEXT)
+    revisions: list[Revision] = Field(default_factory=list, max_length=_MAX_TITLE_REVISIONS)
 
 
 class DesignProject(StrictModel):
@@ -680,13 +692,13 @@ class LoadInput(StrictModel):
             checked (and if need be enlarged) for voltage drop.
     """
 
-    description: str = Field(min_length=1)
+    description: str = Field(min_length=1, max_length=_NAME_TEXT)
     load: LoadKind
     power_kw: Decimal = Field(gt=0)
     phases: int = Field(default=1)
     power_factor: Decimal | None = Field(default=None, gt=0, le=1)
     controlled: bool = False
-    feeds: str | None = None
+    feeds: str | None = Field(default=None, max_length=40)
     starter: MotorStarter | None = None
     length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
@@ -732,11 +744,11 @@ class DistributionBoardRequest(StrictModel):
     """
 
     name: str = Field(min_length=1, max_length=40)
-    location: str | None = None
+    location: str | None = Field(default=None, max_length=_NAME_TEXT)
     supply: Supply = Field(default_factory=Supply)
     loads: list[LoadInput] = Field(min_length=1, max_length=500)
     conditions: InstallationConditions = Field(default_factory=InstallationConditions)
-    fed_from: str | None = None
+    fed_from: str | None = Field(default=None, max_length=40)
     feeder_length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
 
@@ -1209,7 +1221,7 @@ class SavedProject(BaseModel):
     revisions: list[RevisionSummary]
     revision: int
     request: ProjectDesignRequest
-    findings: list[ValidationFinding] = Field(default_factory=list)
+    findings: list[DesignFinding] = Field(default_factory=list)
     validated: bool = False
     snapshot_sha256: str | None = None
     rules_version: str | None = None
@@ -1263,7 +1275,7 @@ class CompanySettings(BaseModel):
     updated_at: str | None = None
 
 
-class SaveCompanySettings(BaseModel):
+class SaveCompanySettings(StrictModel):
     """Company settings to save.
 
     Attributes:

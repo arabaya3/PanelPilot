@@ -74,11 +74,15 @@ function project(revision: number): SavedProject {
     id: 'p1',
     name: 'Tower',
     revision,
+    validated: false,
+    export_status: 'not_validated',
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
       author: 'e',
       created_at: '2026-10-02T10:00:00Z',
+      validated: false,
+      export_status: 'not_validated' as const,
     })),
     request: SAVED_REQUEST,
   };

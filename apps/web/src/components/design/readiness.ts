@@ -1,3 +1,5 @@
+import type { components } from '@panelpilot/shared-types';
+
 import type { Refusal, SavedProject } from '@/lib/design';
 
 /**
@@ -7,26 +9,16 @@ import type { Refusal, SavedProject } from '@/lib/design';
  * Saved -> Validated (with findings) -> Review approved -> Execution ready.
  * Execution ready is never reached yet: no check proves an execution package
  * complete, so the server refuses it and names what is missing.
- *
- * The fields are read from the saved project defensively: they are external
- * input, and a revision saved before validation existed has none of them.
  */
 
-export type FindingSeverity = 'blocking' | 'warning' | 'info';
-
-/** One finding the server recorded for a revision (contract: `ValidationFinding`). */
-export type DesignFinding = {
-  code: string;
-  severity: FindingSeverity;
-  board_id: string | null;
-  circuit_id: string | null;
-  device_id: string | null;
-  values: Record<string, string>;
-  /** The server's English sentence, for a code the page has no translation of. */
-  message: string;
-  requires_engineering_confirmation: boolean;
-  source: string;
-};
+/**
+ * One finding the server recorded for a revision. Not the PLC check's
+ * `ValidationFinding`, which the generated types name apart.
+ */
+export type DesignFinding = components['schemas']['DesignFinding'];
+export type FindingSeverity = DesignFinding['severity'];
+/** What a saved revision can be exported as now, as the API says. */
+export type ExportStatus = components['schemas']['ExportStatus'];
 
 /** What the server recorded about the revision open. */
 export type RevisionValidation = {
@@ -36,50 +28,15 @@ export type RevisionValidation = {
   snapshotSha256: string | null;
   approvedSnapshotSha256: string | null;
   rulesVersion: string | null;
-  /** What the revision can be exported as now, as the API said (`stale`, `blocked`, ...). */
-  exportStatus: string | null;
+  exportStatus: ExportStatus;
+  /** Why it cannot be exported for execution, as the API lists them. */
+  executionBlockers: string[];
 };
 
 const SEVERITIES: readonly FindingSeverity[] = ['blocking', 'warning', 'info'];
 
-type Fields = Record<string, unknown>;
-
-function isFields(value: unknown): value is Fields {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value !== '' ? value : null;
-}
-
-/** One finding, or null when it is not one (a malformed entry is skipped, not trusted). */
-export function parseFinding(value: unknown): DesignFinding | null {
-  if (!isFields(value)) return null;
-  const code = text(value.code);
-  const severity = SEVERITIES.find((entry) => entry === value.severity);
-  if (code === null || severity === undefined) return null;
-  const values: Record<string, string> = {};
-  if (isFields(value.values)) {
-    for (const [key, entry] of Object.entries(value.values)) {
-      if (['string', 'number', 'boolean'].includes(typeof entry)) values[key] = String(entry);
-    }
-  }
-  return {
-    code,
-    severity,
-    board_id: text(value.board_id),
-    circuit_id: text(value.circuit_id),
-    device_id: text(value.device_id),
-    values,
-    message: typeof value.message === 'string' ? value.message : '',
-    // An unclassified finding needs an engineer; absent is read as needing one.
-    requires_engineering_confirmation: value.requires_engineering_confirmation !== false,
-    source: typeof value.source === 'string' ? value.source : '',
-  };
-}
-
 /** Blocking first, then warnings, then information, each kept in the server's order. */
-export function sortFindings(findings: DesignFinding[]): DesignFinding[] {
+export function sortFindings(findings: readonly DesignFinding[]): DesignFinding[] {
   return findings
     .map((finding, index) => ({ finding, index }))
     .sort(
@@ -92,23 +49,14 @@ export function sortFindings(findings: DesignFinding[]): DesignFinding[] {
 
 /** The validation of the revision a saved project is open at. */
 export function validationOf(project: SavedProject): RevisionValidation {
-  const top: Fields = project;
-  // The open revision's summary may carry them instead of the project.
-  const summary: Fields =
-    (project.revisions.find((entry) => entry.number === project.revision) as Fields | undefined) ??
-    {};
-  const read = (key: string): unknown => (key in top ? top[key] : summary[key]);
-  const rawFindings = read('findings');
-  const findings = Array.isArray(rawFindings)
-    ? rawFindings.map(parseFinding).filter((entry): entry is DesignFinding => entry !== null)
-    : [];
   return {
-    validated: read('validated') === true,
-    findings: sortFindings(findings),
-    snapshotSha256: text(read('snapshot_sha256')),
-    approvedSnapshotSha256: text(read('approved_snapshot_sha256')),
-    rulesVersion: text(read('rules_version')),
-    exportStatus: text(read('export_status')),
+    validated: project.validated,
+    findings: sortFindings(project.findings ?? []),
+    snapshotSha256: project.snapshot_sha256 ?? null,
+    approvedSnapshotSha256: project.approved_snapshot_sha256 ?? null,
+    rulesVersion: project.rules_version ?? null,
+    exportStatus: project.export_status,
+    executionBlockers: project.execution_blockers ?? [],
   };
 }
 
@@ -183,69 +131,82 @@ export function readinessOf(input: {
   };
 }
 
-/** What an execution package lacks, as the API named it, in a stable order. */
+/** What an execution package lacks, in a stable order, keyed as the page translates them. */
 export const EXECUTION_GAPS = [
   'wiring',
   'control_schematics',
   'orderable_parts',
   'mechanical_layout',
 ] as const;
+export type ExecutionGap = (typeof EXECUTION_GAPS)[number];
 
-export type ExecutionRefusal = {
-  /** What is missing from the package, as codes (translated when known). */
-  missing: string[];
-  blockingFindings: number;
-  approvalMissing: boolean;
+/** The API's names for the gaps (`app.design.marking.EXECUTION_PACKAGE_MISSING`). */
+const GAP_OF: Record<string, ExecutionGap> = {
+  wiring_and_terminal_connectivity: 'wiring',
+  control_schematics: 'control_schematics',
+  orderable_parts: 'orderable_parts',
+  mechanical_layout: 'mechanical_layout',
 };
 
-function list(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((entry): entry is string => typeof entry === 'string' && entry !== '');
-  }
-  if (typeof value === 'string' && value !== '') {
-    return value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== '');
-  }
-  return [];
+/** The gap an API name stands for, or null for one the page does not know (still listed). */
+export function gapOf(code: string): ExecutionGap | null {
+  return GAP_OF[code] ?? null;
 }
 
-/**
- * The reasons an execution export was refused (`execution_package_incomplete`).
- *
- * The contract names the gaps but not their keys' spelling, so the common
- * spellings are accepted; anything unrecognised is still listed, never dropped.
- */
+export type ExecutionRefusal = {
+  /** What is missing from the package, as the API names them. */
+  missing: string[];
+  /** The codes of the blocking findings standing in the way. */
+  blockingFindings: string[];
+  approvalMissing: boolean;
+  /** The revision holds no validated design (saved before validation). */
+  notValidated: boolean;
+  /** The rules or the company settings changed since it was saved. */
+  stale: boolean;
+};
+
+/** A comma-separated param (the error envelope's params are strings) as its entries. */
+function list(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+}
+
+/** The reasons an execution export was refused (`execution_package_incomplete`). */
 export function executionRefusalOf(refusal: Refusal): ExecutionRefusal {
-  const values = refusal.values ?? {};
-  const missing = list(values.missing ?? values.missing_items ?? values.gaps);
-  // The API lists the blocking findings' codes, comma-separated; a count is read too.
-  const findings = values.blocking_findings;
-  const blockingFindings = typeof findings === 'number' ? findings : list(findings).length;
-  const approvalMissing =
-    values.approval === 'missing' ||
-    missing.includes('approval') ||
-    missing.includes('review_approval');
+  const params = refusal.params ?? {};
+  const blockers = list(params.blockers);
   return {
-    missing: missing.filter((entry) => entry !== 'approval' && entry !== 'review_approval'),
-    blockingFindings,
-    approvalMissing,
+    missing: list(params.missing),
+    blockingFindings: list(params.blocking_findings),
+    approvalMissing: params.approval === 'missing',
+    notValidated: blockers.includes('not_validated'),
+    stale: blockers.includes('stale'),
   };
 }
 
-/** The canonical gap a server spelling stands for, or null when it is not one we know. */
-export function gapOf(code: string): (typeof EXECUTION_GAPS)[number] | null {
-  const key = code.toLowerCase();
-  if (key.includes('wiring') || key.includes('terminal') || key.includes('connect')) {
-    return 'wiring';
-  }
-  if (key.includes('control') || key.includes('schematic')) return 'control_schematics';
-  if (key.includes('part') || key.includes('order')) return 'orderable_parts';
-  if (key.includes('mechanical') || key.includes('layout') || key.includes('enclosure')) {
-    return 'mechanical_layout';
-  }
-  return null;
+const FINDING_BLOCKER = 'finding:';
+const FLAG_BLOCKERS = new Set(['not_validated', 'stale', 'approval']);
+
+/**
+ * The same reasons as a saved project lists them (`execution_blockers`): the
+ * package's gaps, then `not_validated`, `stale` and `approval` as they apply,
+ * then `finding:<code>` for each blocking finding.
+ */
+export function executionBlockersOf(validation: RevisionValidation): ExecutionRefusal {
+  const blockers = validation.executionBlockers;
+  return {
+    missing: blockers.filter(
+      (entry) => !FLAG_BLOCKERS.has(entry) && !entry.startsWith(FINDING_BLOCKER),
+    ),
+    blockingFindings: blockers
+      .filter((entry) => entry.startsWith(FINDING_BLOCKER))
+      .map((entry) => entry.slice(FINDING_BLOCKER.length)),
+    approvalMissing: blockers.includes('approval'),
+    notValidated: blockers.includes('not_validated'),
+    stale: blockers.includes('stale'),
+  };
 }
 
 /**
@@ -254,7 +215,7 @@ export function gapOf(code: string): (typeof EXECUTION_GAPS)[number] | null {
  * circuit's (`c3-breaker`). A board's own devices (`incomer`) have no row.
  */
 export function rowOf(finding: Pick<DesignFinding, 'circuit_id' | 'device_id'>): number | null {
-  const id = finding.circuit_id ?? finding.device_id;
+  const id = finding.circuit_id ?? finding.device_id ?? null;
   const match = id === null ? null : /^c(\d+)(?:-|$)/.exec(id);
   if (!match?.[1]) return null;
   const number = Number(match[1]);

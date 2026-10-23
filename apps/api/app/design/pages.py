@@ -94,7 +94,7 @@ _TITLE_LABELS: dict[TitleField, str] = {
     TitleField.DATE: "Date",
     TitleField.DRAWN_BY: "Drawn",
     TitleField.CHECKED_BY: "Checked",
-    TitleField.APPROVED_BY: "Approved",
+    TitleField.APPROVED_BY: "Review approved",
 }
 
 _KIND_NAMES: dict[DeviceKind, str] = {
@@ -516,7 +516,7 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile, s
         [say("Consultant"), info.consultant],
         [say("Contractor"), info.contractor],
         [say("Job number"), info.number],
-        [say("Issued under"), profile.name or profile.key],
+        [say("Company profile"), profile.name or profile.key],
         [
             say("Design rules"),
             (
@@ -537,7 +537,7 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile, s
                 (say("Description"), 120.0),
                 (say("Drawn"), 30.0),
                 (say("Checked"), 30.0),
-                (say("Approved"), 30.0),
+                (say("Review approved"), 30.0),
             ],
             [
                 [r.index, r.date, r.description, r.drawn_by, r.checked_by, r.approved_by]

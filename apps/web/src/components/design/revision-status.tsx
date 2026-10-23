@@ -65,13 +65,20 @@ export function useFindingText(): (finding: DesignFinding, circuit?: string | nu
   const t = useTranslations('design');
   const noteText = useNoteText();
   return (finding, circuit) => {
+    // A refused design names its refusal: said as that refusal is, after the general sentence.
+    if (finding.code === 'design_refused') {
+      const { refusal, subject, ...values } = finding.values ?? {};
+      const reason = refusal && t.has(`errors.${refusal}`) ? t(`errors.${refusal}`, values) : '';
+      const said = subject && reason ? `${subject}: ${reason}` : reason;
+      return said ? `${t('errors.design_refused')} ${said}` : t('errors.design_refused');
+    }
     const key = `finding.${finding.code}`;
     if (t.has(key)) {
-      const sentence = t(key, finding.values);
+      const sentence = t(key, finding.values ?? {});
       return circuit ? `${circuit}: ${sentence}` : sentence;
     }
     if (t.has(`note.${finding.code}`)) {
-      return noteText({ code: finding.code, text: finding.message, params: finding.values });
+      return noteText({ code: finding.code, text: finding.message, params: finding.values ?? {} });
     }
     return finding.message || finding.code;
   };
@@ -160,8 +167,18 @@ export function FindingsList({
   );
 }
 
-/** Why the execution export was refused: what the package lacks, and what blocks it. */
-export function ExecutionRefused({ refusal }: { refusal: ExecutionRefusal }) {
+/**
+ * Why an execution export is blocked: what the package lacks, and what else
+ * stands in the way. `refused` once an export was asked for and refused;
+ * otherwise these are the reasons the saved revision lists beforehand.
+ */
+export function ExecutionRefused({
+  refusal,
+  refused = true,
+}: {
+  refusal: ExecutionRefusal;
+  refused?: boolean;
+}) {
   const t = useTranslations('design.exports');
   const known = new Set<string>();
   const unknown: string[] = [];
@@ -173,7 +190,12 @@ export function ExecutionRefused({ refusal }: { refusal: ExecutionRefusal }) {
   // With no list from the server, every gap the contract names still stands.
   const gaps = refusal.missing.length === 0 ? [...EXECUTION_GAPS] : [...known];
   return (
-    <Notice tone="critical" title={t('executionRefused')} testId="execution-refused">
+    <Notice
+      tone={refused ? 'critical' : 'warning'}
+      live={refused}
+      title={refused ? t('executionRefused') : t('executionBlockedTitle')}
+      testId={refused ? 'execution-refused' : 'execution-blockers'}
+    >
       <p>{t('executionIntro')}</p>
       <ul className="mt-1 list-disc ps-5">
         {EXECUTION_GAPS.filter((gap) => gaps.includes(gap)).map((gap) => (
@@ -184,9 +206,11 @@ export function ExecutionRefused({ refusal }: { refusal: ExecutionRefusal }) {
             <bdi dir="ltr">{code}</bdi>
           </li>
         ))}
-        {refusal.blockingFindings > 0 && (
-          <li>{t('gapBlocking', { count: refusal.blockingFindings })}</li>
+        {refusal.blockingFindings.length > 0 && (
+          <li>{t('gapBlocking', { count: refusal.blockingFindings.length })}</li>
         )}
+        {refusal.notValidated && <li>{t('gapNotValidated')}</li>}
+        {refusal.stale && <li>{t('gapStale')}</li>}
         {refusal.approvalMissing && <li>{t('gapApproval')}</li>}
       </ul>
     </Notice>

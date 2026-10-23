@@ -61,9 +61,11 @@ def test_concurrent_approvals_record_one_bound_approval(
 ) -> None:
     saved = save(client)
     pid = saved["id"]
-    results = _race(
-        app, [lambda c, i=i: approve(c, pid, 1, approver=f"Racer {i}") for i in range(THREADS)]
-    )
+
+    def approver(i: int) -> Callable[[TestClient], Any]:
+        return lambda c: approve(c, pid, 1, approver=f"Racer {i}")
+
+    results = _race(app, [approver(i) for i in range(THREADS)])
     statuses = [r.status_code for r in results]
     assert statuses.count(200) == 1, statuses
     assert 500 not in statuses, [r.text for r in results if r.status_code == 500]
@@ -114,7 +116,8 @@ def test_concurrent_revisions_get_distinct_numbers_and_snapshots(
     # A refused racer must say why (a conflict), not fail silently.
     for r in results:
         if r.status_code != 201:
-            assert r.status_code == 409 and r.json().get("code"), r.text
+            assert r.status_code == 409, r.text
+            assert r.json().get("code"), r.text
     for number in [1, *created]:
         row = revision_row(engine, pid, number)
         assert row["snapshot_sha256"] == canonical_sha256(row["design_snapshot"])

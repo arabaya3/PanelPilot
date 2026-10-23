@@ -45,6 +45,10 @@ from app.models.schemas.design import (
 
 # Every design route costs CPU (drawing sets, PDF table scans) and is open to a
 # trial session, so all of them share one per-address budget.
+#: The largest revision number a path or query may name: the column is a
+#: Postgres ``integer``, so a larger number is a 422, not a database error.
+_MAX_REVISION = 2_147_483_647
+
 router = APIRouter(dependencies=[Depends(enforce_design_rate_limit)])
 
 
@@ -178,7 +182,7 @@ def open_project(
     project_id: str,
     session: SessionDep,
     user: CurrentUserDep,
-    revision: Annotated[int | None, Query(ge=1)] = None,
+    revision: Annotated[int | None, Query(ge=1, le=_MAX_REVISION)] = None,
 ) -> SavedProject:
     """Open a saved project at its latest revision, or the one asked for."""
     return design_projects.open_project(
@@ -199,7 +203,7 @@ def revise_project(
 @router.post("/projects/{project_id}/revisions/{number}/approval", response_model=SavedProject)
 def approve_revision(
     project_id: str,
-    number: Annotated[int, Path(ge=1)],
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
     payload: ApproveRevisionRequest,
     session: SessionDep,
     user: CurrentUserDep,
@@ -226,7 +230,7 @@ def approve_revision(
 )
 def export_revision(
     project_id: str,
-    number: Annotated[int, Path(ge=1)],
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
     payload: RevisionExportRequest,
     session: SessionDep,
     user: CurrentUserDep,

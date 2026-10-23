@@ -601,6 +601,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Export Revision
+     * @description Export a saved revision from the design the server stored and checked for it.
+     */
+    post: operations['export_revision_api_v1_design_projects__project_id__revisions__number__export_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/markets': {
     parameters: {
       query?: never;
@@ -1871,6 +1891,48 @@ export interface components {
       pricing?: components['schemas']['PricingSettings'] | null;
     };
     /**
+     * DesignFinding
+     * @description One thing a check of a design found, with where to fix it.
+     *
+     *     Attributes:
+     *         code: Stable identifier: a ``DesignNote`` code, or an integrity
+     *             check's own (``app.design.integrity``).
+     *         severity: From ``app.design.findings_policy``.
+     *         board_id: The board it is on, where it is on one.
+     *         circuit_id: The circuit, where it is about one.
+     *         device_id: The device, where it is about one.
+     *         values: The values it names, as text.
+     *         message: In English; the page renders ``code`` in the reader's language.
+     *         requires_engineering_confirmation: Whether an engineer must confirm
+     *             it before the design is relied on.
+     *         source: The rule it comes from, or ``"policy"`` where the severity is
+     *             this service's classification rather than a cited rule's.
+     */
+    DesignFinding: {
+      /** Code */
+      code: string;
+      severity: components['schemas']['app__models__schemas__design__FindingSeverity'];
+      /** Board Id */
+      board_id?: string | null;
+      /** Circuit Id */
+      circuit_id?: string | null;
+      /** Device Id */
+      device_id?: string | null;
+      /** Values */
+      values?: {
+        [key: string]: string;
+      };
+      /** Message */
+      message: string;
+      /**
+       * Requires Engineering Confirmation
+       * @default false
+       */
+      requires_engineering_confirmation: boolean;
+      /** Source */
+      source: string;
+    };
+    /**
      * DesignNote
      * @description Something the design tells its reviewer.
      *
@@ -2501,6 +2563,18 @@ export interface components {
       | 'plc_io_csv'
       | 'json';
     /**
+     * ExportPurpose
+     * @description What a saved revision is exported for.
+     * @enum {string}
+     */
+    ExportPurpose: 'review' | 'execution';
+    /**
+     * ExportStatus
+     * @description What a saved revision can be exported as now.
+     * @enum {string}
+     */
+    ExportStatus: 'not_validated' | 'stale' | 'blocked' | 'draft' | 'review_approved';
+    /**
      * FaultRecognitionResult
      * @description What the model saw.
      *
@@ -2528,12 +2602,6 @@ export interface components {
      * @enum {string}
      */
     Feature: 'ecad_export' | 'company_settings' | 'approval_workflow' | 'quotation';
-    /**
-     * FindingSeverity
-     * @description How much a finding matters.
-     * @enum {string}
-     */
-    FindingSeverity: 'error' | 'warning';
     /**
      * FlagRequest
      * @description A user reporting an answer as wrong.
@@ -4030,6 +4098,21 @@ export interface components {
       approved_by: string;
     };
     /**
+     * RevisionExportRequest
+     * @description A saved revision to export, from the design the server stored for it.
+     *
+     *     Attributes:
+     *         format: The file to produce.
+     *         pricing: The company's prices, for a quotation export.
+     *         purpose: Review, or execution (always refused for now).
+     */
+    RevisionExportRequest: {
+      format: components['schemas']['ExportFormat'];
+      pricing?: components['schemas']['PricingSettings'] | null;
+      /** @default review */
+      purpose: components['schemas']['ExportPurpose'];
+    };
+    /**
      * RevisionSummary
      * @description One revision as the revision list shows it.
      *
@@ -4041,6 +4124,9 @@ export interface components {
      *         approved_by: The engineer who approved it, as the title block
      *             prints them; ``None`` while it is not approved.
      *         approved_at: When, ISO 8601.
+     *         validated: Whether the server designed it from its request when it
+     *             was saved, and holds that design; ``False`` for an older one.
+     *         export_status: What it can be exported as now.
      */
     RevisionSummary: {
       /** Number */
@@ -4055,6 +4141,13 @@ export interface components {
       approved_by?: string | null;
       /** Approved At */
       approved_at?: string | null;
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
     };
     /**
      * SaveCompanySettings
@@ -4098,6 +4191,18 @@ export interface components {
      *         revisions: Every revision, oldest first.
      *         revision: The number of the revision ``request`` is.
      *         request: That revision as entered.
+     *         findings: What the checks found in the design the server built for
+     *             that revision when it was saved; empty for an older revision.
+     *         validated: Whether that revision holds a server-built design.
+     *         snapshot_sha256: The SHA-256 of that design's canonical JSON.
+     *         rules_version: The calculation rules it was designed under.
+     *         approved_snapshot_sha256: The design its approval is bound to;
+     *             ``None`` while it is not approved (or approved before approvals
+     *             were bound to a design).
+     *         export_status: What it can be exported as now.
+     *         execution_blockers: Why it cannot be exported for execution: the
+     *             parts of an execution package this service does not produce yet,
+     *             then ``approval`` and each blocking finding's code, as they apply.
      */
     SavedProject: {
       /** Id */
@@ -4109,6 +4214,23 @@ export interface components {
       /** Revision */
       revision: number;
       request: components['schemas']['ProjectDesignRequest-Output'];
+      /** Findings */
+      findings?: components['schemas']['DesignFinding'][];
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** Snapshot Sha256 */
+      snapshot_sha256?: string | null;
+      /** Rules Version */
+      rules_version?: string | null;
+      /** Approved Snapshot Sha256 */
+      approved_snapshot_sha256?: string | null;
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
+      /** Execution Blockers */
+      execution_blockers?: string[];
     };
     /**
      * ScheduleSuggestionRequest
@@ -4522,7 +4644,7 @@ export interface components {
       code: string;
       /** Message */
       message: string;
-      severity: components['schemas']['FindingSeverity'];
+      severity: components['schemas']['app__models__schemas__plc__FindingSeverity'];
       /** Line */
       line?: number | null;
     };
@@ -4636,6 +4758,18 @@ export interface components {
      * @enum {string}
      */
     WireNumbering: 'potential' | 'sequential' | 'source_target';
+    /**
+     * FindingSeverity
+     * @description How much a finding stands in the way of issuing a design.
+     * @enum {string}
+     */
+    app__models__schemas__design__FindingSeverity: 'blocking' | 'warning' | 'info';
+    /**
+     * FindingSeverity
+     * @description How much a finding matters.
+     * @enum {string}
+     */
+    app__models__schemas__plc__FindingSeverity: 'error' | 'warning';
   };
   responses: never;
   parameters: never;
@@ -5638,6 +5772,56 @@ export interface operations {
         content: {
           'application/json': components['schemas']['SavedProject'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_revision_api_v1_design_projects__project_id__revisions__number__export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RevisionExportRequest'];
+      };
+    };
+    responses: {
+      /** @description The exported file */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/octet-stream': unknown;
+        };
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, or `execution_package_incomplete` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

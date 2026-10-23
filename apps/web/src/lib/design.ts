@@ -40,7 +40,17 @@ export type Refusal = {
   values?: Record<string, unknown>;
   /** Fields the server does not accept (a 422 `extra_forbidden`), as paths. */
   unknownFields?: string[];
+  /** Text fields longer than the server accepts (a 422 `string_too_long`), as paths. */
+  tooLong?: TooLong[];
+  /** Numbers above what the server accepts (a 422 `less_than_equal`), as paths. */
+  tooLarge?: TooLarge[];
 };
+
+/** A number the server refused as too large, and the most it takes. */
+export type TooLarge = { path: string; max: string };
+
+/** A text field the server refused as too long, and the most it takes. */
+export type TooLong = { path: string; max: number };
 type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
 
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
@@ -83,12 +93,47 @@ function detailOf(payload: unknown): string {
  * `project.boards[0].standby_supply`, so the engineer can find it.
  */
 export function unknownFieldsOf(payload: unknown): string[] {
-  const detail = (payload as { detail?: unknown } | null)?.detail;
-  if (!Array.isArray(detail)) return [];
   const fields: string[] = [];
+  for (const { path } of errorsOfType(payload, 'extra_forbidden')) {
+    if (!fields.includes(path)) fields.push(path);
+  }
+  return fields;
+}
+
+/** The text fields a 422 refused as too long, with the most each takes. */
+export function tooLongOf(payload: unknown): TooLong[] {
+  return errorsOfType(payload, 'string_too_long').flatMap(({ path, ctx }) => {
+    const max = Number(ctx.max_length);
+    return Number.isInteger(max) && max > 0 ? [{ path, max }] : [];
+  });
+}
+
+/** The numbers a 422 refused as above their limit, with the limit. */
+export function tooLargeOf(payload: unknown): TooLarge[] {
+  return errorsOfType(payload, 'less_than_equal').flatMap(({ path, ctx }) => {
+    const max = ctx.le;
+    return typeof max === 'number' || typeof max === 'string' ? [{ path, max: String(max) }] : [];
+  });
+}
+
+/**
+ * A 422's validation errors of one type, each with its body path. FastAPI
+ * lists them in `detail`; an envelope may carry them in `errors` instead.
+ */
+function errorsOfType(
+  payload: unknown,
+  type: string,
+): Array<{ path: string; ctx: Record<string, unknown> }> {
+  const body = payload as { detail?: unknown; errors?: unknown } | null;
+  const detail = Array.isArray(body?.detail)
+    ? body.detail
+    : Array.isArray(body?.errors)
+      ? body.errors
+      : [];
+  const found: Array<{ path: string; ctx: Record<string, unknown> }> = [];
   for (const item of detail as unknown[]) {
-    const entry = item as { type?: unknown; loc?: unknown } | null;
-    if (entry?.type !== 'extra_forbidden' || !Array.isArray(entry.loc)) continue;
+    const entry = item as { type?: unknown; loc?: unknown; ctx?: unknown } | null;
+    if (entry?.type !== type || !Array.isArray(entry.loc)) continue;
     const parts = (entry.loc as unknown[]).filter(
       (part, index): part is string | number =>
         (typeof part === 'string' || typeof part === 'number') && !(index === 0 && part === 'body'),
@@ -98,9 +143,13 @@ export function unknownFieldsOf(payload: unknown): string[] {
         typeof part === 'number' ? `[${String(part)}]` : index === 0 ? part : `.${part}`,
       )
       .join('');
-    if (path !== '' && !fields.includes(path)) fields.push(path);
+    const ctx =
+      typeof entry.ctx === 'object' && entry.ctx !== null
+        ? (entry.ctx as Record<string, unknown>)
+        : {};
+    if (path !== '') found.push({ path, ctx });
   }
-  return fields;
+  return found;
 }
 
 function refusalOf(payload: unknown): Refusal {
@@ -121,6 +170,10 @@ function refusalOf(payload: unknown): Refusal {
   }
   const unknown = unknownFieldsOf(payload);
   if (unknown.length > 0) refusal.unknownFields = unknown;
+  const long = tooLongOf(payload);
+  if (long.length > 0) refusal.tooLong = long;
+  const large = tooLargeOf(payload);
+  if (large.length > 0) refusal.tooLarge = large;
   return refusal;
 }
 

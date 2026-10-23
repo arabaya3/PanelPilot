@@ -46,7 +46,7 @@ from app.design.sheet import (
     Sheet,
     Text,
 )
-from app.models.schemas.design import FindingSeverity, ValidationFinding
+from app.models.schemas.design import DesignFinding, FindingSeverity
 
 DRAFT_LABEL = "DRAFT — NOT FOR EXECUTION"
 REVIEW_APPROVED_LABEL = "REVIEW APPROVED — STUDY, NOT FOR EXECUTION"
@@ -80,7 +80,7 @@ class ExportMark:
 
     label: str
     identity: str
-    findings: tuple[ValidationFinding, ...] = field(default_factory=tuple)
+    findings: tuple[DesignFinding, ...] = field(default_factory=tuple)
 
     @property
     def banner(self) -> str:

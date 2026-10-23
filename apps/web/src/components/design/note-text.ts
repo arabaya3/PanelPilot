@@ -67,6 +67,20 @@ export function useOutcomeText(): (outcome: { kind: string }) => string {
           count: refusal.unknownFields.length,
         });
       }
+      // A strict 422 (`request_invalid`) names each field at fault and its limit.
+      const limits = [
+        ...(refusal.tooLong ?? []).map(({ path, max }) =>
+          t('errors.too_long', { field: path, max }),
+        ),
+        ...(refusal.tooLarge ?? []).map(({ path, max }) =>
+          t('errors.too_large', { field: path, max }),
+        ),
+      ];
+      if (limits.length > 0) return limits.join(' ');
+      // Any other strict 422: the general sentence, then the server's own words.
+      if (refusal.code === 'request_invalid') {
+        return `${t('errors.request_invalid')} ${refusal.detail}`.trim();
+      }
       const key = `errors.${refusal.code ?? ''}`;
       if (refusal.code && t.has(key)) {
         const { subject, ...values } = refusal.params ?? {};

@@ -104,7 +104,7 @@ def _engine() -> Iterator[Engine]:
             "TEST_DATABASE_URL must point at the disposable Postgres "
             "(panelpilot_phase1_test); these gates may not be skipped"
         )
-    if "panelpilot_phase1_test" not in DATABASE_URL:
+    if not DATABASE_URL.rsplit("/", 1)[-1].startswith("panelpilot_phase1_"):
         pytest.fail(
             f"refusing to run against a database other than the disposable one: {DATABASE_URL}"
         )
@@ -360,7 +360,7 @@ def test_draft_export_never_prints_forged_approval_and_is_marked(
     assert DRAFT_WORDS in body, f"{fmt}: no DRAFT mark"
     if fmt in PDF_FORMATS:
         for number, page in enumerate(pdf_pages(response.content), start=1):
-            assert DRAFT_WORDS in page and "DRAFT" in page, f"{fmt} page {number} unmarked"
+            assert DRAFT_WORDS in page, f"{fmt} page {number} unmarked"
     if fmt in CSV_FORMATS:
         first = body.splitlines()[0]
         assert DRAFT_WORDS in first or "DRAFT" in first, f"{fmt}: mark not on the first line"
@@ -380,7 +380,7 @@ def test_draft_json_blanks_checker_and_approver(client: TestClient) -> None:
 
 def test_draft_with_tampered_rating_lists_a_blocking_finding(client: TestClient) -> None:
     project = tampered(designed_project(client))
-    circuit, breaker, _ = lighting_ids(project)
+    _circuit, _breaker, _ = lighting_ids(project)
     response = draft_export(client, project, "pdf")
     # The draft may be produced, but never as anything but a draft with findings.
     assert response.status_code == 200, response.text[:500]
@@ -402,7 +402,7 @@ def test_draft_with_63a_on_1_5mm2_lists_a_blocking_finding(client: TestClient) -
 
 def test_draft_with_a_missing_referenced_device_is_flagged(client: TestClient) -> None:
     project = designed_project(client)
-    circuit, breaker, _ = lighting_ids(project)
+    _circuit, breaker, _ = lighting_ids(project)
     board = project["boards"][0]
     board["devices"] = [d for d in board["devices"] if d["id"] != breaker["id"]]
     response = draft_export(client, project, "pdf")
@@ -419,7 +419,8 @@ def test_valid_draft_succeeds_and_is_labelled(client: TestClient) -> None:
     response = draft_export(client, designed_project(client), "pdf")
     assert response.status_code == 200
     pages = pdf_pages(response.content)
-    assert pages and all(DRAFT_WORDS in p for p in pages)
+    assert pages
+    assert all(DRAFT_WORDS in p for p in pages)
 
 
 # --------------------------------------------------------------------------- #
@@ -518,7 +519,8 @@ def test_save_records_a_server_snapshot_and_its_hash(client: TestClient, engine:
     assert row["design_snapshot"] is not None
     assert row["snapshot_sha256"] == canonical_sha256(row["design_snapshot"])
     assert row["rules_version"]
-    assert row["profile_sha256"] and len(row["profile_sha256"]) == 64
+    assert row["profile_sha256"]
+    assert len(row["profile_sha256"]) == 64
     assert row["catalogue_version"] == "none"
     assert row["approved_snapshot_sha256"] is None
     opened = client.get(f"/design/projects/{saved['id']}").json()
@@ -538,7 +540,8 @@ def test_save_ignores_forged_approval_in_the_request(client: TestClient, engine:
     response = revision_export(client, saved["id"], 1, "pdf")
     assert response.status_code == 200, response.text
     body = "\n".join(pdf_pages(response.content))
-    assert FORGED_APPROVER not in body and FORGED_CHECKER not in body
+    assert FORGED_APPROVER not in body
+    assert FORGED_CHECKER not in body
     assert "REVIEW APPROVED" not in body
 
 
@@ -623,7 +626,8 @@ def test_approving_one_revision_does_not_cover_another(client: TestClient, engin
     second = revision_export(client, saved["id"], 2, "pdf")
     assert second.status_code == 200
     body = "\n".join(pdf_pages(second.content))
-    assert "REVIEW APPROVED" not in body and APPROVER not in body
+    assert "REVIEW APPROVED" not in body
+    assert APPROVER not in body
     assert revision_row(engine, saved["id"], 2)["approved_snapshot_sha256"] is None
 
 
@@ -640,11 +644,13 @@ def test_changes_after_approval_are_a_new_unapproved_revision(
     second = revision_row(engine, saved["id"], 2)
     first = revision_row(engine, saved["id"], 1)
     assert second["snapshot_sha256"] != first["snapshot_sha256"]
-    assert second["approved_snapshot_sha256"] is None and second["approved_by"] is None
+    assert second["approved_snapshot_sha256"] is None
+    assert second["approved_by"] is None
     body = "\n".join(pdf_pages(revision_export(client, saved["id"], 2, "pdf").content))
     assert "REVIEW APPROVED" not in body
     old = "\n".join(pdf_pages(revision_export(client, saved["id"], 1, "pdf").content))
-    assert "REVIEW APPROVED" in old and first["snapshot_sha256"][:8] in old
+    assert "REVIEW APPROVED" in old
+    assert first["snapshot_sha256"][:8] in old
 
 
 # --------------------------------------------------------------------------- #
@@ -751,12 +757,15 @@ def test_forced_oversized_breaker_blocks_approval(client: TestClient, engine: En
         assert any(f["severity"] == "blocking" for f in findings), findings
         approval = approve(client, saved["id"], 1)
         assert approval.status_code in (409, 422)
-        assert error(approval)["code"] in ("revision_not_validated", "revision_has_blocking_findings")
+        assert error(approval)["code"] in (
+            "revision_not_validated",
+            "revision_has_blocking_findings",
+        )
         exported = revision_export(client, saved["id"], 1, "pdf")
         assert exported.status_code in (409, 422)
         assert error(exported)["code"] == "revision_not_validated"
         return
-    snap_circuit, snap_breaker, snap_cable = lighting_ids(row["design_snapshot"])
+    _snap_circuit, snap_breaker, snap_cable = lighting_ids(row["design_snapshot"])
     from decimal import Decimal
 
     if Decimal(str(snap_breaker["rated_current_a"])) > Decimal(40) and Decimal(
@@ -774,7 +783,8 @@ def test_forced_oversized_breaker_blocks_approval(client: TestClient, engine: En
 def test_findings_have_the_contract_shape(client: TestClient, engine: Engine) -> None:
     saved = save(client)
     row = revision_row(engine, saved["id"], 1)
-    assert isinstance(row["findings"], list) and row["findings"], "no findings recorded"
+    assert isinstance(row["findings"], list)
+    assert row["findings"], "no findings recorded"
     for finding in row["findings"]:
         assert finding["severity"] in ("blocking", "warning", "info")
         for key in ("code", "message", "requires_engineering_confirmation", "source", "values"):
@@ -919,3 +929,91 @@ def test_profile_hash_in_row_differs_is_stale(client: TestClient, engine: Engine
     response = revision_export(client, saved["id"], 1, "pdf")
     assert response.status_code == 409
     assert error(response)["code"] == "revision_stale"
+
+
+# --------------------------------------------------------------------------- #
+# Defects found by the live attack (adversarial/attack2.json)
+# --------------------------------------------------------------------------- #
+
+#: Beyond Postgres ``integer`` (int4), and beyond any int64.
+HUGE_REVISIONS = ("2147483648", "99999999999999999999")
+
+
+@pytest.mark.parametrize("number", HUGE_REVISIONS)
+def test_huge_revision_number_is_refused_not_500(client: TestClient, number: str) -> None:
+    """Defect 1: approving revision 2147483648 overflowed the query (500)."""
+    saved = save(client)
+    pid = saved["id"]
+    responses = {
+        "approval": client.post(
+            f"/design/projects/{pid}/revisions/{number}/approval", json={"approver": APPROVER}
+        ),
+        "export": client.post(
+            f"/design/projects/{pid}/revisions/{number}/export", json={"format": "pdf"}
+        ),
+        "open": client.get(f"/design/projects/{pid}?revision={number}"),
+    }
+    for name, response in responses.items():
+        assert response.status_code in (404, 422), (name, response.status_code, response.text)
+        if response.status_code == 404:
+            assert error(response)["code"] == "revision_not_found", (name, response.text)
+
+
+def test_another_tenant_gets_revision_not_found_on_revision_endpoints(
+    client: TestClient, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    """Defect 2: approval across tenants said ``project_not_found``."""
+    saved = save(client)
+    caller.user = _user(tenants[1], email="intruder@example.com")
+    pid = saved["id"]
+    responses = {
+        "approval": approve(client, pid, 1, approver="INTRUDER"),
+        "export": revision_export(client, pid, 1, "pdf"),
+        "open": client.get(f"/design/projects/{pid}?revision=1"),
+    }
+    for name, response in responses.items():
+        assert response.status_code == 404, (name, response.status_code)
+        assert error(response)["code"] == "revision_not_found", (name, response.text)
+
+
+#: No export may claim to be issued, for construction, or ready to execute.
+FORBIDDEN_WORDING = ("issued", "for construction", "ready for execution", "execution ready")
+
+
+def _forbidden_in(text: str) -> list[str]:
+    lowered = text.lower()
+    return [word for word in FORBIDDEN_WORDING if word in lowered]
+
+
+@pytest.mark.parametrize("fmt", ALL_FORMATS)
+@pytest.mark.parametrize("state", ["draft", "unapproved", "approved"])
+def test_no_export_says_issued_or_execution_ready(client: TestClient, fmt: str, state: str) -> None:
+    """Defect 3: "Issued under …" and "issued for review" appeared in PDF/DXF/calc."""
+    if state == "draft":
+        response = draft_export(client, forged(designed_project(client)), fmt)
+    else:
+        saved = save(client)
+        if state == "approved":
+            assert approve(client, saved["id"], 1).status_code == 200
+        response = revision_export(client, saved["id"], 1, fmt)
+    assert response.status_code == 200, response.text[:300]
+    found = _forbidden_in(text_of(fmt, response.content))
+    assert not found, f"{state} {fmt} says {found}"
+
+
+def test_second_approval_is_409_already_approved(client: TestClient, engine: Engine) -> None:
+    saved = save(client)
+    assert approve(client, saved["id"], 1).status_code == 200
+    again = approve(client, saved["id"], 1, approver="Second Approver")
+    assert again.status_code == 409, again.text
+    assert error(again)["code"] == "revision_already_approved"
+    assert revision_row(engine, saved["id"], 1)["approved_by"] == APPROVER
+
+
+def test_overlong_project_name_is_refused(client: TestClient) -> None:
+    """Defect 4: a 5 MB ``info.name`` was saved."""
+    big = copy.deepcopy(REQUEST)
+    big["info"]["name"] = "N" * 100_000
+    response = client.post("/design/projects", json={"name": "big", "request": big})
+    assert response.status_code == 422, response.status_code
+    assert error(response)["detail"][0]["loc"] == ["body", "request", "info", "name"]
