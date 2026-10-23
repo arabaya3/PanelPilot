@@ -80,19 +80,20 @@ describe('markets', () => {
   });
 
   it('says the market basis in the reader language, regulation included', async () => {
-    const english = {
-      ...MARKETS[0]!,
-      regulation: 'IEC 60364 (adopted by the Palestine Standards Institution)',
-    };
+    const markets = MARKETS.map((market) =>
+      market.code === 'PS'
+        ? { ...market, regulation: 'IEC 60364 (adopted by the Palestine Standards Institution)' }
+        : market,
+    );
     renderApp(
       <DesignScreen
         acquireImpl={vi.fn().mockResolvedValue(READY)}
-        marketsImpl={vi.fn().mockResolvedValue([english, MARKETS[1]!])}
+        marketsImpl={vi.fn().mockResolvedValue(markets)}
         readMarketImpl={() => 'PS'}
       />,
       { locale: 'ar' },
     );
-    const basis = (await screen.findByTestId('market-basis')).textContent ?? '';
+    const basis = (await screen.findByTestId('market-basis')).textContent;
     expect(basis).not.toContain('Palestine');
     expect(basis).not.toContain('adopted');
   });
