@@ -861,3 +861,12 @@ def test_a_non_domain_error_releases_the_project_lock(tenants, as_tenant, monkey
     worker.join(timeout=30)
     assert not blocked, "the failed revise still held the project lock"
     assert outcome["revised"].revision == 2
+
+
+def test_a_failed_rollback_does_not_replace_the_error() -> None:
+    class GoneConnection:
+        def rollback(self) -> None:
+            raise RuntimeError("connection gone")
+
+    # Logged, not raised: the caller re-raises the failure that came first.
+    design_projects._release(GoneConnection())  # type: ignore[arg-type]

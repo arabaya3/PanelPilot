@@ -90,6 +90,18 @@ def _scope_to(session: Session, user: CurrentUser) -> uuid.UUID:
     return tenant
 
 
+def _release(session: Session) -> None:
+    """Roll back after a failure, so no lock outlives it, keeping that failure.
+
+    A rollback that fails too (the connection is gone) is logged rather than
+    raised, so the error the caller sees is the one that happened first.
+    """
+    try:
+        session.rollback()
+    except Exception:
+        logger.exception("design.rollback_failed")
+
+
 def _load(session: Session, project_id: str, *, lock: bool = False) -> DesignProjectRow:
     """The caller's project; with ``lock``, its row locked (``SELECT ... FOR UPDATE``).
 
@@ -162,7 +174,10 @@ def _policy_changed(row: DesignRevisionRow) -> bool:
     what the policy no longer does. A snapshot that no longer reads is left to
     the integrity check, which refuses it with its own code.
     """
-    if row.design_snapshot is None:
+    if (
+        row.design_snapshot is None
+        or snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256
+    ):
         return False
     try:
         designed = DesignProject.model_validate(row.design_snapshot)
@@ -174,15 +189,22 @@ def _policy_changed(row: DesignRevisionRow) -> bool:
     return _classified(current) != _classified(_stored_findings(row))
 
 
-def _changed(row: DesignRevisionRow) -> tuple[str, ...]:
-    """What no longer matches what the revision was designed under."""
+def _changed(row: DesignRevisionRow, *, thorough: bool = True) -> tuple[str, ...]:
+    """What no longer matches what the revision was designed under.
+
+    ``thorough=False`` compares only the recorded versions, for the list of a
+    project's revisions; the revision opened, approved or exported is always
+    checked in full, its profile and findings policy included.
+    """
     changed: list[str] = []
     if row.rules_version != RULES_VERSION:
         changed.append("rules_version")
-    if row.profile_sha256 != _current_profile_sha256(row):
-        changed.append("profile")
     if row.catalogue_version != CATALOGUE_VERSION:
         changed.append("catalogue_version")
+    if not thorough:
+        return tuple(changed)
+    if row.profile_sha256 != _current_profile_sha256(row):
+        changed.append("profile")
     if _policy_changed(row):
         changed.append("findings_policy")
     return tuple(changed)
@@ -212,15 +234,15 @@ def _request_problem(row: DesignRevisionRow) -> DesignFinding | None:
     return None
 
 
-def _validation(row: DesignRevisionRow) -> _Validation:
+def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation:
     findings = _stored_findings(row)
     bound = _approval_bound(row)
-    problem = _request_problem(row)
+    problem = _request_problem(row) if thorough else None
     if problem is not None:
         return _Validation(ExportStatus.NOT_VALIDATED, [*findings, problem], bound)
     if row.design_snapshot is None or row.snapshot_sha256 is None:
         return _Validation(ExportStatus.NOT_VALIDATED, findings, bound)
-    changed = _changed(row)
+    changed = _changed(row, thorough=thorough)
     if changed:
         return _Validation(ExportStatus.STALE, findings, bound, changed)
     if integrity.blocking(findings):
@@ -243,7 +265,7 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     return blockers
 
 
-def _summary(row: DesignRevisionRow) -> RevisionSummary:
+def _summary(row: DesignRevisionRow, *, thorough: bool = False) -> RevisionSummary:
     return RevisionSummary(
         number=row.number,
         note=row.note,
@@ -252,7 +274,10 @@ def _summary(row: DesignRevisionRow) -> RevisionSummary:
         approved_by=row.approved_by,
         approved_at=row.approved_at.isoformat() if row.approved_at else None,
         validated=row.design_snapshot is not None,
-        export_status=_validation(row).status,
+        # One of up to MAX_REVISIONS rows: compared by recorded versions only.
+        # The revision opened is checked in full (``_opened``), and approval and
+        # export check theirs in full again under the project lock.
+        export_status=_validation(row, thorough=thorough).status,
     )
 
 
@@ -387,7 +412,7 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
     opened = SavedProject(
         id=str(project.id),
         name=project.name,
-        revisions=[_summary(r) for r in revisions],
+        revisions=[_summary(r, thorough=r is chosen) for r in revisions],
         revision=chosen.number,
         request=request,
         findings=checked.findings,
@@ -439,7 +464,7 @@ def save_project(
         session.commit()
     except BaseException:
         # Whatever failed, nothing half-saved is kept and no lock outlives it.
-        session.rollback()
+        _release(session)
         raise
     logger.info("design.project_saved", tenant_id=str(tenant), project_id=str(project.id))
     return _opened(session, project, None)
@@ -477,7 +502,7 @@ def revise_project(
         number = project.revision_count
         session.commit()
     except IntegrityError as exc:
-        session.rollback()
+        _release(session)
         raise ConflictError(
             "another revision was saved at the same time; save again",
             code="revision_conflict",
@@ -485,7 +510,7 @@ def revise_project(
     except BaseException:
         # Any failure, a domain refusal or not, releases the project lock now
         # rather than when the session is closed.
-        session.rollback()
+        _release(session)
         raise
     logger.info(
         "design.project_revised",
@@ -643,7 +668,7 @@ def approve_revision(
         session.commit()
     except BaseException:
         # Release the locks now, whatever failed, not when the session is closed.
-        session.rollback()
+        _release(session)
         raise
     logger.info(
         "design.revision_approved",
@@ -892,6 +917,6 @@ def delete_project(*, session: Session, user: CurrentUser, project_id: str) -> N
         session.delete(project)
         session.commit()
     except BaseException:
-        session.rollback()
+        _release(session)
         raise
     logger.info("design.project_deleted", tenant_id=str(tenant), project_id=project_id)
