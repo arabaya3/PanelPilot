@@ -1,0 +1,722 @@
+{
+  "api": "http://127.0.0.1:8000/api/v1",
+  "at": "2026-10-23T12:29:17.975Z",
+  "probes": {
+    "save_with_client_project": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"project\"],\"msg\":\"Extra inputs are not permitted\",\"input\":{\"boards\":[]}}]}"
+    },
+    "save_with_snapshot_field": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"design_snapshot\"],\"msg\":\"Extra inputs are not permitted\",\"input\":{}},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"snapshot_sha256\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"0000000000000000000000000000000000000000000000000000000000000000\"}]}"
+    },
+    "save_with_approval_fields": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_by\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"X\"},{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_snapshot_sha256\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"
+    },
+    "save_request_info_revisions_forged": {
+      "status": 201,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"id\":\"c2899400-d8de-4e09-aee2-e599ab93aee6\",\"name\":\"ADV\",\"revisions\":[{\"number\":1,\"note\":\"\",\"author\":\"e2e-p1a-a-1792758557976@example.com\",\"created_at\":\"2026-10-23T12:29:18.602287+00:00\",\"approved_by\":null,\"approved_at\":null,\"validated\":true,\"export_status\":\"draft\"}],\"revision\":1,\"request\":{\"info\":"
+    },
+    "save_request_with_design_fields": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"request\",\"boards\",0,\"devices\"],\"msg\":\"Extra inputs are not permitted\",\"input\":[{\"id\":\"x\",\"rated_current_a\":\"200\"}]}]}"
+    },
+    "save_ok": {
+      "status": 201,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"id\":\"5e191b8b-5651-48af-8892-50966629af87\",\"name\":\"ADV live\",\"revisions\":[{\"number\":1,\"note\":\"r1\",\"author\":\"e2e-p1a-a-1792758557976@example.com\",\"created_at\":\"2026-10-23T12:29:18.653939+00:00\",\"approved_by\":null,\"approved_at\":null,\"validated\":true,\"export_status\":\"draft\"}],\"revision\":1,\"request\":{"
+    },
+    "saved_shape": {
+      "keys": [
+        "id",
+        "name",
+        "revisions",
+        "revision",
+        "request",
+        "findings",
+        "validated",
+        "snapshot_sha256",
+        "rules_version",
+        "approved_snapshot_sha256",
+        "export_status",
+        "execution_blockers"
+      ],
+      "validated": true,
+      "export_status": "draft",
+      "snapshot_sha256": "40beff92fcac482a05f00813e173ea3a3c1e407f02dddf7d9356eda85963b293",
+      "rules_version": "2026.10.23.1",
+      "findings": 19
+    },
+    "revnum": {
+      "0": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"0\",\"ctx\":{\"ge\":1}}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"0\",\"ctx\":{\"ge\":1}}]}"
+        }
+      },
+      "2147483648": {
+        "export": {
+          "status": 404,
+          "type": "application/json",
+          "code": "revision_not_found",
+          "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+        },
+        "approval": {
+          "status": 500,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"error\":\"InternalServerError\",\"detail\":\"Internal server error\",\"correlation_id\":\"afb874db479e4f90b7d4496b9dbb8a7f\"}"
+        }
+      },
+      "-1": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"-1\",\"ctx\":{\"ge\":1}}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"greater_than_equal\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be greater than or equal to 1\",\"input\":\"-1\",\"ctx\":{\"ge\":1}}]}"
+        }
+      },
+      "99999999999999999999": {
+        "export": {
+          "status": 404,
+          "type": "application/json",
+          "code": "revision_not_found",
+          "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+        },
+        "approval": {
+          "status": 500,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"error\":\"InternalServerError\",\"detail\":\"Internal server error\",\"correlation_id\":\"5132752960a74a2b8181a2214c5f1069\"}"
+        }
+      },
+      "1.5": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"1.5\"}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"1.5\"}]}"
+        }
+      },
+      "abc": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"abc\"}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"abc\"}]}"
+        }
+      },
+      "1e3": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"1e3\"}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"1e3\"}]}"
+        }
+      },
+      "%20": {
+        "export": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\" \"}]}"
+        },
+        "approval": {
+          "status": 422,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"number\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\" \"}]}"
+        }
+      },
+      "01": {
+        "export": {
+          "status": 200,
+          "type": "application/pdf",
+          "code": null,
+          "detail": "34971 bytes"
+        },
+        "approval": {
+          "status": 200,
+          "type": "application/json",
+          "code": null,
+          "detail": "{\"id\":\"5e191b8b-5651-48af-8892-50966629af87\",\"name\":\"ADV live\",\"revisions\":[{\"number\":1,\"note\":\"r1\",\"author\":\"e2e-p1a-a-1792758557976@example.com\",\"created_at\":\"2026-10-23T12:29:18.653939+00:00\",\"approved_by\":\"X\",\"approved_at\":\"2026-10-23T12:29:19.839415+00:00\",\"validated\":true,\"export_status\":\"revi"
+        }
+      }
+    },
+    "cross_tenant": {
+      "get": {
+        "status": 404,
+        "type": "application/json",
+        "code": "project_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such project\",\"code\":\"project_not_found\",\"params\":{}}"
+      },
+      "export": {
+        "status": 404,
+        "type": "application/json",
+        "code": "revision_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such revision\",\"code\":\"revision_not_found\",\"params\":{}}"
+      },
+      "approve": {
+        "status": 404,
+        "type": "application/json",
+        "code": "project_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such project\",\"code\":\"project_not_found\",\"params\":{}}"
+      },
+      "revise": {
+        "status": 404,
+        "type": "application/json",
+        "code": "project_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such project\",\"code\":\"project_not_found\",\"params\":{}}"
+      },
+      "delete": {
+        "status": 404,
+        "type": "application/json",
+        "code": "project_not_found",
+        "detail": "{\"error\":\"NotFoundError\",\"detail\":\"no such project\",\"code\":\"project_not_found\",\"params\":{}}"
+      }
+    },
+    "approval_injection": {
+      "extra_hash": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_snapshot_sha256\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}]}"
+      },
+      "extra_at": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_at\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"2020-01-01\"}]}"
+      },
+      "empty": {
+        "status": 422,
+        "type": "application/json",
+        "code": "revision_already_approved",
+        "detail": "{\"error\":\"ValidationError\",\"detail\":\"revision 1 is approved already, by X\",\"code\":\"revision_already_approved\",\"params\":{\"revision\":\"1\",\"approver\":\"X\"}}"
+      },
+      "long": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"string_too_long\",\"loc\":[\"body\",\"approver\"],\"msg\":\"String should have at most 100 characters\",\"input\":\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\"ctx\":{\"max_length\":100}}]}"
+      }
+    },
+    "format_fuzz": {
+      "7": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"PDF\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"pdf \"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "null": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "[\"pdf\"]": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"pdf;rm\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"../json\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"execution_pdf\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "\"svg\"": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_csv', 'ace_terminals_csv', 'quotation_pdf', 'calculations_pdf', 'quotation_csv', 'plc_s"
+      },
+      "draft_list": {
+        "status": 422,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"project\",\"info\"],\"msg\":\"Field required\",\"input\":{}},{\"type\":\"enum\",\"loc\":[\"body\",\"format\"],\"msg\":\"Input should be 'pdf', 'dxf', 'qet', 'aml', 'devices_csv', 'parts_csv', 'cables_csv', 'circuits_csv', 'terminals_csv', 'eplan_devices_csv', 'ace_components_cs"
+      }
+    },
+    "oversized_save": {
+      "status": 201,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"id\":\"37738643-0c21-4db8-8a97-c75ff18c0b41\",\"name\":\"big\",\"revisions\":[{\"number\":1,\"note\":\"\",\"author\":\"e2e-p1a-a-1792758557976@example.com\",\"created_at\":\"2026-10-23T12:29:20.049058+00:00\",\"approved_by\":null,\"approved_at\":null,\"validated\":true,\"export_status\":\"draft\"}],\"revision\":1,\"request\":{\"info\":"
+    },
+    "oversized_raw_20mb": {
+      "status": 413,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"error\":\"RequestBodyTooLarge\",\"detail\":\"request body exceeds the 6291456-byte limit for this endpoint\"}"
+    },
+    "many_loads": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"too_long\",\"loc\":[\"body\",\"request\",\"boards\",0,\"loads\"],\"msg\":\"List should have at most 500 items after validation, not 2000\",\"input\":[{\"description\":\"Panel lighting (test)\",\"load\":\"lighting\",\"power_kw\":0.2,\"phases\":1,\"length_m\":10},{\"description\":\"Panel lighting (test)\",\"load\":\"li"
+    },
+    "execution_unapproved": {
+      "status": 409,
+      "type": "application/json",
+      "code": "execution_package_incomplete",
+      "detail": "{\"error\":\"ConflictError\",\"detail\":\"an execution package cannot be exported yet: wiring_and_terminal_connectivity, control_schematics, orderable_parts, mechanical_layout are not produced\",\"code\":\"execution_package_incomplete\",\"params\":{\"revision\":\"1\",\"missing\":\"wiring_and_terminal_connectivity,contro"
+    },
+    "approve": {
+      "status": 422,
+      "type": "application/json",
+      "code": "revision_already_approved",
+      "detail": "{\"error\":\"ValidationError\",\"detail\":\"revision 1 is approved already, by X\",\"code\":\"revision_already_approved\",\"params\":{\"revision\":\"1\",\"approver\":\"X\"}}"
+    },
+    "approve_again": {
+      "status": 422,
+      "type": "application/json",
+      "code": "revision_already_approved",
+      "detail": "{\"error\":\"ValidationError\",\"detail\":\"revision 1 is approved already, by X\",\"code\":\"revision_already_approved\",\"params\":{\"revision\":\"1\",\"approver\":\"X\"}}"
+    },
+    "execution_approved": {
+      "status": 409,
+      "type": "application/json",
+      "code": "execution_package_incomplete",
+      "detail": "{\"error\":\"ConflictError\",\"detail\":\"an execution package cannot be exported yet: wiring_and_terminal_connectivity, control_schematics, orderable_parts, mechanical_layout are not produced\",\"code\":\"execution_package_incomplete\",\"params\":{\"revision\":\"1\",\"missing\":\"wiring_and_terminal_connectivity,contro"
+    },
+    "export_with_client_revision_fields": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"extra_forbidden\",\"loc\":[\"body\",\"approved_by\"],\"msg\":\"Extra inputs are not permitted\",\"input\":\"X\"}]}"
+    },
+    "get_after_approval": {
+      "status": 200,
+      "approved_snapshot_sha256": "40beff92fcac482a05f00813e173ea3a3c1e407f02dddf7d9356eda85963b293",
+      "snapshot_sha256": "40beff92fcac482a05f00813e173ea3a3c1e407f02dddf7d9356eda85963b293",
+      "export_status": "review_approved",
+      "validated": true
+    },
+    "company_settings_get": {
+      "status": 200,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"settings\":null,\"updated_by\":\"\",\"updated_at\":null}"
+    },
+    "company_settings_put": {
+      "status": 422,
+      "type": "application/json",
+      "code": null,
+      "detail": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\",\"settings\"],\"msg\":\"Input should be a valid dictionary\",\"input\":null}]}"
+    },
+    "replay_after_profile_change": {
+      "status": 200,
+      "type": "application/pdf",
+      "code": null,
+      "detail": "35332 bytes"
+    }
+  },
+  "states": {
+    "unapproved": {
+      "pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "35332 bytes"
+      },
+      "calculations_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "8787 bytes"
+      },
+      "dxf": {
+        "status": 200,
+        "type": "application/dxf",
+        "code": null,
+        "detail": "114386 bytes"
+      },
+      "qet": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "79997 bytes"
+      },
+      "aml": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "28840 bytes"
+      },
+      "devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1548 bytes"
+      },
+      "parts_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "858 bytes"
+      },
+      "cables_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "613 bytes"
+      },
+      "circuits_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "583 bytes"
+      },
+      "terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1245 bytes"
+      },
+      "eplan_devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "2300 bytes"
+      },
+      "ace_components_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1287 bytes"
+      },
+      "ace_terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1553 bytes"
+      },
+      "quotation_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "7633 bytes"
+      },
+      "quotation_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1663 bytes"
+      },
+      "plc_st": {
+        "status": 200,
+        "type": "text/plain; charset=utf-8",
+        "code": null,
+        "detail": "2320 bytes"
+      },
+      "plc_io_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1441 bytes"
+      },
+      "json": {
+        "status": 200,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"export_status\":{\"label\":\"REVIEW APPROVED — STUDY, NOT FOR EXECUTION\",\"identity\":\"ADV live, revision 01, approved by X on 2026-10-23, design 40beff92fcac, rules 2026.10.23.1\"},\"findings\":[{\"code\":\"integrity_drive_cable_unchecked\",\"severity\":\"info\",\"board_id\":\"PP1\",\"circuit_id\":\"c4\",\"device_id\":null"
+      }
+    },
+    "draft": {
+      "pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "34776 bytes"
+      },
+      "calculations_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "8648 bytes"
+      },
+      "dxf": {
+        "status": 200,
+        "type": "application/dxf",
+        "code": null,
+        "detail": "113274 bytes"
+      },
+      "qet": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "79942 bytes"
+      },
+      "aml": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "28790 bytes"
+      },
+      "devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1498 bytes"
+      },
+      "parts_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "808 bytes"
+      },
+      "cables_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "563 bytes"
+      },
+      "circuits_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "533 bytes"
+      },
+      "terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1195 bytes"
+      },
+      "eplan_devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "2250 bytes"
+      },
+      "ace_components_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1237 bytes"
+      },
+      "ace_terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1503 bytes"
+      },
+      "quotation_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "7469 bytes"
+      },
+      "quotation_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1613 bytes"
+      },
+      "plc_st": {
+        "status": 200,
+        "type": "text/plain; charset=utf-8",
+        "code": null,
+        "detail": "2270 bytes"
+      },
+      "plc_io_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1391 bytes"
+      },
+      "json": {
+        "status": 200,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"export_status\":{\"label\":\"DRAFT — NOT FOR EXECUTION\",\"identity\":\"Unsaved draft: not a saved, validated or approved revision\"},\"findings\":[{\"code\":\"integrity_drive_cable_unchecked\",\"severity\":\"info\",\"board_id\":\"PP1\",\"circuit_id\":\"c4\",\"device_id\":null,\"values\":{},\"message\":\"Booster (test): the cable "
+      }
+    },
+    "approved": {
+      "pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "35332 bytes"
+      },
+      "calculations_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "8787 bytes"
+      },
+      "dxf": {
+        "status": 200,
+        "type": "application/dxf",
+        "code": null,
+        "detail": "114386 bytes"
+      },
+      "qet": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "79997 bytes"
+      },
+      "aml": {
+        "status": 200,
+        "type": "application/xml",
+        "code": null,
+        "detail": "28840 bytes"
+      },
+      "devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1548 bytes"
+      },
+      "parts_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "858 bytes"
+      },
+      "cables_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "613 bytes"
+      },
+      "circuits_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "583 bytes"
+      },
+      "terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1245 bytes"
+      },
+      "eplan_devices_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "2300 bytes"
+      },
+      "ace_components_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1287 bytes"
+      },
+      "ace_terminals_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1553 bytes"
+      },
+      "quotation_pdf": {
+        "status": 200,
+        "type": "application/pdf",
+        "code": null,
+        "detail": "7633 bytes"
+      },
+      "quotation_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1663 bytes"
+      },
+      "plc_st": {
+        "status": 200,
+        "type": "text/plain; charset=utf-8",
+        "code": null,
+        "detail": "2320 bytes"
+      },
+      "plc_io_csv": {
+        "status": 200,
+        "type": "text/csv; charset=utf-8",
+        "code": null,
+        "detail": "1441 bytes"
+      },
+      "json": {
+        "status": 200,
+        "type": "application/json",
+        "code": null,
+        "detail": "{\"export_status\":{\"label\":\"REVIEW APPROVED — STUDY, NOT FOR EXECUTION\",\"identity\":\"ADV live, revision 01, approved by X on 2026-10-23, design 40beff92fcac, rules 2026.10.23.1\"},\"findings\":[{\"code\":\"integrity_drive_cable_unchecked\",\"severity\":\"info\",\"board_id\":\"PP1\",\"circuit_id\":\"c4\",\"device_id\":null"
+      }
+    }
+  }
+}
