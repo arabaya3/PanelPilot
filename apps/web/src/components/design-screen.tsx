@@ -1538,12 +1538,7 @@ export function DesignScreen({
               )}
             </Panel>
             {designed && token !== null && !stale && hasPlcOutputs && (
-              <PlcPanel
-                token={token}
-                project={designed}
-                profile={designedProfile}
-                saveImpl={saveImpl}
-              />
+              <PlcPanel token={token} project={designed} profile={designedProfile} />
             )}
           </>,
         )}

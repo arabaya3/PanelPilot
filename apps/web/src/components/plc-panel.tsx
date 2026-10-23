@@ -1,15 +1,17 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { useOutcomeText } from '@/components/design/note-text';
-import { exportDesign, writePlcProgram, type DesignProject, type PlcProgram } from '@/lib/design';
+import { writePlcProgram, type DesignProject, type PlcProgram } from '@/lib/design';
 
 /**
  * The control program under a designed board: the Structured Text that drives
- * every PLC-switched circuit's contactor, the checker's verdict on it, and the
- * program and its I/O list as files.
+ * every PLC-switched circuit's contactor and the checker's verdict on it. The
+ * program and its I/O list are shown as files not exported yet: each could
+ * carry its draft mark only as a comment, which an import strips
+ * (`export_format_unprotected`).
  *
  * The verdict is shown as the checker gave it: "valid" only when the code was
  * parsed in full and nothing was found.
@@ -19,17 +21,15 @@ export function PlcPanel({
   project,
   profile,
   writeImpl = writePlcProgram,
-  exportImpl = exportDesign,
-  saveImpl,
 }: {
   token: string;
   project: DesignProject;
   profile: Record<string, unknown> | null;
   writeImpl?: typeof writePlcProgram;
-  exportImpl?: typeof exportDesign;
-  saveImpl: (blob: Blob, filename: string) => void;
 }) {
   const t = useTranslations('design.plc');
+  const tDesign = useTranslations('design');
+  const id = useId();
   const say = useOutcomeText();
   const [program, setProgram] = useState<PlcProgram | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -42,15 +42,6 @@ export function PlcPanel({
     setWorking(false);
     if (outcome.kind === 'written') {
       setProgram(outcome.program);
-    } else {
-      setMessage(say(outcome));
-    }
-  }
-
-  async function download(format: 'plc_st' | 'plc_io_csv') {
-    const outcome = await exportImpl({ token, project, format, profile });
-    if (outcome.kind === 'exported') {
-      saveImpl(outcome.blob, outcome.filename);
     } else {
       setMessage(say(outcome));
     }
@@ -76,25 +67,28 @@ export function PlcPanel({
         </button>
         <button
           type="button"
+          disabled
+          aria-describedby={`${id}-unavailable`}
           data-testid="plc-export-st"
-          onClick={() => {
-            void download('plc_st');
-          }}
+          data-unavailable="true"
           className="btn btn-sm btn-secondary"
         >
           {t('st')}
         </button>
         <button
           type="button"
+          disabled
+          aria-describedby={`${id}-unavailable`}
           data-testid="plc-export-io"
-          onClick={() => {
-            void download('plc_io_csv');
-          }}
+          data-unavailable="true"
           className="btn btn-sm btn-secondary"
         >
           {t('io')}
         </button>
       </div>
+      <p id={`${id}-unavailable`} className="text-sm text-text-muted" data-testid="plc-unavailable">
+        {tDesign('errors.export_format_unprotected')}
+      </p>
 
       {message && (
         <p role="status" className="text-sm" data-testid="plc-message">

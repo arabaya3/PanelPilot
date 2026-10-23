@@ -58,6 +58,12 @@ CSV_FORMATS = (
 )
 OTHER_FORMATS = ("dxf", "qet", "aml", "json", "plc_st")
 ALL_FORMATS = PDF_FORMATS + CSV_FORMATS + OTHER_FORMATS
+#: The formats whose draft mark would only be a comment a normal import strips:
+#: refused on every export path (``export_format_unprotected``) until a mark
+#: that survives import is shown.
+BLOCKED_FORMATS = (*CSV_FORMATS, "qet", "aml", "plc_st")
+#: The formats exported, each carrying a visible mark.
+ALLOWED_FORMATS = tuple(f for f in ALL_FORMATS if f not in BLOCKED_FORMATS)
 
 #: A project with a lighting circuit (1.5 mm2 cable) and a PLC-switched motor,
 #: so every format, the control program included, has something to export.
@@ -346,7 +352,7 @@ def test_every_export_format_is_covered() -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("fmt", ALL_FORMATS)
+@pytest.mark.parametrize("fmt", ALLOWED_FORMATS)
 def test_draft_export_never_prints_forged_approval_and_is_marked(
     client: TestClient, fmt: str
 ) -> None:
@@ -361,9 +367,22 @@ def test_draft_export_never_prints_forged_approval_and_is_marked(
     if fmt in PDF_FORMATS:
         for number, page in enumerate(pdf_pages(response.content), start=1):
             assert DRAFT_WORDS in page, f"{fmt} page {number} unmarked"
-    if fmt in CSV_FORMATS:
-        first = body.splitlines()[0]
-        assert DRAFT_WORDS in first or "DRAFT" in first, f"{fmt}: mark not on the first line"
+
+
+def assert_unprotected(response: Any, fmt: str) -> None:
+    """The refusal of a format whose draft mark would not survive import."""
+    assert response.status_code == 409, f"{fmt}: {response.status_code} {response.text[:300]}"
+    assert "content-disposition" not in response.headers, f"{fmt}: a file was sent"
+    body = error(response)
+    assert body["code"] == "export_format_unprotected"
+    assert body["params"]["format"] == fmt
+    assert body["params"]["reason"] == "draft_mark_not_persistent"
+    assert set(body["params"]["allowed"].split(",")) == set(ALLOWED_FORMATS)
+
+
+@pytest.mark.parametrize("fmt", BLOCKED_FORMATS)
+def test_draft_export_of_an_unprotected_format_is_refused(client: TestClient, fmt: str) -> None:
+    assert_unprotected(draft_export(client, forged(designed_project(client)), fmt), fmt)
 
 
 def test_draft_json_blanks_checker_and_approver(client: TestClient) -> None:
@@ -545,7 +564,7 @@ def test_save_ignores_forged_approval_in_the_request(client: TestClient, engine:
     assert "REVIEW APPROVED" not in body
 
 
-@pytest.mark.parametrize("fmt", ALL_FORMATS)
+@pytest.mark.parametrize("fmt", ALLOWED_FORMATS)
 def test_unapproved_revision_export_is_draft_with_identity(
     client: TestClient, engine: Engine, fmt: str
 ) -> None:
@@ -560,7 +579,7 @@ def test_unapproved_revision_export_is_draft_with_identity(
         assert row["snapshot_sha256"][:8] in body, f"{fmt}: revision identity not printed"
 
 
-@pytest.mark.parametrize("fmt", ALL_FORMATS)
+@pytest.mark.parametrize("fmt", ALLOWED_FORMATS)
 def test_approved_revision_export_carries_db_approval(
     client: TestClient, engine: Engine, fmt: str
 ) -> None:
@@ -580,6 +599,17 @@ def test_approved_revision_export_carries_db_approval(
     if fmt in PDF_FORMATS:
         for page in pdf_pages(response.content):
             assert DRAFT_WORDS in page
+
+
+@pytest.mark.parametrize("fmt", BLOCKED_FORMATS)
+@pytest.mark.parametrize("approved", [False, True])
+def test_revision_export_of_an_unprotected_format_is_refused(
+    client: TestClient, fmt: str, approved: bool
+) -> None:
+    saved = save(client)
+    if approved:
+        assert approve(client, saved["id"], 1).status_code == 200
+    assert_unprotected(revision_export(client, saved["id"], 1, fmt), fmt)
 
 
 def test_approval_cannot_be_forged_through_the_approval_body(
@@ -664,7 +694,7 @@ def test_tampered_snapshot_fails_integrity(client: TestClient, engine: Engine) -
     row = revision_row(engine, saved["id"], 1)
     snapshot = tampered(row["design_snapshot"])
     update_row(engine, saved["id"], 1, design_snapshot=snapshot)
-    for fmt in ("pdf", "circuits_csv", "json"):
+    for fmt in ("pdf", "dxf", "json"):
         response = revision_export(client, saved["id"], 1, fmt)
         assert response.status_code >= 400, f"{fmt}: tampered snapshot exported"
         assert error(response)["code"] == "snapshot_integrity_failed"
@@ -724,7 +754,7 @@ def test_legacy_revision_without_snapshot_is_not_validated(
 ) -> None:
     saved = save(client)
     update_row(engine, saved["id"], 1, design_snapshot=None, snapshot_sha256=None)
-    for fmt in ("pdf", "circuits_csv", "json"):
+    for fmt in ("pdf", "dxf", "json"):
         response = revision_export(client, saved["id"], 1, fmt)
         assert response.status_code in (409, 422), response.status_code
         assert error(response)["code"] == "revision_not_validated"
@@ -985,7 +1015,7 @@ def _forbidden_in(text: str) -> list[str]:
     return [word for word in FORBIDDEN_WORDING if word in lowered]
 
 
-@pytest.mark.parametrize("fmt", ALL_FORMATS)
+@pytest.mark.parametrize("fmt", ALLOWED_FORMATS)
 @pytest.mark.parametrize("state", ["draft", "unapproved", "approved"])
 def test_no_export_says_issued_or_execution_ready(client: TestClient, fmt: str, state: str) -> None:
     """Defect 3: "Issued under …" and "issued for review" appeared in PDF/DXF/calc."""

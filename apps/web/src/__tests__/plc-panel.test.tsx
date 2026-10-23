@@ -2,11 +2,11 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlcPanel } from '@/components/plc-panel';
-import type { exportDesign, writePlcProgram, DesignProject, PlcProgram } from '@/lib/design';
+import type { writePlcProgram, DesignProject, PlcProgram } from '@/lib/design';
 
 import { renderApp } from './helpers';
 
-/** The control program under a designed board: written, checked, downloaded. */
+/** The control program under a designed board: written and checked; its files are not exported yet. */
 
 const PROJECT = { info: { name: 'Pocket' }, boards: [], parts: [] } as unknown as DesignProject;
 
@@ -25,9 +25,7 @@ const PROGRAM: PlcProgram = {
 };
 
 function panel(overrides: Partial<Parameters<typeof PlcPanel>[0]> = {}) {
-  renderApp(
-    <PlcPanel token="tok" project={PROJECT} profile={null} saveImpl={vi.fn()} {...overrides} />,
-  );
+  renderApp(<PlcPanel token="tok" project={PROJECT} profile={null} {...overrides} />);
 }
 
 describe('plc panel', () => {
@@ -77,20 +75,17 @@ describe('plc panel', () => {
     );
   });
 
-  it('downloads the program and the I/O list', async () => {
-    const blob = new Blob(['x']);
-    const exportImpl = vi
-      .fn<typeof exportDesign>()
-      .mockResolvedValue({ kind: 'exported', blob, filename: 'Pocket.st' });
-    const saveImpl = vi.fn();
-    panel({ exportImpl, saveImpl });
-    fireEvent.click(screen.getByTestId('plc-export-st'));
-    await vi.waitFor(() => {
-      expect(saveImpl).toHaveBeenCalledWith(blob, 'Pocket.st');
-    });
-    fireEvent.click(screen.getByTestId('plc-export-io'));
-    await vi.waitFor(() => {
-      expect(exportImpl.mock.calls[1]?.[0].format).toBe('plc_io_csv');
-    });
+  it('shows the program and the I/O list as not exportable yet, and why', () => {
+    panel();
+    for (const testId of ['plc-export-st', 'plc-export-io']) {
+      const button = screen.getByTestId(testId);
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.getAttribute('aria-describedby')).toBe(
+        screen.getByTestId('plc-unavailable').id,
+      );
+    }
+    expect(screen.getByTestId('plc-unavailable').textContent).toBe(
+      'Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.',
+    );
   });
 });

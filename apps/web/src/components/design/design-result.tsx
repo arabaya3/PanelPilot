@@ -8,7 +8,7 @@ import { useNoteText } from '@/components/design/note-text';
 import { fitZoom, stepZoom } from '@/components/design/workspace';
 import { DownloadIcon, FitIcon, ZoomInIcon, ZoomOutIcon } from '@/components/icons';
 import { Notice } from '@/components/ui';
-import type { BoardDesignResponse, ExportFormat } from '@/lib/design';
+import { isUnprotected, type BoardDesignResponse, type ExportFormat } from '@/lib/design';
 
 /** Every export the API offers for a designed project, in the order shown. */
 export const FORMATS: ExportFormat[] = [
@@ -285,10 +285,13 @@ export function ExportPanel({
   testIdPrefix?: string;
 }) {
   const t = useTranslations('design');
+  const unavailableId = useId();
+  const available = FORMATS.filter((format) => !isUnprotected(format));
+  const unavailable = FORMATS.filter((format) => isUnprotected(format));
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {FORMATS.map((format) => (
+        {available.map((format) => (
           <button
             key={format}
             type="button"
@@ -303,6 +306,33 @@ export function ExportPanel({
           </button>
         ))}
       </div>
+      {unavailable.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* Shown, not hidden, so it is clear these exist and why they cannot be had yet. */}
+            {unavailable.map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled
+                aria-describedby={unavailableId}
+                data-testid={`${testIdPrefix}-${format}`}
+                data-unavailable="true"
+                className="btn btn-sm btn-secondary"
+              >
+                {t(`format.${format}`)}
+              </button>
+            ))}
+          </div>
+          <p
+            id={unavailableId}
+            className="text-sm text-text-muted"
+            data-testid={`${testIdPrefix}-unavailable`}
+          >
+            {t('errors.export_format_unprotected')}
+          </p>
+        </div>
+      )}
       {exportError && (
         <div className="mt-3">
           <Notice tone="critical">{exportError}</Notice>

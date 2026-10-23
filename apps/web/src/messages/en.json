@@ -1010,6 +1010,7 @@
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
       "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
+      "export_format_unprotected": "Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.",
       "snapshot_integrity_failed": "The stored design of this revision does not match its recorded fingerprint, so it is not exported. Save a new revision.",
       "unknown_fields": "{count, plural, one {The server does not accept the field {fields}; remove it} other {The server does not accept the fields {fields}; remove them}}, or reload the page if PanelPilot was updated.",
       "revision_conflict": "Another revision was saved at the same time; save again.",

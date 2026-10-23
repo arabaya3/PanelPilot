@@ -72,6 +72,7 @@ export function QuotationPanel({
   const t = useTranslations('design.quote');
   const say = useOutcomeText();
   const id = useId();
+  const tDesign = useTranslations('design');
   const [rates, setRates] = useState<Rates>(
     currency ? { ...INITIAL_RATES, currency } : INITIAL_RATES,
   );
@@ -117,7 +118,7 @@ export function QuotationPanel({
     }
   }
 
-  async function download(format: 'quotation_pdf' | 'quotation_csv') {
+  async function download(format: 'quotation_pdf') {
     const outcome = await exportImpl({ token, project, format, profile, pricing: pricing() });
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
@@ -191,15 +192,22 @@ export function QuotationPanel({
         </button>
         <button
           type="button"
+          disabled
+          aria-describedby={`${id}-unavailable`}
           data-testid="quote-export-csv"
-          onClick={() => {
-            void download('quotation_csv');
-          }}
+          data-unavailable="true"
           className="btn btn-sm btn-secondary"
         >
           {t('csv')}
         </button>
       </div>
+      <p
+        id={`${id}-unavailable`}
+        className="text-sm text-text-muted"
+        data-testid="quote-unavailable"
+      >
+        {tDesign('errors.export_format_unprotected')}
+      </p>
 
       {message && (
         <p role="status" className="text-sm" data-testid="quote-message">

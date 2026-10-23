@@ -626,7 +626,8 @@ def export_revision(
         NotFoundError: If no such project or revision is the caller's
             (``revision_not_found``).
         ConflictError: ``revision_not_validated``, ``snapshot_integrity_failed``,
-            ``revision_stale``, or, for execution, always
+            ``revision_stale``, ``export_format_unprotected`` for a format
+            that cannot keep a mark once imported, or, for execution, always
             ``execution_package_incomplete``.
         ValidationError: If a quotation lacks pricing or a control program
             has no PLC-switched circuit.
@@ -664,6 +665,7 @@ def export_revision(
                 "blockers": ",".join(missing),
             },
         )
+    design_domain.refuse_unprotected(request.format)
     stored = _check_snapshot(row, number)
     _refuse_stale(row, number)
     design_domain.require_format(session=session, user=user, export_format=request.format)

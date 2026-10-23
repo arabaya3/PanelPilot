@@ -12,6 +12,8 @@ import {
 } from '@/components/design/readiness';
 import {
   exportRevision,
+  isUnprotected,
+  UNPROTECTED_FORMATS,
   tooLargeOf,
   tooLongOf,
   unknownFieldsOf,
@@ -53,6 +55,9 @@ vi.mock('@/lib/design', async (importOriginal) => {
 });
 
 const SHA = 'a'.repeat(64);
+
+const UNAVAILABLE =
+  'Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.';
 
 const REQUEST = {
   info: { name: 'Stored tower', number: '', customer: '', consultant: '', contractor: '' },
@@ -519,6 +524,48 @@ describe('the review view', () => {
     expect(saveImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the formats whose draft mark an import strips as unavailable, and why', async () => {
+    const exportRevisionImpl = vi.fn<typeof exportRevision>();
+    renderScreen({ exportRevisionImpl });
+    await openStored();
+    const reason = review().getByTestId('revision-export-unavailable');
+    expect(reason.textContent).toBe(UNAVAILABLE);
+    for (const format of UNPROTECTED_FORMATS) {
+      if (format === 'quotation_csv' || format === 'plc_io_csv' || format === 'plc_st') continue;
+      const button = review().getByTestId<HTMLButtonElement>(`revision-export-${format}`);
+      expect(button.disabled, format).toBe(true);
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      fireEvent.click(button);
+    }
+    for (const format of ['pdf', 'calculations_pdf', 'dxf', 'json'] as const) {
+      expect(review().getByTestId<HTMLButtonElement>(`revision-export-${format}`).disabled).toBe(
+        false,
+      );
+    }
+    expect(exportRevisionImpl).not.toHaveBeenCalled();
+  });
+
+  it('says a 409 export_format_unprotected as the unavailable reason', async () => {
+    const exportRevisionImpl = vi.fn<typeof exportRevision>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'circuits_csv cannot keep a visible draft mark once imported',
+      code: 'export_format_unprotected',
+      params: {
+        format: 'circuits_csv',
+        reason: 'draft_mark_not_persistent',
+        allowed: 'pdf,dxf,quotation_pdf,calculations_pdf,json',
+      },
+    });
+    const saveImpl = vi.fn();
+    renderScreen({ exportRevisionImpl, saveImpl });
+    await openStored();
+    fireEvent.click(review().getByTestId('revision-export-pdf'));
+    await waitFor(() => {
+      expect(review().getAllByText(UNAVAILABLE)).toHaveLength(2);
+    });
+    expect(saveImpl).not.toHaveBeenCalled();
+  });
+
   it('says a stale revision needs a new save, and holds approval', async () => {
     const exportRevisionImpl = vi.fn<typeof exportRevision>().mockResolvedValue({
       kind: 'refused',
@@ -603,6 +650,59 @@ describe('the draft export', () => {
     expect(exportImpl).toHaveBeenCalledTimes(1);
     expect(overview().getByLabelText<HTMLInputElement>('Project name').value).toBe('Stored tower');
   });
+
+  it('offers only the formats that keep a visible mark, and says a 409 as the reason', async () => {
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    const exportImpl = vi.fn<typeof exportDesign>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'qet cannot keep a visible draft mark once imported',
+      code: 'export_format_unprotected',
+      params: { format: 'qet', reason: 'draft_mark_not_persistent', allowed: 'pdf' },
+    });
+    renderScreen({ designImpl, exportImpl });
+    await openStored();
+    fireEvent.click(screen.getByText('Design the board', { selector: 'button' }));
+    const draft = await review().findByTestId('draft-export');
+    expect(within(draft).getByTestId('design-export-unavailable').textContent).toBe(UNAVAILABLE);
+    for (const format of ['qet', 'aml', 'devices_csv', 'circuits_csv', 'ace_terminals_csv']) {
+      const button = within(draft).getByTestId<HTMLButtonElement>(`design-export-${format}`);
+      expect(button.disabled, format).toBe(true);
+      fireEvent.click(button);
+    }
+    expect(exportImpl).not.toHaveBeenCalled();
+    fireEvent.click(within(draft).getByTestId('design-export-dxf'));
+    await waitFor(() => {
+      expect(within(draft).getAllByText(UNAVAILABLE)).toHaveLength(2);
+    });
+    expect(exportImpl.mock.calls[0]?.[0].format).toBe('dxf');
+  });
+});
+
+describe('the formats whose draft mark an import strips', () => {
+  it('are every CSV, QElectroTech, AutomationML and the PLC program, as the API refuses them', () => {
+    expect([...UNPROTECTED_FORMATS].sort()).toEqual(
+      [
+        'ace_components_csv',
+        'ace_terminals_csv',
+        'aml',
+        'cables_csv',
+        'circuits_csv',
+        'devices_csv',
+        'eplan_devices_csv',
+        'parts_csv',
+        'plc_io_csv',
+        'plc_st',
+        'qet',
+        'quotation_csv',
+        'terminals_csv',
+      ].sort(),
+    );
+    for (const format of ['pdf', 'calculations_pdf', 'quotation_pdf', 'dxf', 'json'] as const) {
+      expect(isUnprotected(format), format).toBe(false);
+    }
+  });
 });
 
 describe('translations', () => {
@@ -617,6 +717,7 @@ describe('translations', () => {
     'design.errors.revision_not_validated',
     'design.errors.revision_has_blocking_findings',
     'design.errors.unknown_fields',
+    'design.errors.export_format_unprotected',
     'design.projects.approveHeld.blocking',
     'workspace.context.approvalOutdated',
   ];

@@ -102,16 +102,27 @@ def test_a_tampered_rating_is_a_blocking_finding_in_the_draft(client: TestClient
     assert "integrity_device_above_cable_capacity" in codes
 
 
-def test_the_ecad_lists_are_exported(client: TestClient) -> None:
+def test_the_dxf_is_exported_marked(client: TestClient) -> None:
     project = client.post("/design/distribution-board", json=BOARD).json()["project"]
-    for format_, name in (
-        ("eplan_devices_csv", "Pocket.eplan-devices.csv"),
-        ("ace_components_csv", "Pocket.ace-components.csv"),
-        ("ace_terminals_csv", "Pocket.ace-terminals.csv"),
-    ):
-        exported = client.post("/design/export", json={"project": project, "format": format_})
-        assert exported.status_code == 200
-        assert f'filename="{name}"' in exported.headers["content-disposition"]
+    exported = client.post("/design/export", json={"project": project, "format": "dxf"})
+    assert exported.status_code == 200
+    assert 'filename="Pocket.dxf"' in exported.headers["content-disposition"]
+    assert b"NOT FOR EXECUTION" in exported.content
+
+
+@pytest.mark.parametrize(
+    "format_",
+    ["eplan_devices_csv", "ace_components_csv", "ace_terminals_csv", "circuits_csv", "qet", "aml"],
+)
+def test_a_format_whose_mark_an_import_strips_is_409(client: TestClient, format_: str) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    refused = client.post("/design/export", json={"project": project, "format": format_})
+    assert refused.status_code == 409
+    assert "content-disposition" not in refused.headers
+    body = refused.json()
+    assert body["code"] == "export_format_unprotected"
+    assert body["params"]["format"] == format_
+    assert body["params"]["reason"] == "draft_mark_not_persistent"
 
 
 def test_an_arabic_project_name_is_kept_for_the_download(client: TestClient) -> None:

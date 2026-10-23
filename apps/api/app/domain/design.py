@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
 from app.ai.plc.validation import validate_plc_code
-from app.core.errors import ValidationError
+from app.core.errors import ConflictError, ValidationError
 from app.design import (
     calc_report,
     designations,
@@ -115,6 +115,62 @@ ECAD_FORMATS = frozenset(
         ExportFormat.ACE_TERMINALS_CSV,
     }
 )
+
+
+#: The formats whose ``DRAFT — NOT FOR EXECUTION`` mark is only a comment,
+#: which a normal import strips, so the file would arrive unmarked. Until a
+#: mark that survives import is shown, none of them is exported, as a draft or
+#: as a revision. The rest stay: the PDFs print the mark on every page, the DXF
+#: carries it as visible TEXT entities, and the project JSON as its
+#: ``export_status`` field.
+UNPROTECTED_FORMATS = frozenset(
+    {
+        # CSV: the mark is a leading comment line; spreadsheet and ECAD list
+        # imports drop or misread it.
+        ExportFormat.DEVICES_CSV,
+        ExportFormat.PARTS_CSV,
+        ExportFormat.CABLES_CSV,
+        ExportFormat.CIRCUITS_CSV,
+        ExportFormat.TERMINALS_CSV,
+        ExportFormat.EPLAN_DEVICES_CSV,
+        ExportFormat.ACE_COMPONENTS_CSV,
+        ExportFormat.ACE_TERMINALS_CSV,
+        ExportFormat.QUOTATION_CSV,
+        ExportFormat.PLC_IO_CSV,
+        # QElectroTech and AutomationML: the mark is an XML comment, which an
+        # XML parser discards on import.
+        ExportFormat.QET,
+        ExportFormat.AML,
+        # PLC program (ST): the mark is a source comment, which a PLC IDE does
+        # not keep visible once the program is imported and compiled.
+        ExportFormat.PLC_ST,
+    }
+)
+
+
+def refuse_unprotected(export_format: ExportFormat) -> None:
+    """Refuse a format that cannot keep a draft mark once imported.
+
+    Args:
+        export_format: The file asked for.
+
+    Raises:
+        ConflictError: ``export_format_unprotected`` if ``export_format`` is
+            in ``UNPROTECTED_FORMATS``.
+    """
+    if export_format not in UNPROTECTED_FORMATS:
+        return
+    allowed = ",".join(f.value for f in ExportFormat if f not in UNPROTECTED_FORMATS)
+    raise ConflictError(
+        f"{export_format.value} cannot keep a visible draft mark once imported; "
+        f"export one of: {allowed}",
+        code="export_format_unprotected",
+        params={
+            "format": export_format.value,
+            "reason": "draft_mark_not_persistent",
+            "allowed": allowed,
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -424,7 +480,10 @@ def export_design(
             for without pricing settings, or a control program for a project
             with no PLC-switched circuit.
         AuthorizationError: If the caller's plan does not include the format.
+        ConflictError: ``export_format_unprotected`` for a format that cannot
+            keep a draft mark once imported.
     """
+    refuse_unprotected(request.format)
     require_format(session=session, user=user, export_format=request.format)
     company = _profile(request.profile)
     designated = designations.designate_project(_as_draft(request.project), company)

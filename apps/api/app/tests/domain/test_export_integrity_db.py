@@ -103,6 +103,25 @@ def test_exports_racing_an_approval_never_mislabel(
             assert "NOT FOR EXECUTION" in body
 
 
+def test_unprotected_exports_racing_an_approval_are_all_refused(
+    app: FastAPI, client: TestClient
+) -> None:
+    """No approval state, mid-race or after, lets a format with a strippable mark out."""
+    saved = save(client)
+    pid = saved["id"]
+    calls: list[Callable[[TestClient], Any]] = [
+        lambda c: revision_export(c, pid, 1, "circuits_csv") for _ in range(THREADS - 1)
+    ]
+    calls.insert(THREADS // 2, lambda c: approve(c, pid, 1))
+    results = _race(app, calls)
+    refused = [r for r in results if r.url.path.endswith("/export")]
+    assert len(refused) == THREADS - 1
+    for r in refused:
+        assert r.status_code == 409, r.text[:300]
+        assert "content-disposition" not in r.headers
+        assert r.json()["code"] == "export_format_unprotected"
+
+
 def test_concurrent_revisions_get_distinct_numbers_and_snapshots(
     app: FastAPI, client: TestClient, engine: Engine
 ) -> None:

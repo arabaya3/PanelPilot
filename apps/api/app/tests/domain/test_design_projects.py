@@ -315,7 +315,7 @@ def _export(
     tenant: uuid.UUID,
     saved: Any,
     purpose: str = "review",
-    fmt: str = "circuits_csv",
+    fmt: str = "json",
 ) -> Any:
     return design_projects.export_revision(
         session=as_tenant(),
@@ -337,7 +337,9 @@ def _approve(as_tenant: Any, tenant: uuid.UUID, saved: Any, approver: str = "R. 
 
 
 def _first_line(exported: Any) -> str:
-    return str(exported.content.decode("utf-8").lstrip("﻿").splitlines()[0])
+    """The export's status, as the project JSON states it: label, then identity."""
+    status = json.loads(exported.content)["export_status"]
+    return f"{status['label']} | {status['identity']}"
 
 
 def _set(engine: Engine, **columns: object) -> None:
@@ -381,6 +383,19 @@ def test_an_unapproved_revision_exports_as_a_draft(tenants, as_tenant) -> None: 
     first = _first_line(_export(as_tenant, a, _saved(as_tenant, a)))
     assert "DRAFT — NOT FOR EXECUTION" in first
     assert "revision 01" in first
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_a_format_whose_mark_an_import_strips_is_refused(tenants, as_tenant, approved) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    if approved:
+        _approve(as_tenant, a, saved)
+    for fmt in ("circuits_csv", "qet", "aml", "plc_st"):
+        with pytest.raises(ConflictError) as refused:
+            _export(as_tenant, a, saved, fmt=fmt)
+        assert refused.value.code == "export_format_unprotected"
+        assert refused.value.params["format"] == fmt
 
 
 def test_execution_is_always_refused_and_names_what_is_missing(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
@@ -630,7 +645,7 @@ def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tena
         user=_user(a),
         project_id=saved.id,
         number=2,
-        request=RevisionExportRequest.model_validate({"format": "circuits_csv"}),
+        request=RevisionExportRequest.model_validate({"format": "json"}),
     )
     assert "DRAFT — NOT FOR EXECUTION" in _first_line(second)
 

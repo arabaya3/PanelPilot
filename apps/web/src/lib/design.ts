@@ -7,6 +7,36 @@ export type BoardDesignResponse = components['schemas']['BoardDesignResponse'];
 /** A project as the API returns it, and as it is sent back to export. */
 export type DesignProject = components['schemas']['DesignProject-Output'];
 export type ExportFormat = components['schemas']['ExportFormat'];
+
+/** The code the API refuses a format with whose draft mark an import would strip. */
+export const EXPORT_FORMAT_UNPROTECTED = 'export_format_unprotected';
+
+/**
+ * The formats the API does not export yet (`export_format_unprotected`), as a
+ * draft or as a revision: every CSV, QElectroTech, AutomationML and the PLC
+ * program. Each carries its draft mark only as a comment, which a normal
+ * import strips. Mirrors `app.domain.design.UNPROTECTED_FORMATS`.
+ */
+export const UNPROTECTED_FORMATS: ReadonlySet<ExportFormat> = new Set<ExportFormat>([
+  'devices_csv',
+  'parts_csv',
+  'cables_csv',
+  'circuits_csv',
+  'terminals_csv',
+  'eplan_devices_csv',
+  'ace_components_csv',
+  'ace_terminals_csv',
+  'quotation_csv',
+  'plc_io_csv',
+  'qet',
+  'aml',
+  'plc_st',
+]);
+
+/** Whether the API refuses to export `format` until its draft mark survives import. */
+export function isUnprotected(format: ExportFormat): boolean {
+  return UNPROTECTED_FORMATS.has(format);
+}
 export type LoadKind = components['schemas']['LoadKind'];
 export type MotorStarter = components['schemas']['MotorStarter'];
 export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];

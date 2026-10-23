@@ -107,6 +107,18 @@ describe('quotation', () => {
     expect(exportImpl.mock.calls[0]?.[0].pricing?.currency).toBe('JOD');
   });
 
+  it('shows the quotation CSV as not exportable yet, and why', () => {
+    const exportImpl = vi.fn<typeof exportDesign>();
+    panel({ exportImpl });
+    const button = screen.getByTestId<HTMLButtonElement>('quote-export-csv');
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(exportImpl).not.toHaveBeenCalled();
+    expect(screen.getByTestId('quote-unavailable').textContent).toBe(
+      'Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.',
+    );
+  });
+
   it('shows a refused price list in the server’s words', async () => {
     panel({
       importImpl: vi
