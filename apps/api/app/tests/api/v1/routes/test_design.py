@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.api import deps
 from app.api.v1.routes import design as design_route
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.errors import install_exception_handlers
 from app.domain.rate_limit import InMemoryRateLimitStore
@@ -338,15 +339,30 @@ def test_out_of_bounds_pricing_is_refused(client: TestClient, pricing: dict[str,
     assert response.status_code == 422, response.text
 
 
-def test_the_estimate_needs_a_signed_in_caller() -> None:
-    app = FastAPI()
-    app.include_router(design_route.router, prefix="/design")
-    app.dependency_overrides[get_session] = object
-    install_exception_handlers(app)
-    with TestClient(app) as anonymous:
-        response = anonymous.post(
-            "/design/quotation", json={"project": {}, "pricing": {"currency": "JOD"}}
-        )
+def test_the_estimate_needs_a_signed_in_caller(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Decoding the (absent) token reads the settings, which the unit job
+    # does not configure: provide them, as tests/core/test_security.py does.
+    for name, value in {
+        "ENVIRONMENT": "dev",
+        "DATABASE_URL": "postgresql+psycopg://test:test@localhost:5432/test",
+        "OPENSEARCH_URL": "http://localhost:9200",
+        "OPENAI_API_KEY": "test-key",
+        "JWT_SECRET": "test-secret-at-least-32-bytes-long-ok",
+        "REDIS_URL": "redis://localhost:6379/0",
+    }.items():
+        monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    try:
+        app = FastAPI()
+        app.include_router(design_route.router, prefix="/design")
+        app.dependency_overrides[get_session] = object
+        install_exception_handlers(app)
+        with TestClient(app) as anonymous:
+            response = anonymous.post(
+                "/design/quotation", json={"project": {}, "pricing": {"currency": "JOD"}}
+            )
+    finally:
+        get_settings.cache_clear()
     assert response.status_code == 401
 
 

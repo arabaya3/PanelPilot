@@ -38,6 +38,7 @@ Project under test: `cde1feb4-2ebc-4d71-9231-164451017d49` ("P1 Signed Board", a
   - rules `2026.10.23.1`.
 
   Rev 1 has `approved_by`, `approved_at` and `approved_account` all null, and is `draft`.
+
 - Forging the account: `POST …/revisions/2/approval {approver, approved_account:"forged@example.com"}` returned 422 `request_invalid`, `extra_forbidden` at `body.approved_account`. The client cannot supply the account.
 - Seen here: right after the approval, the page showed "The inputs have changed since this design was made…". See defect D1.
 
@@ -69,12 +70,12 @@ Project under test: `cde1feb4-2ebc-4d71-9231-164451017d49` ("P1 Signed Board", a
 
 The files were read by pdfplumber and ezdxf in a throwaway `panelpilot-api` container, with the files mounted read-only and the script run with `-I`.
 
-| File             | Mark on every page                                                                                                 | Approver           | Hash             | Rules                   | Approving account |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------ | ---------------- | ----------------------- | ----------------- |
-| Drawing PDF      | "REVIEW APPROVED — STUDY, NOT FOR EXECUTION" on 10/10 pages; no DRAFT, NOT APPROVED or FORGED                      | "Eng. Signed Test" | `3c04b20d09f5`   | `2026.10.23.1`          | **absent**        |
-| Calculations PDF | 2/2 pages; "Review approved by Eng. Signed Test: a study, not for execution."                                      | yes                | yes              | yes                     | **absent**        |
-| DXF              | ezdxf audit: 0 errors. 40 mark texts on layer `TEXT` (on, not frozen)                                              | yes                | yes              | yes                     | **absent**        |
-| JSON             | envelope `{export_status:{label:"REVIEW APPROVED — STUDY, NOT FOR EXECUTION", identity:…}, findings[11], project}` | in the identity    | in the identity  | in the identity         | **absent**        |
+| File             | Mark on every page                                                                                                 | Approver           | Hash            | Rules           | Approving account |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------ | --------------- | --------------- | ----------------- |
+| Drawing PDF      | "REVIEW APPROVED — STUDY, NOT FOR EXECUTION" on 10/10 pages; no DRAFT, NOT APPROVED or FORGED                      | "Eng. Signed Test" | `3c04b20d09f5`  | `2026.10.23.1`  | **absent**        |
+| Calculations PDF | 2/2 pages; "Review approved by Eng. Signed Test: a study, not for execution."                                      | yes                | yes             | yes             | **absent**        |
+| DXF              | ezdxf audit: 0 errors. 40 mark texts on layer `TEXT` (on, not frozen)                                              | yes                | yes             | yes             | **absent**        |
+| JSON             | envelope `{export_status:{label:"REVIEW APPROVED — STUDY, NOT FOR EXECUTION", identity:…}, findings[11], project}` | in the identity    | in the identity | in the identity | **absent**        |
 
 - The hash and approver match the server record from step 3.
 - Renders of page 1, which I looked at: `30-render-drawing-pdf-page1.png` and `31-render-calculations-pdf-page1.png`. The stamp and identity line are legible top and bottom. The revision table shows 01 "first issue" without an approver and 02 with "Eng. Signed Test".
@@ -96,6 +97,7 @@ The files were read by pdfplumber and ezdxf in a throwaway `panelpilot-api` cont
   - `/auth/refresh` gets an invalid refresh token.
 
   Then "Save as new revision" with the note "expiry test".
+
 - Network:
   - `POST …/revisions` (invalid auth) returned 401;
   - `POST /auth/refresh` returned 401;
