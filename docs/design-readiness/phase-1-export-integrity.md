@@ -7,7 +7,7 @@ connectivity, soft-starter control, mechanical layout) has not started.
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Branch      | `feat/phase1-trustworthy-export`                                                                                                                         |
 | Base        | `daeb143`: a merge of #199 (`73ce76c`) and #202 (`6a96b74`), with no other changes                                                                       |
-| Tested head | `{{HEAD}}`                                                                                                                                               |
+| Tested head | `3837972` (code and evidence); the commit after it changes only this report                                                                              |
 | Depends on  | **#199** (design-screen stale-result handling) and **#202** (dependency advisories; supersedes #200 and #201). Retarget to `main` once both have merged. |
 | Contract    | [phase-1/contract.md](phase-1/contract.md)                                                                                                               |
 
@@ -96,19 +96,18 @@ Run on the tested head from a frozen `git worktree`, never from the live checkou
 
 | Check                                                                                                                                                               | Result                                                                                                                                                                                                                               |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Backend full suite                                                                                                                                                  | 3764 passed, 0 failed                                                                                                                                                                                                                |
-| DB-backed design, approval, tenancy, locking and concurrency (`test_design_projects`, `test_company_settings`, `test_export_integrity`, `test_export_integrity_db`) | 209 passed ×3 in a row, **0 skipped**                                                                                                                                                                                                |
+| Backend full suite                                                                                                                                                  | 3777 passed, 0 failed, 60 skipped                                                                                                                                                                                                    |
+| DB-backed design, approval, tenancy, locking and concurrency (`test_design_projects`, `test_company_settings`, `test_export_integrity`, `test_export_integrity_db`) | 209 passed ×3 on the review fixes, 210 passed ×2 on `3837972`; **0 skipped**                                                                                                                                                         |
 | black / ruff / mypy                                                                                                                                                 | clean / clean / clean (402 files)                                                                                                                                                                                                    |
 | Alembic                                                                                                                                                             | `alembic check` reports no drift. Clean database: upgrade, downgrade −1, upgrade. Previous schema `a7d1e3f5b2c8` with a legacy approved revision: upgrade keeps the row, its new columns are null, and its old approval is not bound |
-| Web                                                                                                                                                                 | vitest 890/890; typecheck, lint (0 errors) and prettier clean; build OK                                                                                                                                                              |
+| Web                                                                                                                                                                 | vitest 892/892; typecheck, lint (0 errors) and prettier clean; build exits 0 (it logs next-intl `ENVIRONMENT_FALLBACK` during static generation, from the unchanged locale provider)                                                 |
 | Shared types                                                                                                                                                        | regenerated with the OpenAPI dump; byte-identical after the later fixes                                                                                                                                                              |
 
 **Skips, all environmental, none in the required DB tests:**
 
-- 48 need a reachable OpenSearch, which CI provides as a service.
+- 55 need a reachable OpenSearch, which CI provides as a service.
 - 4 need the live model or a photo corpus.
 - 1 is "the registry holds no formulas", which skips on the base too.
-- 11 run only when `docs/verification-rubric.md` is mounted, as it is in compose and CI.
 
 ### The five failures from the 3719-pass run
 
@@ -150,6 +149,7 @@ A reviewer who wrote none of the code reviewed the full diff twice. Confirmed fi
 8. A failed rollback could mask the original error.
 
 Found while inspecting the exports: the PDF stamp drew a long identity over its label, making it unreadable on the calculations and quotation PDFs. The identity now has its own line, and a test reads both lines back.
+Found in the browser flow: right after a save, the page said the inputs had changed and held back the draft export until the board was designed again. The save's reply carries the title-block revision rows, and #199's input signature included them. A design now keeps a signature of its calculation inputs, so a save of unchanged inputs stays current, while a real edit still makes it stale. A test fails without the fix. This fix is covered by vitest only; it was not re-checked in the live browser.
 
 ## Live verification
 
