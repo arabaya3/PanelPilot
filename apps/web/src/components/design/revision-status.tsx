@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { useIsolate, useIsolatingTranslations } from '@/components/design/bidi';
 import { useNoteText } from '@/components/design/note-text';
 import {
   EXECUTION_GAPS,
@@ -62,20 +63,21 @@ export function ReadinessSteps({ readiness }: { readiness: Readiness }) {
  * falls back to the server's English.
  */
 export function useFindingText(): (finding: DesignFinding, circuit?: string | null) => string {
-  const t = useTranslations('design');
+  const t = useIsolatingTranslations('design');
+  const isolate = useIsolate();
   const noteText = useNoteText();
   return (finding, circuit) => {
     // A refused design names its refusal: said as that refusal is, after the general sentence.
     if (finding.code === 'design_refused') {
       const { refusal, subject, ...values } = finding.values ?? {};
       const reason = refusal && t.has(`errors.${refusal}`) ? t(`errors.${refusal}`, values) : '';
-      const said = subject && reason ? `${subject}: ${reason}` : reason;
+      const said = subject && reason ? `${isolate(subject)}: ${reason}` : reason;
       return said ? `${t('errors.design_refused')} ${said}` : t('errors.design_refused');
     }
     const key = `finding.${finding.code}`;
     if (t.has(key)) {
       const sentence = t(key, finding.values ?? {});
-      return circuit ? `${circuit}: ${sentence}` : sentence;
+      return circuit ? `${isolate(circuit)}: ${sentence}` : sentence;
     }
     if (t.has(`note.${finding.code}`)) {
       return noteText({ code: finding.code, text: finding.message, params: finding.values ?? {} });
@@ -107,7 +109,7 @@ export function FindingsList({
   /** The description of the load row a finding is about, as the schedule has it. */
   describe?: (finding: DesignFinding) => string | null;
 }) {
-  const t = useTranslations('design.findings');
+  const t = useIsolatingTranslations('design.findings');
   const findingText = useFindingText();
   if (findings.length === 0) {
     return (
@@ -179,7 +181,7 @@ export function ExecutionRefused({
   refusal: ExecutionRefusal;
   refused?: boolean;
 }) {
-  const t = useTranslations('design.exports');
+  const t = useIsolatingTranslations('design.exports');
   const known = new Set<string>();
   const unknown: string[] = [];
   for (const code of refusal.missing) {

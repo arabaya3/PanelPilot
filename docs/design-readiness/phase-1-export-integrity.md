@@ -188,36 +188,101 @@ Found in the browser flow: right after a save, the page said the inputs had chan
 - Drafts: "REVIEW APPROVED" and "FORGED" absent, DRAFT on every page.
 - DXF: 20–22 mark texts on a visible layer.
 
+## Closure round (after the first green CI)
+
+### Signed-in design ownership
+
+- **One shared session.** `/design` now runs under the signed-in account. An app-wide `AccountSessionProvider` holds the token pair in memory only. Home, `/review` and `/design` share it, with a single refresh in flight at a time.
+- **Every action uses the account.** Save, reopen, revise, approve and export all use the account's token and tenant.
+- **Trial mode is explicit.** A "Trial workspace" notice says saved work belongs to this browser's trial, and offers sign-in or account creation.
+- **Trial to account.** Trial work becomes an account's only through the existing server-side signup claim, which needs the trial's secret. The new user joins the trial's tenant, and no rows move. Signing in to an _existing_ account moves nothing: the typed work stays on the page, and saving it creates a new project in that account.
+- **Expiry and identity changes:**
+  - **401 while signed in:** never falls back to a trial. The page tries one refresh, then shows "Your session has ended" with a sign-in form, and keeps the entered data and the revision note.
+  - **A different account signing in:** clears the previous account's unsaved work, with a notice.
+  - **Late responses:** results from requests started under another identity are ignored.
+- **Sign-out revokes the refresh token on the server** (`POST /auth/logout`, 204, idempotent, scoped to the caller). Access tokens are stateless JWTs with a 3600 s TTL and no denylist, so an access token copied before sign-out keeps working for **up to 60 minutes**. Deactivating an account or revoking a role takes effect at once.
+- **Approval identity comes from the server.** `approved_by` is the name typed. `approved_account` is the email from the token at approval time, returned in `RevisionSummary` and shown only from that response. A client-sent `approved_account` is a 422. Exports carry the approver's name, not the email, and any member of the tenant can see the email.
+
+### `/design/quotation`
+
+- **No persisted or officially issued quotation exists.** The only issued one is `quotation_pdf` from a saved revision's export. It is built from the database snapshot, hash-checked, approver-from-row, tenant-scoped and marked on every page.
+- **Gap found and fixed.** On a revision export, the client's `pricing.cable_length_m` could add metres to cables with no length in the snapshot. It is now dropped, so quantities and devices come only from the snapshot.
+- **The client-input estimate stays, labelled.** `POST /design/quotation` returns a `QuotationEstimate`:
+  - `status: "provisional_estimate"`, a label, and the integrity findings with a `blocking` flag. A tampered 200 A on 1.5 mm² comes back blocking.
+  - The checker and approver are blanked, and there is no revision or approval field.
+  - The panel heading is "Provisional price estimate", with a banner in all three languages.
+- **Pricing bounds:**
+  - values 0…1e9 with 6 decimal places, and NaN and Infinity refused;
+  - a 3-letter currency code;
+  - cable length 0…10 000 m;
+  - at most 20 000 price-list entries.
+  - Bad price-list rows and keys over 120 characters are skipped, not truncated.
+- **Tests:**
+  - tampering: forged ratings, forged fields refused with 422, out-of-bound prices;
+  - authorization: 401 without a token, 404 for another tenant's revision;
+  - the provisional label, and that pricing cannot change revision quantities.
+
+### Export restrictions and the conditions for lifting them
+
+- **Execution export.** It stays refused unconditionally. A test pins that it is still refused when the list of missing parts is empty, so producing Phase 2's parts does not unlock it by itself.
+  - Releasing an execution package needs its own explicit, tested gate:
+    - a package-completeness check over every deliverable;
+    - an engineering validation recorded against the revision (who, when, and against which snapshot hash);
+    - an approval bound to that hash;
+    - no blocking findings;
+    - no stale rules, profile or policy.
+  - Each condition needs a refusal code. Until that gate exists and is reviewed, `execution_package_incomplete` is the only answer.
+- **Refused formats.** Each stays refused (409 `export_format_unprotected`, a localized reason in the UI) until its condition is shown with a representative import. None of these makes an editable file tamper-proof; the aim is only that a normal import cannot strip the warning without anyone noticing.
+
+| Format              | Acceptance criteria for re-enabling                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CSV (all lists)     | A status column with a fixed name and value, `DRAFT — NOT FOR EXECUTION` or the review label, on every data row. It must be shown to import into the target tools (EPLAN device import, the AutoCAD Electrical component and terminal imports, a spreadsheet) with the column kept or mapped, and with no change to the electrical columns' mapping. The import templates must be published with the export. |
+| QElectroTech (.qet) | A visible text element on every folio's title block or drawing area, not a comment. It must survive open → save in QElectroTech and be visible when printed.                                                                                                                                                                                                                                                 |
+| AutomationML (.aml) | A status attribute on the top-level InstanceHierarchy that a representative AML tool keeps on import and re-export, plus a visible element where the tool renders one.                                                                                                                                                                                                                                       |
+| PLC program (ST)    | A program-level guard that refuses to run while the program is a draft (for example a constant checked at start-up, with outputs held safe), as well as the comment. It must compile in the target IDE with the guard intact, and the guard must be reviewed by a controls engineer.                                                                                                                         |
+
+### Development settings inspection
+
+The owner authorized this inspection. It was read-only: one `BEGIN READ ONLY … ROLLBACK` on `panelpilot`, returning key names and counts only, with no values, secrets or customer text. It was not blocked.
+
+- **Company settings:** no rows saved.
+- **Revisions:**
+  - 39 in total; 32 have a snapshot and 7 predate snapshots.
+  - 13 carry a design profile. All 13 use only the top-level keys `key` and `market`, all market values are valid codes, and no nested keys exist. **No profile is broken by the strict nested validation.**
+  - 3 have a project name longer than 200 characters. None is approved. They open as stored but read `not_validated` (`request_not_valid`), and cannot be approved or exported until saved again with a shorter name. **Remediation:** shorten the name and save a new revision.
+- **Approvals:** 10 approved revisions. 9 are bound to their snapshot. 1 predates Phase 1 and is not bound, so it reads as not approved until it is saved again and re-approved. That is the intended behaviour.
+- **Schema:** at `b4e7a9c2d1f6`.
+
+### Changes between `3837972` and `b16639f`
+
+- **`b83bd8d`:** the report only.
+- **`b16639f`:** only the two export-integrity test files changed, in how they find their database:
+  - **No `TEST_DATABASE_URL`:** they skip with a reason that starts "needs Postgres", as the repository's other DB tests do. That is the unit job. CI's integration job fails the build on any skip with that reason, so in CI they always run.
+  - **Locally:** the database-name guard is kept, and it refuses anything not named `panelpilot_phase1_*`. The dev database `panelpilot` therefore cannot be used.
+  - **On GitHub Actions** (`GITHUB_ACTIONS=true`): the guard accepts the job's own service-container database, which is created for that job and discarded with it.
+  - **Checked locally:** without a database they skip; on the disposable database 173 pass; in CI mode on `panelpilot_ci_sim` 173 pass; the local guard refuses a non-disposable name.
+  - **No code path changed.** Neither test file can reach a development or production database: production is never configured in these environments, and the dev database is refused by name.
+
 ## Remaining blockers and decisions needing engineering input
 
-1. **The design screen ignores the signed-in account (blocker for a real signed-in workflow).**
-   - `/design` always works on its own anonymous trial session (`acquireTrial` in `design-screen.tsx`), and it did on the base and on `main` before this work.
-   - A project saved there belongs to a trial tenant. Signing in on `/review` does not move it.
-   - Tenancy, approval and export are enforced correctly within that tenant (verified), but design work is not yet attached to the user's account. Wiring the design screen to the signed-in session is authentication work outside this phase.
-2. **Execution release is impossible by design.** It needs wiring and terminal connectivity, control schematics, orderable parts and mechanical layout, which are Phase 2 and later.
-3. **Blocked formats (CSV, QET, AML, PLC).** Each needs an engineering decision on a persistent, import-safe draft identification before it can be re-enabled. Options to evaluate:
-   - a status column whose effect on EPLAN and ACE mapping is understood;
-   - a visible title-block text element in the QET or AML diagram itself;
-   - a PLC program that refuses to run in a DRAFT state.
-
-   Until then they stay refused.
-
-4. **Stored settings audit.** Profiles saved before strict nested validation might hold now-refused nested keys. They would then be refused on the next design, and their revisions would read as stale.
-   - The default profile and every market profile load.
-   - A read-only audit of the stored rows was not run in this phase (it was denied in this environment).
-   - Run it before deploying.
-5. **`POST /design/quotation`** prices a project the browser sends, with no integrity check. It returns data, not a file, so it carries no approval claim. Decide whether it should price only saved revisions.
-6. **Smaller UX items:**
-   - The over-long-field error names raw API paths (`request.info.customer`), not field labels.
-   - The "Execution export blocked" list is visible before it is requested, which is deliberate, so the gaps are always visible.
-7. **Arabic and Hebrew strings** were written by agents and need a native speaker's review.
+1. **Execution release** stays blocked until the gate above exists. This is deliberate and not part of Phase 2's completion.
+2. **CSV, QET, AML and PLC** stay refused until their acceptance criteria are shown.
+3. **Signed-in sessions are lost on reload,** because tokens are held in memory only. The page then comes back as an explicit trial. Decide whether a persistent session (for example an httpOnly refresh cookie) is wanted.
+4. **Access tokens live up to 60 minutes after sign-out.** A denylist or a shorter TTL is a product decision.
+5. **The approving account's email** is visible to every member of the tenant. It is not shown across tenants and not printed in exports. Confirm this is acceptable.
+6. **Trial projects after signing in to an existing account** stay with the trial. A claim for existing accounts would be a new server feature.
+7. **Arabic and Hebrew:** every string added in this PR needs a native speaker's review. That covers the electrical terms; النسخة for revision against المراجعة for review, and the gender agreement; the Arabic dual, few and many forms; the Hebrew dual forms; and the new account, expiry and field-path strings. The RTL isolation of values and marks is tested in jsdom, and was spot-checked in a browser before the last localization fixes.
+8. **Smaller items:**
+   - The Contents page lists drawing pages but not the appended findings sheets; the "N of M" counts are correct.
+   - The quotation PDF and CSV are English throughout.
+   - Units and catalogue or supplier text stay as entered.
 
 ## Environments left in place
 
 Not cleaned up, by request:
 
 - **Dev database `panelpilot`:** migrated to `b4e7a9c2d1f6` after the backup `backups/20261023-1430-pre-phase1/panelpilot.dump`.
-- **Disposable databases:** `panelpilot_phase1_test`, `_adv`, `_backend`, `_mig`, `_migclean` and `_migprev` (the last holds the legacy-row upgrade).
+- **Disposable databases:** `panelpilot_phase1_test`, `_adv`, `_backend`, `_mig`, `_migclean`, `_migprev` (the last holds the legacy-row upgrade) and `panelpilot_ci_sim` (used to check CI-mode database discovery).
 - **Compose services:** api, web, worker, postgres, opensearch and redis.
 - **Local test accounts:** disposable `e2e-p1*@example.com` accounts on the local stack. Their credentials are kept outside git.
 - **Untracked, not in this PR:**

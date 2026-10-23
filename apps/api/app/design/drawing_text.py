@@ -27,6 +27,12 @@ _LOCALES = Path(__file__).parent / "locale"
 #: Drawing languages with a catalogue; any other is drawn in English.
 LANGUAGES = frozenset({"en", "ar", "he"})
 
+#: A note's params that hold one of the drawing's own phrases (a market's
+#: name and its code's, from ``app.design.markets``), said in the drawing's
+#: language like any other. Every other param is a value: a board name, a
+#: rating, a load's description as the engineer typed it.
+_NAMED_PARAMS = frozenset({"market", "regulation"})
+
 
 @cache
 def _catalogue(language: str) -> Mapping[str, Mapping[str, str]]:
@@ -173,4 +179,8 @@ class Words:
         message = _catalogue(self.language)["note"].get(made.code)
         if message is None or made.code not in TEMPLATES:
             return made.text
-        return format_message(message, made.params, self.language)
+        params = {
+            name: self(value) if name in _NAMED_PARAMS else value
+            for name, value in made.params.items()
+        }
+        return format_message(message, params, self.language)

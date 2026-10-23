@@ -320,3 +320,109 @@ def test_resume_has_its_own_budget() -> None:
         assert refused.status_code == 429
     # The start budget is untouched by all that resuming.
     assert check_trial_start_rate_limit(store=store, client_ip="testclient") == 1
+
+
+# --- logout -------------------------------------------------------------------
+
+
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@requires_db
+def test_logout_revokes_the_refresh_token_so_it_cannot_refresh(client: TestClient) -> None:
+    """Sign-out used to be client-only: the refresh token kept working after it."""
+    pair = client.post("/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}).json()
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": pair["refresh_token"]},
+        headers=_bearer(pair["access_token"]),
+    )
+    assert response.status_code == 204, response.text
+    assert response.content == b""
+
+    refused = client.post("/api/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]})
+    assert refused.status_code == 401
+
+
+@requires_db
+def test_logout_after_a_rotation_ends_the_chain(client: TestClient) -> None:
+    """Revoking the live end of a rotated chain leaves nothing in it that refreshes."""
+    first = client.post(
+        "/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}
+    ).json()
+    second = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}
+    ).json()
+
+    client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": second["refresh_token"]},
+        headers=_bearer(second["access_token"]),
+    )
+    for token in (first["refresh_token"], second["refresh_token"]):
+        assert client.post("/api/v1/auth/refresh", json={"refresh_token": token}).status_code == 401
+
+
+@requires_db
+def test_logout_is_idempotent(client: TestClient) -> None:
+    pair = client.post("/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}).json()
+    for _ in range(2):
+        response = client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": pair["refresh_token"]},
+            headers=_bearer(pair["access_token"]),
+        )
+        assert response.status_code == 204
+    unknown = client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": "never-issued"},
+        headers=_bearer(pair["access_token"]),
+    )
+    assert unknown.status_code == 204
+
+
+@requires_db
+def test_logout_requires_an_access_token(client: TestClient) -> None:
+    pair = client.post("/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}).json()
+    response = client.post("/api/v1/auth/logout", json={"refresh_token": pair["refresh_token"]})
+    assert response.status_code == 401
+    # Not revoked by the refused request.
+    still = client.post("/api/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]})
+    assert still.status_code == 200
+
+
+@requires_db
+def test_logout_cannot_revoke_another_accounts_token(client: TestClient) -> None:
+    victim = client.post(
+        "/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}
+    ).json()
+    attacker = client.post(
+        "/api/v1/auth/signup", json={"email": _email(), "password": PASSWORD}
+    ).json()
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": victim["refresh_token"]},
+        headers=_bearer(attacker["access_token"]),
+    )
+    # The same answer as for the caller's own token: nothing is disclosed.
+    assert response.status_code == 204
+    still = client.post("/api/v1/auth/refresh", json={"refresh_token": victim["refresh_token"]})
+    assert still.status_code == 200
+
+
+@requires_db
+def test_logout_leaves_the_accounts_other_sessions_alone(client: TestClient) -> None:
+    email = _email()
+    laptop = client.post("/api/v1/auth/signup", json={"email": email, "password": PASSWORD}).json()
+    phone = client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).json()
+
+    client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": laptop["refresh_token"]},
+        headers=_bearer(laptop["access_token"]),
+    )
+    still = client.post("/api/v1/auth/refresh", json={"refresh_token": phone["refresh_token"]})
+    assert still.status_code == 200

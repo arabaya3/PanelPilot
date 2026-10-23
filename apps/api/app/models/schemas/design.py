@@ -286,7 +286,9 @@ class Cable(StrictModel):
     cross_section_mm2: Decimal
     material: str = "Cu"
     insulation: str = "PVC"
-    length_m: Decimal | None = None
+    # Bounded as a load's length is (it is copied from one): a sent project's
+    # cable length multiplies a per-metre price in the quotation.
+    length_m: Decimal | None = Field(default=None, gt=0, le=10000, allow_inf_nan=False)
     part_key: str | None = None
     withstand_ka2s: Decimal | None = None
     parallel: int = Field(default=1, ge=1, le=6)
@@ -965,6 +967,12 @@ MAX_UNIT_PRICE = Decimal("1000000000")
 MAX_CABLE_LENGTH_M = Decimal("10000")
 #: The most price-list entries one request carries.
 MAX_PRICE_LIST = 20000
+#: The finest fraction a price, rate or percentage carries. Far below any
+#: currency's smallest unit, and enough for a per-metre price; a figure with
+#: more places is float noise or an attack on the arithmetic, not a price.
+PRICE_DECIMAL_PLACES = 6
+#: Digits in a bounded price: MAX_UNIT_PRICE's ten before the point, six after.
+PRICE_MAX_DIGITS = 16
 
 
 class PriceListEntry(StrictModel):
@@ -981,7 +989,13 @@ class PriceListEntry(StrictModel):
 
     key: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=300)
-    unit_price: Decimal = Field(ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False)
+    unit_price: Decimal = Field(
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
 
 
 class PricingSettings(StrictModel):
@@ -1002,19 +1016,53 @@ class PricingSettings(StrictModel):
     currency: str = Field(default="JOD", pattern=r"^[A-Z]{3}$")
     price_list: list[PriceListEntry] = Field(default_factory=list, max_length=MAX_PRICE_LIST)
     cable_length_m: Decimal | None = Field(
-        default=None, gt=0, le=MAX_CABLE_LENGTH_M, allow_inf_nan=False
+        default=None,
+        gt=0,
+        le=MAX_CABLE_LENGTH_M,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
     )
     labour_per_circuit: Decimal = Field(
-        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
     )
     labour_per_board: Decimal = Field(
-        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
     )
     enclosure_price: Decimal = Field(
-        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
     )
-    markup_percent: Decimal = Field(default=Decimal(0), ge=0, le=500, allow_inf_nan=False)
-    vat_percent: Decimal = Field(default=Decimal(0), ge=0, le=100, allow_inf_nan=False)
+    markup_percent: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=500,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    vat_percent: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=100,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
 
 
 class QuotationLine(BaseModel):

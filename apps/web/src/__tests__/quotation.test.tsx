@@ -5,7 +5,13 @@ import { QuotationPanel } from '@/components/quotation-panel';
 import type { exportDesign } from '@/lib/design';
 import { importPriceList, priceDesign, type DesignProject, type Quotation } from '@/lib/design';
 
+import ar from '@/messages/ar.json';
+import en from '@/messages/en.json';
+import he from '@/messages/he.json';
+
 import { renderApp } from './helpers';
+
+const MESSAGES = { en, ar, he };
 
 /** The quotation under a designed board: prices in, lines and totals out. */
 
@@ -233,5 +239,57 @@ describe('quotation', () => {
         fetchImpl: ok,
       }),
     ).toEqual({ kind: 'imported', entries: [] });
+  });
+});
+
+describe('the quotation intro', () => {
+  it('shows the example key as left-to-right code in Arabic', () => {
+    renderApp(<QuotationPanel token="tok" project={PROJECT} profile={null} saveImpl={vi.fn()} />, {
+      locale: 'ar',
+    });
+    const code = screen.getByText('circuit_breaker:1P:C16');
+    expect(code.tagName).toBe('CODE');
+    expect(code.getAttribute('dir')).toBe('ltr');
+  });
+});
+
+describe('the estimate in the page language', () => {
+  async function priceIn(locale: 'en' | 'ar' | 'he', profile: Record<string, unknown> | null) {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    renderApp(
+      <QuotationPanel
+        token="tok"
+        project={PROJECT}
+        profile={profile}
+        saveImpl={vi.fn()}
+        priceImpl={priceImpl}
+      />,
+      { locale },
+    );
+    fireEvent.click(screen.getByRole('button', { name: MESSAGES[locale].design.quote.submit }));
+    await screen.findByTestId('quote-total');
+    return priceImpl;
+  }
+
+  it('asks for the lines in the page language, keeping the rest of the profile', async () => {
+    const priceImpl = await priceIn('he', { key: 'iec-default', language: 'ar', spare_ways: 0.2 });
+    expect(priceImpl.mock.calls[0]?.[0].profile).toEqual({
+      key: 'iec-default',
+      language: 'he',
+      spare_ways: 0.2,
+    });
+  });
+
+  it('names the default profile when none was typed', async () => {
+    const priceImpl = await priceIn('ar', null);
+    expect(priceImpl.mock.calls[0]?.[0].profile).toEqual({ key: 'iec-default', language: 'ar' });
+  });
+
+  it('says the unit codes in Arabic', async () => {
+    await priceIn('ar', null);
+    expect(screen.getAllByText('1 قطعة').length).toBeGreaterThan(0);
+    expect(screen.queryByText('1 pcs')).toBeNull();
   });
 });

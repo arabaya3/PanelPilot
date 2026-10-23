@@ -58,3 +58,37 @@ export async function signIn(options: SignInOptions): Promise<SignInOutcome> {
   }
   return { kind: 'signed-in', accessToken, refreshToken };
 }
+
+export type SignOutOutcome = { kind: 'signed-out' } | { kind: 'failed' };
+
+export interface SignOutOptions {
+  accessToken: string;
+  refreshToken: string;
+  fetchImpl?: typeof fetch;
+  endpoint?: string;
+}
+
+/**
+ * End the session on the server: the access token and the refresh token stop
+ * working there, not just on this page. Idempotent on the server; a 401 (the
+ * session is already gone) counts as signed out. The caller clears its own
+ * tokens whatever this answers.
+ */
+export async function signOutOfServer(options: SignOutOptions): Promise<SignOutOutcome> {
+  const {
+    accessToken,
+    refreshToken,
+    fetchImpl = fetch,
+    endpoint = '/api/v1/auth/logout',
+  } = options;
+  try {
+    const response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    return response.ok || response.status === 401 ? { kind: 'signed-out' } : { kind: 'failed' };
+  } catch {
+    return { kind: 'failed' };
+  }
+}

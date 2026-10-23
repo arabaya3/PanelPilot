@@ -7,7 +7,7 @@ lives in ``app.domain.auth``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.api.deps import (
     CurrentUserDep,
@@ -101,6 +101,20 @@ def refresh(payload: RefreshRequest, session: SessionDep) -> TokenPair:
     tokens = auth_domain.refresh(session=session, refresh_token=payload.refresh_token)
     session.commit()
     return tokens
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(payload: RefreshRequest, session: SessionDep, user: CurrentUserDep) -> Response:
+    """Sign out: revoke the caller's refresh token on the server.
+
+    Requires the caller's access token and revokes the presented refresh
+    token only if it is theirs. Always 204, so a retry never fails and the
+    answer says nothing about the token. The access token itself stays valid
+    until it expires; see ``auth_domain.logout``.
+    """
+    auth_domain.logout(session=session, caller=user, refresh_token=payload.refresh_token)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/quota", response_model=QuotaStatus)

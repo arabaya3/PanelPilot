@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { signOutOfServer } from '@/lib/auth';
 import { refreshTokens, type RefreshOutcome } from '@/lib/trial';
 
 /**
@@ -38,6 +39,12 @@ export interface AccountSession {
   /** Exchange the refresh token after a 401; `expired` leaves the account signed out of. */
   renew: () => Promise<RenewOutcome>;
   signOut: () => void;
+  /**
+   * Mark the session ended where it cannot be renewed (a refresh that failed
+   * for a page with no way to try again): the page asks for the account
+   * again rather than carrying on with a dead token or as a trial.
+   */
+  expire: () => void;
 }
 
 const AccountSessionContext = createContext<AccountSession | null>(null);
@@ -72,10 +79,12 @@ export function tokenIdentity(token: string): TokenIdentity | null {
 export function AccountSessionProvider({
   children,
   refreshImpl = refreshTokens,
+  signOutImpl = signOutOfServer,
   initial = { status: 'signed-out' },
 }: {
   children: ReactNode;
   refreshImpl?: typeof refreshTokens;
+  signOutImpl?: typeof signOutOfServer;
   /** For tests: the state to start in. */
   initial?: AccountState;
 }) {
@@ -97,9 +106,30 @@ export function AccountSessionProvider({
   }, []);
 
   const signOut = useCallback(() => {
+    // Ended on the server first, with the tokens still in hand, so a copy of
+    // either stops working too. The page is signed out whatever it answers:
+    // a failure (offline) is logged, never a reason to stay signed in.
+    const held = current.current;
+    if (held.status === 'signed-in') {
+      void signOutImpl({
+        accessToken: held.tokens.accessToken,
+        refreshToken: held.tokens.refreshToken,
+      }).then((outcome) => {
+        if (outcome.kind === 'failed')
+          console.warn('The session could not be ended on the server.');
+      });
+    }
     renewing.current = null;
     ticket.current += 1;
     current.current = { status: 'signed-out' };
+    setState(current.current);
+  }, [signOutImpl]);
+
+  const expire = useCallback(() => {
+    if (current.current.status !== 'signed-in') return;
+    renewing.current = null;
+    ticket.current += 1;
+    current.current = { status: 'expired' };
     setState(current.current);
   }, []);
 
@@ -132,8 +162,8 @@ export function AccountSessionProvider({
   }, [refreshImpl]);
 
   const value = useMemo(
-    () => ({ state, signedIn, renew, signOut }),
-    [state, signedIn, renew, signOut],
+    () => ({ state, signedIn, renew, signOut, expire }),
+    [state, signedIn, renew, signOut, expire],
   );
   return <AccountSessionContext.Provider value={value}>{children}</AccountSessionContext.Provider>;
 }

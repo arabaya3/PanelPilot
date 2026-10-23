@@ -9,6 +9,9 @@ import he from '@/messages/he.json';
 
 import { renderApp } from './helpers';
 
+/** A value isolated from the right-to-left sentence around it (FSI … PDI). */
+const iso = (value: string) => `⁨${value}⁩`;
+
 /** Design notes arrive as codes and values, and read in the page's language. */
 
 function Notes({ notes }: { notes: DesignNote[] }) {
@@ -34,7 +37,7 @@ describe('design notes', () => {
   it('renders a note in Arabic, its load kind translated too', () => {
     renderApp(<Notes notes={[INFERRED]} />, { locale: 'ar' });
     expect(screen.getByTestId('note-0').textContent).toBe(
-      'الصف 3 (AC 1): اعتُبر «' + ar.design.kind.air_conditioning + '» من وصفه.',
+      `الصف ${iso('3')} (${iso('AC 1')}): اعتُبر «${iso(ar.design.kind.air_conditioning)}» من وصفه.`,
     );
   });
 
@@ -56,9 +59,44 @@ describe('design notes', () => {
       text: '',
     });
     renderApp(<Notes notes={[spare('1'), spare('2'), spare('3')]} />, { locale: 'ar' });
-    expect(screen.getByTestId('note-0').textContent).toBe('اترك مخرجاً احتياطياً واحداً (20%).');
-    expect(screen.getByTestId('note-1').textContent).toBe('اترك مخرجين احتياطيين (20%).');
-    expect(screen.getByTestId('note-2').textContent).toBe('اترك 3 مخارج احتياطية (20%).');
+    expect(screen.getByTestId('note-0').textContent).toBe(
+      `اترك مخرجاً احتياطياً واحداً (${iso('20')}%).`,
+    );
+    expect(screen.getByTestId('note-1').textContent).toBe(`اترك مخرجين احتياطيين (${iso('20')}%).`);
+    expect(screen.getByTestId('note-2').textContent).toBe(`اترك 3 مخارج احتياطية (${iso('20')}%).`);
+  });
+
+  it.each(['ar', 'he'] as const)(
+    'names the market and its code in %s, not in English',
+    (locale) => {
+      const market: DesignNote = {
+        code: 'market_rules',
+        params: {
+          market: 'Palestine',
+          regulation: 'IEC 60364 (adopted by the Palestine Standards Institution)',
+          market_code: 'PS',
+          regulation_code: 'PS',
+        },
+        text: 'Designed for Palestine, under IEC 60364 (adopted by the Palestine Standards Institution).',
+      };
+      const bundle = locale === 'ar' ? ar : he;
+      renderApp(<Notes notes={[market]} />, { locale });
+      const said = screen.getByTestId('note-0').textContent;
+      expect(said).toContain(iso(bundle.design.markets.PS));
+      expect(said).toContain(iso(bundle.design.regulation.PS));
+      expect(said).not.toContain('Palestine');
+      expect(said).not.toContain('adopted');
+    },
+  );
+
+  it('keeps the English market names when a note carries no codes', () => {
+    const market: DesignNote = {
+      code: 'market_rules',
+      params: { market: 'Israel', regulation: 'Israeli Electricity Law and Regulations' },
+      text: '',
+    };
+    renderApp(<Notes notes={[market]} />, { locale: 'he' });
+    expect(screen.getByTestId('note-0').textContent).toContain(iso('Israel'));
   });
 
   it('falls back to the English text for a code it has no sentence for', () => {
@@ -95,7 +133,7 @@ describe('design refusals', () => {
       { locale: 'ar' },
     );
     expect(screen.getByTestId('said').textContent).toBe(
-      'Pump: ' + ar.design.errors.starter_needs_three_phase,
+      `${iso('Pump')}: ${ar.design.errors.starter_needs_three_phase}`,
     );
   });
 

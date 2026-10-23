@@ -123,6 +123,27 @@ def finding_lines(mark: ExportMark) -> list[str]:
     return lines
 
 
+def _finding_chunks(mark: ExportMark) -> list[list[str]]:
+    lines = finding_lines(mark)
+    return [lines[i : i + _LINES_PER_SHEET] for i in range(0, len(lines), _LINES_PER_SHEET)]
+
+
+def findings_sheet_count(mark: ExportMark) -> int:
+    """How many findings sheets ``mark_sheets`` adds for a mark.
+
+    Known before the drawing set is laid out, so its title blocks can count
+    them in their "N of M".
+
+    Args:
+        mark: The export's mark.
+
+    Returns:
+        The number of findings sheets; at least one, since no findings is
+        said on a sheet of its own.
+    """
+    return len(_finding_chunks(mark))
+
+
 def mark_sheets(sheets: list[Sheet], mark: ExportMark) -> list[Sheet]:
     """Mark every drawing sheet, and add the findings pages after them.
 
@@ -133,9 +154,9 @@ def mark_sheets(sheets: list[Sheet], mark: ExportMark) -> list[Sheet]:
     Returns:
         The same sheets, marked, followed by the findings sheets.
     """
-    lines = finding_lines(mark)
-    chunks = [lines[i : i + _LINES_PER_SHEET] for i in range(0, len(lines), _LINES_PER_SHEET)]
+    chunks = _finding_chunks(mark)
     start = len(sheets)
+    total = start + len(chunks)
     for index, chunk in enumerate(chunks, start=1):
         sheet = Sheet(number=start + index, title="Findings")
         sheet.add(
@@ -143,7 +164,8 @@ def mark_sheets(sheets: list[Sheet], mark: ExportMark) -> list[Sheet]:
             Text(
                 FRAME_LEFT + 5,
                 FRAME_TOP + 12,
-                f"Findings ({mark.counts()}), page {index} of {len(chunks)}",
+                f"Findings ({mark.counts()}), page {index} of {len(chunks)}"
+                f" — sheet {start + index} of {total}",
                 size=4.0,
                 bold=True,
             ),

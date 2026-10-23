@@ -24,6 +24,7 @@ import { Field } from '@/components/cable-sizing-panel';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
   applySuggestion,
@@ -86,7 +87,7 @@ import {
 import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
 import { SignInForm } from '@/components/sign-in-form';
-import { QuotationPanel } from '@/components/quotation-panel';
+import { QuotationPanel, type QuoteRates } from '@/components/quotation-panel';
 import {
   Dialog,
   EmptyState,
@@ -114,6 +115,7 @@ import {
   type DesignOutcome,
   type ExportFormat,
   type ExportPurpose,
+  type Refusal,
   type TooLong,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
@@ -146,7 +148,7 @@ type Result =
       profile: Record<string, unknown> | null;
       /** What the inputs were when it was designed, to tell when it no longer matches them. */
       basis: string;
-      /** The part of `basis` the engineer enters (the form and drawing language). */
+      /** The part of `basis` the engineer enters (the form, without the drawing language). */
       inputs: string;
     }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
@@ -212,6 +214,16 @@ export function snapshotOf(
   return JSON.stringify({ info, boards, profileText, language, market }, (key, value: unknown) =>
     key === 'key' ? undefined : value,
   );
+}
+
+/**
+ * The title block's revisions as a design depends on them. Who approved a
+ * revision is left out: an approval signs the stored revision without
+ * changing anything it was calculated from, so it does not make a design of
+ * that revision stale. A row added or edited does.
+ */
+export function titleBasis(rows: readonly TitleRevision[]): string {
+  return JSON.stringify(rows.map((row) => ({ ...row, approved_by: undefined })));
 }
 
 /**
@@ -284,11 +296,36 @@ function SignedOutResets({ account, ...props }: DesignScreenProps & { account: A
     }
     last.current = status;
   }, [status]);
+  // The account the work was typed for, kept through a session that ended.
+  // When a different account signs in (A's session ended, B signed in at the
+  // prompt), A's unsaved work and open project are not B's: the workspace
+  // starts afresh, before anything of A's renders under B's token. The same
+  // account signing in again keeps everything.
+  const subject =
+    account.state.status === 'signed-in'
+      ? (tokenIdentity(account.state.tokens.accessToken)?.subject ?? '')
+      : null;
+  const [workedFor, setWorkedFor] = useState(subject);
+  const [switched, setSwitched] = useState(false);
+  if (status === 'signed-out' && (workedFor !== null || switched)) {
+    setWorkedFor(null);
+    setSwitched(false);
+  } else if (subject !== null && subject !== workedFor) {
+    if (workedFor !== null) {
+      setSwitched(true);
+      setGeneration((current) => current + 1);
+    }
+    setWorkedFor(subject);
+  }
+  useEffect(() => {
+    if (switched) clearDraft();
+  }, [switched, generation]);
   return (
     <DesignWorkspace
       key={generation}
       account={account}
       startSignedOut={generation > 0}
+      accountSwitched={switched}
       {...props}
     />
   );
@@ -310,23 +347,35 @@ function DesignWorkspace({
   readMarketImpl = readMarket,
   openImpl = openProject,
   leaveImpl,
-}: DesignScreenProps & { account: AccountSession; startSignedOut: boolean }) {
-  const t = useTranslations('design');
-  const tw = useTranslations('workspace');
+  accountSwitched,
+}: DesignScreenProps & {
+  account: AccountSession;
+  startSignedOut: boolean;
+  /** Started afresh because a different account signed in: said once, on arrival. */
+  accountSwitched: boolean;
+}) {
+  const t = useIsolatingTranslations('design');
+  const tw = useIsolatingTranslations('workspace');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
-  const ta = useTranslations('design.account');
+  const ta = useIsolatingTranslations('design.account');
   const { state: accountState, signedIn, renew, signOut } = account;
   const [identity, setIdentity] = useState<Identity>(() =>
     accountState.status !== 'signed-out' ? 'account' : startSignedOut ? 'signed-out' : 'trial',
   );
   const [authForm, setAuthForm] = useState<'sign-in' | 'sign-up' | null>(null);
   const [accountNotice, setAccountNotice] = useState<
-    'renewed' | 'renew-failed' | 'trial-project-stays' | null
-  >(null);
+    'renewed' | 'renew-failed' | 'trial-project-stays' | 'account-switched' | null
+  >(accountSwitched ? 'account-switched' : null);
+  // The revision note, kept here rather than in the projects panel: the panel
+  // is not shown while a session has ended, and the note typed before it
+  // ended is still the engineer's when the same account signs in again.
+  const [revisionNote, setRevisionNote] = useState('');
+  // The quotation's rates, kept past the panel (see `QuotationPanel`).
+  const [quoteRates, setQuoteRates] = useState<QuoteRates | null>(null);
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [trialId, setTrialId] = useState<string | null>(null);
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
@@ -505,6 +554,29 @@ function DesignWorkspace({
   // ended), a project open from the old one is not the new one's: it is let
   // go, never moved, and what was typed stays on the page as unsaved work.
   const tokenTenant = token === null ? null : (tokenIdentity(token)?.tenant ?? null);
+
+  // Whose work a request was started for. An open or a save that answers
+  // after the page has moved to another identity (a trial signed in, the
+  // account signed out) is not this one's, and is let go.
+  const ownerKey =
+    identity === 'account'
+      ? (accountOwner ?? 'account')
+      : identity === 'trial'
+        ? `trial:${trialId ?? ''}`
+        : 'signed-out';
+  const currentOwner = useRef(ownerKey);
+  useLayoutEffect(() => {
+    currentOwner.current = ownerKey;
+  });
+  function forOwner<Args extends unknown[]>(
+    handle: (...args: Args) => void,
+  ): (...args: Args) => void {
+    const owner = ownerKey;
+    return (...args) => {
+      if (currentOwner.current === owner) handle(...args);
+    };
+  }
+
   const heldTenant = useRef<string | null>(null);
   useEffect(() => {
     if (tokenTenant === null) return;
@@ -585,11 +657,17 @@ function DesignWorkspace({
     restoredDraft.current = true;
     let reopened = draft.project === null;
     if (draft.project !== null && token !== null) {
+      const owner = ownerKey;
       const outcome = await openImpl({
         token,
         id: draft.project.id,
         revision: draft.project.revision,
       });
+      // Opened for an identity the page has since left: not this one's work.
+      if (currentOwner.current !== owner) {
+        setRestoring(false);
+        return;
+      }
       if (outcome.kind === 'saved') {
         onOpened(outcome.project, false);
         reopened = true;
@@ -630,10 +708,13 @@ function DesignWorkspace({
     market,
     DEFAULT_PROFILE_KEY,
   );
-  // Everything a design is made from: the inputs, the language as it is used,
-  // and the title block's revisions, which an approval changes.
-  const inputs = `${snapshot}|${drawingLanguage}`;
-  const basis = `${inputs}|${JSON.stringify(titleRevisions)}`;
+  // Everything a design is calculated from: the inputs and the title block's
+  // revisions. The drawing language is left out: it is presentation, and the
+  // design shown keeps (and exports with) the profile it was made with, so
+  // switching the page's or the drawing's language does not make it stale.
+  // So is who approved a revision (see `titleBasis`).
+  const inputs = snapshotOf(info, boards, profileText, null, market);
+  const basis = `${inputs}|${titleBasis(titleRevisions)}`;
   // Set by a save that just succeeded, for the `onOpened` that follows it.
   const rebaseOnSave = useRef(false);
 
@@ -711,14 +792,14 @@ function DesignWorkspace({
     // A save gives the title block a row for the revision it stored. That is
     // not a change of the inputs: a design made from exactly what was saved
     // takes the new rows and stays current (a design the inputs had moved on
-    // from stays stale, its `inputs` no longer matching). An approval is not
-    // rebased: the design shown was made before it.
+    // from stays stale, its `inputs` no longer matching). An approval needs no
+    // rebasing: it changes only who approved, which `titleBasis` leaves out.
     if (rebaseOnSave.current && !fill) {
       setResult((current) =>
         current.kind === 'designed'
           ? {
               ...current,
-              basis: `${current.inputs}|${JSON.stringify(titles)}`,
+              basis: `${current.inputs}|${titleBasis(titles)}`,
               response: {
                 ...current.response,
                 project: {
@@ -1295,6 +1376,10 @@ function DesignWorkspace({
             </Panel>
             {token !== null ? (
               <ProjectsPanel
+                // A fresh panel for each identity and tenant, so nothing it
+                // said for the last one (a "Saved as revision N", a refusal)
+                // is shown for this one.
+                key={`${ownerKey}|${tokenTenant ?? ''}`}
                 token={token}
                 current={
                   complete && parsed !== 'invalid'
@@ -1302,26 +1387,28 @@ function DesignWorkspace({
                     : null
                 }
                 opened={opened}
-                onOpened={onOpened}
+                onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 dirty={dirty}
                 blockers={readiness.approvalBlockers}
                 blockingCount={readiness.blockingCount}
                 approvalCovers={readiness.approvalCovers}
-                onRefused={(refusal) => {
+                note={revisionNote}
+                onNoteChange={setRevisionNote}
+                onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
-                }}
-                onUnauthorized={() => {
+                })}
+                onUnauthorized={forOwner(() => {
                   void reauthorize();
-                }}
-                onSaveState={(state) => {
+                })}
+                onSaveState={forOwner((state: 'saving' | 'saved' | 'failed') => {
                   setLastSave(state);
                   if (state === 'saved') setTooLong([]);
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
                   rebaseOnSave.current = state === 'saved';
-                }}
+                })}
               />
             ) : (
               identity === 'trial' &&
@@ -1593,6 +1680,8 @@ function DesignWorkspace({
               profile={designedProfile}
               saveImpl={saveImpl}
               {...(marketInfo ? { currency: marketInfo.currency } : {})}
+              {...(quoteRates ? { rates: quoteRates } : {})}
+              onRatesChange={setQuoteRates}
             />
           ) : stale ? (
             designAgain

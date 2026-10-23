@@ -185,7 +185,9 @@
     "rateLimited": "Too many trials have been started from this network. Wait a few minutes and try again, or sign in.",
     "eyebrow": "Industrial troubleshooting assistant",
     "headline": "Diagnose a panel fault in minutes",
-    "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from."
+    "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from.",
+    "expired": "Your session has ended. Sign in again to keep working in your account.",
+    "continueAsTrial": "Continue as a trial instead"
   },
   "history": {
     "label": "Conversation history",
@@ -818,7 +820,7 @@
     },
     "quote": {
       "title": "Provisional price estimate",
-      "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (circuit_breaker:1P:C16) until a catalogue is chosen; a line with no price is never guessed.",
+      "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (<key>circuit_breaker:1P:C16</key>) until a catalogue is chosen; a line with no price is never guessed.",
       "priceList": "Price list",
       "priceListHelp": "Excel or CSV with a key (or order number) column and a price column.",
       "listLoaded": "{count, plural, one {# price loaded.} other {# prices loaded.}}",
@@ -849,7 +851,11 @@
       "markup": "Markup",
       "vat": "VAT",
       "total": "Total",
-      "noLength": "no length"
+      "noLength": "no length",
+      "unit": {
+        "pcs": "pcs",
+        "m": "m"
+      }
     },
     "quotation": {
       "provisionalBanner": "Provisional estimate — not a quotation, not for execution",
@@ -889,7 +895,7 @@
       "mccb_selected_adjustable": "{load}: {type}, In {rated} A, Icu {icu} kA ({source}); its I3 (5 to 10 In) is taken at the top, {trip} A, for the short circuit and earth fault checks; set lower, a longer cable passes.",
       "short_circuit_min_magnetic_exceeded": "{load}: a short circuit at the far end draws only {current} A, below the {trip} A at which its breaker trips at once (I3 with its 20 % tolerance), at every cable size held; shorten the run or set I3 lower.",
       "enclosure_selected": "Enclosure: ABB Mini Center compact {type} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted.",
-      "enclosure_unknown_widths": "Enclosure: none named, since {count} devices have no width (rail_widths_mm in the company settings).",
+      "enclosure_unknown_widths": "Enclosure: none named, since {count, plural, one {# device has} other {# devices have}} no width (enter their rail widths under “Settings as JSON” in the company settings).",
       "enclosure_not_modular": "Enclosure: none named; a moulded-case breaker, starter or drive is not a modular device, so the board needs a panel enclosure sized from its layout.",
       "enclosure_beyond": "Enclosure: none named; the board is beyond the largest modular enclosure held (5 rows of 16 modules, busbar {busbar} A, {fault} kA).",
       "mccb_needed": "{load}: Ib {current} A is above every breaker held (miniature to 125 A, moulded-case to 800 A at 380-415 V); one is needed and none is selected here. The cable is sized for Ib; check it against the breaker’s In.",
@@ -1025,7 +1031,8 @@
       "too_long": "{field} is too long: at most {max} characters.",
       "too_long_here": "Too long: at most {max} characters.",
       "too_large": "{field} is too large: at most {max}.",
-      "request_invalid": "The server did not accept this request as entered. Check the fields and try again."
+      "request_invalid": "The server did not accept this request as entered. Check the fields and try again.",
+      "request_invalid_fields": "Fields: {fields}."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1250,6 +1257,18 @@
       "LB": "Lebanon",
       "IQ": "Iraq"
     },
+    "regulation": {
+      "PS": "IEC 60364 (adopted by the Palestine Standards Institution)",
+      "IL": "Israeli Electricity Law and Regulations",
+      "JO": "Jordanian National Building Code for Electrical Installations",
+      "SA": "Saudi Building Code SBC 401",
+      "AE": "DEWA Regulations for Electrical Installations",
+      "QA": "KAHRAMAA Electricity Wiring Code",
+      "KW": "MEW/R-1 Regulations",
+      "EG": "Egyptian Code 302",
+      "LB": "IEC 60364",
+      "IQ": "BS 7671"
+    },
     "account": {
       "trialTitle": "Trial workspace",
       "trialBody": "You are not signed in. Projects you save here belong to this browser's trial, not to an account. Sign in to save to your account, or create an account to keep this trial's projects.",
@@ -1267,8 +1286,13 @@
       "notice": {
         "renewed": "Your session had expired and has been renewed. Try again.",
         "renew-failed": "The session could not be renewed. Check the connection and try again.",
-        "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account."
+        "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account.",
+        "account-switched": "A different account signed in. The unsaved work and the project open on this page belonged to the previous account, so they were cleared; nothing of it was moved into this account."
       }
+    },
+    "fieldPath": {
+      "board": "Board {n}",
+      "load": "Load {n}"
     }
   },
   "files": {

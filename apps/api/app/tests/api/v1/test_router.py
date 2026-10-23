@@ -67,6 +67,8 @@ _RESUME = {"session_id": str(uuid.uuid4()), "claim_secret": "s"}
         # Refresh needs a live single-use token already; quota is a read.
         ("POST", "/api/v1/auth/refresh", {"refresh_token": "t"}, []),
         ("GET", "/api/v1/auth/quota", None, []),
+        # Logout needs an access token and only revokes the caller's own row.
+        ("POST", "/api/v1/auth/logout", {"refresh_token": "t"}, []),
         ("POST", "/api/v1/diagnostics", {"symptom": "trips"}, ["trial"]),
         # Reading a conversation spends nothing.
         ("GET", f"/api/v1/diagnostics/{uuid.uuid4()}", None, []),

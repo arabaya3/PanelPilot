@@ -1,9 +1,9 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
+import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import type { ApprovalBlocker } from '@/components/design/readiness';
 import {
@@ -70,6 +70,8 @@ export function ProjectsPanel({
   blockers = [],
   blockingCount = 0,
   approvalCovers = true,
+  note: heldNote,
+  onNoteChange,
   impls = {},
 }: {
   token: string;
@@ -98,6 +100,12 @@ export function ProjectsPanel({
   blockingCount?: number;
   /** False when the stored approval does not sign the revision's validated snapshot. */
   approvalCovers?: boolean;
+  /**
+   * The revision note, when the page keeps it (so it outlives this panel);
+   * kept here otherwise. Both or neither.
+   */
+  note?: string;
+  onNoteChange?: (note: string) => void;
   impls?: Partial<{
     list: typeof listProjects;
     save: typeof saveProject;
@@ -107,8 +115,8 @@ export function ProjectsPanel({
     approve: typeof approveRevision;
   }>;
 }) {
-  const t = useTranslations('design.projects');
-  const ta = useTranslations('design.account');
+  const t = useIsolatingTranslations('design.projects');
+  const ta = useIsolatingTranslations('design.account');
   const say = useOutcomeText();
   const id = useId();
   const {
@@ -120,7 +128,9 @@ export function ProjectsPanel({
     approve = approveRevision,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
-  const [note, setNote] = useState('');
+  const [ownNote, setOwnNote] = useState('');
+  const note = heldNote ?? ownNote;
+  const setNote = onNoteChange ?? setOwnNote;
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);

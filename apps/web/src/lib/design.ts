@@ -77,6 +77,8 @@ export type Refusal = {
   tooLong?: TooLong[];
   /** Numbers above what the server accepts (a 422 `less_than_equal`), as paths. */
   tooLarge?: TooLarge[];
+  /** Every field a 422 named, whatever it objected to, as paths: said where the reason is not. */
+  invalidFields?: string[];
 };
 
 /** A number the server refused as too large, and the most it takes. */
@@ -154,7 +156,7 @@ export function tooLargeOf(payload: unknown): TooLarge[] {
  */
 function errorsOfType(
   payload: unknown,
-  type: string,
+  type: string | null,
 ): Array<{ path: string; ctx: Record<string, unknown> }> {
   const body = payload as { detail?: unknown; errors?: unknown } | null;
   const detail = Array.isArray(body?.detail)
@@ -165,7 +167,9 @@ function errorsOfType(
   const found: Array<{ path: string; ctx: Record<string, unknown> }> = [];
   for (const item of detail as unknown[]) {
     const entry = item as { type?: unknown; loc?: unknown; ctx?: unknown } | null;
-    if (entry?.type !== type || !Array.isArray(entry.loc)) continue;
+    if (entry === null || (type !== null && entry.type !== type) || !Array.isArray(entry.loc)) {
+      continue;
+    }
     const parts = (entry.loc as unknown[]).filter(
       (part, index): part is string | number =>
         (typeof part === 'string' || typeof part === 'number') && !(index === 0 && part === 'body'),
@@ -182,6 +186,11 @@ function errorsOfType(
     if (path !== '') found.push({ path, ctx });
   }
   return found;
+}
+
+/** Every field a 422 named, once each, in the order named. */
+export function invalidFieldsOf(payload: unknown): string[] {
+  return [...new Set(errorsOfType(payload, null).map(({ path }) => path))];
 }
 
 function refusalOf(payload: unknown): Refusal {
@@ -206,6 +215,8 @@ function refusalOf(payload: unknown): Refusal {
   if (long.length > 0) refusal.tooLong = long;
   const large = tooLargeOf(payload);
   if (large.length > 0) refusal.tooLarge = large;
+  const invalid = invalidFieldsOf(payload);
+  if (invalid.length > 0) refusal.invalidFields = invalid;
   return refusal;
 }
 

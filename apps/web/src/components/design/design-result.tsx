@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useRef, useState } from 'react';
 
 import { round } from '@/components/cable-sizing-panel';
+import { useIsolatingTranslations, useRightToLeft } from '@/components/design/bidi';
 import { useNoteText } from '@/components/design/note-text';
 import { fitZoom, stepZoom } from '@/components/design/workspace';
 import { DownloadIcon, FitIcon, ZoomInIcon, ZoomOutIcon } from '@/components/icons';
@@ -41,7 +42,8 @@ function protectionText(device: Device): string {
 }
 
 function BoardTable({ board }: { board: Board }) {
-  const t = useTranslations('design');
+  const t = useIsolatingTranslations('design');
+  const rtl = useRightToLeft();
   const noteText = useNoteText();
   const devices = new Map((board.devices ?? []).map((device) => [device.id, device]));
   const cables = new Map((board.cables ?? []).map((cable) => [cable.id, cable]));
@@ -107,11 +109,16 @@ function BoardTable({ board }: { board: Board }) {
         </table>
       </div>
       {(board.notes ?? []).length > 0 && (
-        <div>
+        // The sheet stays left to right, as drawn; its notes are sentences in
+        // the reader's language, laid out in its direction. A note the page
+        // has no sentence for is the server's English, laid out as it reads.
+        <div dir={rtl ? 'rtl' : undefined} data-testid="design-notes-block">
           <h4 className="mb-2 text-sm font-semibold">{t('notes')}</h4>
           <ul className="list-disc ps-5 text-sm" data-testid="design-notes">
             {(board.notes ?? []).map((note, index) => (
-              <li key={index}>{noteText(note)}</li>
+              <li key={index} dir={rtl && t.has(`note.${note.code}`) ? 'rtl' : 'auto'}>
+                {noteText(note)}
+              </li>
             ))}
           </ul>
         </div>

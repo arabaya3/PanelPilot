@@ -97,7 +97,9 @@ _TITLE_LABELS: dict[TitleField, str] = {
     TitleField.APPROVED_BY: "Review approved",
 }
 
-_KIND_NAMES: dict[DeviceKind, str] = {
+#: Each device kind's name, in English: the catalogue's key for its translation.
+#: Shared with the quotation, which names a device without an article by it.
+KIND_NAMES: dict[DeviceKind, str] = {
     DeviceKind.CIRCUIT_BREAKER: "Circuit-breaker",
     DeviceKind.RESIDUAL_CURRENT_DEVICE: "Residual current circuit-breaker",
     DeviceKind.SWITCH_DISCONNECTOR: "Switch-disconnector",
@@ -248,7 +250,7 @@ def _part_rows(project: DesignProject, say: Words) -> list[list[str]]:
         table.append(
             [
                 str(len(names)),
-                f"{say(_KIND_NAMES[sample.kind])} {rating_text(sample)}",
+                f"{say(KIND_NAMES[sample.kind])} {rating_text(sample)}",
                 article,
                 order_number,
                 ", ".join(names),
@@ -856,12 +858,17 @@ def _draw_layout(sheet: Sheet, rails: list[layout.Rail], say: Words) -> None:
     )
 
 
-def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[Sheet]:
+def build_drawing_set(
+    project: DesignProject, profile: CompanyProfile, *, appended: int = 0
+) -> list[Sheet]:
     """Lay a project out as the pages of its drawing set.
 
     Args:
         project: The project, designated under ``profile``.
         profile: The company whose pages, order and title block apply.
+        appended: Sheets the caller adds after these (the export's findings
+            sheets), counted in every title block's "N of M" so the total
+            is the whole file's.
 
     Returns:
         The sheets, numbered from 1, frame and title block drawn.
@@ -900,7 +907,7 @@ def build_drawing_set(project: DesignProject, profile: CompanyProfile) -> list[S
         if circuit.feeds and circuit.device_ids
     }
 
-    total = len(plans)
+    total = len(plans) + appended
     contents = [
         [str(n), p.title, p.board.name if p.board else ""]
         for n, p in enumerate(plans, start=1)

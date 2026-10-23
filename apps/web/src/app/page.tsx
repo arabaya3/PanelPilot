@@ -5,14 +5,17 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chat } from '@/components/chat';
-import { useAccountSession } from '@/components/account-session';
+import {
+  AccountSessionProvider,
+  useAccountSession,
+  type AccountSession,
+} from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
 import { SignInForm } from '@/components/sign-in-form';
 import { UserIcon } from '@/components/icons';
 import {
   clearTrial,
   readTrial,
-  refreshTokens,
   resumeTrial,
   startTrial,
   storeTrial,
@@ -71,24 +74,46 @@ function readyWith(active: ActiveTrial): Phase {
 }
 
 export default function HomePage() {
+  const shared = useAccountSession();
+  // The root layout shares one; a page rendered on its own (in a test, say)
+  // keeps a session of its own, so it behaves the same either way.
+  if (shared === null) {
+    return (
+      <AccountSessionProvider>
+        <HomePage />
+      </AccountSessionProvider>
+    );
+  }
+  return <Home account={shared} />;
+}
+
+function accountPhase(token: string): Phase {
+  return { kind: 'ready', token, trial: null, questionsRemaining: null, conversationId: null };
+}
+
+function Home({ account }: { account: AccountSession }) {
   const t = useTranslations('app');
   const tl = useTranslations('landing');
   const ts = useTranslations('signIn');
-  const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
+  const { state: accountState, signedIn: shareAccount, renew, expire, signOut } = account;
+  const accountToken = accountState.status === 'signed-in' ? accountState.tokens.accessToken : null;
+  // Shared with the other pages (notably /design): an account signed in on
+  // any of them is the one this page works under on arrival, and an account
+  // signed in here is theirs too. Only a visitor in no account starts a trial.
+  const [phase, setPhase] = useState<Phase>(() =>
+    accountToken !== null ? accountPhase(accountToken) : { kind: 'starting' },
+  );
+  const startsAsTrial = useRef(accountState.status === 'signed-out');
   const [signingIn, setSigningIn] = useState(false);
-  // Shared with the other pages (notably /design), so an account signed in
-  // here is the one they work under too.
-  const account = useAccountSession();
-  const shareAccount = account?.signedIn;
+  // The account's session ended and could not be renewed: it is asked for
+  // again, never replaced by a trial behind the engineer's back.
+  const expired = accountState.status === 'expired';
+  const inAccount = phase.kind === 'ready' && phase.trial === null;
   // Bumped on sign-in so the chat mounts fresh. Signing in moves to another
   // tenant, where the trial's open conversation does not exist: kept mounted,
   // the next question would name it and be refused. Signup does not bump it,
   // because signup joins the trial's own tenant and the conversation carries.
   const [chatKey, setChatKey] = useState(0);
-
-  // Held in a ref, not state and not storage: nothing renders from it, and it
-  // must not outlive the tab.
-  const refreshRef = useRef<string | null>(null);
 
   /**
    * Get a working token: resume this browser's trial, or start one.
@@ -141,74 +166,66 @@ export default function HomePage() {
 
   const onSignedUp = useCallback(
     (tokens: { accessToken: string; refreshToken: string }) => {
-      refreshRef.current = tokens.refreshToken;
-      shareAccount?.(tokens);
+      shareAccount(tokens);
       // The claim has been made; the secret has no further use, and a stored
       // trial would have the next reload try to resume one that no longer
       // exists as a trial.
       clearTrial();
-      setPhase({
-        kind: 'ready',
-        token: tokens.accessToken,
-        trial: null,
-        questionsRemaining: null,
-        // Already open: the account continues in the conversation on screen.
-        conversationId: null,
-      });
+      // Already open: the account continues in the conversation on screen.
+      setPhase(accountPhase(tokens.accessToken));
     },
     [shareAccount],
   );
 
   const onSignedIn = useCallback(
     (tokens: { accessToken: string; refreshToken: string }) => {
-      refreshRef.current = tokens.refreshToken;
-      shareAccount?.(tokens);
+      shareAccount(tokens);
       setSigningIn(false);
       setChatKey((key) => key + 1);
       // The stored trial is left alone: it was not claimed, and it is still
       // this browser's to return to after the account's in-memory tokens go.
-      setPhase({
-        kind: 'ready',
-        token: tokens.accessToken,
-        trial: null,
-        questionsRemaining: null,
-        conversationId: null,
-      });
+      setPhase(accountPhase(tokens.accessToken));
     },
     [shareAccount],
   );
 
   const onUnauthorized = useCallback(async () => {
-    // An account renews with its refresh token. Falling through to `begin`
-    // when that fails is the best available: there is no sign-in form here,
-    // so a lapsed account can only continue as a trial.
-    const refreshToken = refreshRef.current;
-    if (refreshToken !== null) {
-      const refreshed = await refreshTokens({ refreshToken });
-      if (refreshed.kind === 'refreshed') {
-        refreshRef.current = refreshed.refreshToken;
-        // The old refresh token is spent: the shared session takes the new pair.
-        shareAccount?.({
-          accessToken: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken,
-        });
-        setPhase((current) =>
-          current.kind === 'ready' ? { ...current, token: refreshed.accessToken } : current,
-        );
-        return;
-      }
-      refreshRef.current = null;
+    if (!inAccount) {
+      await begin({ keepSurface: true });
+      return;
     }
-    await begin({ keepSurface: true });
-  }, [begin, shareAccount]);
+    // The shared session renews (one exchange, whichever page asks), and the
+    // new token reaches the chat through `accountToken` below. When it cannot,
+    // the shared session is marked ended, so no page carries on with the dead
+    // token, and this one asks for the account again instead of a trial.
+    const outcome = await renew();
+    if (outcome !== 'refreshed') expire();
+  }, [inAccount, begin, renew, expire]);
+
+  // The account's token, as the shared session renews it.
+  useEffect(() => {
+    if (accountToken === null) return;
+    setPhase((current) =>
+      current.kind === 'ready' && current.trial === null && current.token !== accountToken
+        ? { ...current, token: accountToken }
+        : current,
+    );
+  }, [accountToken]);
 
   useEffect(() => {
-    void begin();
+    // Only a visitor in no account starts (or resumes) a trial on arrival.
+    if (startsAsTrial.current) void begin();
   }, [begin]);
+
+  /** Leave the ended account explicitly, for a trial. */
+  function continueAsTrial() {
+    signOut();
+    void begin();
+  }
 
   const signInButton =
     // Offered wherever the visitor is not already in an account.
-    !(phase.kind === 'ready' && phase.trial === null) && !signingIn ? (
+    !inAccount && !signingIn && !expired ? (
       <button
         type="button"
         onClick={() => {
@@ -235,7 +252,25 @@ export default function HomePage() {
         </p>
       </section>
 
-      {signingIn && (
+      {expired && (
+        <div
+          className="mx-auto mb-6 flex w-full max-w-sm flex-col gap-3"
+          data-testid="landing-expired"
+        >
+          <p
+            role="alert"
+            className="rounded-md border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
+          >
+            {tl('expired')}
+          </p>
+          <SignInForm onSignedIn={onSignedIn} />
+          <button type="button" onClick={continueAsTrial} className="btn btn-sm btn-secondary">
+            {tl('continueAsTrial')}
+          </button>
+        </div>
+      )}
+
+      {signingIn && !expired && (
         <div className="mx-auto mb-6 w-full max-w-sm">
           <SignInForm
             onSignedIn={onSignedIn}
@@ -247,7 +282,7 @@ export default function HomePage() {
       )}
 
       <div className="mx-auto w-full max-w-screen-lg">
-        {phase.kind === 'starting' && (
+        {phase.kind === 'starting' && !expired && (
           <div className="panel flex items-center justify-center gap-3 p-7">
             <span aria-hidden="true" className="spinner" />
             <p data-testid="landing-starting" className="text-sm text-text-muted">

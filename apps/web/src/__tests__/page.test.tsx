@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderApp } from './helpers';
 
+import { AccountSessionProvider, useAccountSession } from '@/components/account-session';
+
 import HomePage from '@/app/page';
 import * as auth from '@/lib/auth';
 import * as stream from '@/lib/diagnosis-stream';
@@ -340,5 +342,85 @@ describe('HomePage', () => {
 
     const everything = JSON.stringify(window.localStorage);
     expect(everything).not.toContain('tok-1');
+  });
+});
+
+describe('HomePage under the shared account session', () => {
+  let held: ReturnType<typeof useAccountSession> = null;
+  function Probe() {
+    held = useAccountSession();
+    return null;
+  }
+  const SIGNED_IN = {
+    status: 'signed-in' as const,
+    tokens: { accessToken: 'acct-tok', refreshToken: 'refresh-tok' },
+  };
+  function renderUnder(refreshImpl: typeof trial.refreshTokens) {
+    renderApp(
+      <AccountSessionProvider initial={SIGNED_IN} refreshImpl={refreshImpl}>
+        <Probe />
+        <HomePage />
+      </AccountSessionProvider>,
+      { theme: 'light' },
+    );
+  }
+  function refuseQuestions() {
+    vi.spyOn(stream, 'streamDiagnosis').mockImplementation(async function* () {
+      await Promise.resolve();
+      yield { kind: 'interrupted', reason: 'unauthorized' } as const;
+    });
+  }
+  async function askAndBeRefused() {
+    await waitFor(() => {
+      expect(screen.getByTestId('chat')).toBeTruthy();
+    });
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+  }
+
+  it('works under an account signed in on another page, without starting a trial', async () => {
+    const start = mockStart(STARTED);
+    const list = spyHistory();
+    renderUnder(vi.fn<typeof trial.refreshTokens>());
+    await waitFor(() => {
+      expect(tokensSeen(list)).toContain('acct-tok');
+    });
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+  });
+
+  it('renews through the shared session, and the chat takes the new token', async () => {
+    mockStart(STARTED);
+    const list = spyHistory();
+    const refreshImpl = vi
+      .fn<typeof trial.refreshTokens>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'acct-new', refreshToken: 'r2' });
+    refuseQuestions();
+    renderUnder(refreshImpl);
+    await askAndBeRefused();
+    await waitFor(() => {
+      expect(tokensSeen(list)).toContain('acct-new');
+    });
+    expect(refreshImpl).toHaveBeenCalledWith({ refreshToken: 'refresh-tok' });
+    expect(held?.state).toEqual({
+      status: 'signed-in',
+      tokens: { accessToken: 'acct-new', refreshToken: 'r2' },
+    });
+  });
+
+  it('marks the shared session ended when it cannot renew, and never falls back to a trial', async () => {
+    const start = mockStart(STARTED);
+    const resume = vi.spyOn(trial, 'resumeTrial');
+    spyHistory();
+    const refreshImpl = vi.fn<typeof trial.refreshTokens>().mockResolvedValue({ kind: 'failed' });
+    refuseQuestions();
+    renderUnder(refreshImpl);
+    await askAndBeRefused();
+    expect(await screen.findByTestId('landing-expired')).toBeTruthy();
+    expect(held?.state).toEqual({ status: 'expired' });
+    expect(start).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sign-in-form')).toBeTruthy();
   });
 });

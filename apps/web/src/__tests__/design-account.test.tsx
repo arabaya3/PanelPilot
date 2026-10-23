@@ -473,3 +473,108 @@ describe('the shared session', () => {
     expect(tokenIdentity('a.!!!.b')).toBeNull();
   });
 });
+
+describe('whose work is on the page', () => {
+  /** Save, have the session end, and land on the inline sign-in form. */
+  async function expireWhileSaving(signInImpl: ReturnType<typeof vi.fn<typeof signIn>>) {
+    api.save.mockResolvedValue({ kind: 'unauthorized' });
+    const rendered = renderScreen({ initial: signedIn(), signInImpl });
+    await completeForm();
+    type(overview().getByLabelText('Customer'), 'Typed for user 1');
+    type(overview().getByLabelText('Revision note'), 'expiry test');
+    fireEvent.click(projects().getByText('Save project'));
+    await screen.findByTestId('design-account-expired');
+    return rendered;
+  }
+
+  it('keeps the revision note when the same account signs in again after its session ended', async () => {
+    const again = jwt('user-1', 'account-tenant', 'again');
+    const signInImpl = vi
+      .fn<typeof signIn>()
+      .mockResolvedValue({ kind: 'signed-in', accessToken: again, refreshToken: 'refresh-3' });
+    await expireWhileSaving(signInImpl);
+    await signInThroughForm(again);
+
+    expect(overview().getByLabelText<HTMLInputElement>('Revision note').value).toBe('expiry test');
+    api.save.mockResolvedValue({ kind: 'saved', project: saved() });
+    fireEvent.click(projects().getByText('Save project'));
+    await waitFor(() => {
+      expect(api.save).toHaveBeenCalledTimes(2);
+    });
+    expect(api.save.mock.calls[1]?.[0]).toMatchObject({ token: again, note: 'expiry test' });
+    expect(screen.queryByTestId('design-account-account-switched')).toBeNull();
+  });
+
+  it('clears one account’s unsaved work when a different account signs in', async () => {
+    const other = jwt('user-2', 'other-tenant');
+    const signInImpl = vi
+      .fn<typeof signIn>()
+      .mockResolvedValue({ kind: 'signed-in', accessToken: other, refreshToken: 'refresh-9' });
+    await expireWhileSaving(signInImpl);
+    await signInThroughForm(other);
+
+    expect(await screen.findByTestId('design-account-account-switched')).toBeTruthy();
+    expect(nameField().value).toBe('');
+    expect(overview().getByLabelText<HTMLInputElement>('Customer').value).toBe('');
+    expect(overview().getByLabelText<HTMLInputElement>('Revision note').value).toBe('');
+    expect(screen.queryByTestId('project-opened')).toBeNull();
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY) ?? '').not.toContain(
+      'Typed for user 1',
+    );
+  });
+
+  it('clears the last save’s status when the page moves to another identity', async () => {
+    api.save.mockResolvedValue({ kind: 'saved', project: saved('trial-project') });
+    const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
+      kind: 'signed-in',
+      accessToken: ACCOUNT_TOKEN,
+      refreshToken: 'refresh-1',
+    });
+    renderScreen({ signInImpl });
+    await completeForm();
+    fireEvent.click(projects().getByText('Save project'));
+    expect(await screen.findByText('Saved as revision 1.')).toBeTruthy();
+
+    fireEvent.click(
+      within(screen.getByTestId('design-trial-mode')).getByText('Sign in to save to your account'),
+    );
+    await signInThroughForm(ACCOUNT_TOKEN);
+    await screen.findByTestId('design-account-trial-project-stays');
+    expect(screen.queryByText('Saved as revision 1.')).toBeNull();
+  });
+
+  it('ignores a save started for the trial that answers after signing in', async () => {
+    let answer: (outcome: Awaited<ReturnType<typeof saveProject>>) => void = () => undefined;
+    api.save.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
+      kind: 'signed-in',
+      accessToken: ACCOUNT_TOKEN,
+      refreshToken: 'refresh-1',
+    });
+    renderScreen({ signInImpl });
+    await completeForm();
+    fireEvent.click(projects().getByText('Save project'));
+    await waitFor(() => {
+      expect(api.save).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(
+      within(screen.getByTestId('design-trial-mode')).getByText('Sign in to save to your account'),
+    );
+    await signInThroughForm(ACCOUNT_TOKEN);
+    await act(async () => {
+      answer({ kind: 'saved', project: saved('trial-project') });
+      await Promise.resolve();
+    });
+
+    // The trial's project is not opened under the account, nor said to be saved there.
+    expect(screen.queryByTestId('project-opened')).toBeNull();
+    expect(screen.queryByText('Saved as revision 1.')).toBeNull();
+    expect(nameField().value).toBe('Tower');
+  });
+});

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -193,5 +193,42 @@ describe('load schedule validation', () => {
     expect(power.getAttribute('aria-invalid')).toBe('true');
     const message = document.getElementById(power.getAttribute('aria-describedby') ?? '');
     expect(message?.textContent).toBe('Enter a number above 0.');
+  });
+});
+
+describe('design notes under a right-to-left sheet (D8)', () => {
+  const WITH_NOTES = {
+    ...TWO_BOARDS,
+    project: {
+      ...TWO_BOARDS.project,
+      boards: (TWO_BOARDS.project.boards ?? []).map((board, index) =>
+        index === 0
+          ? {
+              ...board,
+              notes: [
+                { code: 'spare_ways', params: { count: '2', percent: '20' }, text: '' },
+                { code: 'from_a_newer_api', params: {}, text: 'Something new (32 A).' },
+              ],
+            }
+          : board,
+      ),
+    },
+  } as typeof TWO_BOARDS;
+
+  it('lays out each translated note right to left while the sheet stays left to right', () => {
+    renderApp(<DrawingSheets response={WITH_NOTES} />, { locale: 'he' });
+    expect(screen.getByTestId('sheet-frame').getAttribute('dir')).toBe('ltr');
+    const notes = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+    expect(notes[0]?.getAttribute('dir')).toBe('rtl');
+    // The server's English, for a code the page cannot translate, reads as it is written.
+    expect(notes[1]?.getAttribute('dir')).toBe('auto');
+    expect(screen.getByTestId('design-notes-block').getAttribute('dir')).toBe('rtl');
+  });
+
+  it('leaves the notes to the sheet in English', () => {
+    renderApp(<DrawingSheets response={WITH_NOTES} />, { locale: 'en' });
+    const notes = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+    expect(notes[0]?.getAttribute('dir')).toBe('auto');
+    expect(screen.getByTestId('design-notes-block').getAttribute('dir')).toBeNull();
   });
 });

@@ -359,6 +359,48 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
         return _issue_tokens(session=session, user=user, tenant=tenant)
 
 
+def logout(*, session: Session, caller: CurrentUser, refresh_token: str) -> None:
+    """Revoke a refresh token the caller owns, ending that sign-in's session.
+
+    Rotation already revokes every predecessor of a live token, so revoking
+    the presented one ends its whole chain: nothing in it can refresh again.
+    Other sign-ins of the same account (another device) are left alone; this
+    signs out one session, not every session.
+
+    **Idempotent and silent.** An unknown, already-revoked, expired, or
+    another account's token revokes nothing and is not an error. The answer is
+    the same either way, so the endpoint cannot be used to learn whether a
+    token exists or whose it is, and a retried sign-out never fails.
+
+    The access token the caller presented is *not* revoked: access tokens are
+    stateless JWTs with no server-side denylist, so one copied before sign-out
+    stays valid until its ``exp`` (``access_token_ttl_seconds``).
+
+    Args:
+        session: Open database session, bound to the caller's tenant. The
+            caller commits.
+        caller: The authenticated caller; only their own token is revoked.
+        refresh_token: The token as presented by the client.
+    """
+    try:
+        user_id = uuid.UUID(caller.id)
+        tenant_id = uuid.UUID(caller.tenant_id)
+    except ValueError:
+        # Not an account id. A trial has no refresh tokens: nothing to revoke.
+        return
+    session.execute(
+        update(RefreshTokenRow)
+        .where(
+            RefreshTokenRow.token_hash == hash_refresh_token(refresh_token),
+            RefreshTokenRow.user_id == user_id,
+            RefreshTokenRow.tenant_id == tenant_id,
+            RefreshTokenRow.revoked_at.is_(None),
+        )
+        .values(revoked_at=datetime.now(UTC))
+        .execution_options(synchronize_session=False)
+    )
+
+
 def _refuse_unrotatable_token(*, session: Session, token_hash: str, now: datetime) -> NoReturn:
     """Explain why a token could not be rotated, revoking its family on replay.
 

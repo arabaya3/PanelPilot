@@ -1,11 +1,12 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { FilePicker } from '@/components/file-picker';
 import { useOutcomeText } from '@/components/design/note-text';
+import { DEFAULT_PROFILE_KEY } from '@/components/design/schedule';
 import { useFindingText } from '@/components/design/revision-status';
 import {
   exportDesign,
@@ -17,7 +18,8 @@ import {
   type Quotation,
 } from '@/lib/design';
 
-type Rates = {
+/** The rates as typed. */
+export type QuoteRates = {
   currency: string;
   cableLength: string;
   labourCircuit: string;
@@ -27,7 +29,20 @@ type Rates = {
   vat: string;
 };
 
-const INITIAL_RATES: Rates = {
+/**
+ * The settings an estimate is priced with, in the page's language: the
+ * server words the lines it writes ("Wiring and testing, per circuit") in
+ * the profile's language. Pricing does not design again, so the language
+ * changes the wording only, never the design priced.
+ */
+export function pricingProfile(
+  profile: Record<string, unknown> | null,
+  language: string,
+): Record<string, unknown> {
+  return { ...(profile ?? { key: DEFAULT_PROFILE_KEY }), language };
+}
+
+const INITIAL_RATES: QuoteRates = {
   currency: 'JOD',
   cableLength: '',
   labourCircuit: '',
@@ -59,6 +74,8 @@ export function QuotationPanel({
   exportImpl = exportDesign,
   saveImpl,
   currency,
+  rates: heldRates,
+  onRatesChange,
 }: {
   token: string;
   project: DesignProject;
@@ -69,17 +86,31 @@ export function QuotationPanel({
   saveImpl: (blob: Blob, filename: string) => void;
   /** The market's currency, which the rates start from. */
   currency?: string;
+  /**
+   * The rates, when the page keeps them: the panel is not shown while the
+   * design is out of date or being redesigned, and what was typed outlives
+   * that. Kept here otherwise.
+   */
+  rates?: QuoteRates;
+  onRatesChange?: (rates: QuoteRates) => void;
 }) {
   const t = useTranslations('design.quote');
   const say = useOutcomeText();
   const id = useId();
+  const locale = useLocale();
   const tDesign = useTranslations('design');
   const tEstimate = useTranslations('design.quotation');
   const tFindings = useTranslations('design.findings');
   const findingText = useFindingText();
-  const [rates, setRates] = useState<Rates>(
+  const [ownRates, setOwnRates] = useState<QuoteRates>(
     currency ? { ...INITIAL_RATES, currency } : INITIAL_RATES,
   );
+  const rates = heldRates ?? ownRates;
+  function setRate(key: keyof QuoteRates, value: string) {
+    const next = { ...rates, [key]: value };
+    setOwnRates(next);
+    onRatesChange?.(next);
+  }
   const [entries, setEntries] = useState<PriceListEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [quotation, setQuotation] = useState<Quotation | null>(null);
@@ -113,7 +144,12 @@ export function QuotationPanel({
   async function price() {
     setWorking(true);
     setMessage(null);
-    const outcome = await priceImpl({ token, project, pricing: pricing(), profile });
+    const outcome = await priceImpl({
+      token,
+      project,
+      pricing: pricing(),
+      profile: pricingProfile(profile, locale),
+    });
     setWorking(false);
     if (outcome.kind === 'priced') {
       setQuotation(outcome.quotation);
@@ -131,7 +167,7 @@ export function QuotationPanel({
     }
   }
 
-  function rateField(key: keyof Rates, unit = '') {
+  function rateField(key: keyof QuoteRates, unit = '') {
     return (
       <Field id={`${id}-${key}`} label={t(`field.${key}`)} unit={unit}>
         <input
@@ -140,7 +176,7 @@ export function QuotationPanel({
           inputMode={key === 'currency' ? 'text' : 'decimal'}
           value={rates[key]}
           onChange={(event) => {
-            setRates((current) => ({ ...current, [key]: event.target.value }));
+            setRate(key, event.target.value);
           }}
           className="input w-full"
         />
@@ -151,7 +187,16 @@ export function QuotationPanel({
   return (
     <section className="card flex flex-col gap-4 p-4 md:p-5" data-testid="quotation-panel">
       <h2 className="text-lg font-semibold">{t('title')}</h2>
-      <p className="text-sm text-text-muted">{t('intro')}</p>
+      <p className="text-sm text-text-muted">
+        {t.rich('intro', {
+          // A key as typed in a price list: code, laid out left to right in any language.
+          key: (chunks) => (
+            <code dir="ltr" className="font-mono">
+              {chunks}
+            </code>
+          ),
+        })}
+      </p>
 
       <FilePicker
         id={`${id}-prices`}
@@ -165,7 +210,7 @@ export function QuotationPanel({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {rateField('currency')}
-        {rateField('cableLength', 'm')}
+        {rateField('cableLength', t('unit.m'))}
         {rateField('labourCircuit')}
         {rateField('labourBoard')}
         {rateField('enclosure')}
@@ -271,7 +316,7 @@ export function QuotationPanel({
                 {quotation.lines.map((line, index) => (
                   <tr key={index} className="border-b border-border-subtle last:border-b-0">
                     <td className="p-2">{line.description}</td>
-                    <td className="p-2 text-end">{`${line.quantity} ${line.unit}`}</td>
+                    <td className="p-2 text-end">{`${line.quantity} ${t.has(`unit.${line.unit}`) ? t(`unit.${line.unit}`) : line.unit}`}</td>
                     <td className="p-2 text-end">
                       {line.missing === 'length'
                         ? t('noLength')

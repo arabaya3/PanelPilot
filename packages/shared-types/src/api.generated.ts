@@ -135,6 +135,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/auth/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout
+     * @description Sign out: revoke the caller's refresh token on the server.
+     *
+     *     Requires the caller's access token and revokes the presented refresh
+     *     token only if it is theirs. Always 204, so a retry never fails and the
+     *     answer says nothing about the token. The access token itself stays valid
+     *     until it expires; see ``auth_domain.logout``.
+     */
+    post: operations['logout_api_v1_auth_logout_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/auth/quota': {
     parameters: {
       query?: never;
@@ -4986,6 +5011,37 @@ export interface operations {
         content: {
           'application/json': components['schemas']['TokenPair'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  logout_api_v1_auth_logout_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RefreshRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

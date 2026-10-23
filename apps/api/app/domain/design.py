@@ -336,7 +336,10 @@ def drawing_sheets(
     Returns:
         The sheets.
     """
-    return marking.mark_sheets(pages.build_drawing_set(designated, company), mark)
+    sheets = pages.build_drawing_set(
+        designated, company, appended=marking.findings_sheet_count(mark)
+    )
+    return marking.mark_sheets(sheets, mark)
 
 
 #: The CSV lists, each written from the project alone.
@@ -670,7 +673,9 @@ def price_design(*, user: CurrentUser, request: QuotationRequest) -> QuotationEs
     project = designations.designate_project(_as_draft(request.project), company)
     findings = integrity.project_findings(project)
     blocking = integrity.blocking(findings)
-    priced = quotation.price_project(project, request.pricing)
+    # The page's estimate is said in the profile's language; the quotation
+    # exports (PDF and CSV) are English throughout, so they price in English.
+    priced = quotation.price_project(project, request.pricing, language=company.language)
     logger.info(
         "design.priced",
         tenant_id=user.tenant_id,
