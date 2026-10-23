@@ -6,17 +6,26 @@ const fs = require('fs');
 const path = require('path');
 const API = process.env.PP_API || 'http://127.0.0.1:8000/api/v1';
 const label = process.argv[2] || 'base';
-const REQUEST = require(path.join(__dirname, '..', 'evidence', 'backend', 'design-project-request.json'));
+const REQUEST = require(
+  path.join(__dirname, '..', 'evidence', 'backend', 'design-project-request.json'),
+);
 
 async function json(method, url, token, body) {
   const res = await fetch(API + url, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const buf = Buffer.from(await res.arrayBuffer());
   let parsed = null;
-  try { parsed = JSON.parse(buf.toString('utf8')); } catch { /* binary export */ }
+  try {
+    parsed = JSON.parse(buf.toString('utf8'));
+  } catch {
+    /* binary export */
+  }
   return { status: res.status, buf, body: parsed };
 }
 
@@ -43,20 +52,42 @@ function pdfText(buf) {
   const before = breaker.rated_current_a;
   breaker.rated_current_a = '200';
   const cable = board.cables.find((c) => c.id === 'c1-cable');
-  const csv = await json('POST', '/design/export', t, { project: tampered, format: 'circuits_csv' });
+  const csv = await json('POST', '/design/export', t, {
+    project: tampered,
+    format: 'circuits_csv',
+  });
   out.probes.tampered_rating = {
-    original_breaker_a: before, sent_breaker_a: '200', cable: cable && (cable.cross_section_mm2 || cable.section_mm2),
-    export_status: csv.status, exported_contains_200A: csv.buf.toString('utf8').includes('200'),
+    original_breaker_a: before,
+    sent_breaker_a: '200',
+    cable: cable && (cable.cross_section_mm2 || cable.section_mm2),
+    export_status: csv.status,
+    exported_contains_200A: csv.buf.toString('utf8').includes('200'),
   };
 
   // 2. Forged approval: the client writes an approver into the title-block revisions.
   const forged = structuredClone(project);
-  forged.info.revisions = [{ index: 'A', date: '2026-10-23', description: 'forged', drawn_by: 'X', checked_by: 'FORGED CHECKER', approved_by: 'FORGED APPROVER' }];
-  const calc = await json('POST', '/design/export', t, { project: forged, format: 'calculations_pdf' });
+  forged.info.revisions = [
+    {
+      index: 'A',
+      date: '2026-10-23',
+      description: 'forged',
+      drawn_by: 'X',
+      checked_by: 'FORGED CHECKER',
+      approved_by: 'FORGED APPROVER',
+    },
+  ];
+  const calc = await json('POST', '/design/export', t, {
+    project: forged,
+    format: 'calculations_pdf',
+  });
   const pdf = await json('POST', '/design/export', t, { project: forged, format: 'pdf' });
   fs.writeFileSync(path.join(__dirname, `repro-${label}-forged.calculations.pdf`), calc.buf);
   fs.writeFileSync(path.join(__dirname, `repro-${label}-forged.pdf`), pdf.buf);
-  out.probes.forged_approval = { calc_status: calc.status, pdf_status: pdf.status, note: 'inspect the saved PDFs for FORGED APPROVER' };
+  out.probes.forged_approval = {
+    calc_status: calc.status,
+    pdf_status: pdf.status,
+    note: 'inspect the saved PDFs for FORGED APPROVER',
+  };
 
   // 3. A blocking-class failure ignored: force a voltage-drop failure on a long run.
   const long = structuredClone(REQUEST);
@@ -66,7 +97,11 @@ function pdfText(buf) {
   const longExport = longDesign.body?.project
     ? await json('POST', '/design/export', t, { project: longDesign.body.project, format: 'pdf' })
     : { status: null };
-  out.probes.failure_ignored = { design_status: longDesign.status, note_codes: codes, export_status: longExport.status };
+  out.probes.failure_ignored = {
+    design_status: longDesign.status,
+    note_codes: codes,
+    export_status: longExport.status,
+  };
 
   // 4. Unknown fields: ATS-like keys at board and load level.
   const ats = structuredClone(REQUEST);
@@ -74,8 +109,14 @@ function pdfText(buf) {
   ats.boards[0].transfer_switch = { kind: 'ats' };
   ats.boards[0].loads[0].colour = 'red';
   const atsDesign = await json('POST', '/design/project', t, ats);
-  out.probes.unknown_fields = { status: atsDesign.status, detail: atsDesign.status === 200 ? 'accepted' : JSON.stringify(atsDesign.body).slice(0, 300) };
+  out.probes.unknown_fields = {
+    status: atsDesign.status,
+    detail: atsDesign.status === 200 ? 'accepted' : JSON.stringify(atsDesign.body).slice(0, 300),
+  };
 
   fs.writeFileSync(path.join(__dirname, `repro-${label}.json`), JSON.stringify(out, null, 2));
   console.log(JSON.stringify(out, null, 2));
-})().catch((e) => { console.error('FAILED', e); process.exit(1); });
+})().catch((e) => {
+  console.error('FAILED', e);
+  process.exit(1);
+});

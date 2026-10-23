@@ -17,18 +17,19 @@ Working agreement for the three Phase 1 agents. The lead owns this file; ask the
 
 These rules keep the agents from editing the same files.
 
-| Area | Owner |
-|---|---|
-| `apps/api/**`, except the test files listed for the adversarial agent | **Backend agent** |
-| `alembic/versions/*` | Backend agent |
-| `packages/shared-types/**`, regenerated only through the repository's generator | Backend agent |
-| `apps/web/**` | **Frontend agent** |
-| `apps/api/app/tests/api/v1/routes/test_export_integrity.py` (new file) | **Adversarial agent** |
-| `apps/api/app/tests/domain/test_export_integrity_db.py` (new file) | Adversarial agent |
-| `docs/design-readiness/phase-1/adversarial/**` | Adversarial agent |
-| Everything else in `docs/design-readiness/` | Lead |
+| Area                                                                            | Owner                 |
+| ------------------------------------------------------------------------------- | --------------------- |
+| `apps/api/**`, except the test files listed for the adversarial agent           | **Backend agent**     |
+| `alembic/versions/*`                                                            | Backend agent         |
+| `packages/shared-types/**`, regenerated only through the repository's generator | Backend agent         |
+| `apps/web/**`                                                                   | **Frontend agent**    |
+| `apps/api/app/tests/api/v1/routes/test_export_integrity.py` (new file)          | **Adversarial agent** |
+| `apps/api/app/tests/domain/test_export_integrity_db.py` (new file)              | Adversarial agent     |
+| `docs/design-readiness/phase-1/adversarial/**`                                  | Adversarial agent     |
+| Everything else in `docs/design-readiness/`                                     | Lead                  |
 
 Rules for every agent:
+
 - **Nobody commits, pushes, rebases or switches branches.** The lead does all git work.
 - Do not touch files another agent owns. If you need a change in one, ask the lead.
 
@@ -36,17 +37,18 @@ Rules for every agent:
 
 Add nullable columns to `design_project_revisions` in a new Alembic migration, so older rows stay valid:
 
-| Column | Type | Meaning |
-|---|---|---|
-| `design_snapshot` | JSONB | The `BoardDesignResponse.project` the **server** built from `request` when the revision was saved |
-| `snapshot_sha256` | String(64) | SHA-256 of the canonical JSON of `design_snapshot`: sorted keys, no whitespace, UTF-8 |
-| `profile_sha256` | String(64) | SHA-256 of the canonical company profile used for the design |
-| `rules_version` | String(40) | `app.design.RULES_VERSION`, a constant bumped whenever calculation or rule tables change |
-| `catalogue_version` | String(40) | Currently `"none"`, because no catalogue is wired into the design |
-| `findings` | JSONB | The structured findings (below) recorded at save time |
-| `approved_snapshot_sha256` | String(64) | Set at approval; must equal `snapshot_sha256` |
+| Column                     | Type       | Meaning                                                                                           |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `design_snapshot`          | JSONB      | The `BoardDesignResponse.project` the **server** built from `request` when the revision was saved |
+| `snapshot_sha256`          | String(64) | SHA-256 of the canonical JSON of `design_snapshot`: sorted keys, no whitespace, UTF-8             |
+| `profile_sha256`           | String(64) | SHA-256 of the canonical company profile used for the design                                      |
+| `rules_version`            | String(40) | `app.design.RULES_VERSION`, a constant bumped whenever calculation or rule tables change          |
+| `catalogue_version`        | String(40) | Currently `"none"`, because no catalogue is wired into the design                                 |
+| `findings`                 | JSONB      | The structured findings (below) recorded at save time                                             |
+| `approved_snapshot_sha256` | String(64) | Set at approval; must equal `snapshot_sha256`                                                     |
 
 Behaviour:
+
 - **Saving a revision** designs from the request on the server and stores everything above. A client-sent design is never stored as the snapshot.
 - **Approving** sets the existing approver fields and `approved_snapshot_sha256` in the same transaction, with the revision row locked (`SELECT … FOR UPDATE`).
 - **Approval is refused** with `revision_not_validated` for a legacy revision that has no snapshot (it must be saved again), and with `revision_has_blocking_findings` when the revision has blocking findings.
@@ -55,6 +57,7 @@ Behaviour:
 ## Findings (backend)
 
 `ValidationFinding`:
+
 - `code`: stable identifier
 - `severity`: `"blocking" | "warning" | "info"`
 - `board_id`, `circuit_id`, `device_id`: optional
@@ -64,6 +67,7 @@ Behaviour:
 - `source`: the rule's source, or `"policy"`
 
 Policy rules:
+
 - **Severity comes from a documented policy table**, `app/design/findings_policy.py`, keyed by the existing `DesignNote` codes.
 - **Thresholds come from existing sourced rules.** Do not invent electrical thresholds.
 - **A note code the policy does not classify** gets `requires_engineering_confirmation=true` and severity `warning`, and an execution-ready claim stays impossible.
@@ -71,13 +75,13 @@ Policy rules:
 
 ## API (backend; frontend and adversarial agents code against this)
 
-| Endpoint | Change |
-|---|---|
-| `POST /api/v1/design/export` (existing) | **Draft only** (below) |
-| `POST /api/v1/design/projects/{project_id}/revisions/{number}/export` (**new**) | Revision export (below) |
-| `POST /api/v1/design/projects/{project_id}/revisions/{number}/approval` (existing) | Behaves as described under **Data model** above |
-| `POST /api/v1/design/projects/{project_id}/revisions` and `POST /api/v1/design/projects` | Persist the snapshot, versions and findings, and return the findings |
-| `GET` of a saved project/revision | Exposes `findings`, `snapshot_sha256`, `rules_version`, `approved_snapshot_sha256`, `validated` (bool), and `export_status` |
+| Endpoint                                                                                 | Change                                                                                                                      |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/design/export` (existing)                                                  | **Draft only** (below)                                                                                                      |
+| `POST /api/v1/design/projects/{project_id}/revisions/{number}/export` (**new**)          | Revision export (below)                                                                                                     |
+| `POST /api/v1/design/projects/{project_id}/revisions/{number}/approval` (existing)       | Behaves as described under **Data model** above                                                                             |
+| `POST /api/v1/design/projects/{project_id}/revisions` and `POST /api/v1/design/projects` | Persist the snapshot, versions and findings, and return the findings                                                        |
+| `GET` of a saved project/revision                                                        | Exposes `findings`, `snapshot_sha256`, `rules_version`, `approved_snapshot_sha256`, `validated` (bool), and `export_status` |
 
 ### Draft export (`POST /api/v1/design/export`)
 
