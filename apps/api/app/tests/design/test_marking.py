@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
+
+import pdfplumber
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate
 
 from app.design import marking
 from app.design.sheet import Sheet, Text
@@ -44,3 +50,19 @@ def test_text_formats_carry_the_mark() -> None:
 
 def test_no_findings_is_said() -> None:
     assert marking.finding_lines(marking.ExportMark("x", "y")) == ["No unresolved findings."]
+
+
+def test_the_page_stamp_label_and_identity_do_not_overlap() -> None:
+    identity = "A long project name, revision 01, approved by Eng. Example on 2026-10-23, " + (
+        "design 40beff92fcac, rules 2026.10.23.1"
+    )
+    mark = marking.ExportMark(marking.REVIEW_APPROVED_LABEL, identity)
+    buffer = io.BytesIO()
+    stamp = marking.pdf_page_stamp(mark)
+    document = SimpleDocTemplate(buffer, pagesize=A4)
+    document.build([Paragraph("Body", getSampleStyleSheet()["Normal"])], onFirstPage=stamp)
+    with pdfplumber.open(io.BytesIO(buffer.getvalue())) as pdf:
+        lines = (pdf.pages[0].extract_text() or "").splitlines()
+    # Overlapping strings interleave into one garbled line; apart, each reads whole.
+    assert lines[0] == marking.REVIEW_APPROVED_LABEL
+    assert lines[1] == identity

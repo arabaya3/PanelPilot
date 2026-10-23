@@ -174,15 +174,16 @@ def pdf_page_stamp(mark: ExportMark) -> PageStamp:
     """
 
     def stamp(canvas: Canvas, document: BaseDocTemplate) -> None:
-        width, height = document.pagesize
+        _, height = document.pagesize
         canvas.saveState()
         font, label = font_for(mark.label, bold=True)
         canvas.setFont(font, 10)
         canvas.setFillColor(colors.HexColor("#b00020"))
         canvas.drawString(document.leftMargin, height - 7 * mm, label)
+        # On its own line: a long identity drawn beside the label overran it.
         font, identity = font_for(mark.identity, right_to_left=has_rtl(mark.identity))
         canvas.setFont(font, 7)
-        canvas.drawRightString(width - document.rightMargin, height - 7 * mm, identity)
+        canvas.drawString(document.leftMargin, height - 10.5 * mm, identity)
         font, banner = font_for(mark.banner, bold=True, right_to_left=has_rtl(mark.banner))
         canvas.setFont(font, 7)
         canvas.drawString(document.leftMargin, 5 * mm, banner)
