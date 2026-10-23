@@ -7,8 +7,9 @@ routes, at the same time. The invariants:
 - no export carries an approval for a snapshot it did not render;
 - concurrent revisions get distinct numbers, each with its own snapshot.
 
-A missing ``TEST_DATABASE_URL`` fails the run (see the route test's ``engine``
-fixture); a skip here would hide exactly the lock these tests exist for.
+Without a ``TEST_DATABASE_URL`` they skip with a reason naming Postgres, and
+CI's integration job fails on any such skip: a skip there would hide exactly
+the lock these tests exist for.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     approve,
     canonical_sha256,
     pdf_pages,
+    pytestmark,
     revise,
     revision_export,
     revision_row,

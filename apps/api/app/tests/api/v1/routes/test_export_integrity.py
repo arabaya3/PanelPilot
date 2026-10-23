@@ -36,6 +36,14 @@ from app.models.tables.tenant import TenantRow
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
+# The repository's convention for database-backed tests: skipped where no
+# database is configured (the unit job), and CI's integration job fails the
+# build on any skip whose reason names Postgres, so they always run there.
+pytestmark = pytest.mark.skipif(
+    not DATABASE_URL.startswith("postgresql"),
+    reason="needs Postgres: approval, snapshots and tenancy are the database's",
+)
+
 FORGED_CHECKER = "FORGED CHECKER ZQX"
 FORGED_APPROVER = "FORGED APPROVER ZQX"
 DRAFT_WORDS = "NOT FOR EXECUTION"
@@ -110,7 +118,11 @@ def _engine() -> Iterator[Engine]:
             "TEST_DATABASE_URL must point at the disposable Postgres "
             "(panelpilot_phase1_test); these gates may not be skipped"
         )
-    if not DATABASE_URL.rsplit("/", 1)[-1].startswith("panelpilot_phase1_"):
+    # Locally the dev database shares the compose Postgres, so only a
+    # panelpilot_phase1_* database is accepted. CI's database is a service
+    # container created for the job and discarded with it.
+    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    if not in_ci and not DATABASE_URL.rsplit("/", 1)[-1].startswith("panelpilot_phase1_"):
         pytest.fail(
             f"refusing to run against a database other than the disposable one: {DATABASE_URL}"
         )
