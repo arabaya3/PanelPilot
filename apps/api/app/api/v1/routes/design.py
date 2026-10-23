@@ -33,7 +33,7 @@ from app.models.schemas.design import (
     PriceListEntry,
     ProjectDesignRequest,
     ProjectPage,
-    Quotation,
+    QuotationEstimate,
     QuotationRequest,
     ReviseProjectRequest,
     RevisionExportRequest,
@@ -127,12 +127,17 @@ def suggest_load_schedule(
     return result
 
 
-@router.post("/quotation", response_model=Quotation)
+@router.post("/quotation", response_model=QuotationEstimate)
 def price_design(
     payload: QuotationRequest,
     session: SessionDep,
     user: CurrentUserDep,
-) -> Quotation:
+) -> QuotationEstimate:
+    """Price an unsaved design as a provisional estimate, with its findings.
+
+    Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
+    revision (``POST /design/projects/{id}/revisions/{n}/export``).
+    """
     del session
     return design_domain.price_design(user=user, request=payload)
 

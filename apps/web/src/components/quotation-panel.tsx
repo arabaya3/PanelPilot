@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 import { Field } from '@/components/cable-sizing-panel';
 import { FilePicker } from '@/components/file-picker';
 import { useOutcomeText } from '@/components/design/note-text';
+import { useFindingText } from '@/components/design/revision-status';
 import {
   exportDesign,
   importPriceList,
@@ -73,6 +74,9 @@ export function QuotationPanel({
   const say = useOutcomeText();
   const id = useId();
   const tDesign = useTranslations('design');
+  const tEstimate = useTranslations('design.quotation');
+  const tFindings = useTranslations('design.findings');
+  const findingText = useFindingText();
   const [rates, setRates] = useState<Rates>(
     currency ? { ...INITIAL_RATES, currency } : INITIAL_RATES,
   );
@@ -84,7 +88,7 @@ export function QuotationPanel({
   function pricing(): PricingSettings {
     const number = (text: string) => (text.trim() === '' ? '0' : text.trim());
     return {
-      currency: rates.currency.trim() || 'JOD',
+      currency: rates.currency.trim().toUpperCase() || 'JOD',
       price_list: entries,
       cable_length_m: rates.cableLength.trim() === '' ? null : rates.cableLength.trim(),
       labour_per_circuit: number(rates.labourCircuit),
@@ -217,6 +221,37 @@ export function QuotationPanel({
 
       {quotation && (
         <div data-testid="quote-result" className="flex flex-col gap-3">
+          <div
+            role="note"
+            data-testid="quote-provisional"
+            data-status={quotation.status}
+            className="rounded-lg border border-s-8 border-severity-warning bg-severity-warning-surface p-3 text-sm"
+          >
+            <p className="font-semibold">{tEstimate('provisionalBanner')}</p>
+            <p className="text-text-muted">{tEstimate('provisionalDetail')}</p>
+          </div>
+          {quotation.blocking && (
+            <p role="alert" className="text-sm font-semibold text-severity-critical">
+              {tEstimate('blocking', {
+                count: quotation.findings.filter((f) => f.severity === 'blocking').length,
+              })}
+            </p>
+          )}
+          {quotation.findings.length > 0 && (
+            <details data-testid="quote-findings" open={quotation.blocking}>
+              <summary className="cursor-pointer text-sm">{tEstimate('findingsTitle')}</summary>
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {quotation.findings.map((finding, index) => (
+                  <li
+                    key={`${finding.code}-${String(index)}`}
+                    data-testid={`quote-finding-${finding.severity}`}
+                  >
+                    {`${tFindings(`severity.${finding.severity}`)}: ${findingText(finding)}`}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {!quotation.complete && (
             <p role="alert" className="text-sm font-semibold text-severity-critical">
               {t('incomplete', { count: quotation.unpriced.length })}

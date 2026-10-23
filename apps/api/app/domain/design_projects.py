@@ -52,6 +52,7 @@ from app.models.schemas.design import (
     ExportPurpose,
     ExportStatus,
     FindingSeverity,
+    PricingSettings,
     ProjectDesignRequest,
     ProjectInfo,
     ProjectPage,
@@ -273,6 +274,7 @@ def _summary(row: DesignRevisionRow, *, thorough: bool = False) -> RevisionSumma
         created_at=row.created_at.isoformat(),
         approved_by=row.approved_by,
         approved_at=row.approved_at.isoformat() if row.approved_at else None,
+        approved_account=row.approved_account,
         validated=row.design_snapshot is not None,
         # One of up to MAX_REVISIONS rows: compared by recorded versions only.
         # The revision opened is checked in full (``_opened``), and approval and
@@ -810,7 +812,7 @@ def export_revision(
         designated=designed.model_copy(update={"info": info}),
         company=company,
         export_format=request.format,
-        pricing=request.pricing,
+        pricing=_revision_pricing(request.pricing),
         mark=_revision_mark(project, row, findings),
     )
     logger.info(
@@ -823,6 +825,19 @@ def export_revision(
         snapshot_sha256=row.snapshot_sha256,
     )
     return exported
+
+
+def _revision_pricing(pricing: PricingSettings | None) -> PricingSettings | None:
+    """The pricing a revision's quotation applies: prices and rates only.
+
+    The client's pricing sets what an item costs, never what is quoted: the
+    devices, cables and quantities are the snapshot's. A default cable length
+    would turn a cable the revision gives no length into metres it never
+    designed, so it is dropped and such a cable stays unpriced, "no length".
+    """
+    if pricing is None:
+        return None
+    return pricing.model_copy(update={"cable_length_m": None})
 
 
 def _cursor(updated_at: datetime, project_id: uuid.UUID) -> str:

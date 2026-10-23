@@ -40,6 +40,27 @@ const QUOTED: Quotation = {
   total: '5.22',
   unpriced: ['residual_current_device:4P:40A:30mA (no price)'],
   complete: false,
+  status: 'provisional_estimate',
+  label: 'Provisional estimate: not a quotation, not for execution.',
+  findings: [],
+  blocking: false,
+};
+
+/** The estimate of a design whose breaker was forged past its cable. */
+const BLOCKED: Quotation = {
+  ...QUOTED,
+  blocking: true,
+  findings: [
+    {
+      code: 'integrity_unknown_device',
+      severity: 'blocking',
+      board_id: 'DB1',
+      values: { device: 'Q9' },
+      message: 'Device Q9 is not on this board.',
+      requires_engineering_confirmation: false,
+      source: 'policy',
+    },
+  ],
 };
 
 function panel(overrides: Partial<Parameters<typeof QuotationPanel>[0]> = {}) {
@@ -70,6 +91,62 @@ describe('quotation', () => {
     expect(pricing?.labour_per_circuit).toBe('5');
     expect(pricing?.vat_percent).toBe('16');
     expect(pricing?.cable_length_m).toBeNull();
+  });
+
+  it.each([
+    ['en', 'Provisional estimate — not a quotation, not for execution'],
+    ['ar', 'تقدير مبدئي — ليس عرض سعر، وليس للتنفيذ'],
+    ['he', 'הערכה זמנית — לא הצעת מחיר, לא לביצוע'],
+  ] as const)('labels the estimate provisional in %s', async (locale, banner) => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    renderApp(
+      <QuotationPanel
+        token="tok"
+        project={PROJECT}
+        profile={null}
+        saveImpl={vi.fn()}
+        priceImpl={priceImpl}
+      />,
+      { locale },
+    );
+    const submit = screen
+      .getByTestId('quotation-panel')
+      .querySelector<HTMLButtonElement>('button.btn-primary');
+    if (!submit) throw new Error('no price button');
+    fireEvent.click(submit);
+    const note = await screen.findByTestId('quote-provisional');
+    expect(note.getAttribute('data-status')).toBe('provisional_estimate');
+    expect(note.textContent).toContain(banner);
+    expect(note.textContent).not.toMatch(/approved|معتمد|מאושר/i);
+  });
+
+  it('shows a blocking finding of the design it priced', async () => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: BLOCKED });
+    panel({ priceImpl });
+    fireEvent.click(screen.getByRole('button', { name: 'Price the board' }));
+    await screen.findByTestId('quote-result');
+    const alerts = screen.getAllByRole('alert').map((node) => node.textContent);
+    expect(alerts).toContain(
+      '1 blocking finding: this estimate prices a design that fails its checks.',
+    );
+    expect(screen.getByTestId('quote-finding-blocking').textContent).toBe(
+      'Blocking: Device Q9 is not on this board.',
+    );
+  });
+
+  it('sends the currency as an ISO code', async () => {
+    const priceImpl = vi
+      .fn<typeof priceDesign>()
+      .mockResolvedValue({ kind: 'priced', quotation: QUOTED });
+    panel({ priceImpl });
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: ' sar ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Price the board' }));
+    await screen.findByTestId('quote-result');
+    expect(priceImpl.mock.calls[0]?.[0].pricing.currency).toBe('SAR');
   });
 
   it('loads a price list and sends it with the pricing', async () => {

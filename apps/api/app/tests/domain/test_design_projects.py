@@ -20,7 +20,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.design import RULES_VERSION, findings_policy, snapshot
+from app.design import RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
 from app.domain import design_projects
 from app.models.schemas.auth import CurrentUser
@@ -275,7 +275,10 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
     assert approved.revision == 1
     assert approved.revisions[0].approved_by == "A. Rabaya"
     assert approved.revisions[0].approved_at is not None
+    # The account comes from the approver's token, never from the request.
+    assert approved.revisions[0].approved_account == "eng@example.com"
     assert approved.revisions[1].approved_by is None
+    assert approved.revisions[1].approved_account is None
     # Opened at revision 1, the title block lists only revision 1, approved.
     (listed,) = approved.request.info.revisions
     assert listed.approved_by == "A. Rabaya"
@@ -411,6 +414,21 @@ def test_execution_is_always_refused_and_names_what_is_missing(tenants, as_tenan
     assert refused.value.code == "execution_package_incomplete"
     assert "control_schematics" in refused.value.params["missing"]
     assert refused.value.params["approval"] == "present"
+
+
+def test_execution_stays_refused_when_nothing_is_listed_missing(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Producing the missing parts (Phase 2) must not by itself unlock execution.
+
+    Releasing an execution package needs its own completeness and engineering
+    validation; until that exists, emptying the list changes nothing.
+    """
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    monkeypatch.setattr(marking, "EXECUTION_PACKAGE_MISSING", ())
+    with pytest.raises(ConflictError) as refused:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert refused.value.code == "execution_package_incomplete"
 
 
 def test_a_legacy_revision_opens_but_is_not_approved_or_exported(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]

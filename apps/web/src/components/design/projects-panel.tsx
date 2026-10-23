@@ -25,8 +25,12 @@ export type OpenedProject = {
   name: string;
   revision: number;
   revisions: number[];
-  /** Who approved the revision open, and when (ISO 8601); null while not approved. */
-  approval: { by: string; at: string } | null;
+  /**
+   * Who approved the revision open, and when (ISO 8601); null while not
+   * approved. `account` is the signed-in account the server recorded the
+   * approval under, from the approver's token, never from the page.
+   */
+  approval: { by: string; at: string; account?: string } | null;
 };
 
 /** One line of the title block's revision list. */
@@ -36,7 +40,11 @@ export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions'
 export function approvalOf(project: SavedProject): OpenedProject['approval'] {
   const revision = project.revisions.find((entry) => entry.number === project.revision);
   return revision?.approved_by && revision.approved_at
-    ? { by: revision.approved_by, at: revision.approved_at }
+    ? {
+        by: revision.approved_by,
+        at: revision.approved_at,
+        ...(revision.approved_account ? { account: revision.approved_account } : {}),
+      }
     : null;
 }
 
@@ -54,6 +62,7 @@ export function ProjectsPanel({
   onOpened,
   onSaveState,
   onRefused,
+  onUnauthorized,
   beforeOpen = (open) => {
     open();
   },
@@ -73,6 +82,8 @@ export function ProjectsPanel({
   onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
   /** Told what a refused save objected to, so the page can mark the fields at fault. */
   onRefused?: (refusal: Refusal) => void;
+  /** Told when the server no longer accepts the token, so the page can renew it or ask to sign in. */
+  onUnauthorized?: () => void;
   /** Asked before opening a project replaces what is on the page; calls `open` to go ahead. */
   beforeOpen?: (open: () => void) => void;
   /** Whether the page has changes not saved, which an approval would not include. */
@@ -97,6 +108,7 @@ export function ProjectsPanel({
   }>;
 }) {
   const t = useTranslations('design.projects');
+  const ta = useTranslations('design.account');
   const say = useOutcomeText();
   const id = useId();
   const {
@@ -120,8 +132,11 @@ export function ProjectsPanel({
   const refresh = useCallback(async () => {
     const outcome = await list({ token });
     if (outcome.kind === 'listed') setPage(outcome.page);
-    else setMessage(say(outcome));
-  }, [list, token, say]);
+    else {
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(say(outcome));
+    }
+  }, [list, token, say, onUnauthorized]);
 
   useEffect(() => {
     void refresh();
@@ -146,7 +161,14 @@ export function ProjectsPanel({
       // A refusal says what the API objected to; anything else is a save that
       // did not happen, not a design that failed. What was entered stays.
       if (outcome.kind === 'refused') onRefused?.(outcome);
-      setMessage(outcome.kind === 'refused' ? say(outcome) : t('saveFailed'));
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(
+        outcome.kind === 'refused'
+          ? say(outcome)
+          : outcome.kind === 'unauthorized'
+            ? ta('saveUnauthorized')
+            : t('saveFailed'),
+      );
     }
   }
 
@@ -160,7 +182,10 @@ export function ProjectsPanel({
     setMessage(null);
     const outcome = await open({ token, id: projectId, revision: revision ?? null });
     if (outcome.kind === 'saved') onOpened(outcome.project, true);
-    else setMessage(say(outcome));
+    else {
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(say(outcome));
+    }
   }
 
   async function sign() {
@@ -180,6 +205,7 @@ export function ProjectsPanel({
       onOpened(outcome.project, false);
       return;
     }
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
     setMessage(say(outcome));
     // Someone else approved it first: show their approval, keeping the form as it is.
     if (outcome.kind === 'refused' && outcome.code === 'revision_already_approved') {
@@ -192,7 +218,10 @@ export function ProjectsPanel({
     setConfirming(null);
     const outcome = await remove({ token, id: projectId });
     if (outcome.kind === 'deleted') void refresh();
-    else setMessage(say(outcome));
+    else {
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(say(outcome));
+    }
   }
 
   return (
@@ -231,6 +260,11 @@ export function ProjectsPanel({
                 date: opened.approval.at.slice(0, 10),
               })}
             </p>
+            {opened.approval.account !== undefined && (
+              <p className="text-sm text-text-muted" data-testid="project-approval-account">
+                {ta('approvedAccount', { account: opened.approval.account })}
+              </p>
+            )}
             {/* An approval never reads as covering what it did not sign. */}
             {!approvalCovers && (
               <p className="text-sm text-text-muted" data-testid="approval-not-covering">

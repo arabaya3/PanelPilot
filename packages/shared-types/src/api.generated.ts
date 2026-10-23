@@ -465,7 +465,13 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Price Design */
+    /**
+     * Price Design
+     * @description Price an unsaved design as a provisional estimate, with its findings.
+     *
+     *     Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
+     *     revision (``POST /design/projects/{id}/revisions/{n}/export``).
+     */
     post: operations['price_design_api_v1_design_quotation_post'];
     delete?: never;
     options?: never;
@@ -3668,7 +3674,7 @@ export interface components {
      * @description How a company prices a board.
      *
      *     Attributes:
-     *         currency: Printed beside every amount.
+     *         currency: Printed beside every amount: an ISO 4217 code.
      *         price_list: The company's prices.
      *         cable_length_m: The length priced for an outgoing cable whose own
      *             length is not given; ``None`` leaves such cables unpriced.
@@ -3895,21 +3901,22 @@ export interface components {
       questions_remaining: number;
     };
     /**
-     * Quotation
-     * @description A board's price, line by line, with what could not be priced.
+     * QuotationEstimate
+     * @description A provisional estimate: a project the client sent, priced and checked.
+     *
+     *     Nothing in it is persisted, approved or issued. The project is the
+     *     client's, so it is re-designated and integrity-checked on the server and
+     *     its findings are returned beside the prices: a tampered rating is a
+     *     blocking finding here, as on a draft export. It carries no revision,
+     *     checker or approver.
      *
      *     Attributes:
-     *         currency: Of every amount.
-     *         lines: Materials, then labour and enclosure.
-     *         materials: Sum of the priced material lines.
-     *         labour: Labour and enclosure.
-     *         markup: On materials and labour.
-     *         vat: On the marked-up total.
-     *         total: What the customer pays, for what was priced.
-     *         unpriced: The lines with no price, by key, for the price list's owner.
-     *         complete: Whether every line was priced.
+     *         status: Always ``"provisional_estimate"``.
+     *         label: In English; the page renders ``status`` in the reader's language.
+     *         findings: The integrity checks and notes on the project as sent.
+     *         blocking: Whether any finding is blocking.
      */
-    Quotation: {
+    QuotationEstimate: {
       /** Currency */
       currency: string;
       /** Lines */
@@ -3928,6 +3935,21 @@ export interface components {
       unpriced: string[];
       /** Complete */
       complete: boolean;
+      /**
+       * Status
+       * @default provisional_estimate
+       * @constant
+       */
+      status: 'provisional_estimate';
+      /**
+       * Label
+       * @default Provisional estimate: not a quotation, not for execution. Priced from an unsaved design sent by the browser; a quotation is exported from a saved revision.
+       */
+      label: string;
+      /** Findings */
+      findings: components['schemas']['DesignFinding'][];
+      /** Blocking */
+      blocking: boolean;
     };
     /**
      * QuotationLine
@@ -4124,6 +4146,9 @@ export interface components {
      *         approved_by: The engineer who approved it, as the title block
      *             prints them; ``None`` while it is not approved.
      *         approved_at: When, ISO 8601.
+     *         approved_account: The signed-in account that approved it, taken
+     *             from the approver's token on the server, never from the request;
+     *             ``None`` while it is not approved.
      *         validated: Whether the server designed it from its request when it
      *             was saved, and holds that design; ``False`` for an older one.
      *         export_status: What it can be exported as now.
@@ -4141,6 +4166,8 @@ export interface components {
       approved_by?: string | null;
       /** Approved At */
       approved_at?: string | null;
+      /** Approved Account */
+      approved_account?: string | null;
       /**
        * Validated
        * @default false
@@ -5506,7 +5533,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['Quotation'];
+          'application/json': components['schemas']['QuotationEstimate'];
         };
       };
       /** @description Validation Error */

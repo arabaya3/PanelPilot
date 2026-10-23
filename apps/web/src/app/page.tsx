@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chat } from '@/components/chat';
+import { useAccountSession } from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
 import { SignInForm } from '@/components/sign-in-form';
 import { UserIcon } from '@/components/icons';
@@ -75,6 +76,10 @@ export default function HomePage() {
   const ts = useTranslations('signIn');
   const [phase, setPhase] = useState<Phase>({ kind: 'starting' });
   const [signingIn, setSigningIn] = useState(false);
+  // Shared with the other pages (notably /design), so an account signed in
+  // here is the one they work under too.
+  const account = useAccountSession();
+  const shareAccount = account?.signedIn;
   // Bumped on sign-in so the chat mounts fresh. Signing in moves to another
   // tenant, where the trial's open conversation does not exist: kept mounted,
   // the next question would name it and be refused. Signup does not bump it,
@@ -134,36 +139,44 @@ export default function HomePage() {
     setPhase(readyWith(outcome));
   }, []);
 
-  const onSignedUp = useCallback((tokens: { accessToken: string; refreshToken: string }) => {
-    refreshRef.current = tokens.refreshToken;
-    // The claim has been made; the secret has no further use, and a stored
-    // trial would have the next reload try to resume one that no longer
-    // exists as a trial.
-    clearTrial();
-    setPhase({
-      kind: 'ready',
-      token: tokens.accessToken,
-      trial: null,
-      questionsRemaining: null,
-      // Already open: the account continues in the conversation on screen.
-      conversationId: null,
-    });
-  }, []);
+  const onSignedUp = useCallback(
+    (tokens: { accessToken: string; refreshToken: string }) => {
+      refreshRef.current = tokens.refreshToken;
+      shareAccount?.(tokens);
+      // The claim has been made; the secret has no further use, and a stored
+      // trial would have the next reload try to resume one that no longer
+      // exists as a trial.
+      clearTrial();
+      setPhase({
+        kind: 'ready',
+        token: tokens.accessToken,
+        trial: null,
+        questionsRemaining: null,
+        // Already open: the account continues in the conversation on screen.
+        conversationId: null,
+      });
+    },
+    [shareAccount],
+  );
 
-  const onSignedIn = useCallback((tokens: { accessToken: string; refreshToken: string }) => {
-    refreshRef.current = tokens.refreshToken;
-    setSigningIn(false);
-    setChatKey((key) => key + 1);
-    // The stored trial is left alone: it was not claimed, and it is still
-    // this browser's to return to after the account's in-memory tokens go.
-    setPhase({
-      kind: 'ready',
-      token: tokens.accessToken,
-      trial: null,
-      questionsRemaining: null,
-      conversationId: null,
-    });
-  }, []);
+  const onSignedIn = useCallback(
+    (tokens: { accessToken: string; refreshToken: string }) => {
+      refreshRef.current = tokens.refreshToken;
+      shareAccount?.(tokens);
+      setSigningIn(false);
+      setChatKey((key) => key + 1);
+      // The stored trial is left alone: it was not claimed, and it is still
+      // this browser's to return to after the account's in-memory tokens go.
+      setPhase({
+        kind: 'ready',
+        token: tokens.accessToken,
+        trial: null,
+        questionsRemaining: null,
+        conversationId: null,
+      });
+    },
+    [shareAccount],
+  );
 
   const onUnauthorized = useCallback(async () => {
     // An account renews with its refresh token. Falling through to `begin`
@@ -174,6 +187,11 @@ export default function HomePage() {
       const refreshed = await refreshTokens({ refreshToken });
       if (refreshed.kind === 'refreshed') {
         refreshRef.current = refreshed.refreshToken;
+        // The old refresh token is spent: the shared session takes the new pair.
+        shareAccount?.({
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken,
+        });
         setPhase((current) =>
           current.kind === 'ready' ? { ...current, token: refreshed.accessToken } : current,
         );
@@ -182,7 +200,7 @@ export default function HomePage() {
       refreshRef.current = null;
     }
     await begin({ keepSurface: true });
-  }, [begin]);
+  }, [begin, shareAccount]);
 
   useEffect(() => {
     void begin();

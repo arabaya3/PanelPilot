@@ -71,7 +71,7 @@ from app.models.schemas.design import (
     PriceListEntry,
     PricingSettings,
     ProjectDesignRequest,
-    Quotation,
+    QuotationEstimate,
     QuotationRequest,
     ScheduleSuggestionRequest,
 )
@@ -646,29 +646,40 @@ def suggest_load_schedule(
     return LoadScheduleSuggestion(loads=loads, assumptions=[*overall, *notes])
 
 
-def price_design(*, user: CurrentUser, request: QuotationRequest) -> Quotation:
-    """Price a project from the company's price list and rates.
+def price_design(*, user: CurrentUser, request: QuotationRequest) -> QuotationEstimate:
+    """Price a client-sent project as a provisional estimate.
+
+    The project is the client's, so nothing here is a quotation: it is
+    designated afresh with no checker or approver on any revision, checked as a
+    draft export is (``app.design.integrity``), and returned labelled
+    ``provisional_estimate`` with its findings, a tampered rating among them as
+    blocking. Nothing is persisted. A quotation is exported from a saved
+    revision (``design_projects.export_revision``).
 
     Args:
         user: The authenticated caller, for the log line.
         request: The project, the profile settings and the pricing.
 
     Returns:
-        The quotation, every unpriced line named.
+        The estimate, every unpriced line named, with the project's findings.
 
     Raises:
         ValidationError: If the profile is malformed.
     """
     company = _profile(request.profile)
-    project = designations.designate_project(request.project, company)
-    result = quotation.price_project(project, request.pricing)
+    project = designations.designate_project(_as_draft(request.project), company)
+    findings = integrity.project_findings(project)
+    blocking = integrity.blocking(findings)
+    priced = quotation.price_project(project, request.pricing)
     logger.info(
         "design.priced",
         tenant_id=user.tenant_id,
-        lines=len(result.lines),
-        unpriced=len(result.unpriced),
+        lines=len(priced.lines),
+        unpriced=len(priced.unpriced),
+        provisional=True,
+        blocking=len(blocking),
     )
-    return result
+    return QuotationEstimate(**priced.model_dump(), findings=findings, blocking=bool(blocking))
 
 
 def import_price_list(*, user: CurrentUser, data: bytes) -> list[PriceListEntry]:

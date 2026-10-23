@@ -21,6 +21,7 @@ from app.core.errors import ValidationError
 from app.design.export_lists import write_csv
 from app.design.schedule_import import read_rows
 from app.models.schemas.design import (
+    MAX_UNIT_PRICE,
     Cable,
     DesignProject,
     Device,
@@ -275,10 +276,16 @@ def read_price_list(data: bytes) -> list[PriceListEntry]:
                 price = Decimal(raw)
             except ArithmeticError:
                 continue
+            # "NaN", "Infinity", a negative or an absurd figure is no price:
+            # skipped as an unreadable one is, so the line stays unpriced.
+            if not price.is_finite() or not Decimal(0) <= price <= MAX_UNIT_PRICE:
+                continue
             description = (
                 row[desc_col].strip() if desc_col is not None and desc_col < len(row) else ""
             )
-            entries.append(PriceListEntry(key=key, description=description, unit_price=price))
+            entries.append(
+                PriceListEntry(key=key[:120], description=description[:300], unit_price=price)
+            )
         if not entries:
             raise ValidationError(
                 "the price list has no row with both a key and a price", code="price_list_empty"

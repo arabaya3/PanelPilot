@@ -817,7 +817,7 @@
       "budget": "This month's AI allowance is used up."
     },
     "quote": {
-      "title": "Quotation",
+      "title": "Provisional price estimate",
       "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (circuit_breaker:1P:C16) until a catalogue is chosen; a line with no price is never guessed.",
       "priceList": "Price list",
       "priceListHelp": "Excel or CSV with a key (or order number) column and a price column.",
@@ -850,6 +850,12 @@
       "vat": "VAT",
       "total": "Total",
       "noLength": "no length"
+    },
+    "quotation": {
+      "provisionalBanner": "Provisional estimate — not a quotation, not for execution",
+      "provisionalDetail": "Priced from the unsaved design on this page. A quotation is exported from a saved revision.",
+      "blocking": "{count, plural, one {# blocking finding} other {# blocking findings}}: this estimate prices a design that fails its checks.",
+      "findingsTitle": "What the checks found"
     },
     "plc": {
       "title": "Control program",
@@ -1243,6 +1249,26 @@
       "EG": "Egypt",
       "LB": "Lebanon",
       "IQ": "Iraq"
+    },
+    "account": {
+      "trialTitle": "Trial workspace",
+      "trialBody": "You are not signed in. Projects you save here belong to this browser's trial, not to an account. Sign in to save to your account, or create an account to keep this trial's projects.",
+      "signIn": "Sign in to save to your account",
+      "signUp": "Create an account",
+      "signUpKeeps": "This trial's saved projects move into the new account, and what is on the page stays.",
+      "signedIn": "Signed in. Projects you save, approve and export here belong to your account.",
+      "signOut": "Sign out",
+      "expiredTitle": "Your session has ended",
+      "expiredBody": "Sign in again to keep working in your account. Nothing on this page has been lost, and nothing is saved anywhere else meanwhile.",
+      "signedOut": "You are signed out. Sign in to work in your account, or continue as a trial, whose saved projects belong to this browser only.",
+      "continueTrial": "Continue as a trial",
+      "approvedAccount": "Approved while signed in as {account}.",
+      "saveUnauthorized": "Not saved: the session had ended. What you entered is kept.",
+      "notice": {
+        "renewed": "Your session had expired and has been renewed. Try again.",
+        "renew-failed": "The session could not be renewed. Check the connection and try again.",
+        "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account."
+      }
     }
   },
   "files": {

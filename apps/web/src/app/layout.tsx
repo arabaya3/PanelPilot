@@ -1,6 +1,7 @@
 import { Noto_Sans, Noto_Sans_Arabic, Noto_Sans_Hebrew } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import { AccountSessionProvider } from '@/components/account-session';
 import { LocaleProvider, localeInitScript } from '@/components/locale-provider';
 import { DEFAULT_THEME, ThemeProvider, themeInitScript } from '@/components/theme-provider';
 import ar from '@/messages/ar.json';
@@ -71,7 +72,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          <LocaleProvider messages={MESSAGES}>{children}</LocaleProvider>
+          <LocaleProvider messages={MESSAGES}>
+            <AccountSessionProvider>{children}</AccountSessionProvider>
+          </LocaleProvider>
         </ThemeProvider>
       </body>
     </html>

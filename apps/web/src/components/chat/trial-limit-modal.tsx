@@ -21,11 +21,14 @@ export function TrialLimitModal({
   trial,
   onSignedUp,
   onDismiss,
+  description,
   signupImpl = signupClaimingTrial,
 }: {
   trial: TrialSession | null;
   onSignedUp: (tokens: { accessToken: string; refreshToken: string }) => void;
   onDismiss: () => void;
+  /** What carries over, where it is not the conversation (on /design, the trial's projects). */
+  description?: string;
   signupImpl?: typeof signupClaimingTrial;
 }) {
   const t = useTranslations('trial');
@@ -82,7 +85,7 @@ export function TrialLimitModal({
         {/* Says what happens to the conversation, because the fear this
             answers is losing it. */}
         <p className="mt-1 text-sm text-text-muted">
-          {trial ? t('keepsConversation') : t('startsFresh')}
+          {description ?? (trial ? t('keepsConversation') : t('startsFresh'))}
         </p>
 
         <form

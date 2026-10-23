@@ -43,7 +43,11 @@ export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
 export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
 export type PricingSettings = components['schemas']['PricingSettings'];
 export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
-export type Quotation = components['schemas']['Quotation'];
+/**
+ * A provisional estimate of the design on the page: priced and checked on the
+ * server, never a quotation (that is a saved revision's `quotation_pdf`).
+ */
+export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
@@ -403,7 +407,9 @@ export function priceDesign(
 ): Promise<PriceOutcome> {
   const { project, pricing, profile = null } = options;
   return call(options, '/api/v1/design/quotation', { project, pricing, profile }, (payload) =>
-    has(payload, 'lines', 'total') ? { kind: 'priced', quotation: payload as Quotation } : null,
+    has(payload, 'lines', 'total', 'status', 'findings')
+      ? { kind: 'priced', quotation: payload as Quotation }
+      : null,
   );
 }
 

@@ -11,7 +11,15 @@ import {
   type ReactNode,
 } from 'react';
 
+import {
+  AccountSessionProvider,
+  tokenIdentity,
+  useAccountSession,
+  type AccountSession,
+  type AccountTokens,
+} from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
+import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
@@ -77,6 +85,7 @@ import {
 } from '@/components/design/workspace';
 import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
+import { SignInForm } from '@/components/sign-in-form';
 import { QuotationPanel } from '@/components/quotation-panel';
 import {
   Dialog,
@@ -108,8 +117,10 @@ import {
   type TooLong,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
+import type { signIn } from '@/lib/auth';
 import { acquireTrial } from '@/lib/session';
-import { readTrial } from '@/lib/trial';
+import type { signupClaimingTrial } from '@/lib/trial';
+import { clearTrial, readTrial } from '@/lib/trial';
 
 type Session =
   | { kind: 'starting' }
@@ -117,6 +128,13 @@ type Session =
   | { kind: 'unavailable' }
   | { kind: 'rate-limited' }
   | { kind: 'failed' };
+
+/**
+ * Whose work the page is: an explicit trial, the signed-in account, or
+ * nobody yet (after signing out). An account's page never becomes a trial's
+ * by itself: when its session ends it asks for the account again.
+ */
+type Identity = 'trial' | 'account' | 'signed-out';
 
 type Result =
   | { kind: 'idle' }
@@ -216,19 +234,7 @@ export function tooLongAt(refused: readonly TooLong[], path: string): number | n
   return hit ? hit.max : null;
 }
 
-export function DesignScreen({
-  acquireImpl = acquireTrial,
-  designImpl = designProject,
-  exportImpl = exportDesign,
-  exportRevisionImpl = exportRevision,
-  importImpl = importSchedule,
-  suggestImpl = suggestSchedule,
-  saveImpl = saveBlob,
-  marketsImpl = fetchMarkets,
-  readMarketImpl = readMarket,
-  openImpl = openProject,
-  leaveImpl,
-}: {
+type DesignScreenProps = {
   /** Reopens the saved project a restored draft belongs to. */
   openImpl?: typeof openProject;
   acquireImpl?: typeof acquireTrial;
@@ -240,9 +246,71 @@ export function DesignScreen({
   saveImpl?: typeof saveBlob;
   marketsImpl?: typeof fetchMarkets;
   readMarketImpl?: typeof readMarket;
+  signInImpl?: typeof signIn;
+  signupImpl?: typeof signupClaimingTrial;
   /** Follows a link the engineer chose to leave for with changes discarded. */
   leaveImpl?: (href: string) => void;
-}) {
+};
+
+/**
+ * The workspace, under the app's shared account session (see
+ * `AccountSessionProvider`), or a session of its own where none is shared.
+ */
+export function DesignScreen(props: DesignScreenProps) {
+  const shared = useAccountSession();
+  if (shared === null) {
+    return (
+      <AccountSessionProvider>
+        <DesignScreen {...props} />
+      </AccountSessionProvider>
+    );
+  }
+  return <SignedOutResets account={shared} {...props} />;
+}
+
+/**
+ * Signing out starts the workspace afresh: nothing typed for the account, no
+ * project of its open, no draft of it kept. What follows is an explicit
+ * choice, signing in again or continuing as a trial, never a trial by default.
+ */
+function SignedOutResets({ account, ...props }: DesignScreenProps & { account: AccountSession }) {
+  const status = account.state.status;
+  const [generation, setGeneration] = useState(0);
+  const last = useRef(status);
+  useEffect(() => {
+    if (status === 'signed-out' && last.current !== 'signed-out') {
+      clearDraft();
+      setGeneration((current) => current + 1);
+    }
+    last.current = status;
+  }, [status]);
+  return (
+    <DesignWorkspace
+      key={generation}
+      account={account}
+      startSignedOut={generation > 0}
+      {...props}
+    />
+  );
+}
+
+function DesignWorkspace({
+  account,
+  startSignedOut,
+  signInImpl,
+  signupImpl,
+  acquireImpl = acquireTrial,
+  designImpl = designProject,
+  exportImpl = exportDesign,
+  exportRevisionImpl = exportRevision,
+  importImpl = importSchedule,
+  suggestImpl = suggestSchedule,
+  saveImpl = saveBlob,
+  marketsImpl = fetchMarkets,
+  readMarketImpl = readMarket,
+  openImpl = openProject,
+  leaveImpl,
+}: DesignScreenProps & { account: AccountSession; startSignedOut: boolean }) {
   const t = useTranslations('design');
   const tw = useTranslations('workspace');
   const tUi = useTranslations('ui');
@@ -250,6 +318,15 @@ export function DesignScreen({
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
+  const ta = useTranslations('design.account');
+  const { state: accountState, signedIn, renew, signOut } = account;
+  const [identity, setIdentity] = useState<Identity>(() =>
+    accountState.status !== 'signed-out' ? 'account' : startSignedOut ? 'signed-out' : 'trial',
+  );
+  const [authForm, setAuthForm] = useState<'sign-in' | 'sign-up' | null>(null);
+  const [accountNotice, setAccountNotice] = useState<
+    'renewed' | 'renew-failed' | 'trial-project-stays' | null
+  >(null);
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [trialId, setTrialId] = useState<string | null>(null);
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
@@ -355,9 +432,10 @@ export function DesignScreen({
     );
   }, [acquireImpl]);
 
+  // Only a trial's page starts or resumes a trial; an account's never does.
   useEffect(() => {
-    void connect();
-  }, [connect]);
+    if (identity === 'trial') void connect();
+  }, [identity, connect]);
 
   const marketInfo = markets.find((entry) => entry.code === market) ?? null;
   const supply = supplyOf(marketInfo);
@@ -388,7 +466,77 @@ export function DesignScreen({
     setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
   }
 
-  const token = session.kind === 'ready' ? session.token : null;
+  const accountToken = accountState.status === 'signed-in' ? accountState.tokens.accessToken : null;
+  const token =
+    identity === 'account'
+      ? accountToken
+      : identity === 'trial' && session.kind === 'ready'
+        ? session.token
+        : null;
+
+  // The account the work is kept for, remembered past the session's end so a
+  // draft typed for it is still its own while it signs in again.
+  const [accountOwner, setAccountOwner] = useState<string | null>(null);
+  const accountSubject =
+    accountToken === null ? null : (tokenIdentity(accountToken)?.subject ?? '');
+  if (accountSubject !== null && accountOwner !== `account:${accountSubject}`) {
+    setAccountOwner(`account:${accountSubject}`);
+  }
+  const draftOwner = identity === 'account' ? accountOwner : identity === 'trial' ? trialId : null;
+
+  /**
+   * After a 401. An account renews its token, and asks to be signed in again
+   * when it cannot; it never falls back to a trial, which would save the
+   * engineer's work into a tenant their account cannot see. A trial resumes.
+   */
+  const reauthorize = useCallback(async () => {
+    if (identity === 'account') {
+      const outcome = await renew();
+      setAccountNotice(
+        outcome === 'refreshed' ? 'renewed' : outcome === 'failed' ? 'renew-failed' : null,
+      );
+      return;
+    }
+    if (identity === 'trial') await connect();
+  }, [identity, renew, connect]);
+
+  // The tenant the token on the page is for. When it changes (a trial signs
+  // in to an account, or a different account signs in after a session
+  // ended), a project open from the old one is not the new one's: it is let
+  // go, never moved, and what was typed stays on the page as unsaved work.
+  const tokenTenant = token === null ? null : (tokenIdentity(token)?.tenant ?? null);
+  const heldTenant = useRef<string | null>(null);
+  useEffect(() => {
+    if (tokenTenant === null) return;
+    const before = heldTenant.current;
+    heldTenant.current = tokenTenant;
+    if (before === null || before === tokenTenant || opened === null) return;
+    setOpened(null);
+    setHistory([]);
+    setValidation(null);
+    setRevisionStale(false);
+    setRevisionError(null);
+    setExecutionRefusal(null);
+    setTitleRevisions([]);
+    // Unsaved for this identity, whatever it was for the last.
+    setClean('');
+    setAccountNotice('trial-project-stays');
+  }, [tokenTenant, opened]);
+
+  function onAccountSignedIn(tokens: AccountTokens) {
+    signedIn(tokens);
+    setIdentity('account');
+    setAuthForm(null);
+    setAccountNotice(null);
+  }
+
+  function onAccountCreated(tokens: AccountTokens) {
+    // The signup claimed this browser's trial on the server: the account
+    // joined the trial's tenant, so its projects are the account's now. The
+    // claim secret is spent.
+    clearTrial();
+    onAccountSignedIn(tokens);
+  }
 
   // Unsaved work is kept as a draft for this tab and session, for the ways of
   // leaving the guard cannot hold. On arrival, a draft left by an earlier
@@ -403,20 +551,20 @@ export function DesignScreen({
   const discardedSnapshot = useRef<string | null>(null);
   const lastWritten = useRef<string | null>(null);
   useEffect(() => {
-    if (trialId === null || draftChecked === trialId) return;
-    setDraftOffer(readDraft(trialId));
-    setDraftChecked(trialId);
-  }, [trialId, draftChecked]);
+    if (draftOwner === null || draftChecked === draftOwner) return;
+    setDraftOffer(readDraft(draftOwner));
+    setDraftChecked(draftOwner);
+  }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
-    if (trialId === null || draftChecked !== trialId || draftOffer !== null) return;
+    if (draftOwner === null || draftChecked !== draftOwner || draftOffer !== null) return;
     if (!dirty || discardedSnapshot.current === snapshot) {
       if (lastWritten.current !== '') clearDraft();
       lastWritten.current = '';
       return;
     }
     const draft: DesignDraft = {
-      session: trialId,
+      session: draftOwner,
       project: opened ? { id: opened.id, revision: opened.revision } : null,
       clean,
       info,
@@ -618,7 +766,7 @@ export function DesignScreen({
     } else {
       // The schedule stays as entered, so the engineer can correct and retry.
       setResult({ kind: 'error', outcome });
-      if (outcome.kind === 'unauthorized') void connect();
+      if (outcome.kind === 'unauthorized') void reauthorize();
     }
   }
 
@@ -636,6 +784,7 @@ export function DesignScreen({
       saveImpl(outcome.blob, outcome.filename);
     } else {
       if (outcome.kind === 'refused') setTooLong(outcome.tooLong ?? []);
+      if (outcome.kind === 'unauthorized') void reauthorize();
       setExportError(say(outcome));
     }
   }
@@ -659,7 +808,7 @@ export function DesignScreen({
       saveImpl(outcome.blob, outcome.filename);
       return;
     }
-    if (outcome.kind === 'unauthorized') void connect();
+    if (outcome.kind === 'unauthorized') void reauthorize();
     if (outcome.kind === 'refused' && outcome.code === 'execution_package_incomplete') {
       setExecutionRefusal(executionRefusalOf(outcome));
       return;
@@ -848,6 +997,142 @@ export function DesignScreen({
     </nav>
   );
 
+  const signInForm = (cancel: boolean) => (
+    <div className="flex justify-center">
+      <SignInForm
+        onSignedIn={onAccountSignedIn}
+        {...(cancel
+          ? {
+              onCancel: () => {
+                setAuthForm(null);
+              },
+            }
+          : {})}
+        {...(signInImpl ? { signInImpl } : {})}
+      />
+    </div>
+  );
+  const sessionEnded = identity === 'account' && accountState.status !== 'signed-in';
+  const accountBar = (
+    <>
+      {identity === 'trial' && (
+        <Notice
+          tone="warning"
+          title={ta('trialTitle')}
+          testId="design-trial-mode"
+          live={false}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setAuthForm('sign-in');
+                }}
+              >
+                {ta('signIn')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setAuthForm('sign-up');
+                }}
+              >
+                {ta('signUp')}
+              </button>
+            </div>
+          }
+        >
+          {ta('trialBody')}
+        </Notice>
+      )}
+      {identity === 'account' && !sessionEnded && (
+        <Notice
+          tone="info"
+          testId="design-account-mode"
+          live={false}
+          action={
+            <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
+              {ta('signOut')}
+            </button>
+          }
+        >
+          {ta('signedIn')}
+        </Notice>
+      )}
+      {sessionEnded && (
+        <Notice
+          tone="critical"
+          title={ta('expiredTitle')}
+          testId="design-account-expired"
+          action={
+            <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
+              {ta('signOut')}
+            </button>
+          }
+        >
+          {ta('expiredBody')}
+        </Notice>
+      )}
+      {identity === 'signed-out' && (
+        <Notice
+          tone="info"
+          testId="design-signed-out"
+          live={false}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setAuthForm('sign-in');
+                }}
+              >
+                {ta('signIn')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setAuthForm(null);
+                  setIdentity('trial');
+                }}
+              >
+                {ta('continueTrial')}
+              </button>
+            </div>
+          }
+        >
+          {ta('signedOut')}
+        </Notice>
+      )}
+      {sessionEnded
+        ? signInForm(false)
+        : authForm === 'sign-in'
+          ? signInForm(true)
+          : authForm === 'sign-up' && (
+              <TrialLimitModal
+                trial={readTrial()}
+                description={ta('signUpKeeps')}
+                onSignedUp={onAccountCreated}
+                onDismiss={() => {
+                  setAuthForm(null);
+                }}
+                {...(signupImpl ? { signupImpl } : {})}
+              />
+            )}
+      {accountNotice !== null && (
+        <Notice
+          tone={accountNotice === 'renew-failed' ? 'warning' : 'info'}
+          testId={`design-account-${accountNotice}`}
+        >
+          {ta(`notice.${accountNotice}`)}
+        </Notice>
+      )}
+    </>
+  );
+
   const tabs = VIEWS.map((key) => ({
     key,
     label: tw(`views.${key}`),
@@ -898,7 +1183,8 @@ export function DesignScreen({
       />
 
       <div className="flex flex-col gap-4">
-        {session.kind !== 'ready' && session.kind !== 'starting' && (
+        {accountBar}
+        {identity === 'trial' && session.kind !== 'ready' && session.kind !== 'starting' && (
           <Notice
             tone="critical"
             action={
@@ -1025,6 +1311,9 @@ export function DesignScreen({
                 onRefused={(refusal) => {
                   setTooLong(refusal.tooLong ?? []);
                 }}
+                onUnauthorized={() => {
+                  void reauthorize();
+                }}
                 onSaveState={(state) => {
                   setLastSave(state);
                   if (state === 'saved') setTooLong([]);
@@ -1035,6 +1324,7 @@ export function DesignScreen({
                 }}
               />
             ) : (
+              identity === 'trial' &&
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
           </>,
@@ -1176,7 +1466,7 @@ export function DesignScreen({
                     importImpl={importImpl}
                     suggestImpl={suggestImpl}
                     onUnauthorized={() => {
-                      void connect();
+                      void reauthorize();
                     }}
                     onLoads={(loads) => {
                       const first = takeKeys(loads.length);
@@ -1356,6 +1646,11 @@ export function DesignScreen({
                             ) : (
                               <StatusBadge tone="warning">{tw('context.draft')}</StatusBadge>
                             )}
+                            {entry.approved_account && (
+                              <span className="ms-2 text-xs text-text-muted" dir="auto">
+                                {ta('approvedAccount', { account: entry.approved_account })}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1486,6 +1781,8 @@ export function DesignScreen({
                     {!readiness.approvalCovers &&
                       ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
                     {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
+                    {opened.approval.account !== undefined &&
+                      ` ${ta('approvedAccount', { account: opened.approval.account })}`}
                   </Notice>
                 ) : (
                   <Notice

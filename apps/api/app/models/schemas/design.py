@@ -957,6 +957,16 @@ class LoadScheduleSuggestion(BaseModel):
     assumptions: list[DesignNote]
 
 
+#: The largest unit price, rate or per-board price accepted, in any currency:
+#: far above any real panel item, low enough that no total overflows a
+#: readable figure. Bounds, not engineering values.
+MAX_UNIT_PRICE = Decimal("1000000000")
+#: The longest default cable length priced, in metres.
+MAX_CABLE_LENGTH_M = Decimal("10000")
+#: The most price-list entries one request carries.
+MAX_PRICE_LIST = 20000
+
+
 class PriceListEntry(StrictModel):
     """One price from a company's price list.
 
@@ -970,15 +980,15 @@ class PriceListEntry(StrictModel):
     """
 
     key: str = Field(min_length=1, max_length=120)
-    description: str = ""
-    unit_price: Decimal = Field(ge=0)
+    description: str = Field(default="", max_length=300)
+    unit_price: Decimal = Field(ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False)
 
 
 class PricingSettings(StrictModel):
     """How a company prices a board.
 
     Attributes:
-        currency: Printed beside every amount.
+        currency: Printed beside every amount: an ISO 4217 code.
         price_list: The company's prices.
         cable_length_m: The length priced for an outgoing cable whose own
             length is not given; ``None`` leaves such cables unpriced.
@@ -989,14 +999,22 @@ class PricingSettings(StrictModel):
         vat_percent: Added last.
     """
 
-    currency: str = Field(default="JOD", min_length=1, max_length=8)
-    price_list: list[PriceListEntry] = Field(default_factory=list)
-    cable_length_m: Decimal | None = Field(default=None, gt=0)
-    labour_per_circuit: Decimal = Field(default=Decimal(0), ge=0)
-    labour_per_board: Decimal = Field(default=Decimal(0), ge=0)
-    enclosure_price: Decimal = Field(default=Decimal(0), ge=0)
-    markup_percent: Decimal = Field(default=Decimal(0), ge=0, le=500)
-    vat_percent: Decimal = Field(default=Decimal(0), ge=0, le=100)
+    currency: str = Field(default="JOD", pattern=r"^[A-Z]{3}$")
+    price_list: list[PriceListEntry] = Field(default_factory=list, max_length=MAX_PRICE_LIST)
+    cable_length_m: Decimal | None = Field(
+        default=None, gt=0, le=MAX_CABLE_LENGTH_M, allow_inf_nan=False
+    )
+    labour_per_circuit: Decimal = Field(
+        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+    )
+    labour_per_board: Decimal = Field(
+        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+    )
+    enclosure_price: Decimal = Field(
+        default=Decimal(0), ge=0, le=MAX_UNIT_PRICE, allow_inf_nan=False
+    )
+    markup_percent: Decimal = Field(default=Decimal(0), ge=0, le=500, allow_inf_nan=False)
+    vat_percent: Decimal = Field(default=Decimal(0), ge=0, le=100, allow_inf_nan=False)
 
 
 class QuotationLine(BaseModel):
@@ -1048,6 +1066,36 @@ class Quotation(BaseModel):
     total: Decimal
     unpriced: list[str]
     complete: bool
+
+
+#: What a quotation priced from a client-sent project says it is.
+PROVISIONAL_ESTIMATE_LABEL = (
+    "Provisional estimate: not a quotation, not for execution. "
+    "Priced from an unsaved design sent by the browser; "
+    "a quotation is exported from a saved revision."
+)
+
+
+class QuotationEstimate(Quotation):
+    """A provisional estimate: a project the client sent, priced and checked.
+
+    Nothing in it is persisted, approved or issued. The project is the
+    client's, so it is re-designated and integrity-checked on the server and
+    its findings are returned beside the prices: a tampered rating is a
+    blocking finding here, as on a draft export. It carries no revision,
+    checker or approver.
+
+    Attributes:
+        status: Always ``"provisional_estimate"``.
+        label: In English; the page renders ``status`` in the reader's language.
+        findings: The integrity checks and notes on the project as sent.
+        blocking: Whether any finding is blocking.
+    """
+
+    status: Literal["provisional_estimate"] = "provisional_estimate"
+    label: str = PROVISIONAL_ESTIMATE_LABEL
+    findings: list[DesignFinding]
+    blocking: bool
 
 
 class QuotationRequest(StrictModel):
@@ -1152,6 +1200,9 @@ class RevisionSummary(BaseModel):
         approved_by: The engineer who approved it, as the title block
             prints them; ``None`` while it is not approved.
         approved_at: When, ISO 8601.
+        approved_account: The signed-in account that approved it, taken
+            from the approver's token on the server, never from the request;
+            ``None`` while it is not approved.
         validated: Whether the server designed it from its request when it
             was saved, and holds that design; ``False`` for an older one.
         export_status: What it can be exported as now.
@@ -1163,6 +1214,7 @@ class RevisionSummary(BaseModel):
     created_at: str
     approved_by: str | None = None
     approved_at: str | None = None
+    approved_account: str | None = None
     validated: bool = False
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
 

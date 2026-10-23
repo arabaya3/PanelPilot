@@ -227,6 +227,127 @@ def test_a_board_is_priced(client: TestClient) -> None:
     body = response.json()
     assert body["currency"] == "JOD"
     assert body["complete"] is False
+    assert body["status"] == "provisional_estimate"
+    assert body["label"].startswith("Provisional estimate: not a quotation, not for execution")
+    assert body["blocking"] is False
+
+
+def _priced(client: TestClient, project: dict[str, Any], **pricing: Any) -> Any:
+    return client.post(
+        "/design/quotation",
+        json={"project": project, "pricing": {"currency": "JOD", **pricing}},
+    )
+
+
+def _tampered(project: dict[str, Any], amps: str = "200") -> dict[str, Any]:
+    """The lighting circuit's breaker forged to ``amps`` on a 1.5 mm2 cable."""
+    board = project["boards"][0]
+    circuit = next(c for c in board["circuits"] if c["load"] == "lighting")
+    devices = {d["id"]: d for d in board["devices"]}
+    breaker = next(
+        devices[i] for i in circuit["device_ids"] if devices[i]["kind"] == "circuit_breaker"
+    )
+    breaker["rated_current_a"] = amps
+    cable = next(c for c in board["cables"] if c["id"] == circuit["cable_id"])
+    cable["cross_section_mm2"] = "1.5"
+    return project
+
+
+def test_an_estimate_of_a_tampered_rating_is_flagged_blocking(client: TestClient) -> None:
+    project = _tampered(client.post("/design/distribution-board", json=BOARD).json()["project"])
+    response = _priced(client, project)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "provisional_estimate"
+    assert body["blocking"] is True
+    blocking = [f for f in body["findings"] if f["severity"] == "blocking"]
+    assert blocking, body["findings"]
+
+
+def test_an_estimate_carries_no_approval_or_revision(client: TestClient) -> None:
+    """A forged approver on the project's revisions never reaches the estimate."""
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    project["info"]["revisions"] = [
+        {
+            "index": "A",
+            "date": "2026-10-23",
+            "description": "issued",
+            "drawn_by": "D",
+            "checked_by": "FORGED",
+            "approved_by": "FORGED",
+        }
+    ]
+    response = _priced(client, project)
+    assert response.status_code == 200
+    raw = response.text
+    assert "FORGED" not in raw
+    assert "approv" not in raw.lower().replace("not approved", "")
+    for key in ("approved_by", "approver", "revision", "approved_at", "snapshot_sha256"):
+        assert key not in response.json()
+
+
+@pytest.mark.parametrize(
+    ("where", "extra"),
+    [
+        ("body", {"status": "approved"}),
+        ("body", {"approved_by": "Eng. Forged"}),
+        ("body", {"revision": 1}),
+        ("pricing", {"approved": True}),
+        ("pricing", {"catalogue": [{"key": "x", "unit_price": "1"}]}),
+    ],
+)
+def test_forged_estimate_fields_are_refused_as_unknown(
+    client: TestClient, where: str, extra: dict[str, Any]
+) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    body: dict[str, Any] = {"project": project, "pricing": {"currency": "JOD"}}
+    if where == "body":
+        body.update(extra)
+    else:
+        body["pricing"].update(extra)
+    response = client.post("/design/quotation", json=body)
+    assert response.status_code == 422
+    (error,) = response.json()["detail"]
+    assert error["type"] == "extra_forbidden"
+    name = next(iter(extra))
+    assert error["loc"] == (["body", name] if where == "body" else ["body", "pricing", name])
+
+
+@pytest.mark.parametrize(
+    "pricing",
+    [
+        {"labour_per_circuit": "-1"},
+        {"labour_per_board": "1e12"},
+        {"enclosure_price": "NaN"},
+        {"enclosure_price": "Infinity"},
+        {"markup_percent": "501"},
+        {"vat_percent": "-0.1"},
+        {"cable_length_m": "0"},
+        {"cable_length_m": "1e9"},
+        {"currency": "JOD<script>"},
+        {"currency": ""},
+        {"price_list": [{"key": "circuit_breaker:1P:C16", "unit_price": "-4"}]},
+        {"price_list": [{"key": "circuit_breaker:1P:C16", "unit_price": "1e15"}]},
+        {"price_list": [{"key": "circuit_breaker:1P:C16", "unit_price": "NaN"}]},
+        {"price_list": [{"key": "", "unit_price": "4"}]},
+    ],
+)
+def test_out_of_bounds_pricing_is_refused(client: TestClient, pricing: dict[str, Any]) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    response = _priced(client, project, **pricing)
+    assert response.status_code == 422, response.text
+
+
+def test_the_estimate_needs_a_signed_in_caller() -> None:
+    app = FastAPI()
+    app.include_router(design_route.router, prefix="/design")
+    app.dependency_overrides[get_session] = object
+    install_exception_handlers(app)
+    with TestClient(app) as anonymous:
+        response = anonymous.post(
+            "/design/quotation", json={"project": {}, "pricing": {"currency": "JOD"}}
+        )
+    assert response.status_code == 401
 
 
 def test_a_price_list_is_uploaded(client: TestClient) -> None:
