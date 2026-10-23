@@ -128,6 +128,8 @@ type Result =
       profile: Record<string, unknown> | null;
       /** What the inputs were when it was designed, to tell when it no longer matches them. */
       basis: string;
+      /** The part of `basis` the engineer enters (the form and drawing language). */
+      inputs: string;
     }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
 
@@ -482,7 +484,10 @@ export function DesignScreen({
   );
   // Everything a design is made from: the inputs, the language as it is used,
   // and the title block's revisions, which an approval changes.
-  const basis = `${snapshot}|${drawingLanguage}|${JSON.stringify(titleRevisions)}`;
+  const inputs = `${snapshot}|${drawingLanguage}`;
+  const basis = `${inputs}|${JSON.stringify(titleRevisions)}`;
+  // Set by a save that just succeeded, for the `onOpened` that follows it.
+  const rebaseOnSave = useRef(false);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -553,7 +558,31 @@ export function DesignScreen({
     setRevisionError(null);
     setExecutionRefusal(null);
     setDraftProjectGone(false);
-    setTitleRevisions(project.request.info.revisions ?? []);
+    const titles = project.request.info.revisions ?? [];
+    setTitleRevisions(titles);
+    // A save gives the title block a row for the revision it stored. That is
+    // not a change of the inputs: a design made from exactly what was saved
+    // takes the new rows and stays current (a design the inputs had moved on
+    // from stays stale, its `inputs` no longer matching). An approval is not
+    // rebased: the design shown was made before it.
+    if (rebaseOnSave.current && !fill) {
+      setResult((current) =>
+        current.kind === 'designed'
+          ? {
+              ...current,
+              basis: `${current.inputs}|${JSON.stringify(titles)}`,
+              response: {
+                ...current.response,
+                project: {
+                  ...current.response.project,
+                  info: { ...current.response.project.info, revisions: titles },
+                },
+              },
+            }
+          : current,
+      );
+    }
+    rebaseOnSave.current = false;
     // Saved or approved: the form is left as it is. Only a save rebaselines
     // it (in `onSaveState`); an approval signs the stored revision, not
     // whatever has been typed since.
@@ -585,7 +614,7 @@ export function DesignScreen({
     const outcome = await designImpl({ token, request });
     setTooLong(outcome.kind === 'refused' ? (outcome.tooLong ?? []) : []);
     if (outcome.kind === 'designed') {
-      setResult({ kind: 'designed', response: outcome.response, profile, basis });
+      setResult({ kind: 'designed', response: outcome.response, profile, basis, inputs });
     } else {
       // The schedule stays as entered, so the engineer can correct and retry.
       setResult({ kind: 'error', outcome });
@@ -1002,6 +1031,7 @@ export function DesignScreen({
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
+                  rebaseOnSave.current = state === 'saved';
                 }}
               />
             ) : (

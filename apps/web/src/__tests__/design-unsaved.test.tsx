@@ -444,3 +444,58 @@ describe('approval', () => {
     expect(screen.queryByTestId('design-export-pdf')).toBeNull();
   });
 });
+
+describe('a save after designing', () => {
+  /** What the server answers a save with: the title block gains the revision saved. */
+  function savedWithTitleRow(): SavedProject {
+    const stored = saved('Tower');
+    stored.request = {
+      ...stored.request,
+      info: {
+        ...stored.request.info,
+        revisions: [
+          {
+            index: '01',
+            date: '2026-10-23',
+            description: 'issue A',
+            drawn_by: 'e',
+            checked_by: '',
+            approved_by: '',
+          },
+        ],
+      },
+    };
+    return stored;
+  }
+
+  async function designThenSave(editFirst: boolean) {
+    api.save.mockResolvedValue({ kind: 'saved', project: savedWithTitleRow() });
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderScreen({ designImpl });
+    await completeForm();
+    fireEvent.click(designButton());
+    await screen.findByTestId('design-result');
+    if (editFirst) type(overviewField('Customer'), 'Edited after designing');
+    type(overview().getByLabelText('Revision note'), 'issue A');
+    fireEvent.click(projects().getByText('Save project'));
+    expect(await screen.findByText('Saved as revision 1.')).toBeTruthy();
+  }
+
+  it('keeps a design of exactly what was saved current, and a later edit makes it stale', async () => {
+    await designThenSave(false);
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
+
+    type(overviewField('Customer'), 'Changed');
+    expect(await screen.findByTestId('design-stale')).toBeTruthy();
+    expect(screen.queryByTestId('design-export-pdf')).toBeNull();
+  });
+
+  it('keeps a design the inputs had moved on from stale through the save', async () => {
+    await designThenSave(true);
+    expect(screen.getByTestId('design-stale')).toBeTruthy();
+    expect(screen.queryByTestId('design-export-pdf')).toBeNull();
+  });
+});
