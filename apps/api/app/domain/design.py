@@ -23,7 +23,6 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
-from app.ai.plc.validation import validate_plc_code
 from app.core.errors import ConflictError, ValidationError
 from app.design import (
     calc_report,
@@ -67,7 +66,6 @@ from app.models.schemas.design import (
     MarkupItem,
     MarkupReport,
     MarkupSuggestion,
-    PlcIoPoint,
     PlcProgramRequest,
     PlcProgramResponse,
     PriceListEntry,
@@ -702,44 +700,28 @@ def _program(project: DesignProject) -> plc_program.PlcProgram:
 
 
 def write_plc_program(*, user: CurrentUser, request: PlcProgramRequest) -> PlcProgramResponse:
-    """Write the control program for a project's PLC-switched circuits, and check it.
+    """Refuse the control program for a project the client sent.
+
+    The program's Structured Text and I/O list are the ``plc_st`` and
+    ``plc_io_csv`` files, which cannot keep a draft mark once imported
+    (``UNPROTECTED_FORMATS``). Returning them here would hand out, unmarked,
+    what their export refuses, so this is refused the same way, before any of
+    the program is written.
 
     Args:
         user: The authenticated caller, for the log line.
         request: The project and the profile settings.
 
     Returns:
-        The Structured Text, its I/O list and the checker's verdict.
+        Never: the refusal is raised.
 
     Raises:
-        ValidationError: If the profile is malformed or no circuit is
-            PLC-switched.
+        ConflictError: ``export_format_unprotected``, with the ``plc_st``
+            export's params.
     """
-    company = _profile(request.profile)
-    project = designations.designate_project(request.project, company)
-    program = _program(project)
-    verdict = validate_plc_code(program.source)
-    logger.info(
-        "design.plc_written",
-        tenant_id=user.tenant_id,
-        outputs=sum(point.direction == "output" for point in program.io),
-        status=verdict.status.value,
-    )
-    return PlcProgramResponse(
-        name=program.name,
-        source=program.source,
-        io=[
-            PlcIoPoint(
-                tag=point.tag,
-                direction=point.direction,
-                board=point.board,
-                device=point.device,
-                description=point.description,
-            )
-            for point in program.io
-        ],
-        validation=verdict,
-    )
+    logger.info("design.plc_refused", tenant_id=user.tenant_id, boards=len(request.project.boards))
+    refuse_unprotected(ExportFormat.PLC_ST)
+    raise AssertionError("refuse_unprotected refuses plc_st")  # pragma: no cover
 
 
 def list_markets() -> list[MarketInfo]:

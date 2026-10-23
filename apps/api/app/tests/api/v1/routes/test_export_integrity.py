@@ -718,9 +718,12 @@ def test_rehashed_tampered_snapshot_loses_approval_and_blocks(
         assert APPROVER not in body
         assert "blocking" in body.lower(), "200 A on 1.5 mm2 not reported"
     else:
+        # revision_stale: re-running today's findings on the edited snapshot no
+        # longer matches the findings recorded with it (the 200 A is found).
         assert error(response)["code"] in (
             "snapshot_integrity_failed",
             "revision_has_blocking_findings",
+            "revision_stale",
         )
 
 

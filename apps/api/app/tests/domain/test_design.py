@@ -231,20 +231,26 @@ def _controlled_project() -> DesignProject:
     return design.design_board(session=None, user=USER, request=request).project  # type: ignore[arg-type]
 
 
-def test_a_plc_program_is_written_checked_and_exported() -> None:
+def test_the_plc_program_of_a_sent_project_is_refused_as_its_export_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.design import plc_program
     from app.models.schemas.design import PlcProgramRequest
-    from app.models.schemas.plc import ValidationStatus
 
     project = _controlled_project()
-    result = design.write_plc_program(
-        user=USER,
-        request=PlcProgramRequest(project=project),
-    )
-    assert result.validation.status is ValidationStatus.VALID
-    assert [p.direction for p in result.io].count("output") == 1
-    assert "END_PROGRAM" in result.source
-    # The program and its I/O list are not exported until their draft mark
-    # survives an import (``export_format_unprotected``).
+
+    def never(*args: object, **kwargs: object) -> object:
+        raise AssertionError("the program was written before it was refused")
+
+    monkeypatch.setattr(plc_program, "build_program", never)
+    with pytest.raises(ConflictError) as refused:
+        design.write_plc_program(user=USER, request=PlcProgramRequest(project=project))
+    # The same refusal as the program's own file, params and all.
+    with pytest.raises(ConflictError) as exported:
+        design.refuse_unprotected(ExportFormat.PLC_ST)
+    assert refused.value.code == "export_format_unprotected"
+    assert refused.value.params == exported.value.params
+    # Neither file of the program is exported either.
     for fmt in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
         with pytest.raises(ConflictError, match="draft mark"):
             design.export_design(
@@ -252,14 +258,6 @@ def test_a_plc_program_is_written_checked_and_exported() -> None:
                 user=USER,
                 request=DesignExportRequest(project=project, format=fmt),
             )
-
-
-def test_a_plc_program_needs_a_controlled_circuit() -> None:
-    from app.models.schemas.design import PlcProgramRequest
-
-    project = design.design_board(session=None, user=USER, request=_request()).project  # type: ignore[arg-type]
-    with pytest.raises(ValidationError, match="PLC-switched"):
-        design.write_plc_program(user=USER, request=PlcProgramRequest(project=project))
 
 
 def test_a_project_of_boards_is_designed_and_designated_per_board() -> None:

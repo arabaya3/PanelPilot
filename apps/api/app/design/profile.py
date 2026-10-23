@@ -178,6 +178,19 @@ def load_profile(data: dict[str, object]) -> CompanyProfile:
     try:
         return CompanyProfile.model_validate(merged)
     except PydanticValidationError as exc:
+        # A nested setting this profile does not define (a lighting rule's
+        # ``breaker_amps``) is refused as a top-level one is, by its path.
+        nested = sorted(
+            ".".join(str(part) for part in error["loc"])
+            for error in exc.errors()
+            if error["type"] == "extra_forbidden"
+        )
+        if nested:
+            raise ValidationError(
+                f"unknown profile settings: {nested}",
+                code="profile_unknown_settings",
+                params={"settings": nested},
+            ) from exc
         first = exc.errors()[0]
         where = ".".join(str(part) for part in first["loc"])
         raise ValidationError(

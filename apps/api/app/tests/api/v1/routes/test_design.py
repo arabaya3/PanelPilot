@@ -6,6 +6,7 @@ Mirrors the module 1:1 — if you add a function there, add its test here.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -237,7 +238,12 @@ def test_a_price_list_is_uploaded(client: TestClient) -> None:
     assert response.json() == [{"key": "X", "description": "", "unit_price": "2"}]
 
 
-def test_a_plc_program_is_written(client: TestClient) -> None:
+def test_the_plc_program_is_refused_as_its_export_is(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The program's source is the unmarked plc_st file: refused, as its export is."""
+    from app.design import plc_program
+
     board = {
         "info": {"name": "Pocket"},
         "board": {
@@ -253,16 +259,61 @@ def test_a_plc_program_is_written(client: TestClient) -> None:
         },
     }
     project = client.post("/design/distribution-board", json=board).json()["project"]
+
+    def never(*args: object, **kwargs: object) -> object:
+        raise AssertionError("the program was written before it was refused")
+
+    monkeypatch.setattr(plc_program, "build_program", never)
     response = client.post("/design/plc", json={"project": project})
-    assert response.status_code == 200
+    exported = client.post("/design/export", json={"project": project, "format": "plc_st"})
+    assert response.status_code == 409
     body = response.json()
-    assert body["validation"]["status"] == "valid"
-    assert "END_PROGRAM" in body["source"]
-    refused = client.post(
-        "/design/plc",
-        json={"project": client.post("/design/distribution-board", json=BOARD).json()["project"]},
+    assert body["code"] == "export_format_unprotected"
+    assert body["params"] == exported.json()["params"]
+    assert "source" not in body
+    assert "END_PROGRAM" not in response.text
+
+
+def test_an_unknown_nested_profile_setting_is_refused(client: TestClient) -> None:
+    profile = {"key": "acme", "circuit_rules": {"lighting": {"breaker_amps": 6}}}
+    designed = client.post("/design/distribution-board", json={**BOARD, "profile": profile})
+    assert designed.status_code == 422
+    assert designed.json()["code"] == "profile_unknown_settings"
+    assert "circuit_rules.lighting.breaker_amps" in designed.json()["params"]["settings"]
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    exported = client.post(
+        "/design/export", json={"project": project, "format": "pdf", "profile": profile}
     )
+    assert exported.status_code == 422
+    assert exported.json()["code"] == "profile_unknown_settings"
+
+
+def test_an_approver_of_only_whitespace_is_refused(client: TestClient) -> None:
+    refused = client.post("/design/projects/p1/revisions/1/approval", json={"approver": "   "})
     assert refused.status_code == 422
+
+
+def test_a_saved_request_that_no_longer_validates_is_sent_as_stored(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.domain import design_projects
+    from app.models.schemas.design import ProjectDesignRequest, SavedProject
+
+    stored: dict[str, Any] = {
+        "info": {"name": "Pocket", "revisions": []},
+        "boards": [{"name": "DB", "loads": [{"description": "x" * 600, "load": "socket"}]}],
+    }
+    saved = SavedProject(
+        id="p1",
+        name="Pocket",
+        revisions=[],
+        revision=1,
+        request=ProjectDesignRequest.model_construct(**stored),
+    ).as_stored(stored)
+    monkeypatch.setattr(design_projects, "open_project", lambda **_: saved)
+    response = client.get("/design/projects/p1")
+    assert response.status_code == 200
+    assert response.json()["request"] == stored
 
 
 def test_a_project_of_boards_is_designed(client: TestClient) -> None:

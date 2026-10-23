@@ -1015,6 +1015,7 @@
       "unknown_fields": "{count, plural, one {The server does not accept the field {fields}; remove it} other {The server does not accept the fields {fields}; remove them}}, or reload the page if PanelPilot was updated.",
       "revision_conflict": "Another revision was saved at the same time; save again.",
       "design_refused": "The design was refused, so this revision holds no validated design. Correct the inputs and save again.",
+      "request_not_valid": "This saved revision no longer passes today's input checks (a field is too long or out of range). Correct it and save again.",
       "too_long": "{field} is too long: at most {max} characters.",
       "too_long_here": "Too long: at most {max} characters.",
       "too_large": "{field} is too large: at most {max}.",

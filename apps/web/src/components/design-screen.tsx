@@ -1537,9 +1537,7 @@ export function DesignScreen({
                 designFirst
               )}
             </Panel>
-            {designed && token !== null && !stale && hasPlcOutputs && (
-              <PlcPanel token={token} project={designed} profile={designedProfile} />
-            )}
+            {designed && token !== null && !stale && hasPlcOutputs && <PlcPanel />}
           </>,
         )}
       </div>

@@ -14,18 +14,21 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import ConflictError, NotFoundError, ValidationError
-from app.design import RULES_VERSION, snapshot
+from app.design import RULES_VERSION, findings_policy, snapshot
+from app.design.findings_policy import Classification
 from app.domain import design_projects
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DistributionBoardRequest,
     ExportStatus,
+    FindingSeverity,
     LoadInput,
     LoadKind,
     ProjectDesignRequest,
@@ -47,7 +50,8 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module", name="engine")
 def _engine() -> Iterator[Engine]:
-    engine = create_engine(DATABASE_URL)
+    # A lock waited on longer than any test holds one is a failure, not a hang.
+    engine = create_engine(DATABASE_URL, connect_args={"options": "-c lock_timeout=20000"})
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
@@ -438,23 +442,40 @@ def test_a_stale_or_altered_revision_is_refused(tenants, as_tenant, engine) -> N
     assert altered.value.code == "snapshot_integrity_failed"
 
 
-def test_blocking_findings_refuse_approval(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+def _reclassify_as_blocking(monkeypatch: pytest.MonkeyPatch, saved: Any) -> str:
+    """Make today's policy call one of the revision's recorded findings blocking."""
+    code: str = next(f.code for f in saved.findings if f.code in findings_policy.POLICY)
+    monkeypatch.setitem(
+        findings_policy.POLICY, code, Classification(FindingSeverity.BLOCKING, False, "test")
+    )
+    return code
+
+
+def test_blocking_findings_refuse_approval(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     a, _ = tenants
+    code = _reclassify_as_blocking(monkeypatch, _saved(as_tenant, a))
+    # Saved under the stricter policy, so its recorded findings agree with it.
     saved = _saved(as_tenant, a)
-    blocking = {
-        "code": "voltage_drop_exceeded",
-        "severity": "blocking",
-        "message": "m",
-        "source": "s",
-    }
-    with engine.begin() as conn:
-        conn.execute(
-            text("UPDATE design_project_revisions SET findings = CAST(:f AS jsonb)"),
-            {"f": json.dumps([blocking])},
-        )
+    assert code in {f.code for f in saved.findings if f.severity is FindingSeverity.BLOCKING}
     with pytest.raises(ConflictError) as refused:
         _approve(as_tenant, a, saved)
     assert refused.value.code == "revision_has_blocking_findings"
+
+
+def test_a_policy_change_after_approval_is_evaluated_not_ignored(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    _reclassify_as_blocking(monkeypatch, saved)
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.export_status is ExportStatus.STALE
+    # The approved snapshot is not rewritten: the same hash, still bound to it.
+    assert opened.snapshot_sha256 == saved.snapshot_sha256
+    assert opened.approved_snapshot_sha256 == saved.snapshot_sha256
+    with pytest.raises(ConflictError) as stale:
+        _export(as_tenant, a, saved)
+    assert stale.value.code == "revision_stale"
+    assert "findings_policy" in stale.value.params["changed"]
 
 
 def test_an_approval_for_another_snapshot_does_not_count(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
@@ -603,7 +624,11 @@ def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant
 
 
 def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """A save does not wait on, or change, the revision being approved."""
+    """A save waits for the approval holding the project, then is a new revision.
+
+    It does not change the revision being approved: the approval is of
+    revision 1's design, and the save is revision 2, unapproved.
+    """
     a, _ = tenants
     saved = _saved(as_tenant, a)
     approving = threading.Event()
@@ -619,21 +644,29 @@ def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tena
     def approve() -> None:
         outcome["approved"] = _approve(as_tenant, a, saved)
 
-    monkeypatch.setattr(design_projects, "_approvable", slow)
-    try:
-        worker = threading.Thread(target=approve)
-        worker.start()
-        assert approving.wait(timeout=30)
-        revised = design_projects.revise_project(
+    def revise() -> None:
+        outcome["revised"] = design_projects.revise_project(
             session=as_tenant(),
             user=_user(a),
             project_id=saved.id,
             request=ReviseProjectRequest(request=_request(kw="4"), note="more sockets"),
         )
-        release.set()
-        worker.join(timeout=30)
+
+    monkeypatch.setattr(design_projects, "_approvable", slow)
+    approver = threading.Thread(target=approve)
+    reviser = threading.Thread(target=revise)
+    try:
+        approver.start()
+        assert approving.wait(timeout=30)
+        reviser.start()
+        reviser.join(timeout=1)
+        # The approval holds the project row, as a save does: the save waits.
+        assert reviser.is_alive()
     finally:
         release.set()
+        approver.join(timeout=30)
+        reviser.join(timeout=30)
+    revised = outcome["revised"]
     assert revised.revision == 2
     assert revised.export_status is ExportStatus.DRAFT
     assert revised.approved_snapshot_sha256 is None
@@ -665,3 +698,166 @@ def test_revision_endpoints_answer_revision_not_found_across_tenants(tenants, as
     with pytest.raises(NotFoundError) as project:
         design_projects.open_project(session=as_tenant(), user=_user(b), project_id=saved.id)
     assert project.value.code == "project_not_found"
+
+
+def test_a_delete_during_an_approval_waits_then_is_refused(tenants, as_tenant, engine, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A delete started while a revision is being approved never removes it."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    approving = threading.Event()
+    release = threading.Event()
+    outcome: dict[str, Any] = {}
+    original = design_projects._approvable
+
+    def slow(row: Any, number: int) -> None:
+        original(row, number)
+        approving.set()
+        release.wait(timeout=30)
+
+    def approve() -> None:
+        outcome["approved"] = _approve(as_tenant, a, saved)
+
+    def delete() -> None:
+        try:
+            design_projects.delete_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+            outcome["deleted"] = None
+        except BaseException as exc:
+            outcome["deleted"] = exc
+
+    monkeypatch.setattr(design_projects, "_approvable", slow)
+    approver = threading.Thread(target=approve)
+    deleter = threading.Thread(target=delete)
+    try:
+        approver.start()
+        assert approving.wait(timeout=30)
+        deleter.start()
+        deleter.join(timeout=1)
+        # The approval holds the project row: the delete waits for it.
+        assert deleter.is_alive()
+    finally:
+        release.set()
+        approver.join(timeout=30)
+        deleter.join(timeout=30)
+    assert outcome["approved"].approved_snapshot_sha256 == saved.snapshot_sha256
+    refused = outcome["deleted"]
+    assert isinstance(refused, ValidationError)
+    assert refused.code == "project_approved"
+    with engine.connect() as conn:
+        kept = conn.execute(
+            text("SELECT approved_by FROM design_project_revisions WHERE number = 1")
+        ).scalar_one()
+    assert kept == "R. Engineer"
+
+
+def test_an_approval_during_a_delete_waits_then_finds_no_revision(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    """An approval started while the project is being deleted approves nothing."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    holder = engine.connect()
+    holder.begin()
+    holder.execute(text("DELETE FROM design_projects WHERE id = :id"), {"id": saved.id})
+    outcome: dict[str, Any] = {}
+
+    def approve() -> None:
+        try:
+            outcome["approved"] = _approve(as_tenant, a, saved)
+        except BaseException as exc:
+            outcome["approved"] = exc
+
+    worker = threading.Thread(target=approve)
+    try:
+        worker.start()
+        worker.join(timeout=1)
+        # The delete holds the project row: the approval waits for it.
+        waited = worker.is_alive()
+    finally:
+        holder.commit()
+        holder.close()
+        worker.join(timeout=30)
+    assert waited
+    refused = outcome["approved"]
+    assert isinstance(refused, NotFoundError)
+    assert refused.code == "revision_not_found"
+    with engine.connect() as conn:
+        left = conn.execute(text("SELECT count(*) FROM design_project_revisions")).scalar()
+    assert left == 0
+
+
+def test_an_approver_of_only_whitespace_is_refused() -> None:
+    for blank in ("", "   ", "\t\n"):
+        with pytest.raises(PydanticValidationError):
+            ApproveRevisionRequest(approver=blank)
+    assert ApproveRevisionRequest(approver="  A. Rabaya ").approver == "A. Rabaya"
+
+
+def _long_description(engine: Engine) -> str:
+    """Store a request today's bounds refuse, as an older revision may hold."""
+    long = "x" * 600
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE design_project_revisions SET request = jsonb_set("
+                "request, '{boards,0,loads,0,description}', to_jsonb(CAST(:d AS text)))"
+            ),
+            {"d": long},
+        )
+    return long
+
+
+def test_a_revision_whose_request_no_longer_validates_still_opens(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    long = _long_description(engine)
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    # The stored request is returned as it is, for the engineer to correct.
+    body = opened.model_dump(mode="json")
+    assert body["request"]["boards"][0]["loads"][0]["description"] == long
+    assert [r["index"] for r in body["request"]["info"]["revisions"]] == ["01"]
+    assert opened.export_status is ExportStatus.NOT_VALIDATED
+    assert opened.revisions[0].export_status is ExportStatus.NOT_VALIDATED
+    assert "request_not_valid" in {found.code for found in opened.findings}
+    assert "not_validated" in opened.execution_blockers
+    with pytest.raises(ConflictError) as exported:
+        _export(as_tenant, a, saved)
+    assert exported.value.code == "revision_not_validated"
+    with pytest.raises(ConflictError) as approving:
+        _approve(as_tenant, a, saved)
+    assert approving.value.code == "revision_not_validated"
+
+
+def test_a_non_domain_error_releases_the_project_lock(tenants, as_tenant, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+
+    def broken(request: Any) -> dict[str, Any]:
+        raise RuntimeError("design engine failed")
+
+    monkeypatch.setattr(design_projects, "_validate", broken)
+    # Kept open, as a request's session is until its response is sent.
+    failed = as_tenant()
+    with pytest.raises(RuntimeError):
+        design_projects.revise_project(
+            session=failed,
+            user=_user(a),
+            project_id=saved.id,
+            request=ReviseProjectRequest(request=_request()),
+        )
+    monkeypatch.undo()
+    outcome: dict[str, Any] = {}
+
+    def revise() -> None:
+        outcome["revised"] = design_projects.revise_project(
+            session=as_tenant(),
+            user=_user(a),
+            project_id=saved.id,
+            request=ReviseProjectRequest(request=_request(kw="4")),
+        )
+
+    worker = threading.Thread(target=revise)
+    worker.start()
+    worker.join(timeout=10)
+    blocked = worker.is_alive()
+    failed.close()
+    worker.join(timeout=30)
+    assert not blocked, "the failed revise still held the project lock"
+    assert outcome["revised"].revision == 2

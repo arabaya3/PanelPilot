@@ -1,53 +1,20 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useId, useState } from 'react';
-
-import { useOutcomeText } from '@/components/design/note-text';
-import { writePlcProgram, type DesignProject, type PlcProgram } from '@/lib/design';
+import { useId } from 'react';
 
 /**
- * The control program under a designed board: the Structured Text that drives
- * every PLC-switched circuit's contactor and the checker's verdict on it. The
- * program and its I/O list are shown as files not exported yet: each could
- * carry its draft mark only as a comment, which an import strips
- * (`export_format_unprotected`).
- *
- * The verdict is shown as the checker gave it: "valid" only when the code was
- * parsed in full and nothing was found.
+ * The control program under a designed board. The program's Structured Text
+ * and its I/O list are the `plc_st` and `plc_io_csv` files, which could carry
+ * a draft mark only as a comment that an import strips. The server refuses
+ * them (`export_format_unprotected`), from the export and from
+ * `POST /api/v1/design/plc` alike, so the panel neither asks for the program
+ * nor shows its source: it says why the files are not available.
  */
-export function PlcPanel({
-  token,
-  project,
-  profile,
-  writeImpl = writePlcProgram,
-}: {
-  token: string;
-  project: DesignProject;
-  profile: Record<string, unknown> | null;
-  writeImpl?: typeof writePlcProgram;
-}) {
+export function PlcPanel() {
   const t = useTranslations('design.plc');
   const tDesign = useTranslations('design');
   const id = useId();
-  const say = useOutcomeText();
-  const [program, setProgram] = useState<PlcProgram | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [working, setWorking] = useState(false);
-
-  async function write() {
-    setWorking(true);
-    setMessage(null);
-    const outcome = await writeImpl({ token, project, profile });
-    setWorking(false);
-    if (outcome.kind === 'written') {
-      setProgram(outcome.program);
-    } else {
-      setMessage(say(outcome));
-    }
-  }
-
-  const status = program?.validation.status;
 
   return (
     <section className="card flex flex-col gap-4 p-4 md:p-5" data-testid="plc-panel">
@@ -55,16 +22,6 @@ export function PlcPanel({
       <p className="text-sm text-text-muted">{t('intro')}</p>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={working}
-          onClick={() => {
-            void write();
-          }}
-          className="btn btn-primary btn-sm"
-        >
-          {working ? t('working') : t('submit')}
-        </button>
         <button
           type="button"
           disabled
@@ -89,48 +46,6 @@ export function PlcPanel({
       <p id={`${id}-unavailable`} className="text-sm text-text-muted" data-testid="plc-unavailable">
         {tDesign('errors.export_format_unprotected')}
       </p>
-
-      {message && (
-        <p role="status" className="text-sm" data-testid="plc-message">
-          {message}
-        </p>
-      )}
-
-      {program && status && (
-        <div data-testid="plc-result" className="flex flex-col gap-3">
-          <p
-            role={status === 'valid' ? 'status' : 'alert'}
-            data-testid="plc-status"
-            className={`text-sm font-semibold ${status === 'valid' ? 'text-accent' : 'text-severity-critical'}`}
-          >
-            {t(`status.${status}`)}
-          </p>
-          {(program.validation.findings ?? []).length > 0 && (
-            <ul className="list-disc ps-5 text-sm" dir="ltr">
-              {(program.validation.findings ?? []).map((finding, index) => (
-                <li key={index}>
-                  {finding.line == null
-                    ? finding.message
-                    : `${String(finding.line)}: ${finding.message}`}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="text-sm text-text-muted">
-            {t('io_count', {
-              inputs: program.io.filter((point) => point.direction === 'input').length,
-              outputs: program.io.filter((point) => point.direction === 'output').length,
-            })}
-          </p>
-          <pre
-            dir="ltr"
-            data-testid="plc-source"
-            className="max-h-96 overflow-auto rounded-md bg-surface-raised p-3 text-xs"
-          >
-            {program.source}
-          </pre>
-        </div>
-      )}
     </section>
   );
 }

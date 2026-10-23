@@ -44,7 +44,6 @@ export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggesti
 export type PricingSettings = components['schemas']['PricingSettings'];
 export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
 export type Quotation = components['schemas']['Quotation'];
-export type PlcProgram = components['schemas']['PlcProgramResponse'];
 export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
@@ -91,7 +90,6 @@ export type SuggestOutcome =
   { kind: 'suggested'; result: LoadScheduleSuggestion } | { kind: 'budget' } | Failure;
 export type PriceOutcome = { kind: 'priced'; quotation: Quotation } | Failure;
 export type PriceListOutcome = { kind: 'imported'; entries: PriceListEntry[] } | Failure;
-export type PlcOutcome = { kind: 'written'; program: PlcProgram } | Failure;
 export type ProjectOutcome = { kind: 'saved'; project: SavedProject } | Failure;
 export type ProjectListOutcome = { kind: 'listed'; page: ProjectPage } | Failure;
 export type DeleteOutcome = { kind: 'deleted' } | Failure;
@@ -419,18 +417,6 @@ export function importPriceList(
     upload(options.file, options.filename),
     (payload) =>
       Array.isArray(payload) ? { kind: 'imported', entries: payload as PriceListEntry[] } : null,
-  );
-}
-
-/** Write and check the control program for the PLC-switched circuits: `POST /api/v1/design/plc`. */
-export function writePlcProgram(
-  options: Transport & { project: DesignProject; profile?: Record<string, unknown> | null },
-): Promise<PlcOutcome> {
-  const { project, profile = null } = options;
-  return call(options, '/api/v1/design/plc', { project, profile }, (payload) =>
-    has(payload, 'source', 'validation')
-      ? { kind: 'written', program: payload as PlcProgram }
-      : null,
   );
 }
 

@@ -22,7 +22,18 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SerializationInfo,
+    SerializeAsAny,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    field_serializer,
+    model_validator,
+)
 
 from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
 from app.models.schemas.plc import PlcValidationResult
@@ -35,7 +46,8 @@ class StrictModel(BaseModel):
     not know (a ``standby_supply``, a load's ``colour``) is a 422 naming it,
     never silently dropped, so a design is never taken to cover what it
     ignored. Free-form company settings (``profile``) stay a plain mapping:
-    ``app.design.profile.load_profile`` refuses unknown settings itself.
+    ``app.design.profile.load_profile`` refuses unknown settings itself, at
+    every level, since ``CompanyProfile`` and ``CircuitRule`` are strict too.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -551,7 +563,7 @@ class WireNumbering(StrEnum):
     SOURCE_TARGET = "source_target"
 
 
-class CircuitRule(BaseModel):
+class CircuitRule(StrictModel):
     """A company's rule for one kind of load.
 
     Attributes:
@@ -569,7 +581,7 @@ class CircuitRule(BaseModel):
     cable_mm2: Decimal | None = None
 
 
-class CompanyProfile(BaseModel):
+class CompanyProfile(StrictModel):
     """How one company issues a design.
 
     Naming, numbering, title block, page order, brands and design rules. A
@@ -1162,7 +1174,9 @@ class ApproveRevisionRequest(StrictModel):
         approver: Their name as the title block is to print it.
     """
 
-    approver: str = Field(min_length=1, max_length=100)
+    approver: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=_PERSON_TEXT)
+    ]
 
 
 class ProjectSummary(BaseModel):
@@ -1228,6 +1242,34 @@ class SavedProject(BaseModel):
     approved_snapshot_sha256: str | None = None
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
     execution_blockers: list[str] = Field(default_factory=list)
+
+    #: The revision's request as stored, when it no longer validates against
+    #: today's bounds (an older revision's 600-character description): it is
+    #: sent back as it is, for the engineer to correct and save again, rather
+    #: than the revision failing to open. Set through ``as_stored``.
+    _stored_request: dict[str, Any] | None = PrivateAttr(default=None)
+
+    def as_stored(self, request: dict[str, Any]) -> SavedProject:
+        """Send ``request``, JSON-shaped as stored, in place of ``request``."""
+        self._stored_request = request
+        return self
+
+    @field_serializer(
+        "request",
+        mode="wrap",
+        # The schema stays the request's; a stored request (a dict) is sent as is.
+        return_type=SerializeAsAny[ProjectDesignRequest],
+    )
+    def _request_as_stored(
+        self,
+        value: ProjectDesignRequest,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> Any:
+        del info
+        if self._stored_request is not None:
+            return self._stored_request
+        return handler(value)
 
 
 class MarketInfo(BaseModel):
