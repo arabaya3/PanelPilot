@@ -71,10 +71,25 @@ def test_a_bad_profile_is_refused() -> None:
         (ExportFormat.DXF, "application/dxf", b"0\nSECTION", ".dxf"),
         (ExportFormat.QET, "application/xml", b"<?xml", ".qet"),
         (ExportFormat.AML, "application/xml", b"<?xml", ".aml"),
-        (ExportFormat.DEVICES_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".devices.csv"),
-        (ExportFormat.PARTS_CSV, "text/csv; charset=utf-8", "﻿Quantity".encode(), ".parts.csv"),
-        (ExportFormat.CABLES_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".cables.csv"),
-        (ExportFormat.CIRCUITS_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".circuits.csv"),
+        (
+            ExportFormat.DEVICES_CSV,
+            "text/csv; charset=utf-8",
+            "\ufeff# DRAFT".encode(),
+            ".devices.csv",
+        ),
+        (ExportFormat.PARTS_CSV, "text/csv; charset=utf-8", "\ufeff# DRAFT".encode(), ".parts.csv"),
+        (
+            ExportFormat.CABLES_CSV,
+            "text/csv; charset=utf-8",
+            "\ufeff# DRAFT".encode(),
+            ".cables.csv",
+        ),
+        (
+            ExportFormat.CIRCUITS_CSV,
+            "text/csv; charset=utf-8",
+            "\ufeff# DRAFT".encode(),
+            ".circuits.csv",
+        ),
         (ExportFormat.JSON, "application/json", b"{", ".json"),
     ],
 )
@@ -315,7 +330,7 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
 
     from reportlab.pdfgen.canvas import Canvas
 
-    from app.design import pages, profile
+    from app.design import profile
     from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH, Text
     from app.models.schemas.design import ProjectDesignRequest
 
@@ -331,7 +346,10 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
         }
     )
     designed = design.design_project(session=None, user=USER, request=request)  # type: ignore[arg-type]
-    sheets = pages.build_drawing_set(designed.project, profile.default_profile())
+    # Laid out as the draft export is: every page marked, the findings after.
+    sheets = design.drawing_sheets(
+        designed.project, profile.default_profile(), design.draft_mark(designed.project)
+    )
     count = len(sheets)
     # The lights' breaker on the distribution page, where a reviewer would comment on it.
     breaker = next(

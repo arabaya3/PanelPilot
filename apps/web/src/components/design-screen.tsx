@@ -44,6 +44,19 @@ import {
   type OpenedProject,
   type TitleRevision,
 } from '@/components/design/projects-panel';
+import {
+  executionRefusalOf,
+  readinessOf,
+  rowOf,
+  validationOf,
+  type ExecutionRefusal,
+  type RevisionValidation,
+} from '@/components/design/readiness';
+import {
+  ExecutionRefused,
+  FindingsList,
+  ReadinessSteps,
+} from '@/components/design/revision-status';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
   clearDraft,
@@ -82,6 +95,7 @@ import {
 import {
   designProject,
   exportDesign,
+  exportRevision,
   importSchedule,
   openProject,
   suggestSchedule,
@@ -89,6 +103,7 @@ import {
   type SavedProject,
   type DesignOutcome,
   type ExportFormat,
+  type ExportPurpose,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import { acquireTrial } from '@/lib/session';
@@ -192,6 +207,7 @@ export function DesignScreen({
   acquireImpl = acquireTrial,
   designImpl = designProject,
   exportImpl = exportDesign,
+  exportRevisionImpl = exportRevision,
   importImpl = importSchedule,
   suggestImpl = suggestSchedule,
   saveImpl = saveBlob,
@@ -205,6 +221,7 @@ export function DesignScreen({
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
   exportImpl?: typeof exportDesign;
+  exportRevisionImpl?: typeof exportRevision;
   importImpl?: typeof importSchedule;
   suggestImpl?: typeof suggestSchedule;
   saveImpl?: typeof saveBlob;
@@ -241,6 +258,14 @@ export function DesignScreen({
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
   const [history, setHistory] = useState<RevisionSummary[]>([]);
+  // What the server recorded for the revision open: validated or not, its findings.
+  const [validation, setValidation] = useState<RevisionValidation | null>(null);
+  // The server said the rules or company profile changed since the revision open.
+  const [revisionStale, setRevisionStale] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+  const [executionRefusal, setExecutionRefusal] = useState<ExecutionRefusal | null>(null);
+  // The load row a finding's "go to row" asked for, focused once it is shown.
+  const pendingFocus = useRef<string | null>(null);
   // The market sets a new board's supply and the rules its code states; read
   // after the first render, from the engineer's last choice or the browser.
   const [market, setMarket] = useState('');
@@ -507,6 +532,12 @@ export function DesignScreen({
       approval: approvalOf(project),
     });
     setHistory(project.revisions);
+    // A save, an approval or an opening each answer with the revision as now
+    // stored: its validation replaces whatever was known of the last one.
+    setValidation(validationOf(project));
+    setRevisionStale(false);
+    setRevisionError(null);
+    setExecutionRefusal(null);
     setDraftProjectGone(false);
     setTitleRevisions(project.request.info.revisions ?? []);
     // Saved or approved: the form is left as it is. Only a save rebaselines
@@ -564,6 +595,58 @@ export function DesignScreen({
     }
   }
 
+  /**
+   * Export the revision open as the server stored it. Only while the page
+   * holds exactly that revision: an export of it would not show the edits.
+   */
+  async function downloadRevision(format: ExportFormat, purpose: ExportPurpose = 'review') {
+    if (token === null || opened === null || dirty) return;
+    setRevisionError(null);
+    setExecutionRefusal(null);
+    const outcome = await exportRevisionImpl({
+      token,
+      id: opened.id,
+      revision: opened.revision,
+      format,
+      purpose,
+    });
+    if (outcome.kind === 'exported') {
+      saveImpl(outcome.blob, outcome.filename);
+      return;
+    }
+    if (outcome.kind === 'unauthorized') void connect();
+    if (outcome.kind === 'refused' && outcome.code === 'execution_package_incomplete') {
+      setExecutionRefusal(executionRefusalOf(outcome));
+      return;
+    }
+    if (outcome.kind === 'refused' && outcome.code === 'revision_stale') setRevisionStale(true);
+    if (outcome.kind === 'refused' && outcome.code === 'revision_not_validated') {
+      setValidation((current) => (current ? { ...current, validated: false } : current));
+    }
+    setRevisionError(say(outcome));
+  }
+
+  /** Show a finding's board, and its load row when it names one. */
+  function jumpTo(boardName: string, row: number | null) {
+    const board = boards.find((entry) => entry.name === boardName);
+    selectView('schedule');
+    if (!board) return;
+    setActiveKey(board.key);
+    const load = row === null ? undefined : board.loads[row];
+    pendingFocus.current = load
+      ? `${id}-${String(board.key)}-desc-${String(load.key)}`
+      : `${id}-board-name`;
+  }
+
+  // Once the schedule shows the board asked for, focus the row (or board) found.
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null) return;
+    pendingFocus.current = null;
+    // Focusing scrolls the field into view, too.
+    document.getElementById(target)?.focus();
+  });
+
   function infoField(key: keyof ProjectInfo, ltr = false) {
     return (
       <Field id={`${id}-${key}`} label={t(`field.${key}`)}>
@@ -607,6 +690,8 @@ export function DesignScreen({
   const designedProfile = result.kind === 'designed' ? result.profile : profile;
   // The inputs have changed since the design shown was made.
   const stale = result.kind === 'designed' && result.basis !== basis;
+  // Where the saved revision stands; edits since make its validation and approval stale.
+  const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -694,8 +779,16 @@ export function DesignScreen({
         </StatusBadge>
       )}
       {opened && (
-        <StatusBadge tone={opened.approval ? 'success' : 'warning'}>
-          {opened.approval ? tw('context.approved') : tw('context.draft')}
+        // Approved only while the approval signs what is stored and nothing has changed since.
+        <StatusBadge
+          tone={readiness.approved === 'done' ? 'success' : 'warning'}
+          testId="context-approval"
+        >
+          {readiness.approved === 'done'
+            ? tw('context.approved')
+            : opened.approval
+              ? tw('context.approvalOutdated')
+              : tw('context.draft')}
         </StatusBadge>
       )}
     </nav>
@@ -872,6 +965,9 @@ export function DesignScreen({
                 onOpened={onOpened}
                 beforeOpen={unsaved.guard}
                 dirty={dirty}
+                blockers={readiness.approvalBlockers}
+                blockingCount={readiness.blockingCount}
+                approvalCovers={readiness.approvalCovers}
                 onSaveState={(state) => {
                   setLastSave(state);
                   // This closure is the one the save started from, so its
@@ -1281,15 +1377,56 @@ export function DesignScreen({
         {viewPanel(
           'review',
           <>
+            <Panel title={t('readiness.title')}>
+              <div className="flex flex-col gap-3">
+                <ReadinessSteps readiness={readiness} />
+                {opened && dirty && (
+                  <Notice tone="warning" live={false} testId="readiness-dirty">
+                    {t('readiness.dirty', { revision: opened.revision })}
+                  </Notice>
+                )}
+                {opened && readiness.approvalBlockers.includes('stale') && (
+                  <Notice tone="warning" live={false} testId="readiness-stale">
+                    {t('errors.revision_stale')}
+                  </Notice>
+                )}
+                {opened && validation !== null && !validation.validated && (
+                  <Notice tone="warning" live={false} testId="readiness-not-validated">
+                    {t('readiness.notValidated', { revision: opened.revision })}
+                  </Notice>
+                )}
+                <p className="text-sm text-text-muted" data-testid="readiness-execution-note">
+                  {t('readiness.executionBlocked')}
+                </p>
+              </div>
+            </Panel>
+            {opened && validation?.validated && (
+              <Panel title={t('findings.title')}>
+                <FindingsList
+                  findings={validation.findings}
+                  outdated={dirty}
+                  onJump={jumpTo}
+                  describe={(finding) => {
+                    const row = rowOf(finding);
+                    const board = boards.find((entry) => entry.name === finding.board_id);
+                    const load = row === null ? undefined : board?.loads[row];
+                    return load?.description.trim() || null;
+                  }}
+                />
+              </Panel>
+            )}
             <Panel title={tw('review.approval')}>
               {opened ? (
                 opened.approval ? (
-                  <Notice tone="success" live={false}>
+                  <Notice tone={readiness.approved === 'done' ? 'success' : 'warning'} live={false}>
                     {t('projects.approvedBy', {
                       revision: opened.revision,
                       name: opened.approval.by,
                       date: opened.approval.at.slice(0, 10),
                     })}
+                    {!readiness.approvalCovers &&
+                      ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
+                    {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
                   </Notice>
                 ) : (
                   <Notice
@@ -1306,9 +1443,56 @@ export function DesignScreen({
                 </Notice>
               )}
             </Panel>
-            <Panel title={t('downloads')}>
+            {opened && (
+              <Panel title={t('exports.revisionTitle', { revision: opened.revision })}>
+                <div className="flex flex-col gap-3" data-testid="revision-export">
+                  {dirty ? (
+                    <Notice tone="warning" live={false} testId="revision-export-dirty">
+                      {t('exports.revisionDirty', { revision: opened.revision })}
+                    </Notice>
+                  ) : validation !== null && !validation.validated ? (
+                    <Notice tone="warning" live={false} testId="revision-export-not-validated">
+                      {t('readiness.notValidated', { revision: opened.revision })}
+                    </Notice>
+                  ) : (
+                    <>
+                      <p className="text-sm text-text-muted">
+                        {t('exports.revisionBody', { revision: opened.revision })}
+                      </p>
+                      <ExportPanel
+                        onExport={(format) => downloadRevision(format)}
+                        exportError={revisionError}
+                        testIdPrefix="revision-export"
+                      />
+                      <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+                        <p className="text-sm text-text-muted">{t('exports.executionBody')}</p>
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            data-testid="execution-export"
+                            onClick={() => {
+                              void downloadRevision('pdf', 'execution');
+                            }}
+                          >
+                            {t('exports.execution')}
+                          </button>
+                        </div>
+                        {executionRefusal && <ExecutionRefused refusal={executionRefusal} />}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Panel>
+            )}
+            <Panel title={t('exports.draftTitle')}>
               {result.kind === 'designed' && !stale ? (
-                <ExportPanel onExport={download} exportError={exportError} />
+                <div className="flex flex-col gap-3" data-testid="draft-export">
+                  <Notice tone="warning" live={false} title={t('exports.draftMark')}>
+                    {t('exports.draftBody')}
+                  </Notice>
+                  <ExportPanel onExport={download} exportError={exportError} />
+                </div>
               ) : stale ? (
                 designAgain
               ) : (

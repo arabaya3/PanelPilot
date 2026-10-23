@@ -33,6 +33,13 @@ export type Refusal = {
   /** A code the page can say in the reader's language, with its values. */
   code?: string;
   params?: Record<string, string>;
+  /**
+   * The params as the server sent them, lists included, for a refusal whose
+   * values are not all a sentence's strings (what an execution export lacks).
+   */
+  values?: Record<string, unknown>;
+  /** Fields the server does not accept (a 422 `extra_forbidden`), as paths. */
+  unknownFields?: string[];
 };
 type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
 
@@ -52,6 +59,9 @@ export type MarkupOutcome = { kind: 'read'; report: MarkupReport } | Failure;
 export type CompanySettings = components['schemas']['CompanySettings'];
 export type SettingsOutcome = { kind: 'settings'; saved: CompanySettings } | Failure;
 
+/** Statuses whose body is a refusal to say, not a fault. */
+const REFUSED = [400, 403, 404, 409, 422, 429];
+
 /** Options every call takes, so tests can stand in for the network. */
 type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
 
@@ -67,15 +77,50 @@ function detailOf(payload: unknown): string {
   return '';
 }
 
+/**
+ * The fields a strict schema refused as unknown, from FastAPI's 422 detail:
+ * `["body", "project", "boards", 0, "standby_supply"]` is said
+ * `project.boards[0].standby_supply`, so the engineer can find it.
+ */
+export function unknownFieldsOf(payload: unknown): string[] {
+  const detail = (payload as { detail?: unknown } | null)?.detail;
+  if (!Array.isArray(detail)) return [];
+  const fields: string[] = [];
+  for (const item of detail as unknown[]) {
+    const entry = item as { type?: unknown; loc?: unknown } | null;
+    if (entry?.type !== 'extra_forbidden' || !Array.isArray(entry.loc)) continue;
+    const parts = (entry.loc as unknown[]).filter(
+      (part, index): part is string | number =>
+        (typeof part === 'string' || typeof part === 'number') && !(index === 0 && part === 'body'),
+    );
+    const path = parts
+      .map((part, index) =>
+        typeof part === 'number' ? `[${String(part)}]` : index === 0 ? part : `.${part}`,
+      )
+      .join('');
+    if (path !== '' && !fields.includes(path)) fields.push(path);
+  }
+  return fields;
+}
+
 function refusalOf(payload: unknown): Refusal {
   const refusal: Refusal = { kind: 'refused', detail: detailOf(payload) };
   const body = payload as { code?: unknown; params?: unknown } | null;
   if (typeof body?.code === 'string') {
     refusal.code = body.code;
-    if (typeof body.params === 'object' && body.params !== null) {
-      refusal.params = body.params as Record<string, string>;
+    if (typeof body.params === 'object' && body.params !== null && !Array.isArray(body.params)) {
+      const values = body.params as Record<string, unknown>;
+      refusal.values = values;
+      // Only scalars go into a sentence; a list is read from `values`.
+      refusal.params = Object.fromEntries(
+        Object.entries(values)
+          .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+          .map(([key, value]) => [key, String(value)]),
+      );
     }
   }
+  const unknown = unknownFieldsOf(payload);
+  if (unknown.length > 0) refusal.unknownFields = unknown;
   return refusal;
 }
 
@@ -123,9 +168,10 @@ async function call<T>(
   if (response.status === 401) return { kind: 'unauthorized' };
   const special = extra?.(response);
   if (special) return special;
-  // 429 too: the design routes' per-address budget, said with a code; and
-  // 404, a saved project that is not (or no longer) there.
-  if ([400, 403, 404, 422, 429].includes(response.status)) {
+  // 429 too: the design routes' per-address budget, said with a code; 404, a
+  // saved project that is not (or no longer) there; and 409, a revision that
+  // cannot be approved or exported as it stands (`revision_stale`, ...).
+  if (REFUSED.includes(response.status)) {
     return refusalOf(await readJson(response));
   }
   if (!response.ok) return { kind: 'failed' };
@@ -194,9 +240,12 @@ export async function exportDesign(
   }
   if (response.status === 401) return { kind: 'unauthorized' };
   // 429 too: the design routes' per-address budget, said with a code.
-  if (response.status === 400 || response.status === 422 || response.status === 429) {
-    return refusalOf(await readJson(response));
-  }
+  if (REFUSED.includes(response.status)) return refusalOf(await readJson(response));
+  return download(response, format);
+}
+
+/** A 2xx export response as the file it carries. */
+async function download(response: Response, format: ExportFormat): Promise<ExportOutcome> {
   if (!response.ok) return { kind: 'failed' };
   const disposition = response.headers.get('Content-Disposition') ?? '';
   try {
@@ -356,6 +405,48 @@ export function openProject(
     undefined,
     'GET',
   );
+}
+
+/**
+ * What a revision is exported for. `review` gives the study set, marked
+ * draft or review-approved from the stored approval; `execution` is refused
+ * until an execution package can be checked complete, and names what it lacks.
+ */
+export type ExportPurpose = 'review' | 'execution';
+
+/**
+ * Export a saved revision as the server stored and validated it:
+ * `POST /api/v1/design/projects/{id}/revisions/{number}/export`. Nothing of
+ * the page is sent, so the file is the revision, not what was typed since.
+ */
+export async function exportRevision(
+  options: Transport & {
+    id: string;
+    revision: number;
+    format: ExportFormat;
+    purpose?: ExportPurpose;
+    pricing?: PricingSettings | null;
+  },
+): Promise<ExportOutcome> {
+  const { id, revision, format, purpose = 'review', pricing = null } = options;
+  const {
+    token,
+    fetchImpl = fetch,
+    endpoint = `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/export`,
+  } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ format, purpose, ...(pricing ? { pricing } : {}) }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (REFUSED.includes(response.status)) return refusalOf(await readJson(response));
+  return download(response, format);
 }
 
 /** Approve one revision, once, by the engineer's name for the title block. */

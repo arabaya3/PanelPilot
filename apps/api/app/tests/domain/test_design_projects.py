@@ -5,27 +5,32 @@ Mirrors the module 1:1 — if you add a function there, add its test here.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Iterator
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.design import RULES_VERSION, snapshot
 from app.domain import design_projects
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DistributionBoardRequest,
+    ExportStatus,
     LoadInput,
     LoadKind,
     ProjectDesignRequest,
     ProjectInfo,
     ReviseProjectRequest,
+    RevisionExportRequest,
     SaveProjectRequest,
 )
 from app.models.tables.base import Base
@@ -291,3 +296,225 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
     with pytest.raises(ValidationError) as locked:
         design_projects.delete_project(session=as_tenant(), user=user, project_id=saved.id)
     assert locked.value.code == "project_approved"
+
+
+# --- Phase 1: server-built snapshots, bound approval, revision export --------
+
+
+def _saved(as_tenant: Any, tenant: uuid.UUID, request: ProjectDesignRequest | None = None) -> Any:
+    return design_projects.save_project(
+        session=as_tenant(),
+        user=_user(tenant),
+        request=SaveProjectRequest(name="Tower", request=request or _request()),
+    )
+
+
+def _export(
+    as_tenant: Any,
+    tenant: uuid.UUID,
+    saved: Any,
+    purpose: str = "review",
+    fmt: str = "circuits_csv",
+) -> Any:
+    return design_projects.export_revision(
+        session=as_tenant(),
+        user=_user(tenant),
+        project_id=saved.id,
+        number=1,
+        request=RevisionExportRequest.model_validate({"format": fmt, "purpose": purpose}),
+    )
+
+
+def _approve(as_tenant: Any, tenant: uuid.UUID, saved: Any, approver: str = "R. Engineer") -> Any:
+    return design_projects.approve_revision(
+        session=as_tenant(),
+        user=_user(tenant),
+        project_id=saved.id,
+        number=1,
+        request=ApproveRevisionRequest(approver=approver),
+    )
+
+
+def _first_line(exported: Any) -> str:
+    return str(exported.content.decode("utf-8").lstrip("﻿").splitlines()[0])
+
+
+def _set(engine: Engine, **columns: object) -> None:
+    assignments = ", ".join(f"{name} = :{name}" for name in columns)
+    with engine.begin() as conn:
+        conn.execute(text(f"UPDATE design_project_revisions SET {assignments}"), columns)
+
+
+def test_saving_designs_on_the_server_and_stores_the_snapshot(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    assert saved.validated
+    assert saved.rules_version == RULES_VERSION
+    assert saved.export_status is ExportStatus.DRAFT
+    assert saved.findings
+    assert "approval" in saved.execution_blockers
+    with engine.connect() as conn:
+        stored, digest = conn.execute(
+            text("SELECT design_snapshot, snapshot_sha256 FROM design_project_revisions")
+        ).one()
+    assert snapshot.sha256_of(stored) == digest == saved.snapshot_sha256
+    # The snapshot carries no client revision rows.
+    assert stored["info"]["revisions"] == []
+
+
+def test_approval_binds_the_snapshot_and_export_says_review_approved(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    approved = _approve(as_tenant, a, saved)
+    assert approved.approved_snapshot_sha256 == saved.snapshot_sha256
+    assert approved.export_status is ExportStatus.REVIEW_APPROVED
+    first = _first_line(_export(as_tenant, a, saved))
+    assert "REVIEW APPROVED — STUDY, NOT FOR EXECUTION" in first
+    assert "R. Engineer" in first
+    assert (saved.snapshot_sha256 or "")[: design_projects.SHORT_HASH] in first
+    assert _export(as_tenant, a, saved, fmt="calculations_pdf").content.startswith(b"%PDF")
+
+
+def test_an_unapproved_revision_exports_as_a_draft(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    first = _first_line(_export(as_tenant, a, _saved(as_tenant, a)))
+    assert "DRAFT — NOT FOR EXECUTION" in first
+    assert "revision 01" in first
+
+
+def test_execution_is_always_refused_and_names_what_is_missing(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    with pytest.raises(ConflictError) as refused:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert refused.value.code == "execution_package_incomplete"
+    assert "control_schematics" in refused.value.params["missing"]
+    assert refused.value.params["approval"] == "present"
+
+
+def test_a_legacy_revision_opens_but_is_not_approved_or_exported(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _set(engine, design_snapshot=None, snapshot_sha256=None, findings=None, rules_version=None)
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert not opened.validated
+    assert opened.export_status is ExportStatus.NOT_VALIDATED
+    with pytest.raises(ConflictError) as refused:
+        _approve(as_tenant, a, saved)
+    assert refused.value.code == "revision_not_validated"
+    with pytest.raises(ConflictError) as exported:
+        _export(as_tenant, a, saved)
+    assert exported.value.code == "revision_not_validated"
+
+
+def test_a_stale_or_altered_revision_is_refused(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _set(engine, rules_version="0.0.0")
+    with pytest.raises(ConflictError) as stale:
+        _export(as_tenant, a, saved)
+    assert stale.value.code == "revision_stale"
+    assert "rules_version" in stale.value.params["changed"]
+    _set(engine, rules_version=RULES_VERSION, snapshot_sha256="0" * 64)
+    with pytest.raises(ConflictError) as altered:
+        _export(as_tenant, a, saved)
+    assert altered.value.code == "snapshot_integrity_failed"
+
+
+def test_blocking_findings_refuse_approval(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    blocking = {
+        "code": "voltage_drop_exceeded",
+        "severity": "blocking",
+        "message": "m",
+        "source": "s",
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE design_project_revisions SET findings = CAST(:f AS jsonb)"),
+            {"f": json.dumps([blocking])},
+        )
+    with pytest.raises(ConflictError) as refused:
+        _approve(as_tenant, a, saved)
+    assert refused.value.code == "revision_has_blocking_findings"
+
+
+def test_an_approval_for_another_snapshot_does_not_count(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    _set(engine, approved_snapshot_sha256="f" * 64)
+    first = _first_line(_export(as_tenant, a, saved))
+    assert "DRAFT — NOT FOR EXECUTION" in first
+    assert "R. Engineer" not in first
+
+
+def test_another_tenants_revision_cannot_be_exported(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, b = tenants
+    saved = _saved(as_tenant, a)
+    with pytest.raises(NotFoundError) as refused:
+        _export(as_tenant, b, saved)
+    assert refused.value.code == "revision_not_found"
+
+
+def test_a_refused_design_is_still_saved_but_not_validated(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    request = _request()
+    request.boards[0].fed_from = "NOWHERE"
+    saved = _saved(as_tenant, a, request)
+    assert not saved.validated
+    assert saved.findings[0].code == "design_refused"
+
+
+def test_a_stored_request_shape_still_opens() -> None:
+    """Revisions store ``model_dump(mode="json")``: the full shape, as sampled."""
+    stored = {
+        "info": {
+            "name": "T",
+            "number": "",
+            "customer": "",
+            "consultant": "",
+            "contractor": "",
+            "revisions": [],
+        },
+        "boards": [
+            {
+                "name": "DB1",
+                "location": None,
+                "supply": {
+                    "voltage_v": "400",
+                    "phases": 3,
+                    "frequency_hz": "50",
+                    "earthing": "TN-S",
+                    "fault_level_ka": None,
+                    "earth_loop_ohm": None,
+                },
+                "loads": [
+                    {
+                        "description": "S",
+                        "load": "socket",
+                        "power_kw": "2",
+                        "phases": 1,
+                        "power_factor": None,
+                        "controlled": False,
+                        "feeds": None,
+                        "starter": None,
+                        "length_m": None,
+                    }
+                ],
+                "conditions": {
+                    "installation_method": "B1",
+                    "ambient_temp_c": "30",
+                    "grouped_circuits": 1,
+                    "conductor_material": "copper",
+                    "insulation_rating_c": 70,
+                },
+                "fed_from": None,
+                "feeder_length_m": None,
+            }
+        ],
+        "profile": {"key": "iec-default", "market": "PS"},
+    }
+    assert ProjectDesignRequest.model_validate(stored).model_dump(mode="json") == stored

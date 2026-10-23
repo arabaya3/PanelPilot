@@ -42,7 +42,7 @@ export function useNoteText(): (note: DesignNote) => string {
 /**
  * Say why a design call did not succeed, in the reader's language.
  *
- * A refusal with a code the page knows is said from `design.errors`, prefixed
+ * A 422 naming fields the server does not accept says which. A refusal with a code the page knows is said from `design.errors`, prefixed
  * with what it is about (`Pump: ...`) when the server named it; one without
  * falls back to the server's English reason, and anything else to the
  * generic error.
@@ -60,6 +60,13 @@ export function useOutcomeText(): (outcome: { kind: string }) => string {
     (outcome) => {
       if (outcome.kind !== 'refused') return t('error');
       const refusal = outcome as Refusal;
+      // A field the server does not accept is named, so it can be found and removed.
+      if (refusal.unknownFields && refusal.unknownFields.length > 0) {
+        return t('errors.unknown_fields', {
+          fields: refusal.unknownFields.join(', '),
+          count: refusal.unknownFields.length,
+        });
+      }
       const key = `errors.${refusal.code ?? ''}`;
       if (refusal.code && t.has(key)) {
         const { subject, ...values } = refusal.params ?? {};

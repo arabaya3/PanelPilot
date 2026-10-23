@@ -1,0 +1,651 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { DesignScreen } from '@/components/design-screen';
+import {
+  executionRefusalOf,
+  parseFinding,
+  readinessOf,
+  rowOf,
+  validationOf,
+  type RevisionValidation,
+} from '@/components/design/readiness';
+import {
+  exportRevision,
+  unknownFieldsOf,
+  type approveRevision,
+  type BoardDesignResponse,
+  type designProject,
+  type exportDesign,
+  type listProjects,
+  type openProject,
+  type SavedProject,
+  type SavedRequest,
+} from '@/lib/design';
+
+import type * as DesignModule from '@/lib/design';
+
+import { MESSAGES, renderApp } from './helpers';
+
+/**
+ * Phase 1, trustworthy export and approval, as the page shows it: a saved
+ * revision's way from saved to validated to review approved (execution ready
+ * always blocked), its findings and where to fix them, draft and revision
+ * exports kept apart, and every refusal said so the engineer can act on it.
+ */
+
+const api = vi.hoisted(() => ({
+  list: vi.fn<typeof listProjects>(),
+  open: vi.fn<typeof openProject>(),
+  approve: vi.fn<typeof approveRevision>(),
+}));
+
+vi.mock('@/lib/design', async (importOriginal) => {
+  const actual = await importOriginal<typeof DesignModule>();
+  return {
+    ...actual,
+    listProjects: api.list,
+    openProject: api.open,
+    approveRevision: api.approve,
+  };
+});
+
+const SHA = 'a'.repeat(64);
+
+const REQUEST = {
+  info: { name: 'Stored tower', number: '', customer: '', consultant: '', contractor: '' },
+  boards: [
+    {
+      name: 'MDB',
+      location: null,
+      fed_from: null,
+      feeder_length_m: null,
+      supply: { voltage_v: '400', phases: 3, fault_level_ka: null },
+      loads: [
+        {
+          description: 'Lights',
+          load: 'lighting',
+          power_kw: '1',
+          phases: 1,
+          power_factor: null,
+          controlled: false,
+          starter: null,
+          length_m: null,
+        },
+        {
+          description: 'Heater',
+          load: 'heating',
+          power_kw: '2',
+          phases: 1,
+          power_factor: null,
+          controlled: false,
+          starter: null,
+          length_m: null,
+        },
+      ],
+    },
+  ],
+  profile: null,
+} as unknown as SavedRequest;
+
+const BLOCKING = {
+  code: 'integrity_device_above_cable_capacity',
+  severity: 'blocking',
+  board_id: 'MDB',
+  circuit_id: 'c2',
+  device_id: 'c2-breaker',
+  values: { rated: '200', capacity: '17.5', cable: '3G1.5', basis: 'method C' },
+  message: 'Heater: 200 A protection is above the 17.5 A its 3G1.5 cable carries.',
+  requires_engineering_confirmation: false,
+  source: 'IEC 60364-5-52',
+};
+
+const WARNING = {
+  code: 'rules_unconfirmed',
+  severity: 'warning',
+  board_id: 'MDB',
+  circuit_id: null,
+  device_id: null,
+  values: {},
+  message: 'Circuit rules are this software’s defaults.',
+  requires_engineering_confirmation: true,
+  source: 'policy',
+};
+
+function saved(fields: Record<string, unknown> = {}): SavedProject {
+  return {
+    id: 'p1',
+    name: 'Stored tower',
+    revision: 1,
+    revisions: [{ number: 1, note: '', author: 'e', created_at: '2026-10-02T10:00:00Z' }],
+    request: REQUEST,
+    ...({
+      validated: true,
+      findings: [],
+      snapshot_sha256: SHA,
+      rules_version: 'r1',
+      ...fields,
+    } as object),
+  };
+}
+
+function approved(fields: Record<string, unknown> = {}): SavedProject {
+  const project = saved({ approved_snapshot_sha256: SHA, ...fields });
+  project.revisions = project.revisions.map((entry) => ({
+    ...entry,
+    approved_by: 'A. Engineer',
+    approved_at: '2026-10-03T10:00:00Z',
+  }));
+  return project;
+}
+
+const DESIGNED = {
+  project: {
+    info: { name: 'Tower' },
+    profile: 'iec-default',
+    parts: [],
+    boards: [{ id: 'MDB', name: 'MDB', devices: [], cables: [], circuits: [], notes: [] }],
+  },
+  profile: { key: 'iec-default' },
+} as unknown as BoardDesignResponse;
+
+const READY = {
+  kind: 'ready' as const,
+  accessToken: 'tok',
+  trial: { sessionId: 's', claimSecret: 'c' },
+  questionsRemaining: 5,
+  conversationId: null,
+};
+
+function renderScreen(
+  extra: {
+    exportRevisionImpl?: typeof exportRevision;
+    exportImpl?: typeof exportDesign;
+    designImpl?: typeof designProject;
+    saveImpl?: (blob: Blob, filename: string) => void;
+  } = {},
+) {
+  renderApp(
+    <DesignScreen
+      acquireImpl={vi.fn().mockResolvedValue(READY)}
+      marketsImpl={vi.fn().mockResolvedValue(null)}
+      {...extra}
+    />,
+  );
+}
+
+const review = () => within(screen.getByTestId('view-review'));
+const overview = () => within(screen.getByTestId('view-overview'));
+
+async function openStored() {
+  const row = await screen.findByTestId('project-p1');
+  fireEvent.click(within(row).getByText('Open'));
+  await waitFor(() => {
+    expect(overview().getByLabelText<HTMLInputElement>('Project name').value).toBe('Stored tower');
+  });
+}
+
+function edit() {
+  fireEvent.change(overview().getByLabelText('Customer'), { target: { value: 'Changed' } });
+}
+
+function stepState(step: string): string | null {
+  return review().getByTestId(`readiness-${step}`).getAttribute('data-state');
+}
+
+beforeEach(() => {
+  api.list.mockResolvedValue({
+    kind: 'listed',
+    page: { projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }] },
+  });
+  api.open.mockResolvedValue({ kind: 'saved', project: saved() });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+  window.history.replaceState(null, '', '/');
+});
+
+describe('reading what the server recorded', () => {
+  it('reads findings defensively, blocking first, skipping what is not a finding', () => {
+    const validation = validationOf(
+      saved({ findings: [WARNING, { code: 'x', severity: 'fatal' }, 'junk', BLOCKING] }),
+    );
+    expect(validation.findings.map((finding) => finding.code)).toEqual([
+      'integrity_device_above_cable_capacity',
+      'rules_unconfirmed',
+    ]);
+    expect(validation.validated).toBe(true);
+    // An absent confirmation flag is read as needing an engineer, never as cleared.
+    expect(parseFinding({ code: 'new_code', severity: 'warning' })).toMatchObject({
+      requires_engineering_confirmation: true,
+      board_id: null,
+    });
+  });
+
+  it('takes a revision with no validation fields as not validated (saved before Phase 1)', () => {
+    const { id, name, revision, revisions, request } = saved();
+    const legacy: SavedProject = { id, name, revision, revisions, request };
+    expect(validationOf(legacy)).toMatchObject({ validated: false, findings: [] });
+  });
+
+  it('finds the load row a circuit or device id is about', () => {
+    expect(rowOf({ circuit_id: 'c3', device_id: null })).toBe(2);
+    expect(rowOf({ circuit_id: null, device_id: 'c12-breaker' })).toBe(11);
+    expect(rowOf({ circuit_id: null, device_id: 'incomer' })).toBeNull();
+    expect(rowOf({ circuit_id: 'c0', device_id: null })).toBeNull();
+  });
+
+  it('names unknown fields from a strict 422 by path', () => {
+    expect(
+      unknownFieldsOf({
+        detail: [
+          { type: 'extra_forbidden', loc: ['body', 'project', 'boards', 0, 'standby_supply'] },
+          { type: 'missing', loc: ['body', 'format'] },
+          { type: 'extra_forbidden', loc: ['body', 'transfer_switch'] },
+        ],
+      }),
+    ).toEqual(['project.boards[0].standby_supply', 'transfer_switch']);
+    expect(unknownFieldsOf({ detail: 'nope' })).toEqual([]);
+  });
+
+  it('reads an execution refusal’s gaps, blocking findings and missing approval', () => {
+    expect(
+      executionRefusalOf({
+        kind: 'refused',
+        detail: '',
+        code: 'execution_package_incomplete',
+        values: {
+          missing: 'wiring_and_terminal_connectivity',
+          approval: 'missing',
+          blocking_findings: 'a,b',
+        },
+      }),
+    ).toEqual({
+      missing: ['wiring_and_terminal_connectivity'],
+      blockingFindings: 2,
+      approvalMissing: true,
+    });
+  });
+});
+
+describe('the readiness steps', () => {
+  const validation = (fields: Partial<RevisionValidation> = {}): RevisionValidation => ({
+    validated: true,
+    findings: [],
+    snapshotSha256: SHA,
+    approvedSnapshotSha256: null,
+    rulesVersion: 'r1',
+    exportStatus: null,
+    ...fields,
+  });
+  const by = { by: 'A. Engineer', at: '2026-10-03' };
+
+  it('starts unsaved, with execution always blocked', () => {
+    const readiness = readinessOf({ opened: null, validation: null, dirty: false, stale: false });
+    expect(readiness).toMatchObject({
+      saved: 'pending',
+      validated: 'pending',
+      approved: 'pending',
+      execution: 'blocked',
+      canApprove: false,
+      approvalBlockers: ['unsaved'],
+    });
+  });
+
+  it('holds approval while blocking findings stand', () => {
+    const blocking = validationOf(saved({ findings: [BLOCKING] }));
+    const readiness = readinessOf({
+      opened: { approval: null },
+      validation: blocking,
+      dirty: false,
+      stale: false,
+    });
+    expect(readiness).toMatchObject({
+      validated: 'blocked',
+      approved: 'blocked',
+      canApprove: false,
+      approvalBlockers: ['blocking'],
+      blockingCount: 1,
+    });
+  });
+
+  it('shows an approval as covering only the snapshot it signed', () => {
+    const covered = readinessOf({
+      opened: { approval: by },
+      validation: validation({ approvedSnapshotSha256: SHA }),
+      dirty: false,
+      stale: false,
+    });
+    expect(covered).toMatchObject({ approved: 'done', approvalCovers: true });
+    // A legacy approval, signed before snapshots, is not shown as covering.
+    const legacy = readinessOf({
+      opened: { approval: by },
+      validation: validation(),
+      dirty: false,
+      stale: false,
+    });
+    expect(legacy).toMatchObject({ approved: 'pending', approvalCovers: false });
+  });
+
+  it('marks validation and approval stale after an edit or a rules change', () => {
+    for (const change of [
+      { dirty: true, stale: false },
+      { dirty: false, stale: true },
+    ]) {
+      const readiness = readinessOf({
+        opened: { approval: by },
+        validation: validation({ approvedSnapshotSha256: SHA }),
+        ...change,
+      });
+      expect(readiness).toMatchObject({ validated: 'stale', approved: 'stale' });
+    }
+  });
+});
+
+describe('exporting a revision', () => {
+  it('posts the format and a review purpose by default to the revision export endpoint', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('pdf', {
+        status: 200,
+        headers: { 'Content-Disposition': 'attachment; filename="tower-r1.pdf"' },
+      }),
+    );
+    const outcome = await exportRevision({
+      token: 'tok',
+      id: 'p 1',
+      revision: 2,
+      format: 'pdf',
+      fetchImpl,
+    });
+    expect(outcome).toMatchObject({ kind: 'exported', filename: 'tower-r1.pdf' });
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe('/api/v1/design/projects/p%201/revisions/2/export');
+    expect(JSON.parse(init?.body as string)).toEqual({ format: 'pdf', purpose: 'review' });
+  });
+
+  it('says a 409 by its code, keeping the list params', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'conflict',
+          detail: 'execution package incomplete',
+          code: 'execution_package_incomplete',
+          params: { missing: ['control_schematics'], count: 1 },
+        }),
+        { status: 409 },
+      ),
+    );
+    const outcome = await exportRevision({
+      token: 'tok',
+      id: 'p1',
+      revision: 1,
+      format: 'pdf',
+      purpose: 'execution',
+      fetchImpl,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'refused',
+      code: 'execution_package_incomplete',
+      params: { count: '1' },
+      values: { missing: ['control_schematics'] },
+    });
+  });
+});
+
+describe('the review view', () => {
+  it('shows the steps and the findings, and goes to the row a finding is about', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: saved({ findings: [WARNING, BLOCKING] }),
+    });
+    renderScreen();
+    await openStored();
+    expect(stepState('saved')).toBe('done');
+    expect(stepState('validated')).toBe('blocked');
+    expect(stepState('execution')).toBe('blocked');
+    const findings = review().getByTestId('findings');
+    const [first, second] = Array.from(findings.querySelectorAll('li'));
+    expect(first?.textContent).toContain('Blocking');
+    expect(first?.textContent).toContain(
+      'Heater: 200 A protection is above the 17.5 A its 3G1.5 cable carries (method C); In ≤ Iz does not hold.',
+    );
+    // A finding made from a design note is said as the note is.
+    expect(second?.textContent).toContain(
+      'Circuit rules are this software’s defaults, not confirmed',
+    );
+    expect(first?.textContent).toContain('Board MDB · circuit c2 · device c2-breaker');
+    expect(second?.textContent).toContain('Needs an engineer’s confirmation.');
+
+    fireEvent.click(within(findings).getByText('Go to row 2'));
+    await waitFor(() => {
+      expect(screen.getByTestId('view-schedule').hidden).toBe(false);
+    });
+    const row = within(screen.getByTestId('design-load-1')).getByLabelText<HTMLInputElement>(
+      'Circuit',
+    );
+    expect(row.value).toBe('Heater');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(row);
+    });
+
+    // Approval is held, said why, and not sent.
+    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+      target: { value: 'A. Engineer' },
+    });
+    const approve = overview().getByText<HTMLButtonElement>('Approve revision 1');
+    expect(approve.disabled).toBe(true);
+    expect(overview().getByTestId('approve-held-blocking').textContent).toContain(
+      '1 blocking finding must be resolved',
+    );
+    fireEvent.click(approve);
+    expect(api.approve).not.toHaveBeenCalled();
+  });
+
+  it('exports the stored revision for review, and shows the execution refusal’s reasons', async () => {
+    const exportRevisionImpl = vi
+      .fn<typeof exportRevision>()
+      .mockResolvedValueOnce({ kind: 'exported', blob: new Blob(['pdf']), filename: 'r1.pdf' })
+      .mockResolvedValueOnce({
+        kind: 'refused',
+        detail: 'incomplete',
+        code: 'execution_package_incomplete',
+        values: {
+          missing:
+            'wiring_and_terminal_connectivity,control_schematics,orderable_parts,mechanical_layout',
+          approval: 'missing',
+        },
+      });
+    const saveImpl = vi.fn();
+    renderScreen({ exportRevisionImpl, saveImpl });
+    await openStored();
+
+    fireEvent.click(review().getByTestId('revision-export-pdf'));
+    await waitFor(() => {
+      expect(saveImpl).toHaveBeenCalledWith(expect.any(Blob), 'r1.pdf');
+    });
+    expect(exportRevisionImpl.mock.calls[0]?.[0]).toMatchObject({
+      id: 'p1',
+      revision: 1,
+      format: 'pdf',
+      purpose: 'review',
+    });
+
+    fireEvent.click(review().getByTestId('execution-export'));
+    const refused = await review().findByTestId('execution-refused');
+    expect(exportRevisionImpl.mock.calls[1]?.[0]).toMatchObject({ purpose: 'execution' });
+    for (const text of [
+      'Wiring and terminal connectivity',
+      'Control schematics',
+      'Orderable parts with order numbers',
+      'A dimensioned mechanical layout',
+      'Review approval of this revision',
+    ]) {
+      expect(refused.textContent).toContain(text);
+    }
+    expect(saveImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a stale revision needs a new save, and holds approval', async () => {
+    const exportRevisionImpl = vi.fn<typeof exportRevision>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'rules changed',
+      code: 'revision_stale',
+    });
+    renderScreen({ exportRevisionImpl });
+    await openStored();
+    fireEvent.click(review().getByTestId('revision-export-pdf'));
+    expect((await review().findByTestId('readiness-stale')).textContent).toBe(
+      'The rules or company profile changed since this revision — save a new revision.',
+    );
+    expect(stepState('validated')).toBe('stale');
+    expect(overview().getByTestId('approve-held-stale')).toBeTruthy();
+  });
+
+  it('asks for an older revision to be saved again to validate it', async () => {
+    api.open.mockResolvedValue({ kind: 'saved', project: saved({ validated: false }) });
+    renderScreen();
+    await openStored();
+    expect(review().getByTestId('revision-export-not-validated').textContent).toBe(
+      'Revision 1 was saved before validation: save again to validate it.',
+    );
+    expect(review().queryByTestId('revision-export-pdf')).toBeNull();
+    expect(overview().getByTestId('approve-held-notValidated')).toBeTruthy();
+  });
+
+  it('never lets an approval read as covering edits made since', async () => {
+    api.open.mockResolvedValue({ kind: 'saved', project: approved({ findings: [WARNING] }) });
+    renderScreen();
+    await openStored();
+    expect(stepState('approved')).toBe('done');
+    expect(screen.getAllByTestId('context-approval')[0]?.textContent).toBe('Approved');
+
+    edit();
+    expect(stepState('saved')).toBe('stale');
+    expect(stepState('approved')).toBe('stale');
+    expect(screen.getAllByTestId('context-approval')[0]?.textContent).toBe(
+      'Approval does not cover this',
+    );
+    expect(overview().getByTestId('approval-changed')).toBeTruthy();
+    expect(review().getByTestId('findings-outdated')).toBeTruthy();
+    // The revision export would not hold the edits, so it is not offered.
+    expect(review().getByTestId('revision-export-dirty')).toBeTruthy();
+    expect(review().queryByTestId('revision-export-pdf')).toBeNull();
+  });
+
+  it('does not show a legacy approval as covering the revision', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: approved({ approved_snapshot_sha256: null }),
+    });
+    renderScreen();
+    await openStored();
+    expect(stepState('approved')).toBe('pending');
+    expect(overview().getByTestId('approval-not-covering')).toBeTruthy();
+    expect(screen.getAllByTestId('context-approval')[0]?.textContent).toBe(
+      'Approval does not cover this',
+    );
+  });
+});
+
+describe('the draft export', () => {
+  it('is labelled DRAFT — NOT FOR EXECUTION and keeps the inputs on an unknown-field refusal', async () => {
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    const exportImpl = vi.fn<typeof exportDesign>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'Extra inputs are not permitted',
+      unknownFields: ['project.boards[0].standby_supply'],
+    });
+    renderScreen({ designImpl, exportImpl });
+    await openStored();
+    fireEvent.click(screen.getByText('Design the board', { selector: 'button' }));
+    const draft = await review().findByTestId('draft-export');
+    expect(draft.textContent).toContain('DRAFT — NOT FOR EXECUTION');
+
+    fireEvent.click(within(draft).getByTestId('design-export-pdf'));
+    expect(await within(draft).findByText(/project\.boards\[0\]\.standby_supply/)).toBeTruthy();
+    expect(draft.textContent).toContain('The server does not accept the field');
+    expect(exportImpl).toHaveBeenCalledTimes(1);
+    expect(overview().getByLabelText<HTMLInputElement>('Project name').value).toBe('Stored tower');
+  });
+});
+
+describe('translations', () => {
+  const KEYS = [
+    'design.readiness.steps.execution',
+    'design.readiness.executionBlocked',
+    'design.findings.severity.blocking',
+    'design.findings.jumpRow',
+    'design.exports.draftMark',
+    'design.exports.gaps.control_schematics',
+    'design.errors.revision_stale',
+    'design.errors.revision_not_validated',
+    'design.errors.revision_has_blocking_findings',
+    'design.errors.unknown_fields',
+    'design.projects.approveHeld.blocking',
+    'workspace.context.approvalOutdated',
+  ];
+
+  function lookup(bundle: Record<string, unknown>, key: string): unknown {
+    return key
+      .split('.')
+      .reduce<unknown>(
+        (node, part) =>
+          typeof node === 'object' && node !== null
+            ? (node as Record<string, unknown>)[part]
+            : undefined,
+        bundle,
+      );
+  }
+
+  it.each(Object.entries(MESSAGES))('%s has every new key, translated', (locale, bundle) => {
+    for (const key of KEYS) {
+      const value = lookup(bundle, key);
+      expect(typeof value, `${locale} ${key}`).toBe('string');
+      if (locale !== 'en') expect(value, `${locale} ${key}`).not.toBe(lookup(MESSAGES.en, key));
+    }
+  });
+
+  it('says the draft mark in Arabic, keeping the sheet left-to-right', async () => {
+    const ar = (key: string) => String(lookup(MESSAGES.ar, key));
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderApp(
+      <DesignScreen
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+        marketsImpl={vi.fn().mockResolvedValue(null)}
+        designImpl={designImpl}
+      />,
+      { locale: 'ar' },
+    );
+    const row = await screen.findByTestId('project-p1');
+    fireEvent.click(within(row).getByText(ar('design.projects.open')));
+    await waitFor(() => {
+      expect(review().getByTestId('readiness-saved').getAttribute('data-state')).toBe('done');
+    });
+    expect(review().getByTestId('readiness-execution').textContent).toContain(
+      ar('design.readiness.steps.execution'),
+    );
+    fireEvent.click(screen.getByText(ar('design.submit'), { selector: 'button' }));
+    const draft = await review().findByTestId('draft-export');
+    expect(draft.textContent).toContain('مسودة — ليست للتنفيذ');
+    // The sheet stays left-to-right in a right-to-left page.
+    expect(screen.getByTestId('sheet-frame').getAttribute('dir')).toBe('ltr');
+  });
+});
+
+describe('a revision the server reads as stale', () => {
+  it('says so on opening, before any export is tried', async () => {
+    api.open.mockResolvedValue({ kind: 'saved', project: saved({ export_status: 'stale' }) });
+    renderScreen();
+    await openStored();
+    expect(review().getByTestId('readiness-stale').textContent).toBe(
+      'The rules or company profile changed since this revision — save a new revision.',
+    );
+    expect(stepState('validated')).toBe('stale');
+    expect(overview().getByTestId('approve-held-stale')).toBeTruthy();
+  });
+});

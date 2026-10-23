@@ -1,9 +1,11 @@
 """ORM models for saved design projects, their revisions, and company settings.
 
-A project is saved as what the engineer entered (the request), not as the
-design it produced: the design is computed from the request, so saving the
-request keeps a project openable after a rule or table is corrected, and
-re-designs it under the corrected rule rather than serving a stale result.
+A project is saved as what the engineer entered (the request), which is what
+it is opened and edited from. Since revisions bind approvals, each also holds
+the design the server built from that request when it was saved (its
+snapshot, with its hash and the rules version): an approval and a revision
+export are of that design, and a change of rule makes the revision stale
+rather than silently re-designing what was approved.
 
 Every save is a new revision, never an update: a drawing set issued at
 revision 3 must still be reproducible after revision 7 changes the boards.
@@ -66,6 +68,22 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     approved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     approved_account: Mapped[str | None] = mapped_column(String(320), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What the server designed from ``request`` when the revision was saved,
+    # and what binds an approval and an export to it. All NULL on a revision
+    # saved before designs were stored: it opens, but must be saved again to
+    # be approved or exported as a revision.
+    design_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # SHA-256 of the snapshot's canonical JSON (``app.design.snapshot``).
+    snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # SHA-256 of the company profile, as resolved, the design was made under.
+    profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The findings (``ValidationFinding``) recorded when it was saved.
+    findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # Set with the approval, in the same locked transaction: the snapshot
+    # hash approved. An approval counts only while it equals snapshot_sha256.
+    approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")
 

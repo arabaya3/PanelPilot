@@ -1,0 +1,4 @@
+FAILED Error: no trial token: 429 {"error":"RateLimitExceededError","detail":"too many trials started from this network — please wait 1 minute and try again","code":"rate_limited","params":{}}
+    at token (C:\Users\UnclePC\Desktop\Snorkel- proj\PanelPilot\docs\design-readiness\phase-1\adversarial\attack.cjs:38:40)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async C:\Users\UnclePC\Desktop\Snorkel- proj\PanelPilot\docs\design-readiness\phase-1\adversarial\attack.cjs:52:13

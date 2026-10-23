@@ -69,6 +69,39 @@ def test_a_board_is_designed_then_exported(client: TestClient) -> None:
     assert report.content.startswith(b"%PDF")
 
 
+def test_an_unknown_field_is_a_422_naming_it(client: TestClient) -> None:
+    board = {**BOARD["board"], "standby_supply": {"voltage_v": 400}}  # type: ignore[dict-item]
+    response = client.post("/design/distribution-board", json={**BOARD, "board": board})
+    assert response.status_code == 422
+    (error,) = response.json()["detail"]
+    assert error["type"] == "extra_forbidden"
+    assert error["loc"] == ["body", "board", "standby_supply"]
+
+
+def test_a_draft_export_is_marked_and_prints_no_sent_approval(client: TestClient) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    project["info"]["revisions"] = [
+        {"index": "01", "date": "2026-10-23", "checked_by": "Forged C", "approved_by": "Forged A"}
+    ]
+    exported = client.post("/design/export", json={"project": project, "format": "json"})
+    assert exported.status_code == 200
+    body = exported.json()
+    assert body["export_status"]["label"] == "DRAFT — NOT FOR EXECUTION"
+    (revision,) = body["project"]["info"]["revisions"]
+    assert (revision["checked_by"], revision["approved_by"]) == ("", "")
+
+
+def test_a_tampered_rating_is_a_blocking_finding_in_the_draft(client: TestClient) -> None:
+    project = client.post("/design/distribution-board", json=BOARD).json()["project"]
+    board = project["boards"][0]
+    lights = next(c for c in board["circuits"] if c["description"] == "Lights")
+    breaker = next(d for d in board["devices"] if d["id"] == lights["device_ids"][0])
+    breaker["rated_current_a"] = "200"
+    body = client.post("/design/export", json={"project": project, "format": "json"}).json()
+    codes = [f["code"] for f in body["findings"] if f["severity"] == "blocking"]
+    assert "integrity_device_above_cable_capacity" in codes
+
+
 def test_the_ecad_lists_are_exported(client: TestClient) -> None:
     project = client.post("/design/distribution-board", json=BOARD).json()["project"]
     for format_, name in (

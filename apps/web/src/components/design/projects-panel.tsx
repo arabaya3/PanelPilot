@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { useOutcomeText } from '@/components/design/note-text';
+import type { ApprovalBlocker } from '@/components/design/readiness';
 import {
   approveRevision,
   deleteProject,
@@ -55,6 +56,9 @@ export function ProjectsPanel({
     open();
   },
   dirty = false,
+  blockers = [],
+  blockingCount = 0,
+  approvalCovers = true,
   impls = {},
 }: {
   token: string;
@@ -69,6 +73,16 @@ export function ProjectsPanel({
   beforeOpen?: (open: () => void) => void;
   /** Whether the page has changes not saved, which an approval would not include. */
   dirty?: boolean;
+  /**
+   * Why the revision open cannot be approved besides unsaved changes (not
+   * validated, blocking findings, rules changed since). The server refuses
+   * these too; the button says so before it is pressed.
+   */
+  blockers?: ApprovalBlocker[];
+  /** How many blocking findings the revision open has. */
+  blockingCount?: number;
+  /** False when the stored approval does not sign the revision's validated snapshot. */
+  approvalCovers?: boolean;
   impls?: Partial<{
     list: typeof listProjects;
     save: typeof saveProject;
@@ -95,6 +109,9 @@ export function ProjectsPanel({
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [approver, setApprover] = useState('');
+  // Anything besides unsaved changes that keeps the revision from approval.
+  const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
+  const held = dirty || reasons.length > 0;
 
   const refresh = useCallback(async () => {
     const outcome = await list({ token });
@@ -142,7 +159,7 @@ export function ProjectsPanel({
   }
 
   async function sign() {
-    if (opened === null || approver.trim() === '' || dirty) return;
+    if (opened === null || approver.trim() === '' || held) return;
     setWorking(true);
     setMessage(null);
     const outcome = await approve({
@@ -196,13 +213,26 @@ export function ProjectsPanel({
       )}
       {opened &&
         (opened.approval ? (
-          <p className="text-sm font-medium text-accent" data-testid="project-approval">
-            {t('approvedBy', {
-              revision: opened.revision,
-              name: opened.approval.by,
-              date: opened.approval.at.slice(0, 10),
-            })}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-accent" data-testid="project-approval">
+              {t('approvedBy', {
+                revision: opened.revision,
+                name: opened.approval.by,
+                date: opened.approval.at.slice(0, 10),
+              })}
+            </p>
+            {/* An approval never reads as covering what it did not sign. */}
+            {!approvalCovers && (
+              <p className="text-sm text-text-muted" data-testid="approval-not-covering">
+                {t('approvalNotCovering', { revision: opened.revision })}
+              </p>
+            )}
+            {dirty && (
+              <p className="text-sm text-text-muted" data-testid="approval-changed">
+                {t('approvalChanged', { revision: opened.revision })}
+              </p>
+            )}
+          </div>
         ) : (
           <>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -219,8 +249,8 @@ export function ProjectsPanel({
               </Field>
               <button
                 type="button"
-                disabled={approver.trim() === '' || working || dirty}
-                aria-describedby={dirty ? `${id}-approve-dirty` : undefined}
+                disabled={approver.trim() === '' || working || held}
+                aria-describedby={held ? `${id}-approve-held` : undefined}
                 onClick={() => {
                   void sign();
                 }}
@@ -229,14 +259,26 @@ export function ProjectsPanel({
                 {t('approve', { revision: opened.revision })}
               </button>
             </div>
-            {dirty && (
-              <p
-                id={`${id}-approve-dirty`}
-                className="text-sm text-text-muted"
-                data-testid="approve-dirty"
-              >
-                {t('approveDirty', { revision: opened.revision })}
-              </p>
+            {held && (
+              <div id={`${id}-approve-held`} className="flex flex-col gap-1">
+                {dirty && (
+                  <p className="text-sm text-text-muted" data-testid="approve-dirty">
+                    {t('approveDirty', { revision: opened.revision })}
+                  </p>
+                )}
+                {reasons.map((reason) => (
+                  <p
+                    key={reason}
+                    className="text-sm text-text-muted"
+                    data-testid={`approve-held-${reason}`}
+                  >
+                    {t(`approveHeld.${reason}`, {
+                      revision: opened.revision,
+                      count: blockingCount,
+                    })}
+                  </p>
+                ))}
+              </div>
             )}
           </>
         ))}

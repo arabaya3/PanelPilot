@@ -92,6 +92,8 @@ function saved(name: string, revision = 1): SavedProject {
       created_at: '2026-10-02T10:00:00Z',
     })),
     request: { ...REQUEST, info: { ...REQUEST.info, name } },
+    // Saved since revisions are validated on saving (Phase 1), with nothing blocking.
+    ...({ validated: true, findings: [], snapshot_sha256: 'a'.repeat(64) } as object),
   };
 }
 

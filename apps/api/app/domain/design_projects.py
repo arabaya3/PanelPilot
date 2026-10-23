@@ -1,14 +1,26 @@
-"""Saved design projects: save, list, open, revise, approve, delete.
+"""Saved design projects: save, list, open, revise, approve, export, delete.
 
 A project is kept as what the engineer entered, one immutable revision per
-save (``app.models.tables.design_projects``); opening it re-designs it.
-An engineer approves a revision once, by name; the revisions up to the one
-opened are then its title block's revision list, with who approved each.
-A project with an approved revision cannot be deleted: what was signed for
-stays reproducible. Every
-function binds the session to the caller's tenant first, so a project of
-another tenant does not exist as far as it can tell (ADR 0003), and asking
-for one is answered as for an id that never existed.
+save (``app.models.tables.design_projects``). Each save also designs the
+request on the server and stores that design (its snapshot), the snapshot's
+canonical SHA-256, the profile hash, the rules and catalogue versions, and the
+findings (``app.design.integrity``); a design the client sent is never stored.
+
+An engineer approves a revision once, by name, with the revision row locked;
+the approval records the snapshot hash it approved, and counts only while that
+equals the revision's. A revision with no snapshot (saved before snapshots
+were kept, or whose design was refused) or with blocking findings cannot be
+approved. A revision export is made from the stored snapshot alone, after its
+hash, rules version and profile hash are checked again: a revision whose rules
+changed is refused as stale, never silently re-designed. Nothing is exported
+for execution: no execution package exists yet.
+
+The revisions up to the one opened are its title block's revision list, with
+who approved each. A project with an approved revision cannot be deleted: what
+was signed for stays reproducible. Every function binds the session to the
+caller's tenant first, so a project of another tenant does not exist as far as
+it can tell (ADR 0003), and asking for one is answered as for an id that never
+existed.
 """
 
 from __future__ import annotations
@@ -16,27 +28,40 @@ from __future__ import annotations
 import base64
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
+from app.design import CATALOGUE_VERSION, RULES_VERSION, integrity, marking, snapshot
 from app.domain import billing
+from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
+    DesignProject,
+    ExportPurpose,
+    ExportStatus,
+    FindingSeverity,
     ProjectDesignRequest,
+    ProjectInfo,
     ProjectPage,
     ProjectSummary,
     ReviseProjectRequest,
     Revision,
+    RevisionExportRequest,
     RevisionSummary,
     SavedProject,
     SaveProjectRequest,
+    ValidationFinding,
 )
 from app.models.tables.design_projects import DesignProjectRow, DesignRevisionRow
 
@@ -48,6 +73,9 @@ MAX_REVISIONS = 200
 
 #: Projects one tenant may hold.
 MAX_PROJECTS = 1000
+
+#: How many hex digits of a snapshot hash an export prints.
+SHORT_HASH = 12
 
 _PAGE_DEFAULT = 25
 _PAGE_MAX = 100
@@ -62,15 +90,100 @@ def _scope_to(session: Session, user: CurrentUser) -> uuid.UUID:
     return tenant
 
 
-def _load(session: Session, project_id: str) -> DesignProjectRow:
+def _load(session: Session, project_id: str, *, lock: bool = False) -> DesignProjectRow:
+    """The caller's project; with ``lock``, its row locked (``SELECT ... FOR UPDATE``).
+
+    Locking the project serializes revisions: each save reads and raises
+    ``revision_count`` only once the save before it has committed, so
+    concurrent saves get distinct numbers rather than colliding.
+    """
     try:
         key = uuid.UUID(project_id)
     except ValueError as exc:
         raise NotFoundError("no such project", code="project_not_found") from exc
-    found = session.get(DesignProjectRow, key)
+    found = session.get(DesignProjectRow, key, with_for_update=lock, populate_existing=lock)
     if found is None:
         raise NotFoundError("no such project", code="project_not_found")
     return found
+
+
+@dataclass(frozen=True)
+class _Validation:
+    """What a revision's stored design says now: its status and why."""
+
+    status: ExportStatus
+    findings: list[ValidationFinding]
+    approval_bound: bool
+    #: What changed since it was saved, for a stale revision.
+    changed: tuple[str, ...] = ()
+
+
+def _stored_findings(row: DesignRevisionRow) -> list[ValidationFinding]:
+    return [ValidationFinding.model_validate(found) for found in row.findings or []]
+
+
+def _approval_bound(row: DesignRevisionRow) -> bool:
+    """Whether the revision's approval is of the design it holds."""
+    return (
+        row.approved_at is not None
+        and row.snapshot_sha256 is not None
+        and row.approved_snapshot_sha256 == row.snapshot_sha256
+    )
+
+
+def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
+    """The hash of the revision's company settings as they resolve now; ``None`` if refused.
+
+    The profile is the one the design was made under: the settings saved in
+    the revision's own request. The tenant's company settings do not feed a
+    saved design, so changing them does not make a revision stale; a change
+    to this software's default profile, which those settings inherit, does.
+    """
+    try:
+        request = ProjectDesignRequest.model_validate(row.request)
+        return snapshot.profile_sha256(design_domain.resolve_profile(request.profile))
+    except (PydanticValidationError, ValidationError):
+        return None
+
+
+def _changed(row: DesignRevisionRow) -> tuple[str, ...]:
+    """What no longer matches what the revision was designed under."""
+    changed: list[str] = []
+    if row.rules_version != RULES_VERSION:
+        changed.append("rules_version")
+    if row.profile_sha256 != _current_profile_sha256(row):
+        changed.append("profile")
+    if row.catalogue_version != CATALOGUE_VERSION:
+        changed.append("catalogue_version")
+    return tuple(changed)
+
+
+def _validation(row: DesignRevisionRow) -> _Validation:
+    findings = _stored_findings(row)
+    bound = _approval_bound(row)
+    if row.design_snapshot is None or row.snapshot_sha256 is None:
+        return _Validation(ExportStatus.NOT_VALIDATED, findings, bound)
+    changed = _changed(row)
+    if changed:
+        return _Validation(ExportStatus.STALE, findings, bound, changed)
+    if integrity.blocking(findings):
+        return _Validation(ExportStatus.BLOCKED, findings, bound)
+    if bound:
+        return _Validation(ExportStatus.REVIEW_APPROVED, findings, bound)
+    return _Validation(ExportStatus.DRAFT, findings, bound)
+
+
+def _execution_blockers(checked: _Validation) -> list[str]:
+    """Why a revision cannot be exported for execution, most fundamental first."""
+    blockers = list(marking.EXECUTION_PACKAGE_MISSING)
+    if checked.status is ExportStatus.NOT_VALIDATED:
+        blockers.append("not_validated")
+    if checked.status is ExportStatus.STALE:
+        blockers.append("stale")
+    if not checked.approval_bound:
+        blockers.append("approval")
+    blockers.extend(f"finding:{found.code}" for found in integrity.blocking(checked.findings))
+    return blockers
 
 
 def _summary(row: DesignRevisionRow) -> RevisionSummary:
@@ -81,21 +194,74 @@ def _summary(row: DesignRevisionRow) -> RevisionSummary:
         created_at=row.created_at.isoformat(),
         approved_by=row.approved_by,
         approved_at=row.approved_at.isoformat() if row.approved_at else None,
+        validated=row.design_snapshot is not None,
+        export_status=_validation(row).status,
     )
 
 
-def _title_revisions(revisions: Sequence[DesignRevisionRow], upto: int) -> list[Revision]:
-    """The title block's revision list: each saved revision up to ``upto``."""
+def _title_revisions(
+    revisions: Sequence[DesignRevisionRow], upto: int, *, bound_only: bool = False
+) -> list[Revision]:
+    """The title block's revision list: each saved revision up to ``upto``.
+
+    Args:
+        revisions: The project's revisions, in order.
+        upto: The last revision listed.
+        bound_only: Name an approver only where the approval is of the design
+            the revision holds, as an export prints it.
+    """
     return [
         Revision(
             index=f"{row.number:02d}",
             date=(row.approved_at or row.created_at).date().isoformat(),
             description=row.note,
-            approved_by=row.approved_by or "",
+            approved_by=(row.approved_by or "") if not bound_only or _approval_bound(row) else "",
         )
         for row in revisions
         if row.number <= upto
     ]
+
+
+def _design_refused(exc: ValidationError) -> ValidationFinding:
+    return ValidationFinding(
+        code="design_refused",
+        severity=FindingSeverity.BLOCKING,
+        values={**exc.params, **({"refusal": exc.code} if exc.code else {})},
+        message=f"The design was refused: {exc}",
+        requires_engineering_confirmation=False,
+        source="policy",
+    )
+
+
+def _validate(request: ProjectDesignRequest) -> dict[str, Any]:
+    """Design a request on the server: the revision's snapshot columns.
+
+    The snapshot's title block carries no revision rows: who checked and
+    approved a revision is read from the database when it is exported, never
+    from what the client typed.
+
+    A request the design refuses is still saved, so no entered work is lost,
+    with no snapshot and its refusal as a blocking finding: it opens, and
+    cannot be approved until a revision of it designs.
+    """
+    as_entered = request.model_copy(
+        update={"info": request.info.model_copy(update={"revisions": []})}
+    )
+    try:
+        designed, company = design_domain.build_design(as_entered)
+    except ValidationError as exc:
+        return {"findings": [_design_refused(exc).model_dump(mode="json")]}
+    conditions = {board.name: board.conditions for board in request.boards}
+    findings = integrity.project_findings(designed, conditions)
+    stored = designed.model_dump(mode="json")
+    return {
+        "design_snapshot": stored,
+        "snapshot_sha256": snapshot.sha256_of(stored),
+        "profile_sha256": snapshot.profile_sha256(company),
+        "rules_version": RULES_VERSION,
+        "catalogue_version": CATALOGUE_VERSION,
+        "findings": [found.model_dump(mode="json") for found in findings],
+    }
 
 
 def _add_revision(
@@ -121,16 +287,21 @@ def _add_revision(
             note=note,
             author=user.email,
             request=request.model_dump(mode="json"),
+            **_validate(request),
         )
     )
 
 
-def _opened(session: Session, project: DesignProjectRow, number: int | None) -> SavedProject:
-    revisions = session.scalars(
+def _revisions(session: Session, project: DesignProjectRow) -> Sequence[DesignRevisionRow]:
+    return session.scalars(
         select(DesignRevisionRow)
         .where(DesignRevisionRow.project_id == project.id)
         .order_by(DesignRevisionRow.number)
     ).all()
+
+
+def _opened(session: Session, project: DesignProjectRow, number: int | None) -> SavedProject:
+    revisions = _revisions(session, project)
     chosen = (
         revisions[-1]
         if number is None
@@ -140,19 +311,27 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
         raise NotFoundError("no such revision", code="revision_not_found")
     request = ProjectDesignRequest.model_validate(chosen.request)
     info = request.info.model_copy(update={"revisions": _title_revisions(revisions, chosen.number)})
+    checked = _validation(chosen)
     return SavedProject(
         id=str(project.id),
         name=project.name,
         revisions=[_summary(r) for r in revisions],
         revision=chosen.number,
         request=request.model_copy(update={"info": info}),
+        findings=checked.findings,
+        validated=chosen.design_snapshot is not None,
+        snapshot_sha256=chosen.snapshot_sha256,
+        rules_version=chosen.rules_version,
+        approved_snapshot_sha256=chosen.approved_snapshot_sha256,
+        export_status=checked.status,
+        execution_blockers=_execution_blockers(checked),
     )
 
 
 def save_project(
     *, session: Session, user: CurrentUser, request: SaveProjectRequest
 ) -> SavedProject:
-    """Save a new project as its first revision.
+    """Save a new project as its first revision, designed on the server.
 
     Args:
         session: Open database session.
@@ -160,7 +339,7 @@ def save_project(
         request: Its name, the project as entered, and a note.
 
     Returns:
-        The project as saved.
+        The project as saved, with what the checks found.
 
     Raises:
         ValidationError: If the tenant already holds the most projects allowed.
@@ -187,7 +366,7 @@ def save_project(
 def revise_project(
     *, session: Session, user: CurrentUser, project_id: str, request: ReviseProjectRequest
 ) -> SavedProject:
-    """Save a new revision of a project.
+    """Save a new revision of a project, designed on the server.
 
     Args:
         session: Open database session.
@@ -196,18 +375,25 @@ def revise_project(
         request: The project as entered now, and what changed.
 
     Returns:
-        The project, at its new revision.
+        The project, at its new revision, with what the checks found.
 
     Raises:
         NotFoundError: If no such project is the caller's.
         ValidationError: If it holds the most revisions allowed.
     """
     tenant = _scope_to(session, user)
-    project = _load(session, project_id)
+    project = _load(session, project_id, lock=True)
     # Raising the revision count updates the row, which moves its
     # ``updated_at`` (the list's order) to now.
     _add_revision(session, project, tenant, user, request.request, request.note)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ConflictError(
+            "another revision was saved at the same time; save again",
+            code="revision_conflict",
+        ) from exc
     logger.info(
         "design.project_revised",
         tenant_id=str(tenant),
@@ -229,13 +415,63 @@ def open_project(
         revision: The revision to open; ``None`` for the latest.
 
     Returns:
-        The project, its revisions, and that revision as entered.
+        The project, its revisions, and that revision as entered, with its
+        findings, snapshot hash, rules version, approval binding and export
+        status.
 
     Raises:
         NotFoundError: If no such project or revision is the caller's.
     """
     _scope_to(session, user)
     return _opened(session, _load(session, project_id), revision)
+
+
+def _locked_revision(session: Session, project: DesignProjectRow, number: int) -> DesignRevisionRow:
+    """The revision row, locked until the transaction ends (``SELECT … FOR UPDATE``)."""
+    row = session.scalars(
+        select(DesignRevisionRow)
+        .where(DesignRevisionRow.project_id == project.id, DesignRevisionRow.number == number)
+        .with_for_update()
+        # Read what the lock protects, not what this session saw earlier.
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if row is None:
+        raise NotFoundError("no such revision", code="revision_not_found")
+    return row
+
+
+def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
+    """The revision's stored design, refused unless it is there and unaltered."""
+    if row.design_snapshot is None or row.snapshot_sha256 is None:
+        raise ConflictError(
+            f"revision {number} was saved before designs were validated on save; "
+            "save it again as a new revision",
+            code="revision_not_validated",
+            params={"revision": number},
+        )
+    if snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256:
+        raise ConflictError(
+            f"revision {number}'s stored design does not match its recorded hash",
+            code="snapshot_integrity_failed",
+            params={"revision": number},
+        )
+    return row.design_snapshot
+
+
+def _refuse_stale(row: DesignRevisionRow, number: int) -> None:
+    changed = _changed(row)
+    if changed:
+        raise ConflictError(
+            f"revision {number} was designed under other rules or settings "
+            f"({', '.join(changed)} changed); save it again as a new revision",
+            code="revision_stale",
+            params={
+                "revision": number,
+                "changed": ",".join(changed),
+                "saved_rules_version": row.rules_version or "",
+                "current_rules_version": RULES_VERSION,
+            },
+        )
 
 
 def approve_revision(
@@ -246,7 +482,11 @@ def approve_revision(
     number: int,
     request: ApproveRevisionRequest,
 ) -> SavedProject:
-    """Approve one revision of a project, once.
+    """Approve one revision of a project, once, bound to the design it holds.
+
+    The revision row is locked while it is checked and approved, so two
+    approvals cannot both pass the check, and the approval records the
+    snapshot hash it was given for.
 
     Args:
         session: Open database session.
@@ -261,35 +501,164 @@ def approve_revision(
     Raises:
         NotFoundError: If no such project or revision is the caller's.
         ValidationError: If the revision is approved already.
+        ConflictError: If it holds no validated design
+            (``revision_not_validated``), its design was altered
+            (``snapshot_integrity_failed``), its rules or settings changed
+            (``revision_stale``), or it has blocking findings
+            (``revision_has_blocking_findings``).
         AuthorizationError: If the caller's plan does not include approval.
     """
     billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)
     tenant = _scope_to(session, user)
     project = _load(session, project_id)
-    row = session.scalars(
-        select(DesignRevisionRow).where(
-            DesignRevisionRow.project_id == project.id, DesignRevisionRow.number == number
-        )
-    ).one_or_none()
-    if row is None:
-        raise NotFoundError("no such revision", code="revision_not_found")
+    row = _locked_revision(session, project, number)
     if row.approved_at is not None:
         raise ValidationError(
             f"revision {number} is approved already, by {row.approved_by}",
             code="revision_already_approved",
             params={"revision": str(number), "approver": row.approved_by or ""},
         )
+    _check_snapshot(row, number)
+    _refuse_stale(row, number)
+    blocking = integrity.blocking(_stored_findings(row))
+    if blocking:
+        raise ConflictError(
+            f"revision {number} has {len(blocking)} blocking finding(s); "
+            "fix them and save a new revision",
+            code="revision_has_blocking_findings",
+            params={
+                "revision": number,
+                "count": len(blocking),
+                "codes": ",".join(sorted({found.code for found in blocking})),
+            },
+        )
     row.approved_by = request.approver.strip()
     row.approved_account = user.email
     row.approved_at = datetime.now(UTC)
+    row.approved_snapshot_sha256 = row.snapshot_sha256
     session.commit()
     logger.info(
         "design.revision_approved",
         tenant_id=str(tenant),
         project_id=str(project.id),
         revision=number,
+        snapshot_sha256=row.snapshot_sha256,
     )
     return _opened(session, project, number)
+
+
+def _revision_mark(
+    project: DesignProjectRow, row: DesignRevisionRow, findings: list[ValidationFinding]
+) -> marking.ExportMark:
+    digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
+    where = f"{project.name}, revision {row.number:02d}"
+    if _approval_bound(row) and row.approved_at is not None:
+        identity = (
+            f"{where}, approved by {row.approved_by} on {row.approved_at.date().isoformat()}, "
+            f"design {digest}, rules {row.rules_version}"
+        )
+        label = marking.REVIEW_APPROVED_LABEL
+    else:
+        identity = f"{where}, not approved, design {digest}, rules {row.rules_version}"
+        label = marking.DRAFT_LABEL
+    return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
+
+
+def export_revision(
+    *,
+    session: Session,
+    user: CurrentUser,
+    project_id: str,
+    number: int,
+    request: RevisionExportRequest,
+) -> design_domain.ExportedFile:
+    """Export a saved revision from the design the server stored for it.
+
+    Nothing the client sends but the format and pricing is used: the design is
+    the revision's snapshot, its hash checked again; the approval, approver
+    and date are the database's, and count only for the design approved.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+        project_id: The project.
+        number: The revision.
+        request: The format, pricing, and purpose.
+
+    Returns:
+        The file, labelled draft or review-approved, with its findings.
+
+    Raises:
+        NotFoundError: If no such project or revision is the caller's
+            (``revision_not_found``).
+        ConflictError: ``revision_not_validated``, ``snapshot_integrity_failed``,
+            ``revision_stale``, or, for execution, always
+            ``execution_package_incomplete``.
+        ValidationError: If a quotation lacks pricing or a control program
+            has no PLC-switched circuit.
+        AuthorizationError: If the caller's plan does not include the format.
+    """
+    tenant = _scope_to(session, user)
+    try:
+        project = _load(session, project_id)
+    except NotFoundError as exc:
+        raise NotFoundError("no such revision", code="revision_not_found") from exc
+    revisions = _revisions(session, project)
+    row = next((r for r in revisions if r.number == number), None)
+    if row is None:
+        raise NotFoundError("no such revision", code="revision_not_found")
+    stored = _check_snapshot(row, number)
+    _refuse_stale(row, number)
+    findings = _stored_findings(row)
+    if request.purpose is ExportPurpose.EXECUTION:
+        missing = _execution_blockers(_validation(row))
+        raise ConflictError(
+            "an execution package cannot be exported yet: "
+            + ", ".join(marking.EXECUTION_PACKAGE_MISSING)
+            + " are not produced",
+            code="execution_package_incomplete",
+            params={
+                "revision": number,
+                "missing": ",".join(marking.EXECUTION_PACKAGE_MISSING),
+                "approval": "present" if _approval_bound(row) else "missing",
+                "blocking_findings": ",".join(
+                    sorted({found.code for found in integrity.blocking(findings)})
+                ),
+                "blockers": ",".join(missing),
+            },
+        )
+    design_domain.require_format(session=session, user=user, export_format=request.format)
+    try:
+        designed = DesignProject.model_validate(stored)
+    except PydanticValidationError as exc:
+        raise ConflictError(
+            f"revision {number}'s stored design no longer reads as a design",
+            code="snapshot_integrity_failed",
+            params={"revision": number},
+        ) from exc
+    company = design_domain.resolve_profile(
+        ProjectDesignRequest.model_validate(row.request).profile
+    )
+    info: ProjectInfo = designed.info.model_copy(
+        update={"revisions": _title_revisions(revisions, number, bound_only=True)}
+    )
+    exported = design_domain.render_export(
+        designated=designed.model_copy(update={"info": info}),
+        company=company,
+        export_format=request.format,
+        pricing=request.pricing,
+        mark=_revision_mark(project, row, findings),
+    )
+    logger.info(
+        "design.revision_exported",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=number,
+        format=request.format.value,
+        approved=_approval_bound(row),
+        snapshot_sha256=row.snapshot_sha256,
+    )
+    return exported
 
 
 def _cursor(updated_at: datetime, project_id: uuid.UUID) -> str:

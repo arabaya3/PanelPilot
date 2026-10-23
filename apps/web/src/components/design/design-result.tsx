@@ -277,9 +277,12 @@ export function DrawingSheets({ response }: { response: BoardDesignResponse }) {
 export function ExportPanel({
   onExport,
   exportError,
+  testIdPrefix = 'design-export',
 }: {
   onExport: (format: ExportFormat) => Promise<void>;
   exportError: string | null;
+  /** Tells a draft export's buttons from a revision export's. */
+  testIdPrefix?: string;
 }) {
   const t = useTranslations('design');
   return (
@@ -289,7 +292,7 @@ export function ExportPanel({
           <button
             key={format}
             type="button"
-            data-testid={`design-export-${format}`}
+            data-testid={`${testIdPrefix}-${format}`}
             onClick={() => {
               void onExport(format);
             }}

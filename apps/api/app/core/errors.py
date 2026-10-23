@@ -65,6 +65,15 @@ class ValidationError(PanelPilotError):
     """Caller input is well-formed but unacceptable to the domain."""
 
 
+class ConflictError(PanelPilotError):
+    """The request is sound, but the state of what it acts on refuses it.
+
+    A saved revision whose rules changed since it was saved, or one asked to
+    be exported for execution before an execution package exists: 409, so a
+    client knows the fix is to the saved state, not to the payload.
+    """
+
+
 class AuthenticationError(PanelPilotError):
     """The caller could not be identified."""
 
@@ -136,6 +145,7 @@ class NotImplementedYetError(PanelPilotError):
 STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     NotFoundError: HTTPStatus.NOT_FOUND,
     ValidationError: HTTPStatus.UNPROCESSABLE_ENTITY,
+    ConflictError: HTTPStatus.CONFLICT,
     AuthenticationError: HTTPStatus.UNAUTHORIZED,
     AuthorizationError: HTTPStatus.FORBIDDEN,
     InsufficientEvidenceError: HTTPStatus.UNPROCESSABLE_ENTITY,

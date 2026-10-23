@@ -35,6 +35,7 @@ from reportlab.platypus import (
 
 from app.design import disconnection
 from app.design.drawing_text import Words
+from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
 from app.models.schemas.design import Board, CompanyProfile, DesignProject, Device, DeviceKind
@@ -216,12 +217,16 @@ def _board_section(board: Board, words: Words, styles: dict[str, ParagraphStyle]
     return story
 
 
-def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> bytes:
+def render_calculations_pdf(
+    project: DesignProject, company: CompanyProfile, mark: ExportMark | None = None
+) -> bytes:
     """Draw a designed project's calculations report as a PDF.
 
     Args:
         project: The project, designed and designated.
         company: The company it is issued under, for its name and language.
+        mark: The export's status mark, drawn on every page, and its findings
+            section before the signatures; ``None`` for neither.
 
     Returns:
         The PDF file's bytes.
@@ -311,6 +316,12 @@ def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> 
             ]
         )
     )
+    if mark is not None:
+        story.extend(pdf_findings_section(mark, styles["h2"], styles["small"]))
     story.append(KeepTogether([signature]))
-    document.build(story)
+    if mark is None:
+        document.build(story)
+    else:
+        stamp = pdf_page_stamp(mark)
+        document.build(story, onFirstPage=stamp, onLaterPages=stamp)
     return buffer.getvalue()

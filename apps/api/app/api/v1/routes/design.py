@@ -36,6 +36,7 @@ from app.models.schemas.design import (
     Quotation,
     QuotationRequest,
     ReviseProjectRequest,
+    RevisionExportRequest,
     SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
@@ -206,6 +207,38 @@ def approve_revision(
     """Approve one revision of a saved project, once; it then cannot be deleted."""
     return design_projects.approve_revision(
         session=session, user=user, project_id=project_id, number=number, request=payload
+    )
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/export",
+    response_class=Response,
+    responses={
+        200: {"description": "The exported file", "content": {"application/octet-stream": {}}},
+        404: {"description": "No such revision is the caller's (`revision_not_found`)"},
+        409: {
+            "description": (
+                "`revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, "
+                "or `execution_package_incomplete`"
+            )
+        },
+    },
+)
+def export_revision(
+    project_id: str,
+    number: Annotated[int, Path(ge=1)],
+    payload: RevisionExportRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> Response:
+    """Export a saved revision from the design the server stored and checked for it."""
+    exported = design_projects.export_revision(
+        session=session, user=user, project_id=project_id, number=number, request=payload
+    )
+    return Response(
+        content=exported.content,
+        media_type=exported.media_type,
+        headers={"Content-Disposition": _disposition(exported.filename, exported.display_name)},
     )
 
 
