@@ -325,7 +325,7 @@ def _session_of(db: Session, refresh_token: str) -> uuid.UUID:
 def _forget_trial(db: Session, session_id: str) -> None:
     """Delete a trial this module started: its session, conversation and tenant."""
     db.rollback()
-    tenant = db.execute(
+    tenant: uuid.UUID = db.execute(
         text("SELECT tenant_id FROM anonymous_sessions WHERE id = :i"), {"i": uuid.UUID(session_id)}
     ).scalar_one()
     for table in ("anonymous_sessions", "diagnostic_sessions"):
@@ -378,7 +378,7 @@ def test_concurrent_refreshes_rotate_once_and_all_succeed_in_one_session(db: Ses
     assert all(token is not None for token in minted), "a concurrent refresh logged the user out"
     sessions = {_session_of(db, token) for token in minted if token is not None}
     assert sessions == {sid}, "a concurrent refresh opened a second session"
-    revoked = db.execute(
+    revoked: datetime | None = db.execute(
         text("SELECT revoked_at FROM auth_sessions WHERE id = :s"), {"s": sid}
     ).scalar_one()
     assert revoked is None
@@ -566,7 +566,7 @@ def test_a_refresh_racing_a_logout_leaves_no_session_alive(db: Session) -> None:
             minted = refreshed.result()
             ended.result()
 
-        live = db.execute(
+        live: int = db.execute(
             text(
                 "SELECT count(*) FROM refresh_tokens WHERE session_id = :s AND revoked_at IS NULL"
             ),
