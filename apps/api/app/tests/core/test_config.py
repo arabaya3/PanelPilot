@@ -158,14 +158,26 @@ def test_dev_trusts_the_local_web_server_when_nothing_is_configured() -> None:
     assert "http://localhost:3000" in _settings(environment=Environment.DEV).trusted_web_origins
 
 
+def test_dev_always_trusts_both_loopback_names_beside_the_configured_ones() -> None:
+    """D-AUTH-1: CORS named only localhost, so a reload at 127.0.0.1 lost the sign-in."""
+    settings = _settings(environment=Environment.DEV, cors_allowed_origins="http://localhost:3000")
+    assert settings.trusted_web_origins == {"http://localhost:3000", "http://127.0.0.1:3000"}
+    configured = _settings(environment=Environment.DEV, web_origins="https://dev.example.com")
+    assert "https://dev.example.com" in configured.trusted_web_origins
+    assert "http://127.0.0.1:3000" in configured.trusted_web_origins
+
+
+def test_outside_dev_loopback_is_not_trusted_unless_configured() -> None:
+    settings = _settings(web_origins="https://app.example.com")
+    assert settings.trusted_web_origins == {"https://app.example.com"}
+
+
 def test_outside_dev_nothing_configured_trusts_nothing() -> None:
     assert _settings().trusted_web_origins == frozenset()
 
 
 def test_a_wildcard_is_never_a_trusted_web_origin() -> None:
-    assert (
-        _settings(environment=Environment.DEV, web_origins="*").trusted_web_origins == frozenset()
-    )
+    assert "*" not in _settings(environment=Environment.DEV, web_origins="*").trusted_web_origins
     with pytest.raises(PydanticValidationError, match="WEB_ORIGINS"):
         _settings(web_origins="*")
 

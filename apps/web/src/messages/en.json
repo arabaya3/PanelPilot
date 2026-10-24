@@ -191,7 +191,8 @@
     "trialSignInTitle": "Your trial conversation stays with the trial",
     "trialSignInBody": "Signing in to an existing account does not move this trial's conversation into it. It stays with this browser's trial, and you can return to it by signing out and continuing as a trial.",
     "trialSignInContinue": "Sign in anyway",
-    "trialSignInCancel": "Cancel"
+    "trialSignInCancel": "Cancel",
+    "restoreTimedOut": "Your sign-in could not be checked in time, so you are not signed in on this page. Sign in again, or continue as a trial."
   },
   "history": {
     "label": "Conversation history",
@@ -898,7 +899,7 @@
       "mccb_selected": "{load}: {type}, In {rated} A, I3 fixed at {trip} A, Icu {icu} kA ({source}).",
       "mccb_selected_adjustable": "{load}: {type}, In {rated} A, Icu {icu} kA ({source}); its I3 (5 to 10 In) is taken at the top, {trip} A, for the short circuit and earth fault checks; set lower, a longer cable passes.",
       "short_circuit_min_magnetic_exceeded": "{load}: a short circuit at the far end draws only {current} A, below the {trip} A at which its breaker trips at once (I3 with its 20 % tolerance), at every cable size held; shorten the run or set I3 lower.",
-      "enclosure_selected": "Enclosure: ABB Mini Center compact {type} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted.",
+      "enclosure_selected": "Enclosure: {product} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted.",
       "enclosure_unknown_widths": "Enclosure: none named, since {count, plural, one {# device has} other {# devices have}} no width (enter their rail widths under “Settings as JSON” in the company settings).",
       "enclosure_not_modular": "Enclosure: none named; a moulded-case breaker, starter or drive is not a modular device, so the board needs a panel enclosure sized from its layout.",
       "enclosure_beyond": "Enclosure: none named; the board is beyond the largest modular enclosure held (5 rows of 16 modules, busbar {busbar} A, {fault} kA).",
@@ -1294,7 +1295,8 @@
         "renew-failed": "The session could not be renewed. Check the connection and try again.",
         "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account.",
         "account-switched": "A different account signed in. The unsaved work and the project open on this page belonged to the previous account, so they were cleared; nothing of it was moved into this account.",
-        "sign-out-everywhere-failed": "Your other devices could not be signed out. You are still signed in here. Check the connection and try again."
+        "sign-out-everywhere-failed": "Your other devices could not be signed out. You are still signed in here. Check the connection and try again.",
+        "restore-timed-out": "Your sign-in could not be checked in time. Sign in again to keep working in your account; nothing was saved anywhere else."
       },
       "signOutEverywhere": "Sign out everywhere",
       "trialSignIn": {

@@ -269,7 +269,7 @@ function Home({ account }: { account: AccountSession }) {
             role="alert"
             className="rounded-md border border-severity-warning bg-severity-warning-surface p-4 text-sm text-severity-warning"
           >
-            {tl('expired')}
+            {account.restoreTimedOut ? tl('restoreTimedOut') : tl('expired')}
           </p>
           <SignInForm onSignedIn={onSignedIn} />
           <button type="button" onClick={continueAsTrial} className="btn btn-sm btn-secondary">

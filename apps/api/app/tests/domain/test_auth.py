@@ -345,11 +345,11 @@ def _authenticates(db: Session, access_token: str) -> bool:
 
 
 @requires_db
-def test_concurrent_refreshes_rotate_once_and_all_succeed_in_one_session(db: Session) -> None:
+def test_two_concurrent_refreshes_rotate_once_and_both_succeed_in_one_session(db: Session) -> None:
     """Two tabs share the cookie and can refresh at the same instant.
 
-    Exactly one rotates the token; the rest find it spent a moment ago and are
-    given pairs in the same session rather than tripping reuse detection, which
+    One rotates the token; the other finds it spent a moment ago and is
+    given a pair in the same session rather than tripping reuse detection, which
     would log the user out for having two tabs open. All of them are in one
     session, so one logout still ends every pair.
     """
@@ -372,8 +372,8 @@ def test_concurrent_refreshes_rotate_once_and_all_succeed_in_one_session(db: Ses
         finally:
             own.close()
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        minted = list(pool.map(attempt, range(8)))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        minted = list(pool.map(attempt, range(2)))
 
     assert all(token is not None for token in minted), "a concurrent refresh logged the user out"
     sessions = {_session_of(db, token) for token in minted if token is not None}
@@ -390,6 +390,77 @@ def test_concurrent_refreshes_rotate_once_and_all_succeed_in_one_session(db: Ses
         with pytest.raises(AuthenticationError):
             auth.refresh(session=db, refresh_token=token)
         db.rollback()
+
+
+@requires_db
+def test_the_window_honours_a_spent_token_once_and_a_second_use_is_a_replay(
+    db: Session,
+) -> None:
+    """Unbounded, every presentation inside the window minted a live pair."""
+    email = _email()
+    tokens = auth.signup(session=db, email=email, password=PASSWORD)
+    db.commit()
+    auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+
+    assert auth.refresh(session=db, refresh_token=tokens.refresh_token).access_token
+    db.commit()
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.rollback()
+    # Detected as a replay: every session of the account is ended.
+    assert _live_refresh_tokens(db, email) == 0
+    assert not _authenticates(db, tokens.access_token)
+
+
+@requires_db
+def test_the_window_is_ten_seconds(db: Session) -> None:
+    assert timedelta(seconds=10) == auth.REFRESH_REUSE_GRACE
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    late = datetime.now(UTC) + timedelta(seconds=11)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token, now=late)
+
+
+@requires_db
+def test_concurrent_replays_on_two_sessions_of_one_account_do_not_deadlock(
+    db: Session,
+) -> None:
+    """Each replay held its own session's lock, then wanted the other's."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    email = _email()
+    laptop = auth.signup(session=db, email=email, password=PASSWORD)
+    phone = auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+    for pair in (laptop, phone):
+        auth.refresh(session=db, refresh_token=pair.refresh_token)
+        db.commit()
+    factory = _own_sessions()
+    late = datetime.now(UTC) + auth.REFRESH_REUSE_GRACE + timedelta(seconds=1)
+
+    def replay(token: str) -> str:
+        own = factory()
+        try:
+            auth.refresh(session=own, refresh_token=token, now=late)
+            own.commit()
+            return "minted"
+        except AuthenticationError:
+            own.rollback()
+            return "refused"
+        finally:
+            own.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(replay, [laptop.refresh_token, phone.refresh_token]))
+
+    # A deadlock surfaces as a database error, not an AuthenticationError.
+    assert results == ["refused", "refused"]
+    assert _live_refresh_tokens(db, email) == 0
 
 
 @requires_db

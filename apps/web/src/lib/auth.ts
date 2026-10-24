@@ -75,12 +75,19 @@ export type RefreshOutcome =
   | { kind: 'refreshed'; accessToken: string }
   /** No session: never signed in in this browser, signed out, or ended elsewhere. */
   | { kind: 'expired' }
+  /** No answer within the time allowed: whether a session exists is unknown. */
+  | { kind: 'timed-out' }
   | { kind: 'failed' };
 
 export interface RefreshOptions {
   fetchImpl?: typeof fetch;
   endpoint?: string;
+  /** How long to wait for the answer before giving up; see `REFRESH_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
+
+/** A page waits this long, on load, to learn whether it is signed in. */
+export const REFRESH_TIMEOUT_MS = 8000;
 
 /**
  * Ask for a new access token with the session cookie.
@@ -91,7 +98,11 @@ export interface RefreshOptions {
  * across tabs.
  */
 export async function refreshSession(options: RefreshOptions = {}): Promise<RefreshOutcome> {
-  const { fetchImpl = fetch, endpoint = `${SESSION}/refresh` } = options;
+  const {
+    fetchImpl = fetch,
+    endpoint = `${SESSION}/refresh`,
+    timeoutMs = REFRESH_TIMEOUT_MS,
+  } = options;
 
   let response: Response;
   try {
@@ -99,8 +110,12 @@ export async function refreshSession(options: RefreshOptions = {}): Promise<Refr
       method: 'POST',
       headers: { [CSRF_HEADER]: '1' },
       credentials: 'same-origin',
+      // Without it a hung API left the page behind its restoring placeholder forever.
+      signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
+  } catch (error) {
+    // By name: the abort reason is a DOMException from whichever realm made the signal.
+    if (error instanceof Error && error.name === 'TimeoutError') return { kind: 'timed-out' };
     return { kind: 'failed' };
   }
 

@@ -263,6 +263,9 @@ TEMPLATES: dict[str, str] = {
 #: country code), so a page can say both in its own language.
 CODE_PARAMS: dict[str, frozenset[str]] = {
     "market_rules": frozenset({"market_code", "regulation_code"}),
+    # The range and its type as one product name, so a right-to-left page and
+    # drawing can keep it as one left-to-right run.
+    "enclosure_selected": frozenset({"product"}),
 }
 
 

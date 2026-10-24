@@ -381,8 +381,9 @@ function DesignWorkspace({
     | 'trial-project-stays'
     | 'account-switched'
     | 'sign-out-everywhere-failed'
+    | 'restore-timed-out'
     | null
-  >(accountSwitched ? 'account-switched' : null);
+  >(accountSwitched ? 'account-switched' : account.restoreTimedOut ? 'restore-timed-out' : null);
   // The revision note, kept here rather than in the projects panel: the panel
   // is not shown while a session has ended, and the note typed before it
   // ended is still the engineer's when the same account signs in again.
@@ -1297,7 +1298,9 @@ function DesignWorkspace({
       {accountNotice !== null && (
         <Notice
           tone={
-            accountNotice === 'renew-failed' || accountNotice === 'sign-out-everywhere-failed'
+            accountNotice === 'renew-failed' ||
+            accountNotice === 'sign-out-everywhere-failed' ||
+            accountNotice === 'restore-timed-out'
               ? 'warning'
               : 'info'
           }

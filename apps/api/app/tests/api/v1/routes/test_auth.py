@@ -23,7 +23,12 @@ from sqlalchemy import create_engine, text
 
 from app.api import deps
 from app.api.csrf import CSRF_HEADER
-from app.api.v1.routes.auth import SESSION_COOKIE, _set_session_cookie
+from app.api.v1.routes.auth import (
+    SECURE_SESSION_COOKIE,
+    SESSION_COOKIE,
+    _clear_session_cookie,
+    _set_session_cookie,
+)
 from app.core.config import Environment, Settings
 from app.core.security import create_access_token, decode_access_token, hash_refresh_token
 from app.domain.rate_limit import (
@@ -373,16 +378,19 @@ def _settings(environment: Environment, *, secure: bool | None = None) -> Settin
 
 
 def test_the_session_cookie_attributes_outside_dev() -> None:
-    """HttpOnly, Secure, SameSite=Strict, scoped to the session endpoints, for 30 days."""
+    """HttpOnly, Secure, SameSite=Strict, `__Host-` (Path=/, no Domain), for 30 days.
+
+    The prefix stops a sibling subdomain tossing a session cookie of its choosing.
+    """
     response = Response()
     _set_session_cookie(response, token="t", settings=_settings(Environment.STAGING))
     header = response.headers["set-cookie"]
     attributes = _cookie_attributes(header)
-    assert header.startswith(f"{SESSION_COOKIE}=t;")
+    assert header.startswith(f"{SECURE_SESSION_COOKIE}=t;")
     assert "httponly" in attributes
     assert "secure" in attributes
     assert attributes["samesite"] == "strict"
-    assert attributes["path"] == "/api/v1/auth/session"
+    assert attributes["path"] == "/"
     assert attributes["max-age"] == str(30 * 24 * 3600)
     assert "domain" not in attributes
 
@@ -609,7 +617,7 @@ def test_two_tabs_refreshing_at_once_both_stay_signed_in(client: TestClient) -> 
     _sign_up(client)
     shared = client.cookies.get(SESSION_COOKIE)
     assert shared
-    tabs = [_second_browser(client) for _ in range(4)]
+    tabs = [_second_browser(client) for _ in range(2)]
     for tab in tabs:
         _hold_cookie(tab, shared)
 
@@ -677,3 +685,65 @@ def test_an_account_token_from_before_sessions_is_refused(client: TestClient) ->
     response = client.get("/api/v1/auth/quota", headers=_bearer(legacy))
     assert response.status_code == 401
     assert response.json()["code"] == "session_ended"
+
+
+def test_clearing_the_secure_cookie_names_the_same_host_cookie() -> None:
+    response = Response()
+    _clear_session_cookie(response, settings=_settings(Environment.STAGING))
+    header = response.headers["set-cookie"]
+    attributes = _cookie_attributes(header)
+    assert header.startswith(f"{SECURE_SESSION_COOKIE}=")
+    assert attributes["path"] == "/"
+    assert attributes["max-age"] == "0"
+    assert "secure" in attributes
+    assert "domain" not in attributes
+
+
+def test_clearing_the_dev_cookie_names_the_session_path() -> None:
+    response = Response()
+    _clear_session_cookie(response, settings=_settings(Environment.DEV))
+    header = response.headers["set-cookie"]
+    assert header.startswith(f"{SESSION_COOKIE}=")
+    assert _cookie_attributes(header)["path"] == "/api/v1/auth/session"
+
+
+@pytest.fixture
+def secure_client(client: TestClient) -> Iterator[TestClient]:
+    """The same app built with a Secure cookie, over https (the `client` fixture cleans up)."""
+    settings = Settings(
+        environment=Environment.DEV,
+        database_url=os.environ["DATABASE_URL"],
+        opensearch_url=os.environ.get("OPENSEARCH_URL", "http://localhost:9200"),
+        anthropic_api_key="test-key",
+        openai_api_key="test-key",
+        jwt_secret="x" * 48,
+        redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        auth_cookie_secure=True,
+    )
+    app = create_app(settings)
+    store = InMemoryRateLimitStore()
+    app.dependency_overrides[deps.get_rate_limit_store] = lambda: store
+    with TestClient(app, base_url="https://testserver") as test_client:
+        yield test_client
+
+
+@requires_db
+def test_the_secure_cookie_round_trips_and_a_tossed_plain_one_is_ignored(
+    secure_client: TestClient,
+) -> None:
+    token = _sign_up(secure_client)
+    assert secure_client.cookies.get(SECURE_SESSION_COOKIE)
+    assert secure_client.cookies.get(SESSION_COOKIE) is None
+    assert secure_client.post(_REFRESH, headers=SAME_SITE).status_code == 200
+
+    # A cookie under the plain name, as a sibling subdomain could set, is not read.
+    other = TestClient(secure_client.app, base_url="https://testserver")
+    other.cookies.set(SESSION_COOKIE, "tossed", domain="testserver.local", path="/")
+    assert other.post(_REFRESH, headers=SAME_SITE).status_code == 401
+
+    response = secure_client.post(f"{_SESSION}/logout", headers={**SAME_SITE, **_bearer(token)})
+    assert response.status_code == 204
+    header = response.headers["set-cookie"]
+    assert header.startswith(f"{SECURE_SESSION_COOKIE}=")
+    assert _cookie_attributes(header)["path"] == "/"
+    assert secure_client.cookies.get(SECURE_SESSION_COOKIE) is None

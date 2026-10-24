@@ -12,13 +12,16 @@ import {
 import type { DesignNote, Refusal } from '@/lib/design';
 
 /**
- * Params that, placed as text, are always English citations (a catalogue and
- * its pages). In Arabic and Hebrew each is marked as a left-to-right run
- * (`isolateLtr`), so its own parentheses and commas stay in order and a page
- * can keep it whole. A sentence that chooses its words by one
- * (`{source, select, …}`) is given it as it is.
+ * Params that, placed as text, are always English: a catalogue citation, or a
+ * product's name, type, order code or designation. In Arabic and Hebrew each
+ * is marked as a left-to-right run (`isolateLtr`), so its words, codes and
+ * punctuation stay in order and a page can keep it whole. A sentence that
+ * chooses its words by one (`{source, select, …}`) is given it as it is.
  */
-const CITATION_PARAMS = ['source'] as const;
+const LTR_PARAMS = ['source', 'product', 'type', 'order', 'drive', 'device', 'cable'] as const;
+
+/** The enclosure range the enclosure note names, before its type number. */
+const ENCLOSURE_RANGE = 'ABB Mini Center compact';
 
 /** Params a sentence counts with, so its plural form agrees. */
 const NUMERIC_PARAMS = new Set(['count']);
@@ -66,10 +69,19 @@ export function useNoteText(): (note: DesignNote) => string {
       const value = Number(values[param]);
       if (Number.isFinite(value)) values[param] = value;
     }
+    // The range and its type are one product name, kept together as one run.
+    // The API sends it; a note saved before it did is named here instead.
+    if (
+      note.code === 'enclosure_selected' &&
+      typeof values.product !== 'string' &&
+      typeof values.type === 'string'
+    ) {
+      values.product = `${ENCLOSURE_RANGE} ${values.type}`;
+    }
     if (rtl) {
       const raw: unknown = t.raw(key);
       const message = typeof raw === 'string' ? raw : '';
-      for (const param of CITATION_PARAMS) {
+      for (const param of LTR_PARAMS) {
         const value = values[param];
         const placed = !new RegExp(`\\{\\s*${param}\\s*,`).test(message);
         if (typeof value === 'string' && placed) values[param] = isolateLtr(value);

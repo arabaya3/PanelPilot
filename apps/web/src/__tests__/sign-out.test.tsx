@@ -8,6 +8,7 @@ import {
 } from '@/components/account-session';
 import {
   CSRF_HEADER,
+  REFRESH_TIMEOUT_MS,
   refreshSession,
   signIn,
   signOutEverywhere,
@@ -327,5 +328,40 @@ describe('the shared session signing out', () => {
     await waitFor(() => {
       expect(held?.state).toEqual({ status: 'signed-out' });
     });
+  });
+});
+
+describe('a restore that does not answer', () => {
+  it('gives up after the timeout instead of waiting forever', async () => {
+    // A fetch that only ever ends when its signal aborts it, like a hung API.
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(init.signal?.reason as Error);
+          });
+        }),
+    );
+    expect(await refreshSession({ fetchImpl, timeoutMs: 20 })).toEqual({ kind: 'timed-out' });
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('waits eight seconds by default', () => {
+    expect(REFRESH_TIMEOUT_MS).toBe(8000);
+  });
+
+  it('asks for the account, with a notice, rather than starting as signed out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const refreshImpl = vi.fn<typeof refreshSession>().mockResolvedValue({ kind: 'timed-out' });
+    render(
+      <AccountSessionProvider restore refreshImpl={refreshImpl}>
+        <Probe />
+      </AccountSessionProvider>,
+    );
+    // `expired`, not `signed-out`: no page starts a trial over what may be a
+    // signed-in identity.
+    expect((await screen.findByTestId('probe')).textContent).toBe('expired');
+    expect(held?.restoreTimedOut).toBe(true);
+    warn.mockRestore();
   });
 });

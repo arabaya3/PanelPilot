@@ -268,16 +268,22 @@ describe('the enclosure note’s citation under a right-to-left sheet (D10)', ()
   const codePoints = (text: string) => Array.from(text, (char) => char.codePointAt(0));
 
   it.each(['ar', 'he'] as const)(
-    'keeps the citation whole and left to right, its characters unchanged (%s)',
+    'keeps the product, its order code and the citation each whole and left to right, characters unchanged (%s)',
     (locale) => {
       renderApp(<DrawingSheets response={WITH_ENCLOSURE} />, { locale });
       const [note] = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
       if (!note) throw new Error('no note');
       expect(note.getAttribute('dir')).toBe('rtl');
-      const run = within(note).getByTestId('note-ltr-run');
-      expect(run.tagName).toBe('BDI');
-      expect(run.getAttribute('dir')).toBe('ltr');
-      expect(codePoints(run.textContent)).toEqual(codePoints(SOURCE));
+      const runs = within(note).getAllByTestId('note-ltr-run');
+      for (const run of runs) {
+        expect(run.tagName).toBe('BDI');
+        expect(run.getAttribute('dir')).toBe('ltr');
+      }
+      expect(runs.map((run) => codePoints(run.textContent))).toEqual(
+        ['ABB Mini Center compact GDMS332 RX', '2CVA250001P0001', SOURCE].map(codePoints),
+      );
+      // The range and its type are one run, not two placed apart.
+      expect(note.textContent).not.toContain('compact ‏');
       // Still isolated from the sentence in the text itself: FSI, then the run, then PDI.
       expect(note.textContent).toContain(`⁨${SOURCE}⁩`);
     },
@@ -288,6 +294,9 @@ describe('the enclosure note’s citation under a right-to-left sheet (D10)', ()
     const note = within(screen.getByTestId('design-notes')).getByRole('listitem');
     expect(within(note).queryByTestId('note-ltr-run')).toBeNull();
     expect(note.textContent).toContain(`(${SOURCE})`);
+    expect(note.textContent).toContain(
+      'Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001),',
+    );
     expect(note.textContent).not.toMatch(/[⁦-⁩]/);
   });
 });

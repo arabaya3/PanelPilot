@@ -213,6 +213,34 @@ describe('the API proxy', () => {
     expect(new Headers(upstreamInit().headers).get('cookie')).toBeNull();
   });
 
+  it('forwards the secure __Host- cookie, and only to the three session endpoints exactly', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+    const cookie = 'theme=dark; __Host-pp_refresh=xyz';
+
+    for (const path of ['refresh', 'logout', 'logout-everywhere']) {
+      fetchMock.mockClear();
+      await POST(
+        new Request(`http://web.test/api/v1/auth/session/${path}`, {
+          method: 'POST',
+          headers: { cookie },
+        }),
+      );
+      expect(new Headers(upstreamInit().headers).get('cookie')).toBe('__Host-pp_refresh=xyz');
+    }
+
+    // Anything else under the prefix, or merely starting like an endpoint, gets no cookie.
+    for (const path of ['refresh-other', 'refresh/x', 'other', '']) {
+      fetchMock.mockClear();
+      await POST(
+        new Request(`http://web.test/api/v1/auth/session/${path}`, {
+          method: 'POST',
+          headers: { cookie },
+        }),
+      );
+      expect(new Headers(upstreamInit().headers).get('cookie')).toBeNull();
+    }
+  });
+
   it('passes each Set-Cookie through as its own header', async () => {
     const upstreamHeaders = new Headers({ 'content-type': 'application/json' });
     upstreamHeaders.append('set-cookie', 'pp_refresh=new; Path=/api/v1/auth/session; HttpOnly');

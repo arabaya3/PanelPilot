@@ -427,3 +427,26 @@ describe('HomePage under the shared account session', () => {
     expect(screen.getByTestId('sign-in-form')).toBeTruthy();
   });
 });
+
+describe('HomePage when the sign-in could not be restored in time', () => {
+  it('asks for the account with a notice, and starts no trial behind it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const start = mockStart(STARTED);
+    const resume = vi.spyOn(trial, 'resumeTrial');
+    renderApp(
+      <AccountSessionProvider
+        restore
+        refreshImpl={vi.fn<typeof auth.refreshSession>().mockResolvedValue({ kind: 'timed-out' })}
+      >
+        <HomePage />
+      </AccountSessionProvider>,
+      { theme: 'light' },
+    );
+    const notice = await screen.findByTestId('landing-expired');
+    expect(notice.textContent).toContain('could not be checked in time');
+    expect(screen.getByTestId('sign-in-form')).toBeTruthy();
+    expect(start).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

@@ -62,6 +62,10 @@ class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     session_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("auth_sessions.id", ondelete="CASCADE"), index=True
     )
+    # When this spent token was honoured once inside the reuse window (a
+    # refresh racing the one that rotated it). Once only: a second
+    # presentation is a replay. See `auth.refresh`.
+    grace_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AnonymousSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):

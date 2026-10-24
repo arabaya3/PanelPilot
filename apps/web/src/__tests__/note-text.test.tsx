@@ -171,3 +171,64 @@ describe('splitLtrRuns', () => {
     expect(splitLtrRuns('')).toEqual([]);
   });
 });
+
+describe('product and code values in a right-to-left note', () => {
+  const LRI = '⁦';
+  const PDI = '⁩';
+  const ltr = (value: string) => `${LRI}${value}${PDI}`;
+
+  it.each(['ar', 'he'] as const)(
+    'isolates a drive and a breaker type left to right, unchanged (%s)',
+    (locale) => {
+      renderApp(
+        <Notes
+          notes={[
+            {
+              code: 'drive_selected',
+              params: {
+                load: 'Pump',
+                drive: 'ACS880-01-12A6-3',
+                ambient: '40',
+                fuse: '25',
+                source: 'ABB ACS880 manual',
+              },
+              text: '',
+            },
+            {
+              code: 'mccb_selected',
+              params: {
+                load: 'Feeder',
+                type: 'Tmax XT1B 160',
+                rated: '160',
+                trip: '1600',
+                icu: '18',
+                source: 'ABB Tmax XT',
+              },
+              text: '',
+            },
+          ]}
+        />,
+        { locale },
+      );
+      expect(screen.getByTestId('note-0').textContent).toContain(ltr('ACS880-01-12A6-3'));
+      expect(screen.getByTestId('note-0').textContent).toContain(ltr('ABB ACS880 manual'));
+      expect(screen.getByTestId('note-1').textContent).toContain(ltr('Tmax XT1B 160'));
+    },
+  );
+
+  it('leaves the values unmarked in English', () => {
+    renderApp(
+      <Notes
+        notes={[
+          {
+            code: 'drive_selected',
+            params: { load: 'P', drive: 'ACS880', ambient: '40', fuse: '25', source: 'ABB' },
+            text: '',
+          },
+        ]}
+      />,
+      { locale: 'en' },
+    );
+    expect(screen.getByTestId('note-0').textContent).not.toMatch(/[⁦-⁩]/);
+  });
+});

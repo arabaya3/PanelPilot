@@ -120,24 +120,36 @@ def login(
 #   so nothing legitimate needs the laxer setting. Lax would also send it on a
 #   cross-site top-level navigation, which these POST-only endpoints never
 #   serve but there is no reason to allow.
-# * Path=/api/v1/auth/session: sent to refresh and the two logouts only, not to
-#   every API call, and not to login, signup or the trial endpoints.
+# * Name and Path depend on Secure. With Secure: `__Host-pp_refresh`, Path=/,
+#   no Domain. The prefix makes the browser refuse any such cookie not set by
+#   this exact host over HTTPS, so a sibling subdomain cannot plant (toss) a
+#   session of its choosing. `__Host-` requires Path=/, so the browser sends it
+#   everywhere; only these endpoints read it, and the web proxy forwards it to
+#   them alone. Without Secure (dev over http, where `__Host-` is refused):
+#   `pp_refresh` on Path=/api/v1/auth/session.
 # * Max-Age: the refresh token's own lifetime.
 #
 # Every endpoint here also requires a same-site request (`app.api.csrf`).
 
 SESSION_COOKIE = "pp_refresh"
+SECURE_SESSION_COOKIE = "__Host-pp_refresh"
 # Under this router's `/auth` mount: `/api/v1/auth/session/...`.
 SESSION_PATH = "/session"
 
 
+def _cookie_name(settings: Settings) -> str:
+    return SECURE_SESSION_COOKIE if settings.refresh_cookie_secure else SESSION_COOKIE
+
+
 def _cookie_path(settings: Settings) -> str:
+    if settings.refresh_cookie_secure:
+        return "/"
     return f"{settings.api_v1_prefix}/auth{SESSION_PATH}"
 
 
 def _set_session_cookie(response: Response, *, token: str, settings: Settings) -> None:
     response.set_cookie(
-        SESSION_COOKIE,
+        _cookie_name(settings),
         token,
         max_age=int(auth_domain.REFRESH_TOKEN_TTL.total_seconds()),
         path=_cookie_path(settings),
@@ -149,7 +161,7 @@ def _set_session_cookie(response: Response, *, token: str, settings: Settings) -
 
 def _clear_session_cookie(response: Response, *, settings: Settings) -> None:
     response.delete_cookie(
-        SESSION_COOKIE,
+        _cookie_name(settings),
         path=_cookie_path(settings),
         secure=settings.refresh_cookie_secure,
         httponly=True,
@@ -163,9 +175,9 @@ def _signed_in(response: Response, tokens: TokenPair, settings: Settings) -> Acc
     return AccessToken(access_token=tokens.access_token, expires_in=tokens.expires_in)
 
 
-def _session_cookie(request: Request) -> str | None:
+def _session_cookie(request: Request, settings: Settings) -> str | None:
     """The refresh cookie's value, if one came and it is not oversized."""
-    value = request.cookies.get(SESSION_COOKIE)
+    value = request.cookies.get(_cookie_name(settings))
     if not value or len(value) > MAX_REFRESH_TOKEN_LENGTH:
         return None
     return value
@@ -187,7 +199,7 @@ def refresh(request: Request, session: SessionDep, settings: AppSettingsDep) -> 
     is no non-browser client, so it was removed rather than kept beside the
     cookie.
     """
-    token = _session_cookie(request)
+    token = _session_cookie(request, settings)
     if token is None:
         raise AuthenticationError("no sign-in session", code="session_ended")
     try:
@@ -236,7 +248,9 @@ def logout(
     the access token may already have expired. Always 204, so a retry never
     fails and the answer says nothing about either credential.
     """
-    auth_domain.logout(session=session, caller=user, refresh_token=_session_cookie(request))
+    auth_domain.logout(
+        session=session, caller=user, refresh_token=_session_cookie(request, settings)
+    )
     session.commit()
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     _clear_session_cookie(response, settings=settings)

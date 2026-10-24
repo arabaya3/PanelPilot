@@ -41,10 +41,18 @@ export type AccountState =
   /** Asking the server, on load, whether this browser has a session. */
   | { status: 'restoring' };
 
-export type RenewOutcome = RefreshOutcome['kind'] | 'signed-out';
+// A renewal that timed out is reported as `failed`: the token is kept and
+// the next 401 tries again, exactly as when offline.
+export type RenewOutcome = Exclude<RefreshOutcome['kind'], 'timed-out'> | 'signed-out';
 
 export interface AccountSession {
   state: AccountState;
+  /**
+   * The sign-in could not be restored on load in time. The page asks for the
+   * account (`expired`) rather than starting a trial over what may be a
+   * signed-in identity, and says why.
+   */
+  restoreTimedOut: boolean;
   signedIn: (tokens: AccountTokens) => void;
   /** Ask for a new access token after a 401; `expired` leaves the account signed out of. */
   renew: () => Promise<RenewOutcome>;
@@ -119,6 +127,7 @@ export function AccountSessionProvider({
   initial?: AccountState;
 }) {
   const [state, setState] = useState<AccountState>(restore ? { status: 'restoring' } : initial);
+  const [restoreTimedOut, setRestoreTimedOut] = useState(false);
   // Read by `renew`, which outlives the render it was made in.
   const current = useRef(state);
   current.current = state;
@@ -143,6 +152,14 @@ export function AccountSessionProvider({
         settle({ status: 'signed-in', tokens: { accessToken: outcome.accessToken } });
         return;
       }
+      // No answer in time: this browser may well be signed in, so the page
+      // asks for the account rather than starting a trial over it.
+      if (outcome.kind === 'timed-out') {
+        console.warn('The sign-in could not be restored in time.');
+        setRestoreTimedOut(true);
+        settle({ status: 'expired' });
+        return;
+      }
       // Offline or refused: there is no telling whether this browser had a
       // session, so it is treated as having none, and says why in the log.
       if (outcome.kind === 'failed') console.warn('The sign-in could not be restored.');
@@ -154,6 +171,7 @@ export function AccountSessionProvider({
     (tokens: AccountTokens) => {
       renewing.current = null;
       ticket.current += 1;
+      setRestoreTimedOut(false);
       settle({ status: 'signed-in', tokens });
     },
     [settle],
@@ -174,6 +192,7 @@ export function AccountSessionProvider({
           console.warn('The session could not be ended on the server.');
       });
     }
+    setRestoreTimedOut(false);
     renewing.current = null;
     ticket.current += 1;
     settle({ status: 'signed-out' });
@@ -206,7 +225,8 @@ export function AccountSessionProvider({
     const attempt = (async (): Promise<RenewOutcome> => {
       const outcome = await refreshImpl();
       // Signed out, or in again as someone, while the exchange ran: theirs stands.
-      if (ticket.current !== mine) return outcome.kind;
+      const kind = outcome.kind === 'timed-out' ? 'failed' : outcome.kind;
+      if (ticket.current !== mine) return kind;
       renewing.current = null;
       if (outcome.kind === 'refreshed') {
         // The cookie is the browser's, not the tab's: another tab may have
@@ -222,16 +242,17 @@ export function AccountSessionProvider({
       } else if (outcome.kind === 'expired') {
         settle({ status: 'expired' });
       }
-      // `failed` (offline): the token is kept, and the next 401 tries again.
-      return outcome.kind;
+      // `failed` (offline, or timed out): the token is kept, and the next 401
+      // tries again.
+      return kind;
     })();
     renewing.current = attempt;
     return attempt;
   }, [refreshImpl, settle]);
 
   const value = useMemo(
-    () => ({ state, signedIn, renew, signOut, signOutEverywhere, expire }),
-    [state, signedIn, renew, signOut, signOutEverywhere, expire],
+    () => ({ state, restoreTimedOut, signedIn, renew, signOut, signOutEverywhere, expire }),
+    [state, restoreTimedOut, signedIn, renew, signOut, signOutEverywhere, expire],
   );
   return (
     <AccountSessionContext.Provider value={value}>

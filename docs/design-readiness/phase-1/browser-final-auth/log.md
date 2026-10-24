@@ -1,0 +1,36 @@
+# Phase 1 browser re-check: auth session (commit ac2cc5b)
+
+Date: 2026-10-24. Browser: Playwright Chromium. Web `http://127.0.0.1:3000` and `http://localhost:3000` (same container), API through the web's `/api` proxy.
+Account A: one disposable `e2e-p1-auth-*@example.com` account, created through the UI sign-up. Its credentials are in `.test-accounts.local`, which git ignores through `.git/info/exclude`. No token or cookie value was printed or stored.
+Sign-up has no display-name field, so A has no display name and the UI says "a team member".
+
+## Defect D-AUTH-1: the session is not restored at `http://127.0.0.1:3000` (blocker for step 3 as briefed)
+
+- The API container has `CORS_ALLOWED_ORIGINS=http://localhost:3000` and no `WEB_ORIGINS`. The session endpoints accept only the origins in that list.
+- At `127.0.0.1:3000`, `POST /api/v1/auth/session/refresh` with `X-PanelPilot-CSRF: 1` returns **403 `csrf_origin_refused`**. The console says "The API refused this origin for the session." and "The sign-in could not be restored."
+- On reload the page comes back as a **trial**, and the unsaved edit is not offered back (05-after-reload.png). Sign-up and login at that origin still succeed and set `pp_refresh`, so the user is signed in until the next reload.
+- Reproduction: open `http://127.0.0.1:3000/design`, sign in, then reload. You get "Trial workspace". Then run `fetch('/api/v1/auth/session/refresh',{method:'POST',headers:{'X-PanelPilot-CSRF':'1'}})` and you get 403 `csrf_origin_refused`.
+- Two possible fixes: add `http://127.0.0.1:3000` to `WEB_ORIGINS`/`CORS_ALLOWED_ORIGINS` for local runs, or document that only `localhost:3000` is supported. Logout probably has the same origin check.
+- Steps 3 to 11 were therefore run at `http://localhost:3000`. Step 10 was recorded at both origins.
+
+## Steps
+
+| # | Result | Evidence | Notes |
+|---|---|---|---|
+| 1 | PASS | 01-signed-in-A.png | Sign-up returned 201. The cookie `pp_refresh` has httpOnly=true, sameSite=Strict, path=/api/v1/auth/session, secure=false (http localhost) and an expiry. localStorage keys are `panelpilot-locale` and `panelpilot-theme`, with no token. sessionStorage is empty. `document.cookie` cannot see the cookie. |
+| 2 | PASS | 02-saved-rev01.png, 03-saved-rev02.png, 04-unsaved-edit.png | Saved "Auth Final Board" r1 (201) and r2 (201). Left an unsaved edit, Contractor = `UNSAVED-EDIT-XYZ`. |
+| 3 | FAIL at 127.0.0.1 (D-AUTH-1), PASS at localhost | 05, 06, 07, 08 | At localhost, reload restored "Signed in" without a new sign-in. "Unsaved work was kept" offered "Restore unsaved work", which brought back Contractor = UNSAVED-EDIT-XYZ. A beforeunload prompt appears when reloading with unsaved work; this is expected. |
+| 4 | PASS | 09-approved-rev02.png | Discarded the draft, reopened r2 from the list and approved it as "Eng. Auth Test". The UI says "Revision 2 approved by Eng. Auth Test on 2026-10-24. Approved while signed in as a team member." The approval response (200) and the project list bodies contain no "@". `approved_by` is "Eng. Auth Test", `approver_name` is null and `author` is "". |
+| 5 | PASS | downloads/rev02-drawing-set.pdf, downloads/rev02-project.json, 10-exports-exec-refused.png | pdfplumber found "REVIEW APPROVED — STUDY, NOT FOR EXECUTION", "approved by Eng. Auth Test on 2026-10-24, design 4ca6f7c6da19, rules 2026.10.23.1", and no "@" or e-mail anywhere. The JSON has no "@". The execution export returned 409 `execution_package_incomplete`, and the UI says "Execution export refused" and lists the 4 missing parts. The CSV buttons are disabled with the reason "Not available yet: this format cannot keep a visible draft warning once imported…". A direct API call for `devices_csv` returned 409 `export_format_unprotected` (reason `draft_mark_not_persistent`). |
+| 6 | PASS | (no file, by design) | A fetch wrapper (init script) captured the Authorization header into `window.__ppTok`. The value was never printed. Before sign-out, GET /design/projects with it returned 200. |
+| 7 | PASS | 11-signed-out.png, 12-reload-after-signout.png | Logout returned 204, and `pp_refresh` was gone from the jar. In a fresh browser context, replaying the captured token returned **401 `session_ended`**, both through the proxy and directly at :8000. Refresh with the CSRF header returned 401 `session_ended` ("no sign-in session"). After reload the page is an explicit trial. |
+| 8 | PASS | 13-ctx2-still-signed-in.png, 14-signed-out-everywhere.png, 15-other-session-ended.png | A was signed in in ctx1 and ctx2. After ctx1 signed out, ctx2 was still signed in after a reload, and its API call returned 200. A was then signed in again in a third context (ctx3). "Sign out everywhere" in ctx2 called `/auth/session/logout-everywhere` (204). After that, ctx3's API call returned 401, ctx3 came back as a trial on reload, and ctx2's captured token replayed from a fresh context returned 401 `session_ended`. |
+| 9 | PASS (deviation: an existing trial, not a fresh context) | 16, 17, 18, 19, 20 | Fresh contexts hit `POST /auth/trial` 429 (Retry-After 2937 s) after the earlier contexts, so the existing localhost trial in context 1 was used. Saved "Trial Only Board" as the trial and clicked Sign in. The dialog says "This trial's saved projects stay with the trial … Sign in anyway / Create an account instead / Cancel". Signed in anyway as A: A's list has no Trial Only Board. Signed out: "Continue as a trial" was offered, and after it Trial Only Board was listed again. |
+| 10 | PASS | 21-csrf-header-missing-403.png | localhost, no header: **403 `csrf_header_missing`**. 127.0.0.1, no header: 403 `csrf_origin_refused` (the origin check runs first there; see D-AUTH-1). |
+| 11 | PASS | 22-D10-citation-ar.png, 23-D10-citation-he.png | On the Drawings tab, in ar and he (root dir=rtl), the enclosure-note citation is a `<bdi dir="ltr">` with unicode-bidi isolate. It reads as one LTR run, "ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7". Cosmetic observation: the "ABB Mini Center compact" before the isolated "GDMS332 RX" is not isolated, so in RTL it shows as "GDMS332 RX ABB Mini Center compact". |
+
+## Other observations
+
+- `phase-1-export-integrity.md` line 203 says a copied access token keeps working for up to 60 minutes after sign-out. That is now stale: the replayed token got 401 `session_ended` at once.
+- Signing up from a browser that had a trial claimed the trial's earlier project ("E2E Final Board", 6 revisions) into A. This is as documented.
+- Reopening a saved project shows "Nothing designed yet" on Review & export until "Design the board" is run, but the server-side revision exports still work.

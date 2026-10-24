@@ -53,11 +53,11 @@ logger = structlog.get_logger(__name__)
 # it is the thing that saves the user from logging in every hour.
 REFRESH_TOKEN_TTL = timedelta(days=30)
 
-# How long after a rotation the spent token is still honoured, for a refresh
-# that raced the one that rotated it (two tabs sharing the cookie). Long
-# enough for a slow mobile round trip; short enough that a copied token is
-# almost always caught as a replay. See `refresh`.
-REFRESH_REUSE_GRACE = timedelta(seconds=30)
+# How long after a rotation the spent token is still honoured, once, for a
+# refresh that raced the one that rotated it (two tabs sharing the cookie).
+# Long enough for a slow round trip; short, and once only, so a copied token
+# is caught as a replay. See `refresh`.
+REFRESH_REUSE_GRACE = timedelta(seconds=10)
 
 # How long an unclaimed trial stays claimable. Long enough that someone can
 # come back after a night shift; short enough that an abandoned session's
@@ -367,14 +367,14 @@ def refresh(*, session: Session, refresh_token: str, now: datetime | None = None
                 "refresh token predates sign-in sessions; sign in again", code="session_ended"
             )
 
-        sign_in = session.execute(
-            select(AuthSessionRow)
-            .where(AuthSessionRow.id == presented.session_id)
-            .with_for_update()
-            # Re-read under the lock: an identity-map copy from before it
-            # would hide a logout that committed while this waited.
-            .execution_options(populate_existing=True)
-        ).scalar_one_or_none()
+        # Every session of the account, locked in id order: a replay below
+        # revokes all of them, and two replays on two sessions of one account
+        # taking their own row first and then each other's deadlocked. One
+        # order for every lock taker (see `_lock_sessions`) leaves no cycle.
+        locked = _lock_sessions(
+            session=session, condition=AuthSessionRow.user_id == presented.user_id
+        )
+        sign_in = next((row for row in locked if row.id == presented.session_id), None)
         if sign_in is None or sign_in.revoked_at is not None:
             raise AuthenticationError("this sign-in has ended", code="session_ended")
 
@@ -393,7 +393,7 @@ def refresh(*, session: Session, refresh_token: str, now: datetime | None = None
             .execution_options(synchronize_session=False)
         ).one_or_none()
 
-        if rotated is None and not _reusable_within_grace(
+        if rotated is None and not _claim_reuse_within_grace(
             session=session, token_hash=token_hash, now=moment
         ):
             _refuse_unrotatable_token(
@@ -488,8 +488,8 @@ def logout_everywhere(
 def _revoke_sessions(*, session: Session, condition: ColumnElement[bool], now: datetime) -> None:
     """Revoke the sessions matching ``condition`` and all their refresh tokens.
 
-    The session rows are updated first: that takes their row locks, which is
-    what a concurrent ``refresh`` waits on. By the time the tokens are revoked,
+    The session rows are locked first, in id order (`_lock_sessions`), which
+    is what a concurrent ``refresh`` waits on. By the time the tokens are revoked,
     any rotation that won the lock has committed its new token, and this
     statement (a new snapshot under READ COMMITTED) revokes that one too.
 
@@ -498,6 +498,7 @@ def _revoke_sessions(*, session: Session, condition: ColumnElement[bool], now: d
         condition: Which ``auth_sessions`` rows to end.
         now: The revocation's timestamp.
     """
+    _lock_sessions(session=session, condition=condition)
     session.execute(
         update(AuthSessionRow)
         .where(condition, AuthSessionRow.revoked_at.is_(None))
@@ -517,30 +518,35 @@ def _revoke_sessions(*, session: Session, condition: ColumnElement[bool], now: d
     )
 
 
-def _reusable_within_grace(*, session: Session, token_hash: str, now: datetime) -> bool:
-    """Report whether a spent token was rotated a moment ago, by a concurrent refresh.
+def _claim_reuse_within_grace(*, session: Session, token_hash: str, now: datetime) -> bool:
+    """Spend a rotated token's one reuse inside the window, if it still has it.
 
     Args:
-        session: Open database session.
+        session: Open database session, holding the token's session lock.
         token_hash: Hash of the presented token.
         now: The refresh attempt's timestamp.
 
     Returns:
-        ``True`` when the token was revoked by rotation within
-        ``REFRESH_REUSE_GRACE`` and has not expired. Its session has already
-        been checked live, under its lock, so a token revoked by a logout or
-        a reuse detection (both of which end the session) never qualifies.
+        ``True`` when the token was rotated within ``REFRESH_REUSE_GRACE``,
+        has not expired, and had not been honoured this way before; it is
+        now marked as such. A second presentation in the window is a replay.
+        Its session was checked live under its lock, so a token revoked by a
+        logout or a reuse detection (both end the session) never qualifies.
     """
-    state = session.execute(
-        select(RefreshTokenRow.revoked_at, RefreshTokenRow.expires_at).where(
-            RefreshTokenRow.token_hash == token_hash
+    claimed = session.execute(
+        update(RefreshTokenRow)
+        .where(
+            RefreshTokenRow.token_hash == token_hash,
+            RefreshTokenRow.revoked_at.is_not(None),
+            RefreshTokenRow.revoked_at >= now - REFRESH_REUSE_GRACE,
+            RefreshTokenRow.grace_used_at.is_(None),
+            RefreshTokenRow.expires_at > now,
         )
-    ).one()
-    return (
-        state.revoked_at is not None
-        and now - state.revoked_at <= REFRESH_REUSE_GRACE
-        and state.expires_at > now
-    )
+        .values(grace_used_at=now)
+        .returning(RefreshTokenRow.id)
+        .execution_options(synchronize_session=False)
+    ).one_or_none()
+    return claimed is not None
 
 
 def _refuse_unrotatable_token(
@@ -1107,3 +1113,29 @@ def _resolve_trial_caller(*, session: Session, subject: uuid.UUID, caller: Curre
 
     if row.claimed_by_user_id is not None:
         raise AuthenticationError("that trial session has been claimed")
+
+
+def _lock_sessions(*, session: Session, condition: ColumnElement[bool]) -> list[AuthSessionRow]:
+    """Lock the sessions matching ``condition``, always in id order.
+
+    Every path that locks session rows (refresh, logout, logout everywhere,
+    reuse detection) goes through here, so all of them take locks in one
+    global order and two of them can never each hold a row the other waits on.
+
+    Args:
+        session: Open database session.
+        condition: Which ``auth_sessions`` rows to lock.
+
+    Returns:
+        The rows, re-read under the lock: an identity-map copy from before it
+        would hide a logout that committed while this waited.
+    """
+    return list(
+        session.execute(
+            select(AuthSessionRow)
+            .where(condition)
+            .order_by(AuthSessionRow.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalars()
+    )

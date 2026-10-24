@@ -47,23 +47,31 @@ const FORWARDED_REQUEST_HEADERS = [
 ];
 
 /**
- * The one cookie the API reads, and the only path it is forwarded to.
+ * The session cookie, by either of its names, and the only endpoints it goes to.
  *
- * The browser sends it only there anyway (the API sets it with that `Path`);
- * this keeps every other cookie on the origin, and this one everywhere else,
- * from ever reaching the API.
+ * Over HTTPS the API names it `__Host-pp_refresh` with `Path=/`, so the browser
+ * sends it with every request; over plain http (dev) it is `pp_refresh` on the
+ * session path. Either way it is forwarded to these three endpoints and no
+ * other, matched exactly, and no other cookie on the origin ever reaches the API.
  */
-const SESSION_COOKIE = 'pp_refresh';
-const SESSION_PREFIX = '/api/v1/auth/session/';
+const SESSION_COOKIES = new Set(['__Host-pp_refresh', 'pp_refresh']);
+const SESSION_ENDPOINTS = new Set([
+  '/api/v1/auth/session/refresh',
+  '/api/v1/auth/session/logout',
+  '/api/v1/auth/session/logout-everywhere',
+]);
 
-/** The session cookie's value in a `Cookie` header, or null. */
-function sessionCookie(header: string | null): string | null {
+/** The session cookies in a `Cookie` header, re-serialised, or null when there are none. */
+function sessionCookies(header: string | null): string | null {
   if (header === null) return null;
+  const kept: string[] = [];
   for (const pair of header.split(';')) {
     const [name, ...rest] = pair.trim().split('=');
-    if (name === SESSION_COOKIE && rest.length > 0) return rest.join('=');
+    if (name !== undefined && SESSION_COOKIES.has(name) && rest.length > 0) {
+      kept.push(`${name}=${rest.join('=')}`);
+    }
   }
-  return null;
+  return kept.length > 0 ? kept.join('; ') : null;
 }
 
 /**
@@ -126,9 +134,9 @@ async function proxy(request: Request): Promise<Response> {
   }
   const chain = clientChain(request);
   if (chain !== null) headers.set('x-forwarded-for', chain);
-  if (incoming.pathname.startsWith(SESSION_PREFIX)) {
-    const session = sessionCookie(request.headers.get('cookie'));
-    if (session !== null) headers.set('cookie', `${SESSION_COOKIE}=${session}`);
+  if (SESSION_ENDPOINTS.has(incoming.pathname)) {
+    const session = sessionCookies(request.headers.get('cookie'));
+    if (session !== null) headers.set('cookie', session);
   }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.body !== null;

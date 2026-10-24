@@ -309,13 +309,15 @@ class Settings(BaseSettings):
         """Return the origins whose pages may use the refresh-session cookie.
 
         Returns:
-            ``WEB_ORIGINS``; else ``CORS_ALLOWED_ORIGINS``; else, in dev only,
-            the local web server. A wildcard never matches: an allowlist of
+            ``WEB_ORIGINS``, else ``CORS_ALLOWED_ORIGINS``; in dev, plus both
+            loopback web origins. Outside dev, the configured list only. A wildcard never matches: an allowlist of
             "anything" is not one.
         """
-        listed = self.web_origins or self.cors_allowed_origins
-        if not listed and self.environment is Environment.DEV:
-            listed = list(_DEV_WEB_ORIGINS)
+        listed = list(self.web_origins or self.cors_allowed_origins)
+        if self.environment is Environment.DEV:
+            # Both loopback names, always: the same `next dev` is reached as
+            # either, and trusting only one lost every reload on the other.
+            listed += _DEV_WEB_ORIGINS
         return frozenset(origin.rstrip("/") for origin in listed if origin != "*")
 
     @property
