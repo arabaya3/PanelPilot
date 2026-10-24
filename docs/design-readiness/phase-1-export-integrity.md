@@ -375,37 +375,108 @@ Every behavioural change after it was covered by its own tests, and the final be
 
 ### Migration compatibility
 
-| Revision       | Change                                                                             | Existing rows                                                          |
-| -------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `b4e7a9c2d1f6` | Nullable snapshot, hash, versions, findings and approved-hash columns on revisions | Kept: legacy revisions open, and are `not_validated` until saved again |
-| `c3f8a1d6e2b7` | New `auth_sessions` table; nullable `refresh_tokens.session_id`                    | Kept: legacy refresh tokens are refused, so sign in again              |
-| `e7b2c9d4a1f3` | Nullable `refresh_tokens.grace_used_at`                                            | Kept                                                                   |
+| Revision       | Change                                                                                                       | Existing rows                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `b4e7a9c2d1f6` | Nullable snapshot, hash, versions, findings and approved-hash columns on revisions                           | Kept: legacy revisions open, and are `not_validated` until saved again |
+| `c3f8a1d6e2b7` | New `auth_sessions` table; nullable `refresh_tokens.session_id`                                              | Kept: legacy refresh tokens are refused, so sign in again              |
+| `e7b2c9d4a1f3` | Nullable `refresh_tokens.grace_used_at` (now unused, kept for rolling deploys)                               | Kept                                                                   |
+| `a9d3f6b1c8e4` | Nullable `auth_sessions.token_salt` and `refresh_tokens.generation`                                          | Kept: a legacy session gets its salt at its next rotation              |
+| `b2e8d5f7c3a1` | Restores `grace_used_at` where an earlier draft dropped it; revokes all but each session's newest live token | Kept: an old parallel token is revoked; the newest one keeps working   |
 
 - **Every change is additive.** Downgrades drop only the new session data.
-- **Checks:** clean upgrade from the previous schema, `downgrade -2`, `upgrade head`, and `alembic check` (no drift).
-- **The dev database** is at `e7b2c9d4a1f3`, after a fresh backup taken before the session migrations, `backups/20261024-pre-auth-sessions/panelpilot.dump`, verified readable (27 tables).
+- **Contract migration later:** `grace_used_at` is unused and will be dropped by a later contract migration, once no old pod can run.
+- **Checks on the final head:** `downgrade -3`, `upgrade head`, and `alembic check` (no drift); clean upgrade from the previous schema.
+- **The dev database** is at `b2e8d5f7c3a1`. Readable backups were taken before each step (27 tables each):
+  - `backups/20261024-pre-auth-sessions/`
+  - `backups/20261024-pre-token-generations/`
+  - `backups/20261024-pre-b2e8/`
 
-## Remaining blockers and decisions needing engineering input
+## Multi-tab sessions and the integrated candidate
 
-1. **Execution release** stays blocked until the gate above exists. This is deliberate and not part of Phase 2's completion.
-2. **CSV, QET, AML and PLC** stay refused until their acceptance criteria are shown.
-3. **Deployments must set `WEB_ORIGINS`** (HTTPS origins). Without it every session refresh is refused, and sign-in does not persist across reloads.
-4. **Everyone signed in at deploy time signs in once more,** because legacy tokens are refused.
-5. **The grace window** honours one reuse within 10 s. Three tabs refreshing at the same instant count as replay and end every session.
-6. **Trial projects after signing in to an existing account** stay with the trial, by decision.
-7. **Native Arabic and Hebrew review** of every new string (list above).
-8. **Smaller items:**
+### Concurrent tabs (owner requirement: no theft false-positives)
+
+Three tabs refreshing at once used to end every session. That rule is replaced:
+
+- **One refresh per browser.** A browser-wide Web Lock (`pp-refresh`) lets one tab refresh at a time, and it shares the result over a BroadcastChannel. A shared token is adopted only if it is unexpired and matches the tab's user and session, and a sender's future timestamp is ignored.
+- **One live refresh token per session.** Values are derived with HMAC under a dedicated key: `REFRESH_TOKEN_KEY`, or HKDF from `JWT_SECRET` with a versioned label.
+- **A young live token is not rotated** (`ROTATE_AFTER` = 5 min). The refresh returns the same token with a fresh access token, so a burst mints nothing and a late response cannot put an older cookie back.
+- **The immediate predecessor of the live token** gets the same live token back in two cases:
+  - within 10 s, by cookie alone;
+  - within one access-token lifetime, with a bearer access token of the same session, user and generation (`rgen`).
+- **Reload recovery:** a reloading tab first borrows a current access token from other open tabs (at most 300 ms) to use as that proof.
+- **Replay scope:** anything else is a replay, and ends **only that session**. Ending every session would let anyone holding one old cookie sign a user out everywhere. "Sign out everywhere" stays the explicit way to end them all.
+- **Bounds:**
+  - a cookie-only thief gets the 10 s window and only the victim's own live token, never a second one;
+  - a party that once held both cookie and access token can follow the session only until the next rotation, after which its stale use is a replay;
+  - **the residual edge** needs all four of: a burst at a rotation boundary, an out-of-order response, every tab closed or reloaded, and more than 10 s before the next refresh. Then that one session ends and the user signs in once.
+- **Tests** run against the old code first, where they fail:
+  - 2, 3 and 5 concurrent tabs;
+  - delayed and out-of-order responses (the exact browser sequence);
+  - a burst straddling a rotation;
+  - reloads with and without another open tab;
+  - refresh racing logout and logout-everywhere;
+  - stale replay revoking only its session;
+  - divergence across rotations in both orders;
+  - the follower attack;
+  - two legacy live tokens;
+  - shared-token checks.
+- **Browser evidence** (`phase-1/browser-multitab/final/`, real Chromium, one context with 6 tabs plus a second session), on `e9c14c3`:
+  - 2, 3 and 5 tabs refreshing and reloading at once all stay signed in;
+  - the exact D1 sequence leaves the cookie current, both with a young token and with a token due for rotation;
+  - a cookie-only refresh 15 s later succeeds, and so does a reload 15 s later;
+  - a genuinely stale cookie replayed after 5½ minutes ends only its session, while the other session stays signed in;
+  - refreshes racing a logout leave everything signed out;
+  - unsaved work is kept.
+- **Independent security review:** acceptable for this phase, with no confirmed defects at the final design. Earlier rounds found and fixed:
+  - the unbounded grace;
+  - session fixation by cookie tossing;
+  - parallel legacy tokens;
+  - an unchecked broadcast;
+  - key separation;
+  - an unbound bearer proof.
+- **Accepted tradeoffs:**
+  - the 5-minute minimum token age;
+  - the generation-bound 1 h bearer path;
+  - the 300 ms borrow wait;
+  - same-origin code can read the access token over the channel, which is acceptable only while nothing else is hosted on the app's origin;
+  - a lone stale tab with no lender ends its session, which fails safe.
+- **HTTPS:** verified against a real TLS server outside dev (`phase-1/https-check/`).
+  - The cookie is `__Host-pp_refresh` with Secure, HttpOnly, SameSite=Strict, Path=/ and no Domain, and no refresh token is in the body.
+  - Untrusted origin, `null` origin and missing header are each refused with 403; the trusted origin succeeds.
+  - Logout clears the cookie with the same attributes.
+  - The proxy's forwarding over HTTPS is covered by a unit test with a TLS upstream; Next itself was not run over TLS.
+
+### Dependencies in the candidate
+
+- **#202's exact head** (`6a96b74`) is in `phase1-base` and in the branch.
+- **#204's exact commit** (`b4b9153`, filelock 4.0.6 → 4.2.4) is merged into the branch unchanged, so its authorship and its separate PR are preserved. `phase1-base` is unchanged.
+- **The combined lock files** re-resolve byte for byte with the uv version CI pins (0.8.17):
+  - Pillow 13.0.0, black 26.10.1, certifi 2026.10.19, opentelemetry-api 1.45.1 and filelock 4.2.4;
+  - `pip-audit` finds no known vulnerabilities in either lock;
+  - `npm audit --omit=dev --audit-level=high` finds 0.
+
+## Remaining limitations
+
+1. **Execution release** stays blocked until its own completeness and engineering-validation gate exists. Finishing Phase 2 alone does not unlock it.
+2. **CSV, QET, AML and PLC** stay refused until their documented acceptance criteria are shown.
+3. **Deployments must set `WEB_ORIGINS`** to the exact web origins (see "Deployment" below). Without it, every session refresh is refused.
+4. **One-time sign-in after deploy:** tokens issued before the session migrations are refused, so every signed-in user signs in once. Saved projects and unsaved drafts are kept, and trials are unaffected.
+5. **Multi-tab residual edge:** described above. A key compromise needs the documented revoke-all-sessions step.
+6. **Approvals show "a team member"** when an account has no display name. This is accepted for this phase.
+7. **Trial projects stay with the trial** when signing in to an existing account, by decision.
+8. **Native Arabic and Hebrew review** of every new string is still outstanding. The AI review is not a native-speaker review.
+9. **Smaller items:**
    - The Contents page lists drawing pages but not the appended findings sheets; the "N of M" counts are correct.
    - The quotation PDF and CSV are English throughout.
    - Units and catalogue or supplier text stay as entered.
    - A reopened project shows "Nothing designed yet" on Review & export until it is designed again, although exporting the saved revision works.
-   - Sign-up asks for no display name, so approvals show "a team member" until profiles carry one.
+   - In dev, each page load calls the design endpoints twice, because of React StrictMode. A production build calls each once.
 
 ## Environments left in place
 
 Not cleaned up, by request:
 
-- **Dev database `panelpilot`:** at `e7b2c9d4a1f3`. Backups: `backups/20261023-1430-pre-phase1/panelpilot.dump` (before Phase 1) and `backups/20261024-pre-auth-sessions/panelpilot.dump` (before the session migrations).
+- **Dev database `panelpilot`:** at `b2e8d5f7c3a1`. Backups: `backups/20261023-1430-pre-phase1/`, `backups/20261024-pre-auth-sessions/`, `backups/20261024-pre-token-generations/` and `backups/20261024-pre-b2e8/`.
 - **Disposable databases:** `panelpilot_phase1_test`, `_adv`, `_backend`, `_mig`, `_migclean`, `_migprev` (the last holds the legacy-row upgrade) and `panelpilot_ci_sim` (used to check CI-mode database discovery).
 - **Compose services:** api, web, worker, postgres, opensearch and redis.
 - **Local test accounts:** disposable `e2e-p1*@example.com` accounts on the local stack. Their credentials are kept outside git.
@@ -430,10 +501,12 @@ The repo ships one browser topology: **same-origin through the web proxy**. Noth
 - The API is never called by the browser directly. `infra/README.md` lists the deploy targets (`web`, `api`, `worker`); there is no cloud IaC yet.
 
 The session cookie is set and read on the web origin:
+
 - Over HTTPS it is `__Host-pp_refresh` (Path=/, Secure, no Domain).
 - Over dev http it is `pp_refresh` on `/api/v1/auth/session`.
 
 The proxy forwards it only to `refresh`, `logout` and `logout-everywhere`. CORS keeps `allow_credentials=False`. A **separate API host called from the browser** (`https://api.example.com` with the page on `https://app.example.com`) is therefore **not supported**:
+
 - the cookie belongs to the web origin;
 - a credentialed cross-origin call is refused by CORS by design.
 
@@ -443,22 +516,24 @@ To run the API on its own host, keep the browser on the web origin and point `AP
 
 `WEB_ORIGINS` is the origin the **browser** shows in the address bar for the web app: scheme, host, and port only if it is not the default. It is not the API's address, and not `API_PROXY_TARGET`.
 
-| Environment | Browser loads | `WEB_ORIGINS` | Also set |
-| --- | --- | --- | --- |
-| Local compose (`docker compose up`) | `http://localhost:3000` or `http://127.0.0.1:3000` | unset. In dev both loopback origins are always trusted, alongside `WEB_ORIGINS`/`CORS_ALLOWED_ORIGINS` | `ENVIRONMENT=dev`; the cookie is not Secure (plain http) |
-| Dev web on another port, e.g. `next dev -p 3001` | `http://localhost:3001` | `http://localhost:3001` | |
-| Staging behind TLS | `https://staging.panelpilot.example` | `https://staging.panelpilot.example` | `ENVIRONMENT=staging`; `AUTH_COOKIE_SECURE` unset (true) |
-| Production behind TLS | `https://app.panelpilot.example` | `https://app.panelpilot.example` | `ENVIRONMENT=prod` |
-| Production on two hostnames for the same web app | `https://app.panelpilot.example`, `https://panelpilot.example` | `https://app.panelpilot.example,https://panelpilot.example` | each hostname gets its own `__Host-` cookie; a user signs in on each |
-| TLS terminated at a load balancer on a non-default port | `https://app.panelpilot.example:8443` | `https://app.panelpilot.example:8443` | |
+| Environment                                             | Browser loads                                                  | `WEB_ORIGINS`                                                                                          | Also set                                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Local compose (`docker compose up`)                     | `http://localhost:3000` or `http://127.0.0.1:3000`             | unset. In dev both loopback origins are always trusted, alongside `WEB_ORIGINS`/`CORS_ALLOWED_ORIGINS` | `ENVIRONMENT=dev`; the cookie is not Secure (plain http)             |
+| Dev web on another port, e.g. `next dev -p 3001`        | `http://localhost:3001`                                        | `http://localhost:3001`                                                                                |                                                                      |
+| Staging behind TLS                                      | `https://staging.panelpilot.example`                           | `https://staging.panelpilot.example`                                                                   | `ENVIRONMENT=staging`; `AUTH_COOKIE_SECURE` unset (true)             |
+| Production behind TLS                                   | `https://app.panelpilot.example`                               | `https://app.panelpilot.example`                                                                       | `ENVIRONMENT=prod`                                                   |
+| Production on two hostnames for the same web app        | `https://app.panelpilot.example`, `https://panelpilot.example` | `https://app.panelpilot.example,https://panelpilot.example`                                            | each hostname gets its own `__Host-` cookie; a user signs in on each |
+| TLS terminated at a load balancer on a non-default port | `https://app.panelpilot.example:8443`                          | `https://app.panelpilot.example:8443`                                                                  |                                                                      |
 
 Rules:
+
 - **No path or trailing slash.** `https://app.example.com/` is normalised, but write it without the slash.
 - **No `*`.** It is refused at startup outside dev, and never matches anything in dev.
 - **Outside dev, unset means refused.** If neither `WEB_ORIGINS` nor `CORS_ALLOWED_ORIGINS` is set, every refresh is a `403 csrf_origin_refused`. A reload then loses the sign-in (the web logs "The API refused this origin for the session."). This fails closed on purpose.
 - **Staging and production need HTTPS end to end at the browser.** `AUTH_COOKIE_SECURE=false` is refused at startup there, and a `__Host-` cookie is dropped by the browser over plain http.
 
 The HTTPS behaviour is checked by `docs/design-readiness/phase-1/https-check/check_https.py`; its last output is in `output.txt` there. It runs the API with `ENVIRONMENT=staging` over TLS with a throwaway CA and checks:
+
 - the `__Host-` cookie attributes;
 - that the trusted origin is allowed;
 - that an untrusted origin, a `null` origin and a missing CSRF header are refused;
@@ -467,10 +542,12 @@ The HTTPS behaviour is checked by `docs/design-readiness/phase-1/https-check/che
 ### The one-time sign-in after the session migration
 
 The migrations `c3f8a1d6e2b7` (sessions), `e7b2c9d4a1f3`, `a9d3f6b1c8e4` and `b2e8d5f7c3a1` (derived refresh-token generations) leave existing rows in place, but credentials issued before them stop working:
+
 - **Access tokens without a `sid` are refused** with a `401 session_ended`. A logout could never reach them.
 - **Refresh tokens without a session are refused.** Before this the web held refresh tokens in memory only, so after a reload no browser had one anyway.
 
 So **every account signed in at deploy time signs in once more**, at most one access-token lifetime (1 h) early. Nothing is lost:
+
 - saved projects are on the server;
 - unsaved design work stays in the tab's draft and is offered again after signing in.
 
@@ -481,6 +558,7 @@ Trials are unaffected: a trial has no session.
 Tabs of one browser share one cookie, so they must not count as theft.
 
 **In the browser.**
+
 - A refresh takes a browser-wide Web Lock (`pp-refresh`), and the tab that refreshed shares its access token over a `BroadcastChannel`.
 - A tab that waited adopts that token only if it is unexpired and names the same account and session (`sub`, `sid`). On load, any unexpired account token is accepted. Otherwise the tab refreshes itself.
 - A shared timestamp more than 2 s ahead of the tab's clock is ignored, and the shared token is forgotten on sign-out.
@@ -499,6 +577,7 @@ Tabs of one browser share one cookie, so they must not count as theft.
 - **Every access token now carries `rgen`.** Login sets 1; a rotation, a re-issue and a kept-young answer each set the live generation. A token without `rgen` gets no extended path.
 
 Everything else spent is a replay and ends **that session only**:
+
 - a token two or more generations behind;
 - a predecessor older than these bounds;
 - a bearer from another session or user, an expired one, or one of an older generation.
@@ -506,12 +585,14 @@ Everything else spent is a replay and ends **that session only**:
 "Log out everywhere" ends the rest.
 
 **The bounds.**
+
 - **A follower cannot keep up.** A party that once held the cookie and an access token can follow the chain only until the next rotation: its access token names the old generation, so its next late copy is a replay.
 - **A cookie-only thief** gets the 10 s window and nothing more.
-- **The cost of `ROTATE_AFTER`:** a stolen *live* cookie is usable until the next rotation. That is no worse than a stolen live cookie before this change, which was also usable until the victim's next rotation. When victim and thief diverge across a rotation, the one left holding the spent token is a replay at its next refresh (tested both ways).
+- **The cost of `ROTATE_AFTER`:** a stolen _live_ cookie is usable until the next rotation. That is no worse than a stolen live cookie before this change, which was also usable until the victim's next rotation. When victim and thief diverge across a rotation, the one left holding the spent token is a replay at its next refresh (tested both ways).
 - In every case the answer is the one live token.
 
 **What is still an edge.** Every one of these must happen, in order:
+
 1. a burst that straddles a rotation, the 5-minute boundary falling inside it;
 2. an out-of-order answer, so the jar is left on the predecessor;
 3. every tab of the browser that holds an access token of the new generation is closed or reloaded;
@@ -545,4 +626,4 @@ This ends every sign-in at once: access tokens are refused from the next request
 - `b2e8d5f7c3a1`:
   - re-adds `grace_used_at` where an unmerged earlier version of `a9d3f6b1c8e4` dropped it (the dev and disposable databases);
   - revokes all but the newest live refresh token of every session.
-  It is idempotent and its downgrade changes nothing. That earlier version was edited only because it was never merged; the new revision exists because an applied revision never runs again.
+    It is idempotent and its downgrade changes nothing. That earlier version was edited only because it was never merged; the new revision exists because an applied revision never runs again.
