@@ -67,7 +67,7 @@ def _rotate_on_every_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from app.domain import auth as auth_domain
 
-    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0), raising=False)
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0))
 
 
 @pytest.fixture
@@ -1602,7 +1602,7 @@ def test_a_legacy_session_with_two_live_tokens_refuses_the_older_never_a_500(
 @pytest.fixture
 def real_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
     """The production rule: a live token younger than ROTATE_AFTER is not rotated."""
-    monkeypatch.setattr(auth, "ROTATE_AFTER", timedelta(minutes=5), raising=False)
+    monkeypatch.setattr(auth, "ROTATE_AFTER", timedelta(minutes=5))
 
 
 _SIX_MINUTES = timedelta(minutes=6)

@@ -8,16 +8,16 @@
 
 ## Results
 
-| Step | Result | Evidence |
-|---|---|---|
-| 1. 2, then 3, then 5 tabs signed in | PASS | 01-signed-in.png, 03-tab5-signed-in-after-step2.png |
-| 2a. App renewal: all tabs reloaded at once (2/3/5 tabs) | PASS: all signed in, no session_ended | observed-statuses.json `step2_round1` |
-| 2b. Raw `POST /auth/session/refresh` with the CSRF header from every tab at once | PASS: all 200. `GET /design/projects` with each tab's own token: all 200 (round 2) | `step2_round2_after_rate_window` |
-| 3. All tabs reloaded at once, twice | PASS: signed in x5 both times, then refresh and projects 200 x5 | 08-step3-reload1-tab1.png, 09-step3-reload2-tab1.png |
-| 4. Delayed, out-of-order refresh responses | **FAIL** (see defect D1). Delaying only requests passes. | 06-step4-tab1-after-out-of-order.png, `step4_delayed_out_of_order` |
-| 5. Refreshes in 3 tabs racing a logout in a 4th | PASS: logout 204, the cookie was cleared, every refresh afterwards 401, the race's access tokens 401, reloaded tabs signed out | 11-step5-tab2-signed-out-after-race.png |
-| 6. Replay of a stale cookie from a fresh context, more than 10 s after rotation | PASS: replay 401 session_ended. Context 1 ended (access token 401, refresh 401, signed out). Context 2 still signed in (refresh 200, projects 200). | 12a-step6-ctx2-still-signed-in.png, 12b-step6-ctx1-session-ended.png |
-| 7. Unsaved design edit survives steps 2–3 | PASS: the field kept the edit through the raw refreshes. A reload showed the beforeunload prompt, then the "Unsaved work was kept" banner. Restoring brought the edit back. | 02-, 04-, 07-step2b-, 10-step7-draft-restored.png |
+| Step                                                                             | Result                                                                                                                                                                      | Evidence                                                             |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1. 2, then 3, then 5 tabs signed in                                              | PASS                                                                                                                                                                        | 01-signed-in.png, 03-tab5-signed-in-after-step2.png                  |
+| 2a. App renewal: all tabs reloaded at once (2/3/5 tabs)                          | PASS: all signed in, no session_ended                                                                                                                                       | observed-statuses.json `step2_round1`                                |
+| 2b. Raw `POST /auth/session/refresh` with the CSRF header from every tab at once | PASS: all 200. `GET /design/projects` with each tab's own token: all 200 (round 2)                                                                                          | `step2_round2_after_rate_window`                                     |
+| 3. All tabs reloaded at once, twice                                              | PASS: signed in x5 both times, then refresh and projects 200 x5                                                                                                             | 08-step3-reload1-tab1.png, 09-step3-reload2-tab1.png                 |
+| 4. Delayed, out-of-order refresh responses                                       | **FAIL** (see defect D1). Delaying only requests passes.                                                                                                                    | 06-step4-tab1-after-out-of-order.png, `step4_delayed_out_of_order`   |
+| 5. Refreshes in 3 tabs racing a logout in a 4th                                  | PASS: logout 204, the cookie was cleared, every refresh afterwards 401, the race's access tokens 401, reloaded tabs signed out                                              | 11-step5-tab2-signed-out-after-race.png                              |
+| 6. Replay of a stale cookie from a fresh context, more than 10 s after rotation  | PASS: replay 401 session_ended. Context 1 ended (access token 401, refresh 401, signed out). Context 2 still signed in (refresh 200, projects 200).                         | 12a-step6-ctx2-still-signed-in.png, 12b-step6-ctx1-session-ended.png |
+| 7. Unsaved design edit survives steps 2–3                                        | PASS: the field kept the edit through the raw refreshes. A reload showed the beforeunload prompt, then the "Unsaved work was kept" banner. Restoring brought the edit back. | 02-, 04-, 07-step2b-, 10-step7-draft-restored.png                    |
 
 ## D1: an out-of-order Set-Cookie moves the jar back to a spent token, and the session is revoked as a replay
 

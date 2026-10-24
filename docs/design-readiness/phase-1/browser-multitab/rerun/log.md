@@ -10,19 +10,19 @@
 
 ## Results
 
-| Step | Result | Evidence |
-|---|---|---|
-| 1. Open 2, 3, 5 tabs | PASS | 01, 02 |
-| 2a. Reload all at once (2/3/5 tabs) | PASS: all signed in, no session_ended | `step2` |
-| 2b. Raw refresh from every tab at once, then projects with each tab's own token | PASS: all 200 / 200 | `step2` |
-| 3. Reload all 6 tabs at once, twice | PASS: signed in x6, refresh and projects 200 x6 | 03, 04 |
-| 4. D1 repro, followed by an app renew with bearer | **PASS** | 06, `step4.X` |
-| 4. D1 repro, followed by a cookie-only refresh | **FAIL**: 401 session_ended, session revoked | 07, `step4.Y` |
-| 4. D1 repro, then wait 15 s, then reload a tab | **FAIL**: tab signed out, session revoked | 08, `step4.Z` |
-| Rate limit: reloading 5 tabs | PASS with a caveat (see D3) | 09, `rate_limit_5_tab_reloads` |
-| 5. Refreshes racing a logout | PASS | 10 |
-| 6. Stale cookie replayed from a fresh context after 11 s | PASS: replay 401, context 1 ended, context 2 survives (200/200) | 11, 12 |
-| 7. Unsaved design | PASS: kept through step 2, offered back after each reload, restored | 01, 05 |
+| Step                                                                            | Result                                                              | Evidence                       |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| 1. Open 2, 3, 5 tabs                                                            | PASS                                                                | 01, 02                         |
+| 2a. Reload all at once (2/3/5 tabs)                                             | PASS: all signed in, no session_ended                               | `step2`                        |
+| 2b. Raw refresh from every tab at once, then projects with each tab's own token | PASS: all 200 / 200                                                 | `step2`                        |
+| 3. Reload all 6 tabs at once, twice                                             | PASS: signed in x6, refresh and projects 200 x6                     | 03, 04                         |
+| 4. D1 repro, followed by an app renew with bearer                               | **PASS**                                                            | 06, `step4.X`                  |
+| 4. D1 repro, followed by a cookie-only refresh                                  | **FAIL**: 401 session_ended, session revoked                        | 07, `step4.Y`                  |
+| 4. D1 repro, then wait 15 s, then reload a tab                                  | **FAIL**: tab signed out, session revoked                           | 08, `step4.Z`                  |
+| Rate limit: reloading 5 tabs                                                    | PASS with a caveat (see D3)                                         | 09, `rate_limit_5_tab_reloads` |
+| 5. Refreshes racing a logout                                                    | PASS                                                                | 10                             |
+| 6. Stale cookie replayed from a fresh context after 11 s                        | PASS: replay 401, context 1 ended, context 2 survives (200/200)     | 11, 12                         |
+| 7. Unsaved design                                                               | PASS: kept through step 2, offered back after each reload, restored | 01, 05                         |
 
 ## Step 4 sequence (as before)
 

@@ -1,0 +1,37 @@
+{
+  "commit": "e9c14c3",
+  "web": "http://127.0.0.1:3000 (Next.js dev server)",
+  "contexts": "M = test context with 6 tabs (t0 holds the unsaved design, t1..t5 are test tabs); D = second session of the same user, for (d)",
+  "notes": [
+    "Cookie identities are the first 4 bytes of SHA-256 of the value; no token or cookie value was printed.",
+    "Several projects checks returned 429 rate_limited: the per-IP design limit is shared with another client of the same API seen in the shared browser (a tab on 127.0.0.1:3100). Refresh status is the auth evidence."
+  ],
+  "step1": {"state_after_reload": "signed-in x6 (t2-t4 still restoring at the first 5 s probe, signed in on every later probe)", "GET_design_projects_per_tab_load": 2},
+  "step2": {
+    "tabs2": {"a_reload": ["signed-in","signed-in"], "b_raw_refresh": [200,200], "projects": [200,200], "session_ended_seen": false},
+    "tabs3": {"a_reload": ["signed-in","signed-in","signed-in"], "b_raw_refresh": [200,200,200], "projects": [200,200,200], "session_ended_seen": false},
+    "tabs5": {"a_reload": "signed-in x5", "b_raw_refresh": [200,200,200,200,200], "projects": [200,200,200,200,200], "session_ended_seen": false}
+  },
+  "step3_all6_reloaded_at_once": {"reload1": {"state": "signed-in x6", "refresh": "200 x6", "projects": "200 x6"}, "reload2": {"state": "signed-in x6", "refresh": "200 x6", "projects": "429 x6 (rate limit)"}},
+  "d1_sequence": "cookie-only refresh from t1..t5 at once; t1 response held 5 s, t4 response held 3 s, t3 request held 2 s",
+  "young_token_run": {
+    "a": {"refresh": "200 x5", "cookie_before_and_after": "19f824bb (no rotation)", "cookie_only_refresh_15s_later": 200},
+    "c_reload_all_6": "signed-in x6",
+    "b": {"refresh": "200 x5", "reload_t5_first_15s_later": "signed-in (load-time refresh sent a borrowed bearer, 200)", "then_cookie_only_t1_t5": "200 x5"}
+  },
+  "token_older_than_5_min_run": {
+    "a": {"refresh": "200 x5", "rotation": "b326aeb8 -> 8ed1b0a7 once; every answer, including t3's late request, set 8ed1b0a7", "jar_after": "8ed1b0a7", "cookie_only_refresh_15s_later": 200, "projects": 200},
+    "c_reload_all_6": "signed-in x6",
+    "b": {"refresh": "200 x5 (no rotation, token young again)", "reload_t5_first_15s_later": "signed-in (bearer sent, 200)", "then_cookie_only_t1_t5": "200 x5"}
+  },
+  "d_stale_replay": {
+    "timing": "context D signed in at 13:34:43Z; superseded at 13:40:22Z (5 min 39 s, past the 5 min no-rotation window)",
+    "rotation": {"status": 200, "old": "b12db4c2 (login token)", "new": "3289aa5e", "superseded": true},
+    "wait_s": 11, "replay_from_fresh_context": "401 session_ended",
+    "context_D_after": {"refresh": "401 session_ended", "reload": "signed-out"},
+    "context_M_after": {"refresh": 200, "state": "signed-in x6"},
+    "result": "PASS"
+  },
+  "e_refresh_vs_logout": {"refresh_t1_t2_t3": [200,200,200], "logout_t4": 204, "race_access_tokens": [401,401,401], "cookie_left": false, "refresh_each_after": "401 session_ended x5", "reload_all_6": "signed-out x6", "result": "PASS"},
+  "f_unsaved_work": {"through_step2": "edit still in field", "after_each_reload_all": "'Unsaved work was kept' banner offered", "restore": "Project name restored", "result": "PASS"}
+}

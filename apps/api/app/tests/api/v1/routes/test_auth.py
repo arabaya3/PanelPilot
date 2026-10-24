@@ -66,7 +66,7 @@ def _rotate_on_every_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     from app.domain import auth as auth_domain
 
-    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0), raising=False)
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0))
 
 
 @pytest.fixture
@@ -848,7 +848,7 @@ def test_d1_over_http_with_real_rotation_a_cookie_only_refresh_later_works(
     """
     from app.domain import auth as auth_domain
 
-    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(minutes=5), raising=False)
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(minutes=5))
     _sign_up(client)
     shared = client.cookies.get(SESSION_COOKIE)
     assert shared
