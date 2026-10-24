@@ -64,9 +64,12 @@ _RESUME = {"session_id": str(uuid.uuid4()), "claim_secret": "s"}
         ("POST", "/api/v1/auth/trial/resume", _RESUME, ["auth-trial-resume"]),
         ("POST", "/api/v1/auth/login", _LOGIN, ["auth-login-ip", "auth-login-account"]),
         ("POST", "/api/v1/auth/signup", _SIGNUP, ["auth-signup"]),
-        # Refresh needs a live single-use token already; quota is a read.
-        ("POST", "/api/v1/auth/refresh", {"refresh_token": "t"}, []),
+        # Refresh needs a live single-use cookie already; quota is a read.
+        ("POST", "/api/v1/auth/session/refresh", None, []),
         ("GET", "/api/v1/auth/quota", None, []),
+        # Logout ends only the caller's own session.
+        ("POST", "/api/v1/auth/session/logout", None, []),
+        ("POST", "/api/v1/auth/session/logout-everywhere", None, []),
         ("POST", "/api/v1/diagnostics", {"symptom": "trips"}, ["trial"]),
         # Reading a conversation spends nothing.
         ("GET", f"/api/v1/diagnostics/{uuid.uuid4()}", None, []),

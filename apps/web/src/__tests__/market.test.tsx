@@ -79,6 +79,25 @@ describe('markets', () => {
     expect(preferredLocale(['de'])).toBeNull();
   });
 
+  it('says the market basis in the reader language, regulation included', async () => {
+    const markets = MARKETS.map((market) =>
+      market.code === 'PS'
+        ? { ...market, regulation: 'IEC 60364 (adopted by the Palestine Standards Institution)' }
+        : market,
+    );
+    renderApp(
+      <DesignScreen
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+        marketsImpl={vi.fn().mockResolvedValue(markets)}
+        readMarketImpl={() => 'PS'}
+      />,
+      { locale: 'ar' },
+    );
+    const basis = (await screen.findByTestId('market-basis')).textContent;
+    expect(basis).not.toContain('Palestine');
+    expect(basis).not.toContain('adopted');
+  });
+
   it('starts a board at the detected market and designs under it', async () => {
     const designImpl = vi.fn<typeof designProject>().mockResolvedValue({
       kind: 'designed',

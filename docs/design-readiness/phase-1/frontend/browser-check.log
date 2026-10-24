@@ -1,0 +1,9 @@
+GET /api/v1/design/markets -> 200
+GET /api/v1/design/projects -> 200
+GET /api/v1/design/company-settings -> 200
+GET /api/v1/design/projects -> 200
+POST /api/v1/design/project -> 200
+POST /api/v1/design/export -> 200
+draft csv first lines: ﻿Board,Circuit,Load,Power kW,Design current A,Phase,Breaker,Rated current A,Curve,Residual current device,Cable | DB1,Lights test,socket,1,4.81,L1,'=DB1-Q3,16,C,'=DB1-F1,3G2.5 Cu
+after edit, draft export shown: 0
+html dir: rtl

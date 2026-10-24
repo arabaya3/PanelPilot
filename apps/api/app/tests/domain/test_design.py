@@ -9,7 +9,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.core.errors import ValidationError
+from app.core.errors import ConflictError, ValidationError
 from app.domain import design
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.design import (
@@ -69,12 +69,7 @@ def test_a_bad_profile_is_refused() -> None:
     [
         (ExportFormat.PDF, "application/pdf", b"%PDF", ".pdf"),
         (ExportFormat.DXF, "application/dxf", b"0\nSECTION", ".dxf"),
-        (ExportFormat.QET, "application/xml", b"<?xml", ".qet"),
-        (ExportFormat.AML, "application/xml", b"<?xml", ".aml"),
-        (ExportFormat.DEVICES_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".devices.csv"),
-        (ExportFormat.PARTS_CSV, "text/csv; charset=utf-8", "﻿Quantity".encode(), ".parts.csv"),
-        (ExportFormat.CABLES_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".cables.csv"),
-        (ExportFormat.CIRCUITS_CSV, "text/csv; charset=utf-8", "﻿Board".encode(), ".circuits.csv"),
+        (ExportFormat.CALCULATIONS_PDF, "application/pdf", b"%PDF", ".calculations.pdf"),
         (ExportFormat.JSON, "application/json", b"{", ".json"),
     ],
 )
@@ -88,6 +83,32 @@ def test_every_format_exports(fmt: ExportFormat, media: str, start: bytes, suffi
     assert exported.media_type == media
     assert exported.content.startswith(start)
     assert exported.filename == f"Pocket-Project-Hall{suffix}"
+
+
+@pytest.mark.parametrize("fmt", sorted(design.UNPROTECTED_FORMATS))
+def test_a_format_whose_mark_an_import_strips_is_refused(fmt: ExportFormat) -> None:
+    designed = design.design_board(session=None, user=USER, request=_request())  # type: ignore[arg-type]
+    with pytest.raises(ConflictError) as raised:
+        design.export_design(
+            session=None,  # type: ignore[arg-type]
+            user=USER,
+            request=DesignExportRequest(project=designed.project, format=fmt),
+        )
+    assert raised.value.code == "export_format_unprotected"
+    assert raised.value.params == {
+        "format": fmt.value,
+        "reason": "draft_mark_not_persistent",
+        "allowed": "pdf,dxf,quotation_pdf,calculations_pdf,json",
+    }
+
+
+def test_the_unprotected_formats_are_every_csv_qet_aml_and_plc_program() -> None:
+    expected = {f for f in ExportFormat if f.value.endswith("_csv")} | {
+        ExportFormat.QET,
+        ExportFormat.AML,
+        ExportFormat.PLC_ST,
+    }
+    assert expected == design.UNPROTECTED_FORMATS
 
 
 def test_an_edited_project_is_renumbered_on_export() -> None:
@@ -182,7 +203,7 @@ def test_a_design_is_priced_and_exported_as_a_quotation() -> None:
             session=None,  # type: ignore[arg-type]
             user=USER,
             request=DesignExportRequest(
-                project=designed.project, format=ExportFormat.QUOTATION_CSV
+                project=designed.project, format=ExportFormat.QUOTATION_PDF
             ),
         )
 
@@ -210,38 +231,33 @@ def _controlled_project() -> DesignProject:
     return design.design_board(session=None, user=USER, request=request).project  # type: ignore[arg-type]
 
 
-def test_a_plc_program_is_written_checked_and_exported() -> None:
+def test_the_plc_program_of_a_sent_project_is_refused_as_its_export_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.design import plc_program
     from app.models.schemas.design import PlcProgramRequest
-    from app.models.schemas.plc import ValidationStatus
 
     project = _controlled_project()
-    result = design.write_plc_program(
-        user=USER,
-        request=PlcProgramRequest(project=project),
-    )
-    assert result.validation.status is ValidationStatus.VALID
-    assert [p.direction for p in result.io].count("output") == 1
-    source = design.export_design(
-        session=None,  # type: ignore[arg-type]
-        user=USER,
-        request=DesignExportRequest(project=project, format=ExportFormat.PLC_ST),
-    )
-    assert source.filename == "Pocket.st"
-    assert b"END_PROGRAM" in source.content
-    io_list = design.export_design(
-        session=None,  # type: ignore[arg-type]
-        user=USER,
-        request=DesignExportRequest(project=project, format=ExportFormat.PLC_IO_CSV),
-    )
-    assert io_list.filename == "Pocket.io.csv"
 
+    def never(*args: object, **kwargs: object) -> object:
+        raise AssertionError("the program was written before it was refused")
 
-def test_a_plc_program_needs_a_controlled_circuit() -> None:
-    from app.models.schemas.design import PlcProgramRequest
-
-    project = design.design_board(session=None, user=USER, request=_request()).project  # type: ignore[arg-type]
-    with pytest.raises(ValidationError, match="PLC-switched"):
+    monkeypatch.setattr(plc_program, "build_program", never)
+    with pytest.raises(ConflictError) as refused:
         design.write_plc_program(user=USER, request=PlcProgramRequest(project=project))
+    # The same refusal as the program's own file, params and all.
+    with pytest.raises(ConflictError) as exported:
+        design.refuse_unprotected(ExportFormat.PLC_ST)
+    assert refused.value.code == "export_format_unprotected"
+    assert refused.value.params == exported.value.params
+    # Neither file of the program is exported either.
+    for fmt in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
+        with pytest.raises(ConflictError, match="draft mark"):
+            design.export_design(
+                session=None,  # type: ignore[arg-type]
+                user=USER,
+                request=DesignExportRequest(project=project, format=fmt),
+            )
 
 
 def test_a_project_of_boards_is_designed_and_designated_per_board() -> None:
@@ -315,7 +331,7 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
 
     from reportlab.pdfgen.canvas import Canvas
 
-    from app.design import pages, profile
+    from app.design import profile
     from app.design.sheet import SHEET_HEIGHT, SHEET_WIDTH, Text
     from app.models.schemas.design import ProjectDesignRequest
 
@@ -331,7 +347,10 @@ def test_markups_are_placed_on_the_project_they_review() -> None:
         }
     )
     designed = design.design_project(session=None, user=USER, request=request)  # type: ignore[arg-type]
-    sheets = pages.build_drawing_set(designed.project, profile.default_profile())
+    # Laid out as the draft export is: every page marked, the findings after.
+    sheets = design.drawing_sheets(
+        designed.project, profile.default_profile(), design.draft_mark(designed.project)
+    )
     count = len(sheets)
     # The lights' breaker on the distribution page, where a reviewer would comment on it.
     breaker = next(

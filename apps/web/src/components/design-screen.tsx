@@ -11,11 +11,20 @@ import {
   type ReactNode,
 } from 'react';
 
+import {
+  AccountSessionProvider,
+  tokenIdentity,
+  useAccountSession,
+  type AccountSession,
+  type AccountTokens,
+} from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
+import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
   applySuggestion,
@@ -44,6 +53,20 @@ import {
   type OpenedProject,
   type TitleRevision,
 } from '@/components/design/projects-panel';
+import {
+  executionBlockersOf,
+  executionRefusalOf,
+  readinessOf,
+  rowOf,
+  validationOf,
+  type ExecutionRefusal,
+  type RevisionValidation,
+} from '@/components/design/readiness';
+import {
+  ExecutionRefused,
+  FindingsList,
+  ReadinessSteps,
+} from '@/components/design/revision-status';
 import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
   clearDraft,
@@ -63,7 +86,8 @@ import {
 } from '@/components/design/workspace';
 import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
-import { QuotationPanel } from '@/components/quotation-panel';
+import { SignInForm } from '@/components/sign-in-form';
+import { QuotationPanel, type QuoteRates } from '@/components/quotation-panel';
 import {
   Dialog,
   EmptyState,
@@ -82,17 +106,24 @@ import {
 import {
   designProject,
   exportDesign,
+  exportRevision,
   importSchedule,
+  listProjects,
   openProject,
   suggestSchedule,
   type BoardDesignResponse,
   type SavedProject,
   type DesignOutcome,
   type ExportFormat,
+  type ExportPurpose,
+  type Refusal,
+  type TooLong,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
+import type { signIn } from '@/lib/auth';
 import { acquireTrial } from '@/lib/session';
-import { readTrial } from '@/lib/trial';
+import type { signupClaimingTrial } from '@/lib/trial';
+import { clearTrial, readTrial } from '@/lib/trial';
 
 type Session =
   | { kind: 'starting' }
@@ -100,6 +131,13 @@ type Session =
   | { kind: 'unavailable' }
   | { kind: 'rate-limited' }
   | { kind: 'failed' };
+
+/**
+ * Whose work the page is: an explicit trial, the signed-in account, or
+ * nobody yet (after signing out). An account's page never becomes a trial's
+ * by itself: when its session ends it asks for the account again.
+ */
+type Identity = 'trial' | 'account' | 'signed-out';
 
 type Result =
   | { kind: 'idle' }
@@ -111,6 +149,8 @@ type Result =
       profile: Record<string, unknown> | null;
       /** What the inputs were when it was designed, to tell when it no longer matches them. */
       basis: string;
+      /** The part of `basis` the engineer enters (the form, without the drawing language). */
+      inputs: string;
     }
   | { kind: 'error'; outcome: Exclude<DesignOutcome, { kind: 'designed' }> };
 
@@ -178,6 +218,16 @@ export function snapshotOf(
 }
 
 /**
+ * The title block's revisions as a design depends on them. Who approved a
+ * revision is left out: an approval signs the stored revision without
+ * changing anything it was calculated from, so it does not make a design of
+ * that revision stale. A row added or edited does.
+ */
+export function titleBasis(rows: readonly TitleRevision[]): string {
+  return JSON.stringify(rows.map((row) => ({ ...row, approved_by: undefined })));
+}
+
+/**
  * `/design`: a project workspace, from its load schedules to its drawing set.
  *
  * The workspace is split into views (`?view=`): the overview (saved projects
@@ -188,38 +238,158 @@ export function snapshotOf(
  * -- the PDF drawing set, DXF, QElectroTech, AutomationML, the CSV lists, the
  * quotation and the PLC program -- comes from the one designed project.
  */
-export function DesignScreen({
+/**
+ * The most a refused text field takes, when the server refused the one at
+ * `path` (`info.name`) as too long, under whichever request it was sent in.
+ */
+export function tooLongAt(refused: readonly TooLong[], path: string): number | null {
+  const hit = refused.find((entry) => entry.path === path || entry.path.endsWith(`.${path}`));
+  return hit ? hit.max : null;
+}
+
+type DesignScreenProps = {
+  /** Reopens the saved project a restored draft belongs to. */
+  openImpl?: typeof openProject;
+  /** Lists the trial's saved projects, to warn before signing in leaves them behind. */
+  listProjectsImpl?: typeof listProjects;
+  acquireImpl?: typeof acquireTrial;
+  designImpl?: typeof designProject;
+  exportImpl?: typeof exportDesign;
+  exportRevisionImpl?: typeof exportRevision;
+  importImpl?: typeof importSchedule;
+  suggestImpl?: typeof suggestSchedule;
+  saveImpl?: typeof saveBlob;
+  marketsImpl?: typeof fetchMarkets;
+  readMarketImpl?: typeof readMarket;
+  signInImpl?: typeof signIn;
+  signupImpl?: typeof signupClaimingTrial;
+  /** Follows a link the engineer chose to leave for with changes discarded. */
+  leaveImpl?: (href: string) => void;
+};
+
+/**
+ * The workspace, under the app's shared account session (see
+ * `AccountSessionProvider`), or a session of its own where none is shared.
+ */
+export function DesignScreen(props: DesignScreenProps) {
+  const shared = useAccountSession();
+  if (shared === null) {
+    return (
+      <AccountSessionProvider>
+        <DesignScreen {...props} />
+      </AccountSessionProvider>
+    );
+  }
+  return <SignedOutResets account={shared} {...props} />;
+}
+
+/**
+ * Signing out starts the workspace afresh: nothing typed for the account, no
+ * project of its open, no draft of it kept. What follows is an explicit
+ * choice, signing in again or continuing as a trial, never a trial by default.
+ */
+function SignedOutResets({ account, ...props }: DesignScreenProps & { account: AccountSession }) {
+  const status = account.state.status;
+  const [generation, setGeneration] = useState(0);
+  const last = useRef(status);
+  useEffect(() => {
+    if (status === 'signed-out' && last.current !== 'signed-out') {
+      clearDraft();
+      setGeneration((current) => current + 1);
+    }
+    last.current = status;
+  }, [status]);
+  // The account the work was typed for, kept through a session that ended.
+  // When a different account signs in (A's session ended, B signed in at the
+  // prompt), A's unsaved work and open project are not B's: the workspace
+  // starts afresh, before anything of A's renders under B's token. The same
+  // account signing in again keeps everything.
+  const subject =
+    account.state.status === 'signed-in'
+      ? (tokenIdentity(account.state.tokens.accessToken)?.subject ?? '')
+      : null;
+  const [workedFor, setWorkedFor] = useState(subject);
+  const [switched, setSwitched] = useState(false);
+  if (status === 'signed-out' && (workedFor !== null || switched)) {
+    setWorkedFor(null);
+    setSwitched(false);
+  } else if (subject !== null && subject !== workedFor) {
+    if (workedFor !== null) {
+      setSwitched(true);
+      setGeneration((current) => current + 1);
+    }
+    setWorkedFor(subject);
+  }
+  useEffect(() => {
+    if (switched) clearDraft();
+  }, [switched, generation]);
+  return (
+    <DesignWorkspace
+      key={generation}
+      account={account}
+      startSignedOut={generation > 0}
+      accountSwitched={switched}
+      {...props}
+    />
+  );
+}
+
+function DesignWorkspace({
+  account,
+  startSignedOut,
+  signInImpl,
+  signupImpl,
   acquireImpl = acquireTrial,
   designImpl = designProject,
   exportImpl = exportDesign,
+  exportRevisionImpl = exportRevision,
   importImpl = importSchedule,
   suggestImpl = suggestSchedule,
   saveImpl = saveBlob,
   marketsImpl = fetchMarkets,
   readMarketImpl = readMarket,
   openImpl = openProject,
+  listProjectsImpl = listProjects,
   leaveImpl,
-}: {
-  /** Reopens the saved project a restored draft belongs to. */
-  openImpl?: typeof openProject;
-  acquireImpl?: typeof acquireTrial;
-  designImpl?: typeof designProject;
-  exportImpl?: typeof exportDesign;
-  importImpl?: typeof importSchedule;
-  suggestImpl?: typeof suggestSchedule;
-  saveImpl?: typeof saveBlob;
-  marketsImpl?: typeof fetchMarkets;
-  readMarketImpl?: typeof readMarket;
-  /** Follows a link the engineer chose to leave for with changes discarded. */
-  leaveImpl?: (href: string) => void;
+  accountSwitched,
+}: DesignScreenProps & {
+  account: AccountSession;
+  startSignedOut: boolean;
+  /** Started afresh because a different account signed in: said once, on arrival. */
+  accountSwitched: boolean;
 }) {
-  const t = useTranslations('design');
-  const tw = useTranslations('workspace');
+  const t = useIsolatingTranslations('design');
+  const tw = useIsolatingTranslations('workspace');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
+  const ta = useIsolatingTranslations('design.account');
+  const { state: accountState, signedIn, renew, signOut, signOutEverywhere } = account;
+  const [identity, setIdentity] = useState<Identity>(() =>
+    accountState.status !== 'signed-out' ? 'account' : startSignedOut ? 'signed-out' : 'trial',
+  );
+  const [authForm, setAuthForm] = useState<'sign-in' | 'sign-up' | null>(null);
+  // Signing in from a trial with saved projects asks first: an existing account
+  // does not take them. They stay in the trial's tenant, reachable again by
+  // continuing as this browser's trial, and are never shown to the account.
+  const [confirmTrialSignIn, setConfirmTrialSignIn] = useState(false);
+  const [accountNotice, setAccountNotice] = useState<
+    | 'renewed'
+    | 'renew-failed'
+    | 'trial-project-stays'
+    | 'account-switched'
+    | 'sign-out-everywhere-failed'
+    | 'restore-timed-out'
+    | null
+  >(accountSwitched ? 'account-switched' : account.restoreTimedOut ? 'restore-timed-out' : null);
+  // The revision note, kept here rather than in the projects panel: the panel
+  // is not shown while a session has ended, and the note typed before it
+  // ended is still the engineer's when the same account signs in again.
+  const [revisionNote, setRevisionNote] = useState('');
+  // The quotation's rates, kept past the panel (see `QuotationPanel`).
+  const [quoteRates, setQuoteRates] = useState<QuoteRates | null>(null);
   const [session, setSession] = useState<Session>({ kind: 'starting' });
   const [trialId, setTrialId] = useState<string | null>(null);
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
@@ -241,12 +411,23 @@ export function DesignScreen({
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
   const [history, setHistory] = useState<RevisionSummary[]>([]);
+  // What the server recorded for the revision open: validated or not, its findings.
+  const [validation, setValidation] = useState<RevisionValidation | null>(null);
+  // The server said the rules or company profile changed since the revision open.
+  const [revisionStale, setRevisionStale] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+  const [executionRefusal, setExecutionRefusal] = useState<ExecutionRefusal | null>(null);
+  // The load row a finding's "go to row" asked for, focused once it is shown.
+  const pendingFocus = useRef<string | null>(null);
   // The market sets a new board's supply and the rules its code states; read
   // after the first render, from the engineer's last choice or the browser.
   const [market, setMarket] = useState('');
   const [markets, setMarkets] = useState<MarketInfo[]>([]);
   const [view, setView] = useState<View>(DEFAULT_VIEW);
   const [lastSave, setLastSave] = useState<'saving' | 'saved' | 'failed' | null>(null);
+  // Project fields the server refused as too long, said at the field; the
+  // entered text stays, so it can be shortened.
+  const [tooLong, setTooLong] = useState<TooLong[]>([]);
 
   const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market);
   // What the work looked like when last saved or opened (or when the page
@@ -314,9 +495,10 @@ export function DesignScreen({
     );
   }, [acquireImpl]);
 
+  // Only a trial's page starts or resumes a trial; an account's never does.
   useEffect(() => {
-    void connect();
-  }, [connect]);
+    if (identity === 'trial') void connect();
+  }, [identity, connect]);
 
   const marketInfo = markets.find((entry) => entry.code === market) ?? null;
   const supply = supplyOf(marketInfo);
@@ -347,7 +529,126 @@ export function DesignScreen({
     setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
   }
 
-  const token = session.kind === 'ready' ? session.token : null;
+  const accountToken = accountState.status === 'signed-in' ? accountState.tokens.accessToken : null;
+  const token =
+    identity === 'account'
+      ? accountToken
+      : identity === 'trial' && session.kind === 'ready'
+        ? session.token
+        : null;
+
+  // The account the work is kept for, remembered past the session's end so a
+  // draft typed for it is still its own while it signs in again.
+  const [accountOwner, setAccountOwner] = useState<string | null>(null);
+  const accountSubject =
+    accountToken === null ? null : (tokenIdentity(accountToken)?.subject ?? '');
+  if (accountSubject !== null && accountOwner !== `account:${accountSubject}`) {
+    setAccountOwner(`account:${accountSubject}`);
+  }
+  const draftOwner = identity === 'account' ? accountOwner : identity === 'trial' ? trialId : null;
+
+  /**
+   * After a 401. An account renews its token, and asks to be signed in again
+   * when it cannot; it never falls back to a trial, which would save the
+   * engineer's work into a tenant their account cannot see. A trial resumes.
+   */
+  const reauthorize = useCallback(async () => {
+    if (identity === 'account') {
+      const outcome = await renew();
+      setAccountNotice(
+        outcome === 'refreshed' ? 'renewed' : outcome === 'failed' ? 'renew-failed' : null,
+      );
+      return;
+    }
+    if (identity === 'trial') await connect();
+  }, [identity, renew, connect]);
+
+  // The tenant the token on the page is for. When it changes (a trial signs
+  // in to an account, or a different account signs in after a session
+  // ended), a project open from the old one is not the new one's: it is let
+  // go, never moved, and what was typed stays on the page as unsaved work.
+  const tokenTenant = token === null ? null : (tokenIdentity(token)?.tenant ?? null);
+
+  // Whose work a request was started for. An open or a save that answers
+  // after the page has moved to another identity (a trial signed in, the
+  // account signed out) is not this one's, and is let go.
+  const ownerKey =
+    identity === 'account'
+      ? (accountOwner ?? 'account')
+      : identity === 'trial'
+        ? `trial:${trialId ?? ''}`
+        : 'signed-out';
+  const currentOwner = useRef(ownerKey);
+  useLayoutEffect(() => {
+    currentOwner.current = ownerKey;
+  });
+  function forOwner<Args extends unknown[]>(
+    handle: (...args: Args) => void,
+  ): (...args: Args) => void {
+    const owner = ownerKey;
+    return (...args) => {
+      if (currentOwner.current === owner) handle(...args);
+    };
+  }
+
+  const heldTenant = useRef<string | null>(null);
+  useEffect(() => {
+    if (tokenTenant === null) return;
+    const before = heldTenant.current;
+    heldTenant.current = tokenTenant;
+    if (before === null || before === tokenTenant || opened === null) return;
+    setOpened(null);
+    setHistory([]);
+    setValidation(null);
+    setRevisionStale(false);
+    setRevisionError(null);
+    setExecutionRefusal(null);
+    setTitleRevisions([]);
+    // Unsaved for this identity, whatever it was for the last.
+    setClean('');
+    setAccountNotice('trial-project-stays');
+  }, [tokenTenant, opened]);
+
+  /** Sign in from the trial, after saying what happens to its saved projects. */
+  async function requestTrialSignIn() {
+    const trialToken = identity === 'trial' && session.kind === 'ready' ? session.token : null;
+    if (trialToken === null) {
+      // The trial could not be reached just now; if this browser holds one,
+      // it may have projects.
+      if (readTrial() === null) setAuthForm('sign-in');
+      else setConfirmTrialSignIn(true);
+      return;
+    }
+    const listed = await listProjectsImpl({ token: trialToken });
+    // Unknown counts as having projects: the question costs a click, while
+    // losing track of saved work costs more.
+    if (listed.kind === 'listed' && listed.page.projects.length === 0) {
+      setAuthForm('sign-in');
+      return;
+    }
+    setConfirmTrialSignIn(true);
+  }
+
+  async function endEverySession() {
+    const outcome = await signOutEverywhere();
+    if (outcome === 'failed') setAccountNotice('sign-out-everywhere-failed');
+  }
+
+  function onAccountSignedIn(tokens: AccountTokens) {
+    signedIn(tokens);
+    setIdentity('account');
+    setAuthForm(null);
+    setConfirmTrialSignIn(false);
+    setAccountNotice(null);
+  }
+
+  function onAccountCreated(tokens: AccountTokens) {
+    // The signup claimed this browser's trial on the server: the account
+    // joined the trial's tenant, so its projects are the account's now. The
+    // claim secret is spent.
+    clearTrial();
+    onAccountSignedIn(tokens);
+  }
 
   // Unsaved work is kept as a draft for this tab and session, for the ways of
   // leaving the guard cannot hold. On arrival, a draft left by an earlier
@@ -362,20 +663,20 @@ export function DesignScreen({
   const discardedSnapshot = useRef<string | null>(null);
   const lastWritten = useRef<string | null>(null);
   useEffect(() => {
-    if (trialId === null || draftChecked === trialId) return;
-    setDraftOffer(readDraft(trialId));
-    setDraftChecked(trialId);
-  }, [trialId, draftChecked]);
+    if (draftOwner === null || draftChecked === draftOwner) return;
+    setDraftOffer(readDraft(draftOwner));
+    setDraftChecked(draftOwner);
+  }, [draftOwner, draftChecked]);
   // Every render: cheap next to the snapshot, and only written when changed.
   useEffect(() => {
-    if (trialId === null || draftChecked !== trialId || draftOffer !== null) return;
+    if (draftOwner === null || draftChecked !== draftOwner || draftOffer !== null) return;
     if (!dirty || discardedSnapshot.current === snapshot) {
       if (lastWritten.current !== '') clearDraft();
       lastWritten.current = '';
       return;
     }
     const draft: DesignDraft = {
-      session: trialId,
+      session: draftOwner,
       project: opened ? { id: opened.id, revision: opened.revision } : null,
       clean,
       info,
@@ -396,11 +697,17 @@ export function DesignScreen({
     restoredDraft.current = true;
     let reopened = draft.project === null;
     if (draft.project !== null && token !== null) {
+      const owner = ownerKey;
       const outcome = await openImpl({
         token,
         id: draft.project.id,
         revision: draft.project.revision,
       });
+      // Opened for an identity the page has since left: not this one's work.
+      if (currentOwner.current !== owner) {
+        setRestoring(false);
+        return;
+      }
       if (outcome.kind === 'saved') {
         onOpened(outcome.project, false);
         reopened = true;
@@ -441,9 +748,15 @@ export function DesignScreen({
     market,
     DEFAULT_PROFILE_KEY,
   );
-  // Everything a design is made from: the inputs, the language as it is used,
-  // and the title block's revisions, which an approval changes.
-  const basis = `${snapshot}|${drawingLanguage}|${JSON.stringify(titleRevisions)}`;
+  // Everything a design is calculated from: the inputs and the title block's
+  // revisions. The drawing language is left out: it is presentation, and the
+  // design shown keeps (and exports with) the profile it was made with, so
+  // switching the page's or the drawing's language does not make it stale.
+  // So is who approved a revision (see `titleBasis`).
+  const inputs = snapshotOf(info, boards, profileText, null, market);
+  const basis = `${inputs}|${titleBasis(titleRevisions)}`;
+  // Set by a save that just succeeded, for the `onOpened` that follows it.
+  const rebaseOnSave = useRef(false);
 
   function takeKeys(count: number): number {
     const first = nextKey.current;
@@ -507,8 +820,38 @@ export function DesignScreen({
       approval: approvalOf(project),
     });
     setHistory(project.revisions);
+    // A save, an approval or an opening each answer with the revision as now
+    // stored: its validation replaces whatever was known of the last one.
+    setValidation(validationOf(project));
+    setRevisionStale(false);
+    setRevisionError(null);
+    setExecutionRefusal(null);
     setDraftProjectGone(false);
-    setTitleRevisions(project.request.info.revisions ?? []);
+    const titles = project.request.info.revisions ?? [];
+    setTitleRevisions(titles);
+    // A save gives the title block a row for the revision it stored. That is
+    // not a change of the inputs: a design made from exactly what was saved
+    // takes the new rows and stays current (a design the inputs had moved on
+    // from stays stale, its `inputs` no longer matching). An approval needs no
+    // rebasing: it changes only who approved, which `titleBasis` leaves out.
+    if (rebaseOnSave.current && !fill) {
+      setResult((current) =>
+        current.kind === 'designed'
+          ? {
+              ...current,
+              basis: `${current.inputs}|${titleBasis(titles)}`,
+              response: {
+                ...current.response,
+                project: {
+                  ...current.response.project,
+                  info: { ...current.response.project.info, revisions: titles },
+                },
+              },
+            }
+          : current,
+      );
+    }
+    rebaseOnSave.current = false;
     // Saved or approved: the form is left as it is. Only a save rebaselines
     // it (in `onSaveState`); an approval signs the stored revision, not
     // whatever has been typed since.
@@ -538,12 +881,13 @@ export function DesignScreen({
     const request = toRequest(info, boards, profile);
     request.info.revisions = titleRevisions;
     const outcome = await designImpl({ token, request });
+    setTooLong(outcome.kind === 'refused' ? (outcome.tooLong ?? []) : []);
     if (outcome.kind === 'designed') {
-      setResult({ kind: 'designed', response: outcome.response, profile, basis });
+      setResult({ kind: 'designed', response: outcome.response, profile, basis, inputs });
     } else {
       // The schedule stays as entered, so the engineer can correct and retry.
       setResult({ kind: 'error', outcome });
-      if (outcome.kind === 'unauthorized') void connect();
+      if (outcome.kind === 'unauthorized') void reauthorize();
     }
   }
 
@@ -560,15 +904,78 @@ export function DesignScreen({
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
+      if (outcome.kind === 'refused') setTooLong(outcome.tooLong ?? []);
+      if (outcome.kind === 'unauthorized') void reauthorize();
       setExportError(say(outcome));
     }
   }
 
+  /**
+   * Export the revision open as the server stored it. Only while the page
+   * holds exactly that revision: an export of it would not show the edits.
+   */
+  async function downloadRevision(format: ExportFormat, purpose: ExportPurpose = 'review') {
+    if (token === null || opened === null || dirty) return;
+    setRevisionError(null);
+    setExecutionRefusal(null);
+    const outcome = await exportRevisionImpl({
+      token,
+      id: opened.id,
+      revision: opened.revision,
+      format,
+      purpose,
+    });
+    if (outcome.kind === 'exported') {
+      saveImpl(outcome.blob, outcome.filename);
+      return;
+    }
+    if (outcome.kind === 'unauthorized') void reauthorize();
+    if (outcome.kind === 'refused' && outcome.code === 'execution_package_incomplete') {
+      setExecutionRefusal(executionRefusalOf(outcome));
+      return;
+    }
+    if (outcome.kind === 'refused' && outcome.code === 'revision_stale') setRevisionStale(true);
+    if (outcome.kind === 'refused' && outcome.code === 'revision_not_validated') {
+      setValidation((current) => (current ? { ...current, validated: false } : current));
+    }
+    setRevisionError(say(outcome));
+  }
+
+  /** Show a finding's board, and its load row when it names one. */
+  function jumpTo(boardName: string, row: number | null) {
+    const board = boards.find((entry) => entry.name === boardName);
+    selectView('schedule');
+    if (!board) return;
+    setActiveKey(board.key);
+    const load = row === null ? undefined : board.loads[row];
+    pendingFocus.current = load
+      ? `${id}-${String(board.key)}-desc-${String(load.key)}`
+      : `${id}-board-name`;
+  }
+
+  // Once the schedule shows the board asked for, focus the row (or board) found.
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null) return;
+    pendingFocus.current = null;
+    // Focusing scrolls the field into view, too.
+    document.getElementById(target)?.focus();
+  });
+
   function infoField(key: keyof ProjectInfo, ltr = false) {
+    // The project is saved under its name, too, which the save checks on its own.
+    const limit =
+      tooLongAt(tooLong, `info.${key}`) ??
+      (key === 'name' ? (tooLong.find((entry) => entry.path === 'name')?.max ?? null) : null);
     return (
-      <Field id={`${id}-${key}`} label={t(`field.${key}`)}>
+      <Field
+        id={`${id}-${key}`}
+        label={t(`field.${key}`)}
+        error={limit === null ? undefined : t('errors.too_long_here', { max: limit })}
+      >
         <input
           id={`${id}-${key}`}
+          aria-invalid={limit === null ? undefined : true}
           form={formId}
           dir={ltr ? 'ltr' : undefined}
           value={info[key]}
@@ -607,6 +1014,8 @@ export function DesignScreen({
   const designedProfile = result.kind === 'designed' ? result.profile : profile;
   // The inputs have changed since the design shown was made.
   const stale = result.kind === 'designed' && result.basis !== basis;
+  // Where the saved revision stands; edits since make its validation and approval stale.
+  const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -694,11 +1103,213 @@ export function DesignScreen({
         </StatusBadge>
       )}
       {opened && (
-        <StatusBadge tone={opened.approval ? 'success' : 'warning'}>
-          {opened.approval ? tw('context.approved') : tw('context.draft')}
+        // Approved only while the approval signs what is stored and nothing has changed since.
+        <StatusBadge
+          tone={readiness.approved === 'done' ? 'success' : 'warning'}
+          testId="context-approval"
+        >
+          {readiness.approved === 'done'
+            ? tw('context.approved')
+            : opened.approval
+              ? tw('context.approvalOutdated')
+              : tw('context.draft')}
         </StatusBadge>
       )}
     </nav>
+  );
+
+  const signInForm = (cancel: boolean) => (
+    <div className="flex justify-center">
+      <SignInForm
+        onSignedIn={onAccountSignedIn}
+        {...(cancel
+          ? {
+              onCancel: () => {
+                setAuthForm(null);
+              },
+            }
+          : {})}
+        {...(signInImpl ? { signInImpl } : {})}
+      />
+    </div>
+  );
+  const sessionEnded = identity === 'account' && accountState.status !== 'signed-in';
+  const accountBar = (
+    <>
+      {identity === 'trial' && (
+        <Notice
+          tone="warning"
+          title={ta('trialTitle')}
+          testId="design-trial-mode"
+          live={false}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  void requestTrialSignIn();
+                }}
+              >
+                {ta('signIn')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setAuthForm('sign-up');
+                }}
+              >
+                {ta('signUp')}
+              </button>
+            </div>
+          }
+        >
+          {ta('trialBody')}
+        </Notice>
+      )}
+      {identity === 'account' && !sessionEnded && (
+        <Notice
+          tone="info"
+          testId="design-account-mode"
+          live={false}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
+                {ta('signOut')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                data-testid="design-sign-out-everywhere"
+                onClick={() => void endEverySession()}
+              >
+                {ta('signOutEverywhere')}
+              </button>
+            </div>
+          }
+        >
+          {ta('signedIn')}
+        </Notice>
+      )}
+      {sessionEnded && (
+        <Notice
+          tone="critical"
+          title={ta('expiredTitle')}
+          testId="design-account-expired"
+          action={
+            <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
+              {ta('signOut')}
+            </button>
+          }
+        >
+          {ta('expiredBody')}
+        </Notice>
+      )}
+      {identity === 'signed-out' && (
+        <Notice
+          tone="info"
+          testId="design-signed-out"
+          live={false}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setAuthForm('sign-in');
+                }}
+              >
+                {ta('signIn')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setAuthForm(null);
+                  setIdentity('trial');
+                }}
+              >
+                {ta('continueTrial')}
+              </button>
+            </div>
+          }
+        >
+          {ta('signedOut')}
+        </Notice>
+      )}
+      {identity === 'trial' && confirmTrialSignIn && (
+        <Notice
+          tone="warning"
+          title={ta('trialSignIn.title')}
+          testId="design-trial-sign-in-confirm"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                  setAuthForm('sign-in');
+                }}
+              >
+                {ta('trialSignIn.continue')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                  setAuthForm('sign-up');
+                }}
+              >
+                {ta('trialSignIn.signUp')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                }}
+              >
+                {ta('trialSignIn.cancel')}
+              </button>
+            </div>
+          }
+        >
+          {ta('trialSignIn.body')}
+        </Notice>
+      )}
+      {sessionEnded
+        ? signInForm(false)
+        : authForm === 'sign-in'
+          ? signInForm(true)
+          : authForm === 'sign-up' && (
+              <TrialLimitModal
+                trial={readTrial()}
+                description={ta('signUpKeeps')}
+                onSignedUp={onAccountCreated}
+                onDismiss={() => {
+                  setAuthForm(null);
+                }}
+                {...(signupImpl ? { signupImpl } : {})}
+              />
+            )}
+      {accountNotice !== null && (
+        <Notice
+          tone={
+            accountNotice === 'renew-failed' ||
+            accountNotice === 'sign-out-everywhere-failed' ||
+            accountNotice === 'restore-timed-out'
+              ? 'warning'
+              : 'info'
+          }
+          testId={`design-account-${accountNotice}`}
+        >
+          {ta(`notice.${accountNotice}`)}
+        </Notice>
+      )}
+    </>
   );
 
   const tabs = VIEWS.map((key) => ({
@@ -751,7 +1362,8 @@ export function DesignScreen({
       />
 
       <div className="flex flex-col gap-4">
-        {session.kind !== 'ready' && session.kind !== 'starting' && (
+        {accountBar}
+        {identity === 'trial' && session.kind !== 'ready' && session.kind !== 'starting' && (
           <Notice
             tone="critical"
             action={
@@ -862,6 +1474,10 @@ export function DesignScreen({
             </Panel>
             {token !== null ? (
               <ProjectsPanel
+                // A fresh panel for each identity and tenant, so nothing it
+                // said for the last one (a "Saved as revision N", a refusal)
+                // is shown for this one.
+                key={`${ownerKey}|${tokenTenant ?? ''}`}
                 token={token}
                 current={
                   complete && parsed !== 'invalid'
@@ -869,17 +1485,31 @@ export function DesignScreen({
                     : null
                 }
                 opened={opened}
-                onOpened={onOpened}
+                onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 dirty={dirty}
-                onSaveState={(state) => {
+                blockers={readiness.approvalBlockers}
+                blockingCount={readiness.blockingCount}
+                approvalCovers={readiness.approvalCovers}
+                note={revisionNote}
+                onNoteChange={setRevisionNote}
+                onRefused={forOwner((refusal: Refusal) => {
+                  setTooLong(refusal.tooLong ?? []);
+                })}
+                onUnauthorized={forOwner(() => {
+                  void reauthorize();
+                })}
+                onSaveState={forOwner((state: 'saving' | 'saved' | 'failed') => {
                   setLastSave(state);
+                  if (state === 'saved') setTooLong([]);
                   // This closure is the one the save started from, so its
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
-                }}
+                  rebaseOnSave.current = state === 'saved';
+                })}
               />
             ) : (
+              identity === 'trial' &&
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
           </>,
@@ -1021,7 +1651,7 @@ export function DesignScreen({
                     importImpl={importImpl}
                     suggestImpl={suggestImpl}
                     onUnauthorized={() => {
-                      void connect();
+                      void reauthorize();
                     }}
                     onLoads={(loads) => {
                       const first = takeKeys(loads.length);
@@ -1091,7 +1721,9 @@ export function DesignScreen({
                     voltage: marketInfo.voltage_v,
                     frequency: marketInfo.frequency_hz,
                     earthing: marketInfo.earthing,
-                    regulation: marketInfo.regulation,
+                    regulation: t.has(`regulation.${marketInfo.code}`)
+                      ? t(`regulation.${marketInfo.code}`)
+                      : marketInfo.regulation,
                   })}
                 </p>
               )}
@@ -1148,6 +1780,8 @@ export function DesignScreen({
               profile={designedProfile}
               saveImpl={saveImpl}
               {...(marketInfo ? { currency: marketInfo.currency } : {})}
+              {...(quoteRates ? { rates: quoteRates } : {})}
+              onRatesChange={setQuoteRates}
             />
           ) : stale ? (
             designAgain
@@ -1200,6 +1834,13 @@ export function DesignScreen({
                               </StatusBadge>
                             ) : (
                               <StatusBadge tone="warning">{tw('context.draft')}</StatusBadge>
+                            )}
+                            {entry.approved_at && entry.approver_account_recorded && (
+                              <span className="ms-2 text-xs text-text-muted" dir="auto">
+                                {entry.approver_name
+                                  ? t('projects.approverAccount', { name: entry.approver_name })
+                                  : t('projects.approverAccountUnnamed')}
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -1281,15 +1922,62 @@ export function DesignScreen({
         {viewPanel(
           'review',
           <>
+            <Panel title={t('readiness.title')}>
+              <div className="flex flex-col gap-3">
+                <ReadinessSteps readiness={readiness} />
+                {opened && dirty && (
+                  <Notice tone="warning" live={false} testId="readiness-dirty">
+                    {t('readiness.dirty', { revision: opened.revision })}
+                  </Notice>
+                )}
+                {opened && readiness.approvalBlockers.includes('stale') && (
+                  <Notice tone="warning" live={false} testId="readiness-stale">
+                    {t('errors.revision_stale')}
+                  </Notice>
+                )}
+                {opened && validation !== null && !validation.validated && (
+                  <Notice tone="warning" live={false} testId="readiness-not-validated">
+                    {t('readiness.notValidated', { revision: opened.revision })}
+                  </Notice>
+                )}
+                <p className="text-sm text-text-muted" data-testid="readiness-execution-note">
+                  {t('readiness.executionBlocked')}
+                </p>
+              </div>
+            </Panel>
+            {opened && validation?.validated && (
+              <Panel title={t('findings.title')}>
+                <FindingsList
+                  findings={validation.findings}
+                  outdated={dirty}
+                  onJump={jumpTo}
+                  describe={(finding) => {
+                    const row = rowOf(finding);
+                    const board = boards.find((entry) => entry.name === finding.board_id);
+                    const load = row === null ? undefined : board?.loads[row];
+                    return load?.description.trim() || null;
+                  }}
+                />
+              </Panel>
+            )}
             <Panel title={tw('review.approval')}>
               {opened ? (
                 opened.approval ? (
-                  <Notice tone="success" live={false}>
+                  <Notice tone={readiness.approved === 'done' ? 'success' : 'warning'} live={false}>
                     {t('projects.approvedBy', {
                       revision: opened.revision,
                       name: opened.approval.by,
                       date: opened.approval.at.slice(0, 10),
                     })}
+                    {!readiness.approvalCovers &&
+                      ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
+                    {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
+                    {opened.approval.approver !== undefined &&
+                      ` ${
+                        opened.approval.approver.name === null
+                          ? t('projects.approverAccountUnnamed')
+                          : t('projects.approverAccount', { name: opened.approval.approver.name })
+                      }`}
                   </Notice>
                 ) : (
                   <Notice
@@ -1306,23 +1994,72 @@ export function DesignScreen({
                 </Notice>
               )}
             </Panel>
-            <Panel title={t('downloads')}>
+            {opened && (
+              <Panel title={t('exports.revisionTitle', { revision: opened.revision })}>
+                <div className="flex flex-col gap-3" data-testid="revision-export">
+                  {dirty ? (
+                    <Notice tone="warning" live={false} testId="revision-export-dirty">
+                      {t('exports.revisionDirty', { revision: opened.revision })}
+                    </Notice>
+                  ) : validation !== null && !validation.validated ? (
+                    <Notice tone="warning" live={false} testId="revision-export-not-validated">
+                      {t('readiness.notValidated', { revision: opened.revision })}
+                    </Notice>
+                  ) : (
+                    <>
+                      <p className="text-sm text-text-muted">
+                        {t('exports.revisionBody', { revision: opened.revision })}
+                      </p>
+                      <ExportPanel
+                        onExport={(format) => downloadRevision(format)}
+                        exportError={revisionError}
+                        testIdPrefix="revision-export"
+                      />
+                      <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
+                        <p className="text-sm text-text-muted">{t('exports.executionBody')}</p>
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            data-testid="execution-export"
+                            onClick={() => {
+                              void downloadRevision('pdf', 'execution');
+                            }}
+                          >
+                            {t('exports.execution')}
+                          </button>
+                        </div>
+                        {executionRefusal ? (
+                          <ExecutionRefused refusal={executionRefusal} />
+                        ) : (
+                          validation !== null && (
+                            <ExecutionRefused
+                              refusal={executionBlockersOf(validation)}
+                              refused={false}
+                            />
+                          )
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Panel>
+            )}
+            <Panel title={t('exports.draftTitle')}>
               {result.kind === 'designed' && !stale ? (
-                <ExportPanel onExport={download} exportError={exportError} />
+                <div className="flex flex-col gap-3" data-testid="draft-export">
+                  <Notice tone="warning" live={false} title={t('exports.draftMark')}>
+                    {t('exports.draftBody')}
+                  </Notice>
+                  <ExportPanel onExport={download} exportError={exportError} />
+                </div>
               ) : stale ? (
                 designAgain
               ) : (
                 designFirst
               )}
             </Panel>
-            {designed && token !== null && !stale && hasPlcOutputs && (
-              <PlcPanel
-                token={token}
-                project={designed}
-                profile={designedProfile}
-                saveImpl={saveImpl}
-              />
-            )}
+            {designed && token !== null && !stale && hasPlcOutputs && <PlcPanel />}
           </>,
         )}
       </div>

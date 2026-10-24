@@ -9,9 +9,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.schemas.auth_flows import (
+    MAX_REFRESH_TOKEN_LENGTH,
+    AccessToken,
     LoginRequest,
     QuotaStatus,
-    RefreshRequest,
     SignupRequest,
     TrialResumeRequest,
 )
@@ -62,10 +63,10 @@ def test_login_accepts_any_password_up_to_its_bound() -> None:
         LoginRequest(email="a@example.com", password="x" * 1025)
 
 
-def test_the_refresh_token_is_bounded() -> None:
-    assert RefreshRequest(refresh_token="x" * 256)
-    with pytest.raises(ValidationError):
-        RefreshRequest(refresh_token="x" * 257)
+def test_the_issued_pair_is_never_the_response_body() -> None:
+    """The refresh token goes in the HttpOnly cookie; the body carries the access token only."""
+    assert "refresh_token" not in AccessToken.model_fields
+    assert MAX_REFRESH_TOKEN_LENGTH == 256
 
 
 def test_trial_resume_needs_both_halves_of_the_pair() -> None:

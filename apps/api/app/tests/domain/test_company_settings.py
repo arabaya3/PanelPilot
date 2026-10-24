@@ -91,3 +91,15 @@ def test_save_settings_refuses_what_a_design_would(tenants, engine) -> None:  # 
             session=session, user=_user(a), settings={"key": "acme", "bogus": 1}
         )
     assert refused.value.code == "profile_unknown_settings"
+
+
+def test_save_settings_refuses_an_unknown_nested_setting(tenants, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    with sessionmaker(bind=engine)() as session, pytest.raises(ValidationError) as refused:
+        company_settings.save_settings(
+            session=session,
+            user=_user(a),
+            settings={"key": "acme", "circuit_rules": {"lighting": {"breaker_amps": 6}}},
+        )
+    assert refused.value.code == "profile_unknown_settings"
+    assert "circuit_rules.lighting.breaker_amps" in refused.value.params["settings"]

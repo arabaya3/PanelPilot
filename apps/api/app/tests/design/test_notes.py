@@ -26,6 +26,19 @@ def test_a_note_takes_exactly_its_templates_fields(params: dict[str, object]) ->
         notes.note("spare_ways", **params)
 
 
+def test_a_note_may_carry_its_codes_optional_params() -> None:
+    plain = notes.note("market_rules", market="Israel", regulation="X")
+    keyed = notes.note(
+        "market_rules", market="Israel", regulation="X", market_code="IL", regulation_code="IL"
+    )
+    assert keyed.text == plain.text
+    assert keyed.params["market_code"] == "IL"
+    with pytest.raises(ValueError, match="market_rules"):
+        notes.note("market_rules", market="Israel", market_code="IL", regulation_code="IL")
+    with pytest.raises(ValueError, match="spare_ways"):
+        notes.note("spare_ways", count=2, percent=20, market_code="IL")
+
+
 def test_an_unknown_code_is_a_bug() -> None:
     with pytest.raises(KeyError):
         notes.note("no_such_code")

@@ -10,6 +10,7 @@ import io
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ValidationError
 from app.design import quotation
@@ -133,3 +134,79 @@ def test_quotation_csv(hall_project: DesignProject) -> None:
     assert rows[0][0] == "Description"
     assert any(row[0] == "Total (USD)" for row in rows)
     assert rows[-1][0].startswith("Not priced: ")
+
+
+def test_an_over_long_price_list_key_is_skipped_not_truncated() -> None:
+    """Truncating at 120 made two different long keys one key; the second won."""
+    stem = "x" * 120
+    data = f"Key,Price\n{stem}A,1\n{stem}B,2\nshort,3\n".encode()
+    entries = quotation.read_price_list(data)
+    assert [entry.key for entry in entries] == ["short"]
+
+
+def test_a_key_of_exactly_the_limit_is_kept() -> None:
+    key = "k" * 120
+    entries = quotation.read_price_list(f"Key,Price\n{key},1\n".encode())
+    assert [entry.key for entry in entries] == [key]
+
+
+def test_a_price_with_spreadsheet_float_noise_is_rounded_to_the_bound() -> None:
+    entries = quotation.read_price_list(b"Key,Price\na,0.30000000000000004\n")
+    assert entries[0].unit_price == Decimal("0.300000")
+
+
+@pytest.mark.parametrize(
+    "field", ["labour_per_circuit", "labour_per_board", "enclosure_price", "markup_percent"]
+)
+def test_pricing_amounts_refuse_more_than_six_decimal_places(field: str) -> None:
+    with pytest.raises(PydanticValidationError):
+        PricingSettings.model_validate({field: "1.0000001"})
+    assert getattr(PricingSettings.model_validate({field: "1.000001"}), field) == Decimal(
+        "1.000001"
+    )
+
+
+def test_price_list_entries_refuse_more_than_six_decimal_places() -> None:
+    with pytest.raises(PydanticValidationError):
+        PriceListEntry.model_validate({"key": "a", "unit_price": "1.0000001"})
+
+
+def test_a_cable_length_feeding_the_totals_is_bounded() -> None:
+    """A sent project's cable length multiplied a price with no bound at all."""
+    with pytest.raises(PydanticValidationError):
+        Cable(id="c", cores=3, cross_section_mm2=Decimal("2.5"), length_m=Decimal("1e30"))
+    with pytest.raises(PydanticValidationError):
+        Cable.model_validate({"id": "c", "cores": 3, "cross_section_mm2": "2.5", "length_m": "NaN"})
+
+
+@pytest.mark.parametrize("language", ["ar", "he"])
+def test_generated_descriptions_are_in_the_profile_language(
+    hall_project: DesignProject, language: str
+) -> None:
+    """D4: "Circuit-breaker 4P C63" and the labour lines stayed English in ar and he."""
+    pricing = PricingSettings(
+        cable_length_m=Decimal(10),
+        labour_per_circuit=Decimal(5),
+        labour_per_board=Decimal(50),
+        enclosure_price=Decimal(100),
+    )
+    english = quotation.price_project(hall_project, pricing)
+    said = quotation.price_project(hall_project, pricing, language=language)
+    assert len(said.lines) == len(english.lines)
+    for mine, theirs in zip(said.lines, english.lines, strict=True):
+        # Units stay codes, as keys and totals do: the page says them.
+        assert (mine.unit, mine.key, mine.total) == (theirs.unit, theirs.key, theirs.total)
+    texts = [line.description for line in said.lines]
+    for word in ("Circuit-breaker", "Cable ", "Wiring", "Assembly", "Enclosure"):
+        assert not any(word in text for text in texts), (word, texts)
+    # The rating stays as written: "4P C63" is not a word.
+    breaker = next(line for line in english.lines if line.key.startswith("circuit_breaker:"))
+    rating = breaker.description.removeprefix("Circuit-breaker ")
+    assert any(text.endswith(rating) for text in texts)
+
+
+def test_supplier_and_catalogue_text_is_never_translated(hall_project: DesignProject) -> None:
+    entries = [*_entries(hall_project)]
+    said = quotation.price_project(hall_project, PricingSettings(price_list=entries), language="ar")
+    incomer = next(line for line in said.lines if line.key == "EKM6-63X-3C63")
+    assert incomer.description == "ETEK MCB"

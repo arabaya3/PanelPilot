@@ -185,7 +185,14 @@
     "rateLimited": "Too many trials have been started from this network. Wait a few minutes and try again, or sign in.",
     "eyebrow": "Industrial troubleshooting assistant",
     "headline": "Diagnose a panel fault in minutes",
-    "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from."
+    "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from.",
+    "expired": "Your session has ended. Sign in again to keep working in your account.",
+    "continueAsTrial": "Continue as a trial instead",
+    "trialSignInTitle": "Your trial conversation stays with the trial",
+    "trialSignInBody": "Signing in to an existing account does not move this trial's conversation into it. It stays with this browser's trial, and you can return to it by signing out and continuing as a trial.",
+    "trialSignInContinue": "Sign in anyway",
+    "trialSignInCancel": "Cancel",
+    "restoreTimedOut": "Your sign-in could not be checked in time, so you are not signed in on this page. Sign in again, or continue as a trial."
   },
   "history": {
     "label": "Conversation history",
@@ -454,16 +461,16 @@
       "F": "F — single-core in free air / on a tray"
     },
     "insulation": {
-      "90": "XLPE / EPR (90 °C)",
-      "70": "PVC (70 °C)"
+      "70": "PVC (70 °C)",
+      "90": "XLPE / EPR (90 °C)"
     },
     "material": {
       "copper": "Copper",
       "aluminium": "Aluminium"
     },
     "phases": {
-      "3": "Three-phase",
-      "1": "Single-phase"
+      "1": "Single-phase",
+      "3": "Three-phase"
     },
     "submit": "Size the cable",
     "working": "Calculating…",
@@ -616,7 +623,8 @@
       "untitled": "Untitled project",
       "revision": "Rev. {revision}",
       "approved": "Approved",
-      "draft": "Not approved"
+      "draft": "Not approved",
+      "approvalOutdated": "Approval does not cover this"
     },
     "save": {
       "unsaved": "Unsaved changes",
@@ -816,8 +824,8 @@
       "budget": "This month's AI allowance is used up."
     },
     "quote": {
-      "title": "Quotation",
-      "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (circuit_breaker:1P:C16) until a catalogue is chosen; a line with no price is never guessed.",
+      "title": "Provisional price estimate",
+      "intro": "Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (<key>circuit_breaker:1P:C16</key>) until a catalogue is chosen; a line with no price is never guessed.",
       "priceList": "Price list",
       "priceListHelp": "Excel or CSV with a key (or order number) column and a price column.",
       "listLoaded": "{count, plural, one {# price loaded.} other {# prices loaded.}}",
@@ -848,7 +856,17 @@
       "markup": "Markup",
       "vat": "VAT",
       "total": "Total",
-      "noLength": "no length"
+      "noLength": "no length",
+      "unit": {
+        "pcs": "pcs",
+        "m": "m"
+      }
+    },
+    "quotation": {
+      "provisionalBanner": "Provisional estimate — not a quotation, not for execution",
+      "provisionalDetail": "Priced from the unsaved design on this page. A quotation is exported from a saved revision.",
+      "blocking": "{count, plural, one {# blocking finding} other {# blocking findings}}: this estimate prices a design that fails its checks.",
+      "findingsTitle": "What the checks found"
     },
     "plc": {
       "title": "Control program",
@@ -881,8 +899,8 @@
       "mccb_selected": "{load}: {type}, In {rated} A, I3 fixed at {trip} A, Icu {icu} kA ({source}).",
       "mccb_selected_adjustable": "{load}: {type}, In {rated} A, Icu {icu} kA ({source}); its I3 (5 to 10 In) is taken at the top, {trip} A, for the short circuit and earth fault checks; set lower, a longer cable passes.",
       "short_circuit_min_magnetic_exceeded": "{load}: a short circuit at the far end draws only {current} A, below the {trip} A at which its breaker trips at once (I3 with its 20 % tolerance), at every cable size held; shorten the run or set I3 lower.",
-      "enclosure_selected": "Enclosure: ABB Mini Center compact {type} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted.",
-      "enclosure_unknown_widths": "Enclosure: none named, since {count} devices have no width (rail_widths_mm in the company settings).",
+      "enclosure_selected": "Enclosure: {product} ({order}), {rows} rows of 16 modules, H x W x D {size} mm, IP41, busbar 200/250 A, 35 kA; {free} modules are left for spare ways ({source}). The outgoing terminal strip is not counted.",
+      "enclosure_unknown_widths": "Enclosure: none named, since {count, plural, one {# device has} other {# devices have}} no width (enter their rail widths under “Settings as JSON” in the company settings).",
       "enclosure_not_modular": "Enclosure: none named; a moulded-case breaker, starter or drive is not a modular device, so the board needs a panel enclosure sized from its layout.",
       "enclosure_beyond": "Enclosure: none named; the board is beyond the largest modular enclosure held (5 rows of 16 modules, busbar {busbar} A, {fault} kA).",
       "mccb_needed": "{load}: Ib {current} A is above every breaker held (miniature to 125 A, moulded-case to 800 A at 380-415 V); one is needed and none is selected here. The cable is sized for Ib; check it against the breaker’s In.",
@@ -1004,7 +1022,22 @@
       "project_approved": "This project has an approved revision ({revision}), so it cannot be deleted.",
       "plan_feature": "Your plan does not include this; see Pricing to change it.",
       "plan_projects": "Your plan keeps {limit} projects; delete one or change plan.",
-      "market_unknown": "There is no market {market}."
+      "market_unknown": "There is no market {market}.",
+      "revision_stale": "The rules or company profile changed since this revision — save a new revision.",
+      "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
+      "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
+      "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
+      "export_format_unprotected": "Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.",
+      "snapshot_integrity_failed": "The stored design of this revision does not match its recorded fingerprint, so it is not exported. Save a new revision.",
+      "unknown_fields": "{count, plural, one {The server does not accept the field {fields}; remove it} other {The server does not accept the fields {fields}; remove them}}, or reload the page if PanelPilot was updated.",
+      "revision_conflict": "Another revision was saved at the same time; save again.",
+      "design_refused": "The design was refused, so this revision holds no validated design. Correct the inputs and save again.",
+      "request_not_valid": "This saved revision no longer passes today's input checks (a field is too long or out of range). Correct it and save again.",
+      "too_long": "{field} is too long: at most {max} characters.",
+      "too_long_here": "Too long: at most {max} characters.",
+      "too_large": "{field} is too large: at most {max}.",
+      "request_invalid": "The server did not accept this request as entered. Check the fields and try again.",
+      "request_invalid_fields": "Fields: {fields}."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1029,8 +1062,84 @@
       "approve": "Approve revision {revision}",
       "approvedNow": "Revision {revision} is approved; its title block now carries the approval.",
       "approvedBy": "Revision {revision} approved by {name} on {date}.",
+      "approverAccount": "Approved while signed in as {name}.",
+      "approverAccountUnnamed": "Approved while signed in as a team member.",
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
-      "saveFailed": "The project could not be saved. What you entered is still here; try again."
+      "saveFailed": "The project could not be saved. What you entered is still here; try again.",
+      "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
+      "approvalChanged": "The page has changes since revision {revision}; the approval does not cover them.",
+      "approveHeld": {
+        "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",
+        "notValidated": "Revision {revision} is not validated: save again to validate it before approving.",
+        "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval."
+      }
+    },
+    "readiness": {
+      "title": "Status",
+      "steps": {
+        "saved": "Saved",
+        "validated": "Validated",
+        "approved": "Review approved",
+        "execution": "Execution ready"
+      },
+      "state": {
+        "done": "Done",
+        "pending": "Not yet",
+        "blocked": "Blocked",
+        "stale": "Out of date"
+      },
+      "dirty": "The page has changes revision {revision} does not hold. Its validation, findings and approval do not cover them; save a new revision.",
+      "notValidated": "Revision {revision} was saved before validation: save again to validate it.",
+      "executionBlocked": "Execution ready is not available yet: PanelPilot does not produce wiring and terminal connectivity, control schematics, orderable parts or a mechanical layout, so nothing is exported for execution."
+    },
+    "findings": {
+      "title": "Findings",
+      "none": "No findings were recorded for this revision.",
+      "outdated": "Recorded for the saved revision; the page has changed since.",
+      "severity": {
+        "blocking": "Blocking",
+        "warning": "Warning",
+        "info": "Information"
+      },
+      "where": {
+        "board": "Board {board}",
+        "circuit": "circuit {circuit}",
+        "device": "device {device}"
+      },
+      "confirm": "Needs an engineer’s confirmation.",
+      "jumpRow": "Go to row {row}",
+      "jumpBoard": "Go to board"
+    },
+    "exports": {
+      "draftTitle": "Draft export",
+      "draftMark": "DRAFT — NOT FOR EXECUTION",
+      "draftBody": "Exported from the design on this page, not from a saved and validated revision. Every file is marked DRAFT — NOT FOR EXECUTION, lists the unresolved findings and carries no approval.",
+      "revisionTitle": "Revision {revision} export",
+      "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
+      "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
+      "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
+      "execution": "Request execution export",
+      "executionRefused": "Execution export refused",
+      "executionIntro": "No execution package was exported. Still needed:",
+      "gaps": {
+        "wiring": "Wiring and terminal connectivity",
+        "control_schematics": "Control schematics",
+        "orderable_parts": "Orderable parts with order numbers",
+        "mechanical_layout": "A dimensioned mechanical layout"
+      },
+      "gapBlocking": "{count, plural, one {# blocking finding resolved} other {# blocking findings resolved}}",
+      "gapApproval": "Review approval of this revision",
+      "executionBlockedTitle": "Execution export blocked",
+      "gapNotValidated": "A validated revision (save again to validate)",
+      "gapStale": "A revision saved under the current rules and company settings"
+    },
+    "finding": {
+      "integrity_unknown_device": "Device {device} is not on this board.",
+      "integrity_unknown_cable": "Cable {cable} is not on this board.",
+      "integrity_drive_cable_unchecked": "The cable after a drive is protected by the drive’s motor overload setting, which is not checked here.",
+      "integrity_protection_unchecked": "No rated overload protective device was found for this cable, so the cable is not checked against it.",
+      "integrity_cable_untabulated": "{section} mm² is not in the capacity tables, so the protection is not checked against it.",
+      "integrity_device_above_cable_capacity": "{rated} A protection is above the {capacity} A its {cable} cable carries ({basis}); In ≤ Iz does not hold."
     },
     "markups": {
       "title": "Review markups",
@@ -1154,6 +1263,53 @@
       "EG": "Egypt",
       "LB": "Lebanon",
       "IQ": "Iraq"
+    },
+    "regulation": {
+      "PS": "IEC 60364 (adopted by the Palestine Standards Institution)",
+      "IL": "Israeli Electricity Law and Regulations",
+      "JO": "Jordanian National Building Code for Electrical Installations",
+      "SA": "Saudi Building Code SBC 401",
+      "AE": "DEWA Regulations for Electrical Installations",
+      "QA": "KAHRAMAA Electricity Wiring Code",
+      "KW": "MEW/R-1 Regulations",
+      "EG": "Egyptian Code 302",
+      "LB": "IEC 60364",
+      "IQ": "BS 7671"
+    },
+    "account": {
+      "trialTitle": "Trial workspace",
+      "trialBody": "You are not signed in. Projects you save here belong to this browser's trial, not to an account. Sign in to save to your account, or create an account to keep this trial's projects.",
+      "signIn": "Sign in to save to your account",
+      "signUp": "Create an account",
+      "signUpKeeps": "This trial's saved projects move into the new account, and what is on the page stays.",
+      "signedIn": "Signed in. Projects you save, approve and export here belong to your account.",
+      "signOut": "Sign out",
+      "expiredTitle": "Your session has ended",
+      "expiredBody": "Sign in again to keep working in your account. Nothing on this page has been lost, and nothing is saved anywhere else meanwhile.",
+      "signedOut": "You are signed out. Sign in to work in your account, or continue as a trial, whose saved projects belong to this browser only.",
+      "continueTrial": "Continue as a trial",
+      "approvedAccount": "Approved while signed in as {account}.",
+      "saveUnauthorized": "Not saved: the session had ended. What you entered is kept.",
+      "notice": {
+        "renewed": "Your session had expired and has been renewed. Try again.",
+        "renew-failed": "The session could not be renewed. Check the connection and try again.",
+        "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account.",
+        "account-switched": "A different account signed in. The unsaved work and the project open on this page belonged to the previous account, so they were cleared; nothing of it was moved into this account.",
+        "sign-out-everywhere-failed": "Your other devices could not be signed out. You are still signed in here. Check the connection and try again.",
+        "restore-timed-out": "Your sign-in could not be checked in time. Sign in again to keep working in your account; nothing was saved anywhere else."
+      },
+      "signOutEverywhere": "Sign out everywhere",
+      "trialSignIn": {
+        "title": "This trial's saved projects stay with the trial",
+        "body": "Signing in to an existing account does not move this trial's saved projects into it. They stay with this browser's trial: sign out and choose Continue as a trial to reach them again. To keep them in an account, create a new account instead. What is on the page now stays on the page.",
+        "continue": "Sign in anyway",
+        "signUp": "Create an account instead",
+        "cancel": "Cancel"
+      }
+    },
+    "fieldPath": {
+      "board": "Board {n}",
+      "load": "Load {n}"
     }
   },
   "files": {

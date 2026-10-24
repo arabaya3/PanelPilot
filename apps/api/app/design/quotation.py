@@ -18,9 +18,13 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from app.core.errors import ValidationError
+from app.design.drawing_text import Words
 from app.design.export_lists import write_csv
+from app.design.pages import KIND_NAMES
 from app.design.schedule_import import read_rows
 from app.models.schemas.design import (
+    MAX_UNIT_PRICE,
+    PRICE_DECIMAL_PLACES,
     Cable,
     DesignProject,
     Device,
@@ -33,13 +37,9 @@ from app.models.schemas.design import (
 )
 
 _CENT = Decimal("0.01")
-
-_KIND_NAMES: dict[DeviceKind, str] = {
-    DeviceKind.CIRCUIT_BREAKER: "Circuit-breaker",
-    DeviceKind.RESIDUAL_CURRENT_DEVICE: "Residual current circuit-breaker",
-    DeviceKind.CONTACTOR: "Contactor",
-    DeviceKind.SURGE_PROTECTOR: "Surge protective device",
-}
+_PRICE_QUANTUM = Decimal(1).scaleb(-PRICE_DECIMAL_PLACES)
+#: PriceListEntry.key's max_length.
+_MAX_KEY = 120
 
 
 def _plain(value: Decimal | None) -> str:
@@ -107,23 +107,30 @@ class _Item:
     entry: PriceListEntry | None
 
 
-def _device_name(device: Device, part: Part | None) -> str:
+def _device_name(device: Device, part: Part | None, say: Words) -> str:
     if part:
         return f"{part.manufacturer} {part.type_number}"
     rating = device_key(device).split(":", 1)[-1].replace(":", " ")
-    return f"{_KIND_NAMES.get(device.kind, device.kind.value)} {rating}"
+    return f"{say(KIND_NAMES[device.kind])} {rating}"
 
 
-def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation:
+def price_project(
+    project: DesignProject, pricing: PricingSettings, *, language: str = "en"
+) -> Quotation:
     """Price a designed project.
 
     Args:
         project: The project, designated.
         pricing: The company's prices and rates.
+        language: The language the lines this module writes are said in
+            (a device without an article, a cable, the labour lines). A
+            supplier's description and a part's manufacturer and type are
+            printed as they are. Units stay "pcs" and "m": codes, as keys are.
 
     Returns:
         The quotation, with every unpriced line named.
     """
+    say = Words(language)
     prices = {_normalise(entry.key): entry for entry in pricing.price_list}
 
     def find(*keys: str | None) -> tuple[str, PriceListEntry | None]:
@@ -152,14 +159,16 @@ def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation
                 device_key(device),
             )
             label = f"{prefix}-{device.designation.product}" if device.designation else device.id
-            add(key, _Item(_device_name(device, part), "pcs", Decimal(1), [label], entry))
+            add(key, _Item(_device_name(device, part, say), "pcs", Decimal(1), [label], entry))
         for cable in board.cables:
             length = cable.length_m or pricing.cable_length_m
             key, entry = find(cable_key(cable))
             label = f"{prefix}-{cable.designation.product}" if cable.designation else cable.id
-            name = (
-                f"Cable {cable.cores}G{_plain(cable.cross_section_mm2)} "
-                f"{cable.material} {cable.insulation}"
+            name = say(
+                "Cable {size} {material} {insulation}",
+                size=f"{cable.cores}G{_plain(cable.cross_section_mm2)}",
+                material=cable.material,
+                insulation=cable.insulation,
             )
             # Parallel runs are bought as that many lengths of the one cable.
             metres = (length or Decimal(0)) * cable.parallel
@@ -197,9 +206,9 @@ def price_project(project: DesignProject, pricing: PricingSettings) -> Quotation
     boards = len(project.boards)
     labour = Decimal(0)
     for description, quantity, rate in (
-        ("Wiring and testing, per circuit", Decimal(circuits), pricing.labour_per_circuit),
-        ("Assembly and testing, per board", Decimal(boards), pricing.labour_per_board),
-        ("Enclosure, busbars and accessories", Decimal(boards), pricing.enclosure_price),
+        (say("Wiring and testing, per circuit"), Decimal(circuits), pricing.labour_per_circuit),
+        (say("Assembly and testing, per board"), Decimal(boards), pricing.labour_per_board),
+        (say("Enclosure, busbars and accessories"), Decimal(boards), pricing.enclosure_price),
     ):
         if rate > 0:
             total = _money(rate * quantity)
@@ -269,16 +278,29 @@ def read_price_list(data: bytes) -> list[PriceListEntry]:
                 continue
             key = row[key_col].strip()
             raw = row[price_col].replace(",", "").strip()
-            if not key or not raw:
+            # An over-long key is skipped as an unreadable row is. Truncating
+            # it made two different keys sharing their first characters one
+            # key, so a line could be priced by the wrong row.
+            if not key or not raw or len(key) > _MAX_KEY:
                 continue
             try:
                 price = Decimal(raw)
             except ArithmeticError:
                 continue
+            # "NaN", "Infinity", a negative or an absurd figure is no price:
+            # skipped as an unreadable one is, so the line stays unpriced.
+            if not price.is_finite() or not Decimal(0) <= price <= MAX_UNIT_PRICE:
+                continue
+            # A spreadsheet's binary float ("0.30000000000000004") carries
+            # more places than a price holds: rounded far below any currency's
+            # smallest unit, rather than dropping a real price for its noise.
+            exponent = price.as_tuple().exponent
+            if isinstance(exponent, int) and -exponent > PRICE_DECIMAL_PLACES:
+                price = price.quantize(_PRICE_QUANTUM, rounding=ROUND_HALF_UP)
             description = (
                 row[desc_col].strip() if desc_col is not None and desc_col < len(row) else ""
             )
-            entries.append(PriceListEntry(key=key, description=description, unit_price=price))
+            entries.append(PriceListEntry(key=key, description=description[:300], unit_price=price))
         if not entries:
             raise ValidationError(
                 "the price list has no row with both a key and a price", code="price_list_empty"

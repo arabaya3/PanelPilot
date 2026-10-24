@@ -22,13 +22,50 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SerializationInfo,
+    SerializeAsAny,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    field_serializer,
+    model_validator,
+)
 
 from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
 from app.models.schemas.plc import PlcValidationResult
 
 
-class DesignNote(BaseModel):
+class StrictModel(BaseModel):
+    """A model that refuses fields it does not define.
+
+    Used for everything a client sends a design in: a field this service does
+    not know (a ``standby_supply``, a load's ``colour``) is a 422 naming it,
+    never silently dropped, so a design is never taken to cover what it
+    ignored. Free-form company settings (``profile``) stay a plain mapping:
+    ``app.design.profile.load_profile`` refuses unknown settings itself, at
+    every level, since ``CompanyProfile`` and ``CircuitRule`` are strict too.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# Bounds on free text a client sends in a design, so an oversized field is a
+# 422 rather than a page-long title block. They match the limits a saved
+# project already has: its name (200), a revision note (500), an approver (100).
+_NAME_TEXT = 200
+_NOTE_TEXT = 500
+_PERSON_TEXT = 100
+_SHORT_TEXT = 40
+#: A title block lists at most every revision a project holds
+#: (``app.domain.design_projects.MAX_REVISIONS``).
+_MAX_TITLE_REVISIONS = 200
+
+
+class DesignNote(StrictModel):
     """Something the design tells its reviewer.
 
     Attributes:
@@ -41,6 +78,46 @@ class DesignNote(BaseModel):
     code: str
     params: dict[str, str] = Field(default_factory=dict)
     text: str
+
+
+class FindingSeverity(StrEnum):
+    """How much a finding stands in the way of issuing a design."""
+
+    #: The design breaks a sourced rule or is incomplete: it cannot be approved.
+    BLOCKING = "blocking"
+    #: An engineer must look at it before relying on the design.
+    WARNING = "warning"
+    #: Said for the record; nothing to decide.
+    INFO = "info"
+
+
+class DesignFinding(StrictModel):
+    """One thing a check of a design found, with where to fix it.
+
+    Attributes:
+        code: Stable identifier: a ``DesignNote`` code, or an integrity
+            check's own (``app.design.integrity``).
+        severity: From ``app.design.findings_policy``.
+        board_id: The board it is on, where it is on one.
+        circuit_id: The circuit, where it is about one.
+        device_id: The device, where it is about one.
+        values: The values it names, as text.
+        message: In English; the page renders ``code`` in the reader's language.
+        requires_engineering_confirmation: Whether an engineer must confirm
+            it before the design is relied on.
+        source: The rule it comes from, or ``"policy"`` where the severity is
+            this service's classification rather than a cited rule's.
+    """
+
+    code: str
+    severity: FindingSeverity
+    board_id: str | None = None
+    circuit_id: str | None = None
+    device_id: str | None = None
+    values: dict[str, str] = Field(default_factory=dict)
+    message: str
+    requires_engineering_confirmation: bool = False
+    source: str
 
 
 class MotorStarter(StrEnum):
@@ -105,7 +182,7 @@ class Phase(StrEnum):
     THREE_PHASE = "L1L2L3"
 
 
-class Designation(BaseModel):
+class Designation(StrictModel):
     """An IEC 81346-1 reference designation.
 
     Attributes:
@@ -129,7 +206,7 @@ class Designation(BaseModel):
         return "".join(parts)
 
 
-class Part(BaseModel):
+class Part(StrictModel):
     """An orderable article.
 
     Attributes:
@@ -152,7 +229,7 @@ class Part(BaseModel):
     width_mm: Decimal | None = None
 
 
-class Device(BaseModel):
+class Device(StrictModel):
     """One device in a board.
 
     Attributes:
@@ -184,7 +261,7 @@ class Device(BaseModel):
     upstream_id: str | None = None
 
 
-class Cable(BaseModel):
+class Cable(StrictModel):
     """An outgoing cable.
 
     Attributes:
@@ -209,7 +286,9 @@ class Cable(BaseModel):
     cross_section_mm2: Decimal
     material: str = "Cu"
     insulation: str = "PVC"
-    length_m: Decimal | None = None
+    # Bounded as a load's length is (it is copied from one): a sent project's
+    # cable length multiplies a per-metre price in the quotation.
+    length_m: Decimal | None = Field(default=None, gt=0, le=10000, allow_inf_nan=False)
     part_key: str | None = None
     withstand_ka2s: Decimal | None = None
     parallel: int = Field(default=1, ge=1, le=6)
@@ -222,7 +301,7 @@ class Cable(BaseModel):
         return f"{runs}{self.cores}G{section}"
 
 
-class Circuit(BaseModel):
+class Circuit(StrictModel):
     """An outgoing circuit.
 
     A load, the devices that switch and protect it, and the cable feeding it.
@@ -261,7 +340,7 @@ class Circuit(BaseModel):
     earth_loop_ohm: Decimal | None = None
 
 
-class Supply(BaseModel):
+class Supply(StrictModel):
     """The board's incoming supply.
 
     Attributes:
@@ -283,7 +362,7 @@ class Supply(BaseModel):
     earth_loop_ohm: Decimal | None = Field(default=None, gt=0, le=100)
 
 
-class Board(BaseModel):
+class Board(StrictModel):
     """One panel or distribution board.
 
     Attributes:
@@ -360,7 +439,7 @@ class Board(BaseModel):
         raise KeyError(cable_id)
 
 
-class Revision(BaseModel):
+class Revision(StrictModel):
     """One issue of the drawing set.
 
     Attributes:
@@ -372,15 +451,15 @@ class Revision(BaseModel):
         approved_by: Initials or name.
     """
 
-    index: str
-    date: str
-    description: str = ""
-    drawn_by: str = ""
-    checked_by: str = ""
-    approved_by: str = ""
+    index: str = Field(max_length=_SHORT_TEXT)
+    date: str = Field(max_length=_SHORT_TEXT)
+    description: str = Field(default="", max_length=_NOTE_TEXT)
+    drawn_by: str = Field(default="", max_length=_PERSON_TEXT)
+    checked_by: str = Field(default="", max_length=_PERSON_TEXT)
+    approved_by: str = Field(default="", max_length=_PERSON_TEXT)
 
 
-class ProjectInfo(BaseModel):
+class ProjectInfo(StrictModel):
     """What the title block prints.
 
     Attributes:
@@ -392,15 +471,15 @@ class ProjectInfo(BaseModel):
         revisions: Issues of the drawing set, oldest first.
     """
 
-    name: str
-    number: str = ""
-    customer: str = ""
-    consultant: str = ""
-    contractor: str = ""
-    revisions: list[Revision] = Field(default_factory=list)
+    name: str = Field(max_length=_NAME_TEXT)
+    number: str = Field(default="", max_length=_NAME_TEXT)
+    customer: str = Field(default="", max_length=_NAME_TEXT)
+    consultant: str = Field(default="", max_length=_NAME_TEXT)
+    contractor: str = Field(default="", max_length=_NAME_TEXT)
+    revisions: list[Revision] = Field(default_factory=list, max_length=_MAX_TITLE_REVISIONS)
 
 
-class DesignProject(BaseModel):
+class DesignProject(StrictModel):
     """A whole design: what every output is generated from.
 
     Attributes:
@@ -486,7 +565,7 @@ class WireNumbering(StrEnum):
     SOURCE_TARGET = "source_target"
 
 
-class CircuitRule(BaseModel):
+class CircuitRule(StrictModel):
     """A company's rule for one kind of load.
 
     Attributes:
@@ -504,7 +583,7 @@ class CircuitRule(BaseModel):
     cable_mm2: Decimal | None = None
 
 
-class CompanyProfile(BaseModel):
+class CompanyProfile(StrictModel):
     """How one company issues a design.
 
     Naming, numbering, title block, page order, brands and design rules. A
@@ -607,7 +686,7 @@ class CompanyProfile(BaseModel):
         return self
 
 
-class LoadInput(BaseModel):
+class LoadInput(StrictModel):
     """One line of a distribution board's load schedule.
 
     Attributes:
@@ -627,13 +706,13 @@ class LoadInput(BaseModel):
             checked (and if need be enlarged) for voltage drop.
     """
 
-    description: str = Field(min_length=1)
+    description: str = Field(min_length=1, max_length=_NAME_TEXT)
     load: LoadKind
     power_kw: Decimal = Field(gt=0)
     phases: int = Field(default=1)
     power_factor: Decimal | None = Field(default=None, gt=0, le=1)
     controlled: bool = False
-    feeds: str | None = None
+    feeds: str | None = Field(default=None, max_length=40)
     starter: MotorStarter | None = None
     length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
@@ -644,7 +723,7 @@ class LoadInput(BaseModel):
         return self
 
 
-class InstallationConditions(BaseModel):
+class InstallationConditions(StrictModel):
     """How the outgoing cables are run, for their sizing.
 
     Attributes:
@@ -662,7 +741,7 @@ class InstallationConditions(BaseModel):
     insulation_rating_c: int = 70
 
 
-class DistributionBoardRequest(BaseModel):
+class DistributionBoardRequest(StrictModel):
     """What a distribution board is designed from.
 
     Attributes:
@@ -679,15 +758,15 @@ class DistributionBoardRequest(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=40)
-    location: str | None = None
+    location: str | None = Field(default=None, max_length=_NAME_TEXT)
     supply: Supply = Field(default_factory=Supply)
     loads: list[LoadInput] = Field(min_length=1, max_length=500)
     conditions: InstallationConditions = Field(default_factory=InstallationConditions)
-    fed_from: str | None = None
+    fed_from: str | None = Field(default=None, max_length=40)
     feeder_length_m: Decimal | None = Field(default=None, gt=0, le=10000)
 
 
-class BoardDesignRequest(BaseModel):
+class BoardDesignRequest(StrictModel):
     """A distribution board to design, under a company's profile.
 
     Attributes:
@@ -702,7 +781,7 @@ class BoardDesignRequest(BaseModel):
     profile: dict[str, Any] | None = None
 
 
-class ProjectDesignRequest(BaseModel):
+class ProjectDesignRequest(StrictModel):
     """A project of one or more boards to design, under a company's profile.
 
     Attributes:
@@ -753,7 +832,7 @@ class ExportFormat(StrEnum):
     JSON = "json"
 
 
-class DesignExportRequest(BaseModel):
+class DesignExportRequest(StrictModel):
     """A project to export, possibly edited since it was designed.
 
     Attributes:
@@ -767,6 +846,45 @@ class DesignExportRequest(BaseModel):
     profile: dict[str, Any] | None = None
     format: ExportFormat
     pricing: PricingSettings | None = None
+
+
+class ExportPurpose(StrEnum):
+    """What a saved revision is exported for."""
+
+    #: For review: labelled draft, or review-approved as a study.
+    REVIEW = "review"
+    #: For execution on site: refused until an execution package exists.
+    EXECUTION = "execution"
+
+
+class RevisionExportRequest(StrictModel):
+    """A saved revision to export, from the design the server stored for it.
+
+    Attributes:
+        format: The file to produce.
+        pricing: The company's prices, for a quotation export.
+        purpose: Review, or execution (always refused for now).
+    """
+
+    format: ExportFormat
+    pricing: PricingSettings | None = None
+    purpose: ExportPurpose = ExportPurpose.REVIEW
+
+
+class ExportStatus(StrEnum):
+    """What a saved revision can be exported as now."""
+
+    #: Saved with no server-built design (older, or its design was refused):
+    #: save it again to validate it.
+    NOT_VALIDATED = "not_validated"
+    #: Its rules or company profile changed since it was saved: save it again.
+    STALE = "stale"
+    #: It has blocking findings: exported as a draft only, never approved.
+    BLOCKED = "blocked"
+    #: Validated, not approved: exported as a draft.
+    DRAFT = "draft"
+    #: Approved for this exact design: exported as a review-approved study.
+    REVIEW_APPROVED = "review_approved"
 
 
 class LoadScheduleImport(BaseModel):
@@ -813,7 +931,7 @@ class ScheduleSuggestionOutput(BaseModel):
     assumptions: list[str] = Field(max_length=20)
 
 
-class ScheduleSuggestionRequest(BaseModel):
+class ScheduleSuggestionRequest(StrictModel):
     """A plain description of what a board feeds.
 
     Attributes:
@@ -841,7 +959,23 @@ class LoadScheduleSuggestion(BaseModel):
     assumptions: list[DesignNote]
 
 
-class PriceListEntry(BaseModel):
+#: The largest unit price, rate or per-board price accepted, in any currency:
+#: far above any real panel item, low enough that no total overflows a
+#: readable figure. Bounds, not engineering values.
+MAX_UNIT_PRICE = Decimal("1000000000")
+#: The longest default cable length priced, in metres.
+MAX_CABLE_LENGTH_M = Decimal("10000")
+#: The most price-list entries one request carries.
+MAX_PRICE_LIST = 20000
+#: The finest fraction a price, rate or percentage carries. Far below any
+#: currency's smallest unit, and enough for a per-metre price; a figure with
+#: more places is float noise or an attack on the arithmetic, not a price.
+PRICE_DECIMAL_PLACES = 6
+#: Digits in a bounded price: MAX_UNIT_PRICE's ten before the point, six after.
+PRICE_MAX_DIGITS = 16
+
+
+class PriceListEntry(StrictModel):
     """One price from a company's price list.
 
     Attributes:
@@ -854,15 +988,21 @@ class PriceListEntry(BaseModel):
     """
 
     key: str = Field(min_length=1, max_length=120)
-    description: str = ""
-    unit_price: Decimal = Field(ge=0)
+    description: str = Field(default="", max_length=300)
+    unit_price: Decimal = Field(
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
 
 
-class PricingSettings(BaseModel):
+class PricingSettings(StrictModel):
     """How a company prices a board.
 
     Attributes:
-        currency: Printed beside every amount.
+        currency: Printed beside every amount: an ISO 4217 code.
         price_list: The company's prices.
         cable_length_m: The length priced for an outgoing cable whose own
             length is not given; ``None`` leaves such cables unpriced.
@@ -873,14 +1013,56 @@ class PricingSettings(BaseModel):
         vat_percent: Added last.
     """
 
-    currency: str = Field(default="JOD", min_length=1, max_length=8)
-    price_list: list[PriceListEntry] = Field(default_factory=list)
-    cable_length_m: Decimal | None = Field(default=None, gt=0)
-    labour_per_circuit: Decimal = Field(default=Decimal(0), ge=0)
-    labour_per_board: Decimal = Field(default=Decimal(0), ge=0)
-    enclosure_price: Decimal = Field(default=Decimal(0), ge=0)
-    markup_percent: Decimal = Field(default=Decimal(0), ge=0, le=500)
-    vat_percent: Decimal = Field(default=Decimal(0), ge=0, le=100)
+    currency: str = Field(default="JOD", pattern=r"^[A-Z]{3}$")
+    price_list: list[PriceListEntry] = Field(default_factory=list, max_length=MAX_PRICE_LIST)
+    cable_length_m: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_CABLE_LENGTH_M,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    labour_per_circuit: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    labour_per_board: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    enclosure_price: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=MAX_UNIT_PRICE,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    markup_percent: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=500,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
+    vat_percent: Decimal = Field(
+        default=Decimal(0),
+        ge=0,
+        le=100,
+        max_digits=PRICE_MAX_DIGITS,
+        decimal_places=PRICE_DECIMAL_PLACES,
+        allow_inf_nan=False,
+    )
 
 
 class QuotationLine(BaseModel):
@@ -934,7 +1116,37 @@ class Quotation(BaseModel):
     complete: bool
 
 
-class QuotationRequest(BaseModel):
+#: What a quotation priced from a client-sent project says it is.
+PROVISIONAL_ESTIMATE_LABEL = (
+    "Provisional estimate: not a quotation, not for execution. "
+    "Priced from an unsaved design sent by the browser; "
+    "a quotation is exported from a saved revision."
+)
+
+
+class QuotationEstimate(Quotation):
+    """A provisional estimate: a project the client sent, priced and checked.
+
+    Nothing in it is persisted, approved or issued. The project is the
+    client's, so it is re-designated and integrity-checked on the server and
+    its findings are returned beside the prices: a tampered rating is a
+    blocking finding here, as on a draft export. It carries no revision,
+    checker or approver.
+
+    Attributes:
+        status: Always ``"provisional_estimate"``.
+        label: In English; the page renders ``status`` in the reader's language.
+        findings: The integrity checks and notes on the project as sent.
+        blocking: Whether any finding is blocking.
+    """
+
+    status: Literal["provisional_estimate"] = "provisional_estimate"
+    label: str = PROVISIONAL_ESTIMATE_LABEL
+    findings: list[DesignFinding]
+    blocking: bool
+
+
+class QuotationRequest(StrictModel):
     """A project to price.
 
     Attributes:
@@ -966,7 +1178,7 @@ class PlcIoPoint(BaseModel):
     description: str
 
 
-class PlcProgramRequest(BaseModel):
+class PlcProgramRequest(StrictModel):
     """A project whose PLC-switched circuits need a control program.
 
     Attributes:
@@ -996,9 +1208,10 @@ class PlcProgramResponse(BaseModel):
 
 # The export request names the pricing settings, defined after it.
 DesignExportRequest.model_rebuild()
+RevisionExportRequest.model_rebuild()
 
 
-class SaveProjectRequest(BaseModel):
+class SaveProjectRequest(StrictModel):
     """A new project to save, as its first revision.
 
     Attributes:
@@ -1012,7 +1225,7 @@ class SaveProjectRequest(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
-class ReviseProjectRequest(BaseModel):
+class ReviseProjectRequest(StrictModel):
     """A new revision of a saved project.
 
     Attributes:
@@ -1030,11 +1243,25 @@ class RevisionSummary(BaseModel):
     Attributes:
         number: 1 for the first save, then in order.
         note: What it is.
-        author: Who saved it.
+        author: The display name of the account that saved it, read from
+            the tenant's users when the response is built; ``""`` when that
+            account has no display name. Never its email.
         created_at: When, ISO 8601.
         approved_by: The engineer who approved it, as the title block
             prints them; ``None`` while it is not approved.
         approved_at: When, ISO 8601.
+        approver_account_recorded: Whether the server recorded the
+            signed-in account that approved it (from the approver's token,
+            never from the request). ``False`` while it is not approved, and
+            for an approval recorded before accounts were.
+        approver_name: That account's display name, read from the tenant's
+            users when the response is built; ``None`` when no account is
+            recorded or it has no display name, which a client shows as "a
+            team member". The account's email, kept in the database as the
+            audit identity, is never sent.
+        validated: Whether the server designed it from its request when it
+            was saved, and holds that design; ``False`` for an older one.
+        export_status: What it can be exported as now.
     """
 
     number: int
@@ -1043,16 +1270,22 @@ class RevisionSummary(BaseModel):
     created_at: str
     approved_by: str | None = None
     approved_at: str | None = None
+    approver_account_recorded: bool = False
+    approver_name: str | None = None
+    validated: bool = False
+    export_status: ExportStatus = ExportStatus.NOT_VALIDATED
 
 
-class ApproveRevisionRequest(BaseModel):
+class ApproveRevisionRequest(StrictModel):
     """An engineer's approval of one revision.
 
     Attributes:
         approver: Their name as the title block is to print it.
     """
 
-    approver: str = Field(min_length=1, max_length=100)
+    approver: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=_PERSON_TEXT)
+    ]
 
 
 class ProjectSummary(BaseModel):
@@ -1092,6 +1325,18 @@ class SavedProject(BaseModel):
         revisions: Every revision, oldest first.
         revision: The number of the revision ``request`` is.
         request: That revision as entered.
+        findings: What the checks found in the design the server built for
+            that revision when it was saved; empty for an older revision.
+        validated: Whether that revision holds a server-built design.
+        snapshot_sha256: The SHA-256 of that design's canonical JSON.
+        rules_version: The calculation rules it was designed under.
+        approved_snapshot_sha256: The design its approval is bound to;
+            ``None`` while it is not approved (or approved before approvals
+            were bound to a design).
+        export_status: What it can be exported as now.
+        execution_blockers: Why it cannot be exported for execution: the
+            parts of an execution package this service does not produce yet,
+            then ``approval`` and each blocking finding's code, as they apply.
     """
 
     id: str
@@ -1099,6 +1344,41 @@ class SavedProject(BaseModel):
     revisions: list[RevisionSummary]
     revision: int
     request: ProjectDesignRequest
+    findings: list[DesignFinding] = Field(default_factory=list)
+    validated: bool = False
+    snapshot_sha256: str | None = None
+    rules_version: str | None = None
+    approved_snapshot_sha256: str | None = None
+    export_status: ExportStatus = ExportStatus.NOT_VALIDATED
+    execution_blockers: list[str] = Field(default_factory=list)
+
+    #: The revision's request as stored, when it no longer validates against
+    #: today's bounds (an older revision's 600-character description): it is
+    #: sent back as it is, for the engineer to correct and save again, rather
+    #: than the revision failing to open. Set through ``as_stored``.
+    _stored_request: dict[str, Any] | None = PrivateAttr(default=None)
+
+    def as_stored(self, request: dict[str, Any]) -> SavedProject:
+        """Send ``request``, JSON-shaped as stored, in place of ``request``."""
+        self._stored_request = request
+        return self
+
+    @field_serializer(
+        "request",
+        mode="wrap",
+        # The schema stays the request's; a stored request (a dict) is sent as is.
+        return_type=SerializeAsAny[ProjectDesignRequest],
+    )
+    def _request_as_stored(
+        self,
+        value: ProjectDesignRequest,
+        handler: SerializerFunctionWrapHandler,
+        info: SerializationInfo,
+    ) -> Any:
+        del info
+        if self._stored_request is not None:
+            return self._stored_request
+        return handler(value)
 
 
 class MarketInfo(BaseModel):
@@ -1146,7 +1426,7 @@ class CompanySettings(BaseModel):
     updated_at: str | None = None
 
 
-class SaveCompanySettings(BaseModel):
+class SaveCompanySettings(StrictModel):
     """Company settings to save.
 
     Attributes:

@@ -24,6 +24,8 @@ TENANT_SCOPED = {
     "escalation_items",
     # Issued credentials belong to the tenant that owns them.
     "refresh_tokens",
+    # A sign-in: whose it is, and whether a logout ended it.
+    "auth_sessions",
     # Scoped from creation: a trial gets a provisional tenant immediately,
     # because diagnostic_sessions.tenant_id is NOT NULL. See BE-002.
     "anonymous_sessions",

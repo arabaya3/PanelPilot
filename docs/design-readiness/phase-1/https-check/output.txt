@@ -1,0 +1,21 @@
+API: https://127.0.0.1:49275 (ENVIRONMENT=staging, TLS from a throwaway CA)
+WEB_ORIGINS=https://app.panelpilot.test
+PASS  signup over HTTPS answers 201  -- 201
+Set-Cookie (value elided): __Host-pp_refresh=<token>; HttpOnly; Max-Age=2592000; Path=/; SameSite=strict; Secure
+PASS  cookie is named __Host-pp_refresh
+PASS  cookie is Secure
+PASS  cookie is HttpOnly
+PASS  cookie is SameSite=Strict
+PASS  cookie Path=/
+PASS  cookie has no Domain
+PASS  body carries no refresh token
+PASS  untrusted origin refused (403 csrf_origin_refused)  -- 403
+PASS  null origin refused (403 csrf_origin_refused)  -- 403
+PASS  missing CSRF header refused (403 csrf_header_missing)  -- 403
+PASS  trusted origin refreshes (200)  -- 200
+PASS  logout answers 204  -- 204
+Logout Set-Cookie: __Host-pp_refresh=""; expires=Sat, 24 Oct 2026 13:28:29 GMT; HttpOnly; Max-Age=0; Path=/; SameSite=strict; Secure
+PASS  logout clears __Host-pp_refresh with the same attributes
+PASS  the cookie no longer refreshes after logout (401)
+
+ALL CHECKS PASSED

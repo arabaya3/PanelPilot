@@ -40,7 +40,7 @@ const DESIGNED = {
         devices: [],
         cables: [],
         circuits: [],
-        notes: ['Fed from MDB.'],
+        notes: [{ code: 'from_a_newer_api', params: {}, text: 'Fed from MDB.' }],
       },
     ],
   },

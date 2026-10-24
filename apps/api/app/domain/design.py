@@ -1,8 +1,12 @@
 """Panel design: design a board, and export a project in any format.
 
-Routes call these; these call ``app.design``. Nothing is persisted: a project
-is returned to the caller, who sends it back to export it, so an engineer's
-edits between the two are what gets exported.
+Routes call these; these call ``app.design``. Nothing is persisted here: a
+project is returned to the caller, who may send it back to export it as a
+**draft**. A draft is whatever the client sent, so it is never trusted: it is
+re-checked (``app.design.integrity``), its checker and approver are blanked,
+and every format is marked ``DRAFT — NOT FOR EXECUTION`` with the findings
+(``app.design.marking``). An export that carries an approval goes through a
+saved revision instead (``app.domain.design_projects.export_revision``).
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,8 +23,7 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from app.ai import schedule_writer
-from app.ai.plc.validation import validate_plc_code
-from app.core.errors import ValidationError
+from app.core.errors import ConflictError, ValidationError
 from app.design import (
     calc_report,
     designations,
@@ -28,7 +32,9 @@ from app.design import (
     export_ecad,
     export_lists,
     export_qet,
+    integrity,
     markets,
+    marking,
     markup_suggestions,
     markups,
     motors,
@@ -43,6 +49,7 @@ from app.design import (
     schedule_split,
 )
 from app.design.notes import note
+from app.design.sheet import Sheet
 from app.domain import billing
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser
@@ -59,12 +66,12 @@ from app.models.schemas.design import (
     MarkupItem,
     MarkupReport,
     MarkupSuggestion,
-    PlcIoPoint,
     PlcProgramRequest,
     PlcProgramResponse,
     PriceListEntry,
+    PricingSettings,
     ProjectDesignRequest,
-    Quotation,
+    QuotationEstimate,
     QuotationRequest,
     ScheduleSuggestionRequest,
 )
@@ -108,6 +115,62 @@ ECAD_FORMATS = frozenset(
 )
 
 
+#: The formats whose ``DRAFT — NOT FOR EXECUTION`` mark is only a comment,
+#: which a normal import strips, so the file would arrive unmarked. Until a
+#: mark that survives import is shown, none of them is exported, as a draft or
+#: as a revision. The rest stay: the PDFs print the mark on every page, the DXF
+#: carries it as visible TEXT entities, and the project JSON as its
+#: ``export_status`` field.
+UNPROTECTED_FORMATS = frozenset(
+    {
+        # CSV: the mark is a leading comment line; spreadsheet and ECAD list
+        # imports drop or misread it.
+        ExportFormat.DEVICES_CSV,
+        ExportFormat.PARTS_CSV,
+        ExportFormat.CABLES_CSV,
+        ExportFormat.CIRCUITS_CSV,
+        ExportFormat.TERMINALS_CSV,
+        ExportFormat.EPLAN_DEVICES_CSV,
+        ExportFormat.ACE_COMPONENTS_CSV,
+        ExportFormat.ACE_TERMINALS_CSV,
+        ExportFormat.QUOTATION_CSV,
+        ExportFormat.PLC_IO_CSV,
+        # QElectroTech and AutomationML: the mark is an XML comment, which an
+        # XML parser discards on import.
+        ExportFormat.QET,
+        ExportFormat.AML,
+        # PLC program (ST): the mark is a source comment, which a PLC IDE does
+        # not keep visible once the program is imported and compiled.
+        ExportFormat.PLC_ST,
+    }
+)
+
+
+def refuse_unprotected(export_format: ExportFormat) -> None:
+    """Refuse a format that cannot keep a draft mark once imported.
+
+    Args:
+        export_format: The file asked for.
+
+    Raises:
+        ConflictError: ``export_format_unprotected`` if ``export_format`` is
+            in ``UNPROTECTED_FORMATS``.
+    """
+    if export_format not in UNPROTECTED_FORMATS:
+        return
+    allowed = ",".join(f.value for f in ExportFormat if f not in UNPROTECTED_FORMATS)
+    raise ConflictError(
+        f"{export_format.value} cannot keep a visible draft mark once imported; "
+        f"export one of: {allowed}",
+        code="export_format_unprotected",
+        params={
+            "format": export_format.value,
+            "reason": "draft_mark_not_persistent",
+            "allowed": allowed,
+        },
+    )
+
+
 @dataclass(frozen=True)
 class ExportedFile:
     """A file ready to send.
@@ -131,6 +194,21 @@ def _profile(settings: dict[str, Any] | None) -> CompanyProfile:
     if not settings:
         return profile.default_profile()
     return profile.load_profile(settings)
+
+
+def resolve_profile(settings: dict[str, Any] | None) -> CompanyProfile:
+    """The company profile a request's settings resolve to, over the default.
+
+    Args:
+        settings: The company's settings as entered; ``None`` for the default.
+
+    Returns:
+        The profile.
+
+    Raises:
+        ValidationError: If a setting is unknown or malformed.
+    """
+    return _profile(settings)
 
 
 def _slug(name: str) -> str:
@@ -178,6 +256,27 @@ def design_board(
     )
 
 
+def build_design(request: ProjectDesignRequest) -> tuple[DesignProject, CompanyProfile]:
+    """Design every board in a request and designate the project under its profile.
+
+    Args:
+        request: Title-block data, each board's schedule, and the profile.
+
+    Returns:
+        The designated project, and the profile it was designed under.
+
+    Raises:
+        ValidationError: If the profile is malformed, the boards' feeding is
+            inconsistent, or a load cannot be protected or cabled.
+    """
+    company = _profile(request.profile)
+    boards = project.design_boards(request.boards, company)
+    designed = designations.designate_project(
+        DesignProject(info=request.info, boards=boards, parts=motors.parts_for(boards)), company
+    )
+    return designed, company
+
+
 def design_project(
     *, session: Session, user: CurrentUser, request: ProjectDesignRequest
 ) -> BoardDesignResponse:
@@ -196,28 +295,178 @@ def design_project(
             inconsistent, or a load cannot be protected or cabled.
     """
     del session
-    company = _profile(request.profile)
-    boards = project.design_boards(request.boards, company)
-    designed = designations.designate_project(
-        DesignProject(info=request.info, boards=boards, parts=motors.parts_for(boards)), company
-    )
+    designed, company = build_design(request)
     logger.info(
         "design.project_designed",
         tenant_id=user.tenant_id,
-        boards=len(boards),
-        circuits=sum(len(board.circuits) for board in boards),
+        boards=len(designed.boards),
+        circuits=sum(len(board.circuits) for board in designed.boards),
         profile=company.key,
     )
     return BoardDesignResponse(project=designed, profile=company)
 
 
+def require_format(*, session: Session, user: CurrentUser, export_format: ExportFormat) -> None:
+    """Refuse a format the caller's plan does not include.
+
+    Args:
+        session: Open database session, for the plan.
+        user: The authenticated caller.
+        export_format: The file asked for.
+
+    Raises:
+        AuthorizationError: If the caller's plan does not include the format.
+    """
+    if export_format in ECAD_FORMATS:
+        billing.require_feature(session=session, user=user, feature=Feature.ECAD_EXPORT)
+    elif export_format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
+        billing.require_feature(session=session, user=user, feature=Feature.QUOTATION)
+
+
+def drawing_sheets(
+    designated: DesignProject, company: CompanyProfile, mark: marking.ExportMark
+) -> list[Sheet]:
+    """A project's drawing set as exported: every page marked, the findings after.
+
+    Args:
+        designated: The project, designated under ``company``.
+        company: The company whose pages apply.
+        mark: The export's mark.
+
+    Returns:
+        The sheets.
+    """
+    sheets = pages.build_drawing_set(
+        designated, company, appended=marking.findings_sheet_count(mark)
+    )
+    return marking.mark_sheets(sheets, mark)
+
+
+#: The CSV lists, each written from the project alone.
+_LISTS: dict[ExportFormat, Callable[[DesignProject], str]] = {
+    ExportFormat.DEVICES_CSV: export_lists.device_list,
+    ExportFormat.PARTS_CSV: export_lists.parts_list,
+    ExportFormat.CABLES_CSV: export_lists.cable_list,
+    ExportFormat.CIRCUITS_CSV: export_lists.circuit_schedule,
+    ExportFormat.TERMINALS_CSV: export_lists.terminal_list,
+    ExportFormat.EPLAN_DEVICES_CSV: export_ecad.eplan_device_list,
+    ExportFormat.ACE_COMPONENTS_CSV: export_ecad.ace_component_list,
+    ExportFormat.ACE_TERMINALS_CSV: export_ecad.ace_terminal_list,
+}
+
+
+def render_export(
+    *,
+    designated: DesignProject,
+    company: CompanyProfile,
+    export_format: ExportFormat,
+    pricing: PricingSettings | None,
+    mark: marking.ExportMark,
+) -> ExportedFile:
+    """Write a designated project as one file, carrying its mark.
+
+    Args:
+        designated: The project, designated under ``company``.
+        company: The company it is issued under.
+        export_format: The file to produce.
+        pricing: The company's prices, for a quotation.
+        mark: The status mark and findings the file carries.
+
+    Returns:
+        The file.
+
+    Raises:
+        ValidationError: If a quotation is asked for without pricing
+            settings, or a control program for a project with no PLC-switched
+            circuit.
+    """
+    content: bytes
+    if export_format is ExportFormat.PDF:
+        sheets = drawing_sheets(designated, company, mark)
+        content = render_pdf.render_pdf(sheets, title=designated.info.name, author=company.name)
+    elif export_format is ExportFormat.DXF:
+        content = export_dxf.export_dxf(drawing_sheets(designated, company, mark))
+    elif export_format is ExportFormat.QET:
+        content = marking.mark_xml(export_qet.export_qet(designated), mark)
+    elif export_format is ExportFormat.AML:
+        content = marking.mark_xml(export_aml.export_aml(designated), mark)
+    elif export_format is ExportFormat.CALCULATIONS_PDF:
+        content = calc_report.render_calculations_pdf(designated, company, mark)
+    elif export_format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
+        if pricing is None:
+            raise ValidationError(
+                "a quotation needs the company's pricing settings", code="quotation_needs_pricing"
+            )
+        priced = quotation.price_project(designated, pricing)
+        content = (
+            quotation_pdf.render_quotation_pdf(priced, designated, company=company.name, mark=mark)
+            if export_format is ExportFormat.QUOTATION_PDF
+            else marking.mark_csv(quotation.quotation_csv(priced), mark).encode("utf-8")
+        )
+    elif export_format in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
+        program = _program(designated)
+        content = (
+            marking.mark_plc_source(program.source, mark).encode("utf-8")
+            if export_format is ExportFormat.PLC_ST
+            else marking.mark_csv(plc_program.io_list_csv(program), mark).encode("utf-8")
+        )
+    elif export_format is ExportFormat.JSON:
+        content = marking.mark_json(designated.model_dump_json(), mark)
+    else:
+        content = marking.mark_csv(_LISTS[export_format](designated), mark).encode("utf-8")
+    media_type, extension = _MEDIA_TYPES[export_format]
+    return ExportedFile(
+        content=content,
+        media_type=media_type,
+        filename=f"{_slug(designated.info.name)}.{extension}",
+        display_name=f"{_unicode_slug(designated.info.name)}.{extension}",
+    )
+
+
+#: What a draft says it is, beside its label.
+DRAFT_IDENTITY = "Unsaved draft: not a saved, validated or approved revision"
+
+
+def _as_draft(sent: DesignProject) -> DesignProject:
+    """The project as a draft prints it: no checker or approver on any revision.
+
+    The revision rows a client sends stay drawing metadata, but who checked
+    and approved a design is recorded only by approving a saved revision, so
+    a draft prints neither.
+    """
+    revisions = [
+        revision.model_copy(update={"checked_by": "", "approved_by": ""})
+        for revision in sent.info.revisions
+    ]
+    return sent.model_copy(update={"info": sent.info.model_copy(update={"revisions": revisions})})
+
+
+def draft_mark(designated: DesignProject) -> marking.ExportMark:
+    """The mark a draft export carries: draft, with the project's findings.
+
+    Args:
+        designated: The project as sent, designated.
+
+    Returns:
+        The mark.
+    """
+    return marking.ExportMark(
+        label=marking.DRAFT_LABEL,
+        identity=DRAFT_IDENTITY,
+        findings=tuple(integrity.project_findings(designated)),
+    )
+
+
 def export_design(
     *, session: Session, user: CurrentUser, request: DesignExportRequest
 ) -> ExportedFile:
-    """Export a project, designated afresh under the company's profile.
+    """Export a project as a draft, designated afresh under the company's profile.
 
     Designations are reassigned on every export, so a circuit an engineer
-    added or removed since the design renumbers cleanly.
+    added or removed since the design renumbers cleanly. The project is the
+    client's, so it is re-checked, its checker and approver are blanked, and
+    the file is marked ``DRAFT — NOT FOR EXECUTION`` with what the checks
+    found.
 
     Args:
         session: Open database session, for the plan; nothing is persisted.
@@ -232,74 +481,30 @@ def export_design(
             for without pricing settings, or a control program for a project
             with no PLC-switched circuit.
         AuthorizationError: If the caller's plan does not include the format.
+        ConflictError: ``export_format_unprotected`` for a format that cannot
+            keep a draft mark once imported.
     """
-    if request.format in ECAD_FORMATS:
-        billing.require_feature(session=session, user=user, feature=Feature.ECAD_EXPORT)
-    elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
-        billing.require_feature(session=session, user=user, feature=Feature.QUOTATION)
+    refuse_unprotected(request.format)
+    require_format(session=session, user=user, export_format=request.format)
     company = _profile(request.profile)
-    project = designations.designate_project(request.project, company)
-    content: bytes
-    if request.format is ExportFormat.PDF:
-        sheets = pages.build_drawing_set(project, company)
-        content = render_pdf.render_pdf(sheets, title=project.info.name, author=company.name)
-    elif request.format is ExportFormat.DXF:
-        content = export_dxf.export_dxf(pages.build_drawing_set(project, company))
-    elif request.format is ExportFormat.QET:
-        content = export_qet.export_qet(project)
-    elif request.format is ExportFormat.AML:
-        content = export_aml.export_aml(project)
-    elif request.format is ExportFormat.DEVICES_CSV:
-        content = export_lists.device_list(project).encode("utf-8")
-    elif request.format is ExportFormat.PARTS_CSV:
-        content = export_lists.parts_list(project).encode("utf-8")
-    elif request.format is ExportFormat.CABLES_CSV:
-        content = export_lists.cable_list(project).encode("utf-8")
-    elif request.format is ExportFormat.CIRCUITS_CSV:
-        content = export_lists.circuit_schedule(project).encode("utf-8")
-    elif request.format is ExportFormat.TERMINALS_CSV:
-        content = export_lists.terminal_list(project).encode("utf-8")
-    elif request.format is ExportFormat.EPLAN_DEVICES_CSV:
-        content = export_ecad.eplan_device_list(project).encode("utf-8")
-    elif request.format is ExportFormat.ACE_COMPONENTS_CSV:
-        content = export_ecad.ace_component_list(project).encode("utf-8")
-    elif request.format is ExportFormat.ACE_TERMINALS_CSV:
-        content = export_ecad.ace_terminal_list(project).encode("utf-8")
-    elif request.format is ExportFormat.CALCULATIONS_PDF:
-        content = calc_report.render_calculations_pdf(project, company)
-    elif request.format in (ExportFormat.QUOTATION_PDF, ExportFormat.QUOTATION_CSV):
-        if request.pricing is None:
-            raise ValidationError(
-                "a quotation needs the company's pricing settings", code="quotation_needs_pricing"
-            )
-        priced = quotation.price_project(project, request.pricing)
-        content = (
-            quotation_pdf.render_quotation_pdf(priced, project, company=company.name)
-            if request.format is ExportFormat.QUOTATION_PDF
-            else quotation.quotation_csv(priced).encode("utf-8")
-        )
-    elif request.format in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
-        program = _program(project)
-        content = (
-            program.source.encode("utf-8")
-            if request.format is ExportFormat.PLC_ST
-            else plc_program.io_list_csv(program).encode("utf-8")
-        )
-    else:
-        content = project.model_dump_json(indent=2).encode("utf-8")
-    media_type, extension = _MEDIA_TYPES[request.format]
+    designated = designations.designate_project(_as_draft(request.project), company)
+    mark = draft_mark(designated)
+    exported = render_export(
+        designated=designated,
+        company=company,
+        export_format=request.format,
+        pricing=request.pricing,
+        mark=mark,
+    )
     logger.info(
         "design.exported",
         tenant_id=user.tenant_id,
         format=request.format.value,
-        bytes=len(content),
+        bytes=len(exported.content),
+        draft=True,
+        blocking=len(integrity.blocking(list(mark.findings))),
     )
-    return ExportedFile(
-        content=content,
-        media_type=media_type,
-        filename=f"{_slug(project.info.name)}.{extension}",
-        display_name=f"{_unicode_slug(project.info.name)}.{extension}",
-    )
+    return exported
 
 
 #: The largest reviewed drawing set read for markups.
@@ -348,8 +553,10 @@ def read_markups(
         if settings is not None and not isinstance(settings, dict):
             raise ValidationError("the company settings are not a JSON object")
         company = _profile(settings)
-        designated = designations.designate_project(designed, company)
-        sheets = pages.build_drawing_set(designated, company)
+        designated = designations.designate_project(_as_draft(designed), company)
+        # Laid out as the exported drawing set is, findings pages included, so
+        # its pages line up with the PDF's.
+        sheets = drawing_sheets(designated, company, draft_mark(designated))
     found, matched = markups.read_markups(data, sheets)
     logger.info(
         "design.markups_read", tenant_id=user.tenant_id, markups=len(found), matched=matched
@@ -442,29 +649,42 @@ def suggest_load_schedule(
     return LoadScheduleSuggestion(loads=loads, assumptions=[*overall, *notes])
 
 
-def price_design(*, user: CurrentUser, request: QuotationRequest) -> Quotation:
-    """Price a project from the company's price list and rates.
+def price_design(*, user: CurrentUser, request: QuotationRequest) -> QuotationEstimate:
+    """Price a client-sent project as a provisional estimate.
+
+    The project is the client's, so nothing here is a quotation: it is
+    designated afresh with no checker or approver on any revision, checked as a
+    draft export is (``app.design.integrity``), and returned labelled
+    ``provisional_estimate`` with its findings, a tampered rating among them as
+    blocking. Nothing is persisted. A quotation is exported from a saved
+    revision (``design_projects.export_revision``).
 
     Args:
         user: The authenticated caller, for the log line.
         request: The project, the profile settings and the pricing.
 
     Returns:
-        The quotation, every unpriced line named.
+        The estimate, every unpriced line named, with the project's findings.
 
     Raises:
         ValidationError: If the profile is malformed.
     """
     company = _profile(request.profile)
-    project = designations.designate_project(request.project, company)
-    result = quotation.price_project(project, request.pricing)
+    project = designations.designate_project(_as_draft(request.project), company)
+    findings = integrity.project_findings(project)
+    blocking = integrity.blocking(findings)
+    # The page's estimate is said in the profile's language; the quotation
+    # exports (PDF and CSV) are English throughout, so they price in English.
+    priced = quotation.price_project(project, request.pricing, language=company.language)
     logger.info(
         "design.priced",
         tenant_id=user.tenant_id,
-        lines=len(result.lines),
-        unpriced=len(result.unpriced),
+        lines=len(priced.lines),
+        unpriced=len(priced.unpriced),
+        provisional=True,
+        blocking=len(blocking),
     )
-    return result
+    return QuotationEstimate(**priced.model_dump(), findings=findings, blocking=bool(blocking))
 
 
 def import_price_list(*, user: CurrentUser, data: bytes) -> list[PriceListEntry]:
@@ -496,44 +716,28 @@ def _program(project: DesignProject) -> plc_program.PlcProgram:
 
 
 def write_plc_program(*, user: CurrentUser, request: PlcProgramRequest) -> PlcProgramResponse:
-    """Write the control program for a project's PLC-switched circuits, and check it.
+    """Refuse the control program for a project the client sent.
+
+    The program's Structured Text and I/O list are the ``plc_st`` and
+    ``plc_io_csv`` files, which cannot keep a draft mark once imported
+    (``UNPROTECTED_FORMATS``). Returning them here would hand out, unmarked,
+    what their export refuses, so this is refused the same way, before any of
+    the program is written.
 
     Args:
         user: The authenticated caller, for the log line.
         request: The project and the profile settings.
 
     Returns:
-        The Structured Text, its I/O list and the checker's verdict.
+        Never: the refusal is raised.
 
     Raises:
-        ValidationError: If the profile is malformed or no circuit is
-            PLC-switched.
+        ConflictError: ``export_format_unprotected``, with the ``plc_st``
+            export's params.
     """
-    company = _profile(request.profile)
-    project = designations.designate_project(request.project, company)
-    program = _program(project)
-    verdict = validate_plc_code(program.source)
-    logger.info(
-        "design.plc_written",
-        tenant_id=user.tenant_id,
-        outputs=sum(point.direction == "output" for point in program.io),
-        status=verdict.status.value,
-    )
-    return PlcProgramResponse(
-        name=program.name,
-        source=program.source,
-        io=[
-            PlcIoPoint(
-                tag=point.tag,
-                direction=point.direction,
-                board=point.board,
-                device=point.device,
-                description=point.description,
-            )
-            for point in program.io
-        ],
-        validation=verdict,
-    )
+    logger.info("design.plc_refused", tenant_id=user.tenant_id, boards=len(request.project.boards))
+    refuse_unprotected(ExportFormat.PLC_ST)
+    raise AssertionError("refuse_unprotected refuses plc_st")  # pragma: no cover
 
 
 def list_markets() -> list[MarketInfo]:

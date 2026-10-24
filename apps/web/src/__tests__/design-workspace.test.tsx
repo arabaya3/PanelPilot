@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -193,5 +193,110 @@ describe('load schedule validation', () => {
     expect(power.getAttribute('aria-invalid')).toBe('true');
     const message = document.getElementById(power.getAttribute('aria-describedby') ?? '');
     expect(message?.textContent).toBe('Enter a number above 0.');
+  });
+});
+
+describe('design notes under a right-to-left sheet (D8)', () => {
+  const WITH_NOTES = {
+    ...TWO_BOARDS,
+    project: {
+      ...TWO_BOARDS.project,
+      boards: (TWO_BOARDS.project.boards ?? []).map((board, index) =>
+        index === 0
+          ? {
+              ...board,
+              notes: [
+                { code: 'spare_ways', params: { count: '2', percent: '20' }, text: '' },
+                { code: 'from_a_newer_api', params: {}, text: 'Something new (32 A).' },
+              ],
+            }
+          : board,
+      ),
+    },
+  } as typeof TWO_BOARDS;
+
+  it('lays out each translated note right to left while the sheet stays left to right', () => {
+    renderApp(<DrawingSheets response={WITH_NOTES} />, { locale: 'he' });
+    expect(screen.getByTestId('sheet-frame').getAttribute('dir')).toBe('ltr');
+    const notes = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+    expect(notes[0]?.getAttribute('dir')).toBe('rtl');
+    // The server's English, for a code the page cannot translate, reads as it is written.
+    expect(notes[1]?.getAttribute('dir')).toBe('auto');
+    expect(screen.getByTestId('design-notes-block').getAttribute('dir')).toBe('rtl');
+  });
+
+  it('leaves the notes to the sheet in English', () => {
+    renderApp(<DrawingSheets response={WITH_NOTES} />, { locale: 'en' });
+    const notes = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+    expect(notes[0]?.getAttribute('dir')).toBe('auto');
+    expect(screen.getByTestId('design-notes-block').getAttribute('dir')).toBeNull();
+  });
+});
+
+describe('the enclosure note’s citation under a right-to-left sheet (D10)', () => {
+  // As the API sends it (`app/design/enclosure.py`, SOURCE).
+  const SOURCE =
+    'ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7';
+  const WITH_ENCLOSURE = {
+    ...TWO_BOARDS,
+    project: {
+      ...TWO_BOARDS.project,
+      boards: (TWO_BOARDS.project.boards ?? []).map((board, index) =>
+        index === 0
+          ? {
+              ...board,
+              notes: [
+                {
+                  code: 'enclosure_selected',
+                  params: {
+                    type: 'GDMS332 RX',
+                    order: '2CVA250001P0001',
+                    rows: '2',
+                    size: '498 x 400 x 117',
+                    free: '19',
+                    source: SOURCE,
+                  },
+                  text: '',
+                },
+              ],
+            }
+          : board,
+      ),
+    },
+  } as typeof TWO_BOARDS;
+
+  const codePoints = (text: string) => Array.from(text, (char) => char.codePointAt(0));
+
+  it.each(['ar', 'he'] as const)(
+    'keeps the product, its order code and the citation each whole and left to right, characters unchanged (%s)',
+    (locale) => {
+      renderApp(<DrawingSheets response={WITH_ENCLOSURE} />, { locale });
+      const [note] = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+      if (!note) throw new Error('no note');
+      expect(note.getAttribute('dir')).toBe('rtl');
+      const runs = within(note).getAllByTestId('note-ltr-run');
+      for (const run of runs) {
+        expect(run.tagName).toBe('BDI');
+        expect(run.getAttribute('dir')).toBe('ltr');
+      }
+      expect(runs.map((run) => codePoints(run.textContent))).toEqual(
+        ['ABB Mini Center compact GDMS332 RX', '2CVA250001P0001', SOURCE].map(codePoints),
+      );
+      // The range and its type are one run, not two placed apart.
+      expect(note.textContent).not.toContain('compact ‏');
+      // Still isolated from the sentence in the text itself: FSI, then the run, then PDI.
+      expect(note.textContent).toContain(`⁨${SOURCE}⁩`);
+    },
+  );
+
+  it('leaves the citation inline, without marks, in English', () => {
+    renderApp(<DrawingSheets response={WITH_ENCLOSURE} />, { locale: 'en' });
+    const note = within(screen.getByTestId('design-notes')).getByRole('listitem');
+    expect(within(note).queryByTestId('note-ltr-run')).toBeNull();
+    expect(note.textContent).toContain(`(${SOURCE})`);
+    expect(note.textContent).toContain(
+      'Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001),',
+    );
+    expect(note.textContent).not.toMatch(/[⁦-⁩]/);
   });
 });

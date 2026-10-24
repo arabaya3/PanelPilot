@@ -1,10 +1,11 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
+import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
+import type { ApprovalBlocker } from '@/components/design/readiness';
 import {
   approveRevision,
   deleteProject,
@@ -14,6 +15,7 @@ import {
   saveProject,
   type ProjectDesignRequest,
   type ProjectPage,
+  type Refusal,
   type SavedProject,
 } from '@/lib/design';
 
@@ -23,8 +25,14 @@ export type OpenedProject = {
   name: string;
   revision: number;
   revisions: number[];
-  /** Who approved the revision open, and when (ISO 8601); null while not approved. */
-  approval: { by: string; at: string } | null;
+  /**
+   * Who approved the revision open, and when (ISO 8601); null while not
+   * approved. `approver` is present when the server recorded the signed-in
+   * account the approval was made under (from the approver's token, never
+   * from the page); its `name` is that account's display name, or null when
+   * it has none, which reads as "a team member". Its email is never sent.
+   */
+  approval: { by: string; at: string; approver?: { name: string | null } } | null;
 };
 
 /** One line of the title block's revision list. */
@@ -34,7 +42,13 @@ export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions'
 export function approvalOf(project: SavedProject): OpenedProject['approval'] {
   const revision = project.revisions.find((entry) => entry.number === project.revision);
   return revision?.approved_by && revision.approved_at
-    ? { by: revision.approved_by, at: revision.approved_at }
+    ? {
+        by: revision.approved_by,
+        at: revision.approved_at,
+        ...(revision.approver_account_recorded
+          ? { approver: { name: revision.approver_name ?? null } }
+          : {}),
+      }
     : null;
 }
 
@@ -51,10 +65,17 @@ export function ProjectsPanel({
   opened,
   onOpened,
   onSaveState,
+  onRefused,
+  onUnauthorized,
   beforeOpen = (open) => {
     open();
   },
   dirty = false,
+  blockers = [],
+  blockingCount = 0,
+  approvalCovers = true,
+  note: heldNote,
+  onNoteChange,
   impls = {},
 }: {
   token: string;
@@ -65,10 +86,30 @@ export function ProjectsPanel({
   onOpened: (project: SavedProject, fill: boolean) => void;
   /** Told when a save starts and how it ended, so the page can show where the work stands. */
   onSaveState?: (state: 'saving' | 'saved' | 'failed') => void;
+  /** Told what a refused save objected to, so the page can mark the fields at fault. */
+  onRefused?: (refusal: Refusal) => void;
+  /** Told when the server no longer accepts the token, so the page can renew it or ask to sign in. */
+  onUnauthorized?: () => void;
   /** Asked before opening a project replaces what is on the page; calls `open` to go ahead. */
   beforeOpen?: (open: () => void) => void;
   /** Whether the page has changes not saved, which an approval would not include. */
   dirty?: boolean;
+  /**
+   * Why the revision open cannot be approved besides unsaved changes (not
+   * validated, blocking findings, rules changed since). The server refuses
+   * these too; the button says so before it is pressed.
+   */
+  blockers?: ApprovalBlocker[];
+  /** How many blocking findings the revision open has. */
+  blockingCount?: number;
+  /** False when the stored approval does not sign the revision's validated snapshot. */
+  approvalCovers?: boolean;
+  /**
+   * The revision note, when the page keeps it (so it outlives this panel);
+   * kept here otherwise. Both or neither.
+   */
+  note?: string;
+  onNoteChange?: (note: string) => void;
   impls?: Partial<{
     list: typeof listProjects;
     save: typeof saveProject;
@@ -78,7 +119,8 @@ export function ProjectsPanel({
     approve: typeof approveRevision;
   }>;
 }) {
-  const t = useTranslations('design.projects');
+  const t = useIsolatingTranslations('design.projects');
+  const ta = useIsolatingTranslations('design.account');
   const say = useOutcomeText();
   const id = useId();
   const {
@@ -90,18 +132,44 @@ export function ProjectsPanel({
     approve = approveRevision,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
-  const [note, setNote] = useState('');
+  const [ownNote, setOwnNote] = useState('');
+  const note = heldNote ?? ownNote;
+  const setNote = onNoteChange ?? setOwnNote;
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [approver, setApprover] = useState('');
+  // Anything besides unsaved changes that keeps the revision from approval.
+  const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
+  const held = dirty || reasons.length > 0;
+
+  // Read through refs: the page hands a new `onUnauthorized` (and the
+  // translator a new `say`) on every render, and listing again on each one
+  // turned every answer into another request, a 429 included, until the
+  // design budget for the address was spent.
+  const latestSay = useRef(say);
+  latestSay.current = say;
+  const latestOnUnauthorized = useRef(onUnauthorized);
+  latestOnUnauthorized.current = onUnauthorized;
+  // Rate limited: no list is asked for again until the server's Retry-After
+  // has passed, whatever else changes meanwhile.
+  const quietUntil = useRef(0);
 
   const refresh = useCallback(async () => {
+    if (Date.now() < quietUntil.current) return;
     const outcome = await list({ token });
-    if (outcome.kind === 'listed') setPage(outcome.page);
-    else setMessage(say(outcome));
-  }, [list, token, say]);
+    if (outcome.kind === 'listed') {
+      setPage(outcome.page);
+      return;
+    }
+    if (outcome.kind === 'unauthorized') latestOnUnauthorized.current?.();
+    if (outcome.kind === 'refused' && outcome.code === 'rate_limited') {
+      quietUntil.current = Date.now() + (outcome.retryAfterSeconds ?? 60) * 1000;
+    }
+    setMessage(latestSay.current(outcome));
+  }, [list, token]);
 
+  // Once per identity (token): not per render.
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -123,8 +191,16 @@ export function ProjectsPanel({
       void refresh();
     } else {
       // A refusal says what the API objected to; anything else is a save that
-      // did not happen, not a design that failed.
-      setMessage(outcome.kind === 'refused' ? say(outcome) : t('saveFailed'));
+      // did not happen, not a design that failed. What was entered stays.
+      if (outcome.kind === 'refused') onRefused?.(outcome);
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(
+        outcome.kind === 'refused'
+          ? say(outcome)
+          : outcome.kind === 'unauthorized'
+            ? ta('saveUnauthorized')
+            : t('saveFailed'),
+      );
     }
   }
 
@@ -138,11 +214,14 @@ export function ProjectsPanel({
     setMessage(null);
     const outcome = await open({ token, id: projectId, revision: revision ?? null });
     if (outcome.kind === 'saved') onOpened(outcome.project, true);
-    else setMessage(say(outcome));
+    else {
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(say(outcome));
+    }
   }
 
   async function sign() {
-    if (opened === null || approver.trim() === '' || dirty) return;
+    if (opened === null || approver.trim() === '' || held) return;
     setWorking(true);
     setMessage(null);
     const outcome = await approve({
@@ -156,8 +235,14 @@ export function ProjectsPanel({
       setApprover('');
       setMessage(t('approvedNow', { revision: outcome.project.revision }));
       onOpened(outcome.project, false);
-    } else {
-      setMessage(say(outcome));
+      return;
+    }
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    setMessage(say(outcome));
+    // Someone else approved it first: show their approval, keeping the form as it is.
+    if (outcome.kind === 'refused' && outcome.code === 'revision_already_approved') {
+      const reopened = await open({ token, id: opened.id, revision: opened.revision });
+      if (reopened.kind === 'saved') onOpened(reopened.project, false);
     }
   }
 
@@ -165,7 +250,10 @@ export function ProjectsPanel({
     setConfirming(null);
     const outcome = await remove({ token, id: projectId });
     if (outcome.kind === 'deleted') void refresh();
-    else setMessage(say(outcome));
+    else {
+      if (outcome.kind === 'unauthorized') onUnauthorized?.();
+      setMessage(say(outcome));
+    }
   }
 
   return (
@@ -196,13 +284,33 @@ export function ProjectsPanel({
       )}
       {opened &&
         (opened.approval ? (
-          <p className="text-sm font-medium text-accent" data-testid="project-approval">
-            {t('approvedBy', {
-              revision: opened.revision,
-              name: opened.approval.by,
-              date: opened.approval.at.slice(0, 10),
-            })}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-accent" data-testid="project-approval">
+              {t('approvedBy', {
+                revision: opened.revision,
+                name: opened.approval.by,
+                date: opened.approval.at.slice(0, 10),
+              })}
+            </p>
+            {opened.approval.approver !== undefined && (
+              <p className="text-sm text-text-muted" data-testid="project-approval-account">
+                {opened.approval.approver.name === null
+                  ? t('approverAccountUnnamed')
+                  : t('approverAccount', { name: opened.approval.approver.name })}
+              </p>
+            )}
+            {/* An approval never reads as covering what it did not sign. */}
+            {!approvalCovers && (
+              <p className="text-sm text-text-muted" data-testid="approval-not-covering">
+                {t('approvalNotCovering', { revision: opened.revision })}
+              </p>
+            )}
+            {dirty && (
+              <p className="text-sm text-text-muted" data-testid="approval-changed">
+                {t('approvalChanged', { revision: opened.revision })}
+              </p>
+            )}
+          </div>
         ) : (
           <>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -219,8 +327,8 @@ export function ProjectsPanel({
               </Field>
               <button
                 type="button"
-                disabled={approver.trim() === '' || working || dirty}
-                aria-describedby={dirty ? `${id}-approve-dirty` : undefined}
+                disabled={approver.trim() === '' || working || held}
+                aria-describedby={held ? `${id}-approve-held` : undefined}
                 onClick={() => {
                   void sign();
                 }}
@@ -229,14 +337,26 @@ export function ProjectsPanel({
                 {t('approve', { revision: opened.revision })}
               </button>
             </div>
-            {dirty && (
-              <p
-                id={`${id}-approve-dirty`}
-                className="text-sm text-text-muted"
-                data-testid="approve-dirty"
-              >
-                {t('approveDirty', { revision: opened.revision })}
-              </p>
+            {held && (
+              <div id={`${id}-approve-held`} className="flex flex-col gap-1">
+                {dirty && (
+                  <p className="text-sm text-text-muted" data-testid="approve-dirty">
+                    {t('approveDirty', { revision: opened.revision })}
+                  </p>
+                )}
+                {reasons.map((reason) => (
+                  <p
+                    key={reason}
+                    className="text-sm text-text-muted"
+                    data-testid={`approve-held-${reason}`}
+                  >
+                    {t(`approveHeld.${reason}`, {
+                      revision: opened.revision,
+                      count: blockingCount,
+                    })}
+                  </p>
+                ))}
+              </div>
             )}
           </>
         ))}

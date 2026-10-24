@@ -53,13 +53,12 @@ function fillSignIn(email = 'r@example.com', password = 'pw') {
 // --- signIn ---------------------------------------------------------------------
 
 describe('signIn', () => {
-  it('posts the credentials and returns both tokens', async () => {
+  it('posts the credentials and returns the access token', async () => {
     const fetchImpl = respond(200, { access_token: 'a', refresh_token: 'r' });
 
     expect(await signIn({ email: 'e@x.com', password: 'pw', fetchImpl })).toEqual({
       kind: 'signed-in',
       accessToken: 'a',
-      refreshToken: 'r',
     });
     const [url, init] = calls(fetchImpl)[0] ?? ['', {}];
     expect(url).toBe('/api/v1/auth/login');
@@ -87,15 +86,13 @@ describe('signIn', () => {
 describe('the sign-in form', () => {
   it('hands the tokens over on success', async () => {
     const onSignedIn = vi.fn();
-    const signInImpl = vi
-      .fn()
-      .mockResolvedValue({ kind: 'signed-in', accessToken: 'a', refreshToken: 'r' });
+    const signInImpl = vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'a' });
     renderApp(<SignInForm onSignedIn={onSignedIn} signInImpl={signInImpl} />);
 
     fillSignIn(' r@example.com ');
 
     await waitFor(() => {
-      expect(onSignedIn).toHaveBeenCalledWith({ accessToken: 'a', refreshToken: 'r' });
+      expect(onSignedIn).toHaveBeenCalledWith({ accessToken: 'a' });
     });
     expect(signInImpl).toHaveBeenCalledWith({ email: 'r@example.com', password: 'pw' });
   });
@@ -121,9 +118,7 @@ describe('the review page', () => {
     fetchQueueImpl: typeof fetchQueue,
     submitLabelImpl: typeof submitLabel = vi.fn().mockResolvedValue(undefined),
   ) {
-    const signInImpl = vi
-      .fn()
-      .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' });
+    const signInImpl = vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'tok' });
     renderApp(
       <ReviewScreen
         fetchQueueImpl={fetchQueueImpl}
