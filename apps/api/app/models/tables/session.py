@@ -73,6 +73,10 @@ class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     # window (`auth.refresh`). NULL for tokens minted before this was kept,
     # which count as 0.
     generation: Mapped[int | None] = mapped_column(Integer)
+    # Unused since tokens are derived. Kept so pods still running the
+    # once-only grace code keep working through a rolling deploy; a later
+    # contract migration drops it.
+    grace_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AnonymousSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):

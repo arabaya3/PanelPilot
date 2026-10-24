@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.deps import (
     AppSettingsDep,
+    BearerClaimsDep,
     CurrentUserDep,
     OptionalCurrentUserDep,
     SessionDep,
@@ -188,8 +189,15 @@ def _session_cookie(request: Request, settings: Settings) -> str | None:
     response_model=AccessToken,
     dependencies=[Depends(require_same_site_request)],
 )
-def refresh(request: Request, session: SessionDep, settings: AppSettingsDep) -> Response:
+def refresh(
+    request: Request, session: SessionDep, settings: AppSettingsDep, bearer: BearerClaimsDep
+) -> Response:
     """Exchange the refresh cookie for a new access token, rotating the cookie.
+
+    The page sends its access token too, when it holds one: proof that it is
+    the session's own holder, which lets a jar a late Set-Cookie moved back
+    one rotation recover (see `auth.refresh`). It is optional, and an
+    expired or foreign one is no proof rather than a refusal.
 
     What a page calls on load to find out whether this browser is signed in,
     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
@@ -203,7 +211,7 @@ def refresh(request: Request, session: SessionDep, settings: AppSettingsDep) -> 
     if token is None:
         raise AuthenticationError("no sign-in session", code="session_ended")
     try:
-        tokens = auth_domain.refresh(session=session, refresh_token=token)
+        tokens = auth_domain.refresh(session=session, refresh_token=token, bearer=bearer)
     except AuthenticationError as exc:
         # The refusal's own body, with the cookie cleared. Raising would lose
         # the Set-Cookie: the error handler builds a fresh response.

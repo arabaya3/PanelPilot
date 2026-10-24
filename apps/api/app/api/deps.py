@@ -350,8 +350,37 @@ def get_optional_current_user(
 
 OptionalCurrentUserDep = Annotated[CurrentUser | None, Depends(get_optional_current_user)]
 
+
+def get_bearer_claims(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> CurrentUser | None:
+    """The access token's verified claims, when one came and is still valid.
+
+    For refresh, where the access token is offered as proof of possession of
+    the session (`auth.refresh`), not as authentication: a missing, expired
+    or forged token is simply no proof, never a refusal of its own. The
+    signature and expiry are checked here; whether it names the session and
+    its account is the domain's check.
+
+    Args:
+        credentials: Bearer credentials, if any.
+
+    Returns:
+        The decoded caller, or ``None``.
+    """
+    if credentials is None:
+        return None
+    try:
+        return decode_access_token(credentials.credentials)
+    except AuthenticationError:
+        return None
+
+
+BearerClaimsDep = Annotated[CurrentUser | None, Depends(get_bearer_claims)]
+
 __all__ = [
     "AppSettingsDep",
+    "BearerClaimsDep",
     "CurrentUserDep",
     "OptionalCurrentUserDep",
     "SessionDep",

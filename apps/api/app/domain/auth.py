@@ -306,7 +306,13 @@ def login(*, session: Session, email: str, password: str) -> TokenPair:
 _DUMMY_HASH = "$2b$12$C6UzMDM.H6dfI/f/IKcEe.9k1KZ0MFxLQaK0OyZ8/1xxDhKZ3ZQzO"
 
 
-def refresh(*, session: Session, refresh_token: str, now: datetime | None = None) -> TokenPair:
+def refresh(
+    *,
+    session: Session,
+    refresh_token: str,
+    now: datetime | None = None,
+    bearer: CurrentUser | None = None,
+) -> TokenPair:
     """Rotate a refresh token for a new pair in the same sign-in session.
 
     **One live token per session, always.** A session's tokens form a chain
@@ -343,6 +349,9 @@ def refresh(*, session: Session, refresh_token: str, now: datetime | None = None
         session: Open database session. The caller commits.
         refresh_token: The token as presented by the client.
         now: Injected for tests.
+        bearer: The caller's access token, already verified (signature and
+            expiry) by the route, when one came. Proof of possession for
+            the predecessor case: see `_reissue_live_successor`.
 
     Returns:
         A fresh access token and the session's live refresh token.
@@ -396,27 +405,40 @@ def refresh(*, session: Session, refresh_token: str, now: datetime | None = None
         if presented.revoked_at is None:
             if presented.expires_at <= moment:
                 raise AuthenticationError("refresh token has expired", code="session_ended")
+            # Only the session's newest live token rotates. The old grace model
+            # could leave a second, older live token beside it; presenting
+            # that one is treated as a replay, never rotated into a collision.
+            if presented.id != _newest_live_token_id(session=session, sign_in=sign_in):
+                _end_session_on_replay(session=session, sign_in=sign_in, now=moment)
             session.execute(
                 update(RefreshTokenRow)
                 .where(RefreshTokenRow.id == presented.id)
                 .values(revoked_at=moment)
                 .execution_options(synchronize_session=False)
             )
-            return _issue_tokens(
-                session=session,
-                user=user,
-                tenant=tenant,
-                sign_in=sign_in,
-                generation=generation + 1,
-                now=moment,
-            )
+            try:
+                return _issue_tokens(
+                    session=session,
+                    user=user,
+                    tenant=tenant,
+                    sign_in=sign_in,
+                    generation=generation + 1,
+                    now=moment,
+                )
+            except IntegrityError as exc:
+                # A derived token colliding with one already stored: a
+                # leftover of a model this code no longer runs. A refusal,
+                # never a 500.
+                raise AuthenticationError("refresh token is not valid") from exc
 
         reissued = _reissue_live_successor(
             session=session,
             sign_in=sign_in,
+            user=user,
             spent_at=presented.revoked_at,
             generation=generation,
             now=moment,
+            bearer=bearer,
         )
         if reissued is None:
             _end_session_on_replay(session=session, sign_in=sign_in, now=moment)
@@ -541,45 +563,95 @@ def _reissue_live_successor(
     *,
     session: Session,
     sign_in: AuthSessionRow,
+    user: User,
     spent_at: datetime | None,
     generation: int,
     now: datetime,
+    bearer: CurrentUser | None,
 ) -> str | None:
-    """The session's live token again, for its immediate predecessor in the window.
+    """The session's live token again, for its immediate predecessor.
+
+    Two ways to qualify, both only for the token whose rotation minted the
+    live one (one generation behind), in a live session:
+
+    * **Cookie alone:** spent within ``REFRESH_REUSE_GRACE`` (10 s): tabs that
+      raced the rotation.
+    * **Cookie and the session's own access token:** spent within an access
+      token's lifetime, and the request carries an unexpired access token
+      whose ``sid`` is this session and whose ``sub`` its user. A tab whose
+      jar a late Set-Cookie moved back to the predecessor (D1) still holds
+      such a token. A cookie-only holder (a thief with a copied cookie) still
+      gets only the 10 s.
 
     Args:
         session: Open database session, holding the session's lock.
         sign_in: The presented token's session, live.
+        user: The session's account.
         spent_at: When the presented token was spent.
         generation: The presented token's generation.
         now: The refresh attempt's timestamp.
+        bearer: The verified access token that came with the request, if any.
 
     Returns:
         The live token's value, re-derived, when the presented token is the one
-        whose rotation minted it and was spent within ``REFRESH_REUSE_GRACE``;
-        otherwise ``None`` (a replay). Nothing is written: the session keeps
-        its one live token.
+        whose rotation minted it and qualifies as above; otherwise ``None``
+        (a replay). Nothing is written: the session keeps its one live token.
+
+    Raises:
+        AuthenticationError: When the predecessor qualifies but the live token
+            cannot be re-derived (minted at random before derivation, or under
+            an earlier derivation key). Refused without ending the session:
+            this is an older token, not a sign of theft.
     """
-    if spent_at is None or now - spent_at > REFRESH_REUSE_GRACE:
+    if spent_at is None:
         return None
-    if sign_in.token_salt is None:
+    age = now - spent_at
+    proven = (
+        bearer is not None
+        and bearer.session_id == str(sign_in.id)
+        and bearer.id == str(user.id)
+        and age <= timedelta(seconds=_access_token_ttl())
+    )
+    if age > REFRESH_REUSE_GRACE and not proven:
         return None
     live = session.execute(
         select(RefreshTokenRow.token_hash, RefreshTokenRow.generation, RefreshTokenRow.expires_at)
         .where(RefreshTokenRow.session_id == sign_in.id, RefreshTokenRow.revoked_at.is_(None))
-        .order_by(RefreshTokenRow.created_at.desc())
+        .order_by(RefreshTokenRow.created_at.desc(), RefreshTokenRow.id.desc())
         .limit(1)
     ).one_or_none()
     if live is None or live.expires_at <= now:
         return None
     if (live.generation or 0) != generation + 1:
         return None
-    token, token_hash = derive_refresh_token(
-        session_id=str(sign_in.id), salt=sign_in.token_salt, generation=live.generation
+    if sign_in.token_salt is not None and live.generation is not None:
+        token, token_hash = derive_refresh_token(
+            session_id=str(sign_in.id), salt=sign_in.token_salt, generation=live.generation
+        )
+        if secrets.compare_digest(token_hash, live.token_hash):
+            return token
+    raise AuthenticationError(
+        "this sign-in cannot be renewed from here; sign in again", code="session_ended"
     )
-    # A live token minted before tokens were derived cannot be re-derived;
-    # that one transition is refused rather than guessed at.
-    return token if secrets.compare_digest(token_hash, live.token_hash) else None
+
+
+def _newest_live_token_id(*, session: Session, sign_in: AuthSessionRow) -> uuid.UUID | None:
+    """The id of the session's newest live refresh token.
+
+    Args:
+        session: Open database session.
+        sign_in: The session.
+
+    Returns:
+        The newest live token's id, or ``None`` when it has none.
+    """
+    newest: uuid.UUID | None = session.execute(
+        select(RefreshTokenRow.id)
+        .where(RefreshTokenRow.session_id == sign_in.id, RefreshTokenRow.revoked_at.is_(None))
+        .order_by(RefreshTokenRow.created_at.desc(), RefreshTokenRow.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return newest
 
 
 def _end_session_on_replay(*, session: Session, sign_in: AuthSessionRow, now: datetime) -> NoReturn:

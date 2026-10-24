@@ -466,7 +466,7 @@ The HTTPS behaviour is checked by `docs/design-readiness/phase-1/https-check/che
 
 ### The one-time sign-in after the session migration
 
-The migrations `c3f8a1d6e2b7` (sessions), `e7b2c9d4a1f3` and `a9d3f6b1c8e4` (derived refresh-token generations) leave existing rows in place, but credentials issued before them stop working:
+The migrations `c3f8a1d6e2b7` (sessions), `e7b2c9d4a1f3`, `a9d3f6b1c8e4` and `b2e8d5f7c3a1` (derived refresh-token generations) leave existing rows in place, but credentials issued before them stop working:
 - **Access tokens without a `sid` are refused** with a `401 session_ended`. A logout could never reach them.
 - **Refresh tokens without a session are refused.** Before this the web held refresh tokens in memory only, so after a reload no browser had one anyway.
 
@@ -480,8 +480,55 @@ Trials are unaffected: a trial has no session.
 
 Tabs of one browser share one cookie, so they must not count as theft.
 
-**In the browser.** A refresh takes a browser-wide Web Lock (`pp-refresh`). The tab that refreshed shares its access token over a `BroadcastChannel`. A tab that waited uses that token instead of presenting the cookie again, so normally one refresh is in flight per browser. Without Web Locks it refreshes directly.
+**In the browser.**
+- A refresh takes a browser-wide Web Lock (`pp-refresh`), and the tab that refreshed shares its access token over a `BroadcastChannel`.
+- A tab that waited adopts that token only if it is unexpired and names the same account and session (`sub`, `sid`). On load, any unexpired account token is accepted. Otherwise the tab refreshes itself.
+- A shared timestamp more than 2 s ahead of the tab's clock is ignored, and the shared token is forgotten on sign-out.
+- Without Web Locks the tab refreshes directly.
+- Every refresh also sends the tab's in-memory access token as the bearer.
 
-**On the server.** A session has exactly one live refresh token.
-- If the token's immediate predecessor is presented within 10 s of being spent, the server answers with the **same** live token. It re-derives it from the session's salt and the server key; it does not mint a new one. Every racing tab therefore gets the same Set-Cookie, and an answer landing late or being lost leaves a working cookie.
-- Anything else spent is a replay: a token spent more than 10 s ago, or more than one generation behind. A replay ends **that session only**. "Log out everywhere" ends the rest.
+**On the server.** A session has exactly one live refresh token, and only the newest live token may rotate. The session's live token is handed again (re-derived, never minted) to its **immediate predecessor** in two cases:
+- **Cookie alone:** the predecessor was spent within **10 s**. This covers tabs racing the rotation.
+- **Cookie and the session's own access token:** the predecessor was spent within an **access-token lifetime** (`ACCESS_TOKEN_TTL_SECONDS`, 1 h by default), and the request carries an unexpired access token whose `sid` is that session and whose `sub` is its user. This covers a jar that an out-of-order answer moved back one rotation (browser defect D1).
+
+Everything else spent is a replay and ends **that session only**:
+- a token two or more generations behind, even with a bearer;
+- a predecessor older than these bounds;
+- a bearer from another session or user, or an expired bearer (which proves nothing).
+
+"Log out everywhere" ends the rest.
+
+**The bound.**
+- A thief with only a copied cookie gets the 10 s window and nothing more.
+- Extending that needs a live access token of the same session as well, which only the session's own tab holds in memory.
+- In every case the answer is the one live token, so a session never has two.
+
+**What is still an edge.** A **reload** after a jar regression starts with no access token in memory, so its restore is cookie-only. If the regressed token was spent more than 10 s earlier, the restore is a replay and that session ends: the user signs in once. It needs both an out-of-order answer and a reload of that tab more than 10 s later, before any tab of the browser refreshes again. A tab that is still open renews with its bearer and recovers.
+
+### The refresh-token key, and a key compromise
+
+- Refresh tokens are derived under their own key, never the access-token signing key itself:
+  - `REFRESH_TOKEN_KEY` when it is set;
+  - otherwise HKDF-SHA256 of `JWT_SECRET` with the label `panelpilot refresh-token derivation v1`.
+- **Changing either key does not sign anyone out.** A live token is looked up by its stored hash and rotates normally; its successor is derived under the new key. Only re-issuing a live token that was derived under the old key fails, and that is refused without ending the session.
+- This applies to the tokens derived straight from `JWT_SECRET` by `a1bff09`, which never left the dev and disposable databases.
+- **A compromise of the refresh-token key** (or of `JWT_SECRET` while `REFRESH_TOKEN_KEY` is unset) **together with the database** lets an attacker derive every live refresh token. Rotating the key does not revoke them. Revoke every session, then rotate the key:
+
+```sql
+BEGIN;
+UPDATE auth_sessions  SET revoked_at = now() WHERE revoked_at IS NULL;
+UPDATE refresh_tokens SET revoked_at = now() WHERE revoked_at IS NULL;
+COMMIT;
+```
+
+This ends every sign-in at once: access tokens are refused from the next request, and every user signs in again. A `JWT_SECRET` compromise also lets anyone mint access tokens, so rotate `JWT_SECRET` in the same change.
+
+### Migrations of this series
+
+- `c3f8a1d6e2b7` adds sessions.
+- `e7b2c9d4a1f3` adds `grace_used_at`, now unused.
+- `a9d3f6b1c8e4` adds the salt and the generation, and keeps `grace_used_at`: pods still running the previous code use it during a rolling deploy. A later contract migration drops it.
+- `b2e8d5f7c3a1`:
+  - re-adds `grace_used_at` where an unmerged earlier version of `a9d3f6b1c8e4` dropped it (the dev and disposable databases);
+  - revokes all but the newest live refresh token of every session.
+  It is idempotent and its downgrade changes nothing. That earlier version was edited only because it was never merged; the new revision exists because an applied revision never runs again.

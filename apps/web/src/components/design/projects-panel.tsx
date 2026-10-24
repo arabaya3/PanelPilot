@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -143,15 +143,33 @@ export function ProjectsPanel({
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
   const held = dirty || reasons.length > 0;
 
-  const refresh = useCallback(async () => {
-    const outcome = await list({ token });
-    if (outcome.kind === 'listed') setPage(outcome.page);
-    else {
-      if (outcome.kind === 'unauthorized') onUnauthorized?.();
-      setMessage(say(outcome));
-    }
-  }, [list, token, say, onUnauthorized]);
+  // Read through refs: the page hands a new `onUnauthorized` (and the
+  // translator a new `say`) on every render, and listing again on each one
+  // turned every answer into another request, a 429 included, until the
+  // design budget for the address was spent.
+  const latestSay = useRef(say);
+  latestSay.current = say;
+  const latestOnUnauthorized = useRef(onUnauthorized);
+  latestOnUnauthorized.current = onUnauthorized;
+  // Rate limited: no list is asked for again until the server's Retry-After
+  // has passed, whatever else changes meanwhile.
+  const quietUntil = useRef(0);
 
+  const refresh = useCallback(async () => {
+    if (Date.now() < quietUntil.current) return;
+    const outcome = await list({ token });
+    if (outcome.kind === 'listed') {
+      setPage(outcome.page);
+      return;
+    }
+    if (outcome.kind === 'unauthorized') latestOnUnauthorized.current?.();
+    if (outcome.kind === 'refused' && outcome.code === 'rate_limited') {
+      quietUntil.current = Date.now() + (outcome.retryAfterSeconds ?? 60) * 1000;
+    }
+    setMessage(latestSay.current(outcome));
+  }, [list, token]);
+
+  // Once per identity (token): not per render.
   useEffect(() => {
     void refresh();
   }, [refresh]);

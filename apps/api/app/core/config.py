@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     # than discovered when the first token fails to verify.
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     access_token_ttl_seconds: int = 3600
+    # The key refresh tokens are derived under. Unset: HKDF of JWT_SECRET with
+    # its own label (`security.refresh_token_key`). Set it to rotate the two
+    # keys separately.
+    refresh_token_key: SecretStr | None = None
     # NoDecode stops pydantic-settings JSON-decoding this before validation,
     # so the comma-separated form documented in .env.example actually works.
     # Without it, CORS_ALLOWED_ORIGINS=http://localhost:3000 is a startup error.

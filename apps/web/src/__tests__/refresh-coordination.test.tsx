@@ -1,10 +1,16 @@
 import { act, render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { AccountSessionProvider, useAccountSession } from '@/components/account-session';
+import {
+  AccountSessionProvider,
+  acceptsShared,
+  useAccountSession,
+} from '@/components/account-session';
 import {
   browserRefreshCoordination,
   createRefreshCoordinator,
+  refreshSession,
+  SHARED_CLOCK_SKEW_MS,
   type RefreshChannel,
   type RefreshLocks,
   type RefreshOutcome,
@@ -53,6 +59,9 @@ function fakeBus() {
   };
 }
 
+/** A request whose shared tokens are always acceptable, for the lock tests. */
+const ANY = { accessToken: null, accept: () => true };
+
 function deferred() {
   let resolve: (outcome: RefreshOutcome) => void = () => undefined;
   const promise = new Promise<RefreshOutcome>((done) => {
@@ -76,7 +85,7 @@ describe('refreshing across tabs', () => {
       createRefreshCoordinator(refresh, { locks, channel: channel(), now }),
     );
 
-    const answers = tabs.map((tab) => tab.refresh());
+    const answers = tabs.map((tab) => tab.refresh(ANY));
     clock = 1500;
     first.resolve({ kind: 'refreshed', accessToken: 'shared' });
 
@@ -99,9 +108,9 @@ describe('refreshing across tabs', () => {
     const one = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => clock });
     const two = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => clock });
 
-    expect(await one.refresh()).toEqual({ kind: 'refreshed', accessToken: 'first' });
+    expect(await one.refresh(ANY)).toEqual({ kind: 'refreshed', accessToken: 'first' });
     clock = 5000; // an hour, in effect: the access token has lapsed again
-    expect(await two.refresh()).toEqual({ kind: 'refreshed', accessToken: 'second' });
+    expect(await two.refresh(ANY)).toEqual({ kind: 'refreshed', accessToken: 'second' });
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
@@ -115,7 +124,7 @@ describe('refreshing across tabs', () => {
     const tabs = [1, 2].map(() =>
       createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => 1 }),
     );
-    expect(await Promise.all(tabs.map((tab) => tab.refresh()))).toEqual([
+    expect(await Promise.all(tabs.map((tab) => tab.refresh(ANY)))).toEqual([
       { kind: 'failed' },
       { kind: 'refreshed', accessToken: 'later' },
     ]);
@@ -126,7 +135,7 @@ describe('refreshing across tabs', () => {
       .fn<() => Promise<RefreshOutcome>>()
       .mockResolvedValue({ kind: 'refreshed', accessToken: 't' });
     const tab = createRefreshCoordinator(refresh, {});
-    await Promise.all([tab.refresh(), tab.refresh()]);
+    await Promise.all([tab.refresh(ANY), tab.refresh(ANY)]);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
@@ -143,8 +152,8 @@ describe('refreshing across tabs', () => {
     const closed = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => 1 });
     closed.close();
     const other = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => 2 });
-    await other.refresh();
-    await closed.refresh();
+    await other.refresh(ANY);
+    await closed.refresh(ANY);
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 });
@@ -163,7 +172,7 @@ describe('two signed-in tabs under the coordinator', () => {
     for (const index of [0, 1]) {
       render(
         <AccountSessionProvider
-          initial={{ status: 'signed-in', tokens: { accessToken: 'old' } }}
+          initial={{ status: 'signed-in', tokens: { accessToken: jwt(LIVE) } }}
           refreshImpl={refreshImpl}
           coordination={{ locks, channel: channel(), now: () => 1 }}
         >
@@ -174,14 +183,149 @@ describe('two signed-in tabs under the coordinator', () => {
     let outcomes: string[] = [];
     await act(async () => {
       const pending = Promise.all(held.map((tab) => tab?.renew() ?? Promise.resolve('none')));
-      gate.resolve({ kind: 'refreshed', accessToken: 'new' });
+      gate.resolve({ kind: 'refreshed', accessToken: jwt({ ...LIVE, n: 2 }) });
       outcomes = await pending;
     });
     expect(outcomes).toEqual(['refreshed', 'refreshed']);
     expect(refreshImpl).toHaveBeenCalledTimes(1);
     expect(held.map((tab) => tab?.state)).toEqual([
-      { status: 'signed-in', tokens: { accessToken: 'new' } },
-      { status: 'signed-in', tokens: { accessToken: 'new' } },
+      { status: 'signed-in', tokens: { accessToken: jwt({ ...LIVE, n: 2 }) } },
+      { status: 'signed-in', tokens: { accessToken: jwt({ ...LIVE, n: 2 }) } },
     ]);
+  });
+});
+
+/** A JWT-shaped, unsigned token: the page only reads it. */
+function jwt(claims: Record<string, unknown>): string {
+  const body = btoa(JSON.stringify(claims))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `h.${body}.s`;
+}
+
+const NOW = 1_800_000_000_000;
+const LIVE = { sub: 'user-1', tid: 't', sid: 'sess-1', exp: NOW / 1000 + 600 };
+
+describe('what a tab accepts from another', () => {
+  const held = jwt(LIVE);
+
+  it('takes a token of the same account and session that has not expired', () => {
+    expect(acceptsShared(held, () => NOW)(jwt({ ...LIVE, n: 2 }))).toBe(true);
+  });
+
+  it('refuses another account, another session, an expired token, a trial or junk', () => {
+    const accept = acceptsShared(held, () => NOW);
+    expect(accept(jwt({ ...LIVE, sub: 'user-2' }))).toBe(false);
+    expect(accept(jwt({ ...LIVE, sid: 'sess-2' }))).toBe(false);
+    expect(accept(jwt({ ...LIVE, exp: NOW / 1000 - 1 }))).toBe(false);
+    expect(accept(jwt({ sub: 'anon', tid: 't', exp: NOW / 1000 + 600 }))).toBe(false);
+    expect(accept('not-a-token')).toBe(false);
+  });
+
+  it('on load, takes any unexpired account token, and nothing else', () => {
+    const accept = acceptsShared(null, () => NOW);
+    expect(accept(jwt({ ...LIVE, sub: 'whoever' }))).toBe(true);
+    expect(accept(jwt({ ...LIVE, exp: NOW / 1000 - 1 }))).toBe(false);
+    expect(accept(jwt({ sub: 'anon', tid: 't', exp: NOW / 1000 + 600 }))).toBe(false);
+  });
+});
+
+describe('the shared token is checked before it is adopted', () => {
+  it('refreshes itself, with its own bearer, when the shared token is not acceptable', async () => {
+    const locks = fakeLocks();
+    const channel = fakeBus();
+    const first = deferred();
+    const refresh = vi
+      .fn<(accessToken: string | null) => Promise<RefreshOutcome>>()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ kind: 'refreshed', accessToken: 'own' });
+    const one = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => 1 });
+    const two = createRefreshCoordinator(refresh, { locks, channel: channel(), now: () => 1 });
+
+    const answers = [
+      one.refresh({ accessToken: 'mine-1', accept: () => true }),
+      two.refresh({ accessToken: 'mine-2', accept: () => false }),
+    ];
+    first.resolve({ kind: 'refreshed', accessToken: 'shared' });
+    expect(await Promise.all(answers)).toEqual([
+      { kind: 'refreshed', accessToken: 'shared' },
+      { kind: 'refreshed', accessToken: 'own' },
+    ]);
+    expect(refresh.mock.calls).toEqual([['mine-1'], ['mine-2']]);
+  });
+
+  it('ignores a shared timestamp beyond the allowed skew', async () => {
+    const locks = fakeLocks();
+    const bus = fakeBus();
+    const sender = bus();
+    const refresh = vi
+      .fn<(accessToken: string | null) => Promise<RefreshOutcome>>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'own' });
+    const tab = createRefreshCoordinator(refresh, { locks, channel: bus(), now: () => 1000 });
+
+    sender.postMessage({
+      kind: 'pp-refreshed',
+      accessToken: 'planted',
+      at: 1000 + SHARED_CLOCK_SKEW_MS + 1,
+    });
+    expect(await tab.refresh(ANY)).toEqual({ kind: 'refreshed', accessToken: 'own' });
+
+    sender.postMessage({ kind: 'pp-refreshed', accessToken: 'fresh', at: 1001 });
+    expect(await tab.refresh(ANY)).toEqual({ kind: 'refreshed', accessToken: 'fresh' });
+  });
+
+  it('forgets the shared token on sign-out', async () => {
+    const locks = fakeLocks();
+    const bus = fakeBus();
+    const sender = bus();
+    const refresh = vi
+      .fn<(accessToken: string | null) => Promise<RefreshOutcome>>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'own' });
+    const tab = createRefreshCoordinator(refresh, { locks, channel: bus(), now: () => 1000 });
+    sender.postMessage({ kind: 'pp-refreshed', accessToken: 'shared', at: 1000 });
+    tab.forget();
+    expect(await tab.refresh(ANY)).toEqual({ kind: 'refreshed', accessToken: 'own' });
+  });
+});
+
+describe('the refresh call itself', () => {
+  it('sends the access token in hand as the bearer, and none on load', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'a' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await refreshSession({ fetchImpl, accessToken: 'held' });
+    expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe(
+      'Bearer held',
+    );
+    await refreshSession({ fetchImpl });
+    expect(new Headers(fetchImpl.mock.calls[1]?.[1]?.headers).get('Authorization')).toBeNull();
+  });
+
+  it('is what a signed-in tab renews with: its own token goes along', async () => {
+    const held = jwt(LIVE);
+    const refreshImpl = vi
+      .fn<typeof refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: jwt({ ...LIVE, n: 3 }) });
+    let session: ReturnType<typeof useAccountSession> = null;
+    function Probe() {
+      session = useAccountSession();
+      return null;
+    }
+    render(
+      <AccountSessionProvider
+        initial={{ status: 'signed-in', tokens: { accessToken: held } }}
+        refreshImpl={refreshImpl}
+      >
+        <Probe />
+      </AccountSessionProvider>,
+    );
+    await act(async () => {
+      await session?.renew();
+    });
+    expect(refreshImpl).toHaveBeenCalledWith({ accessToken: held });
   });
 });

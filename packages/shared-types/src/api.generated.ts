@@ -134,6 +134,11 @@ export interface paths {
      * Refresh
      * @description Exchange the refresh cookie for a new access token, rotating the cookie.
      *
+     *     The page sends its access token too, when it holds one: proof that it is
+     *     the session's own holder, which lets a jar a late Set-Cookie moved back
+     *     one rotation recover (see `auth.refresh`). It is optional, and an
+     *     expired or foreign one is no proof rather than a refusal.
+     *
      *     What a page calls on load to find out whether this browser is signed in,
      *     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
      *     clears the cookie, so the browser stops sending a dead credential.

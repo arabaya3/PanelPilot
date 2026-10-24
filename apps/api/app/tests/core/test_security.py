@@ -221,3 +221,25 @@ def test_a_derived_refresh_token_is_stable_and_bound_to_every_input(
     monkeypatch.setenv("JWT_SECRET", "another-key-entirely-" + "k" * 32)
     get_settings.cache_clear()
     assert derive_refresh_token(session_id="s1", salt=salt, generation=1) != first
+
+
+def test_refresh_tokens_are_derived_under_their_own_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not the access-token signing key: HKDF of it, or REFRESH_TOKEN_KEY when set."""
+    import hashlib
+    import hmac
+
+    from app.core.security import derive_refresh_token, refresh_token_key
+
+    key = refresh_token_key()
+    assert len(key) == 32
+    assert key != _SECRET.encode()
+    # The previous derivation, straight under JWT_SECRET, gives a different token.
+    message = b"panelpilot-refresh-token|s1|salt|1"
+    under_jwt_secret = hmac.new(_SECRET.encode(), message, hashlib.sha256).digest()
+    token, _ = derive_refresh_token(session_id="s1", salt="salt", generation=1)
+    assert base64.urlsafe_b64decode(token + "=") != under_jwt_secret
+
+    monkeypatch.setenv("REFRESH_TOKEN_KEY", "a-separate-refresh-key-" + "r" * 32)
+    get_settings.cache_clear()
+    assert refresh_token_key() != key
+    assert derive_refresh_token(session_id="s1", salt="salt", generation=1)[0] != token

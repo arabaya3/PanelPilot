@@ -84,6 +84,13 @@ export interface RefreshOptions {
   endpoint?: string;
   /** How long to wait for the answer before giving up; see `REFRESH_TIMEOUT_MS`. */
   timeoutMs?: number;
+  /**
+   * The access token in memory, when there is one. Sent as the bearer: proof
+   * that this page is the session's own holder, which lets a cookie that an
+   * out-of-order answer moved back one rotation still refresh (the API's
+   * `auth.refresh`). Never required.
+   */
+  accessToken?: string | null;
 }
 
 /** A page waits this long, on load, to learn whether it is signed in. */
@@ -102,13 +109,17 @@ export async function refreshSession(options: RefreshOptions = {}): Promise<Refr
     fetchImpl = fetch,
     endpoint = `${SESSION}/refresh`,
     timeoutMs = REFRESH_TIMEOUT_MS,
+    accessToken = null,
   } = options;
 
   let response: Response;
   try {
     response = await fetchImpl(endpoint, {
       method: 'POST',
-      headers: { [CSRF_HEADER]: '1' },
+      headers: {
+        [CSRF_HEADER]: '1',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       credentials: 'same-origin',
       // Without it a hung API left the page behind its restoring placeholder forever.
       signal: AbortSignal.timeout(timeoutMs),
@@ -126,8 +137,8 @@ export async function refreshSession(options: RefreshOptions = {}): Promise<Refr
     if (response.status === 403) console.warn('The API refused this origin for the session.');
     return { kind: 'failed' };
   }
-  const accessToken = await accessTokenOf(response);
-  return accessToken === null ? { kind: 'failed' } : { kind: 'refreshed', accessToken };
+  const renewed = await accessTokenOf(response);
+  return renewed === null ? { kind: 'failed' } : { kind: 'refreshed', accessToken: renewed };
 }
 
 export type SignOutOutcome = { kind: 'signed-out' } | { kind: 'failed' };
@@ -196,10 +207,26 @@ export interface RefreshCoordination {
   now?: () => number;
 }
 
+export interface RefreshRequest {
+  /** The access token in hand, sent as proof of possession; null on load. */
+  accessToken: string | null;
+  /**
+   * Whether a token another tab shared may stand for this tab's refresh: it
+   * must be unexpired and, for a signed-in tab, of the same account and
+   * session. A token that fails is ignored and this tab refreshes itself.
+   */
+  accept: (accessToken: string) => boolean;
+}
+
 export interface RefreshCoordinator {
-  refresh: () => Promise<RefreshOutcome>;
+  refresh: (request: RefreshRequest) => Promise<RefreshOutcome>;
+  /** Forget any shared token: on sign-out, so it cannot stand for the next account. */
+  forget: () => void;
   close: () => void;
 }
+
+/** How far ahead of this tab's clock a shared timestamp may be, for skew between tabs. */
+export const SHARED_CLOCK_SKEW_MS = 2000;
 
 const LOCK_NAME = 'pp-refresh';
 const SHARED = 'pp-refreshed';
@@ -242,7 +269,7 @@ let browserCoordination: RefreshCoordination | null = null;
  * stored.
  */
 export function createRefreshCoordinator(
-  refresh: () => Promise<RefreshOutcome>,
+  refresh: (accessToken: string | null) => Promise<RefreshOutcome>,
   coordination: RefreshCoordination = browserRefreshCoordination(),
 ): RefreshCoordinator {
   const { locks, channel, now = () => Date.now() } = coordination;
@@ -253,12 +280,15 @@ export function createRefreshCoordinator(
     if (typeof data !== 'object' || data === null) return;
     const { kind, accessToken, at } = data as Record<string, unknown>;
     if (kind !== SHARED || typeof accessToken !== 'string' || typeof at !== 'number') return;
+    // A sender's clock is not trusted far into the future: a timestamp there
+    // would make its token look newer than every later refresh.
+    if (!Number.isFinite(at) || at > now() + SHARED_CLOCK_SKEW_MS) return;
     if (latest === null || at > latest.at) latest = { accessToken, at };
   };
   channel?.addEventListener('message', listener);
 
-  async function refreshAndShare(): Promise<RefreshOutcome> {
-    const outcome = await refresh();
+  async function refreshAndShare(accessToken: string | null): Promise<RefreshOutcome> {
+    const outcome = await refresh(accessToken);
     if (outcome.kind === 'refreshed') {
       latest = { accessToken: outcome.accessToken, at: now() };
       channel?.postMessage({ kind: SHARED, ...latest });
@@ -267,18 +297,22 @@ export function createRefreshCoordinator(
   }
 
   return {
-    refresh: () => {
-      if (locks === undefined) return refresh();
+    refresh: ({ accessToken, accept }) => {
+      if (locks === undefined) return refresh(accessToken);
       const asked = now();
       return locks.request(LOCK_NAME, async () => {
-        // Another tab refreshed while this one waited: its token is this
-        // one's too (the same session), and the cookie has already moved on.
+        // Another tab refreshed while this one waited: its token stands for
+        // this one's, if it is for the same account and session and still
+        // valid; the cookie has already moved on.
         const shared = latest;
-        if (shared !== null && shared.at >= asked) {
+        if (shared !== null && shared.at >= asked && accept(shared.accessToken)) {
           return { kind: 'refreshed', accessToken: shared.accessToken } as const;
         }
-        return refreshAndShare();
+        return refreshAndShare(accessToken);
       });
+    },
+    forget: () => {
+      latest = null;
     },
     // The channel is the tab's, shared; only this coordinator's ear is removed.
     close: () => {

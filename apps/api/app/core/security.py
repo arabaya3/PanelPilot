@@ -96,11 +96,42 @@ def generate_session_salt() -> str:
     return secrets.token_urlsafe(_REFRESH_TOKEN_BYTES)
 
 
+# The HKDF info label for the refresh-token key. Changing it changes every
+# derived token, so it is versioned rather than edited.
+_REFRESH_KEY_INFO = b"panelpilot refresh-token derivation v1"
+
+
+def refresh_token_key() -> bytes:
+    """Return the key refresh tokens are derived under.
+
+    ``REFRESH_TOKEN_KEY`` when set; otherwise HKDF-SHA256 (RFC 5869) of
+    ``JWT_SECRET`` with its own info label. Either way it is not the
+    access-token signing key, so a use of one key cannot be mistaken for the
+    other. Setting ``REFRESH_TOKEN_KEY`` lets the two be rotated separately.
+
+    Returns:
+        A 32-byte key.
+    """
+    settings = get_settings()
+    if settings.refresh_token_key is not None:
+        material = settings.refresh_token_key.get_secret_value().encode("utf-8")
+    else:
+        material = settings.jwt_secret.get_secret_value().encode("utf-8")
+    return _hkdf_sha256(material, info=_REFRESH_KEY_INFO)
+
+
+def _hkdf_sha256(material: bytes, *, info: bytes, length: int = 32) -> bytes:
+    """HKDF-SHA256 (RFC 5869) with an all-zero salt, for one block or less."""
+    prk = hmac.new(b"\x00" * hashlib.sha256().digest_size, material, hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()[:length]
+
+
 def derive_refresh_token(*, session_id: str, salt: str, generation: int) -> tuple[str, str]:
     """Derive a session's refresh token for one generation, and its hash.
 
-    HMAC-SHA256 under the server's signing key, over the session, its random
-    salt and the generation. The same inputs always give the same token, which
+    HMAC-SHA256 under the refresh-token key (`refresh_token_key`, never the
+    access-token signing key itself), over the session, its random salt and
+    the generation. The same inputs always give the same token, which
     is what lets the live token be handed again to a tab that raced its
     rotation without the token ever being stored: the row keeps only the hash
     and the salt, and neither derives anything without the key.
@@ -113,7 +144,7 @@ def derive_refresh_token(*, session_id: str, salt: str, generation: int) -> tupl
     Returns:
         ``(token, token_hash)``, shaped like ``generate_refresh_token``'s.
     """
-    key = get_settings().jwt_secret.get_secret_value().encode("utf-8")
+    key = refresh_token_key()
     message = f"panelpilot-refresh-token|{session_id}|{salt}|{generation}"
     digest = hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
     token = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")

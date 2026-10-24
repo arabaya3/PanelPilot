@@ -1420,3 +1420,165 @@ def test_a_malformed_tenant_claim_is_an_authentication_failure(db: Session) -> N
 
     with sessionmaker(bind=db.get_bind())() as request_session, pytest.raises(AuthenticationError):
         auth.resolve_caller(session=request_session, caller=malformed)
+
+
+# --- proof of possession: a jar moved back by an out-of-order answer ------------
+
+
+def _d1(db: Session) -> tuple[TokenPair, TokenPair, uuid.UUID]:
+    """D1's sequence: T0 -> T1 by two requests, then T1 -> T2.
+
+    Returns the T1 pair, the T2 pair, and the session.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    t1 = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    again = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    assert again.refresh_token == t1.refresh_token
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    return t1, t2, sid
+
+
+@requires_db
+def test_d1_the_jar_holding_the_predecessor_recovers_with_the_tabs_access_token(
+    db: Session,
+) -> None:
+    """A late Set-Cookie left T1 in the jar after T1 -> T2; 15 s on, the tab still works.
+
+    The tab proves it is the session's own holder with its access token
+    (same sid, same user, unexpired), so T1 gets the live T2 again: no mint,
+    no second live token.
+    """
+    t1, t2, sid = _d1(db)
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    bearer = decode_access_token(t2.access_token)
+
+    again = auth.refresh(session=db, refresh_token=t1.refresh_token, now=later, bearer=bearer)
+    db.commit()
+    assert again.refresh_token == t2.refresh_token
+    assert _live_in_session(db, sid) == 1
+    assert not _session_revoked(db, sid)
+
+
+@requires_db
+def test_d1_without_an_access_token_is_still_a_replay(db: Session) -> None:
+    """A cookie-only holder gets the 10 s window and no more."""
+    t1, _t2, sid = _d1(db)
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=t1.refresh_token, now=later)
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+def _email_of(db: Session, user_id: str) -> str:
+    email: str = db.execute(
+        text("SELECT email FROM users WHERE id = :i"), {"i": uuid.UUID(user_id)}
+    ).scalar_one()
+    return email
+
+
+@requires_db
+@pytest.mark.parametrize("whose", ["other-session", "other-user"])
+def test_a_bearer_of_another_session_or_user_proves_nothing(db: Session, whose: str) -> None:
+    t1, t2, sid = _d1(db)
+    if whose == "other-session":
+        me = decode_access_token(t2.access_token)
+        other = auth.login(session=db, email=_email_of(db, me.id), password=PASSWORD)
+    else:
+        other = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=later,
+            bearer=decode_access_token(other.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_does_not_reach_back_two_generations(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    t1 = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=first.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=15),
+            bearer=decode_access_token(t2.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_reaches_back_no_further_than_an_access_token_lives(db: Session) -> None:
+    from app.core.config import get_settings
+
+    t1, t2, sid = _d1(db)
+    ttl = get_settings().access_token_ttl_seconds
+    beyond = datetime.now(UTC) + timedelta(seconds=ttl + 60)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=beyond,
+            bearer=decode_access_token(t2.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_legacy_session_with_two_live_tokens_refuses_the_older_never_a_500(
+    db: Session,
+) -> None:
+    """The old grace model could leave two live tokens; only the newest may rotate."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    row = db.execute(
+        text("SELECT tenant_id, user_id FROM refresh_tokens WHERE session_id = :s"), {"s": sid}
+    ).one()
+    sibling, sibling_hash = auth_security.generate_refresh_token()
+    db.execute(
+        text("UPDATE refresh_tokens SET generation = NULL WHERE session_id = :s"), {"s": sid}
+    )
+    db.execute(text("UPDATE auth_sessions SET token_salt = NULL WHERE id = :s"), {"s": sid})
+    db.execute(
+        text(
+            "INSERT INTO refresh_tokens (id, tenant_id, user_id, session_id, token_hash, "
+            "expires_at, created_at, updated_at) VALUES (:i, :t, :u, :s, :h, :e, :c, :c)"
+        ),
+        {
+            "i": uuid.uuid4(),
+            "t": row.tenant_id,
+            "u": row.user_id,
+            "s": sid,
+            "h": sibling_hash,
+            "e": datetime.now(UTC) + timedelta(days=1),
+            "c": datetime.now(UTC) + timedelta(seconds=1),
+        },
+    )
+    db.commit()
+    assert _live_in_session(db, sid) == 2
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.rollback()
+    assert _session_revoked(db, sid)
+    with pytest.raises(AuthenticationError):
+        auth.refresh(session=db, refresh_token=sibling)

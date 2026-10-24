@@ -750,3 +750,76 @@ def test_the_secure_cookie_round_trips_and_a_tossed_plain_one_is_ignored(
     assert header.startswith(f"{SECURE_SESSION_COOKIE}=")
     assert _cookie_attributes(header)["path"] == "/"
     assert secure_client.cookies.get(SECURE_SESSION_COOKIE) is None
+
+
+# --- proof of possession over HTTP (D1) -----------------------------------------
+
+
+def _spend_long_ago(token: str) -> None:
+    """Move a spent token's spend 15 s into the past, beyond the cookie-only window."""
+    engine = create_engine(os.environ["DATABASE_URL"])
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE refresh_tokens SET revoked_at = revoked_at - make_interval(secs => 15) "
+                "WHERE token_hash = :h"
+            ),
+            {"h": hash_refresh_token(token)},
+        )
+
+
+def _d1_over_http(client: TestClient) -> tuple[str, str, str]:
+    """T0 -> T1 by two tabs, then T1 -> T2, spent 15 s ago.
+
+    Returns T1, T2 and T2's access token.
+    """
+    _sign_up(client)
+    t0 = client.cookies.get(SESSION_COOKIE)
+    assert t0
+    tabs = [_second_browser(client) for _ in range(2)]
+    for tab in tabs:
+        _hold_cookie(tab, t0)
+        assert tab.post(_REFRESH, headers=SAME_SITE).status_code == 200
+    t1 = tabs[0].cookies.get(SESSION_COOKIE)
+    assert t1
+    rotated = tabs[0].post(_REFRESH, headers=SAME_SITE)
+    t2 = tabs[0].cookies.get(SESSION_COOKIE)
+    assert t2
+    _spend_long_ago(t1)
+    access: str = rotated.json()["access_token"]
+    return t1, t2, access
+
+
+@requires_db
+def test_d1_over_http_the_tabs_bearer_recovers_the_live_cookie(client: TestClient) -> None:
+    t1, t2, access = _d1_over_http(client)
+    tab = _second_browser(client)
+    _hold_cookie(tab, t1)  # the late answer moved the jar back
+    answer = tab.post(_REFRESH, headers={**SAME_SITE, **_bearer(access)})
+    assert answer.status_code == 200, answer.text
+    assert tab.cookies.get(SESSION_COOKIE) == t2
+
+
+@requires_db
+def test_d1_over_http_without_a_bearer_is_a_replay(client: TestClient) -> None:
+    t1, _t2, access = _d1_over_http(client)
+    tab = _second_browser(client)
+    _hold_cookie(tab, t1)
+    assert tab.post(_REFRESH, headers=SAME_SITE).status_code == 401
+    assert client.get("/api/v1/auth/quota", headers=_bearer(access)).status_code == 401
+
+
+@requires_db
+def test_d1_over_http_an_expired_bearer_proves_nothing(client: TestClient) -> None:
+    t1, _t2, access = _d1_over_http(client)
+    caller = decode_access_token(access)
+    expired = create_access_token(
+        subject=caller.id,
+        tenant_id=caller.tenant_id,
+        session_id=caller.session_id,
+        ttl_seconds=-1,
+    )
+    tab = _second_browser(client)
+    _hold_cookie(tab, t1)
+    assert tab.post(_REFRESH, headers={**SAME_SITE, **_bearer(expired)}).status_code == 401
+    assert client.get("/api/v1/auth/quota", headers=_bearer(access)).status_code == 401

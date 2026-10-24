@@ -103,6 +103,48 @@ export function tokenIdentity(token: string): TokenIdentity | null {
   }
 }
 
+/** What the page reads from an access token to judge one another tab shared. */
+export type TokenClaims = { subject: string; session: string | null; expiresAt: number | null };
+
+/**
+ * Read the subject, session and expiry from an access token, without verifying it.
+ *
+ * Only to decide whether a token another tab of this origin shared may stand
+ * for this tab's own refresh. The server verifies every token it is sent.
+ */
+export function tokenClaims(token: string): TokenClaims | null {
+  const part = token.split('.')[1];
+  if (part === undefined || part === '') return null;
+  try {
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const payload: unknown = JSON.parse(atob(padded));
+    if (typeof payload !== 'object' || payload === null) return null;
+    const { sub, sid, exp } = payload as Record<string, unknown>;
+    if (typeof sub !== 'string' || sub === '') return null;
+    return {
+      subject: sub,
+      session: typeof sid === 'string' && sid !== '' ? sid : null,
+      expiresAt: typeof exp === 'number' ? exp * 1000 : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** A shared token that may stand for a tab holding `held` (null: restoring on load). */
+export function acceptsShared(held: string | null, now: () => number = Date.now) {
+  const mine = held === null ? null : tokenClaims(held);
+  return (shared: string): boolean => {
+    const theirs = tokenClaims(shared);
+    if (theirs === null || theirs.expiresAt === null || theirs.expiresAt <= now()) return false;
+    // An account token: a trial's has no session and is never shared.
+    if (theirs.session === null) return false;
+    if (held === null) return true;
+    return mine !== null && mine.subject === theirs.subject && mine.session === theirs.session;
+  };
+}
+
 function subjectOf(token: string): string | null {
   return tokenIdentity(token)?.subject ?? null;
 }
@@ -133,7 +175,11 @@ export function AccountSessionProvider({
 }) {
   // One refresh in flight per browser, not per tab (see `createRefreshCoordinator`).
   const coordinator = useMemo(
-    () => createRefreshCoordinator(() => refreshImpl(), coordination),
+    () =>
+      createRefreshCoordinator(
+        (accessToken) => refreshImpl(accessToken ? { accessToken } : {}),
+        coordination,
+      ),
     [refreshImpl, coordination],
   );
   useEffect(
@@ -162,7 +208,7 @@ export function AccountSessionProvider({
   useEffect(() => {
     if (!restore) return;
     const mine = ticket.current;
-    void coordinator.refresh().then((outcome) => {
+    void coordinator.refresh({ accessToken: null, accept: acceptsShared(null) }).then((outcome) => {
       // Signed in or out by hand meanwhile: that stands.
       if (ticket.current !== mine || current.current.status !== 'restoring') return;
       if (outcome.kind === 'refreshed') {
@@ -212,8 +258,10 @@ export function AccountSessionProvider({
     setRestoreTimedOut(false);
     renewing.current = null;
     ticket.current += 1;
+    // A token shared before the sign-out must not stand for the next account.
+    coordinator.forget();
     settle({ status: 'signed-out' });
-  }, [signOutImpl, settle]);
+  }, [signOutImpl, settle, coordinator]);
 
   const signOutEverywhere = useCallback(async (): Promise<'signed-out' | 'failed'> => {
     const held = current.current;
@@ -222,16 +270,18 @@ export function AccountSessionProvider({
     if (outcome.kind === 'failed') return 'failed';
     renewing.current = null;
     ticket.current += 1;
+    coordinator.forget();
     settle({ status: 'signed-out' });
     return 'signed-out';
-  }, [signOutEverywhereImpl, settle]);
+  }, [signOutEverywhereImpl, settle, coordinator]);
 
   const expire = useCallback(() => {
     if (current.current.status !== 'signed-in') return;
     renewing.current = null;
     ticket.current += 1;
+    coordinator.forget();
     settle({ status: 'expired' });
-  }, [settle]);
+  }, [settle, coordinator]);
 
   const renew = useCallback((): Promise<RenewOutcome> => {
     if (renewing.current !== null) return renewing.current;
@@ -240,7 +290,10 @@ export function AccountSessionProvider({
     ticket.current += 1;
     const mine = ticket.current;
     const attempt = (async (): Promise<RenewOutcome> => {
-      const outcome = await coordinator.refresh();
+      const outcome = await coordinator.refresh({
+        accessToken: held.tokens.accessToken,
+        accept: acceptsShared(held.tokens.accessToken),
+      });
       // Signed out, or in again as someone, while the exchange ran: theirs stands.
       const kind = outcome.kind === 'timed-out' ? 'failed' : outcome.kind;
       if (ticket.current !== mine) return kind;

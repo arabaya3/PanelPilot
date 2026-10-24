@@ -79,6 +79,8 @@ export type Refusal = {
   tooLarge?: TooLarge[];
   /** Every field a 422 named, whatever it objected to, as paths: said where the reason is not. */
   invalidFields?: string[];
+  /** For a 429: the seconds the server's `Retry-After` asks the page to wait. */
+  retryAfterSeconds?: number;
 };
 
 /** A number the server refused as too large, and the most it takes. */
@@ -268,7 +270,11 @@ async function call<T>(
   // saved project that is not (or no longer) there; and 409, a revision that
   // cannot be approved or exported as it stands (`revision_stale`, ...).
   if (REFUSED.includes(response.status)) {
-    return refusalOf(await readJson(response));
+    const refusal = refusalOf(await readJson(response));
+    const wait = Number(response.headers.get('Retry-After'));
+    return response.status === 429 && Number.isFinite(wait) && wait > 0
+      ? { ...refusal, retryAfterSeconds: wait }
+      : refusal;
   }
   if (!response.ok) return { kind: 'failed' };
   const payload = await readJson(response);
