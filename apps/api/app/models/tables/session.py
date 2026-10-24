@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -36,6 +36,12 @@ class AuthSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Random, per session. With the server's key it derives each generation's
+    # refresh token (`security.derive_refresh_token`), so the live token can be
+    # handed again to a tab that raced its rotation without storing it. Alone
+    # it derives nothing: a leaked row is still not a credential. NULL for a
+    # session from before this was kept; its next rotation sets it.
+    token_salt: Mapped[str | None] = mapped_column(String(64))
 
 
 class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
@@ -62,10 +68,11 @@ class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     session_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("auth_sessions.id", ondelete="CASCADE"), index=True
     )
-    # When this spent token was honoured once inside the reuse window (a
-    # refresh racing the one that rotated it). Once only: a second
-    # presentation is a replay. See `auth.refresh`.
-    grace_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Its place in the session's chain: login mints 1, each rotation the next.
+    # Only the live token's immediate predecessor is answered inside the reuse
+    # window (`auth.refresh`). NULL for tokens minted before this was kept,
+    # which count as 0.
+    generation: Mapped[int | None] = mapped_column(Integer)
 
 
 class AnonymousSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):

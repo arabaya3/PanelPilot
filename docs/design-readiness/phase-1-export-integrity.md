@@ -418,3 +418,70 @@ Not cleaned up, by request:
 - **Two Claude Code sessions, one owner.** The lead session coordinated. A second session (panelpilot-73) also worked on the branch until the user made the lead the sole owner. Its work was kept and reviewed, not reverted.
 - **Agents:** backend, frontend, adversarial, a format-gating implementer, a review-fix implementer, a browser-flow verifier, and an independent reviewer who did not implement the code.
 - **Git:** only the lead committed. The branch history was rebuilt onto the #199 + #202 base without the assessment evidence. The tree of `apps/` and `packages/` was verified byte-identical to the tested commit.
+
+## Deployment: WEB_ORIGINS and sessions
+
+### The supported topology
+
+The repo ships one browser topology: **same-origin through the web proxy**. Nothing else is supported for signed-in browsers.
+
+- The browser loads the Next web app (`apps/web`, port 3000 in its image) and calls only relative `/api/v1/*` paths on that same origin.
+- The web server's route handler (`apps/web/src/app/api/[...path]/route.ts`) forwards them to the API at `API_PROXY_TARGET`. That is `http://api:8000` in `docker-compose.yml`.
+- The API is never called by the browser directly. `infra/README.md` lists the deploy targets (`web`, `api`, `worker`); there is no cloud IaC yet.
+
+The session cookie is set and read on the web origin:
+- Over HTTPS it is `__Host-pp_refresh` (Path=/, Secure, no Domain).
+- Over dev http it is `pp_refresh` on `/api/v1/auth/session`.
+
+The proxy forwards it only to `refresh`, `logout` and `logout-everywhere`. CORS keeps `allow_credentials=False`. A **separate API host called from the browser** (`https://api.example.com` with the page on `https://app.example.com`) is therefore **not supported**:
+- the cookie belongs to the web origin;
+- a credentialed cross-origin call is refused by CORS by design.
+
+To run the API on its own host, keep the browser on the web origin and point `API_PROXY_TARGET` at it.
+
+### What WEB_ORIGINS must be
+
+`WEB_ORIGINS` is the origin the **browser** shows in the address bar for the web app: scheme, host, and port only if it is not the default. It is not the API's address, and not `API_PROXY_TARGET`.
+
+| Environment | Browser loads | `WEB_ORIGINS` | Also set |
+| --- | --- | --- | --- |
+| Local compose (`docker compose up`) | `http://localhost:3000` or `http://127.0.0.1:3000` | unset. In dev both loopback origins are always trusted, alongside `WEB_ORIGINS`/`CORS_ALLOWED_ORIGINS` | `ENVIRONMENT=dev`; the cookie is not Secure (plain http) |
+| Dev web on another port, e.g. `next dev -p 3001` | `http://localhost:3001` | `http://localhost:3001` | |
+| Staging behind TLS | `https://staging.panelpilot.example` | `https://staging.panelpilot.example` | `ENVIRONMENT=staging`; `AUTH_COOKIE_SECURE` unset (true) |
+| Production behind TLS | `https://app.panelpilot.example` | `https://app.panelpilot.example` | `ENVIRONMENT=prod` |
+| Production on two hostnames for the same web app | `https://app.panelpilot.example`, `https://panelpilot.example` | `https://app.panelpilot.example,https://panelpilot.example` | each hostname gets its own `__Host-` cookie; a user signs in on each |
+| TLS terminated at a load balancer on a non-default port | `https://app.panelpilot.example:8443` | `https://app.panelpilot.example:8443` | |
+
+Rules:
+- **No path or trailing slash.** `https://app.example.com/` is normalised, but write it without the slash.
+- **No `*`.** It is refused at startup outside dev, and never matches anything in dev.
+- **Outside dev, unset means refused.** If neither `WEB_ORIGINS` nor `CORS_ALLOWED_ORIGINS` is set, every refresh is a `403 csrf_origin_refused`. A reload then loses the sign-in (the web logs "The API refused this origin for the session."). This fails closed on purpose.
+- **Staging and production need HTTPS end to end at the browser.** `AUTH_COOKIE_SECURE=false` is refused at startup there, and a `__Host-` cookie is dropped by the browser over plain http.
+
+The HTTPS behaviour is checked by `docs/design-readiness/phase-1/https-check/check_https.py`; its last output is in `output.txt` there. It runs the API with `ENVIRONMENT=staging` over TLS with a throwaway CA and checks:
+- the `__Host-` cookie attributes;
+- that the trusted origin is allowed;
+- that an untrusted origin, a `null` origin and a missing CSRF header are refused;
+- that logout clears the cookie with the same attributes.
+
+### The one-time sign-in after the session migration
+
+The migrations `c3f8a1d6e2b7` (sessions), `e7b2c9d4a1f3` and `a9d3f6b1c8e4` (derived refresh-token generations) leave existing rows in place, but credentials issued before them stop working:
+- **Access tokens without a `sid` are refused** with a `401 session_ended`. A logout could never reach them.
+- **Refresh tokens without a session are refused.** Before this the web held refresh tokens in memory only, so after a reload no browser had one anyway.
+
+So **every account signed in at deploy time signs in once more**, at most one access-token lifetime (1 h) early. Nothing is lost:
+- saved projects are on the server;
+- unsaved design work stays in the tab's draft and is offered again after signing in.
+
+Trials are unaffected: a trial has no session.
+
+### How concurrent tabs are handled
+
+Tabs of one browser share one cookie, so they must not count as theft.
+
+**In the browser.** A refresh takes a browser-wide Web Lock (`pp-refresh`). The tab that refreshed shares its access token over a `BroadcastChannel`. A tab that waited uses that token instead of presenting the cookie again, so normally one refresh is in flight per browser. Without Web Locks it refreshes directly.
+
+**On the server.** A session has exactly one live refresh token.
+- If the token's immediate predecessor is presented within 10 s of being spent, the server answers with the **same** live token. It re-derives it from the session's salt and the server key; it does not mint a new one. Every racing tab therefore gets the same Set-Cookie, and an answer landing late or being lost leaves a working cookie.
+- Anything else spent is a replay: a token spent more than 10 s ago, or more than one generation behind. A replay ends **that session only**. "Log out everywhere" ends the rest.

@@ -177,3 +177,112 @@ async function postSession(
     return { kind: 'failed' };
   }
 }
+
+/** The part of the Web Locks API this needs (`navigator.locks`). */
+export interface RefreshLocks {
+  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+}
+
+/** The part of `BroadcastChannel` this needs. */
+export interface RefreshChannel {
+  postMessage(message: unknown): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+}
+
+export interface RefreshCoordination {
+  locks?: RefreshLocks | undefined;
+  channel?: RefreshChannel | undefined;
+  now?: () => number;
+}
+
+export interface RefreshCoordinator {
+  refresh: () => Promise<RefreshOutcome>;
+  close: () => void;
+}
+
+const LOCK_NAME = 'pp-refresh';
+const SHARED = 'pp-refreshed';
+
+/**
+ * The browser's own Web Locks and a BroadcastChannel, where both exist.
+ *
+ * Both or neither: without a lock there is nothing to wait for, so a shared
+ * token would only ever be read too late to matter.
+ */
+export function browserRefreshCoordination(): RefreshCoordination {
+  if (browserCoordination !== null) return browserCoordination;
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  browserCoordination =
+    locks === undefined || typeof BroadcastChannel === 'undefined'
+      ? {}
+      : { locks, channel: new BroadcastChannel(LOCK_NAME) };
+  return browserCoordination;
+}
+
+// One per tab: every provider in it shares the lock and the channel.
+let browserCoordination: RefreshCoordination | null = null;
+
+/**
+ * Serialise refreshes across every tab of this browser.
+ *
+ * Tabs share the one session cookie. Refreshing from several at once makes
+ * the API rotate it once and answer the rest with the same successor (see the
+ * API's reuse window); that is tolerated, but only briefly. So a refresh takes
+ * a browser-wide Web Lock first, and the tab holding it shares the access
+ * token it got over a BroadcastChannel. A tab that waited for the lock and
+ * finds a token refreshed after it asked uses that, instead of presenting the
+ * cookie again; otherwise it refreshes with the cookie as it now is. Normally,
+ * then, one refresh is in flight per browser.
+ *
+ * Where Web Locks are missing (an old browser, the test DOM) it refreshes
+ * directly, and the API's window covers the overlap.
+ *
+ * The token is shared only between same-origin tabs, in memory; nothing is
+ * stored.
+ */
+export function createRefreshCoordinator(
+  refresh: () => Promise<RefreshOutcome>,
+  coordination: RefreshCoordination = browserRefreshCoordination(),
+): RefreshCoordinator {
+  const { locks, channel, now = () => Date.now() } = coordination;
+  let latest: { accessToken: string; at: number } | null = null;
+
+  const listener = (event: MessageEvent) => {
+    const data: unknown = event.data;
+    if (typeof data !== 'object' || data === null) return;
+    const { kind, accessToken, at } = data as Record<string, unknown>;
+    if (kind !== SHARED || typeof accessToken !== 'string' || typeof at !== 'number') return;
+    if (latest === null || at > latest.at) latest = { accessToken, at };
+  };
+  channel?.addEventListener('message', listener);
+
+  async function refreshAndShare(): Promise<RefreshOutcome> {
+    const outcome = await refresh();
+    if (outcome.kind === 'refreshed') {
+      latest = { accessToken: outcome.accessToken, at: now() };
+      channel?.postMessage({ kind: SHARED, ...latest });
+    }
+    return outcome;
+  }
+
+  return {
+    refresh: () => {
+      if (locks === undefined) return refresh();
+      const asked = now();
+      return locks.request(LOCK_NAME, async () => {
+        // Another tab refreshed while this one waited: its token is this
+        // one's too (the same session), and the cookie has already moved on.
+        const shared = latest;
+        if (shared !== null && shared.at >= asked) {
+          return { kind: 'refreshed', accessToken: shared.accessToken } as const;
+        }
+        return refreshAndShare();
+      });
+    },
+    // The channel is the tab's, shared; only this coordinator's ear is removed.
+    close: () => {
+      channel?.removeEventListener('message', listener);
+    },
+  };
+}

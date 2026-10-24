@@ -1,0 +1,29 @@
+{"stage": "request", "duration_ms": 11.76, "method": "GET", "path": "/live", "status": 200, "event": "latency", "correlation_id": "b1d64e75b66b485abf1fbfbd87c3f34b", "level": "info", "timestamp": "2026-10-24T12:07:45.765645Z"}
+{"stage": "request", "duration_ms": 403.18, "method": "POST", "path": "/signup", "status": 201, "event": "latency", "correlation_id": "2eb687bbcacb4225b90654cbfe5be328", "level": "info", "timestamp": "2026-10-24T12:07:46.171889Z"}
+{"stage": "request", "duration_ms": 3.19, "method": "POST", "path": "/session/refresh", "status": 403, "event": "latency", "correlation_id": "5d7683fe923a416c95ec55d46ee7a5cd", "level": "info", "timestamp": "2026-10-24T12:07:46.177824Z"}
+{"stage": "request", "duration_ms": 0.68, "method": "POST", "path": "/session/refresh", "status": 403, "event": "latency", "correlation_id": "1084627799c34f8a99819ce8d254a1a5", "level": "info", "timestamp": "2026-10-24T12:07:46.180213Z"}
+{"stage": "request", "duration_ms": 0.56, "method": "POST", "path": "/session/refresh", "status": 403, "event": "latency", "correlation_id": "7c3a8eeaa98142c892f5fc651bf1c03a", "level": "info", "timestamp": "2026-10-24T12:07:46.181876Z"}
+{"stage": "request", "duration_ms": 12.87, "method": "POST", "path": "/session/refresh", "status": 200, "event": "latency", "correlation_id": "b30f8bf684c64eceb124550b05f6b649", "level": "info", "timestamp": "2026-10-24T12:07:46.195804Z"}
+{"stage": "request", "duration_ms": 17.47, "method": "POST", "path": "/session/logout", "status": 204, "event": "latency", "correlation_id": "7e66d34700074f7dbab4b727b3356d58", "level": "info", "timestamp": "2026-10-24T12:07:46.214954Z"}
+{"stage": "request", "duration_ms": 3.59, "method": "POST", "path": "/session/refresh", "status": 401, "event": "latency", "correlation_id": "5b81a24068e34f599cc572362a64fb3d", "level": "info", "timestamp": "2026-10-24T12:07:46.220328Z"}
+API: https://127.0.0.1:52777 (ENVIRONMENT=staging, TLS from a throwaway CA)
+WEB_ORIGINS=https://app.panelpilot.test
+PASS  signup over HTTPS answers 201  -- 201
+Set-Cookie (value elided): __Host-pp_refresh=<token>; HttpOnly; Max-Age=2592000; Path=/; SameSite=strict; Secure
+PASS  cookie is named __Host-pp_refresh
+PASS  cookie is Secure
+PASS  cookie is HttpOnly
+PASS  cookie is SameSite=Strict
+PASS  cookie Path=/
+PASS  cookie has no Domain
+PASS  body carries no refresh token
+PASS  untrusted origin refused (403 csrf_origin_refused)  -- 403
+PASS  null origin refused (403 csrf_origin_refused)  -- 403
+PASS  missing CSRF header refused (403 csrf_header_missing)  -- 403
+PASS  trusted origin refreshes (200)  -- 200
+PASS  logout answers 204  -- 204
+Logout Set-Cookie: __Host-pp_refresh=""; expires=Sat, 24 Oct 2026 12:07:46 GMT; HttpOnly; Max-Age=0; Path=/; SameSite=strict; Secure
+PASS  logout clears __Host-pp_refresh with the same attributes
+PASS  the cookie no longer refreshes after logout (401)
+
+ALL CHECKS PASSED

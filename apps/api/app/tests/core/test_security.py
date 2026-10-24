@@ -198,3 +198,26 @@ def test_claim_secrets_are_stored_only_as_their_hash() -> None:
     secret, secret_hash = generate_claim_secret()
     assert secret_hash == hash_claim_secret(secret)
     assert len(secret_hash) == 64
+
+
+def test_a_derived_refresh_token_is_stable_and_bound_to_every_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-derivable by the server alone, and by nothing short of the key."""
+    from app.core.security import derive_refresh_token, generate_session_salt
+
+    salt = generate_session_salt()
+    first = derive_refresh_token(session_id="s1", salt=salt, generation=1)
+    assert first == derive_refresh_token(session_id="s1", salt=salt, generation=1)
+    assert first[1] == hash_refresh_token(first[0])
+    others = {
+        derive_refresh_token(session_id="s1", salt=salt, generation=2)[0],
+        derive_refresh_token(session_id="s2", salt=salt, generation=1)[0],
+        derive_refresh_token(session_id="s1", salt=generate_session_salt(), generation=1)[0],
+    }
+    assert first[0] not in others
+    assert len(others) == 3
+
+    monkeypatch.setenv("JWT_SECRET", "another-key-entirely-" + "k" * 32)
+    get_settings.cache_clear()
+    assert derive_refresh_token(session_id="s1", salt=salt, generation=1) != first

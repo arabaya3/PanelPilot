@@ -12,9 +12,11 @@ import {
 } from 'react';
 
 import {
+  createRefreshCoordinator,
   refreshSession,
   signOutEverywhere as signOutEverywhereOfServer,
   signOutOfServer,
+  type RefreshCoordination,
   type RefreshOutcome,
 } from '@/lib/auth';
 
@@ -112,6 +114,7 @@ export function AccountSessionProvider({
   signOutEverywhereImpl = signOutEverywhereOfServer,
   restore = false,
   initial = { status: 'signed-out' },
+  coordination,
 }: {
   children: ReactNode;
   refreshImpl?: typeof refreshSession;
@@ -125,14 +128,28 @@ export function AccountSessionProvider({
   restore?: boolean;
   /** For tests: the state to start in, when not restoring. */
   initial?: AccountState;
+  /** For tests: the cross-tab lock and channel; the browser's own by default. */
+  coordination?: RefreshCoordination;
 }) {
+  // One refresh in flight per browser, not per tab (see `createRefreshCoordinator`).
+  const coordinator = useMemo(
+    () => createRefreshCoordinator(() => refreshImpl(), coordination),
+    [refreshImpl, coordination],
+  );
+  useEffect(
+    () => () => {
+      coordinator.close();
+    },
+    [coordinator],
+  );
   const [state, setState] = useState<AccountState>(restore ? { status: 'restoring' } : initial);
   const [restoreTimedOut, setRestoreTimedOut] = useState(false);
   // Read by `renew`, which outlives the render it was made in.
   const current = useRef(state);
   current.current = state;
   // Several requests can 401 at once. One exchange runs per tab and the
-  // others wait for its answer; across tabs the server allows the overlap.
+  // others wait for its answer; across tabs the coordinator's lock queues
+  // them, and the server tolerates any overlap that remains.
   const renewing = useRef<Promise<RenewOutcome> | null>(null);
   // Which exchange is current: a sign-in or sign-out during one supersedes it.
   const ticket = useRef(0);
@@ -145,7 +162,7 @@ export function AccountSessionProvider({
   useEffect(() => {
     if (!restore) return;
     const mine = ticket.current;
-    void refreshImpl().then((outcome) => {
+    void coordinator.refresh().then((outcome) => {
       // Signed in or out by hand meanwhile: that stands.
       if (ticket.current !== mine || current.current.status !== 'restoring') return;
       if (outcome.kind === 'refreshed') {
@@ -165,7 +182,7 @@ export function AccountSessionProvider({
       if (outcome.kind === 'failed') console.warn('The sign-in could not be restored.');
       settle({ status: 'signed-out' });
     });
-  }, [restore, refreshImpl, settle]);
+  }, [restore, coordinator, settle]);
 
   const signedIn = useCallback(
     (tokens: AccountTokens) => {
@@ -223,7 +240,7 @@ export function AccountSessionProvider({
     ticket.current += 1;
     const mine = ticket.current;
     const attempt = (async (): Promise<RenewOutcome> => {
-      const outcome = await refreshImpl();
+      const outcome = await coordinator.refresh();
       // Signed out, or in again as someone, while the exchange ran: theirs stands.
       const kind = outcome.kind === 'timed-out' ? 'failed' : outcome.kind;
       if (ticket.current !== mine) return kind;
@@ -248,7 +265,7 @@ export function AccountSessionProvider({
     })();
     renewing.current = attempt;
     return attempt;
-  }, [refreshImpl, settle]);
+  }, [coordinator, settle]);
 
   const value = useMemo(
     () => ({ state, restoreTimedOut, signedIn, renew, signOut, signOutEverywhere, expire }),

@@ -612,12 +612,13 @@ def test_logout_everywhere_needs_an_access_token(client: TestClient) -> None:
 
 
 @requires_db
-def test_two_tabs_refreshing_at_once_both_stay_signed_in(client: TestClient) -> None:
+@pytest.mark.parametrize("count", [2, 3, 5])
+def test_tabs_refreshing_at_once_all_stay_signed_in(client: TestClient, count: int) -> None:
     """Tabs share the browser's cookie; a simultaneous refresh is not a replay."""
     _sign_up(client)
     shared = client.cookies.get(SESSION_COOKIE)
     assert shared
-    tabs = [_second_browser(client) for _ in range(2)]
+    tabs = [_second_browser(client) for _ in range(count)]
     for tab in tabs:
         _hold_cookie(tab, shared)
 
@@ -625,6 +626,8 @@ def test_two_tabs_refreshing_at_once_both_stay_signed_in(client: TestClient) -> 
         answers = list(pool.map(lambda tab: tab.post(_REFRESH, headers=SAME_SITE), tabs))
 
     assert [answer.status_code for answer in answers] == [200] * len(tabs)
+    # Every answer set the same cookie, so their order cannot matter.
+    assert len({tab.cookies.get(SESSION_COOKIE) for tab in tabs}) == 1
     for tab, answer in zip(tabs, answers, strict=True):
         token = answer.json()["access_token"]
         assert tab.get("/api/v1/auth/quota", headers=_bearer(token)).status_code == 200

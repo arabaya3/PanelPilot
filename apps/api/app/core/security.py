@@ -7,7 +7,9 @@ live in ``app.domain``.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -82,6 +84,39 @@ def generate_refresh_token() -> tuple[str, str]:
         persists only the hash.
     """
     token = secrets.token_urlsafe(_REFRESH_TOKEN_BYTES)
+    return token, hash_refresh_token(token)
+
+
+def generate_session_salt() -> str:
+    """Mint the random per-session value refresh tokens are derived with.
+
+    Returns:
+        A URL-safe random string, stored on the session row.
+    """
+    return secrets.token_urlsafe(_REFRESH_TOKEN_BYTES)
+
+
+def derive_refresh_token(*, session_id: str, salt: str, generation: int) -> tuple[str, str]:
+    """Derive a session's refresh token for one generation, and its hash.
+
+    HMAC-SHA256 under the server's signing key, over the session, its random
+    salt and the generation. The same inputs always give the same token, which
+    is what lets the live token be handed again to a tab that raced its
+    rotation without the token ever being stored: the row keeps only the hash
+    and the salt, and neither derives anything without the key.
+
+    Args:
+        session_id: The sign-in session.
+        salt: The session's random salt (`generate_session_salt`).
+        generation: The token's place in the session's chain.
+
+    Returns:
+        ``(token, token_hash)``, shaped like ``generate_refresh_token``'s.
+    """
+    key = get_settings().jwt_secret.get_secret_value().encode("utf-8")
+    message = f"panelpilot-refresh-token|{session_id}|{salt}|{generation}"
+    digest = hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
+    token = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
     return token, hash_refresh_token(token)
 
 
