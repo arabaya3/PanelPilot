@@ -170,6 +170,7 @@ def create_access_token(
     roles: frozenset[Role] | None = None,
     ttl_seconds: int | None = None,
     session_id: str | None = None,
+    refresh_generation: int | None = None,
 ) -> str:
     """Issue a signed access token for a subject.
 
@@ -185,6 +186,10 @@ def create_access_token(
         session_id: The server-side sign-in the token belongs to, carried as
             the `sid` claim so a logout can end the token before it expires.
             Omitted for a trial, which has no sign-in.
+        refresh_generation: The session's live refresh-token generation
+            when this token was issued, carried as `rgen`. It binds the
+            token, as proof of possession, to that one generation: see
+            `auth._reissue_live_successor`.
 
     Returns:
         The encoded JWT.
@@ -201,6 +206,8 @@ def create_access_token(
     }
     if session_id is not None:
         payload["sid"] = session_id
+    if refresh_generation is not None:
+        payload["rgen"] = refresh_generation
     return jwt.encode(
         payload,
         settings.jwt_secret.get_secret_value(),
@@ -257,6 +264,11 @@ def decode_access_token(token: str) -> CurrentUser:
         tenant_id=str(tenant_id),
         roles=roles,
         session_id=str(payload["sid"]) if payload.get("sid") else None,
+        refresh_generation=(
+            payload["rgen"]
+            if isinstance(payload.get("rgen"), int) and not isinstance(payload["rgen"], bool)
+            else None
+        ),
     )
 
 

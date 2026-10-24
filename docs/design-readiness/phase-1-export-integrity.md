@@ -487,23 +487,37 @@ Tabs of one browser share one cookie, so they must not count as theft.
 - Without Web Locks the tab refreshes directly.
 - Every refresh also sends the tab's in-memory access token as the bearer.
 
-**On the server.** A session has exactly one live refresh token, and only the newest live token may rotate. The session's live token is handed again (re-derived, never minted) to its **immediate predecessor** in two cases:
-- **Cookie alone:** the predecessor was spent within **10 s**. This covers tabs racing the rotation.
-- **Cookie and the session's own access token:** the predecessor was spent within an **access-token lifetime** (`ACCESS_TOKEN_TTL_SECONDS`, 1 h by default), and the request carries an unexpired access token whose `sid` is that session and whose `sub` is its user. This covers a jar that an out-of-order answer moved back one rotation (browser defect D1).
+**On a reload.** Before its cookie-only refresh, a reloaded page asks the browser's other open tabs, over the same channel, for a current access token (waiting at most 300 ms). It sends the first one that passes the same checks as its bearer.
+
+**On the server.** A session has exactly one live refresh token, and only the newest live token may rotate.
+
+- **No rotation inside a burst.** A live token younger than `ROTATE_AFTER` (5 minutes) is not rotated. A refresh presenting it gets the same token back, re-derived, with a fresh access token. A burst of refreshes from several tabs or reloads therefore mints nothing, every answer carries the jar's own value, and a late answer cannot move the jar back.
+  - 5 minutes is far longer than a burst (seconds) and far shorter than an access token's life (1 h), so the hourly renewal still rotates every time.
+- **Re-issue to the live token's immediate predecessor**, for bursts that straddle a rotation:
+  - **cookie alone:** spent within **10 s**;
+  - **cookie and an access token of the live generation:** spent within an access-token lifetime, with an unexpired bearer whose `sid` is the session, whose `sub` is its user, and whose `rgen` (the refresh generation the access token was issued with) equals the live token's generation.
+- **Every access token now carries `rgen`.** Login sets 1; a rotation, a re-issue and a kept-young answer each set the live generation. A token without `rgen` gets no extended path.
 
 Everything else spent is a replay and ends **that session only**:
-- a token two or more generations behind, even with a bearer;
+- a token two or more generations behind;
 - a predecessor older than these bounds;
-- a bearer from another session or user, or an expired bearer (which proves nothing).
+- a bearer from another session or user, an expired one, or one of an older generation.
 
 "Log out everywhere" ends the rest.
 
-**The bound.**
-- A thief with only a copied cookie gets the 10 s window and nothing more.
-- Extending that needs a live access token of the same session as well, which only the session's own tab holds in memory.
-- In every case the answer is the one live token, so a session never has two.
+**The bounds.**
+- **A follower cannot keep up.** A party that once held the cookie and an access token can follow the chain only until the next rotation: its access token names the old generation, so its next late copy is a replay.
+- **A cookie-only thief** gets the 10 s window and nothing more.
+- **The cost of `ROTATE_AFTER`:** a stolen *live* cookie is usable until the next rotation. That is no worse than a stolen live cookie before this change, which was also usable until the victim's next rotation. When victim and thief diverge across a rotation, the one left holding the spent token is a replay at its next refresh (tested both ways).
+- In every case the answer is the one live token.
 
-**What is still an edge.** A **reload** after a jar regression starts with no access token in memory, so its restore is cookie-only. If the regressed token was spent more than 10 s earlier, the restore is a replay and that session ends: the user signs in once. It needs both an out-of-order answer and a reload of that tab more than 10 s later, before any tab of the browser refreshes again. A tab that is still open renews with its bearer and recovers.
+**What is still an edge.** Every one of these must happen, in order:
+1. a burst that straddles a rotation, the 5-minute boundary falling inside it;
+2. an out-of-order answer, so the jar is left on the predecessor;
+3. every tab of the browser that holds an access token of the new generation is closed or reloaded;
+4. then more than 10 s pass before the next refresh.
+
+Only then is that refresh cookie-only with a stale predecessor, a replay, and the user signs in once.
 
 ### The refresh-token key, and a key compromise
 

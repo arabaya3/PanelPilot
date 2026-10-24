@@ -57,6 +57,18 @@ requires_db = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _rotate_on_every_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests here are about rotation itself, so every refresh rotates.
+
+    Production rotates only a live token older than ``auth.ROTATE_AFTER``;
+    the tests of that rule ask for it with the ``real_rotation`` fixture.
+    """
+    from app.domain import auth as auth_domain
+
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0), raising=False)
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """A TestClient against the real app, wired to the live database."""
@@ -823,3 +835,31 @@ def test_d1_over_http_an_expired_bearer_proves_nothing(client: TestClient) -> No
     _hold_cookie(tab, t1)
     assert tab.post(_REFRESH, headers={**SAME_SITE, **_bearer(expired)}).status_code == 401
     assert client.get("/api/v1/auth/quota", headers=_bearer(access)).status_code == 401
+
+
+@requires_db
+def test_d1_over_http_with_real_rotation_a_cookie_only_refresh_later_works(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The browser run's step 4 (D1b): five tabs at once, then a reload's cookie-only refresh.
+
+    Inside ROTATE_AFTER nothing rotates, so every answer carries the jar's own
+    token and no late answer can move it back.
+    """
+    from app.domain import auth as auth_domain
+
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(minutes=5), raising=False)
+    _sign_up(client)
+    shared = client.cookies.get(SESSION_COOKIE)
+    assert shared
+    tabs = [_second_browser(client) for _ in range(5)]
+    for tab in tabs:
+        _hold_cookie(tab, shared)
+    with ThreadPoolExecutor(max_workers=len(tabs)) as pool:
+        answers = list(pool.map(lambda tab: tab.post(_REFRESH, headers=SAME_SITE), tabs))
+    assert [answer.status_code for answer in answers] == [200] * len(tabs)
+    assert {tab.cookies.get(SESSION_COOKIE) for tab in tabs} == {shared}
+
+    reloaded = _second_browser(client)
+    _hold_cookie(reloaded, shared)
+    assert reloaded.post(_REFRESH, headers=SAME_SITE).status_code == 200

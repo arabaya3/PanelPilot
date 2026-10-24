@@ -173,12 +173,15 @@ export function AccountSessionProvider({
   /** For tests: the cross-tab lock and channel; the browser's own by default. */
   coordination?: RefreshCoordination;
 }) {
+  // This tab's access token, for a reloaded tab that asks to borrow one.
+  const lendable = useRef<string | null>(null);
   // One refresh in flight per browser, not per tab (see `createRefreshCoordinator`).
   const coordinator = useMemo(
     () =>
       createRefreshCoordinator(
         (accessToken) => refreshImpl(accessToken ? { accessToken } : {}),
         coordination,
+        () => lendable.current,
       ),
     [refreshImpl, coordination],
   );
@@ -193,6 +196,7 @@ export function AccountSessionProvider({
   // Read by `renew`, which outlives the render it was made in.
   const current = useRef(state);
   current.current = state;
+  lendable.current = state.status === 'signed-in' ? state.tokens.accessToken : null;
   // Several requests can 401 at once. One exchange runs per tab and the
   // others wait for its answer; across tabs the coordinator's lock queues
   // them, and the server tolerates any overlap that remains.
@@ -208,26 +212,32 @@ export function AccountSessionProvider({
   useEffect(() => {
     if (!restore) return;
     const mine = ticket.current;
-    void coordinator.refresh({ accessToken: null, accept: acceptsShared(null) }).then((outcome) => {
-      // Signed in or out by hand meanwhile: that stands.
-      if (ticket.current !== mine || current.current.status !== 'restoring') return;
-      if (outcome.kind === 'refreshed') {
-        settle({ status: 'signed-in', tokens: { accessToken: outcome.accessToken } });
-        return;
-      }
-      // No answer in time: this browser may well be signed in, so the page
-      // asks for the account rather than starting a trial over it.
-      if (outcome.kind === 'timed-out') {
-        console.warn('The sign-in could not be restored in time.');
-        setRestoreTimedOut(true);
-        settle({ status: 'expired' });
-        return;
-      }
-      // Offline or refused: there is no telling whether this browser had a
-      // session, so it is treated as having none, and says why in the log.
-      if (outcome.kind === 'failed') console.warn('The sign-in could not be restored.');
-      settle({ status: 'signed-out' });
-    });
+    // A reloaded page has no access token in memory. Another open tab of the
+    // browser may lend one, sent as the bearer: the proof that lets this
+    // refresh recover a cookie a late answer moved back (the API's re-issue).
+    void coordinator
+      .borrow(acceptsShared(null))
+      .then((lent) => coordinator.refresh({ accessToken: lent, accept: acceptsShared(null) }))
+      .then((outcome) => {
+        // Signed in or out by hand meanwhile: that stands.
+        if (ticket.current !== mine || current.current.status !== 'restoring') return;
+        if (outcome.kind === 'refreshed') {
+          settle({ status: 'signed-in', tokens: { accessToken: outcome.accessToken } });
+          return;
+        }
+        // No answer in time: this browser may well be signed in, so the page
+        // asks for the account rather than starting a trial over it.
+        if (outcome.kind === 'timed-out') {
+          console.warn('The sign-in could not be restored in time.');
+          setRestoreTimedOut(true);
+          settle({ status: 'expired' });
+          return;
+        }
+        // Offline or refused: there is no telling whether this browser had a
+        // session, so it is treated as having none, and says why in the log.
+        if (outcome.kind === 'failed') console.warn('The sign-in could not be restored.');
+        settle({ status: 'signed-out' });
+      });
   }, [restore, coordinator, settle]);
 
   const signedIn = useCallback(

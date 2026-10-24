@@ -58,6 +58,18 @@ requires_db = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _rotate_on_every_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests here are about rotation itself, so every refresh rotates.
+
+    Production rotates only a live token older than ``auth.ROTATE_AFTER``;
+    the tests of that rule ask for it with the ``real_rotation`` fixture.
+    """
+    from app.domain import auth as auth_domain
+
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0), raising=False)
+
+
 @pytest.fixture
 def db() -> Iterator[Session]:
     """A real session, cleaned of anything this module created."""
@@ -1582,3 +1594,146 @@ def test_a_legacy_session_with_two_live_tokens_refuses_the_older_never_a_500(
     assert _session_revoked(db, sid)
     with pytest.raises(AuthenticationError):
         auth.refresh(session=db, refresh_token=sibling)
+
+
+# --- rotation bound to its generation; no rotation inside a burst ----------------
+
+
+@pytest.fixture
+def real_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The production rule: a live token younger than ROTATE_AFTER is not rotated."""
+    monkeypatch.setattr(auth, "ROTATE_AFTER", timedelta(minutes=5), raising=False)
+
+
+_SIX_MINUTES = timedelta(minutes=6)
+
+
+@requires_db
+def test_a_follower_with_an_older_generation_bearer_is_a_replay(db: Session) -> None:
+    """Cookie and access token held once do not follow the chain past a rotation.
+
+    The thief copied T1 and its access token (rgen 1). The victim rotates
+    T1 -> T2. The thief's later T1, with that bearer, is not proof: the
+    bearer was issued for generation 1, the live token is generation 2.
+    """
+    t1 = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, t1.refresh_token)
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    assert decode_access_token(t2.access_token).refresh_generation == 2
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=20),
+            bearer=decode_access_token(t1.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_without_a_generation_proves_nothing(db: Session) -> None:
+    t1, t2, sid = _d1(db)
+    legacy = decode_access_token(t2.access_token).model_copy(update={"refresh_generation": None})
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=15),
+            bearer=legacy,
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_every_access_token_names_the_generation_it_was_issued_with(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    assert decode_access_token(first.access_token).refresh_generation == 1
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    again = auth.refresh(session=db, refresh_token=first.refresh_token)  # re-issue
+    db.commit()
+    assert decode_access_token(rotated.access_token).refresh_generation == 2
+    assert decode_access_token(again.access_token).refresh_generation == 2
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+def test_d1_cannot_happen_a_burst_mints_nothing_and_any_late_answer_still_works(
+    db: Session,
+) -> None:
+    """D1 at the source: inside ROTATE_AFTER nothing rotates, so no answer is stale.
+
+    Five refreshes in a burst all get the token the jar already holds, whatever
+    order their answers land in; a cookie-only refresh 15 s later works.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    answers = []
+    for _ in range(5):
+        answers.append(auth.refresh(session=db, refresh_token=first.refresh_token).refresh_token)
+        db.commit()
+    assert set(answers) == {first.refresh_token}
+    assert _live_in_session(db, sid) == 1
+
+    late = answers[0]  # whichever landed last
+    later = auth.refresh(
+        session=db, refresh_token=late, now=datetime.now(UTC) + timedelta(seconds=15)
+    )
+    db.commit()
+    assert later.refresh_token == first.refresh_token
+    assert not _session_revoked(db, sid)
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+def test_a_burst_straddling_a_rotation_ends_on_one_live_token(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    at = datetime.now(UTC) + _SIX_MINUTES
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token, now=at)
+    db.commit()
+    racing = auth.refresh(
+        session=db, refresh_token=first.refresh_token, now=at + timedelta(seconds=1)
+    )
+    db.commit()
+    after = auth.refresh(
+        session=db, refresh_token=rotated.refresh_token, now=at + timedelta(seconds=2)
+    )
+    db.commit()
+    assert rotated.refresh_token != first.refresh_token
+    assert racing.refresh_token == rotated.refresh_token == after.refresh_token
+    assert _live_in_session(db, sid) == 1
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+@pytest.mark.parametrize("first_mover", ["victim", "thief"])
+def test_replay_fires_when_victim_and_thief_diverge_across_a_rotation(
+    db: Session, first_mover: str
+) -> None:
+    """Both hold the live T0; whoever rotates first leaves the other a spent copy."""
+    t0 = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, t0.refresh_token)
+    at = datetime.now(UTC) + _SIX_MINUTES
+    auth.refresh(session=db, refresh_token=t0.refresh_token, now=at)  # the first mover
+    db.commit()
+    # The other comes back with T0 well after the 10 s window, and with no
+    # bearer of the live generation.
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t0.refresh_token,
+            now=at + timedelta(minutes=10),
+            bearer=decode_access_token(t0.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid), first_mover

@@ -59,6 +59,15 @@ REFRESH_TOKEN_TTL = timedelta(days=30)
 # sharing the cookie) or a reload whose answer was lost. See `refresh`.
 REFRESH_REUSE_GRACE = timedelta(seconds=10)
 
+# A live refresh token younger than this is not rotated: a refresh that
+# presents it gets the same token back (re-derived) and a fresh access token.
+# So a burst of refreshes from several tabs or reloads mints nothing, and an
+# answer that lands late cannot carry an older generation than the jar has.
+# Five minutes is far longer than any burst (seconds) and far shorter than
+# an access token's life (1 h), so the hourly renewal still rotates every
+# time. A stolen live cookie is usable until the next rotation either way.
+ROTATE_AFTER = timedelta(minutes=5)
+
 # How long an unclaimed trial stays claimable. Long enough that someone can
 # come back after a night shift; short enough that an abandoned session's
 # tenant is not claimable indefinitely by whoever finds the secret.
@@ -393,6 +402,7 @@ def refresh(
                 RefreshTokenRow.revoked_at,
                 RefreshTokenRow.expires_at,
                 RefreshTokenRow.generation,
+                RefreshTokenRow.created_at,
             ).where(RefreshTokenRow.token_hash == token_hash)
         ).one()
 
@@ -410,6 +420,17 @@ def refresh(
             # that one is treated as a replay, never rotated into a collision.
             if presented.id != _newest_live_token_id(session=session, sign_in=sign_in):
                 _end_session_on_replay(session=session, sign_in=sign_in, now=moment)
+            kept = _keep_young_live_token(
+                session=session,
+                sign_in=sign_in,
+                user=user,
+                tenant=tenant,
+                presented_created_at=presented.created_at,
+                generation=generation,
+                now=moment,
+            )
+            if kept is not None:
+                return kept
             session.execute(
                 update(RefreshTokenRow)
                 .where(RefreshTokenRow.id == presented.id)
@@ -443,7 +464,9 @@ def refresh(
         if reissued is None:
             _end_session_on_replay(session=session, sign_in=sign_in, now=moment)
         return TokenPair(
-            access_token=_access_token(user=user, tenant=tenant, sign_in=sign_in),
+            access_token=_access_token(
+                user=user, tenant=tenant, sign_in=sign_in, refresh_generation=generation + 1
+            ),
             refresh_token=reissued,
             expires_in=_access_token_ttl(),
         )
@@ -578,7 +601,8 @@ def _reissue_live_successor(
       raced the rotation.
     * **Cookie and the session's own access token:** spent within an access
       token's lifetime, and the request carries an unexpired access token
-      whose ``sid`` is this session and whose ``sub`` its user. A tab whose
+      whose ``sid`` is this session, whose ``sub`` its user, and whose
+      ``rgen`` the live token's generation. A tab whose
       jar a late Set-Cookie moved back to the predecessor (D1) still holds
       such a token. A cookie-only holder (a thief with a copied cookie) still
       gets only the 10 s.
@@ -606,10 +630,15 @@ def _reissue_live_successor(
     if spent_at is None:
         return None
     age = now - spent_at
+    # The bearer must have been issued with the live generation itself
+    # (`rgen`): a party that once held this session's cookie and access token
+    # cannot follow the chain past the next rotation with them.
     proven = (
         bearer is not None
         and bearer.session_id == str(sign_in.id)
         and bearer.id == str(user.id)
+        and bearer.refresh_generation is not None
+        and bearer.refresh_generation == generation + 1
         and age <= timedelta(seconds=_access_token_ttl())
     )
     if age > REFRESH_REUSE_GRACE and not proven:
@@ -687,7 +716,58 @@ def _access_token_ttl() -> int:
     return get_settings().access_token_ttl_seconds
 
 
-def _access_token(*, user: User, tenant: TenantRow, sign_in: AuthSessionRow) -> str:
+def _keep_young_live_token(
+    *,
+    session: Session,
+    sign_in: AuthSessionRow,
+    user: User,
+    tenant: TenantRow,
+    presented_created_at: datetime,
+    generation: int,
+    now: datetime,
+) -> TokenPair | None:
+    """The same live token and a fresh access token, when it is too young to rotate.
+
+    Args:
+        session: Open database session, holding the session's lock.
+        sign_in: The session, live.
+        user: Its account.
+        tenant: Its tenant.
+        presented_created_at: When the presented (live, newest) token was minted.
+        generation: Its generation.
+        now: The refresh attempt's timestamp.
+
+    Returns:
+        The pair, when the token is younger than ``ROTATE_AFTER`` and can be
+        re-derived; ``None`` to rotate as usual (old enough, or a legacy
+        random token, which can only rotate).
+    """
+    if now - presented_created_at >= ROTATE_AFTER:
+        return None
+    if sign_in.token_salt is None or generation == 0:
+        return None
+    token, token_hash = derive_refresh_token(
+        session_id=str(sign_in.id), salt=sign_in.token_salt, generation=generation
+    )
+    stored = session.execute(
+        select(RefreshTokenRow.token_hash).where(
+            RefreshTokenRow.session_id == sign_in.id, RefreshTokenRow.generation == generation
+        )
+    ).scalar_one_or_none()
+    if stored is None or not secrets.compare_digest(stored, token_hash):
+        return None
+    return TokenPair(
+        access_token=_access_token(
+            user=user, tenant=tenant, sign_in=sign_in, refresh_generation=generation
+        ),
+        refresh_token=token,
+        expires_in=_access_token_ttl(),
+    )
+
+
+def _access_token(
+    *, user: User, tenant: TenantRow, sign_in: AuthSessionRow, refresh_generation: int
+) -> str:
     return create_access_token(
         subject=str(user.id),
         tenant_id=str(tenant.id),
@@ -696,6 +776,7 @@ def _access_token(*, user: User, tenant: TenantRow, sign_in: AuthSessionRow) -> 
         # anything, and a revocation does not wait for it to expire.
         roles=roles_of(user),
         session_id=str(sign_in.id),
+        refresh_generation=refresh_generation,
     )
 
 
@@ -741,12 +822,17 @@ def _issue_tokens(
             token_hash=token_hash,
             generation=generation,
             expires_at=moment + REFRESH_TOKEN_TTL,
+            # The same clock as its expiry and as the spend of its predecessor,
+            # so its age (`ROTATE_AFTER`) is measured on one clock.
+            created_at=moment,
         )
     )
     session.flush()
 
     return TokenPair(
-        access_token=_access_token(user=user, tenant=tenant, sign_in=sign_in),
+        access_token=_access_token(
+            user=user, tenant=tenant, sign_in=sign_in, refresh_generation=generation
+        ),
         refresh_token=token,
         expires_in=_access_token_ttl(),
     )

@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -327,5 +327,73 @@ describe('the refresh call itself', () => {
       await session?.renew();
     });
     expect(refreshImpl).toHaveBeenCalledWith({ accessToken: held });
+  });
+});
+
+describe('a reloaded tab borrowing another tab’s access token', () => {
+  it('gets the current token of an open tab, if it passes the checks', async () => {
+    const locks = fakeLocks();
+    const bus = fakeBus();
+    const open = jwt(LIVE);
+    const refresh = vi.fn<(accessToken: string | null) => Promise<RefreshOutcome>>();
+    createRefreshCoordinator(refresh, { locks, channel: bus(), now: () => 1 }, () => open);
+    const reloaded = createRefreshCoordinator(refresh, { locks, channel: bus(), now: () => 1 });
+
+    expect(await reloaded.borrow(() => true)).toBe(open);
+    expect(await reloaded.borrow(() => false, 20)).toBeNull();
+  });
+
+  it('gets nothing, quickly, when no tab is open or there is no channel', async () => {
+    const refresh = vi.fn<(accessToken: string | null) => Promise<RefreshOutcome>>();
+    const alone = createRefreshCoordinator(refresh, {
+      locks: fakeLocks(),
+      channel: fakeBus()(),
+      now: () => 1,
+    });
+    expect(await alone.borrow(() => true, 20)).toBeNull();
+    expect(await createRefreshCoordinator(refresh, {}).borrow(() => true)).toBeNull();
+  });
+
+  it('a signed-out tab lends nothing', async () => {
+    const bus = fakeBus();
+    const refresh = vi.fn<(accessToken: string | null) => Promise<RefreshOutcome>>();
+    createRefreshCoordinator(refresh, { locks: fakeLocks(), channel: bus(), now: () => 1 });
+    const reloaded = createRefreshCoordinator(refresh, {
+      locks: fakeLocks(),
+      channel: bus(),
+      now: () => 1,
+    });
+    expect(await reloaded.borrow(() => true, 20)).toBeNull();
+  });
+
+  it('on reload, sends a token lent by another open tab as the refresh bearer', async () => {
+    const locks = fakeLocks();
+    const bus = fakeBus();
+    const open = jwt(LIVE);
+    // The other tab: a signed-in provider of the same browser.
+    render(
+      <AccountSessionProvider
+        initial={{ status: 'signed-in', tokens: { accessToken: open } }}
+        refreshImpl={vi.fn()}
+        coordination={{ locks, channel: bus(), now: () => 1 }}
+      >
+        <span />
+      </AccountSessionProvider>,
+    );
+    const refreshImpl = vi
+      .fn<typeof refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: jwt({ ...LIVE, n: 4 }) });
+    render(
+      <AccountSessionProvider
+        restore
+        refreshImpl={refreshImpl}
+        coordination={{ locks, channel: bus(), now: () => 1 }}
+      >
+        <span data-testid="restored" />
+      </AccountSessionProvider>,
+    );
+    await waitFor(() => {
+      expect(refreshImpl).toHaveBeenCalledWith({ accessToken: open });
+    });
   });
 });
