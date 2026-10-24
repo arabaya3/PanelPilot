@@ -200,8 +200,7 @@ Found in the browser flow: right after a save, the page said the inputs had chan
   - **401 while signed in:** never falls back to a trial. The page tries one refresh, then shows "Your session has ended" with a sign-in form, and keeps the entered data and the revision note.
   - **A different account signing in:** clears the previous account's unsaved work, with a notice.
   - **Late responses:** results from requests started under another identity are ignored.
-- **Sign-out revokes the refresh token on the server** (`POST /auth/logout`, 204, idempotent, scoped to the caller). Access tokens are stateless JWTs with a 3600 s TTL and no denylist, so an access token copied before sign-out keeps working for **up to 60 minutes**. Deactivating an account or revoking a role takes effect at once.
-- **Approval identity comes from the server.** `approved_by` is the name typed. `approved_account` is the email from the token at approval time, returned in `RevisionSummary` and shown only from that response. A client-sent `approved_account` is a 422. Exports carry the approver's name, not the email, and any member of the tenant can see the email.
+- **Sign-out and approver identity:** _superseded by the final round below._ Sign-out now ends the server session, including its access tokens, at once. Approvers are shown by display name, never by email.
 
 ### `/design/quotation`
 
@@ -263,26 +262,150 @@ The owner authorized this inspection. It was read-only: one `BEGIN READ ONLY …
   - **Checked locally:** without a database they skip; on the disposable database 173 pass; in CI mode on `panelpilot_ci_sim` 173 pass; the local guard refuses a non-disposable name.
   - **No code path changed.** Neither test file can reach a development or production database: production is never configured in these environments, and the dev database is refused by name.
 
+## Final round: persistent sessions, effective logout, approver privacy
+
+These are the owner's decisions, implemented on the existing authentication architecture.
+
+### Persistent sign-in
+
+- **The refresh session is an HttpOnly cookie.**
+  - Over HTTPS it is `__Host-pp_refresh`: `Secure`, `Path=/`, no `Domain`. The `__Host-` prefix blocks cookie-tossing from a sibling subdomain.
+  - In dev over plain http it is `pp_refresh` on `Path=/api/v1/auth/session`.
+  - Both use `SameSite=Strict`. The cookie is only ever needed by the app's own same-site `fetch`.
+  - `Max-Age` is the refresh lifetime (30 days).
+  - The server reads it only on `/api/v1/auth/session/{refresh,logout,logout-everywhere}`. The web proxy forwards it only to those three paths, by exact match.
+- **Access tokens stay in memory.** Login, signup and refresh return only `{access_token, token_type, expires_in}`. Nothing goes to localStorage or sessionStorage.
+- **Reload restores the sign-in.** The root `AccountSessionProvider` refreshes with the cookie before any page starts a trial. The refresh times out after 8 s; on timeout the visitor sees a notice and a sign-in form, and no trial starts silently. Unsaved design work survives the reload through the existing per-account draft, and is offered back.
+- **Protection against cross-site requests** (`app/api/csrf.py`) on every cookie endpoint:
+  - The Origin must exactly match `WEB_ORIGINS`, or `CORS_ALLOWED_ORIGINS` if that is unset. When Origin is absent, Referer's origin is used. `Origin: null` is refused.
+  - The request must also carry the header `X-PanelPilot-CSRF`.
+  - A refusal is a 403 with code `csrf_origin_refused` or `csrf_header_missing`.
+  - In dev, both loopback web origins are always trusted. Outside dev, only the configured list is, and nothing configured means every refresh is refused.
+  - `WEB_ORIGINS` is documented in `.env.example`, and **must be set in every deployment**.
+- **Concurrent refreshes:**
+  - The account's sessions are locked in id order, so refresh, logout and replay detection cannot deadlock.
+  - A refresh token that was just rotated is honoured **once** more within **10 s** (`grace_used_at`). That covers two tabs refreshing at the same moment.
+  - A second presentation inside the window, or any presentation after it, is replay. Replay revokes all of the account's sessions.
+
+### Effective logout
+
+- **Server sessions** (`auth_sessions`). Each sign-in creates a session, carried in every access token as the `sid` claim. Each authenticated request checks the session with one primary-key read, and refuses it if it is revoked, unknown, or belongs to another user.
+- **Logout** (`/auth/session/logout`, 204, idempotent) revokes the current session and its refresh tokens. Access **and** refresh tokens issued under it are refused at once with 401 `session_ended`. Other sessions stay active.
+- **Logout everywhere** (`/auth/session/logout-everywhere`, from `/design`) ends every session of the account.
+- **Tokens issued before this change** carry no `sid` and are refused. Anyone signed in at deploy time signs in once more. Trial tokens are unaffected.
+- **Tests:**
+  - replay of the access token and of the refresh token after logout;
+  - a refresh racing a logout (threaded);
+  - concurrent refreshes in one session;
+  - the once-only grace and the 10 s window;
+  - concurrent replays on two sessions with no deadlock;
+  - expiry;
+  - account switching;
+  - one session's logout leaving another alive;
+  - logout everywhere;
+  - a borrowed `sid`;
+  - cookie attributes in both modes;
+  - every refusal of a cross-site request.
+- **Run against the code before the fixes,** the once-only grace, the 10 s window, the deadlock and the dev-loopback tests fail. The `__Host-` cookie tests cannot import there.
+
+### Approver privacy
+
+- **The API never sends an account's email.** `RevisionSummary` now carries `approver_name`, the account's display name resolved in the project's own tenant, and `approver_account_recorded`.
+- **`author` is a display name too.** A missing name, or one containing "@", is sent as nothing, and the UI says "a team member".
+- **The audit identity is unchanged in the database.** `approved_account` keeps the email, and `approved_by` keeps the name typed.
+- **Exports** (PDF, calculations PDF, DXF, JSON) carry only the typed approver name, the hash and the rules version.
+- **Tests:** no "@" in any approval or project response, nor in any export; the display name and its fallback; another tenant gets 404 and an empty list; the database keeps the audit identity.
+- **No role is allowed to see the email.** An `admin` role exists, but nothing grants it that.
+- **`approved_by` is free text,** so a user can type an email there themselves.
+
+### Trial projects
+
+The rule is unchanged: signing in to an existing account moves nothing, and no transfer feature was added.
+
+- **The user is warned first.** On `/design`, signing in from a trial that has saved projects (or whose projects cannot be listed) asks for confirmation first, with three options: "Sign in anyway", "Create an account instead" (the claim), or "Cancel".
+- **Home asks every trial.**
+- **The trial stays recoverable.** It is never cleared on sign-in, so "Continue as a trial" after signing out brings its projects back. They are never shown under the account.
+
+### Localization
+
+- **Citations and product names stay whole in RTL.** Under the drawing, citations, product names, order codes, drive codes, MCCB types, devices and cables are each isolated as one left-to-right run, with their characters unchanged. The enclosure note now gets its `product` from the API, so the page and the drawing say it the same way.
+- **Clear errors fixed in both locales,** web and drawing, for example the Arabic word for "blocked", "title block", and the Hebrew "review" in the PDFs.
+- **Not a native-speaker review.** Every Arabic and Hebrew string in this PR still needs a human native reviewer, especially:
+  - the electrical terms (drive, relay, ampacity, terminal connectivity, control schematics, fingerprint);
+  - النسخة for revision against المراجعة for review, and the gender agreement;
+  - the Arabic dual, few and many forms, and the Hebrew dual forms;
+  - the new account, expiry, timeout, trial-sign-in and approver strings;
+  - "a study" in "Review approved by {name}: a study, not for execution";
+  - the regulation and country names;
+  - the imperative register of Hebrew buttons.
+
+### Browser evidence for the final round
+
+The real browser, API and database, on `ec399e9`, at `127.0.0.1:3000` and `localhost:3000` (`phase-1/browser-final-auth/` and `phase-1/browser-final-auth/recheck/`). The flow ran sign in → reload restores the sign-in and the unsaved work → reopen revision 02 → approve → export → sign out → replay. Results:
+
+- The cookie is HttpOnly and SameSite=Strict, and no token is in web storage.
+- The approval shows a display name or "a team member", and no "@" appears in any response or export.
+- The PDF is marked REVIEW APPROVED on every page, with the approver, hash and rules. Execution and CSV exports are refused.
+- After logout, the access token is refused with 401 at once, the refresh fails, and the reload comes back as an explicit trial.
+- One session's logout leaves another alive, and sign-out-everywhere ends both.
+- Two tabs refreshing at once both stay signed in.
+- Signing in from a trial warns first, and the trial stays recoverable.
+- A request without the CSRF header gets 403.
+- In Arabic, citations and product names under the drawing read as whole left-to-right runs.
+
+### Changes after the last full backend run on `32c6b83`
+
+Every behavioural change after it was covered by its own tests, and the final behavioural commit `ec399e9` was then run in full from a frozen worktree:
+
+- **Backend:** 3918 passed, 0 failed, 60 skipped (environmental).
+- **Unit suite with an empty environment:** 3382 passed.
+- **DB-backed approval, tenancy, session and concurrency set:** 323 passed ×2.
+- **Lint and types:** black, ruff and mypy clean.
+- **Migration:** `alembic downgrade -2` / `upgrade head` / `check` clean.
+- **Web:** 988/988 ×2; typecheck, lint (0 errors) and prettier clean; build OK.
+
+| Commit    | Change                                                                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `098fe73` | Load schedule regulation localized, Arabic customer label, final browser re-check evidence                                                        |
+| `1161c0f` | Lint fix in the market-basis test                                                                                                                 |
+| `22ddaf5` | Settings for the estimate's 401 test, so it runs in CI's empty environment; formatted logs                                                        |
+| `3d40f10` | Persistent cookie session, server sessions and logout, approver privacy, citation isolation                                                       |
+| `ac2cc5b` | mypy annotations in the auth tests                                                                                                                |
+| `ec399e9` | Once-only 10 s grace, `__Host-` cookie, ordered session locks, restore timeout, proxy allowlist, dev loopback origins, whole product names in RTL |
+
+### Migration compatibility
+
+| Revision       | Change                                                                             | Existing rows                                                          |
+| -------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `b4e7a9c2d1f6` | Nullable snapshot, hash, versions, findings and approved-hash columns on revisions | Kept: legacy revisions open, and are `not_validated` until saved again |
+| `c3f8a1d6e2b7` | New `auth_sessions` table; nullable `refresh_tokens.session_id`                    | Kept: legacy refresh tokens are refused, so sign in again              |
+| `e7b2c9d4a1f3` | Nullable `refresh_tokens.grace_used_at`                                            | Kept                                                                   |
+
+- **Every change is additive.** Downgrades drop only the new session data.
+- **Checks:** clean upgrade from the previous schema, `downgrade -2`, `upgrade head`, and `alembic check` (no drift).
+- **The dev database** is at `e7b2c9d4a1f3`, after a fresh backup taken before the session migrations, `backups/20261024-pre-auth-sessions/panelpilot.dump`, verified readable (27 tables).
+
 ## Remaining blockers and decisions needing engineering input
 
 1. **Execution release** stays blocked until the gate above exists. This is deliberate and not part of Phase 2's completion.
 2. **CSV, QET, AML and PLC** stay refused until their acceptance criteria are shown.
-3. **Signed-in sessions are lost on reload,** because tokens are held in memory only. The page then comes back as an explicit trial. Decide whether a persistent session (for example an httpOnly refresh cookie) is wanted.
-4. **Access tokens live up to 60 minutes after sign-out.** A denylist or a shorter TTL is a product decision.
-5. **The approving account's email** is visible to every member of the tenant. It is not shown across tenants and not printed in exports. Confirm this is acceptable.
-6. **Trial projects after signing in to an existing account** stay with the trial. A claim for existing accounts would be a new server feature.
-7. **Arabic and Hebrew:** every string added in this PR needs a native speaker's review. That covers the electrical terms; النسخة for revision against المراجعة for review, and the gender agreement; the Arabic dual, few and many forms; the Hebrew dual forms; and the new account, expiry and field-path strings. The RTL isolation of values and marks is tested in jsdom, and was spot-checked in a browser before the last localization fixes.
+3. **Deployments must set `WEB_ORIGINS`** (HTTPS origins). Without it every session refresh is refused, and sign-in does not persist across reloads.
+4. **Everyone signed in at deploy time signs in once more,** because legacy tokens are refused.
+5. **The grace window** honours one reuse within 10 s. Three tabs refreshing at the same instant count as replay and end every session.
+6. **Trial projects after signing in to an existing account** stay with the trial, by decision.
+7. **Native Arabic and Hebrew review** of every new string (list above).
 8. **Smaller items:**
    - The Contents page lists drawing pages but not the appended findings sheets; the "N of M" counts are correct.
    - The quotation PDF and CSV are English throughout.
    - Units and catalogue or supplier text stay as entered.
-   - Under the drawing, in Arabic and Hebrew, the enclosure note's nested English citation (ABB Mini Center, its document number and pages) is reordered. The same finding reads correctly on the Review & export tab. This was found in the final browser re-check (D10) and is cosmetic.
+   - A reopened project shows "Nothing designed yet" on Review & export until it is designed again, although exporting the saved revision works.
+   - Sign-up asks for no display name, so approvals show "a team member" until profiles carry one.
 
 ## Environments left in place
 
 Not cleaned up, by request:
 
-- **Dev database `panelpilot`:** migrated to `b4e7a9c2d1f6` after the backup `backups/20261023-1430-pre-phase1/panelpilot.dump`.
+- **Dev database `panelpilot`:** at `e7b2c9d4a1f3`. Backups: `backups/20261023-1430-pre-phase1/panelpilot.dump` (before Phase 1) and `backups/20261024-pre-auth-sessions/panelpilot.dump` (before the session migrations).
 - **Disposable databases:** `panelpilot_phase1_test`, `_adv`, `_backend`, `_mig`, `_migclean`, `_migprev` (the last holds the legacy-row upgrade) and `panelpilot_ci_sim` (used to check CI-mode database discovery).
 - **Compose services:** api, web, worker, postgres, opensearch and redis.
 - **Local test accounts:** disposable `e2e-p1*@example.com` accounts on the local stack. Their credentials are kept outside git.
