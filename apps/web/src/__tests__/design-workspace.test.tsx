@@ -232,3 +232,62 @@ describe('design notes under a right-to-left sheet (D8)', () => {
     expect(screen.getByTestId('design-notes-block').getAttribute('dir')).toBeNull();
   });
 });
+
+describe('the enclosure note’s citation under a right-to-left sheet (D10)', () => {
+  // As the API sends it (`app/design/enclosure.py`, SOURCE).
+  const SOURCE =
+    'ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7';
+  const WITH_ENCLOSURE = {
+    ...TWO_BOARDS,
+    project: {
+      ...TWO_BOARDS.project,
+      boards: (TWO_BOARDS.project.boards ?? []).map((board, index) =>
+        index === 0
+          ? {
+              ...board,
+              notes: [
+                {
+                  code: 'enclosure_selected',
+                  params: {
+                    type: 'GDMS332 RX',
+                    order: '2CVA250001P0001',
+                    rows: '2',
+                    size: '498 x 400 x 117',
+                    free: '19',
+                    source: SOURCE,
+                  },
+                  text: '',
+                },
+              ],
+            }
+          : board,
+      ),
+    },
+  } as typeof TWO_BOARDS;
+
+  const codePoints = (text: string) => Array.from(text, (char) => char.codePointAt(0));
+
+  it.each(['ar', 'he'] as const)(
+    'keeps the citation whole and left to right, its characters unchanged (%s)',
+    (locale) => {
+      renderApp(<DrawingSheets response={WITH_ENCLOSURE} />, { locale });
+      const [note] = within(screen.getByTestId('design-notes')).getAllByRole('listitem');
+      if (!note) throw new Error('no note');
+      expect(note.getAttribute('dir')).toBe('rtl');
+      const run = within(note).getByTestId('note-ltr-run');
+      expect(run.tagName).toBe('BDI');
+      expect(run.getAttribute('dir')).toBe('ltr');
+      expect(codePoints(run.textContent)).toEqual(codePoints(SOURCE));
+      // Still isolated from the sentence in the text itself: FSI, then the run, then PDI.
+      expect(note.textContent).toContain(`⁨${SOURCE}⁩`);
+    },
+  );
+
+  it('leaves the citation inline, without marks, in English', () => {
+    renderApp(<DrawingSheets response={WITH_ENCLOSURE} />, { locale: 'en' });
+    const note = within(screen.getByTestId('design-notes')).getByRole('listitem');
+    expect(within(note).queryByTestId('note-ltr-run')).toBeNull();
+    expect(note.textContent).toContain(`(${SOURCE})`);
+    expect(note.textContent).not.toMatch(/[⁦-⁩]/);
+  });
+});

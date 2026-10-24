@@ -103,6 +103,7 @@ def create_access_token(
     tenant_id: str,
     roles: frozenset[Role] | None = None,
     ttl_seconds: int | None = None,
+    session_id: str | None = None,
 ) -> str:
     """Issue a signed access token for a subject.
 
@@ -115,6 +116,9 @@ def create_access_token(
         tenant_id: The tenant this user belongs to.
         roles: Roles held by the user.
         ttl_seconds: Override for the configured token lifetime.
+        session_id: The server-side sign-in the token belongs to, carried as
+            the `sid` claim so a logout can end the token before it expires.
+            Omitted for a trial, which has no sign-in.
 
     Returns:
         The encoded JWT.
@@ -129,6 +133,8 @@ def create_access_token(
         "iat": now,
         "exp": now + timedelta(seconds=lifetime),
     }
+    if session_id is not None:
+        payload["sid"] = session_id
     return jwt.encode(
         payload,
         settings.jwt_secret.get_secret_value(),
@@ -184,6 +190,7 @@ def decode_access_token(token: str) -> CurrentUser:
         email=str(payload.get("email", "")),
         tenant_id=str(tenant_id),
         roles=roles,
+        session_id=str(payload["sid"]) if payload.get("sid") else None,
     )
 
 

@@ -57,7 +57,7 @@ export function Chat(props: {
    * engineer was.
    */
   conversationId?: string | null;
-  onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onSignedUp?: (tokens: { accessToken: string }) => void;
   /**
    * The token was refused. The caller fetches a fresh one and passes it back
    * down; the turn that hit the 401 is left failed, with a retry.
@@ -106,7 +106,7 @@ function ChatSurface({
   trial?: TrialSession | null;
   questionsRemaining?: number | null;
   conversationId?: string | null;
-  onSignedUp?: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onSignedUp?: (tokens: { accessToken: string }) => void;
   onUnauthorized?: () => void;
   listImpl?: typeof listSessions;
   fetchSessionImpl?: typeof fetchSession;

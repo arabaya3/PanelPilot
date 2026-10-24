@@ -186,6 +186,48 @@ describe('the API proxy', () => {
     await reader.cancel();
   });
 
+  it('forwards only the session cookie, and only to the session endpoints', async () => {
+    fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+    const cookie = 'theme=dark; pp_refresh=abc=def; other=1';
+
+    await POST(
+      new Request('http://web.test/api/v1/auth/session/refresh', {
+        method: 'POST',
+        headers: {
+          cookie,
+          origin: 'http://web.test',
+          referer: 'http://web.test/design',
+          'x-panelpilot-csrf': '1',
+        },
+      }),
+    );
+    const headers = new Headers(upstreamInit().headers);
+    expect(headers.get('cookie')).toBe('pp_refresh=abc=def');
+    // What the API's cross-site check reads.
+    expect(headers.get('origin')).toBe('http://web.test');
+    expect(headers.get('referer')).toBe('http://web.test/design');
+    expect(headers.get('x-panelpilot-csrf')).toBe('1');
+
+    fetchMock.mockClear();
+    await GET(new Request('http://web.test/api/v1/auth/quota', { headers: { cookie } }));
+    expect(new Headers(upstreamInit().headers).get('cookie')).toBeNull();
+  });
+
+  it('passes each Set-Cookie through as its own header', async () => {
+    const upstreamHeaders = new Headers({ 'content-type': 'application/json' });
+    upstreamHeaders.append('set-cookie', 'pp_refresh=new; Path=/api/v1/auth/session; HttpOnly');
+    upstreamHeaders.append('set-cookie', 'other=1; Path=/');
+    fetchMock.mockResolvedValue(new Response('{}', { status: 200, headers: upstreamHeaders }));
+
+    const response = await POST(
+      new Request('http://web.test/api/v1/auth/session/refresh', { method: 'POST' }),
+    );
+    expect(response.headers.getSetCookie()).toEqual([
+      'pp_refresh=new; Path=/api/v1/auth/session; HttpOnly',
+      'other=1; Path=/',
+    ]);
+  });
+
   it('passes an upstream error status through unchanged', async () => {
     fetchMock.mockResolvedValue(
       new Response('{"detail":"nope"}', {

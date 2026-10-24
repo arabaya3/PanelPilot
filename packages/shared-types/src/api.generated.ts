@@ -110,7 +110,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Login */
+    /**
+     * Login
+     * @description Sign in: the access token in the body, the refresh token in the session cookie.
+     */
     post: operations['login_api_v1_auth_login_post'];
     delete?: never;
     options?: never;
@@ -118,7 +121,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/auth/refresh': {
+  '/api/v1/auth/session/refresh': {
     parameters: {
       query?: never;
       header?: never;
@@ -127,15 +130,26 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Refresh */
-    post: operations['refresh_api_v1_auth_refresh_post'];
+    /**
+     * Refresh
+     * @description Exchange the refresh cookie for a new access token, rotating the cookie.
+     *
+     *     What a page calls on load to find out whether this browser is signed in,
+     *     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
+     *     clears the cookie, so the browser stops sending a dead credential.
+     *
+     *     The JSON-body refresh this replaced was used by the web app only; there
+     *     is no non-browser client, so it was removed rather than kept beside the
+     *     cookie.
+     */
+    post: operations['refresh_api_v1_auth_session_refresh_post'];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  '/api/v1/auth/logout': {
+  '/api/v1/auth/session/logout': {
     parameters: {
       query?: never;
       header?: never;
@@ -146,14 +160,39 @@ export interface paths {
     put?: never;
     /**
      * Logout
-     * @description Sign out: revoke the caller's refresh token on the server.
+     * @description Sign out: end this sign-in on the server and clear the cookie.
      *
-     *     Requires the caller's access token and revokes the presented refresh
-     *     token only if it is theirs. Always 204, so a retry never fails and the
-     *     answer says nothing about the token. The access token itself stays valid
-     *     until it expires; see ``auth_domain.logout``.
+     *     Ends the session the access token names and the one the cookie belongs
+     *     to: their refresh tokens stop refreshing, and every access token of the
+     *     session is refused from the next request, not at its expiry. Other
+     *     sign-ins of the account are left alone. Works with only the cookie, since
+     *     the access token may already have expired. Always 204, so a retry never
+     *     fails and the answer says nothing about either credential.
      */
-    post: operations['logout_api_v1_auth_logout_post'];
+    post: operations['logout_api_v1_auth_session_logout_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/logout-everywhere': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout Everywhere
+     * @description End every sign-in of the caller's account, on every device, and clear the cookie.
+     *
+     *     Needs a live access token: ending other devices' sessions is a deliberate
+     *     act of the signed-in account, not something a cookie alone may ask for.
+     */
+    post: operations['logout_everywhere_api_v1_auth_session_logout_everywhere_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1130,6 +1169,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /**
+     * AccessToken
+     * @description The access token a sign-in, signup or refresh answers with.
+     *
+     *     The refresh token travels only in the HttpOnly session cookie (see
+     *     ``app.api.v1.routes.auth``). The access token is held in the page's memory
+     *     and nowhere else.
+     */
+    AccessToken: {
+      /** Access Token */
+      access_token: string;
+      /**
+       * Token Type
+       * @default bearer
+       */
+      token_type: string;
+      /** Expires In */
+      expires_in: number;
+    };
     /**
      * AppliedFactor
      * @description A derating or correction factor, with the clause it came from.
@@ -4047,14 +4105,6 @@ export interface components {
       confidence: number;
     };
     /**
-     * RefreshRequest
-     * @description Exchange a refresh token for a new pair.
-     */
-    RefreshRequest: {
-      /** Refresh Token */
-      refresh_token: string;
-    };
-    /**
      * ResolveEscalationRequest
      * @description A lead's resolution of one escalated item.
      *
@@ -4166,14 +4216,22 @@ export interface components {
      *     Attributes:
      *         number: 1 for the first save, then in order.
      *         note: What it is.
-     *         author: Who saved it.
+     *         author: The display name of the account that saved it, read from
+     *             the tenant's users when the response is built; ``""`` when that
+     *             account has no display name. Never its email.
      *         created_at: When, ISO 8601.
      *         approved_by: The engineer who approved it, as the title block
      *             prints them; ``None`` while it is not approved.
      *         approved_at: When, ISO 8601.
-     *         approved_account: The signed-in account that approved it, taken
-     *             from the approver's token on the server, never from the request;
-     *             ``None`` while it is not approved.
+     *         approver_account_recorded: Whether the server recorded the
+     *             signed-in account that approved it (from the approver's token,
+     *             never from the request). ``False`` while it is not approved, and
+     *             for an approval recorded before accounts were.
+     *         approver_name: That account's display name, read from the tenant's
+     *             users when the response is built; ``None`` when no account is
+     *             recorded or it has no display name, which a client shows as "a
+     *             team member". The account's email, kept in the database as the
+     *             audit identity, is never sent.
      *         validated: Whether the server designed it from its request when it
      *             was saved, and holds that design; ``False`` for an older one.
      *         export_status: What it can be exported as now.
@@ -4191,8 +4249,13 @@ export interface components {
       approved_by?: string | null;
       /** Approved At */
       approved_at?: string | null;
-      /** Approved Account */
-      approved_account?: string | null;
+      /**
+       * Approver Account Recorded
+       * @default false
+       */
+      approver_account_recorded: boolean;
+      /** Approver Name */
+      approver_name?: string | null;
       /**
        * Validated
        * @default false
@@ -4595,23 +4658,6 @@ export interface components {
       | 'date'
       | 'company';
     /**
-     * TokenPair
-     * @description A short-lived access token and the refresh token that renews it.
-     */
-    TokenPair: {
-      /** Access Token */
-      access_token: string;
-      /** Refresh Token */
-      refresh_token: string;
-      /**
-       * Token Type
-       * @default bearer
-       */
-      token_type: string;
-      /** Expires In */
-      expires_in: number;
-    };
-    /**
      * TrialResumeRequest
      * @description Get a fresh access token for a trial this browser already started.
      *
@@ -4890,7 +4936,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
       /** @description Validation Error */
@@ -4976,7 +5022,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
       /** @description Validation Error */
@@ -4990,18 +5036,14 @@ export interface operations {
       };
     };
   };
-  refresh_api_v1_auth_refresh_post: {
+  refresh_api_v1_auth_session_refresh_post: {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RefreshRequest'];
-      };
-    };
+    requestBody?: never;
     responses: {
       /** @description Successful Response */
       200: {
@@ -5009,32 +5051,19 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
     };
   };
-  logout_api_v1_auth_logout_post: {
+  logout_api_v1_auth_session_logout_post: {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RefreshRequest'];
-      };
-    };
+    requestBody?: never;
     responses: {
       /** @description Successful Response */
       204: {
@@ -5043,14 +5072,23 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Validation Error */
-      422: {
+    };
+  };
+  logout_everywhere_api_v1_auth_session_logout_everywhere_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
+        content?: never;
       };
     };
   };

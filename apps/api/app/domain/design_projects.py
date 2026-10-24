@@ -34,7 +34,7 @@ from typing import Any
 
 import structlog
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -65,6 +65,7 @@ from app.models.schemas.design import (
     SaveProjectRequest,
 )
 from app.models.tables.design_projects import DesignProjectRow, DesignRevisionRow
+from app.models.tables.user import User
 
 logger = structlog.get_logger(__name__)
 
@@ -266,15 +267,56 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     return blockers
 
 
-def _summary(row: DesignRevisionRow, *, thorough: bool = False) -> RevisionSummary:
+def _display_name(full_name: str | None) -> str | None:
+    """An account's name as a revision list may show it; ``None`` if it has none.
+
+    A name that holds an ``@`` is refused as well: it may be the email itself,
+    and the email is never sent to a client.
+    """
+    name = (full_name or "").strip()
+    return name if name and "@" not in name else None
+
+
+def _display_names(
+    session: Session, tenant: uuid.UUID, revisions: Sequence[DesignRevisionRow]
+) -> dict[str, str]:
+    """The display name of each account the revisions record, by its email.
+
+    The rows record an account by its email (the audit identity, kept as it
+    was). Its name is read now, from the project's own tenant only: an account
+    of another tenant's, or one deleted since, has no name here.
+    """
+    emails = {
+        email.lower() for row in revisions for email in (row.author, row.approved_account) if email
+    }
+    if not emails:
+        return {}
+    found = session.execute(
+        select(User.email, User.full_name).where(
+            User.tenant_id == tenant, func.lower(User.email).in_(emails)
+        )
+    ).all()
+    names: dict[str, str] = {}
+    for email, full_name in found:
+        name = _display_name(full_name)
+        if name is not None:
+            names[email.lower()] = name
+    return names
+
+
+def _summary(
+    row: DesignRevisionRow, names: dict[str, str], *, thorough: bool = False
+) -> RevisionSummary:
+    approver = row.approved_account if row.approved_at is not None else None
     return RevisionSummary(
         number=row.number,
         note=row.note,
-        author=row.author,
+        author=names.get(row.author.lower(), "") if row.author else "",
         created_at=row.created_at.isoformat(),
         approved_by=row.approved_by,
         approved_at=row.approved_at.isoformat() if row.approved_at else None,
-        approved_account=row.approved_account,
+        approver_account_recorded=bool(approver),
+        approver_name=names.get(approver.lower()) if approver else None,
         validated=row.design_snapshot is not None,
         # One of up to MAX_REVISIONS rows: compared by recorded versions only.
         # The revision opened is checked in full (``_opened``), and approval and
@@ -394,6 +436,7 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
     if chosen is None:
         raise NotFoundError("no such revision", code="revision_not_found")
     title = _title_revisions(revisions, chosen.number)
+    names = _display_names(session, project.tenant_id, revisions)
     checked = _validation(chosen)
     readable = _request_problem(chosen) is None
     if readable:
@@ -414,7 +457,7 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
     opened = SavedProject(
         id=str(project.id),
         name=project.name,
-        revisions=[_summary(r, thorough=r is chosen) for r in revisions],
+        revisions=[_summary(r, names, thorough=r is chosen) for r in revisions],
         revision=chosen.number,
         request=request,
         findings=checked.findings,

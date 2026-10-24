@@ -155,9 +155,7 @@ describe('the review page’s second tab', () => {
         fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
         fetchStaleImpl={fetchStaleImpl}
         dismissStaleImpl={dismissStaleImpl}
-        signInImpl={vi
-          .fn()
-          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+        signInImpl={vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'tok' })}
       />,
     );
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'r@example.com' } });
@@ -207,9 +205,7 @@ describe('the review page’s second tab', () => {
         fetchQueueImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [] })}
         fetchStaleImpl={vi.fn().mockResolvedValue({ kind: 'loaded', items: [CHANGED, GONE] })}
         retractStaleImpl={retractStaleImpl}
-        signInImpl={vi
-          .fn()
-          .mockResolvedValue({ kind: 'signed-in', accessToken: 'tok', refreshToken: 'r' })}
+        signInImpl={vi.fn().mockResolvedValue({ kind: 'signed-in', accessToken: 'tok' })}
       />,
     );
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'r@example.com' } });

@@ -230,7 +230,6 @@ describe('HomePage', () => {
     vi.spyOn(trial, 'signupClaimingTrial').mockResolvedValue({
       kind: 'signed-up',
       accessToken: 'acct-tok',
-      refreshToken: 'refresh-tok',
     });
     const list = spyHistory();
     renderApp(<HomePage />, { theme: 'light' });
@@ -260,7 +259,6 @@ describe('HomePage', () => {
     vi.spyOn(auth, 'signIn').mockResolvedValue({
       kind: 'signed-in',
       accessToken: 'acct-tok',
-      refreshToken: 'refresh-tok',
     });
     const list = spyHistory();
     renderApp(<HomePage />, { theme: 'light' });
@@ -269,6 +267,11 @@ describe('HomePage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    // From a trial, it first says the trial's conversation will not come along.
+    expect(screen.getByTestId('landing-trial-sign-in').textContent).toContain(
+      'does not move this trial',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in anyway' }));
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'e@example.com' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
     fireEvent.submit(screen.getByTestId('sign-in-form'));
@@ -353,9 +356,9 @@ describe('HomePage under the shared account session', () => {
   }
   const SIGNED_IN = {
     status: 'signed-in' as const,
-    tokens: { accessToken: 'acct-tok', refreshToken: 'refresh-tok' },
+    tokens: { accessToken: 'acct-tok' },
   };
-  function renderUnder(refreshImpl: typeof trial.refreshTokens) {
+  function renderUnder(refreshImpl: typeof auth.refreshSession) {
     renderApp(
       <AccountSessionProvider initial={SIGNED_IN} refreshImpl={refreshImpl}>
         <Probe />
@@ -382,7 +385,7 @@ describe('HomePage under the shared account session', () => {
   it('works under an account signed in on another page, without starting a trial', async () => {
     const start = mockStart(STARTED);
     const list = spyHistory();
-    renderUnder(vi.fn<typeof trial.refreshTokens>());
+    renderUnder(vi.fn<typeof auth.refreshSession>());
     await waitFor(() => {
       expect(tokensSeen(list)).toContain('acct-tok');
     });
@@ -394,18 +397,18 @@ describe('HomePage under the shared account session', () => {
     mockStart(STARTED);
     const list = spyHistory();
     const refreshImpl = vi
-      .fn<typeof trial.refreshTokens>()
-      .mockResolvedValue({ kind: 'refreshed', accessToken: 'acct-new', refreshToken: 'r2' });
+      .fn<typeof auth.refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'acct-new' });
     refuseQuestions();
     renderUnder(refreshImpl);
     await askAndBeRefused();
     await waitFor(() => {
       expect(tokensSeen(list)).toContain('acct-new');
     });
-    expect(refreshImpl).toHaveBeenCalledWith({ refreshToken: 'refresh-tok' });
+    expect(refreshImpl).toHaveBeenCalled();
     expect(held?.state).toEqual({
       status: 'signed-in',
-      tokens: { accessToken: 'acct-new', refreshToken: 'r2' },
+      tokens: { accessToken: 'acct-new' },
     });
   });
 
@@ -413,7 +416,7 @@ describe('HomePage under the shared account session', () => {
     const start = mockStart(STARTED);
     const resume = vi.spyOn(trial, 'resumeTrial');
     spyHistory();
-    const refreshImpl = vi.fn<typeof trial.refreshTokens>().mockResolvedValue({ kind: 'failed' });
+    const refreshImpl = vi.fn<typeof auth.refreshSession>().mockResolvedValue({ kind: 'failed' });
     refuseQuestions();
     renderUnder(refreshImpl);
     await askAndBeRefused();

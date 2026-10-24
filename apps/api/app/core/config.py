@@ -23,6 +23,10 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # remove without noticing they did.
 JWT_SECRET_MIN_BYTES = 32
 
+# Where `next dev` serves the web app, trusted for the refresh cookie in dev
+# when no origin is configured. Never used outside dev.
+_DEV_WEB_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
+
 
 class Environment(StrEnum):
     """Deployment environment the process is running in.
@@ -174,6 +178,16 @@ class Settings(BaseSettings):
     # so the comma-separated form documented in .env.example actually works.
     # Without it, CORS_ALLOWED_ORIGINS=http://localhost:3000 is a startup error.
     cors_allowed_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # The web app's own origins: the only pages whose requests may use the
+    # refresh-session cookie (`app.api.csrf`). Empty falls back to
+    # CORS_ALLOWED_ORIGINS, and in dev to the local web server; outside dev
+    # with neither set, every cookie request is refused, never let through.
+    web_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Whether the refresh-session cookie is `Secure` (sent over HTTPS only).
+    # Unset means: true everywhere but dev, whose web server is plain HTTP.
+    # `false` is refused outside dev, where it would put the credential that
+    # outlives every access token on the wire in the clear.
+    auth_cookie_secure: bool | None = None
 
     # --- Request limits ----------------------------------------------------
     # Enforced by middleware before anything parses the body. FastAPI reads,
@@ -266,9 +280,16 @@ class Settings(BaseSettings):
                 f"CORS_ALLOWED_ORIGINS='*' is refused in {self.environment.value}. "
                 "List the frontend's origins explicitly."
             )
+        if "*" in self.web_origins:
+            raise ValueError(f"WEB_ORIGINS='*' is refused in {self.environment.value}.")
+        if self.auth_cookie_secure is False:
+            raise ValueError(
+                f"AUTH_COOKIE_SECURE=false is refused in {self.environment.value}: the "
+                "refresh cookie must only travel over HTTPS."
+            )
         return self
 
-    @field_validator("cors_allowed_origins", mode="before")
+    @field_validator("cors_allowed_origins", "web_origins", mode="before")
     @classmethod
     def _split_comma_separated(cls, value: object) -> object:
         """Accept a comma-separated string for the origins list.
@@ -282,6 +303,27 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @property
+    def trusted_web_origins(self) -> frozenset[str]:
+        """Return the origins whose pages may use the refresh-session cookie.
+
+        Returns:
+            ``WEB_ORIGINS``; else ``CORS_ALLOWED_ORIGINS``; else, in dev only,
+            the local web server. A wildcard never matches: an allowlist of
+            "anything" is not one.
+        """
+        listed = self.web_origins or self.cors_allowed_origins
+        if not listed and self.environment is Environment.DEV:
+            listed = list(_DEV_WEB_ORIGINS)
+        return frozenset(origin.rstrip("/") for origin in listed if origin != "*")
+
+    @property
+    def refresh_cookie_secure(self) -> bool:
+        """Return whether the refresh-session cookie is marked ``Secure``."""
+        if self.auth_cookie_secure is not None:
+            return self.auth_cookie_secure
+        return self.environment is not Environment.DEV
 
     @property
     def is_production(self) -> bool:

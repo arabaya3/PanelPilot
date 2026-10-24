@@ -201,8 +201,9 @@ describe('the wording of revisions, reviews and marks', () => {
     expect(JSON.stringify(ar)).not.toMatch(/المراجعة \{revision\}/);
   });
 
-  it('says a blocked step as محجوب', () => {
-    expect(ar.design.readiness.state.blocked).toBe('محجوب');
+  it('says a blocked step as محظور, as the blocked execution export is', () => {
+    expect(ar.design.readiness.state.blocked).toBe('محظور');
+    expect(ar.design.exports.executionBlockedTitle).toContain('محظور');
   });
 
   it('says how a revision export is marked in a whole Arabic sentence', () => {

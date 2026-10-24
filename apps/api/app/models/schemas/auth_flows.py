@@ -8,6 +8,8 @@ from pydantic import BaseModel, EmailStr, Field
 # leaves room for a format change while refusing a megabyte "token" that would
 # be hashed in full before being found not to exist.
 _MAX_SECRET_LENGTH = 256
+# The refresh cookie is bounded the same way before it is hashed or looked up.
+MAX_REFRESH_TOKEN_LENGTH = _MAX_SECRET_LENGTH
 
 
 class SignupRequest(BaseModel):
@@ -86,17 +88,30 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=1024)
 
 
-class RefreshRequest(BaseModel):
-    """Exchange a refresh token for a new pair."""
-
-    refresh_token: str = Field(max_length=_MAX_SECRET_LENGTH)
-
-
 class TokenPair(BaseModel):
-    """A short-lived access token and the refresh token that renews it."""
+    """A short-lived access token and the refresh token that renews it.
+
+    What the domain issues. Never a response body: the route puts the refresh
+    token in an HttpOnly cookie and answers with an ``AccessToken``, so no
+    script on the page can read the credential that outlives every access
+    token.
+    """
 
     access_token: str
     refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class AccessToken(BaseModel):
+    """The access token a sign-in, signup or refresh answers with.
+
+    The refresh token travels only in the HttpOnly session cookie (see
+    ``app.api.v1.routes.auth``). The access token is held in the page's memory
+    and nowhere else.
+    """
+
+    access_token: str
     token_type: str = "bearer"
     expires_in: int
 

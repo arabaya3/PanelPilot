@@ -3,8 +3,22 @@
 import { useLocale } from 'next-intl';
 import { useCallback } from 'react';
 
-import { useIsolate, useIsolatingTranslations, useRightToLeft } from '@/components/design/bidi';
+import {
+  isolateLtr,
+  useIsolate,
+  useIsolatingTranslations,
+  useRightToLeft,
+} from '@/components/design/bidi';
 import type { DesignNote, Refusal } from '@/lib/design';
+
+/**
+ * Params that, placed as text, are always English citations (a catalogue and
+ * its pages). In Arabic and Hebrew each is marked as a left-to-right run
+ * (`isolateLtr`), so its own parentheses and commas stay in order and a page
+ * can keep it whole. A sentence that chooses its words by one
+ * (`{source, select, …}`) is given it as it is.
+ */
+const CITATION_PARAMS = ['source'] as const;
 
 /** Params a sentence counts with, so its plural form agrees. */
 const NUMERIC_PARAMS = new Set(['count']);
@@ -29,6 +43,7 @@ const KEYED_PARAMS = {
  */
 export function useNoteText(): (note: DesignNote) => string {
   const t = useIsolatingTranslations('design');
+  const rtl = useRightToLeft();
   return (note) => {
     const key = `note.${note.code}`;
     if (!t.has(key)) return note.text;
@@ -50,6 +65,15 @@ export function useNoteText(): (note: DesignNote) => string {
     for (const param of NUMERIC_PARAMS) {
       const value = Number(values[param]);
       if (Number.isFinite(value)) values[param] = value;
+    }
+    if (rtl) {
+      const raw: unknown = t.raw(key);
+      const message = typeof raw === 'string' ? raw : '';
+      for (const param of CITATION_PARAMS) {
+        const value = values[param];
+        const placed = !new RegExp(`\\{\\s*${param}\\s*,`).test(message);
+        if (typeof value === 'string' && placed) values[param] = isolateLtr(value);
+      }
     }
     return t(key, values);
   };

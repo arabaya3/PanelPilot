@@ -86,6 +86,14 @@ def test_an_issued_token_decodes_to_its_caller() -> None:
     assert caller.id == "user-1"
     assert caller.tenant_id == "tenant-1"
     assert caller.roles == frozenset({Role.REVIEWER})
+    # No sign-in session named: a trial's token, or one from before sessions.
+    assert caller.session_id is None
+
+
+def test_the_sign_in_session_travels_as_the_sid_claim() -> None:
+    token = create_access_token(subject="user-1", tenant_id="tenant-1", session_id="sess-1")
+    assert jwt.decode(token, options={"verify_signature": False})["sid"] == "sess-1"
+    assert decode_access_token(token).session_id == "sess-1"
 
 
 # --- what is refused -----------------------------------------------------------

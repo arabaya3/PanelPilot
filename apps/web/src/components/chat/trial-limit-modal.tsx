@@ -25,7 +25,7 @@ export function TrialLimitModal({
   signupImpl = signupClaimingTrial,
 }: {
   trial: TrialSession | null;
-  onSignedUp: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onSignedUp: (tokens: { accessToken: string }) => void;
   onDismiss: () => void;
   /** What carries over, where it is not the conversation (on /design, the trial's projects). */
   description?: string;
@@ -59,7 +59,7 @@ export function TrialLimitModal({
 
     setBusy(false);
     if (outcome.kind === 'signed-up') {
-      onSignedUp({ accessToken: outcome.accessToken, refreshToken: outcome.refreshToken });
+      onSignedUp({ accessToken: outcome.accessToken });
       return;
     }
     // Named rather than generic. "Something went wrong" on a signup form is

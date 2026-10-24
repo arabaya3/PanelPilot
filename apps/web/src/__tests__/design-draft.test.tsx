@@ -114,6 +114,7 @@ function saved(revision = 1): SavedProject {
       number: index + 1,
       note: '',
       author: 'e',
+      approver_account_recorded: false,
       created_at: '2026-10-02T10:00:00Z',
       validated: false,
       export_status: 'not_validated' as const,

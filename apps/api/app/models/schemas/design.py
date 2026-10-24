@@ -1243,14 +1243,22 @@ class RevisionSummary(BaseModel):
     Attributes:
         number: 1 for the first save, then in order.
         note: What it is.
-        author: Who saved it.
+        author: The display name of the account that saved it, read from
+            the tenant's users when the response is built; ``""`` when that
+            account has no display name. Never its email.
         created_at: When, ISO 8601.
         approved_by: The engineer who approved it, as the title block
             prints them; ``None`` while it is not approved.
         approved_at: When, ISO 8601.
-        approved_account: The signed-in account that approved it, taken
-            from the approver's token on the server, never from the request;
-            ``None`` while it is not approved.
+        approver_account_recorded: Whether the server recorded the
+            signed-in account that approved it (from the approver's token,
+            never from the request). ``False`` while it is not approved, and
+            for an approval recorded before accounts were.
+        approver_name: That account's display name, read from the tenant's
+            users when the response is built; ``None`` when no account is
+            recorded or it has no display name, which a client shows as "a
+            team member". The account's email, kept in the database as the
+            audit identity, is never sent.
         validated: Whether the server designed it from its request when it
             was saved, and holds that design; ``False`` for an older one.
         export_status: What it can be exported as now.
@@ -1262,7 +1270,8 @@ class RevisionSummary(BaseModel):
     created_at: str
     approved_by: str | None = None
     approved_at: str | None = None
-    approved_account: str | None = None
+    approver_account_recorded: bool = False
+    approver_name: str | None = None
     validated: bool = False
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
 

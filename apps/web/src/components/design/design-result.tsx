@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useRef, useState } from 'react';
 
 import { round } from '@/components/cable-sizing-panel';
-import { useIsolatingTranslations, useRightToLeft } from '@/components/design/bidi';
+import { splitLtrRuns, useIsolatingTranslations, useRightToLeft } from '@/components/design/bidi';
 import { useNoteText } from '@/components/design/note-text';
 import { fitZoom, stepZoom } from '@/components/design/workspace';
 import { DownloadIcon, FitIcon, ZoomInIcon, ZoomOutIcon } from '@/components/icons';
@@ -39,6 +39,27 @@ function protectionText(device: Device): string {
   if (device.kind === 'fuse') return `${product} ${rating} A ${device.curve ?? ''}`.trim();
   const breaking = device.breaking_capacity_ka ? ` ${round(device.breaking_capacity_ka)} kA` : '';
   return `${product} ${device.curve ?? ''}${rating}${breaking}`;
+}
+
+/**
+ * A note's sentence, each always-English run in it (a catalogue citation)
+ * laid out left to right as one unit: as an inline block, a line break
+ * cannot split it so that its halves land at opposite ends of an RTL line.
+ */
+function NoteSentence({ text }: { text: string }) {
+  return (
+    <>
+      {splitLtrRuns(text).map((part, index) =>
+        part.ltr ? (
+          <bdi key={index} dir="ltr" className="inline-block" data-testid="note-ltr-run">
+            {part.text}
+          </bdi>
+        ) : (
+          part.text
+        ),
+      )}
+    </>
+  );
 }
 
 function BoardTable({ board }: { board: Board }) {
@@ -117,7 +138,7 @@ function BoardTable({ board }: { board: Board }) {
           <ul className="list-disc ps-5 text-sm" data-testid="design-notes">
             {(board.notes ?? []).map((note, index) => (
               <li key={index} dir={rtl && t.has(`note.${note.code}`) ? 'rtl' : 'auto'}>
-                {noteText(note)}
+                <NoteSentence text={noteText(note)} />
               </li>
             ))}
           </ul>

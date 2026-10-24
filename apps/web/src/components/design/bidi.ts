@@ -23,6 +23,40 @@ import { directionOf, toLocale } from '@/i18n/config';
 export const FSI = '⁨';
 export const PDI = '⁩';
 
+/**
+ * LEFT-TO-RIGHT ISOLATE: opens a run that is laid out left to right whatever
+ * it starts with, for text that is always English (a catalogue citation).
+ */
+export const LRI = '⁦';
+
+/** Always-English text isolated as a left-to-right run, its characters unchanged. */
+export function isolateLtr(value: string): string {
+  return value === '' ? value : `${LRI}${value}${PDI}`;
+}
+
+/** One piece of a sentence: plain text, or a run `isolateLtr` marked. */
+export type TextPart = { text: string; ltr: boolean };
+
+/**
+ * A sentence split at each run `isolateLtr` marked, the runs without their
+ * marks and otherwise unchanged, so a page can lay each one out as a unit
+ * (`<bdi dir="ltr">`) that a line break cannot scatter across the sentence.
+ */
+export function splitLtrRuns(sentence: string): TextPart[] {
+  const parts: TextPart[] = [];
+  let rest = sentence;
+  for (;;) {
+    const start = rest.indexOf(LRI);
+    const end = start === -1 ? -1 : rest.indexOf(PDI, start + 1);
+    if (start === -1 || end === -1) break;
+    if (start > 0) parts.push({ text: rest.slice(0, start), ltr: false });
+    parts.push({ text: rest.slice(start + LRI.length, end), ltr: true });
+    rest = rest.slice(end + PDI.length);
+  }
+  if (rest !== '') parts.push({ text: rest, ltr: false });
+  return parts;
+}
+
 /** A value isolated from the text around it. */
 export function isolate(value: string): string {
   return value === '' ? value : `${FSI}${value}${PDI}`;

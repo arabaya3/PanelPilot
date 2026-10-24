@@ -17,13 +17,14 @@ silently:
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import NoReturn
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -42,7 +43,7 @@ from app.domain.roles import IMPLICIT_ROLES, roles_of
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.auth_flows import QuotaStatus, TokenPair, TrialStart
 from app.models.tables.diagnostics import DiagnosticSessionRow
-from app.models.tables.session import AnonymousSessionRow, RefreshTokenRow
+from app.models.tables.session import AnonymousSessionRow, AuthSessionRow, RefreshTokenRow
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 
@@ -51,6 +52,12 @@ logger = structlog.get_logger(__name__)
 # How long a refresh token stays usable. Longer than an access token by design:
 # it is the thing that saves the user from logging in every hour.
 REFRESH_TOKEN_TTL = timedelta(days=30)
+
+# How long after a rotation the spent token is still honoured, for a refresh
+# that raced the one that rotated it (two tabs sharing the cookie). Long
+# enough for a slow mobile round trip; short enough that a copied token is
+# almost always caught as a replay. See `refresh`.
+REFRESH_REUSE_GRACE = timedelta(seconds=30)
 
 # How long an unclaimed trial stays claimable. Long enough that someone can
 # come back after a night shift; short enough that an abandoned session's
@@ -299,48 +306,86 @@ def login(*, session: Session, email: str, password: str) -> TokenPair:
 _DUMMY_HASH = "$2b$12$C6UzMDM.H6dfI/f/IKcEe.9k1KZ0MFxLQaK0OyZ8/1xxDhKZ3ZQzO"
 
 
-def refresh(*, session: Session, refresh_token: str) -> TokenPair:
-    """Rotate a refresh token for a new pair.
+def refresh(*, session: Session, refresh_token: str, now: datetime | None = None) -> TokenPair:
+    """Rotate a refresh token for a new pair in the same sign-in session.
 
     The presented token is revoked as part of issuing its replacement, so a
-    token cannot be used twice.
+    token cannot be used twice, except as below.
 
-    **Rotation is one conditional UPDATE.** It used to be a SELECT followed by
-    setting ``revoked_at``, and two concurrent refreshes both read the token
-    as live and both minted a pair — one stolen token became two live
-    sessions. The UPDATE only matches a live row, and Postgres re-checks that
-    condition after waiting on the row lock, so exactly one caller wins.
+    **Serialised on the session row.** The sign-in's ``auth_sessions`` row is
+    locked first. A logout updates that same row, so a refresh and a logout
+    of one session cannot interleave: whichever takes the lock second sees
+    what the first did. A refresh that loses to a logout is refused; a logout
+    that loses to a refresh revokes the token the refresh just minted. No
+    session survives a logout either way.
 
-    **Presenting a spent token revokes the whole family.** A spent token only
-    comes back if it was copied: either the legitimate client or a thief
-    already rotated it, and there is no telling which. Revoking every live
-    refresh token for that user ends the thief's session at the cost of one
-    re-login for the real user — the standard reuse-detection trade (RFC 9700
-    §4.14.2).
+    **Rotation is one conditional UPDATE** that only matches a live row, so of
+    several concurrent refreshes exactly one rotates.
+
+    **Concurrent refreshes are not a replay.** Two tabs of one browser share
+    the cookie, and both can present the same token at once; the second then
+    finds it spent a moment ago. Within ``REFRESH_REUSE_GRACE`` of its
+    rotation, in a session still live, that second refresh is given a pair of
+    its own in the *same* session instead of tripping reuse detection, so a
+    user with two tabs open is not logged out by them. The window is short,
+    and the pair is in the same session, so a logout still ends it.
+
+    **Presenting a spent token later revokes every session of the account.**
+    A spent token only comes back after the window if it was copied: either
+    the legitimate client or a thief already rotated it, and there is no
+    telling which. Revoking all of that user's sessions ends the thief's at
+    the cost of one re-login for the real user (RFC 9700 §4.14.2).
 
     Args:
         session: Open database session. The caller commits.
         refresh_token: The token as presented by the client.
+        now: Injected for tests.
 
     Returns:
         A fresh access/refresh token pair.
 
     Raises:
-        AuthenticationError: If the token is unknown, expired, or already used.
+        AuthenticationError: If the token is unknown, expired, already used,
+            from before sessions existed, or its session has ended.
     """
     with cross_tenant(
         session, reason="a refresh token identifies its account before any tenant is known"
     ):
-        now = datetime.now(UTC)
+        moment = now or datetime.now(UTC)
         token_hash = hash_refresh_token(refresh_token)
+        presented = session.execute(
+            select(RefreshTokenRow.session_id, RefreshTokenRow.user_id).where(
+                RefreshTokenRow.token_hash == token_hash
+            )
+        ).one_or_none()
+        if presented is None:
+            raise AuthenticationError("refresh token is not valid")
+        if presented.session_id is None:
+            # Issued before sign-in sessions existed. It names no session a
+            # logout could end, so it is refused rather than adopted.
+            raise AuthenticationError(
+                "refresh token predates sign-in sessions; sign in again", code="session_ended"
+            )
+
+        sign_in = session.execute(
+            select(AuthSessionRow)
+            .where(AuthSessionRow.id == presented.session_id)
+            .with_for_update()
+            # Re-read under the lock: an identity-map copy from before it
+            # would hide a logout that committed while this waited.
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        if sign_in is None or sign_in.revoked_at is not None:
+            raise AuthenticationError("this sign-in has ended", code="session_ended")
+
         rotated = session.execute(
             update(RefreshTokenRow)
             .where(
                 RefreshTokenRow.token_hash == token_hash,
                 RefreshTokenRow.revoked_at.is_(None),
-                RefreshTokenRow.expires_at > now,
+                RefreshTokenRow.expires_at > moment,
             )
-            .values(revoked_at=now)
+            .values(revoked_at=moment)
             .returning(RefreshTokenRow.user_id, RefreshTokenRow.tenant_id)
             # The statement names its row by hash, not by identity; there is no
             # loaded object to keep in step, and evaluating the WHERE in Python
@@ -348,122 +393,224 @@ def refresh(*, session: Session, refresh_token: str) -> TokenPair:
             .execution_options(synchronize_session=False)
         ).one_or_none()
 
-        if rotated is None:
-            _refuse_unrotatable_token(session=session, token_hash=token_hash, now=now)
+        if rotated is None and not _reusable_within_grace(
+            session=session, token_hash=token_hash, now=moment
+        ):
+            _refuse_unrotatable_token(
+                session=session, token_hash=token_hash, user_id=presented.user_id, now=moment
+            )
 
-        user = session.get(User, rotated.user_id)
-        tenant = session.get(TenantRow, rotated.tenant_id)
+        user = session.get(User, sign_in.user_id)
+        tenant = session.get(TenantRow, sign_in.tenant_id)
         if user is None or tenant is None or not user.is_active or not tenant.is_active:
             raise AuthenticationError("refresh token is not valid")
 
-        return _issue_tokens(session=session, user=user, tenant=tenant)
+        return _issue_tokens(session=session, user=user, tenant=tenant, sign_in=sign_in)
 
 
-def logout(*, session: Session, caller: CurrentUser, refresh_token: str) -> None:
-    """Revoke a refresh token the caller owns, ending that sign-in's session.
+def logout(
+    *,
+    session: Session,
+    caller: CurrentUser | None,
+    refresh_token: str | None,
+    now: datetime | None = None,
+) -> None:
+    """End one sign-in: its refresh tokens and every access token it issued.
 
-    Rotation already revokes every predecessor of a live token, so revoking
-    the presented one ends its whole chain: nothing in it can refresh again.
-    Other sign-ins of the same account (another device) are left alone; this
-    signs out one session, not every session.
+    The session ended is the one the caller's access token names (``sid``)
+    and, when the refresh cookie came too, the one its token belongs to:
+    holding either is proof enough of that sign-in. Revoking the session row
+    is what ends the access tokens: ``authenticate`` refuses any token whose
+    session is revoked, from the next request on. Other sign-ins of the same
+    account (another device) are left alone; ``logout_everywhere`` ends those.
 
-    **Idempotent and silent.** An unknown, already-revoked, expired, or
-    another account's token revokes nothing and is not an error. The answer is
-    the same either way, so the endpoint cannot be used to learn whether a
-    token exists or whose it is, and a retried sign-out never fails.
+    **Idempotent and silent.** An unknown, already-revoked, or expired token,
+    or none at all, revokes nothing and is not an error, so the endpoint
+    cannot be used to learn whether a token exists and a retry never fails.
 
-    The access token the caller presented is *not* revoked: access tokens are
-    stateless JWTs with no server-side denylist, so one copied before sign-out
-    stays valid until its ``exp`` (``access_token_ttl_seconds``).
+    Args:
+        session: Open database session. The caller commits.
+        caller: The authenticated caller, when an access token came.
+        refresh_token: The refresh cookie's token, when it came.
+        now: Injected for tests.
+    """
+    moment = now or datetime.now(UTC)
+    with cross_tenant(
+        session, reason="a refresh cookie identifies its sign-in before any tenant is known"
+    ):
+        sessions: set[uuid.UUID] = set()
+        if caller is not None and caller.session_id is not None:
+            # A malformed sid was refused by `authenticate`; there is nothing to end.
+            with contextlib.suppress(ValueError):
+                sessions.add(uuid.UUID(caller.session_id))
+        if refresh_token:
+            owned = session.execute(
+                select(RefreshTokenRow.session_id).where(
+                    RefreshTokenRow.token_hash == hash_refresh_token(refresh_token)
+                )
+            ).scalar_one_or_none()
+            if owned is not None:
+                sessions.add(owned)
+        if not sessions:
+            return
+        _revoke_sessions(session=session, condition=AuthSessionRow.id.in_(sessions), now=moment)
+
+
+def logout_everywhere(
+    *, session: Session, caller: CurrentUser, now: datetime | None = None
+) -> None:
+    """End every sign-in of the caller's account, this one included.
 
     Args:
         session: Open database session, bound to the caller's tenant. The
             caller commits.
-        caller: The authenticated caller; only their own token is revoked.
-        refresh_token: The token as presented by the client.
+        caller: The authenticated caller.
+        now: Injected for tests.
+
+    Raises:
+        AuthenticationError: If the caller is a trial, which has no account
+            and no sign-ins to end.
     """
-    try:
-        user_id = uuid.UUID(caller.id)
-        tenant_id = uuid.UUID(caller.tenant_id)
-    except ValueError:
-        # Not an account id. A trial has no refresh tokens: nothing to revoke.
-        return
+    user_id = known_user_id(session=session, subject=caller.id)
+    if user_id is None:
+        raise AuthenticationError("a trial has no sign-ins to end", code="session_ended")
+    moment = now or datetime.now(UTC)
+    _revoke_sessions(session=session, condition=AuthSessionRow.user_id == user_id, now=moment)
+    # Tokens from before sessions existed have no session to be ended with.
     session.execute(
         update(RefreshTokenRow)
-        .where(
-            RefreshTokenRow.token_hash == hash_refresh_token(refresh_token),
-            RefreshTokenRow.user_id == user_id,
-            RefreshTokenRow.tenant_id == tenant_id,
-            RefreshTokenRow.revoked_at.is_(None),
-        )
-        .values(revoked_at=datetime.now(UTC))
+        .where(RefreshTokenRow.user_id == user_id, RefreshTokenRow.revoked_at.is_(None))
+        .values(revoked_at=moment)
         .execution_options(synchronize_session=False)
     )
 
 
-def _refuse_unrotatable_token(*, session: Session, token_hash: str, now: datetime) -> NoReturn:
-    """Explain why a token could not be rotated, revoking its family on replay.
+def _revoke_sessions(*, session: Session, condition: ColumnElement[bool], now: datetime) -> None:
+    """Revoke the sessions matching ``condition`` and all their refresh tokens.
+
+    The session rows are updated first: that takes their row locks, which is
+    what a concurrent ``refresh`` waits on. By the time the tokens are revoked,
+    any rotation that won the lock has committed its new token, and this
+    statement (a new snapshot under READ COMMITTED) revokes that one too.
+
+    Args:
+        session: Open database session.
+        condition: Which ``auth_sessions`` rows to end.
+        now: The revocation's timestamp.
+    """
+    session.execute(
+        update(AuthSessionRow)
+        .where(condition, AuthSessionRow.revoked_at.is_(None))
+        .values(revoked_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    # Every session the condition names, ended now or before, so a retried
+    # logout still sweeps up any token a racing refresh managed to mint.
+    targets = session.execute(select(AuthSessionRow.id).where(condition)).scalars().all()
+    if not targets:
+        return
+    session.execute(
+        update(RefreshTokenRow)
+        .where(RefreshTokenRow.session_id.in_(targets), RefreshTokenRow.revoked_at.is_(None))
+        .values(revoked_at=now)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def _reusable_within_grace(*, session: Session, token_hash: str, now: datetime) -> bool:
+    """Report whether a spent token was rotated a moment ago, by a concurrent refresh.
 
     Args:
         session: Open database session.
         token_hash: Hash of the presented token.
+        now: The refresh attempt's timestamp.
+
+    Returns:
+        ``True`` when the token was revoked by rotation within
+        ``REFRESH_REUSE_GRACE`` and has not expired. Its session has already
+        been checked live, under its lock, so a token revoked by a logout or
+        a reuse detection (both of which end the session) never qualifies.
+    """
+    state = session.execute(
+        select(RefreshTokenRow.revoked_at, RefreshTokenRow.expires_at).where(
+            RefreshTokenRow.token_hash == token_hash
+        )
+    ).one()
+    return (
+        state.revoked_at is not None
+        and now - state.revoked_at <= REFRESH_REUSE_GRACE
+        and state.expires_at > now
+    )
+
+
+def _refuse_unrotatable_token(
+    *, session: Session, token_hash: str, user_id: uuid.UUID, now: datetime
+) -> NoReturn:
+    """Explain why a token could not be rotated, revoking the account's sessions on replay.
+
+    Args:
+        session: Open database session.
+        token_hash: Hash of the presented token.
+        user_id: The account the token was issued to.
         now: The rotation attempt's timestamp.
 
     Raises:
         AuthenticationError: Always.
     """
-    presented = session.execute(
-        select(RefreshTokenRow.user_id, RefreshTokenRow.revoked_at).where(
-            RefreshTokenRow.token_hash == token_hash
-        )
-    ).one_or_none()
-
-    if presented is None:
-        raise AuthenticationError("refresh token is not valid")
-
-    if presented.revoked_at is None:
+    revoked_at = session.execute(
+        select(RefreshTokenRow.revoked_at).where(RefreshTokenRow.token_hash == token_hash)
+    ).scalar_one()
+    if revoked_at is None:
         # Live but not matched by the rotation: its expiry has passed.
-        raise AuthenticationError("refresh token has expired")
+        raise AuthenticationError("refresh token has expired", code="session_ended")
 
+    _revoke_sessions(session=session, condition=AuthSessionRow.user_id == user_id, now=now)
     session.execute(
         update(RefreshTokenRow)
-        .where(
-            RefreshTokenRow.user_id == presented.user_id,
-            RefreshTokenRow.revoked_at.is_(None),
-        )
+        .where(RefreshTokenRow.user_id == user_id, RefreshTokenRow.revoked_at.is_(None))
         .values(revoked_at=now)
         .execution_options(synchronize_session=False)
     )
     # Committed here, against the usual "the caller commits": the refusal
-    # below makes the request's session roll back, and a family revocation
-    # that is rolled back is a detection that protects nobody. Nothing else
-    # is pending in this transaction — rotation is the first thing refresh
-    # does — so this commits the revocation and only the revocation.
+    # below makes the request's session roll back, and a revocation that is
+    # rolled back is a detection that protects nobody. Nothing else is
+    # pending in this transaction — the rotation that failed wrote nothing —
+    # so this commits the revocation and only the revocation.
     session.commit()
     # The user id only: the token, its hash, and the caller's address are
     # not needed to investigate, and a log is the wrong place for any of them.
-    logger.warning("auth.refresh_token_reused", user_id=str(presented.user_id))
-    raise AuthenticationError("refresh token is not valid")
+    logger.warning("auth.refresh_token_reused", user_id=str(user_id))
+    raise AuthenticationError("refresh token is not valid", code="session_ended")
 
 
-def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPair:
+def _issue_tokens(
+    *, session: Session, user: User, tenant: TenantRow, sign_in: AuthSessionRow | None = None
+) -> TokenPair:
     """Mint an access token and a stored refresh token for a user.
 
     Args:
         session: Open database session.
         user: The authenticated user.
         tenant: The tenant they belong to.
+        sign_in: The session the pair continues. ``None`` at login and signup,
+            which start a new one.
 
     Returns:
         The token pair to hand back to the client.
     """
     from app.core.config import get_settings
 
+    if sign_in is None:
+        sign_in = AuthSessionRow(tenant_id=tenant.id, user_id=user.id)
+        session.add(sign_in)
+        session.flush()
+
     token, token_hash = generate_refresh_token()
     session.add(
         RefreshTokenRow(
             tenant_id=tenant.id,
             user_id=user.id,
+            session_id=sign_in.id,
             token_hash=token_hash,
             expires_at=datetime.now(UTC) + REFRESH_TOKEN_TTL,
         )
@@ -479,6 +626,7 @@ def _issue_tokens(*, session: Session, user: User, tenant: TenantRow) -> TokenPa
             # roles on every request (`authenticate`), so this cannot grant
             # anything, and a revocation does not wait for it to expire.
             roles=roles_of(user),
+            session_id=str(sign_in.id),
         ),
         refresh_token=token,
         expires_in=settings.access_token_ttl_seconds,
@@ -831,7 +979,43 @@ def authenticate(*, session: Session, caller: CurrentUser) -> CurrentUser:
     user = resolve_caller(session=session, caller=caller)
     if user is None:
         return caller.model_copy(update={"roles": IMPLICIT_ROLES, "email": ""})
+    _require_live_sign_in(session=session, caller=caller, user=user)
     return caller.model_copy(update={"roles": roles_of(user), "email": user.email})
+
+
+def _require_live_sign_in(*, session: Session, caller: CurrentUser, user: User) -> None:
+    """Refuse an account's access token whose sign-in has been ended.
+
+    One primary-key read per request, alongside the account read
+    ``resolve_caller`` already makes, is what makes a logout end the access
+    token at once rather than at its ``exp``.
+
+    **A token with no ``sid`` is refused.** Every account token issued since
+    sign-in sessions exist carries one; one without it predates them, names
+    no session a logout could end, and would otherwise be the one token a
+    logout cannot reach. Refusing costs an account signed in at the deploy one
+    more sign-in, at most an access-token lifetime early.
+
+    Args:
+        session: Open database session, bound to the caller's tenant.
+        caller: The decoded caller.
+        user: The live account the token names.
+
+    Raises:
+        AuthenticationError: If the token has no session, or the session is
+            unknown, another account's, or revoked.
+    """
+    if caller.session_id is None:
+        raise AuthenticationError(
+            "token predates sign-in sessions; sign in again", code="session_ended"
+        )
+    try:
+        sid = uuid.UUID(caller.session_id)
+    except ValueError as exc:
+        raise AuthenticationError("token session is not valid", code="session_ended") from exc
+    sign_in = session.get(AuthSessionRow, sid, populate_existing=True)
+    if sign_in is None or sign_in.user_id != user.id or sign_in.revoked_at is not None:
+        raise AuthenticationError("this sign-in has ended", code="session_ended")
 
 
 def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:

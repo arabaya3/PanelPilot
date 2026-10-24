@@ -39,6 +39,7 @@ from app.models.schemas.design import (
 )
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
+from app.models.tables.user import User
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -119,9 +120,8 @@ def test_save_project_keeps_what_was_entered(tenants, as_tenant) -> None:  # typ
     )
     assert saved.name == "Tower"
     assert saved.revision == 1
-    assert [(r.number, r.note, r.author) for r in saved.revisions] == [
-        (1, "first issue", "eng@example.com")
-    ]
+    # The account has no users row here, so no display name: never its email.
+    assert [(r.number, r.note, r.author) for r in saved.revisions] == [(1, "first issue", "")]
     assert saved.request.boards == _request().boards
     # The title block's revision list is the saved revisions, none approved.
     (listed,) = saved.request.info.revisions
@@ -275,10 +275,12 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
     assert approved.revision == 1
     assert approved.revisions[0].approved_by == "A. Rabaya"
     assert approved.revisions[0].approved_at is not None
-    # The account comes from the approver's token, never from the request.
-    assert approved.revisions[0].approved_account == "eng@example.com"
+    # The account comes from the approver's token, never from the request,
+    # and is recorded; its email is not sent.
+    assert approved.revisions[0].approver_account_recorded is True
+    assert approved.revisions[0].approver_name is None
     assert approved.revisions[1].approved_by is None
-    assert approved.revisions[1].approved_account is None
+    assert approved.revisions[1].approver_account_recorded is False
     # Opened at revision 1, the title block lists only revision 1, approved.
     (listed,) = approved.request.info.revisions
     assert listed.approved_by == "A. Rabaya"
@@ -888,3 +890,112 @@ def test_a_failed_rollback_does_not_replace_the_error() -> None:
 
     # Logged, not raised: the caller re-raises the failure that came first.
     design_projects._release(GoneConnection())  # type: ignore[arg-type]
+
+
+# --- Approver privacy: a display name, never the account's email ------------
+
+
+def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | None) -> None:
+    """A users row for ``email`` in ``tenant``, replacing any left by another test."""
+    with sessionmaker(bind=engine)() as session:
+        session.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
+        session.add(User(tenant_id=tenant, email=email, full_name=full_name))
+        session.commit()
+
+
+def _emails_in(value: object) -> list[str]:
+    return [token for token in json.dumps(value).split('"') if "@" in token]
+
+
+def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, _ = tenants
+    _account(engine, a, "named-approver@example.com", "  Rana Haddad ")
+    user = _user(a, email="named-approver@example.com")
+    saved = design_projects.save_project(
+        session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
+    )
+    approved = design_projects.approve_revision(
+        session=as_tenant(),
+        user=user,
+        project_id=saved.id,
+        number=1,
+        request=ApproveRevisionRequest(approver="R. Haddad"),
+    )
+    (revision,) = approved.revisions
+    assert revision.approver_account_recorded is True
+    assert revision.approver_name == "Rana Haddad"
+    assert revision.author == "Rana Haddad"
+    assert _emails_in(approved.model_dump(mode="json")) == []
+    opened = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert _emails_in(opened.model_dump(mode="json")) == []
+    listed = design_projects.list_projects(session=as_tenant(), user=user)
+    assert _emails_in(listed.model_dump(mode="json")) == []
+    # The audit identity stays in the database as it was recorded.
+    with engine.connect() as conn:
+        stored = conn.execute(
+            text("SELECT approved_account, author, approved_by FROM design_project_revisions")
+        ).one()
+    assert tuple(stored) == (
+        "named-approver@example.com",
+        "named-approver@example.com",
+        "R. Haddad",
+    )
+
+
+def test_every_export_of_an_approved_revision_holds_no_account_email(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, _ = tenants
+    _account(engine, a, "eng@example.com", "Rana Haddad")
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    for fmt in ("json", "pdf", "calculations_pdf", "dxf"):
+        exported = _export(as_tenant, a, saved, fmt=fmt)
+        content = exported.content
+        raw = content if isinstance(content, bytes) else content.encode("utf-8")
+        assert b"eng@example.com" not in raw, fmt
+        if fmt.endswith("pdf"):
+            import io
+
+            import pdfplumber
+
+            with pdfplumber.open(io.BytesIO(raw)) as pdf:
+                text_out = "".join(page.extract_text() or "" for page in pdf.pages)
+            assert "eng@example.com" not in text_out, fmt
+            assert "R. Engineer" in text_out, fmt
+
+
+@pytest.mark.parametrize("full_name", [None, "", "   ", "eng@example.com"])
+def test_an_account_without_a_usable_name_is_named_by_no_one(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine, full_name
+) -> None:
+    a, _ = tenants
+    _account(engine, a, "eng@example.com", full_name)
+    saved = _saved(as_tenant, a)
+    approved = _approve(as_tenant, a, saved)
+    (revision,) = approved.revisions
+    assert revision.approver_account_recorded is True
+    assert revision.approver_name is None
+    assert revision.author == ""
+    assert _emails_in(approved.model_dump(mode="json")) == []
+
+
+def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, b = tenants
+    # The approving account belongs to tenant B now: tenant A's revision
+    # recorded it, but its name is not A's to read.
+    _account(engine, b, "eng@example.com", "Someone In B")
+    saved = _saved(as_tenant, a)
+    approved = _approve(as_tenant, a, saved)
+    (revision,) = approved.revisions
+    assert revision.approver_account_recorded is True
+    assert revision.approver_name is None
+    # Tenant B sees neither the project nor its approval.
+    with pytest.raises(NotFoundError):
+        design_projects.open_project(session=as_tenant(), user=_user(b), project_id=saved.id)
+    listed = design_projects.list_projects(session=as_tenant(), user=_user(b))
+    assert listed.model_dump(mode="json")["projects"] == []

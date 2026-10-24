@@ -73,7 +73,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <ThemeProvider>
           <LocaleProvider messages={MESSAGES}>
-            <AccountSessionProvider>{children}</AccountSessionProvider>
+            {/* Restores the account from the session cookie on every load. */}
+            <AccountSessionProvider restore>{children}</AccountSessionProvider>
           </LocaleProvider>
         </ThemeProvider>
       </body>

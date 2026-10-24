@@ -38,7 +38,14 @@ def _settings(**overrides: Any) -> Settings:
 @pytest.fixture(autouse=True)
 def _no_ambient_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: object) -> None:
     """Measure the arguments, not the developer's shell or .env."""
-    for name in ("ENVIRONMENT", "DEBUG", "CORS_ALLOWED_ORIGINS", "JWT_ALGORITHM"):
+    for name in (
+        "ENVIRONMENT",
+        "DEBUG",
+        "CORS_ALLOWED_ORIGINS",
+        "JWT_ALGORITHM",
+        "WEB_ORIGINS",
+        "AUTH_COOKIE_SECURE",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)  # type: ignore[arg-type]
 
@@ -129,6 +136,50 @@ def test_a_wildcard_origin_is_allowed_in_dev() -> None:
 def test_explicit_origins_are_accepted_everywhere() -> None:
     settings = _settings(cors_allowed_origins="https://a.example.com, https://b.example.com")
     assert settings.cors_allowed_origins == ["https://a.example.com", "https://b.example.com"]
+
+
+# --- the refresh-session cookie ------------------------------------------------
+
+
+def test_the_web_origins_are_trusted_for_the_cookie() -> None:
+    settings = _settings(
+        web_origins="https://app.example.com/, https://b.example.com",
+        cors_allowed_origins="https://other.example.com",
+    )
+    assert settings.trusted_web_origins == {"https://app.example.com", "https://b.example.com"}
+
+
+def test_without_web_origins_the_cors_origins_are_trusted() -> None:
+    settings = _settings(cors_allowed_origins="https://app.example.com")
+    assert settings.trusted_web_origins == {"https://app.example.com"}
+
+
+def test_dev_trusts_the_local_web_server_when_nothing_is_configured() -> None:
+    assert "http://localhost:3000" in _settings(environment=Environment.DEV).trusted_web_origins
+
+
+def test_outside_dev_nothing_configured_trusts_nothing() -> None:
+    assert _settings().trusted_web_origins == frozenset()
+
+
+def test_a_wildcard_is_never_a_trusted_web_origin() -> None:
+    assert (
+        _settings(environment=Environment.DEV, web_origins="*").trusted_web_origins == frozenset()
+    )
+    with pytest.raises(PydanticValidationError, match="WEB_ORIGINS"):
+        _settings(web_origins="*")
+
+
+@pytest.mark.parametrize("env", [Environment.STAGING, Environment.PROD])
+def test_the_cookie_is_secure_outside_dev_and_cannot_be_made_otherwise(env: Environment) -> None:
+    assert _settings(environment=env).refresh_cookie_secure
+    with pytest.raises(PydanticValidationError, match="AUTH_COOKIE_SECURE"):
+        _settings(environment=env, auth_cookie_secure=False)
+
+
+def test_the_cookie_is_plain_in_dev_unless_asked() -> None:
+    assert not _settings(environment=Environment.DEV).refresh_cookie_secure
+    assert _settings(environment=Environment.DEV, auth_cookie_secure=True).refresh_cookie_secure
 
 
 # --- request body limits -------------------------------------------------------

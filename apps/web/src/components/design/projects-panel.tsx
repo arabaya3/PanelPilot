@@ -27,10 +27,12 @@ export type OpenedProject = {
   revisions: number[];
   /**
    * Who approved the revision open, and when (ISO 8601); null while not
-   * approved. `account` is the signed-in account the server recorded the
-   * approval under, from the approver's token, never from the page.
+   * approved. `approver` is present when the server recorded the signed-in
+   * account the approval was made under (from the approver's token, never
+   * from the page); its `name` is that account's display name, or null when
+   * it has none, which reads as "a team member". Its email is never sent.
    */
-  approval: { by: string; at: string; account?: string } | null;
+  approval: { by: string; at: string; approver?: { name: string | null } } | null;
 };
 
 /** One line of the title block's revision list. */
@@ -43,7 +45,9 @@ export function approvalOf(project: SavedProject): OpenedProject['approval'] {
     ? {
         by: revision.approved_by,
         at: revision.approved_at,
-        ...(revision.approved_account ? { account: revision.approved_account } : {}),
+        ...(revision.approver_account_recorded
+          ? { approver: { name: revision.approver_name ?? null } }
+          : {}),
       }
     : null;
 }
@@ -270,9 +274,11 @@ export function ProjectsPanel({
                 date: opened.approval.at.slice(0, 10),
               })}
             </p>
-            {opened.approval.account !== undefined && (
+            {opened.approval.approver !== undefined && (
               <p className="text-sm text-text-muted" data-testid="project-approval-account">
-                {ta('approvedAccount', { account: opened.approval.account })}
+                {opened.approval.approver.name === null
+                  ? t('approverAccountUnnamed')
+                  : t('approverAccount', { name: opened.approval.approver.name })}
               </p>
             )}
             {/* An approval never reads as covering what it did not sign. */}

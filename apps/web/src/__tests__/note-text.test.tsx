@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { isolateLtr, splitLtrRuns } from '@/components/design/bidi';
 import { useNoteText, useOutcomeText } from '@/components/design/note-text';
 import type { DesignNote, Refusal } from '@/lib/design';
 import ar from '@/messages/ar.json';
@@ -151,5 +152,22 @@ describe('design refusals', () => {
     const codes = Object.keys(en.design.errors).sort();
     expect(Object.keys(ar.design.errors).sort()).toEqual(codes);
     expect(Object.keys(he.design.errors).sort()).toEqual(codes);
+  });
+});
+
+describe('splitLtrRuns', () => {
+  it('splits out each left-to-right run, its characters unchanged', () => {
+    const citation = 'ABB catalogue (1SKC802027C0201), pp. 5, 7';
+    expect(splitLtrRuns(`قبل (${isolateLtr(citation)}). بعد`)).toEqual([
+      { text: 'قبل (', ltr: false },
+      { text: citation, ltr: true },
+      { text: '). بعد', ltr: false },
+    ]);
+  });
+
+  it('leaves text with no run, or an unclosed one, as it is', () => {
+    expect(splitLtrRuns('plain')).toEqual([{ text: 'plain', ltr: false }]);
+    expect(splitLtrRuns('⁦open')).toEqual([{ text: '⁦open', ltr: false }]);
+    expect(splitLtrRuns('')).toEqual([]);
   });
 });

@@ -108,6 +108,7 @@ import {
   exportDesign,
   exportRevision,
   importSchedule,
+  listProjects,
   openProject,
   suggestSchedule,
   type BoardDesignResponse,
@@ -249,6 +250,8 @@ export function tooLongAt(refused: readonly TooLong[], path: string): number | n
 type DesignScreenProps = {
   /** Reopens the saved project a restored draft belongs to. */
   openImpl?: typeof openProject;
+  /** Lists the trial's saved projects, to warn before signing in leaves them behind. */
+  listProjectsImpl?: typeof listProjects;
   acquireImpl?: typeof acquireTrial;
   designImpl?: typeof designProject;
   exportImpl?: typeof exportDesign;
@@ -346,6 +349,7 @@ function DesignWorkspace({
   marketsImpl = fetchMarkets,
   readMarketImpl = readMarket,
   openImpl = openProject,
+  listProjectsImpl = listProjects,
   leaveImpl,
   accountSwitched,
 }: DesignScreenProps & {
@@ -362,13 +366,22 @@ function DesignWorkspace({
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
   const ta = useIsolatingTranslations('design.account');
-  const { state: accountState, signedIn, renew, signOut } = account;
+  const { state: accountState, signedIn, renew, signOut, signOutEverywhere } = account;
   const [identity, setIdentity] = useState<Identity>(() =>
     accountState.status !== 'signed-out' ? 'account' : startSignedOut ? 'signed-out' : 'trial',
   );
   const [authForm, setAuthForm] = useState<'sign-in' | 'sign-up' | null>(null);
+  // Signing in from a trial with saved projects asks first: an existing account
+  // does not take them. They stay in the trial's tenant, reachable again by
+  // continuing as this browser's trial, and are never shown to the account.
+  const [confirmTrialSignIn, setConfirmTrialSignIn] = useState(false);
   const [accountNotice, setAccountNotice] = useState<
-    'renewed' | 'renew-failed' | 'trial-project-stays' | 'account-switched' | null
+    | 'renewed'
+    | 'renew-failed'
+    | 'trial-project-stays'
+    | 'account-switched'
+    | 'sign-out-everywhere-failed'
+    | null
   >(accountSwitched ? 'account-switched' : null);
   // The revision note, kept here rather than in the projects panel: the panel
   // is not shown while a session has ended, and the note typed before it
@@ -595,10 +608,36 @@ function DesignWorkspace({
     setAccountNotice('trial-project-stays');
   }, [tokenTenant, opened]);
 
+  /** Sign in from the trial, after saying what happens to its saved projects. */
+  async function requestTrialSignIn() {
+    const trialToken = identity === 'trial' && session.kind === 'ready' ? session.token : null;
+    if (trialToken === null) {
+      // The trial could not be reached just now; if this browser holds one,
+      // it may have projects.
+      if (readTrial() === null) setAuthForm('sign-in');
+      else setConfirmTrialSignIn(true);
+      return;
+    }
+    const listed = await listProjectsImpl({ token: trialToken });
+    // Unknown counts as having projects: the question costs a click, while
+    // losing track of saved work costs more.
+    if (listed.kind === 'listed' && listed.page.projects.length === 0) {
+      setAuthForm('sign-in');
+      return;
+    }
+    setConfirmTrialSignIn(true);
+  }
+
+  async function endEverySession() {
+    const outcome = await signOutEverywhere();
+    if (outcome === 'failed') setAccountNotice('sign-out-everywhere-failed');
+  }
+
   function onAccountSignedIn(tokens: AccountTokens) {
     signedIn(tokens);
     setIdentity('account');
     setAuthForm(null);
+    setConfirmTrialSignIn(false);
     setAccountNotice(null);
   }
 
@@ -1108,7 +1147,7 @@ function DesignWorkspace({
                 type="button"
                 className="btn btn-sm btn-primary"
                 onClick={() => {
-                  setAuthForm('sign-in');
+                  void requestTrialSignIn();
                 }}
               >
                 {ta('signIn')}
@@ -1134,9 +1173,19 @@ function DesignWorkspace({
           testId="design-account-mode"
           live={false}
           action={
-            <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
-              {ta('signOut')}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn btn-sm btn-secondary" onClick={signOut}>
+                {ta('signOut')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                data-testid="design-sign-out-everywhere"
+                onClick={() => void endEverySession()}
+              >
+                {ta('signOutEverywhere')}
+              </button>
+            </div>
           }
         >
           {ta('signedIn')}
@@ -1188,6 +1237,48 @@ function DesignWorkspace({
           {ta('signedOut')}
         </Notice>
       )}
+      {identity === 'trial' && confirmTrialSignIn && (
+        <Notice
+          tone="warning"
+          title={ta('trialSignIn.title')}
+          testId="design-trial-sign-in-confirm"
+          action={
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                  setAuthForm('sign-in');
+                }}
+              >
+                {ta('trialSignIn.continue')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                  setAuthForm('sign-up');
+                }}
+              >
+                {ta('trialSignIn.signUp')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => {
+                  setConfirmTrialSignIn(false);
+                }}
+              >
+                {ta('trialSignIn.cancel')}
+              </button>
+            </div>
+          }
+        >
+          {ta('trialSignIn.body')}
+        </Notice>
+      )}
       {sessionEnded
         ? signInForm(false)
         : authForm === 'sign-in'
@@ -1205,7 +1296,11 @@ function DesignWorkspace({
             )}
       {accountNotice !== null && (
         <Notice
-          tone={accountNotice === 'renew-failed' ? 'warning' : 'info'}
+          tone={
+            accountNotice === 'renew-failed' || accountNotice === 'sign-out-everywhere-failed'
+              ? 'warning'
+              : 'info'
+          }
           testId={`design-account-${accountNotice}`}
         >
           {ta(`notice.${accountNotice}`)}
@@ -1737,9 +1832,11 @@ function DesignWorkspace({
                             ) : (
                               <StatusBadge tone="warning">{tw('context.draft')}</StatusBadge>
                             )}
-                            {entry.approved_account && (
+                            {entry.approved_at && entry.approver_account_recorded && (
                               <span className="ms-2 text-xs text-text-muted" dir="auto">
-                                {ta('approvedAccount', { account: entry.approved_account })}
+                                {entry.approver_name
+                                  ? t('projects.approverAccount', { name: entry.approver_name })
+                                  : t('projects.approverAccountUnnamed')}
                               </span>
                             )}
                           </td>
@@ -1872,8 +1969,12 @@ function DesignWorkspace({
                     {!readiness.approvalCovers &&
                       ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
                     {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
-                    {opened.approval.account !== undefined &&
-                      ` ${ta('approvedAccount', { account: opened.approval.account })}`}
+                    {opened.approval.approver !== undefined &&
+                      ` ${
+                        opened.approval.approver.name === null
+                          ? t('projects.approverAccountUnnamed')
+                          : t('projects.approverAccount', { name: opened.approval.approver.name })
+                      }`}
                   </Notice>
                 ) : (
                   <Notice

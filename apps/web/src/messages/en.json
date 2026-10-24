@@ -187,7 +187,11 @@
     "headline": "Diagnose a panel fault in minutes",
     "subhead": "Describe the symptom or photograph the display. Every answer cites the manual page it came from.",
     "expired": "Your session has ended. Sign in again to keep working in your account.",
-    "continueAsTrial": "Continue as a trial instead"
+    "continueAsTrial": "Continue as a trial instead",
+    "trialSignInTitle": "Your trial conversation stays with the trial",
+    "trialSignInBody": "Signing in to an existing account does not move this trial's conversation into it. It stays with this browser's trial, and you can return to it by signing out and continuing as a trial.",
+    "trialSignInContinue": "Sign in anyway",
+    "trialSignInCancel": "Cancel"
   },
   "history": {
     "label": "Conversation history",
@@ -1057,6 +1061,8 @@
       "approve": "Approve revision {revision}",
       "approvedNow": "Revision {revision} is approved; its title block now carries the approval.",
       "approvedBy": "Revision {revision} approved by {name} on {date}.",
+      "approverAccount": "Approved while signed in as {name}.",
+      "approverAccountUnnamed": "Approved while signed in as a team member.",
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
@@ -1287,7 +1293,16 @@
         "renewed": "Your session had expired and has been renewed. Try again.",
         "renew-failed": "The session could not be renewed. Check the connection and try again.",
         "trial-project-stays": "The project you had open belongs to where you were working before, so it stays there. What you entered is still here, unsaved: save it to keep it in this account.",
-        "account-switched": "A different account signed in. The unsaved work and the project open on this page belonged to the previous account, so they were cleared; nothing of it was moved into this account."
+        "account-switched": "A different account signed in. The unsaved work and the project open on this page belonged to the previous account, so they were cleared; nothing of it was moved into this account.",
+        "sign-out-everywhere-failed": "Your other devices could not be signed out. You are still signed in here. Check the connection and try again."
+      },
+      "signOutEverywhere": "Sign out everywhere",
+      "trialSignIn": {
+        "title": "This trial's saved projects stay with the trial",
+        "body": "Signing in to an existing account does not move this trial's saved projects into it. They stay with this browser's trial: sign out and choose Continue as a trial to reach them again. To keep them in an account, create a new account instead. What is on the page now stays on the page.",
+        "continue": "Sign in anyway",
+        "signUp": "Create an account instead",
+        "cancel": "Cancel"
       }
     },
     "fieldPath": {

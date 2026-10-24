@@ -131,6 +131,7 @@ function saved(fields: Record<string, unknown> = {}): SavedProject {
         number: 1,
         note: '',
         author: 'e',
+        approver_account_recorded: false,
         created_at: '2026-10-02T10:00:00Z',
         validated: true,
         export_status: 'draft',

@@ -13,7 +13,7 @@
     "Date": "תאריך",
     "Drawn": "שרטט",
     "Checked": "בדק",
-    "Review approved": "אישור לבדיקה",
+    "Review approved": "אישור לסקירה",
     "Circuit-breaker": "מפסק",
     "Residual current circuit-breaker": "ממסר פחת",
     "Switch-disconnector": "מנתק",
@@ -85,8 +85,8 @@
     "Customer: {value}": "לקוח: {value}",
     "Consultant: {value}": "יועץ: {value}",
     "Revision {index}, {date}": "גרסה {index}, {date}",
-    "Review approved by {name}: a study, not for execution.": "אושר לבדיקה על ידי {name}: לימוד, לא לביצוע.",
-    "NOT APPROVED: for review only, not for execution.": "לא מאושר: לבדיקה בלבד, לא לביצוע.",
+    "Review approved by {name}: a study, not for execution.": "אושר לסקירה על ידי {name}: לימוד, לא לביצוע.",
+    "NOT APPROVED: for review only, not for execution.": "לא מאושר: לסקירה בלבד, לא לביצוע.",
     "The design rules are this software's defaults; the company has not confirmed them.": "כללי התכנון הם ברירות המחדל של התוכנה; החברה לא אישרה אותם.",
     "Basis of calculation": "בסיס החישוב",
     "{voltage} V, {phases}-phase, {earthing}": "{voltage} V, {phases} פאזות, {earthing}",
@@ -120,7 +120,7 @@
     "Cable {size} {material} {insulation}": "כבל {size} {material} {insulation}",
     "Wiring and testing, per circuit": "חיווט ובדיקה, לכל מעגל",
     "Assembly and testing, per board": "הרכבה ובדיקה, לכל לוח",
-    "Enclosure, busbars and accessories": "מעטפת, פסי צבירה ואביזרים"
+    "Enclosure, busbars and accessories": "מארז, פסי צבירה ואביזרים"
   },
   "note": {
     "mccb_selected": "{load}: {type}, ‏In {rated} A, ‏I3 קבוע ב-{trip} A, ‏Icu {icu} kA ({source}).",

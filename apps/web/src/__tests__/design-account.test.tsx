@@ -20,9 +20,9 @@ import type {
   SavedRequest,
 } from '@/lib/design';
 import type * as DesignModule from '@/lib/design';
-import type { signIn } from '@/lib/auth';
+import type { refreshSession, signIn } from '@/lib/auth';
 import type { acquireTrial } from '@/lib/session';
-import { TRIAL_STORAGE_KEY, type refreshTokens, type signupClaimingTrial } from '@/lib/trial';
+import { TRIAL_STORAGE_KEY, type signupClaimingTrial } from '@/lib/trial';
 
 import { renderApp } from './helpers';
 
@@ -98,6 +98,7 @@ function saved(id = 'p1'): SavedProject {
         number: 1,
         note: '',
         author: 'e',
+        approver_account_recorded: false,
         created_at: '2026-10-02T10:00:00Z',
         validated: false,
         export_status: 'not_validated' as const,
@@ -116,13 +117,13 @@ function Probe() {
 
 function renderScreen({
   initial = { status: 'signed-out' },
-  refreshImpl = vi.fn<typeof refreshTokens>().mockResolvedValue({ kind: 'expired' }),
+  refreshImpl = vi.fn<typeof refreshSession>().mockResolvedValue({ kind: 'expired' }),
   acquireImpl = vi.fn<typeof acquireTrial>().mockResolvedValue(trialReady()),
   signInImpl = vi.fn<typeof signIn>(),
   signupImpl = vi.fn<typeof signupClaimingTrial>(),
 }: {
   initial?: AccountState;
-  refreshImpl?: ReturnType<typeof vi.fn<typeof refreshTokens>>;
+  refreshImpl?: ReturnType<typeof vi.fn<typeof refreshSession>>;
   acquireImpl?: ReturnType<typeof vi.fn<typeof acquireTrial>>;
   signInImpl?: ReturnType<typeof vi.fn<typeof signIn>>;
   signupImpl?: ReturnType<typeof vi.fn<typeof signupClaimingTrial>>;
@@ -148,7 +149,7 @@ function renderScreen({
 
 const signedIn = (accessToken = ACCOUNT_TOKEN): AccountState => ({
   status: 'signed-in',
-  tokens: { accessToken, refreshToken: 'refresh-1' },
+  tokens: { accessToken },
 });
 
 const overview = () => within(screen.getByTestId('view-overview'));
@@ -219,7 +220,6 @@ describe('signed in', () => {
       expect(storedDraft()).toMatchObject({ session: 'account:user-1', info: { name: 'Kept' } });
     });
     expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).not.toContain(ACCOUNT_TOKEN);
-    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).not.toContain('refresh-1');
   });
 });
 
@@ -243,7 +243,6 @@ describe('the trial', () => {
     const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
       kind: 'signed-in',
       accessToken: ACCOUNT_TOKEN,
-      refreshToken: 'refresh-1',
     });
     renderScreen({ signInImpl });
     await completeForm();
@@ -281,7 +280,6 @@ describe('the trial', () => {
     const signupImpl = vi.fn<typeof signupClaimingTrial>().mockResolvedValue({
       kind: 'signed-up',
       accessToken: claimed,
-      refreshToken: 'refresh-2',
     });
     renderScreen({ signupImpl });
     await completeForm();
@@ -315,7 +313,6 @@ describe('when the session ends', () => {
     const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
       kind: 'signed-in',
       accessToken: jwt('user-1', 'account-tenant', 'again'),
-      refreshToken: 'refresh-3',
     });
     const { acquireImpl, refreshImpl } = renderScreen({ initial: signedIn(), signInImpl });
     await completeForm();
@@ -323,7 +320,7 @@ describe('when the session ends', () => {
     fireEvent.click(projects().getByText('Save project'));
 
     expect(await screen.findByTestId('design-account-expired')).toBeTruthy();
-    expect(refreshImpl).toHaveBeenCalledWith({ refreshToken: 'refresh-1' });
+    expect(refreshImpl).toHaveBeenCalled();
     expect(acquireImpl).not.toHaveBeenCalled();
     expect(screen.queryByTestId('design-trial-mode')).toBeNull();
     expect(nameField().value).toBe('Tower');
@@ -349,8 +346,8 @@ describe('when the session ends', () => {
   it('renews the token when it can, and the next save uses the renewed one', async () => {
     const renewed = jwt('user-1', 'account-tenant', 'renewed');
     const refreshImpl = vi
-      .fn<typeof refreshTokens>()
-      .mockResolvedValue({ kind: 'refreshed', accessToken: renewed, refreshToken: 'refresh-4' });
+      .fn<typeof refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: renewed });
     api.save.mockResolvedValueOnce({ kind: 'unauthorized' });
     const { acquireImpl } = renderScreen({ initial: signedIn(), refreshImpl });
     await completeForm();
@@ -400,22 +397,28 @@ describe('signing out', () => {
 });
 
 describe('the approval', () => {
-  it('names the account the server recorded, and none it did not', () => {
+  it('names the account by its display name, and none the server did not record', () => {
     const project = saved();
     const [first] = project.revisions;
     if (!first) throw new Error('no revision');
     first.approved_by = 'R. Engineer';
     first.approved_at = '2026-10-03T10:00:00Z';
     expect(approvalOf(project)).toEqual({ by: 'R. Engineer', at: '2026-10-03T10:00:00Z' });
-    first.approved_account = 'eng@example.com';
+    first.approver_account_recorded = true;
     expect(approvalOf(project)).toEqual({
       by: 'R. Engineer',
       at: '2026-10-03T10:00:00Z',
-      account: 'eng@example.com',
+      approver: { name: null },
+    });
+    first.approver_name = 'Rana Haddad';
+    expect(approvalOf(project)).toEqual({
+      by: 'R. Engineer',
+      at: '2026-10-03T10:00:00Z',
+      approver: { name: 'Rana Haddad' },
     });
   });
 
-  it('shows the approving account beside the approver', async () => {
+  const panel = (approver: { name: string | null }) =>
     renderApp(
       <ProjectsPanel
         token="t"
@@ -425,22 +428,32 @@ describe('the approval', () => {
           name: 'Tower',
           revision: 1,
           revisions: [1],
-          approval: { by: 'R. Engineer', at: '2026-10-03T10:00:00Z', account: 'eng@example.com' },
+          approval: { by: 'R. Engineer', at: '2026-10-03T10:00:00Z', approver },
         }}
         onOpened={vi.fn()}
         impls={{ list: api.list }}
       />,
     );
+
+  it('shows the approving account by its display name, never an email', async () => {
+    panel({ name: 'Rana Haddad' });
+    const line = await screen.findByTestId('project-approval-account');
+    expect(line.textContent).toBe('Approved while signed in as Rana Haddad.');
+    expect(line.textContent).not.toContain('@');
+  });
+
+  it('says a team member when the account has no display name', async () => {
+    panel({ name: null });
     expect((await screen.findByTestId('project-approval-account')).textContent).toBe(
-      'Approved while signed in as eng@example.com.',
+      'Approved while signed in as a team member.',
     );
   });
 });
 
 describe('the shared session', () => {
   it('exchanges the refresh token once for several 401s at a time', async () => {
-    let finish: (value: Awaited<ReturnType<typeof refreshTokens>>) => void = () => undefined;
-    const refreshImpl = vi.fn<typeof refreshTokens>().mockReturnValue(
+    let finish: (value: Awaited<ReturnType<typeof refreshSession>>) => void = () => undefined;
+    const refreshImpl = vi.fn<typeof refreshSession>().mockReturnValue(
       new Promise((resolve) => {
         finish = resolve;
       }),
@@ -455,7 +468,7 @@ describe('the shared session', () => {
     const first = session.renew();
     const second = session.renew();
     await act(async () => {
-      finish({ kind: 'refreshed', accessToken: 'new', refreshToken: 'refresh-5' });
+      finish({ kind: 'refreshed', accessToken: 'new' });
       await Promise.all([first, second]);
     });
     expect(refreshImpl).toHaveBeenCalledTimes(1);
@@ -463,7 +476,7 @@ describe('the shared session', () => {
     expect(await second).toBe('refreshed');
     expect(shared?.state).toEqual({
       status: 'signed-in',
-      tokens: { accessToken: 'new', refreshToken: 'refresh-5' },
+      tokens: { accessToken: 'new' },
     });
   });
 
@@ -491,7 +504,7 @@ describe('whose work is on the page', () => {
     const again = jwt('user-1', 'account-tenant', 'again');
     const signInImpl = vi
       .fn<typeof signIn>()
-      .mockResolvedValue({ kind: 'signed-in', accessToken: again, refreshToken: 'refresh-3' });
+      .mockResolvedValue({ kind: 'signed-in', accessToken: again });
     await expireWhileSaving(signInImpl);
     await signInThroughForm(again);
 
@@ -509,7 +522,7 @@ describe('whose work is on the page', () => {
     const other = jwt('user-2', 'other-tenant');
     const signInImpl = vi
       .fn<typeof signIn>()
-      .mockResolvedValue({ kind: 'signed-in', accessToken: other, refreshToken: 'refresh-9' });
+      .mockResolvedValue({ kind: 'signed-in', accessToken: other });
     await expireWhileSaving(signInImpl);
     await signInThroughForm(other);
 
@@ -528,7 +541,6 @@ describe('whose work is on the page', () => {
     const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
       kind: 'signed-in',
       accessToken: ACCOUNT_TOKEN,
-      refreshToken: 'refresh-1',
     });
     renderScreen({ signInImpl });
     await completeForm();
@@ -554,7 +566,6 @@ describe('whose work is on the page', () => {
     const signInImpl = vi.fn<typeof signIn>().mockResolvedValue({
       kind: 'signed-in',
       accessToken: ACCOUNT_TOKEN,
-      refreshToken: 'refresh-1',
     });
     renderScreen({ signInImpl });
     await completeForm();

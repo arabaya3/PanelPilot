@@ -41,10 +41,14 @@ import {
  * rather than an input that silently does nothing — which is what an engineer
  * standing at a panel would otherwise get.
  *
- * Tokens live in memory only — state for the access token, a ref for the
- * refresh token — and never in storage. The claim pair has to survive a
- * reload; a bearer credential left on a shared workshop terminal outlives the
- * person who used it.
+ * The access token lives in memory only, never in storage; the refresh token
+ * is the HttpOnly session cookie, which no script here can read (see
+ * `lib/auth.ts`). The claim pair has to survive a reload; a bearer credential
+ * left in storage on a shared workshop terminal outlives the person who used it.
+ *
+ * Signing in from a trial asks first. An existing account does not take the
+ * trial's conversation: it stays in the trial's tenant, reachable again by
+ * continuing as the trial in this browser, and never shown to the account.
  */
 
 type Phase =
@@ -105,6 +109,9 @@ function Home({ account }: { account: AccountSession }) {
   );
   const startsAsTrial = useRef(accountState.status === 'signed-out');
   const [signingIn, setSigningIn] = useState(false);
+  // A trial asked to confirm before signing in: an existing account does not
+  // take the trial's conversation, which stays with this browser's trial.
+  const [confirmingTrialSignIn, setConfirmingTrialSignIn] = useState(false);
   // The account's session ended and could not be renewed: it is asked for
   // again, never replaced by a trial behind the engineer's back.
   const expired = accountState.status === 'expired';
@@ -165,7 +172,7 @@ function Home({ account }: { account: AccountSession }) {
   }, []);
 
   const onSignedUp = useCallback(
-    (tokens: { accessToken: string; refreshToken: string }) => {
+    (tokens: { accessToken: string }) => {
       shareAccount(tokens);
       // The claim has been made; the secret has no further use, and a stored
       // trial would have the next reload try to resume one that no longer
@@ -178,7 +185,7 @@ function Home({ account }: { account: AccountSession }) {
   );
 
   const onSignedIn = useCallback(
-    (tokens: { accessToken: string; refreshToken: string }) => {
+    (tokens: { accessToken: string }) => {
       shareAccount(tokens);
       setSigningIn(false);
       setChatKey((key) => key + 1);
@@ -225,11 +232,12 @@ function Home({ account }: { account: AccountSession }) {
 
   const signInButton =
     // Offered wherever the visitor is not already in an account.
-    !inAccount && !signingIn && !expired ? (
+    !inAccount && !signingIn && !confirmingTrialSignIn && !expired ? (
       <button
         type="button"
         onClick={() => {
-          setSigningIn(true);
+          if (phase.kind === 'ready' && phase.trial !== null) setConfirmingTrialSignIn(true);
+          else setSigningIn(true);
         }}
         className="btn btn-sm btn-secondary max-sm:px-2"
       >
@@ -267,6 +275,41 @@ function Home({ account }: { account: AccountSession }) {
           <button type="button" onClick={continueAsTrial} className="btn btn-sm btn-secondary">
             {tl('continueAsTrial')}
           </button>
+        </div>
+      )}
+
+      {confirmingTrialSignIn && !signingIn && !expired && (
+        <div
+          role="alertdialog"
+          aria-labelledby="landing-trial-sign-in-title"
+          data-testid="landing-trial-sign-in"
+          className="mx-auto mb-6 flex w-full max-w-sm flex-col gap-3 rounded-md border border-severity-warning bg-severity-warning-surface p-4 text-sm"
+        >
+          <p id="landing-trial-sign-in-title" className="font-semibold">
+            {tl('trialSignInTitle')}
+          </p>
+          <p>{tl('trialSignInBody')}</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                setConfirmingTrialSignIn(false);
+                setSigningIn(true);
+              }}
+            >
+              {tl('trialSignInContinue')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setConfirmingTrialSignIn(false);
+              }}
+            >
+              {tl('trialSignInCancel')}
+            </button>
+          </div>
         </div>
       )}
 

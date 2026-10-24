@@ -4,41 +4,58 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
 
-import { signOutOfServer } from '@/lib/auth';
-import { refreshTokens, type RefreshOutcome } from '@/lib/trial';
+import {
+  refreshSession,
+  signOutEverywhere as signOutEverywhereOfServer,
+  signOutOfServer,
+  type RefreshOutcome,
+} from '@/lib/auth';
 
 /**
  * The signed-in account, shared by every page under the app shell.
  *
- * Before this, each page that signed in held its own tokens, so signing in on
- * one page meant nothing on another and `/design` always ran on a trial. The
- * tokens are still held in memory only, as `lib/auth.ts` explains: this is
- * React state in the root layout, so it survives moving between pages and is
- * gone on a reload or when the tab closes. Nothing here touches storage.
+ * The access token is React state in the root layout: memory only, never
+ * storage. The refresh token is not held here at all; it is the HttpOnly
+ * session cookie the API sets (see `lib/auth.ts`). So a reload loses the
+ * access token but not the account: with `restore`, the provider asks for a
+ * new access token with the cookie before rendering the pages, and they start
+ * signed in to the same account they were in.
  *
  * `expired` is distinct from `signed-out`: a page that was working for an
  * account must ask for that account again, not carry on as someone else (a
  * trial) and save the engineer's work where their account cannot see it.
  */
-export type AccountTokens = { accessToken: string; refreshToken: string };
+export type AccountTokens = { accessToken: string };
 
 export type AccountState =
-  { status: 'signed-out' } | { status: 'signed-in'; tokens: AccountTokens } | { status: 'expired' };
+  | { status: 'signed-out' }
+  | { status: 'signed-in'; tokens: AccountTokens }
+  | { status: 'expired' }
+  /** Asking the server, on load, whether this browser has a session. */
+  | { status: 'restoring' };
 
 export type RenewOutcome = RefreshOutcome['kind'] | 'signed-out';
 
 export interface AccountSession {
   state: AccountState;
   signedIn: (tokens: AccountTokens) => void;
-  /** Exchange the refresh token after a 401; `expired` leaves the account signed out of. */
+  /** Ask for a new access token after a 401; `expired` leaves the account signed out of. */
   renew: () => Promise<RenewOutcome>;
   signOut: () => void;
+  /**
+   * End every sign-in of the account, on every device. Signs this page out
+   * only once the server has done it: on `failed` the page stays signed in,
+   * so the engineer is not told the other devices are signed out when they
+   * are not.
+   */
+  signOutEverywhere: () => Promise<'signed-out' | 'failed'>;
   /**
    * Mark the session ended where it cannot be renewed (a refresh that failed
    * for a page with no way to try again): the page asks for the account
@@ -76,44 +93,82 @@ export function tokenIdentity(token: string): TokenIdentity | null {
   }
 }
 
+function subjectOf(token: string): string | null {
+  return tokenIdentity(token)?.subject ?? null;
+}
+
 export function AccountSessionProvider({
   children,
-  refreshImpl = refreshTokens,
+  refreshImpl = refreshSession,
   signOutImpl = signOutOfServer,
+  signOutEverywhereImpl = signOutEverywhereOfServer,
+  restore = false,
   initial = { status: 'signed-out' },
 }: {
   children: ReactNode;
-  refreshImpl?: typeof refreshTokens;
+  refreshImpl?: typeof refreshSession;
   signOutImpl?: typeof signOutOfServer;
-  /** For tests: the state to start in. */
+  signOutEverywhereImpl?: typeof signOutEverywhereOfServer;
+  /**
+   * Restore the account from the session cookie before rendering anything.
+   * The root layout sets it; a page rendered on its own (in a test) does not,
+   * and starts from `initial`.
+   */
+  restore?: boolean;
+  /** For tests: the state to start in, when not restoring. */
   initial?: AccountState;
 }) {
-  const [state, setState] = useState<AccountState>(initial);
+  const [state, setState] = useState<AccountState>(restore ? { status: 'restoring' } : initial);
   // Read by `renew`, which outlives the render it was made in.
   const current = useRef(state);
   current.current = state;
-  // Several requests can 401 at once. A refresh token is single use, so only
-  // one exchange may run; the others wait for its answer.
+  // Several requests can 401 at once. One exchange runs per tab and the
+  // others wait for its answer; across tabs the server allows the overlap.
   const renewing = useRef<Promise<RenewOutcome> | null>(null);
   // Which exchange is current: a sign-in or sign-out during one supersedes it.
   const ticket = useRef(0);
 
-  const signedIn = useCallback((tokens: AccountTokens) => {
-    renewing.current = null;
-    ticket.current += 1;
-    current.current = { status: 'signed-in', tokens };
-    setState(current.current);
+  const settle = useCallback((next: AccountState) => {
+    current.current = next;
+    setState(next);
   }, []);
 
+  useEffect(() => {
+    if (!restore) return;
+    const mine = ticket.current;
+    void refreshImpl().then((outcome) => {
+      // Signed in or out by hand meanwhile: that stands.
+      if (ticket.current !== mine || current.current.status !== 'restoring') return;
+      if (outcome.kind === 'refreshed') {
+        settle({ status: 'signed-in', tokens: { accessToken: outcome.accessToken } });
+        return;
+      }
+      // Offline or refused: there is no telling whether this browser had a
+      // session, so it is treated as having none, and says why in the log.
+      if (outcome.kind === 'failed') console.warn('The sign-in could not be restored.');
+      settle({ status: 'signed-out' });
+    });
+  }, [restore, refreshImpl, settle]);
+
+  const signedIn = useCallback(
+    (tokens: AccountTokens) => {
+      renewing.current = null;
+      ticket.current += 1;
+      settle({ status: 'signed-in', tokens });
+    },
+    [settle],
+  );
+
   const signOut = useCallback(() => {
-    // Ended on the server first, with the tokens still in hand, so a copy of
-    // either stops working too. The page is signed out whatever it answers:
-    // a failure (offline) is logged, never a reason to stay signed in.
+    // Ended on the server, which also clears the cookie. The access token in
+    // hand names the session; without one the cookie does. The page is signed
+    // out whatever the server answers: a failure (offline) is logged, never a
+    // reason to stay signed in.
     const held = current.current;
-    if (held.status === 'signed-in') {
+    // Signed out already (a trial, say): there is no sign-in to end.
+    if (held.status !== 'signed-out') {
       void signOutImpl({
-        accessToken: held.tokens.accessToken,
-        refreshToken: held.tokens.refreshToken,
+        accessToken: held.status === 'signed-in' ? held.tokens.accessToken : null,
       }).then((outcome) => {
         if (outcome.kind === 'failed')
           console.warn('The session could not be ended on the server.');
@@ -121,17 +176,26 @@ export function AccountSessionProvider({
     }
     renewing.current = null;
     ticket.current += 1;
-    current.current = { status: 'signed-out' };
-    setState(current.current);
-  }, [signOutImpl]);
+    settle({ status: 'signed-out' });
+  }, [signOutImpl, settle]);
+
+  const signOutEverywhere = useCallback(async (): Promise<'signed-out' | 'failed'> => {
+    const held = current.current;
+    if (held.status !== 'signed-in') return 'failed';
+    const outcome = await signOutEverywhereImpl({ accessToken: held.tokens.accessToken });
+    if (outcome.kind === 'failed') return 'failed';
+    renewing.current = null;
+    ticket.current += 1;
+    settle({ status: 'signed-out' });
+    return 'signed-out';
+  }, [signOutEverywhereImpl, settle]);
 
   const expire = useCallback(() => {
     if (current.current.status !== 'signed-in') return;
     renewing.current = null;
     ticket.current += 1;
-    current.current = { status: 'expired' };
-    setState(current.current);
-  }, []);
+    settle({ status: 'expired' });
+  }, [settle]);
 
   const renew = useCallback((): Promise<RenewOutcome> => {
     if (renewing.current !== null) return renewing.current;
@@ -140,32 +204,46 @@ export function AccountSessionProvider({
     ticket.current += 1;
     const mine = ticket.current;
     const attempt = (async (): Promise<RenewOutcome> => {
-      const outcome = await refreshImpl({ refreshToken: held.tokens.refreshToken });
+      const outcome = await refreshImpl();
       // Signed out, or in again as someone, while the exchange ran: theirs stands.
       if (ticket.current !== mine) return outcome.kind;
       renewing.current = null;
       if (outcome.kind === 'refreshed') {
-        current.current = {
-          status: 'signed-in',
-          tokens: { accessToken: outcome.accessToken, refreshToken: outcome.refreshToken },
-        };
-        setState(current.current);
+        // The cookie is the browser's, not the tab's: another tab may have
+        // signed in as someone else since. This page never becomes that
+        // account behind the engineer's back; it asks for its own again.
+        const before = subjectOf(held.tokens.accessToken);
+        const after = subjectOf(outcome.accessToken);
+        if (before !== null && after !== null && before !== after) {
+          settle({ status: 'expired' });
+          return 'expired';
+        }
+        settle({ status: 'signed-in', tokens: { accessToken: outcome.accessToken } });
       } else if (outcome.kind === 'expired') {
-        current.current = { status: 'expired' };
-        setState(current.current);
+        settle({ status: 'expired' });
       }
-      // `failed` (offline): the tokens are kept, and the next 401 tries again.
+      // `failed` (offline): the token is kept, and the next 401 tries again.
       return outcome.kind;
     })();
     renewing.current = attempt;
     return attempt;
-  }, [refreshImpl]);
+  }, [refreshImpl, settle]);
 
   const value = useMemo(
-    () => ({ state, signedIn, renew, signOut, expire }),
-    [state, signedIn, renew, signOut, expire],
+    () => ({ state, signedIn, renew, signOut, signOutEverywhere, expire }),
+    [state, signedIn, renew, signOut, signOutEverywhere, expire],
   );
-  return <AccountSessionContext.Provider value={value}>{children}</AccountSessionContext.Provider>;
+  return (
+    <AccountSessionContext.Provider value={value}>
+      {state.status === 'restoring' ? (
+        // Nothing renders until the session is known, so no page starts a
+        // trial for a visitor who is in fact signed in.
+        <div aria-busy="true" data-testid="account-restoring" className="min-h-dvh" />
+      ) : (
+        children
+      )}
+    </AccountSessionContext.Provider>
+  );
 }
 
 /** The shared account session, or null outside an `AccountSessionProvider`. */

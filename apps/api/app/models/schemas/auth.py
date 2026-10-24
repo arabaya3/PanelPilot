@@ -26,6 +26,9 @@ class CurrentUser(BaseModel):
     # cannot forget which tenant it is acting for.
     tenant_id: str
     roles: frozenset[Role]
+    # The server-side sign-in (`auth_sessions`) an account's access token
+    # belongs to; `None` for a trial, which has no sign-in to end.
+    session_id: str | None = None
 
     def has_role(self, role: Role) -> bool:
         """Report whether the caller holds a role.
