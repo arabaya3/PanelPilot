@@ -227,7 +227,8 @@ def approve_revision(
         404: {"description": "No such revision is the caller's (`revision_not_found`)"},
         409: {
             "description": (
-                "`revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, "
+                "`revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, "
+                "`revision_stale`, `export_format_unprotected`, "
                 "or `execution_package_incomplete`"
             )
         },

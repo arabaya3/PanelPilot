@@ -1,0 +1,698 @@
+{
+  "case": "decimal_inputs",
+  "request": {
+    "boards": [
+      {
+        "loads": [
+          {
+            "description": "Tiny load",
+            "load": "lighting",
+            "power_kw": "0.001"
+          },
+          {
+            "description": "Many decimals",
+            "load": "socket",
+            "power_kw": "1.123456789012345678"
+          },
+          {
+            "description": "Big motor",
+            "load": "motor",
+            "phases": 3,
+            "power_kw": "90",
+            "starter": "drive"
+          }
+        ],
+        "name": "DB-DEC",
+        "supply": {
+          "fault_level_ka": "50"
+        }
+      }
+    ],
+    "info": {
+      "name": "Synthetic Decimals"
+    }
+  },
+  "source": "pipeline",
+  "stored": {
+    "catalogue_version": "none",
+    "design_snapshot": {
+      "boards": [
+        {
+          "cables": [
+            {
+              "cores": 3,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.030"
+            },
+            {
+              "cores": 3,
+              "cross_section_mm2": "2.5",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "W2"
+              },
+              "id": "c2-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.083"
+            },
+            {
+              "cores": 4,
+              "cross_section_mm2": "70",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "W3"
+              },
+              "id": "c3-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "64.802"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Tiny load",
+              "design_current_a": "0.00",
+              "device_ids": [
+                "c1-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "lighting",
+              "phase": "L2",
+              "power_kw": "0.001",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c2-cable",
+              "description": "Many decimals",
+              "design_current_a": "5.40",
+              "device_ids": [
+                "c2-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c2",
+              "load": "socket",
+              "phase": "L1",
+              "power_kw": "1.123456789012345678",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c3-cable",
+              "description": "Big motor",
+              "design_current_a": "169.81",
+              "device_ids": [
+                "c3-fuses",
+                "c3-drive"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c3",
+              "load": "motor",
+              "phase": "L1L2L3",
+              "power_kw": "90",
+              "starter": "drive",
+              "upstream_id": null,
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": "50",
+              "curve": null,
+              "description": "Main incomer",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "circuit_breaker",
+              "part_key": "ABB/T5S 400 TMA 320",
+              "poles": 4,
+              "rated_current_a": "320",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": "50",
+              "curve": "C",
+              "description": "Group 1 supply",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "g1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "32",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Group 1 residual current",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "g1-rcd",
+              "kind": "residual_current_device",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "40",
+              "residual_current_ma": "30",
+              "upstream_id": "g1-breaker"
+            },
+            {
+              "breaking_capacity_ka": "50",
+              "curve": "C",
+              "description": "Tiny load",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "10",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            },
+            {
+              "breaking_capacity_ka": "50",
+              "curve": "C",
+              "description": "Many decimals",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "Q4"
+              },
+              "id": "c2-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "16",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": "aR",
+              "description": "Big motor drive input fuses",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "F2"
+              },
+              "id": "c3-fuses",
+              "kind": "fuse",
+              "part_key": "Bussmann/170M3018",
+              "poles": 3,
+              "rated_current_a": "350",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Big motor drive",
+              "designation": {
+                "function": "DB-DEC",
+                "location": null,
+                "product": "T1"
+              },
+              "id": "c3-drive",
+              "kind": "drive",
+              "part_key": "ABB/ACS880-01-206A-3",
+              "poles": null,
+              "rated_current_a": "206.00",
+              "residual_current_ma": null,
+              "upstream_id": "c3-fuses"
+            }
+          ],
+          "fed_from": null,
+          "function": null,
+          "id": "DB-DEC",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "DB-DEC",
+          "notes": [
+            {
+              "code": "discrimination_group_raised",
+              "params": {
+                "after": "16",
+                "group": "1",
+                "rated": "32",
+                "ratio": "1.6"
+              },
+              "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+            },
+            {
+              "code": "motor_current_formula",
+              "params": {
+                "current": "169.81",
+                "efficiency": "0.9",
+                "load": "Big motor",
+                "power": "90",
+                "power_factor": "0.85"
+              },
+              "text": "Big motor: Ir 169.81 A from 90 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate."
+            },
+            {
+              "code": "drive_selected",
+              "params": {
+                "ambient": "30",
+                "drive": "ACS880-01-206A-3",
+                "fuse": "350",
+                "load": "Big motor",
+                "source": "ABB ACS880-01 hardware manual (3AUA0000078093)"
+              },
+              "text": "Big motor: ACS880-01-206A-3 for normal duty at 30 °C, behind 350 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends."
+            },
+            {
+              "code": "drive_fuse_fault_level",
+              "params": {
+                "current": "1750",
+                "load": "Big motor"
+              },
+              "text": "Big motor: the fuses need at least 1750 A prospective short-circuit current at the board to operate fast enough."
+            },
+            {
+              "code": "mccb_selected_adjustable",
+              "params": {
+                "icu": "50",
+                "load": "Incomer",
+                "rated": "320",
+                "source": "ABB SACE Tmax T technical catalogue (1SDC210015D0208), p. 2/2, 2/7",
+                "trip": "3200",
+                "type": "T5S 400 TMA 320"
+              },
+              "text": "Incomer: T5S 400 TMA 320, In 320 A, Icu 50 kA (ABB SACE Tmax T technical catalogue (1SDC210015D0208), p. 2/2, 2/7); its I3 (5 to 10 In) is taken at the top, 3200 A, for the short circuit and earth fault checks; set lower, a longer cable passes."
+            },
+            {
+              "code": "discrimination_incomer_raised",
+              "params": {
+                "after": "169.81",
+                "rated": "320",
+                "ratio": "1.6"
+              },
+              "text": "Incomer raised to 320 A, 1.6 x the 169.81 A breaker after it, for discrimination."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "50",
+                "rating": "50"
+              },
+              "text": "Breakers are rated for at least 50 kA breaking capacity against 50 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "default_power_factor",
+              "params": {},
+              "text": "Loads without a power factor were taken at cos phi 0.9."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "3"
+              },
+              "text": "3 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "earth_fault_no_ze",
+              "params": {},
+              "text": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "50"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 50 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "2"
+              },
+              "text": "Enclosure: none named, since 2 devices have no width (rail_widths_mm in the company settings)."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": null,
+            "earthing": "TN-S",
+            "fault_level_ka": "50",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        }
+      ],
+      "info": {
+        "consultant": "",
+        "contractor": "",
+        "customer": "",
+        "name": "Synthetic Decimals",
+        "number": "",
+        "revisions": []
+      },
+      "parts": [
+        {
+          "description": "Moulded-case circuit-breaker, thermomagnetic",
+          "key": "ABB/T5S 400 TMA 320",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB SACE Tmax T technical catalogue (1SDC210015D0208)",
+          "type_number": "T5S 400 TMA 320",
+          "width_mm": null
+        },
+        {
+          "description": "aR fuse, DIN 43653 stud-mount (one per phase)",
+          "key": "Bussmann/170M3018",
+          "manufacturer": "Bussmann",
+          "order_number": null,
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+          "type_number": "170M3018",
+          "width_mm": null
+        },
+        {
+          "description": "Variable-speed drive",
+          "key": "ABB/ACS880-01-206A-3",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+          "type_number": "ACS880-01-206A-3",
+          "width_mm": null
+        }
+      ],
+      "profile": "iec-default"
+    },
+    "findings": [
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": "c3",
+        "code": "integrity_drive_cable_unchecked",
+        "device_id": null,
+        "message": "Big motor: the cable after a drive is protected by the drive's motor overload setting, which is not checked here.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "discrimination_group_raised",
+        "device_id": null,
+        "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "16",
+          "group": "1",
+          "rated": "32",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": "c3",
+        "code": "motor_current_formula",
+        "device_id": null,
+        "message": "Big motor: Ir 169.81 A from 90 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "169.81",
+          "efficiency": "0.9",
+          "load": "Big motor",
+          "power": "90",
+          "power_factor": "0.85"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": "c3",
+        "code": "drive_selected",
+        "device_id": null,
+        "message": "Big motor: ACS880-01-206A-3 for normal duty at 30 °C, behind 350 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "drive": "ACS880-01-206A-3",
+          "fuse": "350",
+          "load": "Big motor",
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": "c3",
+        "code": "drive_fuse_fault_level",
+        "device_id": null,
+        "message": "Big motor: the fuses need at least 1750 A prospective short-circuit current at the board to operate fast enough.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "1750",
+          "load": "Big motor"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "mccb_selected_adjustable",
+        "device_id": null,
+        "message": "Incomer: T5S 400 TMA 320, In 320 A, Icu 50 kA (ABB SACE Tmax T technical catalogue (1SDC210015D0208), p. 2/2, 2/7); its I3 (5 to 10 In) is taken at the top, 3200 A, for the short circuit and earth fault checks; set lower, a longer cable passes.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "icu": "50",
+          "load": "Incomer",
+          "rated": "320",
+          "source": "ABB SACE Tmax T technical catalogue (1SDC210015D0208), p. 2/2, 2/7",
+          "trip": "3200",
+          "type": "T5S 400 TMA 320"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "discrimination_incomer_raised",
+        "device_id": null,
+        "message": "Incomer raised to 320 A, 1.6 x the 169.81 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "169.81",
+          "rated": "320",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 50 kA breaking capacity against 50 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "50",
+          "rating": "50"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "3 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "3"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "earth_fault_no_ze",
+        "device_id": null,
+        "message": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 50 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "50"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-DEC",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 2 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "2"
+        }
+      }
+    ],
+    "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+    "rules_version": "2026.10.23.1",
+    "snapshot_sha256": "7a6e1d4b1ea027e98805622fc6e1391d29a35bdb1479850d7f7a1235482cedb1"
+  }
+}
