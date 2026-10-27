@@ -94,6 +94,7 @@ def from_v1(project: DesignProject | dict[str, Any]) -> domain.DesignModel:
                     drawn_by=r.drawn_by,
                     checked_by=r.checked_by,
                     approved_by=r.approved_by,
+                    approval_note=r.approval_note,
                 )
                 for r in info.revisions
             ),

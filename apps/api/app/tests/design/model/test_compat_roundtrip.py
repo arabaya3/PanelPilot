@@ -13,6 +13,7 @@ For each snapshot the Phase 1 pipeline stores (``fixtures/*.json``):
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -152,16 +153,30 @@ def test_reading_does_not_mutate_the_stored_value(case: str) -> None:
 
 
 def test_decimal_edges_keep_their_exact_text() -> None:
-    """``-0``, ``1E-12``, ``1.10`` and ``1E+3`` are stored as written, and stay so."""
+    """Values at each schema bound, and exotic unbounded texts, are stored as written."""
+    from app.models.schemas.design import Cable, Device
+    from app.tests.design.model.compat_support import bounds_of, valid_edges
+    from app.tests.design.model.fixtures.generate import (
+        CABLE_FIELDS,
+        DEVICE_FIELDS,
+        UNBOUNDED_EDGES,
+    )
+
     stored = _stored("decimal_edges")["design_snapshot"]
-    texts = {
-        device["rated_current_a"]
-        for board in stored["boards"]
-        for device in board["devices"]
-        if device["id"].startswith("dec-")
-    }
+    board = stored["boards"][0]
+    for model, names, items in (
+        (Device, DEVICE_FIELDS, board["devices"]),
+        (Cable, CABLE_FIELDS, board["cables"]),
+    ):
+        for name in names:
+            texts = {item.get(name) for item in items if item["id"].startswith(f"dec-{name}-")}
+            expected = {str(v) for v in valid_edges(bounds_of(model, name))}
+            bound = bounds_of(model, name)
+            assert str(bound.le) in texts, f"{name}: the upper bound itself is not held"
+            assert expected <= texts, name
+    widths = {p["width_mm"] for p in stored["parts"] if p["key"].startswith("dec-part-")}
     # Decimal("0.000000001") is stored as str() gives it: "1E-9".
-    assert {"0", "-0", "1E-12", "1E-9", "1.10", "1E+3", "99999999999999999999.99"} <= texts
+    assert {str(Decimal(t)) for t in UNBOUNDED_EDGES} <= widths
     back = to_v1(from_v1(stored)).model_dump(mode="json")
     assert back == stored
 

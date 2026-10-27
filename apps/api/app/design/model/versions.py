@@ -46,11 +46,19 @@ MODEL_KEY = "model"
 #: Schemas stored in an envelope. None yet: v1 is the only schema.
 ENVELOPED: frozenset[str] = frozenset()
 
-#: Every schema this software reads.
-KNOWN: frozenset[str] = frozenset({V1}) | ENVELOPED
+#: Every schema this software reads, oldest first: the declared migration order.
+#: Each adjacent pair has an entry in :data:`MIGRATIONS` (tested).
+ORDER: tuple[str, ...] = (V1,)
 
-#: The schema new revisions are written in.
-LATEST = V1
+#: Every schema this software reads.
+KNOWN: frozenset[str] = frozenset(ORDER)
+
+#: The schema new revisions are written in: the last in :data:`ORDER`.
+LATEST = ORDER[-1]
+
+#: The longest schema marker a message or error parameter echoes; a stored
+#: marker is untrusted and may be any length.
+MAX_ECHOED_MARKER = 64
 
 #: A migration: a pure function from one schema's JSON payload to the next's.
 Migration = Callable[[dict[str, Any]], dict[str, Any]]
@@ -99,10 +107,29 @@ def identify(stored: Any) -> str:
     if SCHEMA_KEY not in stored:
         return V1
     marker = stored[SCHEMA_KEY]
-    schema = marker if isinstance(marker, str) else repr(marker)
-    if schema not in ENVELOPED:
-        raise SnapshotSchemaUnknownError(schema)
-    return schema
+    if not isinstance(marker, str) or marker not in ENVELOPED:
+        raise SnapshotSchemaUnknownError(_echoed(marker))
+    return marker
+
+
+def _echoed(marker: Any) -> str:
+    """A stored marker as text that is safe to echo: a scalar's form, cut short.
+
+    A container is named by its type only: its ``repr`` could be megabytes, or
+    recurse past the interpreter's limit on a crafted row.
+    """
+    if isinstance(marker, str):
+        text = marker
+    elif marker is None or isinstance(marker, bool | float):
+        text = repr(marker)
+    elif isinstance(marker, int):
+        # An int past the interpreter's digit limit has no text form.
+        text = repr(marker) if abs(marker) < 10**MAX_ECHOED_MARKER else "<int>"
+    else:
+        text = f"<{type(marker).__name__}>"
+    if len(text) > MAX_ECHOED_MARKER:
+        return text[: MAX_ECHOED_MARKER - 3] + "..."
+    return text
 
 
 def payload(stored: dict[str, Any], schema: str) -> dict[str, Any]:
@@ -135,7 +162,7 @@ def migrate(
     source: str,
     target: str,
     *,
-    order: tuple[str, ...],
+    order: tuple[str, ...] = ORDER,
     migrations: Mapping[tuple[str, str], Migration] = MIGRATIONS,
 ) -> dict[str, Any]:
     """Migrate a payload step by step from one schema to a later one.
@@ -145,6 +172,7 @@ def migrate(
         source: Its schema.
         target: The schema wanted.
         order: Every schema, oldest first; each step goes to the next.
+            :data:`ORDER` unless a test passes its own.
         migrations: The registry; :data:`MIGRATIONS` unless a test passes its own.
 
     Returns:
@@ -154,6 +182,9 @@ def migrate(
         KeyError: If either schema is not in ``order``, ``target`` is older,
             or a step has no registered migration. Never a silent skip.
     """
+    for schema in (source, target):
+        if schema not in order:
+            raise KeyError(f"{schema} is not a schema in the migration order")
     start, end = order.index(source), order.index(target)
     if end < start:
         raise KeyError(f"no migration back from {source} to {target}")

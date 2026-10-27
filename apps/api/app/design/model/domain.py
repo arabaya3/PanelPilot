@@ -151,6 +151,7 @@ class Revision:
     drawn_by: str
     checked_by: str
     approved_by: str
+    approval_note: str
 
 
 @dataclass(frozen=True)

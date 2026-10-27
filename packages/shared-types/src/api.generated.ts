@@ -5970,7 +5970,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, or `execution_package_incomplete` */
+      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, `revision_stale`, `export_format_unprotected`, or `execution_package_incomplete` */
       409: {
         headers: {
           [name: string]: unknown;

@@ -10,6 +10,7 @@ as stored.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -26,12 +27,18 @@ class VersionedModel:
     Attributes:
         schema: The schema it was stored in.
         project: The design as v1, which today's renderers and checks take.
-        model: The same design as plain domain values.
+    The domain model (:attr:`model`) is built on first use only: the read
+    paths that gate approval and export take the v1 form, and should not pay
+    for a conversion they discard.
     """
 
     schema: str
     project: DesignProject
-    model: domain.DesignModel
+
+    @cached_property
+    def model(self) -> domain.DesignModel:
+        """The same design as plain domain values, converted once, when first asked for."""
+        return from_v1(self.project)
 
 
 def read_snapshot(stored: Any) -> VersionedModel:
@@ -47,7 +54,8 @@ def read_snapshot(stored: Any) -> VersionedModel:
         SnapshotSchemaUnknownError: If it names a schema this software does not read.
         SnapshotUnreadableError: If it is not a snapshot of its schema: not an
             object, or content that does not validate (an unknown field, a
-            missing one, a reference that does not resolve).
+            missing one, a reference that does not resolve), or nesting
+            past the interpreter's recursion limit (a crafted row).
     """
     schema = versions.identify(stored)
     content = versions.payload(stored, schema)
@@ -59,4 +67,8 @@ def read_snapshot(stored: Any) -> VersionedModel:
         raise versions.SnapshotUnreadableError(
             f"not a {schema} design: {exc.error_count()} error(s)"
         ) from exc
-    return VersionedModel(schema=schema, project=project, model=from_v1(project))
+    except RecursionError as exc:
+        # MemoryError is not caught: it is not a property of the row, and a
+        # process that ran out of memory must not carry on as if it had not.
+        raise versions.SnapshotUnreadableError(f"not a {schema} design: nested too deep") from exc
+    return VersionedModel(schema=schema, project=project)

@@ -18,6 +18,7 @@ from app.models.schemas.design import (
     MotorStarter,
     ProjectDesignRequest,
     ProjectInfo,
+    Revision,
     Supply,
 )
 
@@ -69,6 +70,30 @@ def test_round_trip_is_lossless(project: DesignProject) -> None:
     model = convert_v1.from_v1(project)
     assert convert_v1.to_v1(model) == project
     assert convert_v1.from_v1(convert_v1.to_v1(model)) == model
+
+
+def test_title_block_revisions_round_trip_with_their_approval_note(
+    hall_project: DesignProject,
+) -> None:
+    revisions = [
+        Revision(
+            index="01",
+            date="2026-10-01",
+            description="Issued for review",
+            drawn_by="A",
+            checked_by="B",
+            approved_by="C. Engineer",
+            approval_note="Approved subject to site survey",
+        ),
+        Revision(index="02", date="2026-10-20"),
+    ]
+    project = hall_project.model_copy(
+        update={"info": hall_project.info.model_copy(update={"revisions": revisions})}
+    )
+    model = convert_v1.from_v1(project)
+    assert model.info.revisions[0].approval_note == "Approved subject to site survey"
+    assert convert_v1.to_v1(model) == project
+    assert convert_v1.to_v1(model).model_dump(mode="json") == project.model_dump(mode="json")
 
 
 def test_a_dict_reads_as_the_model_does(project: DesignProject) -> None:
