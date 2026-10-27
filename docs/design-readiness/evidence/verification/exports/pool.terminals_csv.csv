@@ -1,0 +1,16 @@
+﻿Board,Terminal,Conductor,Circuit,Cable,mm2,Article
+DB-POOL,'-X1:1,L2,Pool underwater lighting (TEST VALUE),'-W1,1.5,8WH1000-0AF00
+DB-POOL,'-X1:2,N,Pool underwater lighting (TEST VALUE),'-W1,1.5,8WH1000-0AF00
+DB-POOL,'-X1:3,PE,Pool underwater lighting (TEST VALUE),'-W1,1.5,8WH1000-0CF07
+DB-POOL,'-X1:4,L1,Pool heater (TEST VALUE),'-W2,1.5,8WH1000-0AF00
+DB-POOL,'-X1:5,L2,Pool heater (TEST VALUE),'-W2,1.5,8WH1000-0AF00
+DB-POOL,'-X1:6,L3,Pool heater (TEST VALUE),'-W2,1.5,8WH1000-0AF00
+DB-POOL,'-X1:7,N,Pool heater (TEST VALUE),'-W2,1.5,8WH1000-0AF00
+DB-POOL,'-X1:8,PE,Pool heater (TEST VALUE),'-W2,1.5,8WH1000-0CF07
+DB-POOL,'-X1:9,L1,Plant room sockets (TEST VALUE),'-W3,2.5,8WH1000-0AF00
+DB-POOL,'-X1:10,N,Plant room sockets (TEST VALUE),'-W3,2.5,8WH1000-0AF00
+DB-POOL,'-X1:11,PE,Plant room sockets (TEST VALUE),'-W3,2.5,8WH1000-0CF07
+DB-POOL,'-X1:12,U,Pool filtration pump (TEST VALUE),'-W4,1.5,8WH1000-0AF00
+DB-POOL,'-X1:13,V,Pool filtration pump (TEST VALUE),'-W4,1.5,8WH1000-0AF00
+DB-POOL,'-X1:14,W,Pool filtration pump (TEST VALUE),'-W4,1.5,8WH1000-0AF00
+DB-POOL,'-X1:15,PE,Pool filtration pump (TEST VALUE),'-W4,1.5,8WH1000-0CF07

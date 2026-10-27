@@ -1,0 +1,54 @@
+{
+ "info": {
+  "name": "TEST - verification",
+  "number": "TEST-001",
+  "customer": "TEST",
+  "revisions": [
+   {
+    "index": "A",
+    "date": "2026-10-23",
+    "description": "TEST issue",
+    "drawn_by": "V4"
+   }
+  ]
+ },
+ "board": {
+  "name": "DB-HALL",
+  "supply": {
+   "voltage_v": 400,
+   "phases": 3,
+   "frequency_hz": 50,
+   "earthing": "TN-S"
+  },
+  "loads": [
+   {
+    "description": "Hall lighting row 1 (TEST VALUE)",
+    "load": "lighting",
+    "power_kw": 1.2,
+    "phases": 1,
+    "length_m": 30
+   },
+   {
+    "description": "Hall lighting row 2 (TEST VALUE)",
+    "load": "lighting",
+    "power_kw": 1.2,
+    "phases": 1,
+    "length_m": 35
+   },
+   {
+    "description": "Sockets hall east (TEST VALUE)",
+    "load": "socket",
+    "power_kw": 2,
+    "phases": 1,
+    "length_m": 25
+   },
+   {
+    "description": "AC unit (TEST VALUE)",
+    "load": "air_conditioning",
+    "power_kw": 5,
+    "phases": 3,
+    "length_m": 20
+   }
+  ]
+ }
+}

@@ -1,0 +1,5 @@
+﻿Board,Cable,From,To,Cores,Cross-section mm2,Runs in parallel,Material,Insulation,Length m,Voltage drop %,Earth loop Zs ohm,Withstand k2S2 (kA)2s
+DB-HALL,'=DB-HALL-W1,'=DB-HALL-Q3,Hall lighting row 1 (TEST VALUE),3,1.5,1,Cu,PVC,30,2.25,,0.03
+DB-HALL,'=DB-HALL-W2,'=DB-HALL-Q4,Hall lighting row 2 (TEST VALUE),3,1.5,1,Cu,PVC,35,2.62,,0.03
+DB-HALL,'=DB-HALL-W3,'=DB-HALL-Q5,Sockets hall east (TEST VALUE),3,2.5,1,Cu,PVC,25,1.87,,0.083
+DB-HALL,'=DB-HALL-W4,'=DB-HALL-Q6,AC unit (TEST VALUE),5,2.5,1,Cu,PVC,20,0.6,,0.083

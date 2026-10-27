@@ -1,0 +1,8 @@
+﻿Tag,Direction,Type,Board,Device,Description,Address
+EStop_OK,input,BOOL,,,Emergency stop chain healthy (normally closed: TRUE while healthy),
+Auto_Mode,input,BOOL,,,Hand/auto selector in auto,
+Schedule_On,input,BOOL,,,Time clock or BMS enable,
+Start_DB_POOL_Q7,input,BOOL,DB-POOL,'=DB-POOL-Q7,Pool filtration pump (TEST VALUE): start (NO),
+Stop_DB_POOL_Q7,input,BOOL,DB-POOL,'=DB-POOL-Q7,Pool filtration pump (TEST VALUE): stop (NC),
+OL_DB_POOL_Q7,input,BOOL,DB-POOL,'=DB-POOL-F2,Pool filtration pump (TEST VALUE): overload healthy (NC),
+K_DB_POOL_Q7,output,BOOL,DB-POOL,'=DB-POOL-Q7,Pool filtration pump (TEST VALUE): contactor coil,

@@ -1,0 +1,5 @@
+﻿Board,Cable,From,To,Cores,Cross-section mm2,Runs in parallel,Material,Insulation,Length m,Voltage drop %,Earth loop Zs ohm,Withstand k2S2 (kA)2s
+PP1,'=PP1-W1,'=PP1-Q3,Panel lighting (test),3,1.5,1,Cu,PVC,10,0.12,,0.03
+PP1,'=PP1-W2,'=PP1-Q4,Duty pump (test),4,1.5,1,Cu,PVC,30,2.85,,0.03
+PP1,'=PP1-W3,'=PP1-Q6,Standby pump (test),7,6,1,Cu,PVC,30,1.82,,0.476
+PP1,'=PP1-W4,'=PP1-F4,Booster (test),4,1.5,1,Cu,PVC,20,1.3,,0.03

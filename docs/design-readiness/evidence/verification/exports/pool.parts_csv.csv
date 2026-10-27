@@ -1,0 +1,10 @@
+﻿Quantity,Kind,Poles,Rated current A,Curve,Residual current mA,Manufacturer,Type number,Order number,Designations
+1,circuit_breaker,4,63,C,,,,,'=DB-POOL-Q1
+1,circuit_breaker,3,32,C,,,,,'=DB-POOL-Q2
+1,residual_current_device,4,40,,30,,,,'=DB-POOL-F1
+1,circuit_breaker,3,5,MF,,ABB,T2S160 MF 5,,'=DB-POOL-Q6
+1,contactor,3,,,,ABB,A26,,'=DB-POOL-Q7
+1,overload_relay,3,5,,,ABB,TA25DU6.5,,'=DB-POOL-F2
+1,circuit_breaker,1,10,C,,,,,'=DB-POOL-Q3
+1,circuit_breaker,3,10,C,,,,,'=DB-POOL-Q4
+1,circuit_breaker,1,16,C,,,,,'=DB-POOL-Q5

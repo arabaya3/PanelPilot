@@ -1,0 +1,205 @@
+page+trial session ready s 1.167
+shot 01-overview-test-project
+header data entry s 0.955
+suggest s 8.07
+suggest outcome: Suggested schedule. Assumptions:
+
+Diversity is not applied
+Spares are not included
+Filtration pump power and three-phase nature are as stated in the description
+Underwater light power is a typical figure for an LED fitting, assumed single-phase
+Socket power is a typical figure (150 W each), assumed single-phase
+Water heater power is as stated; typical water heaters under 5 kW are single-phase
+Filtration pump: 1 × 5500 W = 5.5 kW. as described
+Underwater light: 4 × 30 W = 0.12 kW. typical value
+Plant room socket: 2 × 150 W = 0.3 kW. typical value
+Water heater: 1 × 3000 W = 3 kW. as described
+rows after suggestion:
+Filtration pump | motor | 5.5 | 3 |  |  | 
+Underwater light | lighting | 0.12 | 1 |  |  | 
+Plant room socket | socket | 0.3 | 1 |  |  | 
+Water heater | water_heater | 3 | 1 |  |  | 
+shot 02-schedule-after-suggestion
+design s 0.198
+shot 03-drawings-view-v1
+drawings text v1:
+100 %
+TEST-DB-POOL
+CIRCUIT	PHASE	IB	BREAKER	RCD	CABLE	VOLTAGE DROP	EARTH LOOP ZS
+Underwater light	L3	0.58 A	-Q3 C10 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Plant room socket	L2	1.44 A	-Q4 C16 10 kA	-F1 30 mA	3G2.5 Cu	—	—
+Water heater	L1	14.43 A	-Q5 C16 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Filtration pump	L1L2L3	8.82 A	-Q6 D10 10 kA	—	5G1.5 Cu	—	—
+What the design assumed
+Group 1 breaker raised to 32 A, 1.6 × the 16 A breaker after it, for discrimination.
+Phase imbalance 59.6 % exceeds the company’s 10 %: the loads cannot be spread more evenly as given.
+Incomer raised to 63 A, 1.6 × the 32 A breaker after it, for discrimination.
+Breakers are rated for at least 10 kA breaking capacity against 10 kA prospective at the board; each RCCB’s conditional short-circuit current with the breaker ahead of it must reach it too.
+Leave 1 spare outgoing way (20 %).
+Loads without a power factor were taken at cos φ 0.9.
+Each breaker is rated at least 1.6 × the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker’s instantaneous trip (about 5 × In for curve C); where total selectivity is required, confirm it from the manufacturer’s selectivity tables.
+4 circuits have no cable length given; their voltage drop is not checked.
+1 circuit is not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.
+Each cable’s withstand k²S² is in the cable list; compare it with the selected breaker’s let-through I²t at 10 kA from its maker’s curve (ABB handbook §2.4).
+Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.
+Designed for Palestine, under IEC 60364 (adopted by the Palestine Standards Institution): its stated limits apply beneath the company's own settings.
+Circuit rules are this software’s defaults, not confirmed by the company’s engineers.
+Enclosure: ABB Mini Center compact GDMS348 RX (2CVA360001P0001), 3 rows of 16 modules, H x W x D 648 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 31 modules are left for spare ways (ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7). The outgoing terminal strip is not counted.
+Selected board
+Board
+TEST-DB-POOL
+Location
+TEST plant room
+Supply
+400 V, 3~, 50 Hz, TN-S
+Incomer
+-Q1 C63 10 kA
+Circuits
+4
+Devices
+7
+Cables
+4
+
+This is the designed schedule each sheet is drawn from. The drawings themselves are the drawing set (PDF) and DXF under Review & export.
+shot 04-panel-layout-view
+shot 05-materials-view-v1
+materials text:
+Quotation
+
+Upload your price list and enter your rates. Each device is matched by its order number, or by its rating key (circuit_breaker:1P:C16) until a catalogue is chosen; a line with no price is never guessed.
+
+Price list
+Choose file
+No file chosen
+
+Excel or CSV with a key (or order number) column and a price column.
+
+Currency
+Cable length when not given(m)
+Labour per circuit
+Labour per board
+Enclosure and accessories
+Markup(%)
+VAT(%)
+Price the board
+Quotation (PDF)
+Quotation (CSV)
+shot 06-revisions-view
+shot 07-review-export-view-v1
+export pdf -> v1-TEST-POOL-01-assessment-test-not-a-real-project.pdf 27203 bytes 0.695 s
+export calculations_pdf -> v1-TEST-POOL-01-assessment-test-not-a-real-project.calculations.pdf 5689 bytes 0.233 s
+export dxf -> v1-TEST-POOL-01-assessment-test-not-a-real-project.dxf 88996 bytes 0.345 s
+export qet -> v1-TEST-POOL-01-assessment-test-not-a-real-project.qet 52073 bytes 0.227 s
+export aml -> v1-TEST-POOL-01-assessment-test-not-a-real-project.aml 17587 bytes 0.2 s
+export devices_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.devices.csv 1032 bytes 0.299 s
+export parts_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.parts.csv 543 bytes 0.235 s
+export cables_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.cables.csv 634 bytes 0.326 s
+export circuits_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.circuits.csv 617 bytes 0.302 s
+export terminals_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.terminals.csv 938 bytes 0.28 s
+export eplan_devices_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.eplan-devices.csv 1932 bytes 0.256 s
+export ace_components_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.ace-components.csv 582 bytes 0.217 s
+export ace_terminals_csv -> v1-TEST-POOL-01-assessment-test-not-a-real-project.ace-terminals.csv 1376 bytes 0.149 s
+export json -> v1-TEST-POOL-01-assessment-test-not-a-real-project.json 12381 bytes 0.187 s
+pump changed 5.5->7.5: true
+shot 08-drawings-after-edit-before-redesign
+stale check (any warning?) drawings text after edit:
+100 %
+TEST-DB-POOL
+CIRCUIT	PHASE	IB	BREAKER	RCD	CABLE	VOLTAGE DROP	EARTH LOOP ZS
+Underwater light	L3	0.58 A	-Q3 C10 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Plant room socket	L2	1.44 A	-Q4 C16 10 kA	-F1 30 mA	3G2.5 Cu	—	—
+Water heater	L1	14.43 A	-Q5 C16 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Filtration pump	L1L2L3	8.82 A	-Q6 D10 10 kA	—	5G1.5 Cu	—	—
+What the design assumed
+Group 1 breaker raised to 32 A, 1.6 × the 16 A breaker after it, for discrimination.
+Phase imbalance 59.6 % exceeds the company’s 10 %: the loads cannot be spread more evenly as given.
+Incomer raised to 63 A, 1.6 × the 32 A breaker after it, for 
+export pdf -> stale-after-edit-before-redesign-TEST-POOL-01-assessment-test-not-a-real-project.pdf 27203 bytes 0.276 s
+redesign s 0.981
+shot 09-drawings-view-v2
+drawings text v2:
+100 %
+TEST-DB-POOL
+CIRCUIT	PHASE	IB	BREAKER	RCD	CABLE	VOLTAGE DROP	EARTH LOOP ZS
+Underwater light	L3	0.58 A	-Q3 C10 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Plant room socket	L2	1.44 A	-Q4 C16 10 kA	-F1 30 mA	3G2.5 Cu	—	—
+Water heater	L1	14.43 A	-Q5 C16 10 kA	-F1 30 mA	3G1.5 Cu	—	—
+Filtration pump	L1L2L3	12.03 A	-Q6 D13 10 kA	—	5G1.5 Cu	—	—
+What the design assumed
+Group 1 breaker raised to 32 A, 1.6 × the 16 A breaker after it, for discrimination.
+Phase imbalance 52.3 % exceeds the company’s 10 %: the loads cannot be spread more evenly as given.
+Incomer raised to 63 A, 1.6 × the 32 A breaker after it, for discrimination.
+Breakers are rated for at least 10 kA breaking capacity against 10 kA prospective at the board; each RCCB’s conditional short-circuit current with the breaker ahead of it must reach it too.
+Leave 1 spare outgoing way (20 %).
+Loads without a power factor were taken at cos φ 0.9.
+Each breaker is rated at least 1.6 × the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker’s instantaneous trip (about 5 × In for curve C); where total selectivity is required, confirm it from the manufacturer’s selectivity tables.
+4 circuits have no cable length given; their voltage drop is not checked.
+1 circuit is not checked for earth fault disconnection: no cable length, a motor starter’s breaker, or a breaker not selected here.
+Each cable’s withstand k²S² is in the cable list; compare it with the selected breaker’s let-through I²t at 10 kA from its maker’s curve (ABB handbook §2.4).
+Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.
+Designed for Palestine, under IEC 60364 (adopted by the Palestine Standards Institution): its stated limits apply beneath the company's own settings.
+Circuit rules are this software’s defaults, not confirmed by the company’s engineers.
+Enclosure: ABB Mini Center compact GDMS348 RX (2CVA360001P0001), 3 rows of 16 modules, H x W x D 648 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 31 modules are left for spare ways (ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7). The outgoing terminal strip is not counted.
+Selected board
+Board
+TEST-DB-POOL
+Location
+TEST plant room
+Supply
+400 V, 3~, 50 Hz, TN-S
+Incomer
+-Q1 C63 10 kA
+Circuits
+4
+Devices
+7
+Cables
+4
+
+This is the designed schedule each sheet is drawn from. The drawings themselves are the drawing set (PDF) and DXF under Review & export.
+export pdf -> v2-TEST-POOL-01-assessment-test-not-a-real-project.pdf 27201 bytes 0.233 s
+export calculations_pdf -> v2-TEST-POOL-01-assessment-test-not-a-real-project.calculations.pdf 5695 bytes 0.173 s
+export dxf -> v2-TEST-POOL-01-assessment-test-not-a-real-project.dxf 88997 bytes 0.229 s
+export parts_csv -> v2-TEST-POOL-01-assessment-test-not-a-real-project.parts.csv 543 bytes 0.159 s
+export cables_csv -> v2-TEST-POOL-01-assessment-test-not-a-real-project.cables.csv 634 bytes 0.202 s
+export circuits_csv -> v2-TEST-POOL-01-assessment-test-not-a-real-project.circuits.csv 618 bytes 0.232 s
+export devices_csv -> v2-TEST-POOL-01-assessment-test-not-a-real-project.devices.csv 1032 bytes 0.187 s
+export terminals_csv -> v2-TEST-POOL-01-assessment-test-not-a-real-project.terminals.csv 938 bytes 0.181 s
+export json -> v2-TEST-POOL-01-assessment-test-not-a-real-project.json 12382 bytes 0.191 s
+export pdf -> v3-arabic-TEST-POOL-01-assessment-test-not-a-real-project.pdf 84577 bytes 0.294 s
+network:
+201 POST /auth/trial
+200 GET /design/markets
+200 GET /design/projects
+200 GET /design/company-settings
+200 GET /design/projects
+200 POST /design/load-schedule/suggest
+200 POST /design/project
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/project
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/export
+200 POST /design/project
+200 POST /design/export

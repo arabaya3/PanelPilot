@@ -1,0 +1,19 @@
+1c1
+< === responses/hall_plain.json
+---
+> === responses/hall_regen.json
+5c5
+<  C {"id":"c3","description":"Sockets hall east (TEST VALUE)","load":"socket","power_kw":"2","design_current_a":"9.62","phase":"L1","upstream_id":"g1-rcd","device_ids":["c3-breaker"],"cable_id":"c3-cable","feeds":null,"starter":null,"voltage_drop_percent":"1.87","earth_loop_ohm":null}
+---
+>  C {"id":"c3","description":"Sockets hall east (TEST VALUE)","load":"socket","power_kw":"3.5","design_current_a":"16.84","phase":"L1","upstream_id":"g1-rcd","device_ids":["c3-breaker"],"cable_id":"c3-cable","feeds":null,"starter":null,"voltage_drop_percent":"3.28","earth_loop_ohm":null}
+12c12
+<  D c3-breaker circuit_breaker  {"id":"c3-breaker","kind":"circuit_breaker","designation":{"function":"DB-HALL","location":null,"product":"Q5"},"part_key":null,"poles":1,"rated_current_a":"16","residual_current_ma":null,"curve":"C","breaking_capacity_ka":null,"description":"Sockets hall east
+---
+>  D c3-breaker circuit_breaker  {"id":"c3-breaker","kind":"circuit_breaker","designation":{"function":"DB-HALL","location":null,"product":"Q5"},"part_key":null,"poles":1,"rated_current_a":"20","residual_current_ma":null,"curve":"C","breaking_capacity_ka":null,"description":"Sockets hall east
+18,19c18,20
+<  N discrimination_group_raised {"group":"1","rated":"32","ratio":"1.6","after":"16"}
+<  N phase_imbalance {"imbalance":"21.8","limit":"10"}
+---
+>  N above_company_rating {"load":"Sockets hall east (TEST VALUE)","current":"16.84","fixed":"16","kind":"socket","rated":"20"}
+>  N discrimination_group_raised {"group":"1","rated":"32","ratio":"1.6","after":"20"}
+>  N phase_imbalance {"imbalance":"44.5","limit":"10"}

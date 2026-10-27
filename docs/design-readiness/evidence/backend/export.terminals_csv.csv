@@ -1,0 +1,19 @@
+﻿Board,Terminal,Conductor,Circuit,Cable,mm2,Article
+PP1,'-X1:1,L1,Panel lighting (test),'-W1,1.5,8WH1000-0AF00
+PP1,'-X1:2,N,Panel lighting (test),'-W1,1.5,8WH1000-0AF00
+PP1,'-X1:3,PE,Panel lighting (test),'-W1,1.5,8WH1000-0CF07
+PP1,'-X1:4,U,Duty pump (test),'-W2,1.5,8WH1000-0AF00
+PP1,'-X1:5,V,Duty pump (test),'-W2,1.5,8WH1000-0AF00
+PP1,'-X1:6,W,Duty pump (test),'-W2,1.5,8WH1000-0AF00
+PP1,'-X1:7,PE,Duty pump (test),'-W2,1.5,8WH1000-0CF07
+PP1,'-X1:8,U1,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:9,V1,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:10,W1,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:11,U2,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:12,V2,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:13,W2,Standby pump (test),'-W3,6,8WH1000-0AK00
+PP1,'-X1:14,PE,Standby pump (test),'-W3,6,8WH1000-0CK07
+PP1,'-X1:15,U,Booster (test),'-W4,1.5,8WH1000-0AF00
+PP1,'-X1:16,V,Booster (test),'-W4,1.5,8WH1000-0AF00
+PP1,'-X1:17,W,Booster (test),'-W4,1.5,8WH1000-0AF00
+PP1,'-X1:18,PE,Booster (test),'-W4,1.5,8WH1000-0CF07

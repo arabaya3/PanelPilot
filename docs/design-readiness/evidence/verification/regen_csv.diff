@@ -1,0 +1,16 @@
+6c6
+< 1,circuit_breaker,1,16,C,,,,,'=DB-HALL-Q5
+---
+> 1,circuit_breaker,1,20,C,,,,,'=DB-HALL-Q5
+4c4
+< DB-HALL,'=DB-HALL-W3,'=DB-HALL-Q5,Sockets hall east (TEST VALUE),3,2.5,1,Cu,PVC,25,1.87,,0.083
+---
+> DB-HALL,'=DB-HALL-W3,'=DB-HALL-Q5,Sockets hall east (TEST VALUE),3,2.5,1,Cu,PVC,25,3.28,,0.083
+4c4
+< DB-HALL,Sockets hall east (TEST VALUE),socket,2,9.62,L1,'=DB-HALL-Q5,16,C,'=DB-HALL-F1,3G2.5 Cu
+---
+> DB-HALL,Sockets hall east (TEST VALUE),socket,3.5,16.84,L1,'=DB-HALL-Q5,20,C,'=DB-HALL-F1,3G2.5 Cu
+7c7
+< DB-HALL,'=DB-HALL-Q5,circuit_breaker,1,16,C,,,,,,'=DB-HALL-F1,Sockets hall east (TEST VALUE)
+---
+> DB-HALL,'=DB-HALL-Q5,circuit_breaker,1,20,C,,,,,,'=DB-HALL-F1,Sockets hall east (TEST VALUE)

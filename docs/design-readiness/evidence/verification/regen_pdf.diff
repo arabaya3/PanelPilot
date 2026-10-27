@@ -1,0 +1,34 @@
+--- hall.pdf
++++ hall_regen.pdf
+@@ -69 +69 @@
+-C10 1P C10 1P C16 1P C16 3P
++C10 1P C10 1P C20 1P C16 3P
+@@ -74 +74 @@
+-1.2 kW Ib 5.77 A 1.2 kW Ib 5.77 A 2 kW Ib 9.62 A 5 kW Ib 8.02 A
++1.2 kW Ib 5.77 A 1.2 kW Ib 5.77 A 3.5 kW Ib 16.84 A 5 kW Ib 8.02 A
+@@ -86,7 +86,8 @@
+-1 Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.
+-A 2 Phase imbalance 21.8 % exceeds the company's 10 %: the loads cannot be spread more evenly as given. A
+-3 Incomer raised to 63 A, 1.6 x the 32 A breaker after it, for discrimination.
+-4 No fault level given: every breaker's breaking capacity is left to be confirmed.
+-5 Leave 1 spare outgoing ways (20 %).
+-6 Loads without a power factor were taken at cos phi 0.9.
+-7 Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the
++1 Sockets hall east (TEST VALUE): Ib 16.84 A exceeds the company's 16 A for socket; rated 20 A instead.
++A 2 Group 1 breaker raised to 32 A, 1.6 x the 20 A breaker after it, for discrimination. A
++3 Phase imbalance 44.5 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.
++4 Incomer raised to 63 A, 1.6 x the 32 A breaker after it, for discrimination.
++5 No fault level given: every breaker's breaking capacity is left to be confirmed.
++6 Leave 1 spare outgoing ways (20 %).
++7 Loads without a power factor were taken at cos phi 0.9.
++8 Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the
+@@ -94,3 +95,3 @@
+-8 Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.
+-B 9 Circuit rules are this software's defaults, not confirmed by the company's engineers. B
+-10 Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001), 2 rows of 16 modules, H x W x D 498 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 15 modules are left for
++B 9 Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation. B
++10 Circuit rules are this software's defaults, not confirmed by the company's engineers.
++11 Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001), 2 rows of 16 modules, H x W x D 498 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 15 modules are left for
+@@ -176 +177 @@
+-1 Circuit-breaker C16 1P not selected -Q5
++1 Circuit-breaker C20 1P not selected -Q5

@@ -1,0 +1,9 @@
+{
+ "session_id": "43cd908c-971d-4ec8-8543-37cc042694b2",
+ "claim_secret": "<redacted>",
+ "conversation_id": "a046d5c8-5d8a-4922-b57c-e2b9c654653b",
+ "access_token": "<redacted>",
+ "token_type": "bearer",
+ "expires_in": 3600,
+ "questions_remaining": 10
+}

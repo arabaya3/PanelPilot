@@ -1,0 +1,5 @@
+﻿Board,Circuit,Load,Power kW,Design current A,Phase,Breaker,Rated current A,Curve,Residual current device,Cable
+DB-POOL,Pool underwater lighting (TEST VALUE),lighting,0.4,1.92,L2,'=DB-POOL-Q3,10,C,'=DB-POOL-F1,3G1.5 Cu
+DB-POOL,Pool heater (TEST VALUE),water_heater,6,9.62,L1L2L3,'=DB-POOL-Q4,10,C,'=DB-POOL-F1,5G1.5 Cu
+DB-POOL,Plant room sockets (TEST VALUE),socket,1.5,7.22,L1,'=DB-POOL-Q5,16,C,'=DB-POOL-F1,3G2.5 Cu
+DB-POOL,Pool filtration pump (TEST VALUE),motor,2.2,5,L1L2L3,'=DB-POOL-Q6,5,MF,,4G1.5 Cu

@@ -1,0 +1,5 @@
+﻿Board,Circuit,Load,Power kW,Design current A,Phase,Breaker,Rated current A,Curve,Residual current device,Cable
+PP1,Panel lighting (test),lighting,50,200,L1,'=PP1-Q3,10,C,'=PP1-F1,3G1.5 Cu
+PP1,Duty pump (test),motor,7.5,15.2,L1L2L3,'=PP1-Q4,20,MA,,4G1.5 Cu
+PP1,Standby pump (test),motor,30,56,L1L2L3,'=PP1-Q6,80,MA,,7G6 Cu
+PP1,Booster (test),motor,5.5,10.38,L1L2L3,'=PP1-F4,25,aR,,4G1.5 Cu

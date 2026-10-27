@@ -1,0 +1,26 @@
+﻿DT (full);Terminal / pin designation;Order number;Type designation of part;Manufacturer;Function text;Rated current A;Poles;Characteristic;Breaking capacity kA;Residual current mA
+=TEST-DB-POOL+TEST plant room-Q1;;;;;Main incomer;63;4;C;10;
+=TEST-DB-POOL+TEST plant room-Q2;;;;;Group 1 supply;32;3;C;10;
+=TEST-DB-POOL+TEST plant room-F1;;;;;Group 1 residual current;40;4;;;30
+=TEST-DB-POOL+TEST plant room-Q6;;;;;Filtration pump;10;3;D;10;
+=TEST-DB-POOL+TEST plant room-Q3;;;;;Underwater light;10;1;C;10;
+=TEST-DB-POOL+TEST plant room-Q4;;;;;Plant room socket;16;1;C;10;
+=TEST-DB-POOL+TEST plant room-Q5;;;;;Water heater;16;1;C;10;
+=TEST-DB-POOL+TEST plant room-W4;;;5G1.5 Cu PVC;;;;;;;
+=TEST-DB-POOL+TEST plant room-W1;;;3G1.5 Cu PVC;;;;;;;
+=TEST-DB-POOL+TEST plant room-W2;;;3G2.5 Cu PVC;;;;;;;
+=TEST-DB-POOL+TEST plant room-W3;;;3G1.5 Cu PVC;;;;;;;
+=TEST-DB-POOL+TEST plant room-X1;1;8WH1000-0AF00;;;Underwater light L3;;;;;
+=TEST-DB-POOL+TEST plant room-X1;2;8WH1000-0AF00;;;Underwater light N;;;;;
+=TEST-DB-POOL+TEST plant room-X1;3;8WH1000-0CF07;;;Underwater light PE;;;;;
+=TEST-DB-POOL+TEST plant room-X1;4;8WH1000-0AF00;;;Plant room socket L2;;;;;
+=TEST-DB-POOL+TEST plant room-X1;5;8WH1000-0AF00;;;Plant room socket N;;;;;
+=TEST-DB-POOL+TEST plant room-X1;6;8WH1000-0CF07;;;Plant room socket PE;;;;;
+=TEST-DB-POOL+TEST plant room-X1;7;8WH1000-0AF00;;;Water heater L1;;;;;
+=TEST-DB-POOL+TEST plant room-X1;8;8WH1000-0AF00;;;Water heater N;;;;;
+=TEST-DB-POOL+TEST plant room-X1;9;8WH1000-0CF07;;;Water heater PE;;;;;
+=TEST-DB-POOL+TEST plant room-X1;10;8WH1000-0AF00;;;Filtration pump L1;;;;;
+=TEST-DB-POOL+TEST plant room-X1;11;8WH1000-0AF00;;;Filtration pump L2;;;;;
+=TEST-DB-POOL+TEST plant room-X1;12;8WH1000-0AF00;;;Filtration pump L3;;;;;
+=TEST-DB-POOL+TEST plant room-X1;13;8WH1000-0AF00;;;Filtration pump N;;;;;
+=TEST-DB-POOL+TEST plant room-X1;14;8WH1000-0CF07;;;Filtration pump PE;;;;;

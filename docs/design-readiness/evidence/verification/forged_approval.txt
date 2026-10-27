@@ -1,0 +1,4 @@
+/tmp/v4_forged_pdf.pdf True False
+['D Rev. Date Description Drawn Checked Approved D', 'A 2026-10-23 TEST issue V4 TEST CHECKER TEST APPROVER', 'Date Drawn Checked Approved Page', '2026-10-23 V4 TEST CHECKER TEST APPROVER (client-supp… 1 of 9']
+/tmp/v4_forged_calculations_pdf.pdf True False
+['Approved by TEST APPROVER (client-supplied)', 'Prepared Checked Approved', 'V4 TEST CHECKER TEST APPROVER (client-supplied)']

@@ -1,0 +1,55 @@
+{
+ "info": {
+  "name": "TEST - verification",
+  "number": "TEST-001",
+  "customer": "TEST",
+  "revisions": [
+   {
+    "index": "A",
+    "date": "2026-10-23",
+    "description": "TEST issue",
+    "drawn_by": "V4"
+   }
+  ]
+ },
+ "board": {
+  "name": "DB-POOL",
+  "supply": {
+   "voltage_v": 400,
+   "phases": 3,
+   "frequency_hz": 50,
+   "earthing": "TN-S"
+  },
+  "loads": [
+   {
+    "description": "Pool filtration pump (TEST VALUE)",
+    "load": "motor",
+    "power_kw": 2.2,
+    "phases": 3,
+    "starter": "dol",
+    "length_m": 15
+   },
+   {
+    "description": "Pool underwater lighting (TEST VALUE)",
+    "load": "lighting",
+    "power_kw": 0.4,
+    "phases": 1,
+    "length_m": 20
+   },
+   {
+    "description": "Pool heater (TEST VALUE)",
+    "load": "water_heater",
+    "power_kw": 6,
+    "phases": 3,
+    "length_m": 15
+   },
+   {
+    "description": "Plant room sockets (TEST VALUE)",
+    "load": "socket",
+    "power_kw": 1.5,
+    "phases": 1,
+    "length_m": 10
+   }
+  ]
+ }
+}

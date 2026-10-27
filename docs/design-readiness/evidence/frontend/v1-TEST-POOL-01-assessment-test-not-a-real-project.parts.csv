@@ -1,0 +1,7 @@
+﻿Quantity,Kind,Poles,Rated current A,Curve,Residual current mA,Manufacturer,Type number,Order number,Designations
+1,circuit_breaker,4,63,C,,,,,'=TEST-DB-POOL+TEST plant room-Q1
+1,circuit_breaker,3,32,C,,,,,'=TEST-DB-POOL+TEST plant room-Q2
+1,residual_current_device,4,40,,30,,,,'=TEST-DB-POOL+TEST plant room-F1
+1,circuit_breaker,3,10,D,,,,,'=TEST-DB-POOL+TEST plant room-Q6
+1,circuit_breaker,1,10,C,,,,,'=TEST-DB-POOL+TEST plant room-Q3
+2,circuit_breaker,1,16,C,,,,,'=TEST-DB-POOL+TEST plant room-Q4 =TEST-DB-POOL+TEST plant room-Q5

@@ -1,0 +1,5 @@
+﻿Board,Circuit,Load,Power kW,Design current A,Phase,Breaker,Rated current A,Curve,Residual current device,Cable
+TEST-DB-POOL,Underwater light,lighting,0.12,0.58,L3,'=TEST-DB-POOL+TEST plant room-Q3,10,C,'=TEST-DB-POOL+TEST plant room-F1,3G1.5 Cu
+TEST-DB-POOL,Plant room socket,socket,0.3,1.44,L2,'=TEST-DB-POOL+TEST plant room-Q4,16,C,'=TEST-DB-POOL+TEST plant room-F1,3G2.5 Cu
+TEST-DB-POOL,Water heater,water_heater,3,14.43,L1,'=TEST-DB-POOL+TEST plant room-Q5,16,C,'=TEST-DB-POOL+TEST plant room-F1,3G1.5 Cu
+TEST-DB-POOL,Filtration pump,motor,5.5,8.82,L1L2L3,'=TEST-DB-POOL+TEST plant room-Q6,10,D,,5G1.5 Cu

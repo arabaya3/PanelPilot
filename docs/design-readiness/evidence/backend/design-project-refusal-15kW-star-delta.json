@@ -1,0 +1,1 @@
+{"error":"ValidationError","detail":"Standby pump (test): a 28.30 A motor (16.3 A at the relay) is below the TA75DU25 setting range (18-25 A) of the first Type 2 row that carries it in Table 5: 400 V 50 kA Y/Δ Normal Type 2","code":"relay_range","params":{"current":"28.30","relay_current":"16.3","relay":"TA75DU25","low":"18","high":"25","subject":"Standby pump (test)"}}

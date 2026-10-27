@@ -1,0 +1,1 @@
+{"detail":[{"type":"enum","loc":["body","board","loads",0,"starter"],"msg":"Input should be 'dol', 'star_delta' or 'drive'","input":"soft_starter","ctx":{"expected":"'dol', 'star_delta' or 'drive'"}}]}

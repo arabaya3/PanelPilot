@@ -508,6 +508,53 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
 5. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Revisions with names over 200 characters must be renamed and saved again.
 6. Later, a contract migration drops the unused `grace_used_at`, once no old pod can run.
 
+## Second independent review and final verification (2026-10-27)
+
+Four reviewers, none of whom implemented the area they reviewed, read the code at `55bdbf8`. What they confirmed and how it was fixed, each fix with a test that fails without it:
+
+| Area              | Confirmed finding                                                                                                      | Resolution                                                                                                                                                                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Approval identity | The approver was free text that anyone could type; a trial could approve                                               | Approval names the authenticated account (display name, or "a team member"). The request takes only an optional note; `approver` is a 422; a trial gets 403 `approval_requires_account`. `approved_user_id` is recorded (`f8c4a2e6d9b3`); legacy typed names are kept for audit only |
+| Integrity         | A protected circuit with no cable was never checked                                                                    | Blocking `integrity_cable_missing`                                                                                                                                                                                                                                                   |
+| Integrity         | `starter: "drive"` on any circuit turned the capacity check into info                                                  | A starter is allowed only on motor loads (422); the drive check is a warning needing confirmation                                                                                                                                                                                    |
+| Integrity         | An unrated or removed breaker or fuse, or no overload relay, gave only a warning                                       | Blocking `integrity_device_unrated` and `integrity_protection_missing`                                                                                                                                                                                                               |
+| Integrity         | Ratings and sections had no bounds; huge exponents gave a 500 or a 1 MB finding                                        | Bounds on every engineering quantity; no pipeline value is rejected                                                                                                                                                                                                                  |
+| Integrity         | A draft can drop its own blocking notes                                                                                | Drafts carry `draft_findings_not_rechecked`; saved revisions are re-designed on the server                                                                                                                                                                                           |
+| Integrity         | A pass against the upper bound only was silent                                                                         | Info finding `integrity_conditions_unknown`                                                                                                                                                                                                                                          |
+| Quotation         | The client's price-list description replaced the snapshot device name on an approved-stamped quotation PDF             | Every line is named by the snapshot item                                                                                                                                                                                                                                             |
+| Quotation         | A huge CSV cell gave a 500; duplicate keys were silently overwritten                                                   | Structured 422s `csv_unreadable`, `csv_field_too_long` and `price_list_duplicate_key`                                                                                                                                                                                                |
+| Tenancy           | Invite acceptance counted seats and plans across every tenant (only with billing enforced)                             | Filtered by tenant                                                                                                                                                                                                                                                                   |
+| Tenancy           | Access tokens of a deactivated tenant kept working                                                                     | `resolve_caller` refuses them                                                                                                                                                                                                                                                        |
+| Frontend          | An open during an in-flight save could attach project B's form to project A, so the next save stored B as A's revision | Open, select and delete are disabled while saving, and only the latest action's answer applies                                                                                                                                                                                       |
+| Frontend          | Exports had no in-flight guard; results landed after an identity change                                                | One request per click; stale results are dropped                                                                                                                                                                                                                                     |
+| Frontend          | Stale and not-validated approval refusals didn't refresh the readiness panel                                           | The revision is reopened                                                                                                                                                                                                                                                             |
+| Frontend          | Download names were unsanitised; the object URL was revoked immediately                                                | Sanitised names; the revoke is deferred                                                                                                                                                                                                                                              |
+| Frontend          | The history row showed approvals that don't cover the snapshot; an unchanged revision could be saved                   | Fixed                                                                                                                                                                                                                                                                                |
+
+**Not fixed, product decision:** any account in the tenant whose plan includes approval may approve, delete projects and change company settings. Only team management checks roles.
+
+**Dependencies:** a new advisory, CVE-2026-114605 (`dnspython` 2.8.0), appeared after the previous green run. It is fixed in its own PR #205, whose exact commit is merged here. The combined locks re-resolve byte for byte, and `pip-audit` finds no known vulnerabilities.
+
+**Dev data check** (read-only, counts only): no stored request or snapshot sets a starter on a non-motor load or carries a rating or section outside the new bounds. All 21 approved revisions predate `approved_user_id` and resolve their approver by email.
+
+**Final browser verification** on the final code (`phase-1/browser-phase1-final/`), all PASS:
+
+- **Sign-in and saving:** sign-in persists across reloads. Save, edit and save work; an unchanged revision cannot be saved, and open, select and delete are disabled while saving.
+- **Approval:** the form says "You are approving as Eng. Final Reviewer" and offers only a note. A forged `approver` gets 422 and nothing is recorded.
+- **Exports:** every one names the account, carries the stamp on every page, holds the note only as "Approval note" on the calculations PDF, and contains no "@". A double click sends one request.
+- **Gates:** execution is refused, and CSV, QET and AML are disabled with a localized reason.
+- **Trial:** cannot approve, with the reason in en/ar/he.
+- **No-name account:** shows the localized fallback.
+- **Logout:** the replayed access token gets 401.
+- **Multi-tab:** 2, 3 and 5 tabs refreshing and reloading at once stay signed in. The exact out-of-order sequence holds, and a young-token refresh sends no Set-Cookie (checked in the browser). Refreshes racing a logout end signed out.
+- **Environment note:** the first multi-tab attempt failed because the dev web container ran out of memory (ENOMEM in the Docker VM, with other projects' stacks running). After a restart the run passed.
+
+**Minor observations:**
+
+- Sign-up on the design screen asks for no name, so those users approve as "a team member".
+- In Arabic and Hebrew drawings the English stamp line keeps the English fallback.
+- The "Saved as revision N" notice stays in English.
+
 ## Remaining limitations
 
 1. **Execution release** stays blocked until its own completeness and engineering-validation gate exists. Finishing Phase 2 alone does not unlock it.

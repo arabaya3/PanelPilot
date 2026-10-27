@@ -1,0 +1,7 @@
+﻿Q1,TEST-DB-POOL,TEST plant room,,,,,,1,,Main incomer,CB,,,63,4,C,10,,,,,,,,,,
+Q2,TEST-DB-POOL,TEST plant room,,,,,,1,,Group 1 supply,CB,,,32,3,C,10,,,,,,,,,,
+F1,TEST-DB-POOL,TEST plant room,,,,,,1,,Group 1 residual current,RCD,,,40,4,,,30,,,,,,,,,
+Q6,TEST-DB-POOL,TEST plant room,,,,,,1,,Filtration pump,CB,,,10,3,D,10,,,,,,,,,,
+Q3,TEST-DB-POOL,TEST plant room,,,,,,1,,Underwater light,CB,,,10,1,C,10,,,,,,,,,,
+Q4,TEST-DB-POOL,TEST plant room,,,,,,1,,Plant room socket,CB,,,16,1,C,10,,,,,,,,,,
+Q5,TEST-DB-POOL,TEST plant room,,,,,,1,,Water heater,CB,,,16,1,C,10,,,,,,,,,,

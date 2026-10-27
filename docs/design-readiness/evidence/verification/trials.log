@@ -1,0 +1,7 @@
+hall_plain 200 9167 
+hall_knx_kind 422 415 {"detail":[{"type":"enum","loc":["body","board","loads",0,"load"],"msg":"Input should be 'lighting', 'socket', 'air_conditioning', 'water_heater', 'motor', 'fan', 'kitchen', 'lift', 'sub_board', 'control', 'data', 'spare' or 'other'","input":"knx","ctx":{"expected":"'lighting', 'socket', 'air_conditioning', 'water_heater', 'motor', 'fan', 'kitchen', 'lift', 'sub_board', 'control', 'data', 'spare' 
+pump_soft_starter 422 201 {"detail":[{"type":"enum","loc":["body","board","loads",0,"starter"],"msg":"Input should be 'dol', 'star_delta' or 'drive'","input":"soft_starter","ctx":{"expected":"'dol', 'star_delta' or 'drive'"}}]}
+pool 200 11182 
+mdb_ats_extra_field 200 6333 
+fire_pump_kind 422 421 {"detail":[{"type":"enum","loc":["body","board","loads",0,"load"],"msg":"Input should be 'lighting', 'socket', 'air_conditioning', 'water_heater', 'motor', 'fan', 'kitchen', 'lift', 'sub_board', 'control', 'data', 'spare' or 'other'","input":"fire_pump","ctx":{"expected":"'lighting', 'socket', 'air_conditioning', 'water_heater', 'motor', 'fan', 'kitchen', 'lift', 'sub_board', 'control', 'data', 's
+fire_pump_as_motor 200 11610 
