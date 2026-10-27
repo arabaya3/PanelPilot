@@ -1,5 +1,0 @@
-﻿Board,Circuit,Load,Power kW,Design current A,Phase,Breaker,Rated current A,Curve,Residual current device,Cable
-DB-HALL,Hall lighting row 1 (TEST VALUE),lighting,1.2,5.77,L2,'=DB-HALL-Q3,63,C,'=DB-HALL-F1,3G1.5 Cu
-DB-HALL,Hall lighting row 2 (TEST VALUE),lighting,1.2,5.77,L3,'=DB-HALL-Q4,10,C,'=DB-HALL-F1,3G1.5 Cu
-DB-HALL,Sockets hall east (TEST VALUE),socket,2,9.62,L1,'=DB-HALL-Q5,16,C,'=DB-HALL-F1,3G2.5 Cu
-DB-HALL,AC unit (TEST VALUE),air_conditioning,5,8.02,L1L2L3,'=DB-HALL-Q6,16,C,'=DB-HALL-F1,5G2.5 Cu

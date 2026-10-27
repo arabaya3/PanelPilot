@@ -1,8 +1,0 @@
-﻿Board,Designation,Kind,Poles,Rated current A,Curve,Residual current mA,Breaking capacity kA,Manufacturer,Type number,Order number,Fed from,Function text
-DB-HALL,'=DB-HALL-Q1,circuit_breaker,4,63,C,,,,,,,Main incomer
-DB-HALL,'=DB-HALL-Q2,circuit_breaker,3,32,C,,,,,,'=DB-HALL-Q1,Group 1 supply
-DB-HALL,'=DB-HALL-F1,residual_current_device,4,40,,30,,,,,'=DB-HALL-Q2,Group 1 residual current
-DB-HALL,'=DB-HALL-Q3,circuit_breaker,1,10,C,,,,,,'=DB-HALL-F1,Hall lighting row 1 (TEST VALUE)
-DB-HALL,'=DB-HALL-Q4,circuit_breaker,1,10,C,,,,,,'=DB-HALL-F1,Hall lighting row 2 (TEST VALUE)
-DB-HALL,'=DB-HALL-Q5,circuit_breaker,1,20,C,,,,,,'=DB-HALL-F1,Sockets hall east (TEST VALUE)
-DB-HALL,'=DB-HALL-Q6,circuit_breaker,3,16,C,,,,,,'=DB-HALL-F1,AC unit (TEST VALUE)

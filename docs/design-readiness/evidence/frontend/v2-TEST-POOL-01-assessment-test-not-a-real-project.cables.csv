@@ -1,5 +1,0 @@
-﻿Board,Cable,From,To,Cores,Cross-section mm2,Runs in parallel,Material,Insulation,Length m,Voltage drop %,Earth loop Zs ohm,Withstand k2S2 (kA)2s
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-W1,'=TEST-DB-POOL+TEST plant room-Q3,Underwater light,3,1.5,1,Cu,PVC,,,,0.03
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-W2,'=TEST-DB-POOL+TEST plant room-Q4,Plant room socket,3,2.5,1,Cu,PVC,,,,0.083
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-W3,'=TEST-DB-POOL+TEST plant room-Q5,Water heater,3,1.5,1,Cu,PVC,,,,0.03
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-W4,'=TEST-DB-POOL+TEST plant room-Q6,Filtration pump,5,1.5,1,Cu,PVC,,,,0.03

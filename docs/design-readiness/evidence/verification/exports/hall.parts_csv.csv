@@ -1,7 +1,0 @@
-﻿Quantity,Kind,Poles,Rated current A,Curve,Residual current mA,Manufacturer,Type number,Order number,Designations
-1,circuit_breaker,4,63,C,,,,,'=DB-HALL-Q1
-1,circuit_breaker,3,32,C,,,,,'=DB-HALL-Q2
-1,residual_current_device,4,40,,30,,,,'=DB-HALL-F1
-2,circuit_breaker,1,10,C,,,,,'=DB-HALL-Q3 =DB-HALL-Q4
-1,circuit_breaker,1,16,C,,,,,'=DB-HALL-Q5
-1,circuit_breaker,3,16,C,,,,,'=DB-HALL-Q6

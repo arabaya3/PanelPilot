@@ -1,8 +1,0 @@
-{"info":{"name":"TEST INPUT - readiness trace pump panel","number":"TEST-001"},
- "boards":[{"name":"PP1","supply":{"voltage_v":400,"phases":3,"frequency_hz":50,"earthing":"TN-S","fault_level_ka":10},
-  "loads":[
-   {"description":"Panel lighting (test)","load":"lighting","power_kw":0.2,"phases":1,"length_m":10},
-   {"description":"Duty pump (test)","load":"motor","power_kw":7.5,"phases":3,"starter":"dol","length_m":30},
-   {"description":"Standby pump (test)","load":"motor","power_kw":30,"phases":3,"starter":"star_delta","length_m":30},
-   {"description":"Booster (test)","load":"motor","power_kw":5.5,"phases":3,"starter":"drive","length_m":20}
-  ]}]}

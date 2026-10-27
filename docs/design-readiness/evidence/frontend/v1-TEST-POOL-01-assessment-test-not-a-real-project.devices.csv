@@ -1,8 +1,0 @@
-﻿Board,Designation,Kind,Poles,Rated current A,Curve,Residual current mA,Breaking capacity kA,Manufacturer,Type number,Order number,Fed from,Function text
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q1,circuit_breaker,4,63,C,,10,,,,,Main incomer
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q2,circuit_breaker,3,32,C,,10,,,,'=TEST-DB-POOL+TEST plant room-Q1,Group 1 supply
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-F1,residual_current_device,4,40,,30,,,,,'=TEST-DB-POOL+TEST plant room-Q2,Group 1 residual current
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q6,circuit_breaker,3,10,D,,10,,,,'=TEST-DB-POOL+TEST plant room-Q1,Filtration pump
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q3,circuit_breaker,1,10,C,,10,,,,'=TEST-DB-POOL+TEST plant room-F1,Underwater light
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q4,circuit_breaker,1,16,C,,10,,,,'=TEST-DB-POOL+TEST plant room-F1,Plant room socket
-TEST-DB-POOL,'=TEST-DB-POOL+TEST plant room-Q5,circuit_breaker,1,16,C,,10,,,,'=TEST-DB-POOL+TEST plant room-F1,Water heater
