@@ -863,3 +863,23 @@ def test_d1_over_http_with_real_rotation_a_cookie_only_refresh_later_works(
     reloaded = _second_browser(client)
     _hold_cookie(reloaded, shared)
     assert reloaded.post(_REFRESH, headers=SAME_SITE).status_code == 200
+
+
+def test_a_kept_token_is_answered_without_a_cookie(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refresh of a young token sends no Set-Cookie: the jar keeps whatever it holds.
+
+    So an answer that lands after a later rotation's cannot move the jar
+    back to the predecessor.
+    """
+    from app.domain import auth as auth_domain
+
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(minutes=5))
+    _sign_up(client)
+    held = client.cookies.get(SESSION_COOKIE)
+    answer = client.post(_REFRESH, headers=SAME_SITE)
+    assert answer.status_code == 200
+    assert "set-cookie" not in answer.headers
+    assert answer.json()["access_token"]
+    assert client.cookies.get(SESSION_COOKIE) == held

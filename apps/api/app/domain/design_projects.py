@@ -136,6 +136,18 @@ def _stored_findings(row: DesignRevisionRow) -> list[DesignFinding]:
     return [DesignFinding.model_validate(found) for found in row.findings or []]
 
 
+def _snapshot_matches(row: DesignRevisionRow) -> bool:
+    """Whether the stored design still hashes to the hash recorded with it.
+
+    A design that cannot be hashed (a float written into it outside this code)
+    does not match: it is refused as altered, never answered with a 500.
+    """
+    try:
+        return snapshot.sha256_of(row.design_snapshot) == row.snapshot_sha256
+    except ValueError:
+        return False
+
+
 def _approval_bound(row: DesignRevisionRow) -> bool:
     """Whether the revision's approval is of the design it holds."""
     return (
@@ -176,10 +188,7 @@ def _policy_changed(row: DesignRevisionRow) -> bool:
     what the policy no longer does. A snapshot that no longer reads is left to
     the integrity check, which refuses it with its own code.
     """
-    if (
-        row.design_snapshot is None
-        or snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256
-    ):
+    if row.design_snapshot is None or not _snapshot_matches(row):
         return False
     try:
         designed = DesignProject.model_validate(row.design_snapshot)
@@ -637,7 +646,7 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
             code="revision_not_validated",
             params={"revision": number, "reason": "request_not_valid", **problem.values},
         )
-    if snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256:
+    if not _snapshot_matches(row):
         raise ConflictError(
             f"revision {number}'s stored design does not match its recorded hash",
             code="snapshot_integrity_failed",
@@ -815,7 +824,7 @@ def export_revision(
         if (
             row.design_snapshot is not None
             and row.snapshot_sha256 is not None
-            and snapshot.sha256_of(row.design_snapshot) != row.snapshot_sha256
+            and not _snapshot_matches(row)
         ):
             missing.append("snapshot_integrity_failed")
         raise ConflictError(

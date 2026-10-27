@@ -1,0 +1,124 @@
+{
+ "draft-tampered-forged.calculations.pdf": {
+  "pages": 3,
+  "every_page_DRAFT": true,
+  "every_page_REVIEW_APPROVED": false,
+  "REVIEW_APPROVED_anywhere": false,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": false,
+  "hash_prefix": false,
+  "rules_version": false,
+  "blocking_words": [
+   "BLOCKING] PP1 / c1: Panel lighting (test): 200 A protection is above",
+   "blocking, 9 warning, 10 info)"
+  ],
+  "not_for_execution": true
+ },
+ "draft-tampered-forged.pdf": {
+  "pages": 11,
+  "every_page_DRAFT": true,
+  "every_page_REVIEW_APPROVED": false,
+  "REVIEW_APPROVED_anywhere": false,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": false,
+  "hash_prefix": false,
+  "rules_version": false,
+  "blocking_words": [
+   "BLOCKING] PP1 / c1: Panel lighting (test): 200 A protection is above",
+   "blocking, 9 warning, 10 info), page 1 of 1 \u2014 sheet 11 of 11"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-approved.calculations.pdf": {
+  "pages": 3,
+  "every_page_DRAFT": false,
+  "every_page_REVIEW_APPROVED": true,
+  "REVIEW_APPROVED_anywhere": true,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": true,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info)"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-approved.pdf": {
+  "pages": 11,
+  "every_page_DRAFT": false,
+  "every_page_REVIEW_APPROVED": true,
+  "REVIEW_APPROVED_anywhere": true,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": true,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info), page 1 of 1 \u2014 sheet 11 of 11"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-approved.quotation.pdf": {
+  "pages": 3,
+  "every_page_DRAFT": false,
+  "every_page_REVIEW_APPROVED": true,
+  "REVIEW_APPROVED_anywhere": true,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": true,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info)"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-unapproved.calculations.pdf": {
+  "pages": 3,
+  "every_page_DRAFT": true,
+  "every_page_REVIEW_APPROVED": false,
+  "REVIEW_APPROVED_anywhere": false,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": false,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info)"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-unapproved.pdf": {
+  "pages": 11,
+  "every_page_DRAFT": true,
+  "every_page_REVIEW_APPROVED": false,
+  "REVIEW_APPROVED_anywhere": false,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": false,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info), page 1 of 1 \u2014 sheet 11 of 11"
+  ],
+  "not_for_execution": true
+ },
+ "rev1-unapproved.quotation.pdf": {
+  "pages": 3,
+  "every_page_DRAFT": true,
+  "every_page_REVIEW_APPROVED": false,
+  "REVIEW_APPROVED_anywhere": false,
+  "FORGED_anywhere": false,
+  "at_sign": false,
+  "approver": false,
+  "hash_prefix": true,
+  "rules_version": true,
+  "blocking_words": [
+   "blocking, 9 warning, 10 info)"
+  ],
+  "not_for_execution": true
+ }
+}

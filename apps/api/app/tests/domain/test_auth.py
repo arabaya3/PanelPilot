@@ -1693,6 +1693,33 @@ def test_d1_cannot_happen_a_burst_mints_nothing_and_any_late_answer_still_works(
 
 @requires_db
 @pytest.mark.usefixtures("real_rotation")
+def test_only_an_answer_carrying_a_newer_token_sets_the_cookie(db: Session) -> None:
+    """A kept token is not set again, so a late "keep" cannot undo a rotation.
+
+    The edge the final review traced: keep at T-0.1 s, rotate at T, answers
+    landing in reverse order. A keep answer that set the cookie put the jar
+    back on the predecessor; one that does not set it leaves the rotation's.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    at = datetime.now(UTC) + _SIX_MINUTES
+    kept = auth.refresh(session=db, refresh_token=first.refresh_token, now=at - _SIX_MINUTES)
+    db.commit()
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token, now=at)
+    db.commit()
+    reissued = auth.refresh(
+        session=db, refresh_token=first.refresh_token, now=at + timedelta(seconds=1)
+    )
+    db.commit()
+    assert kept.refresh_token == first.refresh_token
+    assert not kept.sets_cookie
+    assert rotated.sets_cookie
+    assert reissued.sets_cookie
+    assert reissued.refresh_token == rotated.refresh_token
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
 def test_a_burst_straddling_a_rotation_ends_on_one_live_token(db: Session) -> None:
     first = auth.signup(session=db, email=_email(), password=PASSWORD)
     db.commit()

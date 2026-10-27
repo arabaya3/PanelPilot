@@ -31,7 +31,7 @@ connectivity, soft-starter control, mechanical layout) has not started.
 - **Revision export** (`POST /design/projects/{id}/revisions/{n}/export`) loads the snapshot. It then:
   - recomputes the hash (`snapshot_integrity_failed`);
   - checks the rules, profile, catalogue and findings policy (`revision_stale`, naming what changed);
-  - reads the approver only from the database.
+  - reads the approval only from the database row, never from the request. The printed approver name is the one typed at approval (`approved_by`). The approving account is recorded separately (`approved_account`, shown in the app as a display name). Nothing stops a user from typing another person's name, which is a decision for a later phase (see "Remaining limitations").
 
   It never recalculates. Another tenant's project, or an unknown one, is `revision_not_found`, the same answer for both.
 
@@ -408,7 +408,7 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
 - **Bounds:**
   - a cookie-only thief gets the 10 s window and only the victim's own live token, never a second one;
   - a party that once held both cookie and access token can follow the session only until the next rotation, after which its stale use is a replay;
-  - **the residual edge** needs all four of: a burst at a rotation boundary, an out-of-order response, every tab closed or reloaded, and more than 10 s before the next refresh. Then that one session ends and the user signs in once.
+  - **the earlier residual edge is closed.** It was a burst at a rotation boundary, an out-of-order answer, every tab closed or reloaded, and more than 10 s. The final independent review traced it to the "keep" answer for a young token re-setting the cookie. A late keep answer could therefore move the jar back after a rotation. A keep answer now sends no Set-Cookie (`TokenPair.sets_cookie`), so every cookie the server sets is for the live token as of that answer, and no late answer can move the jar backwards. Tests fail before the fix and pass after it, and no bound was widened.
 - **Tests** run against the old code first, where they fail:
   - 2, 3 and 5 concurrent tabs;
   - delayed and out-of-order responses (the exact browser sequence);
@@ -455,13 +455,56 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
   - `pip-audit` finds no known vulnerabilities in either lock;
   - `npm audit --omit=dev --audit-level=high` finds 0.
 
+## Final Phase 1 review (2026-10-27)
+
+- **GitHub state, verified directly:**
+  - PR #203 is open and mergeable (CLEAN).
+  - The base is `phase1-base` at `daeb143`, a merge of #199 `73ce76c` and #202 `6a96b74`.
+  - The head contains #199, #202 and #204 (`b4b9153`) at their exact commits. All three dependency PRs are still open.
+- **Evidence mapped to code:**
+  - The final multi-tab browser run was on `e9c14c3`. Up to `c8802d6` only two test files changed (`raising=False` removed), and `8f21ab9` changed the report only. So that browser evidence covers the application code of `8f21ab9`.
+  - Earlier adversarial evidence (`phase-1/adversarial/`, `browser-signed-in/`, `browser-final-auth/`) was recorded on older code. It is kept as history.
+- **Attacks re-run on the final head** (`phase-1/final-attack/`), on the live stack at `8f21ab9`: 44 of 44 checks pass. They cover:
+  - snapshot integrity;
+  - the server-owned approval, with no "@" in any response or export;
+  - tenant isolation;
+  - logout, and replay after a genuine rotation (waited 5 min 10 s);
+  - cross-site refusals;
+  - execution refusal in all 18 formats;
+  - restricted formats on every endpoint;
+  - the quotation estimate;
+  - concurrency.
+- **Migrations, on new disposable databases:**
+  - A clean database upgrades to head. It also downgrades to the pre-Phase-1 revision and upgrades again, with no drift.
+  - A pre-Phase-1 database seeded with a user, two legacy refresh tokens and an approved revision upgrades with every row kept. The revision's old approval is unbound, and the legacy tokens are refused, which means the one-time sign-in.
+- **Final independent review** (an agent that implemented none of this, reading the full diff `daeb143..8f21ab9`): approved for Phase 1, with no blocking defects in the code it read. It named what it did not read: integrity rules, findings policy, quotation pricing bounds, frontend components, and the tenant filter itself. Its findings:
+  - **D-1, the multi-tab edge:** confirmed and fixed as above.
+  - **P-1:** a float written into a stored snapshot gave a 500. It now counts as a hash mismatch (`snapshot_integrity_failed`), with a test.
+  - **P-2:** the printed approver is the typed name. The wording is corrected above, and the matter is recorded as a limitation.
+  - **P-3:** an old-key token that cannot be re-derived still clears the cookie. Low; it only affects old tokens.
+  - **P-4:** rolling-deploy legacy tokens. Documented.
+  - **P-5:** most auth tests use `ROTATE_AFTER = 0`. The production rule is covered by the `real_rotation` tests, now including the keep-then-rotate reversal.
+
+### Deployment steps
+
+1. Back up the database.
+2. Set `WEB_ORIGINS` to the exact HTTPS web origins. Optionally set `REFRESH_TOKEN_KEY`. Keep `AUTH_COOKIE_SECURE` at its default (true outside dev).
+3. Run `alembic upgrade head` (through `b2e8d5f7c3a1`). Every migration is additive and safe while old pods still run; legacy tokens are refused.
+4. Tell users they will sign in once. Saved projects and drafts are kept.
+5. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Revisions with names over 200 characters must be renamed and saved again.
+6. Later, a contract migration drops the unused `grace_used_at`, once no old pod can run.
+
 ## Remaining limitations
 
 1. **Execution release** stays blocked until its own completeness and engineering-validation gate exists. Finishing Phase 2 alone does not unlock it.
 2. **CSV, QET, AML and PLC** stay refused until their documented acceptance criteria are shown.
 3. **Deployments must set `WEB_ORIGINS`** to the exact web origins (see "Deployment" below). Without it, every session refresh is refused.
 4. **One-time sign-in after deploy:** tokens issued before the session migrations are refused, so every signed-in user signs in once. Saved projects and unsaved drafts are kept, and trials are unaffected.
-5. **Multi-tab residual edge:** described above. A key compromise needs the documented revoke-all-sessions step.
+5. **Sessions:**
+   - **Single tab:** a lone tab whose refresh answer is truly lost, followed by its next refresh more than 10 s later with no other open tab to lend a current access token, ends that session. It fails safe, and the user signs in once.
+   - **Key compromise:** follow the documented revoke-all-sessions step.
+   - **Approval visibility:** any tenant member whose plan includes approval may approve, and there is no role check beyond the plan.
+   - **Approver name:** the printed name is the one typed at approval, while the approving account is recorded separately.
 6. **Approvals show "a team member"** when an account has no display name. This is accepted for this phase.
 7. **Trial projects stay with the trial** when signing in to an existing account, by decision.
 8. **Native Arabic and Hebrew review** of every new string is still outstanding. The AI review is not a native-speaker review.

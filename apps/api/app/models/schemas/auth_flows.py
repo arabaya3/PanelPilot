@@ -101,6 +101,10 @@ class TokenPair(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+    # False when the refresh token is the one the request presented (kept,
+    # not rotated): the browser already holds it or a newer one, so setting
+    # it again could let a late answer move the cookie jar backwards.
+    sets_cookie: bool = True
 
 
 class AccessToken(BaseModel):

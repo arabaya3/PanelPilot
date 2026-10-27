@@ -232,7 +232,8 @@ def refresh(
             access_token=tokens.access_token, expires_in=tokens.expires_in
         ).model_dump()
     )
-    _set_session_cookie(answer, token=tokens.refresh_token, settings=settings)
+    if tokens.sets_cookie:
+        _set_session_cookie(answer, token=tokens.refresh_token, settings=settings)
     return answer
 
 

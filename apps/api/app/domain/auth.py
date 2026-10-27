@@ -762,6 +762,7 @@ def _keep_young_live_token(
         ),
         refresh_token=token,
         expires_in=_access_token_ttl(),
+        sets_cookie=False,
     )
 
 

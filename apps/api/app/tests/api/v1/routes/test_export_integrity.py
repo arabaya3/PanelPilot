@@ -712,6 +712,25 @@ def test_tampered_snapshot_fails_integrity(client: TestClient, engine: Engine) -
         assert error(response)["code"] == "snapshot_integrity_failed"
 
 
+def test_a_float_written_into_a_stored_snapshot_is_altered_not_a_500(
+    client: TestClient, engine: Engine
+) -> None:
+    """A float has no canonical form, so the stored design cannot be hashed: refused as altered."""
+    saved = save(client)
+    row = revision_row(engine, saved["id"], 1)
+    snapshot = json.loads(json.dumps(row["design_snapshot"]))
+    snapshot["info"]["injected"] = 1.5
+    update_row(engine, saved["id"], 1, design_snapshot=snapshot)
+    opened = client.get(f"/design/projects/{saved['id']}")
+    assert opened.status_code == 200
+    exported = revision_export(client, saved["id"], 1, "pdf")
+    assert exported.status_code == 409
+    assert error(exported)["code"] == "snapshot_integrity_failed"
+    approved = approve(client, saved["id"], 1)
+    assert approved.status_code == 409
+    assert error(approved)["code"] == "snapshot_integrity_failed"
+
+
 def test_rehashed_tampered_snapshot_loses_approval_and_blocks(
     client: TestClient, engine: Engine
 ) -> None:
