@@ -147,6 +147,118 @@ describe('technical tokens', () => {
   });
 });
 
+// --- ICU placeholders, branch by branch -------------------------------------
+
+/** A parsed ICU message: its text-level names, and its plural or select arguments. */
+type Parsed = {
+  /** Names outside any branch: `{value}`, `<tag>`, and each branching argument's own. */
+  names: Set<string>;
+  /** Each plural or select argument, with its branches by key. */
+  branches: { name: string; kind: string; options: Record<string, Parsed> }[];
+};
+
+/** Every string in a bundle, by its key path. */
+function leafMessages(value: unknown, prefix = ''): Record<string, string> {
+  if (typeof value === 'string') return { [prefix]: value };
+  if (typeof value !== 'object' || value === null) return {};
+  const found: Record<string, string> = {};
+  for (const [key, child] of Object.entries(value)) {
+    Object.assign(found, leafMessages(child, prefix ? `${prefix}.${key}` : key));
+  }
+  return found;
+}
+
+/**
+ * Parse an ICU message into its names and branches: a small parser for the
+ * subset the bundles use (no apostrophe escapes) -- `{name}`, `{name, type}`,
+ * `{name, type, style}`, `{name, plural|select|selectordinal, key {…} …}` and
+ * `<tag>…</tag>`. A malformed message throws, which fails the test.
+ */
+function parseMessage(message: string): Parsed {
+  let index = 0;
+  const parseNodes = (): Parsed => {
+    const parsed: Parsed = { names: new Set(), branches: [] };
+    while (index < message.length) {
+      const char = message[index];
+      if (char === '}') return parsed;
+      if (char === '<') {
+        const tag = /^<\/?(\w+)>/.exec(message.slice(index));
+        if (tag) {
+          parsed.names.add(tag[1] ?? '');
+          index += tag[0].length;
+          continue;
+        }
+      }
+      if (char !== '{') {
+        index += 1;
+        continue;
+      }
+      index += 1;
+      const header = /^\s*(\w+)\s*(?:,\s*(\w+)\s*)?([,}])/.exec(message.slice(index));
+      if (!header) throw new Error(`unreadable argument at ${String(index)} in ${message}`);
+      const [whole, name = '', kind = '', after] = header;
+      index += whole.length;
+      parsed.names.add(name);
+      if (after === '}') continue;
+      if (kind !== 'plural' && kind !== 'select' && kind !== 'selectordinal') {
+        // A formatted argument with a style (`{n, number, ::percent}`).
+        const close = message.indexOf('}', index);
+        if (close < 0) throw new Error(`unclosed argument in ${message}`);
+        index = close + 1;
+        continue;
+      }
+      const options: Record<string, Parsed> = {};
+      for (;;) {
+        const key = /^\s*(?:offset:\d+\s*)?(=?[\w-]+)\s*\{/.exec(message.slice(index));
+        if (!key) break;
+        index += key[0].length;
+        options[key[1] ?? ''] = parseNodes();
+        if (message[index] !== '}') throw new Error(`unclosed branch in ${message}`);
+        index += 1;
+      }
+      const close = /^\s*\}/.exec(message.slice(index));
+      if (!close) throw new Error(`unclosed ${kind} in ${message}`);
+      index += close[0].length;
+      parsed.branches.push({ name, kind, options });
+    }
+    return parsed;
+  };
+  const parsed = parseNodes();
+  if (index < message.length) throw new Error(`unbalanced braces in ${message}`);
+  return parsed;
+}
+
+const listed = (names: Set<string>) => `[${[...names].sort().join(', ')}]`;
+
+/**
+ * Where a translation's placeholders differ from English's. Text outside any
+ * branch must name exactly English's names; each plural branch (Arabic has
+ * six, Hebrew four) must name exactly what English's `other` does, and each
+ * select branch its English namesake (or `other`), all the way down.
+ */
+function placeholderMismatches(actual: Parsed, expected: Parsed, path: string): string[] {
+  const problems: string[] = [];
+  if (listed(actual.names) !== listed(expected.names)) {
+    problems.push(`${path}: ${listed(actual.names)} ≠ ${listed(expected.names)}`);
+  }
+  for (const english of expected.branches) {
+    const branch = actual.branches.find((other) => other.name === english.name);
+    // A missing argument is already a text-level mismatch (its name is gone).
+    if (!branch) continue;
+    for (const [key, option] of Object.entries(branch.options)) {
+      const where = `${path} › ${branch.name} ${key}`;
+      const match =
+        (branch.kind === 'select' ? english.options[key] : undefined) ?? english.options.other;
+      if (!match) {
+        problems.push(`${where}: English has no such branch`);
+        continue;
+      }
+      problems.push(...placeholderMismatches(option, match, where));
+    }
+  }
+  return problems;
+}
+
 // --- the message bundles ----------------------------------------------------
 
 describe('message bundles', () => {
@@ -166,37 +278,54 @@ describe('message bundles', () => {
     expect(keyPaths(bundle).sort()).toEqual(keyPaths(en).sort());
   });
 
-  it.each(bundles)('%s keeps every placeholder', (locale, bundle) => {
+  it.each(bundles)('%s keeps every placeholder, branch by branch', (locale, bundle) => {
     // A dropped placeholder silently removes the fault code from the sentence.
     // The message still reads fine, and the engineer never sees the code —
-    // which is the failure this whole task exists to prevent.
+    // which is the failure this whole task exists to prevent. Checked per
+    // plural or select branch: a name dropped from Arabic's `few` alone still
+    // loses its value for every count that reads `few`.
     //
-    // Both forms are collected: `{value}` for simple interpolation and
+    // Both forms are compared: `{value}` for simple interpolation and
     // `<tag>…</tag>` for the rich placeholders that carry a bdi wrapper.
-    const placeholders = (input: unknown): Record<string, string[]> => {
-      const found: Record<string, string[]> = {};
-      const walk = (value: unknown, path: string) => {
-        if (typeof value === 'string') {
-          const simple = [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1] ?? '');
-          const tags = [...value.matchAll(/<(\w+)>/g)].map((m) => m[1] ?? '');
-          found[path] = [...simple, ...tags].sort();
-          return;
-        }
-        if (typeof value === 'object' && value !== null) {
-          for (const [key, child] of Object.entries(value)) {
-            walk(child, path ? `${path}.${key}` : key);
-          }
-        }
-      };
-      walk(input, '');
-      return found;
-    };
+    const expected = leafMessages(en);
+    const actual = leafMessages(bundle);
+    const problems = Object.entries(expected).flatMap(([path, message]) =>
+      placeholderMismatches(parseMessage(actual[path] ?? ''), parseMessage(message), path),
+    );
+    expect(problems, locale).toEqual([]);
+  });
 
-    const expected = placeholders(en);
-    const actual = placeholders(bundle);
-    for (const [path, names] of Object.entries(expected)) {
-      expect(actual[path], `${locale}: ${path}`).toEqual(names);
-    }
+  it('catches a placeholder dropped from a single branch', () => {
+    // The case a set-of-names check passed: `{name}` survives in the other
+    // branches, so it is still in the message, but `few` has lost it.
+    const english = '{count, plural, one {# fault on {name}} other {# faults on {name}}}';
+    const arabic =
+      '{count, plural, zero {لا أعطال على {name}} one {عطل على {name}} two {عطلان على {name}} few {# أعطال} many {# عطلًا على {name}} other {# عطل على {name}}}';
+    expect(placeholderMismatches(parseMessage(arabic), parseMessage(english), 'x')).toEqual([
+      'x › count few: [] ≠ [name]',
+    ]);
+    // Arabic's extra plural branches are legitimate once each keeps the name.
+    const complete = arabic.replace('few {# أعطال}', 'few {# أعطال على {name}}');
+    expect(placeholderMismatches(parseMessage(complete), parseMessage(english), 'x')).toEqual([]);
+    // A select branch answers to its English namesake.
+    expect(
+      placeholderMismatches(
+        parseMessage('{g, select, a {{x}} other {}}'),
+        parseMessage('{g, select, a {{x}} other {}}'),
+        's',
+      ),
+    ).toEqual([]);
+    expect(
+      placeholderMismatches(
+        parseMessage('{g, select, a {} other {}}'),
+        parseMessage('{g, select, a {{x}} other {}}'),
+        's',
+      ),
+    ).toEqual(['s › g a: [] ≠ [x]']);
+    // Text outside any branch must match exactly.
+    expect(placeholderMismatches(parseMessage('{a}'), parseMessage('{a} <b>x</b>'), 'z')).toEqual([
+      'z: [a] ≠ [a, b]',
+    ]);
   });
 
   it('never translates the product name', () => {

@@ -1,5 +1,7 @@
 import type { components } from '@panelpilot/shared-types';
 
+import { accessTokenOf } from '@/lib/auth';
+
 type QuotaStatus = components['schemas']['QuotaStatus'];
 
 /**
@@ -337,7 +339,7 @@ export interface SignupOptions {
 }
 
 export type SignupOutcome =
-  | { kind: 'signed-up'; accessToken: string; refreshToken: string }
+  | { kind: 'signed-up'; accessToken: string }
   | { kind: 'email-taken' }
   | { kind: 'trial-gone' }
   | { kind: 'failed' };
@@ -365,6 +367,7 @@ export async function signupClaimingTrial(options: SignupOptions): Promise<Signu
     response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({
         email,
         password,
@@ -384,72 +387,7 @@ export async function signupClaimingTrial(options: SignupOptions): Promise<Signu
   if (response.status === 404) return { kind: 'trial-gone' };
   if (!response.ok) return { kind: 'failed' };
 
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  const { access_token: accessToken, refresh_token: refreshToken } = payload as Record<
-    string,
-    unknown
-  >;
-  if (typeof accessToken !== 'string' || typeof refreshToken !== 'string') {
-    return { kind: 'failed' };
-  }
-  return { kind: 'signed-up', accessToken, refreshToken };
-}
-
-export type RefreshOutcome =
-  | { kind: 'refreshed'; accessToken: string; refreshToken: string }
-  | { kind: 'expired' }
-  | { kind: 'failed' };
-
-export interface RefreshOptions {
-  refreshToken: string;
-  fetchImpl?: typeof fetch;
-  endpoint?: string;
-}
-
-/**
- * Exchange a refresh token for a new pair, once an account's access token
- * has lapsed.
- *
- * The caller holds the refresh token in memory only, for the same reason the
- * access token is never persisted: a credential left in storage on a shared
- * workshop terminal outlives the person who signed in.
- */
-export async function refreshTokens(options: RefreshOptions): Promise<RefreshOutcome> {
-  const { refreshToken, fetchImpl = fetch, endpoint = '/api/v1/auth/refresh' } = options;
-
-  let response: Response;
-  try {
-    response = await fetchImpl(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-  } catch {
-    return { kind: 'failed' };
-  }
-
-  if (response.status === 401 || response.status === 422) return { kind: 'expired' };
-  if (!response.ok) return { kind: 'failed' };
-
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return { kind: 'failed' };
-  }
-  if (typeof payload !== 'object' || payload === null) return { kind: 'failed' };
-  const { access_token: accessToken, refresh_token: newRefresh } = payload as Record<
-    string,
-    unknown
-  >;
-  if (typeof accessToken !== 'string' || accessToken === '' || typeof newRefresh !== 'string') {
-    return { kind: 'failed' };
-  }
-  return { kind: 'refreshed', accessToken, refreshToken: newRefresh };
+  // The refresh token is in the HttpOnly session cookie the answer set; see lib/auth.
+  const accessToken = await accessTokenOf(response);
+  return accessToken === null ? { kind: 'failed' } : { kind: 'signed-up', accessToken };
 }

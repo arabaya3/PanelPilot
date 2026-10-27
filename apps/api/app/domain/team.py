@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.core.security import hash_claim_secret
-from app.core.tenancy import bind_tenant
+from app.core.tenancy import TenantScopeError, bind_tenant, bound_tenant
 from app.domain import billing
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.team import InvitationCreated, InvitationOut, Member, Team
@@ -80,19 +80,40 @@ def _open(now: datetime) -> ColumnElement[bool]:
     return (InvitationRow.accepted_at.is_(None)) & (InvitationRow.expires_at > now)
 
 
-def seats_taken(*, session: Session, now: datetime | None = None) -> int:
-    """Members plus invitations still open, in the bound tenant.
+def seats_taken(
+    *, session: Session, tenant_id: uuid.UUID | None = None, now: datetime | None = None
+) -> int:
+    """Members plus invitations still open, in one tenant.
+
+    Counted with an explicit tenant filter, not only the session's binding,
+    so a caller under a lifted tenant filter (signup accepting an invitation)
+    counts its own tenant's seats rather than every tenant's.
 
     Args:
-        session: A session bound to the tenant.
+        session: Open database session.
+        tenant_id: The tenant; the session's bound tenant where omitted.
         now: Injected for tests.
 
     Returns:
         The seats they hold.
+
+    Raises:
+        TenantScopeError: If no tenant is given and the session is bound to none.
     """
+    tenant = tenant_id or bound_tenant(session)
+    if tenant is None:
+        raise TenantScopeError("seats are counted in one tenant; none was given or bound")
     moment = now or datetime.now(UTC)
-    members = session.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True)))
-    waiting = session.scalar(select(func.count()).select_from(InvitationRow).where(_open(moment)))
+    members = session.scalar(
+        select(func.count())
+        .select_from(User)
+        .where(User.tenant_id == tenant, User.is_active.is_(True))
+    )
+    waiting = session.scalar(
+        select(func.count())
+        .select_from(InvitationRow)
+        .where(InvitationRow.tenant_id == tenant, _open(moment))
+    )
     return (members or 0) + (waiting or 0)
 
 
@@ -133,7 +154,7 @@ def team(*, session: Session, user: CurrentUser) -> Team:
         members=listed,
         owner=is_owner(session=session, user=user),
         seats=billing.seat_limit(session=session, tenant_id=tenant),
-        seats_taken=seats_taken(session=session),
+        seats_taken=seats_taken(session=session, tenant_id=tenant),
     )
 
 
@@ -169,7 +190,7 @@ def invite(
         session.delete(row)
     session.flush()
     limit = billing.seat_limit(session=session, tenant_id=tenant)
-    if limit is not None and seats_taken(session=session, now=moment) >= limit:
+    if limit is not None and seats_taken(session=session, tenant_id=tenant, now=moment) >= limit:
         raise ValidationError(
             f"the plan holds {limit} seats, all taken",
             code="team_seats_full",
@@ -302,15 +323,18 @@ def accept(*, session: Session, token: str, email: str, now: datetime | None = N
     if row.email != email:
         raise ValidationError("this invitation is for another email", code="team_invitation_email")
     limit = billing.seat_limit(session=session, tenant_id=row.tenant_id)
-    if limit is not None:
-        # The invitation being used holds one of the seats counted.
-        bind_tenant(session, row.tenant_id)
-        if seats_taken(session=session, now=moment) > limit:
-            raise ValidationError(
-                f"the plan holds {limit} seats, all taken",
-                code="team_seats_full",
-                params={"seats": limit},
-            )
+    # The invitation being used holds one of the seats counted. Signup calls
+    # this under a lifted tenant filter, where binding filters nothing: the
+    # count names its tenant itself.
+    if (
+        limit is not None
+        and seats_taken(session=session, tenant_id=row.tenant_id, now=moment) > limit
+    ):
+        raise ValidationError(
+            f"the plan holds {limit} seats, all taken",
+            code="team_seats_full",
+            params={"seats": limit},
+        )
     row.accepted_at = moment
     session.flush()
     return row.tenant_id

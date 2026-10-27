@@ -1,0 +1,203 @@
+{
+  "commit": "750b820",
+  "web": "http://127.0.0.1:3000",
+  "step1": {
+    "signup_api_with_full_name": 201,
+    "reload_signed_in": true
+  },
+  "step2": {
+    "save_rev01": 201,
+    "save_rev02": 201,
+    "unchanged_save_disabled": true,
+    "aborted_save_attempt": "route.abort, nothing saved"
+  },
+  "step3": {
+    "in_flight_disabled": {
+      "Open": true,
+      "Delete": true,
+      "revision_select": true,
+      "Approve": true,
+      "Save": true
+    }
+  },
+  "step4": {
+    "approve_rev02": 200,
+    "request_body_keys": [
+      "note"
+    ],
+    "approved_by": "Eng. Final Reviewer",
+    "approver_name": "Eng. Final Reviewer",
+    "approval_note": "Checked against site survey 27 Oct",
+    "forged_approver_rev1": 422,
+    "forged_approver_rev2": 422,
+    "forged_code": "request_invalid/extra_forbidden",
+    "rev1_still_unapproved": true,
+    "someone_else_anywhere": false
+  },
+  "step5": {
+    "downloads": [
+      "rev02-E2E-Final-Board.pdf",
+      "rev02-E2E-Final-Board.calculations.pdf",
+      "rev02-E2E-Final-Board.dxf",
+      "rev02-E2E-Final-Board.json"
+    ],
+    "pdf_pages": 10,
+    "calc_pages": 2,
+    "mark_on_every_pdf_page": true,
+    "dxf_marks": 20,
+    "dxf_layer_TEXT_on_not_frozen": true,
+    "at_sign_count": 0,
+    "dblclick_pdf_export_requests": 1
+  },
+  "step6": {
+    "execution_export": 409,
+    "code": "execution_package_incomplete",
+    "csv_qet_aml_disabled": true,
+    "reason_localized": [
+      "en",
+      "ar",
+      "he"
+    ]
+  },
+  "step7": {
+    "trial_save": 201,
+    "approve_disabled_reason_localized": [
+      "en",
+      "ar",
+      "he"
+    ],
+    "api_trial_approval": 403,
+    "code": "approval_requires_account",
+    "approved_after": false
+  },
+  "step8": {
+    "ui_signup_no_name": 201,
+    "approve": 200,
+    "approved_by": "a team member",
+    "approver_name": null,
+    "ui_en": "approved by a team member",
+    "ui_ar": "أحد أعضاء الفريق",
+    "ui_he": "חבר/ת צוות",
+    "calc_pdf_follows_drawing_language_not_page_locale": true,
+    "calc_pdf_body_localized_ar_he": true,
+    "calc_pdf_stamp_identity_line_english": true
+  },
+  "step9": {
+    "logout": 204,
+    "replayed_access_token": 401,
+    "replay_code": "session_ended",
+    "cookie_refresh_after_logout": 401,
+    "reload": "Trial workspace",
+    "cookies_left": []
+  },
+  "multitab": {
+    "status": "PASS (rerun after the coordinator restarted web; Phase 1 head 31e4343, app code = 750b820)",
+    "account": "new UI-signup account M2 (A not reused)",
+    "step10": {
+      "2": {
+        "refresh": [
+          200,
+          200
+        ],
+        "reload1": "signed in x2",
+        "reload2": "signed in x2"
+      },
+      "3": {
+        "refresh": [
+          200,
+          200,
+          200
+        ],
+        "reload1": "signed in x3",
+        "reload2": "signed in x3"
+      },
+      "5": {
+        "refresh": [
+          200,
+          200,
+          200,
+          200,
+          200
+        ],
+        "reload1": "signed in x5",
+        "reload2": "signed in x5"
+      }
+    },
+    "step11": {
+      "d1": [
+        {
+          "tab": 1,
+          "s": 200,
+          "ms": 5251,
+          "held": "response 5s"
+        },
+        {
+          "tab": 2,
+          "s": 200,
+          "ms": 250
+        },
+        {
+          "tab": 3,
+          "s": 200,
+          "ms": 2445,
+          "held": "request 2s"
+        },
+        {
+          "tab": 4,
+          "s": 200,
+          "ms": 3279,
+          "held": "response 3s"
+        },
+        {
+          "tab": 5,
+          "s": 200,
+          "ms": 204
+        }
+      ],
+      "held_responses_set_cookie": {
+        "tab1": 0,
+        "tab4": 0
+      },
+      "cookie_sha256_4": {
+        "before": "d9d4f6a1",
+        "after_d1": "d9d4f6a1",
+        "after_reload": "d9d4f6a1"
+      },
+      "cookie_only_refresh_15s_later": 200,
+      "after_reload_of_tab2": "signed in x5"
+    },
+    "step12_browser": {
+      "status": 200,
+      "set_cookie_headers": 0,
+      "control_logout_response_set_cookie": 1
+    },
+    "step13": {
+      "logout": 204,
+      "racing_refreshes": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "refresh_after": [
+        401,
+        401,
+        401,
+        401,
+        401
+      ],
+      "reload": "Trial workspace x5",
+      "cookies_left": []
+    },
+    "web_enomem_during_rerun": false
+  },
+  "step12_api_fallback_direct_8000": {
+    "login": 200,
+    "young_refresh_1": 200,
+    "young_refresh_1_set_cookie_lines": 0,
+    "young_refresh_2": 200,
+    "young_refresh_2_set_cookie_lines": 0,
+    "logout": 204,
+    "refresh_after_logout": 401
+  }
+}

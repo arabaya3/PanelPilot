@@ -7,14 +7,47 @@ export type BoardDesignResponse = components['schemas']['BoardDesignResponse'];
 /** A project as the API returns it, and as it is sent back to export. */
 export type DesignProject = components['schemas']['DesignProject-Output'];
 export type ExportFormat = components['schemas']['ExportFormat'];
+
+/** The code the API refuses a format with whose draft mark an import would strip. */
+export const EXPORT_FORMAT_UNPROTECTED = 'export_format_unprotected';
+
+/**
+ * The formats the API does not export yet (`export_format_unprotected`), as a
+ * draft or as a revision: every CSV, QElectroTech, AutomationML and the PLC
+ * program. Each carries its draft mark only as a comment, which a normal
+ * import strips. Mirrors `app.domain.design.UNPROTECTED_FORMATS`.
+ */
+export const UNPROTECTED_FORMATS: ReadonlySet<ExportFormat> = new Set<ExportFormat>([
+  'devices_csv',
+  'parts_csv',
+  'cables_csv',
+  'circuits_csv',
+  'terminals_csv',
+  'eplan_devices_csv',
+  'ace_components_csv',
+  'ace_terminals_csv',
+  'quotation_csv',
+  'plc_io_csv',
+  'qet',
+  'aml',
+  'plc_st',
+]);
+
+/** Whether the API refuses to export `format` until its draft mark survives import. */
+export function isUnprotected(format: ExportFormat): boolean {
+  return UNPROTECTED_FORMATS.has(format);
+}
 export type LoadKind = components['schemas']['LoadKind'];
 export type MotorStarter = components['schemas']['MotorStarter'];
 export type LoadScheduleImport = components['schemas']['LoadScheduleImport'];
 export type LoadScheduleSuggestion = components['schemas']['LoadScheduleSuggestion'];
 export type PricingSettings = components['schemas']['PricingSettings'];
 export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
-export type Quotation = components['schemas']['Quotation'];
-export type PlcProgram = components['schemas']['PlcProgramResponse'];
+/**
+ * A provisional estimate of the design on the page: priced and checked on the
+ * server, never a quotation (that is a saved revision's `quotation_pdf`).
+ */
+export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
@@ -33,7 +66,28 @@ export type Refusal = {
   /** A code the page can say in the reader's language, with its values. */
   code?: string;
   params?: Record<string, string>;
+  /**
+   * The params as the server sent them, lists included, for a refusal whose
+   * values are not all a sentence's strings (what an execution export lacks).
+   */
+  values?: Record<string, unknown>;
+  /** Fields the server does not accept (a 422 `extra_forbidden`), as paths. */
+  unknownFields?: string[];
+  /** Text fields longer than the server accepts (a 422 `string_too_long`), as paths. */
+  tooLong?: TooLong[];
+  /** Numbers above what the server accepts (a 422 `less_than_equal`), as paths. */
+  tooLarge?: TooLarge[];
+  /** Every field a 422 named, whatever it objected to, as paths: said where the reason is not. */
+  invalidFields?: string[];
+  /** For a 429: the seconds the server's `Retry-After` asks the page to wait. */
+  retryAfterSeconds?: number;
 };
+
+/** A number the server refused as too large, and the most it takes. */
+export type TooLarge = { path: string; max: string };
+
+/** A text field the server refused as too long, and the most it takes. */
+export type TooLong = { path: string; max: number };
 type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
 
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
@@ -44,13 +98,15 @@ export type SuggestOutcome =
   { kind: 'suggested'; result: LoadScheduleSuggestion } | { kind: 'budget' } | Failure;
 export type PriceOutcome = { kind: 'priced'; quotation: Quotation } | Failure;
 export type PriceListOutcome = { kind: 'imported'; entries: PriceListEntry[] } | Failure;
-export type PlcOutcome = { kind: 'written'; program: PlcProgram } | Failure;
 export type ProjectOutcome = { kind: 'saved'; project: SavedProject } | Failure;
 export type ProjectListOutcome = { kind: 'listed'; page: ProjectPage } | Failure;
 export type DeleteOutcome = { kind: 'deleted' } | Failure;
 export type MarkupOutcome = { kind: 'read'; report: MarkupReport } | Failure;
 export type CompanySettings = components['schemas']['CompanySettings'];
 export type SettingsOutcome = { kind: 'settings'; saved: CompanySettings } | Failure;
+
+/** Statuses whose body is a refusal to say, not a fault. */
+const REFUSED = [400, 403, 404, 409, 422, 429];
 
 /** Options every call takes, so tests can stand in for the network. */
 type Transport = { token: string; fetchImpl?: typeof fetch; endpoint?: string };
@@ -67,15 +123,102 @@ function detailOf(payload: unknown): string {
   return '';
 }
 
+/**
+ * The fields a strict schema refused as unknown, from FastAPI's 422 detail:
+ * `["body", "project", "boards", 0, "standby_supply"]` is said
+ * `project.boards[0].standby_supply`, so the engineer can find it.
+ */
+export function unknownFieldsOf(payload: unknown): string[] {
+  const fields: string[] = [];
+  for (const { path } of errorsOfType(payload, 'extra_forbidden')) {
+    if (!fields.includes(path)) fields.push(path);
+  }
+  return fields;
+}
+
+/** The text fields a 422 refused as too long, with the most each takes. */
+export function tooLongOf(payload: unknown): TooLong[] {
+  return errorsOfType(payload, 'string_too_long').flatMap(({ path, ctx }) => {
+    const max = Number(ctx.max_length);
+    return Number.isInteger(max) && max > 0 ? [{ path, max }] : [];
+  });
+}
+
+/** The numbers a 422 refused as above their limit, with the limit. */
+export function tooLargeOf(payload: unknown): TooLarge[] {
+  return errorsOfType(payload, 'less_than_equal').flatMap(({ path, ctx }) => {
+    const max = ctx.le;
+    return typeof max === 'number' || typeof max === 'string' ? [{ path, max: String(max) }] : [];
+  });
+}
+
+/**
+ * A 422's validation errors of one type, each with its body path. FastAPI
+ * lists them in `detail`; an envelope may carry them in `errors` instead.
+ */
+function errorsOfType(
+  payload: unknown,
+  type: string | null,
+): Array<{ path: string; ctx: Record<string, unknown> }> {
+  const body = payload as { detail?: unknown; errors?: unknown } | null;
+  const detail = Array.isArray(body?.detail)
+    ? body.detail
+    : Array.isArray(body?.errors)
+      ? body.errors
+      : [];
+  const found: Array<{ path: string; ctx: Record<string, unknown> }> = [];
+  for (const item of detail as unknown[]) {
+    const entry = item as { type?: unknown; loc?: unknown; ctx?: unknown } | null;
+    if (entry === null || (type !== null && entry.type !== type) || !Array.isArray(entry.loc)) {
+      continue;
+    }
+    const parts = (entry.loc as unknown[]).filter(
+      (part, index): part is string | number =>
+        (typeof part === 'string' || typeof part === 'number') && !(index === 0 && part === 'body'),
+    );
+    const path = parts
+      .map((part, index) =>
+        typeof part === 'number' ? `[${String(part)}]` : index === 0 ? part : `.${part}`,
+      )
+      .join('');
+    const ctx =
+      typeof entry.ctx === 'object' && entry.ctx !== null
+        ? (entry.ctx as Record<string, unknown>)
+        : {};
+    if (path !== '') found.push({ path, ctx });
+  }
+  return found;
+}
+
+/** Every field a 422 named, once each, in the order named. */
+export function invalidFieldsOf(payload: unknown): string[] {
+  return [...new Set(errorsOfType(payload, null).map(({ path }) => path))];
+}
+
 function refusalOf(payload: unknown): Refusal {
   const refusal: Refusal = { kind: 'refused', detail: detailOf(payload) };
   const body = payload as { code?: unknown; params?: unknown } | null;
   if (typeof body?.code === 'string') {
     refusal.code = body.code;
-    if (typeof body.params === 'object' && body.params !== null) {
-      refusal.params = body.params as Record<string, string>;
+    if (typeof body.params === 'object' && body.params !== null && !Array.isArray(body.params)) {
+      const values = body.params as Record<string, unknown>;
+      refusal.values = values;
+      // Only scalars go into a sentence; a list is read from `values`.
+      refusal.params = Object.fromEntries(
+        Object.entries(values)
+          .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+          .map(([key, value]) => [key, String(value)]),
+      );
     }
   }
+  const unknown = unknownFieldsOf(payload);
+  if (unknown.length > 0) refusal.unknownFields = unknown;
+  const long = tooLongOf(payload);
+  if (long.length > 0) refusal.tooLong = long;
+  const large = tooLargeOf(payload);
+  if (large.length > 0) refusal.tooLarge = large;
+  const invalid = invalidFieldsOf(payload);
+  if (invalid.length > 0) refusal.invalidFields = invalid;
   return refusal;
 }
 
@@ -123,10 +266,15 @@ async function call<T>(
   if (response.status === 401) return { kind: 'unauthorized' };
   const special = extra?.(response);
   if (special) return special;
-  // 429 too: the design routes' per-address budget, said with a code; and
-  // 404, a saved project that is not (or no longer) there.
-  if ([400, 403, 404, 422, 429].includes(response.status)) {
-    return refusalOf(await readJson(response));
+  // 429 too: the design routes' per-address budget, said with a code; 404, a
+  // saved project that is not (or no longer) there; and 409, a revision that
+  // cannot be approved or exported as it stands (`revision_stale`, ...).
+  if (REFUSED.includes(response.status)) {
+    const refusal = refusalOf(await readJson(response));
+    const wait = Number(response.headers.get('Retry-After'));
+    return response.status === 429 && Number.isFinite(wait) && wait > 0
+      ? { ...refusal, retryAfterSeconds: wait }
+      : refusal;
   }
   if (!response.ok) return { kind: 'failed' };
   const payload = await readJson(response);
@@ -138,20 +286,47 @@ function has(payload: object, ...keys: string[]): boolean {
   return keys.every((key) => key in payload);
 }
 
+/** The longest name a download is saved under, in characters. */
+const NAME_LIMIT = 120;
+
+/**
+ * A server-given name made safe to save under: no path separators, no
+ * characters a file system refuses, no control characters, no `..`, no
+ * leading or trailing dots or spaces, and at most `NAME_LIMIT` characters
+ * (keeping the extension). Null when nothing usable is left.
+ */
+export function safeFileName(name: string): string | null {
+  const cleaned = name
+    // eslint-disable-next-line no-control-regex -- control characters are what is removed
+    .replace(/[\u0000-\u001f\u007f-\u009f/\\:*?"<>|]/g, '_')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[\s._]+|[\s.]+$/g, '');
+  if (cleaned === '' || /^_+$/.test(cleaned)) return null;
+  const chars = Array.from(cleaned);
+  if (chars.length <= NAME_LIMIT) return cleaned;
+  const dot = cleaned.lastIndexOf('.');
+  const extension = dot > 0 ? Array.from(cleaned.slice(dot)) : [];
+  if (extension.length > 10) return chars.slice(0, NAME_LIMIT).join('');
+  return chars.slice(0, NAME_LIMIT - extension.length).join('') + extension.join('');
+}
+
 /**
  * The name a download is saved under: the project's own (RFC 6266
- * `filename*`, which keeps an Arabic name), else the ASCII `filename`.
+ * `filename*`, which keeps an Arabic name), else the ASCII `filename`,
+ * either made safe (`safeFileName`).
  */
 export function savedName(disposition: string): string | null {
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
   if (encoded) {
     try {
-      return decodeURIComponent(encoded.trim());
+      const name = safeFileName(decodeURIComponent(encoded.trim()));
+      if (name !== null) return name;
     } catch {
       // A malformed encoding falls back to the plain name.
     }
   }
-  return /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+  const plain = /filename="([^"]+)"/.exec(disposition)?.[1];
+  return plain === undefined ? null : safeFileName(plain);
 }
 
 function upload(file: Blob, filename: string): FormData {
@@ -194,9 +369,12 @@ export async function exportDesign(
   }
   if (response.status === 401) return { kind: 'unauthorized' };
   // 429 too: the design routes' per-address budget, said with a code.
-  if (response.status === 400 || response.status === 422 || response.status === 429) {
-    return refusalOf(await readJson(response));
-  }
+  if (REFUSED.includes(response.status)) return refusalOf(await readJson(response));
+  return download(response, format);
+}
+
+/** A 2xx export response as the file it carries. */
+async function download(response: Response, format: ExportFormat): Promise<ExportOutcome> {
   if (!response.ok) return { kind: 'failed' };
   const disposition = response.headers.get('Content-Disposition') ?? '';
   try {
@@ -273,7 +451,9 @@ export function priceDesign(
 ): Promise<PriceOutcome> {
   const { project, pricing, profile = null } = options;
   return call(options, '/api/v1/design/quotation', { project, pricing, profile }, (payload) =>
-    has(payload, 'lines', 'total') ? { kind: 'priced', quotation: payload as Quotation } : null,
+    has(payload, 'lines', 'total', 'status', 'findings')
+      ? { kind: 'priced', quotation: payload as Quotation }
+      : null,
   );
 }
 
@@ -287,18 +467,6 @@ export function importPriceList(
     upload(options.file, options.filename),
     (payload) =>
       Array.isArray(payload) ? { kind: 'imported', entries: payload as PriceListEntry[] } : null,
-  );
-}
-
-/** Write and check the control program for the PLC-switched circuits: `POST /api/v1/design/plc`. */
-export function writePlcProgram(
-  options: Transport & { project: DesignProject; profile?: Record<string, unknown> | null },
-): Promise<PlcOutcome> {
-  const { project, profile = null } = options;
-  return call(options, '/api/v1/design/plc', { project, profile }, (payload) =>
-    has(payload, 'source', 'validation')
-      ? { kind: 'written', program: payload as PlcProgram }
-      : null,
   );
 }
 
@@ -358,15 +526,61 @@ export function openProject(
   );
 }
 
-/** Approve one revision, once, by the engineer's name for the title block. */
+/**
+ * What a revision is exported for. `review` gives the study set, marked
+ * draft or review-approved from the stored approval; `execution` is refused
+ * until an execution package can be checked complete, and names what it lacks.
+ */
+export type ExportPurpose = 'review' | 'execution';
+
+/**
+ * Export a saved revision as the server stored and validated it:
+ * `POST /api/v1/design/projects/{id}/revisions/{number}/export`. Nothing of
+ * the page is sent, so the file is the revision, not what was typed since.
+ */
+export async function exportRevision(
+  options: Transport & {
+    id: string;
+    revision: number;
+    format: ExportFormat;
+    purpose?: ExportPurpose;
+    pricing?: PricingSettings | null;
+  },
+): Promise<ExportOutcome> {
+  const { id, revision, format, purpose = 'review', pricing = null } = options;
+  const {
+    token,
+    fetchImpl = fetch,
+    endpoint = `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/export`,
+  } = options;
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ format, purpose, ...(pricing ? { pricing } : {}) }),
+    });
+  } catch {
+    return { kind: 'failed' };
+  }
+  if (response.status === 401) return { kind: 'unauthorized' };
+  if (REFUSED.includes(response.status)) return refusalOf(await readJson(response));
+  return download(response, format);
+}
+
+/**
+ * Approve one revision, once, as the signed-in account. The request names no
+ * one: the server records the account from the token, and names it by its
+ * display name. `note` is an optional note to the approval, never an identity.
+ */
 export function approveRevision(
-  options: Transport & { id: string; revision: number; approver: string },
+  options: Transport & { id: string; revision: number; note?: string },
 ): Promise<ProjectOutcome> {
-  const { id, revision, approver } = options;
+  const { id, revision, note = '' } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
-    { approver },
+    { note },
     saved,
   );
 }

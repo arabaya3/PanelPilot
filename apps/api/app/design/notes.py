@@ -256,6 +256,19 @@ TEMPLATES: dict[str, str] = {
 }
 
 
+#: Params a note may carry beside its template's, which its English text does
+#: not say: stable keys a reader translates by. ``market_rules`` names its
+#: market and code in English (the fallback); ``market_code`` keys the market
+#: and ``regulation_code`` its code (one per market, so also the market's
+#: country code), so a page can say both in its own language.
+CODE_PARAMS: dict[str, frozenset[str]] = {
+    "market_rules": frozenset({"market_code", "regulation_code"}),
+    # The range and its type as one product name, so a right-to-left page and
+    # drawing can keep it as one left-to-right run.
+    "enclosure_selected": frozenset({"product"}),
+}
+
+
 def fields(code: str) -> set[str]:
     """The params a code's template names.
 
@@ -273,17 +286,24 @@ def note(code: str, **params: object) -> DesignNote:
 
     Args:
         code: A code in :data:`TEMPLATES`.
-        **params: Exactly the fields the code's template names.
+        **params: Exactly the fields the code's template names, plus any
+            of the code's :data:`CODE_PARAMS`.
 
     Returns:
         The note.
 
     Raises:
         KeyError: If the code is unknown.
-        ValueError: If the params are not exactly the template's fields.
+        ValueError: If the params are not exactly the template's fields
+            (and, optionally, the code's :data:`CODE_PARAMS`).
     """
     expected = fields(code)
-    if set(params) != expected:
-        raise ValueError(f"note {code!r} takes {sorted(expected)}, got {sorted(params)}")
+    optional = CODE_PARAMS.get(code, frozenset())
+    given = set(params)
+    if not expected <= given or not given <= expected | optional:
+        raise ValueError(
+            f"note {code!r} takes {sorted(expected)} (optionally {sorted(optional)}), "
+            f"got {sorted(params)}"
+        )
     text_params = {name: str(value) for name, value in params.items()}
     return DesignNote(code=code, params=text_params, text=TEMPLATES[code].format(**text_params))

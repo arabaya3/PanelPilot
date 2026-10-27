@@ -58,6 +58,18 @@ requires_db = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _rotate_on_every_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests here are about rotation itself, so every refresh rotates.
+
+    Production rotates only a live token older than ``auth.ROTATE_AFTER``;
+    the tests of that rule ask for it with the ``real_rotation`` fixture.
+    """
+    from app.domain import auth as auth_domain
+
+    monkeypatch.setattr(auth_domain, "ROTATE_AFTER", timedelta(0))
+
+
 @pytest.fixture
 def db() -> Iterator[Session]:
     """A real session, cleaned of anything this module created."""
@@ -215,8 +227,9 @@ def test_refresh_rotates_and_revokes_the_presented_token(db: Session) -> None:
     db.commit()
     assert rotated.refresh_token != tokens.refresh_token
 
+    # Past the window a concurrent refresh is allowed (see the grace tests).
     with pytest.raises(AuthenticationError, match="not valid"):
-        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+        auth.refresh(session=db, refresh_token=tokens.refresh_token, now=_after_grace())
 
 
 @requires_db
@@ -246,6 +259,11 @@ def test_expired_refresh_token_is_refused(db: Session) -> None:
         auth.refresh(session=db, refresh_token=tokens.refresh_token)
 
 
+def _after_grace() -> datetime:
+    """A moment past the reuse window of a token rotated just now."""
+    return datetime.now(UTC) + auth.REFRESH_REUSE_GRACE + timedelta(seconds=1)
+
+
 def _live_refresh_tokens(db: Session, email: str) -> int:
     count: int = db.execute(
         text(
@@ -258,32 +276,38 @@ def _live_refresh_tokens(db: Session, email: str) -> int:
 
 
 @requires_db
-def test_replaying_a_spent_token_revokes_the_whole_family(db: Session) -> None:
-    """A spent token only comes back if it was copied.
+def test_replaying_a_stale_token_ends_only_its_own_session(db: Session) -> None:
+    """A stale token only comes back if it was copied.
 
     Either the client or a thief already rotated it, and there is no telling
-    which — so every live refresh token for the user is revoked, ending the
-    thief's session at the cost of one re-login.
+    which, so that sign-in is ended: the thief's copy and the client's alike.
+    The account's other sign-ins are separate token families the copy never
+    touched; they stay, and "log out everywhere" ends them on purpose.
     """
     email = _email()
     first = auth.signup(session=db, email=email, password=PASSWORD)
     db.commit()
     # A second device's session, also live.
-    auth.login(session=db, email=email, password=PASSWORD)
+    phone = auth.login(session=db, email=email, password=PASSWORD)
     db.commit()
     rotated = auth.refresh(session=db, refresh_token=first.refresh_token)
     db.commit()
     assert _live_refresh_tokens(db, email) == 2
 
     with pytest.raises(AuthenticationError, match="not valid"):
-        auth.refresh(session=db, refresh_token=first.refresh_token)
+        auth.refresh(session=db, refresh_token=first.refresh_token, now=_after_grace())
     # Rolled back, as the request's session would be on a 401. The revocation
     # must survive that: a detection that is rolled back protects nobody.
     db.rollback()
 
-    assert _live_refresh_tokens(db, email) == 0
     with pytest.raises(AuthenticationError):
         auth.refresh(session=db, refresh_token=rotated.refresh_token)
+    db.rollback()
+    assert not _authenticates(db, rotated.access_token)
+    # The phone's sign-in is untouched.
+    assert _live_refresh_tokens(db, email) == 1
+    assert _authenticates(db, phone.access_token)
+    assert auth.refresh(session=db, refresh_token=phone.refresh_token).access_token
 
 
 @requires_db
@@ -299,42 +323,528 @@ def test_an_unknown_refresh_token_revokes_nothing(db: Session) -> None:
     assert _live_refresh_tokens(db, email) == 1
 
 
-@requires_db
-def test_concurrent_refreshes_mint_exactly_one_pair(db: Session) -> None:
-    """Regression: rotation was a SELECT, then an assignment.
-
-    Every racer read the token as live and minted its own pair, so one stolen
-    token became as many live sessions as the thief cared to race. Rotation
-    is now one conditional UPDATE, and only one racer can match it.
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
+def _own_sessions() -> sessionmaker[Session]:
     from app.core.config import get_settings
 
-    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
-    db.commit()
-
     engine = create_engine(get_settings().database_url.get_secret_value())
-    factory = sessionmaker(
+    return sessionmaker(
         bind=engine, info=cross_tenant_info("tests set up and inspect rows across tenants")
     )
 
-    def attempt(_n: int) -> bool:
+
+def _session_of(db: Session, refresh_token: str) -> uuid.UUID:
+    sid: uuid.UUID = db.execute(
+        text("SELECT session_id FROM refresh_tokens WHERE token_hash = :h"),
+        {"h": hash_refresh_token(refresh_token)},
+    ).scalar_one()
+    return sid
+
+
+def _forget_trial(db: Session, session_id: str) -> None:
+    """Delete a trial this module started: its session, conversation and tenant."""
+    db.rollback()
+    tenant: uuid.UUID = db.execute(
+        text("SELECT tenant_id FROM anonymous_sessions WHERE id = :i"), {"i": uuid.UUID(session_id)}
+    ).scalar_one()
+    for table in ("anonymous_sessions", "diagnostic_sessions"):
+        db.execute(text(f"DELETE FROM {table} WHERE tenant_id = :t"), {"t": tenant})
+    db.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": tenant})
+    db.commit()
+
+
+def _authenticates(db: Session, access_token: str) -> bool:
+    """Whether a request carrying this access token would be let in."""
+    with sessionmaker(bind=db.get_bind())() as request_session:
+        try:
+            auth.authenticate(session=request_session, caller=decode_access_token(access_token))
+        except AuthenticationError:
+            return False
+        return True
+
+
+def _live_in_session(db: Session, sid: uuid.UUID) -> int:
+    count: int = db.execute(
+        text("SELECT count(*) FROM refresh_tokens WHERE session_id = :s AND revoked_at IS NULL"),
+        {"s": sid},
+    ).scalar_one()
+    return count
+
+
+def _session_revoked(db: Session, sid: uuid.UUID) -> bool:
+    revoked: datetime | None = db.execute(
+        text("SELECT revoked_at FROM auth_sessions WHERE id = :s"), {"s": sid}
+    ).scalar_one()
+    return revoked is not None
+
+
+@requires_db
+@pytest.mark.parametrize("tabs", [2, 3, 5])
+def test_concurrent_tabs_all_stay_signed_in_with_one_live_token(db: Session, tabs: int) -> None:
+    """Tabs share the cookie, so several can present the same token at once.
+
+    One rotates it. Every other one, finding it spent a moment ago, is handed
+    that same successor: the session keeps exactly one live token, every tab
+    stays signed in, and every Set-Cookie carries the same value, so the order
+    the answers land in cannot leave the jar holding the wrong one.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    factory = _own_sessions()
+
+    def attempt(_n: int) -> str | None:
         own = factory()
         try:
-            auth.refresh(session=own, refresh_token=tokens.refresh_token)
+            pair = auth.refresh(session=own, refresh_token=tokens.refresh_token)
             own.commit()
-            return True
+            return pair.refresh_token
         except AuthenticationError:
             own.rollback()
-            return False
+            return None
         finally:
             own.close()
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        succeeded = sum(pool.map(attempt, range(8)))
+    with ThreadPoolExecutor(max_workers=tabs) as pool:
+        minted = list(pool.map(attempt, range(tabs)))
 
-    assert succeeded == 1, f"{succeeded} pairs minted from one refresh token"
+    assert all(token is not None for token in minted), "a concurrent tab was signed out"
+    assert len(set(minted)) == 1, "the tabs were handed different successors"
+    assert _live_in_session(db, sid) == 1
+    assert not _session_revoked(db, sid)
+    successor = minted[0]
+    assert successor is not None
+    assert _session_of(db, successor) == sid
+    # And the session goes on: much later, the successor rotates normally.
+    later = datetime.now(UTC) + timedelta(hours=1)
+    assert auth.refresh(session=db, refresh_token=successor, now=later).access_token
+
+
+@requires_db
+def test_an_answer_lost_or_landing_late_leaves_a_working_cookie(db: Session) -> None:
+    """A reload during a refresh: the rotation happened, its answer never arrived.
+
+    The jar still holds the spent token. Presented again inside the window it
+    gets the same successor the lost answer carried, so whichever answer the
+    jar ends up with, the next refresh works.
+    """
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    lost = auth.refresh(session=db, refresh_token=tokens.refresh_token)  # answer never seen
+    db.commit()
+
+    reloaded = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    assert reloaded.refresh_token == lost.refresh_token
+    assert _live_in_session(db, sid) == 1
+
+    later = datetime.now(UTC) + timedelta(hours=1)
+    assert auth.refresh(session=db, refresh_token=reloaded.refresh_token, now=later).access_token
+
+
+@requires_db
+def test_the_window_is_ten_seconds_and_a_stale_token_after_it_is_a_replay(db: Session) -> None:
+    assert timedelta(seconds=10) == auth.REFRESH_REUSE_GRACE
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    late = datetime.now(UTC) + timedelta(seconds=11)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token, now=late)
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_token_two_rotations_behind_is_a_replay_even_inside_the_window(db: Session) -> None:
+    """Only the immediate predecessor of the live token is tolerated."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    second = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    auth.refresh(session=db, refresh_token=second.refresh_token)
+    db.commit()
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_thief_racing_the_victim_shares_one_chain_that_the_next_rotation_ends(
+    db: Session,
+) -> None:
+    """The bound, stated by the test.
+
+    A thief holding the spent token P can present it only within the window
+    after the rotation that spent it, and then gets the session's one live
+    token L, the very value the victim holds: never a second live token. The
+    next rotation by either party leaves the other holding a spent token; the
+    other's next presentation, outside the window, is a replay and ends the
+    session for both.
+    """
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    victim = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+
+    thief = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    assert thief.refresh_token == victim.refresh_token
+    assert _live_in_session(db, sid) == 1
+
+    # The victim's next rotation, an hour on.
+    hour = datetime.now(UTC) + timedelta(hours=1)
+    victim_next = auth.refresh(session=db, refresh_token=victim.refresh_token, now=hour)
+    db.commit()
+    assert _live_in_session(db, sid) == 1
+
+    # The thief comes back with its copy later than the window allows.
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db, refresh_token=thief.refresh_token, now=hour + timedelta(seconds=30)
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+    assert _live_in_session(db, sid) == 0
+    with pytest.raises(AuthenticationError):
+        auth.refresh(session=db, refresh_token=victim_next.refresh_token)
+
+
+@requires_db
+def test_the_chain_is_ended_the_other_way_round_too(db: Session) -> None:
+    """The thief rotates first; the victim's next presentation ends the session."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    hour = datetime.now(UTC) + timedelta(hours=1)
+    auth.refresh(session=db, refresh_token=tokens.refresh_token, now=hour)  # the thief
+    db.commit()
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db, refresh_token=tokens.refresh_token, now=hour + timedelta(minutes=5)
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_refresh_racing_logout_everywhere_leaves_nothing_alive(db: Session) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    factory = _own_sessions()
+    for _ in range(5):
+        email = _email()
+        tokens = auth.signup(session=db, email=email, password=PASSWORD)
+        other = auth.login(session=db, email=email, password=PASSWORD)
+        db.commit()
+
+        def do_refresh(token: str = tokens.refresh_token) -> str | None:
+            own = factory()
+            try:
+                pair = auth.refresh(session=own, refresh_token=token)
+                own.commit()
+                return pair.access_token
+            except AuthenticationError:
+                own.rollback()
+                return None
+            finally:
+                own.close()
+
+        def do_everywhere(access: str = other.access_token) -> None:
+            with sessionmaker(bind=db.get_bind())() as request_session:
+                caller = auth.authenticate(
+                    session=request_session, caller=decode_access_token(access)
+                )
+                auth.logout_everywhere(session=request_session, caller=caller)
+                request_session.commit()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            refreshed = pool.submit(do_refresh)
+            ended = pool.submit(do_everywhere)
+            minted = refreshed.result()
+            ended.result()
+
+        assert _live_refresh_tokens(db, email) == 0
+        if minted is not None:
+            assert not _authenticates(db, minted)
+
+
+@requires_db
+def test_concurrent_replays_on_two_sessions_of_one_account_do_not_deadlock(
+    db: Session,
+) -> None:
+    """Each replay held its own session's lock, then wanted the other's."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    email = _email()
+    laptop = auth.signup(session=db, email=email, password=PASSWORD)
+    phone = auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+    for pair in (laptop, phone):
+        auth.refresh(session=db, refresh_token=pair.refresh_token)
+        db.commit()
+    factory = _own_sessions()
+    late = datetime.now(UTC) + auth.REFRESH_REUSE_GRACE + timedelta(seconds=1)
+
+    def replay(token: str) -> str:
+        own = factory()
+        try:
+            auth.refresh(session=own, refresh_token=token, now=late)
+            own.commit()
+            return "minted"
+        except AuthenticationError:
+            own.rollback()
+            return "refused"
+        finally:
+            own.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(replay, [laptop.refresh_token, phone.refresh_token]))
+
+    # A deadlock surfaces as a database error, not an AuthenticationError.
+    assert results == ["refused", "refused"]
+    assert _live_refresh_tokens(db, email) == 0
+
+
+@requires_db
+def test_reuse_inside_the_window_is_refused_once_the_session_has_ended(db: Session) -> None:
+    """The window serves a racing tab, never a token whose sign-in was ended."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    rotated = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    auth.logout(session=db, caller=None, refresh_token=rotated.refresh_token)
+    db.commit()
+
+    with pytest.raises(AuthenticationError, match="ended"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+
+
+# --- sign-in sessions and logout ------------------------------------------------
+
+
+@requires_db
+def test_login_and_signup_each_start_a_session_named_in_the_access_token(db: Session) -> None:
+    email = _email()
+    first = auth.signup(session=db, email=email, password=PASSWORD)
+    second = auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    first_sid = decode_access_token(first.access_token).session_id
+    second_sid = decode_access_token(second.access_token).session_id
+    assert first_sid == str(_session_of(db, first.refresh_token))
+    assert second_sid == str(_session_of(db, second.refresh_token))
+    assert first_sid != second_sid
+
+
+@requires_db
+def test_a_refresh_continues_the_same_session(db: Session) -> None:
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    rotated = auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.commit()
+    assert (
+        decode_access_token(rotated.access_token).session_id
+        == decode_access_token(tokens.access_token).session_id
+    )
+
+
+@requires_db
+def test_after_logout_neither_the_access_nor_the_refresh_token_works(db: Session) -> None:
+    """Replay of either credential after sign-out is refused, the access token at once."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    assert _authenticates(db, tokens.access_token)
+
+    caller = decode_access_token(tokens.access_token)
+    auth.logout(session=db, caller=caller, refresh_token=None)
+    db.commit()
+
+    assert not _authenticates(db, tokens.access_token)
+    with pytest.raises(AuthenticationError, match="ended"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+
+
+@requires_db
+def test_logout_by_the_cookie_alone_ends_the_session(db: Session) -> None:
+    """The access token may have expired; the cookie is still proof of the sign-in."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    auth.logout(session=db, caller=None, refresh_token=tokens.refresh_token)
+    db.commit()
+    assert not _authenticates(db, tokens.access_token)
+
+
+@requires_db
+def test_logout_of_one_session_leaves_the_others_alive(db: Session) -> None:
+    email = _email()
+    laptop = auth.signup(session=db, email=email, password=PASSWORD)
+    phone = auth.login(session=db, email=email, password=PASSWORD)
+    db.commit()
+
+    auth.logout(session=db, caller=decode_access_token(laptop.access_token), refresh_token=None)
+    db.commit()
+
+    assert not _authenticates(db, laptop.access_token)
+    assert _authenticates(db, phone.access_token)
+    assert auth.refresh(session=db, refresh_token=phone.refresh_token).access_token
+
+
+@requires_db
+def test_logout_is_idempotent_and_silent(db: Session) -> None:
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    for _ in range(2):
+        auth.logout(session=db, caller=None, refresh_token=tokens.refresh_token)
+        db.commit()
+    auth.logout(session=db, caller=None, refresh_token="never-issued")
+    auth.logout(session=db, caller=None, refresh_token=None)
+    db.commit()
+
+
+@requires_db
+def test_logout_everywhere_ends_every_session_of_the_account_only(db: Session) -> None:
+    email = _email()
+    laptop = auth.signup(session=db, email=email, password=PASSWORD)
+    phone = auth.login(session=db, email=email, password=PASSWORD)
+    someone_else = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+
+    with sessionmaker(bind=db.get_bind())() as request_session:
+        caller = auth.authenticate(
+            session=request_session, caller=decode_access_token(laptop.access_token)
+        )
+        auth.logout_everywhere(session=request_session, caller=caller)
+        request_session.commit()
+
+    for pair in (laptop, phone):
+        assert not _authenticates(db, pair.access_token)
+        with pytest.raises(AuthenticationError):
+            auth.refresh(session=db, refresh_token=pair.refresh_token)
+        db.rollback()
+    assert _authenticates(db, someone_else.access_token)
+    assert _live_refresh_tokens(db, email) == 0
+
+
+@requires_db
+def test_a_trial_cannot_log_out_everywhere(db: Session) -> None:
+    trial = auth.start_trial(session=db, access_token_ttl_seconds=60)
+    db.commit()
+    with sessionmaker(bind=db.get_bind())() as request_session:
+        caller = auth.authenticate(
+            session=request_session, caller=decode_access_token(trial.access_token)
+        )
+        with pytest.raises(AuthenticationError):
+            auth.logout_everywhere(session=request_session, caller=caller)
+    _forget_trial(db, trial.session_id)
+
+
+@requires_db
+def test_a_refresh_racing_a_logout_leaves_no_session_alive(db: Session) -> None:
+    """Whichever wins the session lock, nothing of the session survives the logout.
+
+    A refresh that loses is refused; a logout that loses revokes the token the
+    refresh minted. Repeated, because a race shows itself only sometimes.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    factory = _own_sessions()
+    for _ in range(10):
+        tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+        db.commit()
+        sid = _session_of(db, tokens.refresh_token)
+
+        def do_refresh(token: str = tokens.refresh_token) -> str | None:
+            own = factory()
+            try:
+                pair = auth.refresh(session=own, refresh_token=token)
+                own.commit()
+                return pair.access_token
+            except AuthenticationError:
+                own.rollback()
+                return None
+            finally:
+                own.close()
+
+        def do_logout(token: str = tokens.refresh_token) -> None:
+            own = factory()
+            try:
+                auth.logout(session=own, caller=None, refresh_token=token)
+                own.commit()
+            finally:
+                own.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            refreshed = pool.submit(do_refresh)
+            ended = pool.submit(do_logout)
+            minted = refreshed.result()
+            ended.result()
+
+        live: int = db.execute(
+            text(
+                "SELECT count(*) FROM refresh_tokens WHERE session_id = :s AND revoked_at IS NULL"
+            ),
+            {"s": sid},
+        ).scalar_one()
+        assert live == 0, "a refresh token outlived the logout it raced"
+        assert not _authenticates(db, tokens.access_token)
+        if minted is not None:
+            assert not _authenticates(db, minted), "an access token outlived the logout"
+
+
+@requires_db
+def test_an_account_token_without_a_session_is_refused(db: Session) -> None:
+    """Issued before sessions existed: no logout could reach it, so it is not accepted."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    caller = decode_access_token(tokens.access_token)
+    legacy = auth_security.create_access_token(subject=caller.id, tenant_id=caller.tenant_id)
+    assert decode_access_token(legacy).session_id is None
+    assert not _authenticates(db, legacy)
+
+
+@requires_db
+def test_an_access_token_naming_another_accounts_session_is_refused(db: Session) -> None:
+    mine = auth.signup(session=db, email=_email(), password=PASSWORD)
+    theirs = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    me = decode_access_token(mine.access_token)
+    borrowed = auth_security.create_access_token(
+        subject=me.id,
+        tenant_id=me.tenant_id,
+        session_id=decode_access_token(theirs.access_token).session_id,
+    )
+    assert not _authenticates(db, borrowed)
+
+
+@requires_db
+def test_a_refresh_token_without_a_session_is_refused(db: Session) -> None:
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    db.execute(
+        text("UPDATE refresh_tokens SET session_id = NULL WHERE token_hash = :h"),
+        {"h": hash_refresh_token(tokens.refresh_token)},
+    )
+    db.commit()
+    with pytest.raises(AuthenticationError, match="predates"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+
+
+@requires_db
+def test_a_trial_token_needs_no_session(db: Session) -> None:
+    """A trial has no sign-in; it is bounded by its own expiry and claim instead."""
+    trial = auth.start_trial(session=db, access_token_ttl_seconds=60)
+    db.commit()
+    assert decode_access_token(trial.access_token).session_id is None
+    assert _authenticates(db, trial.access_token)
+    _forget_trial(db, trial.session_id)
 
 
 # --- signup races and timing ------------------------------------------------
@@ -922,3 +1432,335 @@ def test_a_malformed_tenant_claim_is_an_authentication_failure(db: Session) -> N
 
     with sessionmaker(bind=db.get_bind())() as request_session, pytest.raises(AuthenticationError):
         auth.resolve_caller(session=request_session, caller=malformed)
+
+
+# --- proof of possession: a jar moved back by an out-of-order answer ------------
+
+
+def _d1(db: Session) -> tuple[TokenPair, TokenPair, uuid.UUID]:
+    """D1's sequence: T0 -> T1 by two requests, then T1 -> T2.
+
+    Returns the T1 pair, the T2 pair, and the session.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    t1 = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    again = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    assert again.refresh_token == t1.refresh_token
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    return t1, t2, sid
+
+
+@requires_db
+def test_d1_the_jar_holding_the_predecessor_recovers_with_the_tabs_access_token(
+    db: Session,
+) -> None:
+    """A late Set-Cookie left T1 in the jar after T1 -> T2; 15 s on, the tab still works.
+
+    The tab proves it is the session's own holder with its access token
+    (same sid, same user, unexpired), so T1 gets the live T2 again: no mint,
+    no second live token.
+    """
+    t1, t2, sid = _d1(db)
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    bearer = decode_access_token(t2.access_token)
+
+    again = auth.refresh(session=db, refresh_token=t1.refresh_token, now=later, bearer=bearer)
+    db.commit()
+    assert again.refresh_token == t2.refresh_token
+    assert _live_in_session(db, sid) == 1
+    assert not _session_revoked(db, sid)
+
+
+@requires_db
+def test_d1_without_an_access_token_is_still_a_replay(db: Session) -> None:
+    """A cookie-only holder gets the 10 s window and no more."""
+    t1, _t2, sid = _d1(db)
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=t1.refresh_token, now=later)
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+def _email_of(db: Session, user_id: str) -> str:
+    email: str = db.execute(
+        text("SELECT email FROM users WHERE id = :i"), {"i": uuid.UUID(user_id)}
+    ).scalar_one()
+    return email
+
+
+@requires_db
+@pytest.mark.parametrize("whose", ["other-session", "other-user"])
+def test_a_bearer_of_another_session_or_user_proves_nothing(db: Session, whose: str) -> None:
+    t1, t2, sid = _d1(db)
+    if whose == "other-session":
+        me = decode_access_token(t2.access_token)
+        other = auth.login(session=db, email=_email_of(db, me.id), password=PASSWORD)
+    else:
+        other = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    later = datetime.now(UTC) + timedelta(seconds=15)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=later,
+            bearer=decode_access_token(other.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_does_not_reach_back_two_generations(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    t1 = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=first.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=15),
+            bearer=decode_access_token(t2.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_reaches_back_no_further_than_an_access_token_lives(db: Session) -> None:
+    from app.core.config import get_settings
+
+    t1, t2, sid = _d1(db)
+    ttl = get_settings().access_token_ttl_seconds
+    beyond = datetime.now(UTC) + timedelta(seconds=ttl + 60)
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=beyond,
+            bearer=decode_access_token(t2.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_legacy_session_with_two_live_tokens_refuses_the_older_never_a_500(
+    db: Session,
+) -> None:
+    """The old grace model could leave two live tokens; only the newest may rotate."""
+    tokens = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, tokens.refresh_token)
+    row = db.execute(
+        text("SELECT tenant_id, user_id FROM refresh_tokens WHERE session_id = :s"), {"s": sid}
+    ).one()
+    sibling, sibling_hash = auth_security.generate_refresh_token()
+    db.execute(
+        text("UPDATE refresh_tokens SET generation = NULL WHERE session_id = :s"), {"s": sid}
+    )
+    db.execute(text("UPDATE auth_sessions SET token_salt = NULL WHERE id = :s"), {"s": sid})
+    db.execute(
+        text(
+            "INSERT INTO refresh_tokens (id, tenant_id, user_id, session_id, token_hash, "
+            "expires_at, created_at, updated_at) VALUES (:i, :t, :u, :s, :h, :e, :c, :c)"
+        ),
+        {
+            "i": uuid.uuid4(),
+            "t": row.tenant_id,
+            "u": row.user_id,
+            "s": sid,
+            "h": sibling_hash,
+            "e": datetime.now(UTC) + timedelta(days=1),
+            "c": datetime.now(UTC) + timedelta(seconds=1),
+        },
+    )
+    db.commit()
+    assert _live_in_session(db, sid) == 2
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(session=db, refresh_token=tokens.refresh_token)
+    db.rollback()
+    assert _session_revoked(db, sid)
+    with pytest.raises(AuthenticationError):
+        auth.refresh(session=db, refresh_token=sibling)
+
+
+# --- rotation bound to its generation; no rotation inside a burst ----------------
+
+
+@pytest.fixture
+def real_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The production rule: a live token younger than ROTATE_AFTER is not rotated."""
+    monkeypatch.setattr(auth, "ROTATE_AFTER", timedelta(minutes=5))
+
+
+_SIX_MINUTES = timedelta(minutes=6)
+
+
+@requires_db
+def test_a_follower_with_an_older_generation_bearer_is_a_replay(db: Session) -> None:
+    """Cookie and access token held once do not follow the chain past a rotation.
+
+    The thief copied T1 and its access token (rgen 1). The victim rotates
+    T1 -> T2. The thief's later T1, with that bearer, is not proof: the
+    bearer was issued for generation 1, the live token is generation 2.
+    """
+    t1 = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, t1.refresh_token)
+    t2 = auth.refresh(session=db, refresh_token=t1.refresh_token)
+    db.commit()
+    assert decode_access_token(t2.access_token).refresh_generation == 2
+
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=20),
+            bearer=decode_access_token(t1.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_a_bearer_without_a_generation_proves_nothing(db: Session) -> None:
+    t1, t2, sid = _d1(db)
+    legacy = decode_access_token(t2.access_token).model_copy(update={"refresh_generation": None})
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t1.refresh_token,
+            now=datetime.now(UTC) + timedelta(seconds=15),
+            bearer=legacy,
+        )
+    db.rollback()
+    assert _session_revoked(db, sid)
+
+
+@requires_db
+def test_every_access_token_names_the_generation_it_was_issued_with(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    assert decode_access_token(first.access_token).refresh_generation == 1
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token)
+    db.commit()
+    again = auth.refresh(session=db, refresh_token=first.refresh_token)  # re-issue
+    db.commit()
+    assert decode_access_token(rotated.access_token).refresh_generation == 2
+    assert decode_access_token(again.access_token).refresh_generation == 2
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+def test_d1_cannot_happen_a_burst_mints_nothing_and_any_late_answer_still_works(
+    db: Session,
+) -> None:
+    """D1 at the source: inside ROTATE_AFTER nothing rotates, so no answer is stale.
+
+    Five refreshes in a burst all get the token the jar already holds, whatever
+    order their answers land in; a cookie-only refresh 15 s later works.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    answers = []
+    for _ in range(5):
+        answers.append(auth.refresh(session=db, refresh_token=first.refresh_token).refresh_token)
+        db.commit()
+    assert set(answers) == {first.refresh_token}
+    assert _live_in_session(db, sid) == 1
+
+    late = answers[0]  # whichever landed last
+    later = auth.refresh(
+        session=db, refresh_token=late, now=datetime.now(UTC) + timedelta(seconds=15)
+    )
+    db.commit()
+    assert later.refresh_token == first.refresh_token
+    assert not _session_revoked(db, sid)
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+def test_only_an_answer_carrying_a_newer_token_sets_the_cookie(db: Session) -> None:
+    """A kept token is not set again, so a late "keep" cannot undo a rotation.
+
+    The edge the final review traced: keep at T-0.1 s, rotate at T, answers
+    landing in reverse order. A keep answer that set the cookie put the jar
+    back on the predecessor; one that does not set it leaves the rotation's.
+    """
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    at = datetime.now(UTC) + _SIX_MINUTES
+    kept = auth.refresh(session=db, refresh_token=first.refresh_token, now=at - _SIX_MINUTES)
+    db.commit()
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token, now=at)
+    db.commit()
+    reissued = auth.refresh(
+        session=db, refresh_token=first.refresh_token, now=at + timedelta(seconds=1)
+    )
+    db.commit()
+    assert kept.refresh_token == first.refresh_token
+    assert not kept.sets_cookie
+    assert rotated.sets_cookie
+    assert reissued.sets_cookie
+    assert reissued.refresh_token == rotated.refresh_token
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+def test_a_burst_straddling_a_rotation_ends_on_one_live_token(db: Session) -> None:
+    first = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, first.refresh_token)
+    at = datetime.now(UTC) + _SIX_MINUTES
+    rotated = auth.refresh(session=db, refresh_token=first.refresh_token, now=at)
+    db.commit()
+    racing = auth.refresh(
+        session=db, refresh_token=first.refresh_token, now=at + timedelta(seconds=1)
+    )
+    db.commit()
+    after = auth.refresh(
+        session=db, refresh_token=rotated.refresh_token, now=at + timedelta(seconds=2)
+    )
+    db.commit()
+    assert rotated.refresh_token != first.refresh_token
+    assert racing.refresh_token == rotated.refresh_token == after.refresh_token
+    assert _live_in_session(db, sid) == 1
+
+
+@requires_db
+@pytest.mark.usefixtures("real_rotation")
+@pytest.mark.parametrize("first_mover", ["victim", "thief"])
+def test_replay_fires_when_victim_and_thief_diverge_across_a_rotation(
+    db: Session, first_mover: str
+) -> None:
+    """Both hold the live T0; whoever rotates first leaves the other a spent copy."""
+    t0 = auth.signup(session=db, email=_email(), password=PASSWORD)
+    db.commit()
+    sid = _session_of(db, t0.refresh_token)
+    at = datetime.now(UTC) + _SIX_MINUTES
+    auth.refresh(session=db, refresh_token=t0.refresh_token, now=at)  # the first mover
+    db.commit()
+    # The other comes back with T0 well after the 10 s window, and with no
+    # bearer of the live generation.
+    with pytest.raises(AuthenticationError, match="not valid"):
+        auth.refresh(
+            session=db,
+            refresh_token=t0.refresh_token,
+            now=at + timedelta(minutes=10),
+            bearer=decode_access_token(t0.access_token),
+        )
+    db.rollback()
+    assert _session_revoked(db, sid), first_mover

@@ -1,0 +1,16 @@
+﻿# DRAFT — NOT FOR EXECUTION | ADV unapproved, revision 01, not approved, design 40beff92fcac, rules 2026.10.23.1 | findings: 0 blocking, 9 warning, 10 info
+Board,Designation,Kind,Poles,Rated current A,Curve,Residual current mA,Breaking capacity kA,Manufacturer,Type number,Order number,Fed from,Function text
+PP1,'=PP1-Q1,circuit_breaker,4,100,C,,10,,,,,Main incomer
+PP1,'=PP1-Q2,circuit_breaker,3,16,C,,10,,,,'=PP1-Q1,Group 1 supply
+PP1,'=PP1-F1,residual_current_device,4,16,,30,,,,,'=PP1-Q2,Group 1 residual current
+PP1,'=PP1-Q3,circuit_breaker,1,10,C,,10,,,,'=PP1-F1,Panel lighting (test)
+PP1,'=PP1-Q4,circuit_breaker,3,20,MA,,,ABB,T2S160 MA 20,,'=PP1-Q1,Duty pump (test) motor protection
+PP1,'=PP1-Q5,contactor,3,,,,,ABB,A30,,'=PP1-Q4,Duty pump (test) line contactor
+PP1,'=PP1-F2,overload_relay,3,15.2,,,,ABB,TA25DU19,,'=PP1-Q5,"Duty pump (test) overload, set to 15.2 A"
+PP1,'=PP1-Q6,circuit_breaker,3,80,MA,,,ABB,T2S160 MA80,,'=PP1-Q1,Standby pump (test) motor protection
+PP1,'=PP1-Q7,contactor,3,,,,,ABB,A63,,'=PP1-Q6,Standby pump (test) line contactor
+PP1,'=PP1-Q8,contactor,3,,,,,ABB,A63,,'=PP1-Q7,Standby pump (test) delta contactor
+PP1,'=PP1-Q9,contactor,3,,,,,ABB,A30,,'=PP1-Q7,Standby pump (test) star contactor
+PP1,'=PP1-F3,overload_relay,3,32.33,,,,ABB,TA75DU42,,'=PP1-Q7,"Standby pump (test) overload, set to 32.33 A"
+PP1,'=PP1-F4,fuse,3,25,aR,,,Bussmann,170M1311,,'=PP1-Q1,Booster (test) drive input fuses
+PP1,'=PP1-T1,drive,,12.9,,,,ABB,ACS880-01-12A6-3,,'=PP1-F4,Booster (test) drive

@@ -1,0 +1,920 @@
+{
+  "export_status": {
+    "label": "DRAFT — NOT FOR EXECUTION",
+    "identity": "Final attack, revision 01, not approved, design 40beff92fcac, rules 2026.10.23.1"
+  },
+  "findings": [
+    {
+      "code": "integrity_drive_cable_unchecked",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": "c4",
+      "device_id": null,
+      "values": {},
+      "message": "Booster (test): the cable after a drive is protected by the drive's motor overload setting, which is not checked here.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "discrimination_group_raised",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "after": "10",
+        "group": "1",
+        "rated": "16",
+        "ratio": "1.6"
+      },
+      "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "motor_current_table",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": "c2",
+      "device_id": null,
+      "values": {
+        "load": "Duty pump (test)",
+        "power": "7.5",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "current": "15.2"
+      },
+      "message": "Duty pump (test): Ir 15.2 A, the typical Ir of a 7.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "starter_table",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": "c2",
+      "device_id": null,
+      "values": {
+        "load": "Duty pump (test)",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+        "starter": "dol"
+      },
+      "message": "Duty pump (test): dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "motor_current_table",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": "c3",
+      "device_id": null,
+      "values": {
+        "load": "Standby pump (test)",
+        "power": "30",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "current": "56"
+      },
+      "message": "Standby pump (test): Ir 56 A, the typical Ir of a 30 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "starter_table",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": "c3",
+      "device_id": null,
+      "values": {
+        "load": "Standby pump (test)",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2",
+        "starter": "star_delta"
+      },
+      "message": "Standby pump (test): star_delta starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "star_delta_interlock",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": "c3",
+      "device_id": null,
+      "values": {
+        "load": "Standby pump (test)"
+      },
+      "message": "Standby pump (test): star and delta contactors need a mechanical interlock; the motor is fed by six conductors (U1 V1 W1, U2 V2 W2).",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "motor_current_formula",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": "c4",
+      "device_id": null,
+      "values": {
+        "load": "Booster (test)",
+        "power": "5.5",
+        "current": "10.38",
+        "efficiency": "0.9",
+        "power_factor": "0.85"
+      },
+      "message": "Booster (test): Ir 10.38 A from 5.5 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "drive_selected",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": "c4",
+      "device_id": null,
+      "values": {
+        "fuse": "25",
+        "load": "Booster (test)",
+        "drive": "ACS880-01-12A6-3",
+        "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+        "ambient": "30"
+      },
+      "message": "Booster (test): ACS880-01-12A6-3 for normal duty at 30 °C, behind 25 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "drive_fuse_fault_level",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": "c4",
+      "device_id": null,
+      "values": {
+        "load": "Booster (test)",
+        "current": "75"
+      },
+      "message": "Booster (test): the fuses need at least 75 A prospective short-circuit current at the board to operate fast enough.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "breaking_capacity",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "fault": "10",
+        "rating": "10"
+      },
+      "message": "Breakers are rated for at least 10 kA breaking capacity against 10 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "spare_ways",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "count": "1",
+        "percent": "20"
+      },
+      "message": "Leave 1 spare outgoing ways (20 %).",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "default_power_factor",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "Loads without a power factor were taken at cos phi 0.9.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "discrimination",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "ratio": "1.6"
+      },
+      "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "earth_fault_no_ze",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "short_circuit_withstand",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "fault": "10"
+      },
+      "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 10 kA from its maker's curve (ABB handbook §2.4).",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "cable_conditions",
+      "severity": "info",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "method": "B1",
+        "ambient": "30",
+        "grouped": "1",
+        "insulation": "70"
+      },
+      "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+      "requires_engineering_confirmation": false,
+      "source": "policy"
+    },
+    {
+      "code": "rules_unconfirmed",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {},
+      "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    },
+    {
+      "code": "enclosure_unknown_widths",
+      "severity": "warning",
+      "board_id": "PP1",
+      "circuit_id": null,
+      "device_id": null,
+      "values": {
+        "count": "11"
+      },
+      "message": "Enclosure: none named, since 11 devices have no width (rail_widths_mm in the company settings).",
+      "requires_engineering_confirmation": true,
+      "source": "policy"
+    }
+  ],
+  "project": {
+    "info": {
+      "name": "TEST INPUT - readiness trace pump panel",
+      "number": "TEST-001",
+      "customer": "",
+      "consultant": "",
+      "contractor": "",
+      "revisions": [
+        {
+          "index": "01",
+          "date": "2026-10-27",
+          "description": "r1",
+          "drawn_by": "",
+          "checked_by": "",
+          "approved_by": ""
+        }
+      ]
+    },
+    "profile": "iec-default",
+    "boards": [
+      {
+        "id": "PP1",
+        "name": "PP1",
+        "function": null,
+        "location": null,
+        "supply": {
+          "voltage_v": "400",
+          "phases": 3,
+          "frequency_hz": "50",
+          "earthing": "TN-S",
+          "fault_level_ka": "10",
+          "earth_loop_ohm": null
+        },
+        "incomer_ids": [
+          "incomer"
+        ],
+        "devices": [
+          {
+            "id": "incomer",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q1"
+            },
+            "part_key": null,
+            "poles": 4,
+            "rated_current_a": "100",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": "10",
+            "description": "Main incomer",
+            "upstream_id": null
+          },
+          {
+            "id": "g1-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q2"
+            },
+            "part_key": null,
+            "poles": 3,
+            "rated_current_a": "16",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": "10",
+            "description": "Group 1 supply",
+            "upstream_id": "incomer"
+          },
+          {
+            "id": "g1-rcd",
+            "kind": "residual_current_device",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "F1"
+            },
+            "part_key": null,
+            "poles": 4,
+            "rated_current_a": "16",
+            "residual_current_ma": "30",
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Group 1 residual current",
+            "upstream_id": "g1-breaker"
+          },
+          {
+            "id": "c1-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q3"
+            },
+            "part_key": null,
+            "poles": 1,
+            "rated_current_a": "10",
+            "residual_current_ma": null,
+            "curve": "C",
+            "breaking_capacity_ka": "10",
+            "description": "Panel lighting (test)",
+            "upstream_id": "g1-rcd"
+          },
+          {
+            "id": "c2-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q4"
+            },
+            "part_key": "ABB/T2S160 MA 20",
+            "poles": 3,
+            "rated_current_a": "20",
+            "residual_current_ma": null,
+            "curve": "MA",
+            "breaking_capacity_ka": null,
+            "description": "Duty pump (test) motor protection",
+            "upstream_id": "incomer"
+          },
+          {
+            "id": "c2-line",
+            "kind": "contactor",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q5"
+            },
+            "part_key": "ABB/A30",
+            "poles": 3,
+            "rated_current_a": null,
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Duty pump (test) line contactor",
+            "upstream_id": "c2-breaker"
+          },
+          {
+            "id": "c2-overload",
+            "kind": "overload_relay",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "F2"
+            },
+            "part_key": "ABB/TA25DU19",
+            "poles": 3,
+            "rated_current_a": "15.2",
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Duty pump (test) overload, set to 15.2 A",
+            "upstream_id": "c2-line"
+          },
+          {
+            "id": "c3-breaker",
+            "kind": "circuit_breaker",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q6"
+            },
+            "part_key": "ABB/T2S160 MA80",
+            "poles": 3,
+            "rated_current_a": "80",
+            "residual_current_ma": null,
+            "curve": "MA",
+            "breaking_capacity_ka": null,
+            "description": "Standby pump (test) motor protection",
+            "upstream_id": "incomer"
+          },
+          {
+            "id": "c3-line",
+            "kind": "contactor",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q7"
+            },
+            "part_key": "ABB/A63",
+            "poles": 3,
+            "rated_current_a": null,
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Standby pump (test) line contactor",
+            "upstream_id": "c3-breaker"
+          },
+          {
+            "id": "c3-delta",
+            "kind": "contactor",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q8"
+            },
+            "part_key": "ABB/A63",
+            "poles": 3,
+            "rated_current_a": null,
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Standby pump (test) delta contactor",
+            "upstream_id": "c3-line"
+          },
+          {
+            "id": "c3-star",
+            "kind": "contactor",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "Q9"
+            },
+            "part_key": "ABB/A30",
+            "poles": 3,
+            "rated_current_a": null,
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Standby pump (test) star contactor",
+            "upstream_id": "c3-line"
+          },
+          {
+            "id": "c3-overload",
+            "kind": "overload_relay",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "F3"
+            },
+            "part_key": "ABB/TA75DU42",
+            "poles": 3,
+            "rated_current_a": "32.33",
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Standby pump (test) overload, set to 32.33 A",
+            "upstream_id": "c3-line"
+          },
+          {
+            "id": "c4-fuses",
+            "kind": "fuse",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "F4"
+            },
+            "part_key": "Bussmann/170M1311",
+            "poles": 3,
+            "rated_current_a": "25",
+            "residual_current_ma": null,
+            "curve": "aR",
+            "breaking_capacity_ka": null,
+            "description": "Booster (test) drive input fuses",
+            "upstream_id": "incomer"
+          },
+          {
+            "id": "c4-drive",
+            "kind": "drive",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "T1"
+            },
+            "part_key": "ABB/ACS880-01-12A6-3",
+            "poles": null,
+            "rated_current_a": "12.90",
+            "residual_current_ma": null,
+            "curve": null,
+            "breaking_capacity_ka": null,
+            "description": "Booster (test) drive",
+            "upstream_id": "c4-fuses"
+          }
+        ],
+        "cables": [
+          {
+            "id": "c1-cable",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "W1"
+            },
+            "cores": 3,
+            "cross_section_mm2": "1.5",
+            "material": "Cu",
+            "insulation": "PVC",
+            "length_m": "10",
+            "part_key": null,
+            "withstand_ka2s": "0.030",
+            "parallel": 1
+          },
+          {
+            "id": "c2-cable",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "W2"
+            },
+            "cores": 4,
+            "cross_section_mm2": "1.5",
+            "material": "Cu",
+            "insulation": "PVC",
+            "length_m": "30",
+            "part_key": null,
+            "withstand_ka2s": "0.030",
+            "parallel": 1
+          },
+          {
+            "id": "c3-cable",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "W3"
+            },
+            "cores": 7,
+            "cross_section_mm2": "6",
+            "material": "Cu",
+            "insulation": "PVC",
+            "length_m": "30",
+            "part_key": null,
+            "withstand_ka2s": "0.476",
+            "parallel": 1
+          },
+          {
+            "id": "c4-cable",
+            "designation": {
+              "function": "PP1",
+              "location": null,
+              "product": "W4"
+            },
+            "cores": 4,
+            "cross_section_mm2": "1.5",
+            "material": "Cu",
+            "insulation": "PVC",
+            "length_m": "20",
+            "part_key": null,
+            "withstand_ka2s": "0.030",
+            "parallel": 1
+          }
+        ],
+        "circuits": [
+          {
+            "id": "c1",
+            "description": "Panel lighting (test)",
+            "load": "lighting",
+            "power_kw": "0.2",
+            "design_current_a": "0.96",
+            "phase": "L1",
+            "upstream_id": "g1-rcd",
+            "device_ids": [
+              "c1-breaker"
+            ],
+            "cable_id": "c1-cable",
+            "feeds": null,
+            "starter": null,
+            "voltage_drop_percent": "0.12",
+            "earth_loop_ohm": null
+          },
+          {
+            "id": "c2",
+            "description": "Duty pump (test)",
+            "load": "motor",
+            "power_kw": "7.5",
+            "design_current_a": "15.2",
+            "phase": "L1L2L3",
+            "upstream_id": null,
+            "device_ids": [
+              "c2-breaker",
+              "c2-line",
+              "c2-overload"
+            ],
+            "cable_id": "c2-cable",
+            "feeds": null,
+            "starter": "dol",
+            "voltage_drop_percent": "2.85",
+            "earth_loop_ohm": null
+          },
+          {
+            "id": "c3",
+            "description": "Standby pump (test)",
+            "load": "motor",
+            "power_kw": "30",
+            "design_current_a": "56",
+            "phase": "L1L2L3",
+            "upstream_id": null,
+            "device_ids": [
+              "c3-breaker",
+              "c3-line",
+              "c3-delta",
+              "c3-star",
+              "c3-overload"
+            ],
+            "cable_id": "c3-cable",
+            "feeds": null,
+            "starter": "star_delta",
+            "voltage_drop_percent": "1.82",
+            "earth_loop_ohm": null
+          },
+          {
+            "id": "c4",
+            "description": "Booster (test)",
+            "load": "motor",
+            "power_kw": "5.5",
+            "design_current_a": "10.38",
+            "phase": "L1L2L3",
+            "upstream_id": null,
+            "device_ids": [
+              "c4-fuses",
+              "c4-drive"
+            ],
+            "cable_id": "c4-cable",
+            "feeds": null,
+            "starter": "drive",
+            "voltage_drop_percent": "1.30",
+            "earth_loop_ohm": null
+          }
+        ],
+        "notes": [
+          {
+            "code": "discrimination_group_raised",
+            "params": {
+              "after": "10",
+              "group": "1",
+              "rated": "16",
+              "ratio": "1.6"
+            },
+            "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+          },
+          {
+            "code": "motor_current_table",
+            "params": {
+              "load": "Duty pump (test)",
+              "power": "7.5",
+              "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+              "current": "15.2"
+            },
+            "text": "Duty pump (test): Ir 15.2 A, the typical Ir of a 7.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate."
+          },
+          {
+            "code": "starter_table",
+            "params": {
+              "load": "Duty pump (test)",
+              "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+              "starter": "dol"
+            },
+            "text": "Duty pump (test): dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2."
+          },
+          {
+            "code": "motor_current_table",
+            "params": {
+              "load": "Standby pump (test)",
+              "power": "30",
+              "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+              "current": "56"
+            },
+            "text": "Standby pump (test): Ir 56 A, the typical Ir of a 30 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate."
+          },
+          {
+            "code": "starter_table",
+            "params": {
+              "load": "Standby pump (test)",
+              "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2",
+              "starter": "star_delta"
+            },
+            "text": "Standby pump (test): star_delta starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2."
+          },
+          {
+            "code": "star_delta_interlock",
+            "params": {
+              "load": "Standby pump (test)"
+            },
+            "text": "Standby pump (test): star and delta contactors need a mechanical interlock; the motor is fed by six conductors (U1 V1 W1, U2 V2 W2)."
+          },
+          {
+            "code": "motor_current_formula",
+            "params": {
+              "load": "Booster (test)",
+              "power": "5.5",
+              "current": "10.38",
+              "efficiency": "0.9",
+              "power_factor": "0.85"
+            },
+            "text": "Booster (test): Ir 10.38 A from 5.5 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate."
+          },
+          {
+            "code": "drive_selected",
+            "params": {
+              "fuse": "25",
+              "load": "Booster (test)",
+              "drive": "ACS880-01-12A6-3",
+              "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+              "ambient": "30"
+            },
+            "text": "Booster (test): ACS880-01-12A6-3 for normal duty at 30 °C, behind 25 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends."
+          },
+          {
+            "code": "drive_fuse_fault_level",
+            "params": {
+              "load": "Booster (test)",
+              "current": "75"
+            },
+            "text": "Booster (test): the fuses need at least 75 A prospective short-circuit current at the board to operate fast enough."
+          },
+          {
+            "code": "breaking_capacity",
+            "params": {
+              "fault": "10",
+              "rating": "10"
+            },
+            "text": "Breakers are rated for at least 10 kA breaking capacity against 10 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+          },
+          {
+            "code": "spare_ways",
+            "params": {
+              "count": "1",
+              "percent": "20"
+            },
+            "text": "Leave 1 spare outgoing ways (20 %)."
+          },
+          {
+            "code": "default_power_factor",
+            "params": {},
+            "text": "Loads without a power factor were taken at cos phi 0.9."
+          },
+          {
+            "code": "discrimination",
+            "params": {
+              "ratio": "1.6"
+            },
+            "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+          },
+          {
+            "code": "earth_fault_no_ze",
+            "params": {},
+            "text": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze."
+          },
+          {
+            "code": "short_circuit_withstand",
+            "params": {
+              "fault": "10"
+            },
+            "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 10 kA from its maker's curve (ABB handbook §2.4)."
+          },
+          {
+            "code": "cable_conditions",
+            "params": {
+              "method": "B1",
+              "ambient": "30",
+              "grouped": "1",
+              "insulation": "70"
+            },
+            "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+          },
+          {
+            "code": "rules_unconfirmed",
+            "params": {},
+            "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+          },
+          {
+            "code": "enclosure_unknown_widths",
+            "params": {
+              "count": "11"
+            },
+            "text": "Enclosure: none named, since 11 devices have no width (rail_widths_mm in the company settings)."
+          }
+        ],
+        "fed_from": null
+      }
+    ],
+    "parts": [
+      {
+        "key": "ABB/T2S160 MA 20",
+        "manufacturer": "ABB",
+        "type_number": "T2S160 MA 20",
+        "order_number": null,
+        "description": "Moulded-case circuit-breaker, motor protection",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/A30",
+        "manufacturer": "ABB",
+        "type_number": "A30",
+        "order_number": null,
+        "description": "Contactor, AC-3",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/TA25DU19",
+        "manufacturer": "ABB",
+        "type_number": "TA25DU19",
+        "order_number": null,
+        "description": "Thermal overload relay",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/T2S160 MA80",
+        "manufacturer": "ABB",
+        "type_number": "T2S160 MA80",
+        "order_number": null,
+        "description": "Moulded-case circuit-breaker, motor protection",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/A63",
+        "manufacturer": "ABB",
+        "type_number": "A63",
+        "order_number": null,
+        "description": "Contactor, AC-3",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/TA75DU42",
+        "manufacturer": "ABB",
+        "type_number": "TA75DU42",
+        "order_number": null,
+        "description": "Thermal overload relay",
+        "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+        "width_mm": null
+      },
+      {
+        "key": "Bussmann/170M1311",
+        "manufacturer": "Bussmann",
+        "type_number": "170M1311",
+        "order_number": null,
+        "description": "aR fuse, DIN 43653 stud-mount (one per phase)",
+        "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+        "width_mm": null
+      },
+      {
+        "key": "ABB/ACS880-01-12A6-3",
+        "manufacturer": "ABB",
+        "type_number": "ACS880-01-12A6-3",
+        "order_number": null,
+        "description": "Variable-speed drive",
+        "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+        "width_mm": null
+      }
+    ]
+  }
+}
