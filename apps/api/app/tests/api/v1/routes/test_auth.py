@@ -865,6 +865,7 @@ def test_d1_over_http_with_real_rotation_a_cookie_only_refresh_later_works(
     assert reloaded.post(_REFRESH, headers=SAME_SITE).status_code == 200
 
 
+@requires_db
 def test_a_kept_token_is_answered_without_a_cookie(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
