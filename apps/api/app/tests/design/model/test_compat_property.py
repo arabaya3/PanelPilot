@@ -19,13 +19,25 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 
 from app.design import snapshot
 from app.design.model import serialize
 from app.design.model.convert_v1 import from_v1, to_v1
 from app.design.model.read import read_snapshot
-from app.models.schemas.design import DesignProject, DeviceKind, LoadKind, MotorStarter, Phase
-from app.tests.design.model.compat_support import strict_shape
+from app.models.schemas.design import (
+    Cable,
+    Circuit,
+    DesignProject,
+    Device,
+    DeviceKind,
+    LoadKind,
+    MotorStarter,
+    Part,
+    Phase,
+    Supply,
+)
+from app.tests.design.model.compat_support import bounds_of, random_within, strict_shape
 
 SEED = 20261027
 CASES = 300
@@ -86,9 +98,12 @@ class _Gen:
             return str(round(Decimal(self.rng.uniform(0, 10_000)), digits))
         return self.rng.choice(_DECIMALS)
 
-    def positive(self, high: int) -> str:
-        """A Decimal in (0, high], for the bounded fields."""
-        return self.rng.choice(("0.001", "1", "1.50", str(high), "12.345678")) if high > 12 else "1"
+    def field(self, model: type[BaseModel], name: str) -> str:
+        """A value for a Decimal field, within the bounds its schema metadata declares."""
+        bounds = bounds_of(model, name)
+        if bounds.bounded:
+            return str(random_within(self.rng, bounds))
+        return self.decimal()
 
     def params(self) -> dict[str, str]:
         return {f"k{i}{self.short(5)}": self.text() for i in range(self.rng.randint(0, 3))}
@@ -111,10 +126,10 @@ class _Gen:
             "designation": self.designation(),
             "part_key": self.rng.choice(parts) if parts and self.rng.random() < 0.4 else None,
             "poles": self.rng.randint(1, 4),
-            "rated_current_a": self.decimal(),
-            "residual_current_ma": self.decimal(),
+            "rated_current_a": self.field(Device, "rated_current_a"),
+            "residual_current_ma": self.field(Device, "residual_current_ma"),
             "curve": self.short(3),
-            "breaking_capacity_ka": self.decimal(),
+            "breaking_capacity_ka": self.field(Device, "breaking_capacity_ka"),
             "description": self.text(),
             "upstream_id": self.rng.choice(earlier) if earlier else None,
         }
@@ -127,15 +142,15 @@ class _Gen:
         out: dict[str, Any] = {
             "id": ident,
             "cores": self.rng.randint(1, 61),
-            "cross_section_mm2": self.decimal(),
+            "cross_section_mm2": self.field(Cable, "cross_section_mm2"),
         }
         optional = {
             "designation": self.designation(),
             "material": self.rng.choice(("Cu", "Al", self.short(5))),
             "insulation": self.rng.choice(("PVC", "XLPE", self.short(5))),
-            "length_m": self.positive(10_000),
+            "length_m": self.field(Cable, "length_m"),
             "part_key": self.rng.choice(parts) if parts and self.rng.random() < 0.4 else None,
-            "withstand_ka2s": self.decimal(),
+            "withstand_ka2s": self.field(Cable, "withstand_ka2s"),
             "parallel": self.rng.randint(1, 6),
         }
         for key, value in optional.items():
@@ -148,8 +163,8 @@ class _Gen:
             "id": ident,
             "description": self.text(),
             "load": self.rng.choice(list(LoadKind)).value,
-            "power_kw": self.decimal(),
-            "design_current_a": self.decimal(),
+            "power_kw": self.field(Circuit, "power_kw"),
+            "design_current_a": self.field(Circuit, "design_current_a"),
             "phase": self.rng.choice(list(Phase)).value,
         }
         optional = {
@@ -160,9 +175,14 @@ class _Gen:
             ),
             "cable_id": self.rng.choice(cables) if cables else None,
             "feeds": self.maybe(self.short(40)),
-            "starter": self.maybe(self.rng.choice(list(MotorStarter)).value),
-            "voltage_drop_percent": self.decimal(),
-            "earth_loop_ohm": self.decimal(),
+            # A starter is only valid on a motor circuit (schema validator).
+            "starter": (
+                self.maybe(self.rng.choice(list(MotorStarter)).value)
+                if out["load"] == LoadKind.MOTOR.value
+                else None
+            ),
+            "voltage_drop_percent": self.field(Circuit, "voltage_drop_percent"),
+            "earth_loop_ohm": self.field(Circuit, "earth_loop_ohm"),
         }
         for key, value in optional.items():
             if self.rng.random() < 0.6:
@@ -186,12 +206,12 @@ class _Gen:
         out: dict[str, Any] = {"id": ident, "name": self.text()}
         supply: dict[str, Any] = {}
         for key, value in {
-            "voltage_v": self.decimal(),
+            "voltage_v": self.field(Supply, "voltage_v"),
             "phases": self.rng.randint(1, 3),
-            "frequency_hz": self.decimal(),
+            "frequency_hz": self.field(Supply, "frequency_hz"),
             "earthing": self.rng.choice(("TN-S", "TT", "IT", self.short(8))),
-            "fault_level_ka": self.positive(200),
-            "earth_loop_ohm": self.positive(100),
+            "fault_level_ka": self.field(Supply, "fault_level_ka"),
+            "earth_loop_ohm": self.field(Supply, "earth_loop_ohm"),
         }.items():
             if self.rng.random() < 0.5:
                 supply[key] = value
@@ -225,7 +245,7 @@ class _Gen:
                 "order_number": self.maybe(self.text()),
                 "description": self.text(),
                 "source": self.maybe(self.text()),
-                "width_mm": self.maybe(self.decimal()),
+                "width_mm": self.maybe(self.field(Part, "width_mm")),
             }
             for i in range(self.rng.randint(0, 4))
         ]
@@ -245,6 +265,7 @@ class _Gen:
                 "drawn_by": self.short(100),
                 "checked_by": self.short(100),
                 "approved_by": self.short(100),
+                "approval_note": self.short(200),
             }
             for _ in range(self.rng.randint(0, 3))
         ]
@@ -270,6 +291,12 @@ def test_generator_exercises_the_schema() -> None:
     assert any(len(p.boards) >= 3 for p in PROJECTS)
     assert any(b.fed_from for p in PROJECTS for b in p.boards)
     assert any(p.info.revisions for p in PROJECTS)
+    # Bounds come from the schema's metadata, and the generator reaches them.
+    top = bounds_of(Device, "breaking_capacity_ka").le
+    values = [d.breaking_capacity_ka for p in PROJECTS for b in p.boards for d in b.devices]
+    assert top is not None
+    assert top in values
+    assert all(v is None or 0 < v <= top for v in values)
 
 
 @pytest.mark.parametrize("index", range(CASES))

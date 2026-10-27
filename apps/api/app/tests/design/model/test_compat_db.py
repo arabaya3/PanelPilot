@@ -47,7 +47,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 TENANT_SLUG = "m1-compat"
-APPROVER = "Eng. Synthetic Approver"
+APPROVER_NAME = "Eng. Synthetic Approver"
 UNKNOWN = "pp-design/999"
 
 #: The committed fixtures written straight into a revision row.
@@ -99,6 +99,21 @@ def _client(engine: Engine, tenant: str) -> Iterator[TestClient]:
         tenant_id=tenant,
         roles=frozenset({Role.ENGINEER}),
     )
+    # Approval is the account's: give the caller a users row, as a login would.
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": user.email})
+        conn.execute(
+            text(
+                "INSERT INTO users (id, tenant_id, email, full_name, is_active, "
+                "created_at, updated_at) VALUES (:i, :t, :e, :n, true, now(), now())"
+            ),
+            {
+                "i": uuid.UUID(user.id),
+                "t": uuid.UUID(tenant),
+                "e": user.email,
+                "n": APPROVER_NAME,
+            },
+        )
     app = FastAPI()
     app.include_router(design_route.router, prefix="/design")
     app.dependency_overrides[deps.get_current_user] = lambda: user
@@ -152,9 +167,8 @@ def _open(client: TestClient, project_id: str) -> Any:
 
 
 def _approve(client: TestClient, project_id: str) -> Any:
-    return client.post(
-        f"/design/projects/{project_id}/revisions/1/approval", json={"approver": APPROVER}
-    )
+    # The approver is the signed-in account; the body names no one.
+    return client.post(f"/design/projects/{project_id}/revisions/1/approval", json={})
 
 
 def _export(client: TestClient, project_id: str, fmt: str = "pdf") -> Any:

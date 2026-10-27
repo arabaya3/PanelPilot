@@ -9,9 +9,13 @@ the suite covers the refused path, and :data:`DESIGNED` leaves it out.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from random import Random
 from typing import Any
+
+from pydantic import BaseModel
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -50,3 +54,112 @@ def strict_shape(value: Any) -> Any:
     if isinstance(value, Decimal):
         return ("Decimal", str(value))
     return (type(value).__name__, value)
+
+
+@dataclass(frozen=True)
+class Bounds:
+    """A Decimal field's constraints, as its pydantic metadata declares them."""
+
+    gt: Decimal | None = None
+    ge: Decimal | None = None
+    le: Decimal | None = None
+    lt: Decimal | None = None
+    max_digits: int | None = None
+    decimal_places: int | None = None
+
+    @property
+    def bounded(self) -> bool:
+        return any(v is not None for v in (self.gt, self.ge, self.le, self.lt, self.max_digits))
+
+
+def bounds_of(model: type[BaseModel], name: str) -> Bounds:
+    """Read a field's numeric constraints from its ``FieldInfo.metadata``.
+
+    Read, never hard-coded, so a bound the schema adds later is followed here.
+    """
+    found: dict[str, Any] = {}
+    for item in model.model_fields[name].metadata:
+        for key in ("gt", "ge", "le", "lt"):
+            value = getattr(item, key, None)
+            if value is not None:
+                found[key] = Decimal(str(value))
+        for key in ("max_digits", "decimal_places"):
+            value = getattr(item, key, None)
+            if value is not None:
+                found[key] = int(value)
+    return Bounds(**found)
+
+
+def _fits(value: Decimal, b: Bounds) -> bool:
+    if b.gt is not None and not value > b.gt:
+        return False
+    if b.ge is not None and not value >= b.ge:
+        return False
+    if b.le is not None and not value <= b.le:
+        return False
+    if b.lt is not None and not value < b.lt:
+        return False
+    _sign, digits, exponent = value.as_tuple()
+    assert isinstance(exponent, int)
+    places = max(0, -exponent)
+    whole = max(len(digits) + exponent, 0) if exponent < 0 else len(digits) + exponent
+    if b.decimal_places is not None and places > b.decimal_places:
+        return False
+    return b.max_digits is None or whole + places <= b.max_digits
+
+
+def valid_edges(b: Bounds) -> list[Decimal]:
+    """Values exactly at, or the nearest step inside, each bound; all valid."""
+    step = Decimal(1).scaleb(-(b.decimal_places if b.decimal_places is not None else 3))
+    candidates = [Decimal("1"), Decimal("1.10"), Decimal("0"), Decimal("-0")]
+    for edge in (b.ge, b.le):
+        if edge is not None:
+            candidates.append(edge)
+    if b.gt is not None:
+        candidates.append(b.gt + step)
+    if b.lt is not None:
+        candidates.append(b.lt - step)
+    if b.le is not None:
+        candidates.append(b.le - step)
+    if b.max_digits is not None and b.le is None:
+        places = b.decimal_places or 0
+        candidates.append(
+            Decimal("9" * (b.max_digits - places) + ("." + "9" * places if places else ""))
+        )
+    return [c for c in candidates if _fits(c, b)]
+
+
+def invalid_edges(b: Bounds) -> list[Decimal]:
+    """Values just outside each declared bound; every one must be refused."""
+    step = Decimal(1).scaleb(-(b.decimal_places if b.decimal_places is not None else 3))
+    out: list[Decimal] = []
+    if b.gt is not None:
+        out.append(b.gt)
+    if b.ge is not None:
+        out.append(b.ge - step)
+    if b.le is not None:
+        out.append(b.le + step)
+    if b.lt is not None:
+        out.append(b.lt)
+    if b.decimal_places is not None:
+        inside = (b.le if b.le is not None else Decimal(1)) / 2
+        out.append(inside.quantize(Decimal(1)) + Decimal(1).scaleb(-(b.decimal_places + 1)))
+    if b.max_digits is not None:
+        out.append(Decimal("1" + "0" * b.max_digits))
+    return [v for v in out if not _fits(v, b)]
+
+
+def random_within(rng: Random, b: Bounds) -> Decimal:
+    """A random valid value: an edge half the time, otherwise uniform in range."""
+    edges = valid_edges(b)
+    if edges and rng.random() < 0.5:
+        return rng.choice(edges)
+    low = b.ge if b.ge is not None else (b.gt if b.gt is not None else Decimal(0))
+    high = b.le if b.le is not None else (b.lt if b.lt is not None else Decimal(10_000))
+    places = b.decimal_places if b.decimal_places is not None else rng.randint(0, 9)
+    for _ in range(50):
+        raw = Decimal(str(rng.uniform(float(low), float(high))))
+        value = raw.quantize(Decimal(1).scaleb(-places))
+        if _fits(value, b):
+            return value
+    return edges[0]

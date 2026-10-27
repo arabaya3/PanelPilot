@@ -16,20 +16,33 @@ from __future__ import annotations
 import ast
 import copy
 import sys
+import typing
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.errors import ConflictError
 from app.design import marking, snapshot
 from app.design.model import versions
+from app.design.model.convert_v1 import from_v1
 from app.design.model.read import read_snapshot
 from app.domain import design as design_domain
 from app.domain import design_projects
-from app.models.schemas.design import DesignProject, ExportFormat, ProjectDesignRequest
+from app.models.schemas.design import (
+    Cable,
+    Circuit,
+    DesignProject,
+    Device,
+    ExportFormat,
+    ProjectDesignRequest,
+    Supply,
+)
 from app.models.tables.design_projects import DesignRevisionRow
-from app.tests.design.model.compat_support import DESIGNED
+from app.tests.design.model.compat_support import DESIGNED, bounds_of, invalid_edges
 
 V1_CASES = sorted(DESIGNED)
 RESIDENTIAL = DESIGNED["residential"]["stored"]["design_snapshot"]
@@ -76,7 +89,10 @@ def test_a_non_string_marker_is_unknown_not_a_crash(marker: Any) -> None:
     with pytest.raises(ConflictError) as raised:
         read_snapshot({"schema": marker, "model": _copy(RESIDENTIAL)})
     assert raised.value.code == "snapshot_schema_unknown"
-    assert raised.value.params["schema"] == repr(marker)
+    # A scalar is echoed as its repr; a container only by its type, so a
+    # crafted row cannot make the error body huge.
+    expected = f"<{type(marker).__name__}>" if isinstance(marker, list | dict) else repr(marker)
+    assert raised.value.params["schema"] == expected
 
 
 def test_v1_in_an_envelope_is_unknown_not_a_second_form_of_v1() -> None:
@@ -326,3 +342,76 @@ def test_domain_imports_no_framework_at_runtime() -> None:
         [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == ""
+
+
+# --------------------------------------------------------------------------- #
+# Schema bounds: a value just outside one is refused, never clamped or dropped
+# --------------------------------------------------------------------------- #
+
+#: Where in the residential snapshot an instance of each model sits.
+_MODEL_AT: dict[type[BaseModel], list[Any]] = {
+    Device: ["boards", 0, "devices", 0],
+    Cable: ["boards", 0, "cables", 0],
+    Circuit: ["boards", 0, "circuits", 0],
+    Supply: ["boards", 0, "supply"],
+}
+
+
+def _bounded_decimal_fields() -> list[tuple[type[BaseModel], str, Decimal]]:
+    """Every bounded Decimal field of the located models, with each value just outside it.
+
+    Discovered from the schema's metadata, so a bound added later is tested too.
+    """
+    out: list[tuple[type[BaseModel], str, Decimal]] = []
+    for model in _MODEL_AT:
+        for name, info in model.model_fields.items():
+            if Decimal not in typing.get_args(info.annotation) and info.annotation is not Decimal:
+                continue
+            for value in invalid_edges(bounds_of(model, name)):
+                out.append((model, name, value))
+    return out
+
+
+OUT_OF_BOUNDS = _bounded_decimal_fields()
+
+
+def test_every_phase1_bound_is_exercised() -> None:
+    names = {(m.__name__, n) for m, n, _ in OUT_OF_BOUNDS}
+    assert {
+        ("Device", "rated_current_a"),
+        ("Device", "residual_current_ma"),
+        ("Device", "breaking_capacity_ka"),
+        ("Cable", "cross_section_mm2"),
+        ("Cable", "withstand_ka2s"),
+        ("Circuit", "power_kw"),
+        ("Circuit", "design_current_a"),
+        ("Circuit", "voltage_drop_percent"),
+        ("Circuit", "earth_loop_ohm"),
+    } <= names
+
+
+@pytest.mark.parametrize(
+    ("model", "name", "value"),
+    OUT_OF_BOUNDS,
+    ids=[f"{m.__name__}.{n}={v}" for m, n, v in OUT_OF_BOUNDS],
+)
+def test_a_value_just_outside_a_bound_is_refused(
+    model: type[BaseModel], name: str, value: Decimal
+) -> None:
+    stored = _copy(RESIDENTIAL)
+    target: Any = stored
+    for step in _MODEL_AT[model]:
+        target = target[step]
+    target[name] = str(value)
+    with pytest.raises(versions.SnapshotUnreadableError):
+        read_snapshot(stored)
+    with pytest.raises(PydanticValidationError):
+        from_v1(stored)
+
+
+def test_a_starter_on_a_non_motor_circuit_is_refused() -> None:
+    stored = _copy(RESIDENTIAL)
+    circuit = next(c for c in stored["boards"][0]["circuits"] if c["load"] != "motor")
+    circuit["starter"] = "dol"
+    with pytest.raises(versions.SnapshotUnreadableError):
+        read_snapshot(stored)

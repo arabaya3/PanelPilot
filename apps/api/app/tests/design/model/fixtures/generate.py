@@ -30,12 +30,15 @@ from typing import Any
 from app.design import markets, snapshot
 from app.domain.design_projects import _validate
 from app.models.schemas.design import (
+    Cable,
     Designation,
     DesignProject,
     Device,
     DeviceKind,
+    Part,
     ProjectDesignRequest,
 )
+from app.tests.design.model.compat_support import bounds_of, valid_edges
 
 HERE = Path(__file__).parent
 
@@ -278,22 +281,48 @@ def _every_kind(base: dict[str, Any]) -> dict[str, Any]:
     return _rehash(project, base)
 
 
+#: Exotic Decimal texts, kept on a field the schema leaves unbounded.
+UNBOUNDED_EDGES = ("0", "-0", "0.000000001", "1E-12", "99999999999999999999.99", "1.10", "1E+3")
+
+#: The bounded Decimal fields whose edges the fixture holds, by model.
+DEVICE_FIELDS = ("rated_current_a", "residual_current_ma", "breaking_capacity_ka")
+CABLE_FIELDS = ("cross_section_mm2", "withstand_ka2s", "length_m")
+
+
 def _decimal_edges(base: dict[str, Any]) -> dict[str, Any]:
+    """Every bounded field at (and one step inside) each bound its schema metadata declares.
+
+    The bounds are read from the schema (``compat_support.bounds_of``), so the
+    fixture follows the schema when a bound changes. Exotic texts go on
+    ``Part.width_mm``, which is unbounded.
+    """
     project = DesignProject.model_validate(base["design_snapshot"])
     board = project.boards[0]
-    values = ["0", "-0", "0.000000001", "1E-12", "99999999999999999999.99", "1.10", "1E+3"]
-    for i, value in enumerate(values):
-        board.devices.append(
-            Device(
-                id=f"dec-{i}",
-                kind=DeviceKind.OTHER,
-                rated_current_a=Decimal(value),
-                residual_current_ma=Decimal(value),
-                breaking_capacity_ka=Decimal(value),
-                poles=1 + i % 4,
+    for name in DEVICE_FIELDS:
+        for i, value in enumerate(valid_edges(bounds_of(Device, name))):
+            board.devices.append(
+                Device(id=f"dec-{name}-{i}", kind=DeviceKind.OTHER, **{name: value})
+            )
+    for name in CABLE_FIELDS:
+        for i, value in enumerate(valid_edges(bounds_of(Cable, name))):
+            board.cables.append(
+                Cable(
+                    id=f"dec-{name}-{i}",
+                    cores=1,
+                    **{"cross_section_mm2": Decimal("1.5"), name: value},
+                )
+            )
+    for i, text in enumerate(UNBOUNDED_EDGES):
+        project.parts.append(
+            Part(
+                key=f"dec-part-{i}",
+                manufacturer="Synthetic",
+                type_number=f"T{i}",
+                description="Decimal edge",
+                width_mm=Decimal(text),
             )
         )
-    return _rehash(project, base)
+    return _rehash(DesignProject.model_validate(project.model_dump()), base)
 
 
 def _empty_lists(base: dict[str, Any]) -> dict[str, Any]:

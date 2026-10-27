@@ -548,8 +548,8 @@
         "code": "integrity_drive_cable_unchecked",
         "device_id": null,
         "message": "Mixer: the cable after a drive is protected by the drive's motor overload setting, which is not checked here.",
-        "requires_engineering_confirmation": false,
-        "severity": "info",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
         "source": "policy",
         "values": {}
       },
