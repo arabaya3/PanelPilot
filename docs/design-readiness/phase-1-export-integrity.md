@@ -31,7 +31,7 @@ connectivity, soft-starter control, mechanical layout) has not started.
 - **Revision export** (`POST /design/projects/{id}/revisions/{n}/export`) loads the snapshot. It then:
   - recomputes the hash (`snapshot_integrity_failed`);
   - checks the rules, profile, catalogue and findings policy (`revision_stale`, naming what changed);
-  - reads the approval only from the database row, never from the request. The printed approver name is the one typed at approval (`approved_by`). The approving account is recorded separately (`approved_account`, shown in the app as a display name). Nothing stops a user from typing another person's name, which is a decision for a later phase (see "Remaining limitations").
+  - reads the approval only from the database row, never from the request. The approver shown and printed is the approving account (its display name, or "a team member"), never a typed name; see "Approver identity and privacy".
 
   It never recalculates. Another tenant's project, or an unknown one, is `revision_not_found`, the same answer for both.
 
@@ -308,15 +308,29 @@ These are the owner's decisions, implemented on the existing authentication arch
   - every refusal of a cross-site request.
 - **Run against the code before the fixes,** the once-only grace, the 10 s window, the deadlock and the dev-loopback tests fail. The `__Host-` cookie tests cannot import there.
 
-### Approver privacy
+### Approver identity and privacy (final)
 
-- **The API never sends an account's email.** `RevisionSummary` now carries `approver_name`, the account's display name resolved in the project's own tenant, and `approver_account_recorded`.
-- **`author` is a display name too.** A missing name, or one containing "@", is sent as nothing, and the UI says "a team member".
-- **The audit identity is unchanged in the database.** `approved_account` keeps the email, and `approved_by` keeps the name typed.
-- **Exports** (PDF, calculations PDF, DXF, JSON) carry only the typed approver name, the hash and the rules version.
-- **Tests:** no "@" in any approval or project response, nor in any export; the display name and its fallback; another tenant gets 404 and an empty list; the database keeps the audit identity.
-- **No role is allowed to see the email.** An `admin` role exists, but nothing grants it that.
-- **`approved_by` is free text,** so a user can type an email there themselves.
+- **The approver is the authenticated account, never a typed name.**
+  - The approval request has no name field: only an optional `note` of up to 200 characters. A client that sends `approver`, `approved_by`, or any other field gets 422, so nobody can submit someone else's name.
+  - Approving needs a real signed-in account. A trial gets 403 `approval_requires_account`, and the approve control shows the reason.
+- **What is recorded.** Every approval stores the server-owned audit identity: `approved_account` (the email from the token) and `approved_user_id` (migration `f8c4a2e6d9b3`; no foreign key, so the record survives deleting the account), plus `approval_note`. `approved_snapshot_sha256` is unchanged.
+- **What is shown.** The account's verified display name (`users.full_name`, resolved by id, or by email for older rows, within the project's tenant), or the neutral fallback "a team member". The same value appears in:
+  - the API (`approved_by` / `approver_name`);
+  - the UI, as "You are approving as …" before approving and the approver afterwards;
+  - the drawing title block, the DXF, the calculations PDF ("Review approved by …"), the export identity line and the JSON.
+  - It is never an email.
+- **The note** is labelled "Approval note" wherever it appears. It is never in an approver slot.
+- **Legacy rows.** The typed `approved_by` of approvals made before this change is kept in the database for audit only. It is never shown or exported. Such rows show the account's name if their `approved_account` resolves in the tenant, otherwise the fallback.
+- **`author`** is a display name too, or nothing.
+- **Tests,** which fail against the old code:
+  - someone else's name is refused with 422;
+  - the account's name appears in the API, UI and every export;
+  - no "@" anywhere;
+  - the fallback;
+  - legacy rows;
+  - a trial is refused;
+  - another tenant gets no approval identity.
+- **No role is allowed to see the email.** Any account in the tenant whose plan includes approval may approve; there is no role check beyond that. Whether approval needs a role is an owner decision.
 
 ### Trial projects
 
@@ -480,7 +494,7 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
 - **Final independent review** (an agent that implemented none of this, reading the full diff `daeb143..8f21ab9`): approved for Phase 1, with no blocking defects in the code it read. It named what it did not read: integrity rules, findings policy, quotation pricing bounds, frontend components, and the tenant filter itself. Its findings:
   - **D-1, the multi-tab edge:** confirmed and fixed as above.
   - **P-1:** a float written into a stored snapshot gave a 500. It now counts as a hash mismatch (`snapshot_integrity_failed`), with a test.
-  - **P-2:** the printed approver is the typed name. The wording is corrected above, and the matter is recorded as a limitation.
+  - **P-2:** the printed approver was the typed name. Now fixed: the approver is the authenticated account (see "Approver identity and privacy").
   - **P-3:** an old-key token that cannot be re-derived still clears the cookie. Low; it only affects old tokens.
   - **P-4:** rolling-deploy legacy tokens. Documented.
   - **P-5:** most auth tests use `ROTATE_AFTER = 0`. The production rule is covered by the `real_rotation` tests, now including the keep-then-rotate reversal.
@@ -504,7 +518,7 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
    - **Single tab:** a lone tab whose refresh answer is truly lost, followed by its next refresh more than 10 s later with no other open tab to lend a current access token, ends that session. It fails safe, and the user signs in once.
    - **Key compromise:** follow the documented revoke-all-sessions step.
    - **Approval visibility:** any tenant member whose plan includes approval may approve, and there is no role check beyond the plan.
-   - **Approver name:** the printed name is the one typed at approval, while the approving account is recorded separately.
+   - **Approval roles:** any account in the tenant whose plan includes approval may approve; there is no role check (owner decision).
 6. **Approvals show "a team member"** when an account has no display name. This is accepted for this phase.
 7. **Trial projects stay with the trial** when signing in to an existing account, by decision.
 8. **Native Arabic and Hebrew review** of every new string is still outstanding. The AI review is not a native-speaker review.

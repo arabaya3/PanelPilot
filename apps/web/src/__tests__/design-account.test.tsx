@@ -397,28 +397,29 @@ describe('signing out', () => {
 });
 
 describe('the approval', () => {
-  it('names the account by its display name, and none the server did not record', () => {
+  it('names the approver by the account the server resolved, never a typed name', () => {
     const project = saved();
     const [first] = project.revisions;
     if (!first) throw new Error('no revision');
-    first.approved_by = 'R. Engineer';
+    // A legacy row: the server sends the fallback, never the name once typed.
+    first.approved_by = 'a team member';
     first.approved_at = '2026-10-03T10:00:00Z';
-    expect(approvalOf(project)).toEqual({ by: 'R. Engineer', at: '2026-10-03T10:00:00Z' });
+    expect(approvalOf(project)).toEqual({ by: null, at: '2026-10-03T10:00:00Z', note: null });
     first.approver_account_recorded = true;
-    expect(approvalOf(project)).toEqual({
-      by: 'R. Engineer',
-      at: '2026-10-03T10:00:00Z',
-      approver: { name: null },
-    });
     first.approver_name = 'Rana Haddad';
+    first.approved_by = 'Rana Haddad';
+    first.approval_note = 'R. Engineer';
     expect(approvalOf(project)).toEqual({
-      by: 'R. Engineer',
+      by: 'Rana Haddad',
       at: '2026-10-03T10:00:00Z',
-      approver: { name: 'Rana Haddad' },
+      note: 'R. Engineer',
     });
   });
 
-  const panel = (approver: { name: string | null }) =>
+  const panel = (
+    by: string | null,
+    options: { trial?: boolean; locale?: 'en' | 'ar' | 'he' } = {},
+  ) =>
     renderApp(
       <ProjectsPanel
         token="t"
@@ -428,25 +429,81 @@ describe('the approval', () => {
           name: 'Tower',
           revision: 1,
           revisions: [1],
-          approval: { by: 'R. Engineer', at: '2026-10-03T10:00:00Z', approver },
+          approval: { by, at: '2026-10-03T10:00:00Z', note: 'R. Engineer' },
+          approvingAs: 'Rana Haddad',
         }}
         onOpened={vi.fn()}
+        trial={options.trial ?? false}
         impls={{ list: api.list }}
       />,
+      options.locale ? { locale: options.locale } : {},
     );
 
   it('shows the approving account by its display name, never an email', async () => {
-    panel({ name: 'Rana Haddad' });
-    const line = await screen.findByTestId('project-approval-account');
-    expect(line.textContent).toBe('Approved while signed in as Rana Haddad.');
+    panel('Rana Haddad');
+    const line = await screen.findByTestId('project-approval');
+    expect(line.textContent).toBe('Revision 1 approved by Rana Haddad on 2026-10-03.');
     expect(line.textContent).not.toContain('@');
+    // The note is shown as a note, never as the approver.
+    expect(screen.getByTestId('project-approval-note').textContent).toBe(
+      'Approval note: R. Engineer',
+    );
   });
 
   it('says a team member when the account has no display name', async () => {
-    panel({ name: null });
-    expect((await screen.findByTestId('project-approval-account')).textContent).toBe(
-      'Approved while signed in as a team member.',
+    panel(null);
+    expect((await screen.findByTestId('project-approval')).textContent).toBe(
+      'Revision 1 approved by a team member on 2026-10-03.',
     );
+  });
+});
+
+describe('approving in a trial', () => {
+  const trialPanel = (locale: 'en' | 'ar' | 'he') =>
+    renderApp(
+      <ProjectsPanel
+        token="t"
+        current={null}
+        opened={{
+          id: 'p1',
+          name: 'Tower',
+          revision: 1,
+          revisions: [1],
+          approval: null,
+          approvingAs: null,
+        }}
+        onOpened={vi.fn()}
+        trial
+        impls={{ list: api.list }}
+      />,
+      { locale },
+    );
+
+  it.each([
+    ['en', 'Approving a revision needs a signed-in account. Sign in to approve; a trial cannot.'],
+    [
+      'ar',
+      'اعتماد نسخة يتطلب حساباً مسجَّل الدخول. سجّل الدخول للاعتماد؛ لا تستطيع النسخة التجريبية ذلك.',
+    ],
+    ['he', 'אישור גרסה דורש חשבון מחובר. יש להתחבר כדי לאשר; ניסיון אינו יכול לאשר.'],
+  ] as const)('is unavailable, with the reason, in %s', async (locale, reason) => {
+    trialPanel(locale);
+    expect((await screen.findByTestId('approve-held-trial')).textContent).toContain(reason);
+    const button = screen
+      .getAllByRole('button')
+      .find((element) => element.getAttribute('aria-describedby')?.endsWith('-approve-held'));
+    expect(button).toBeDefined();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('approving-as')).toBeNull();
+  });
+
+  it('reads the server refusal in every language', async () => {
+    const { MESSAGES } = await import('./helpers');
+    for (const locale of ['en', 'ar', 'he'] as const) {
+      const errors = (MESSAGES[locale] as { design: { errors: Record<string, string> } }).design
+        .errors;
+      expect(errors.approval_requires_account).toBeTruthy();
+    }
   });
 });
 

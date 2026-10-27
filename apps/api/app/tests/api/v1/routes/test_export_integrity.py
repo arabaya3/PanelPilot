@@ -155,10 +155,33 @@ def _tenants(engine: Engine) -> tuple[str, str]:
 
 
 class _Caller:
-    """Who the next request is from; switched by a test to attack across tenants."""
+    """Who the next request is from; switched by a test to attack across tenants.
 
-    def __init__(self, tenant: str) -> None:
+    The default caller is a real account of tenant A, named ``APPROVER``: an
+    approval names its account's display name, never anything typed.
+    """
+
+    def __init__(self, tenant: str, engine: Engine) -> None:
         self.user = _user(tenant)
+        _account_row(engine, self.user, APPROVER)
+
+
+def _account_row(engine: Engine, user: CurrentUser, full_name: str | None) -> None:
+    """The users row behind ``user``, replacing any left by another test."""
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": user.email})
+        conn.execute(
+            text(
+                "INSERT INTO users (id, tenant_id, email, full_name, is_active, "
+                "created_at, updated_at) VALUES (:i, :t, :e, :n, true, now(), now())"
+            ),
+            {
+                "i": uuid.UUID(user.id),
+                "t": uuid.UUID(user.tenant_id),
+                "e": user.email,
+                "n": full_name,
+            },
+        )
 
 
 def _user(tenant: str, email: str = "eng-a@example.com") -> CurrentUser:
@@ -168,8 +191,8 @@ def _user(tenant: str, email: str = "eng-a@example.com") -> CurrentUser:
 
 
 @pytest.fixture(name="caller")
-def _caller(tenants: tuple[str, str]) -> _Caller:
-    return _Caller(tenants[0])
+def _caller(engine: Engine, tenants: tuple[str, str]) -> _Caller:
+    return _Caller(tenants[0], engine)
 
 
 @pytest.fixture(name="app")
@@ -288,9 +311,11 @@ def revise(client: TestClient, project_id: str, request: dict[str, Any] | None =
     )
 
 
-def approve(client: TestClient, project_id: str, number: int, approver: str = APPROVER) -> Any:
+def approve(client: TestClient, project_id: str, number: int, note: str | None = None) -> Any:
+    """Approve as the caller. The body names no one: only an optional note."""
     return client.post(
-        f"/design/projects/{project_id}/revisions/{number}/approval", json={"approver": approver}
+        f"/design/projects/{project_id}/revisions/{number}/approval",
+        json={} if note is None else {"note": note},
     )
 
 
@@ -630,19 +655,16 @@ def test_approval_cannot_be_forged_through_the_approval_body(
     saved = save(client)
     response = client.post(
         f"/design/projects/{saved['id']}/revisions/1/approval",
-        json={"approver": APPROVER, "approved_snapshot_sha256": "0" * 64},
+        json={"approved_snapshot_sha256": "0" * 64},
     )
-    if response.status_code == 200:
-        row = revision_row(engine, saved["id"], 1)
-        assert row["approved_snapshot_sha256"] == row["snapshot_sha256"]
-    else:
-        assert response.status_code == 422
+    assert response.status_code == 422, response.text
+    assert revision_row(engine, saved["id"], 1)["approved_at"] is None
 
 
 def test_approval_is_single(client: TestClient) -> None:
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
-    again = approve(client, saved["id"], 1, approver="Someone Else")
+    again = approve(client, saved["id"], 1, note="Someone Else")
     assert again.status_code in (400, 409, 422)
     assert error(again)["code"] == "revision_already_approved"
 
@@ -895,10 +917,11 @@ def test_another_tenant_cannot_read_export_or_approve(
     for purpose in ("review", "execution"):
         r = revision_export(client, saved["id"], 1, "json", purpose=purpose)
         assert r.status_code == 404, (purpose, r.status_code)
-    approval = approve(client, saved["id"], 1, approver="INTRUDER")
+    approval = approve(client, saved["id"], 1, note="INTRUDER")
     assert approval.status_code == 404
     assert revise(client, saved["id"]).status_code == 404
     assert revision_row(engine, saved["id"], 1)["approved_by"] is None
+    assert revision_row(engine, saved["id"], 1)["approved_at"] is None
 
 
 def test_malformed_ids_are_404_not_500(client: TestClient) -> None:
@@ -1009,9 +1032,7 @@ def test_huge_revision_number_is_refused_not_500(client: TestClient, number: str
     saved = save(client)
     pid = saved["id"]
     responses = {
-        "approval": client.post(
-            f"/design/projects/{pid}/revisions/{number}/approval", json={"approver": APPROVER}
-        ),
+        "approval": client.post(f"/design/projects/{pid}/revisions/{number}/approval", json={}),
         "export": client.post(
             f"/design/projects/{pid}/revisions/{number}/export", json={"format": "pdf"}
         ),
@@ -1031,7 +1052,7 @@ def test_another_tenant_gets_revision_not_found_on_revision_endpoints(
     caller.user = _user(tenants[1], email="intruder@example.com")
     pid = saved["id"]
     responses = {
-        "approval": approve(client, pid, 1, approver="INTRUDER"),
+        "approval": approve(client, pid, 1, note="INTRUDER"),
         "export": revision_export(client, pid, 1, "pdf"),
         "open": client.get(f"/design/projects/{pid}?revision=1"),
     }
@@ -1068,10 +1089,12 @@ def test_no_export_says_issued_or_execution_ready(client: TestClient, fmt: str, 
 def test_second_approval_is_409_already_approved(client: TestClient, engine: Engine) -> None:
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
-    again = approve(client, saved["id"], 1, approver="Second Approver")
+    again = approve(client, saved["id"], 1, note="Second Approver")
     assert again.status_code == 409, again.text
     assert error(again)["code"] == "revision_already_approved"
-    assert revision_row(engine, saved["id"], 1)["approved_by"] == APPROVER
+    row = revision_row(engine, saved["id"], 1)
+    assert row["approval_note"] is None
+    assert row["approved_by"] is None
 
 
 def test_overlong_project_name_is_refused(client: TestClient) -> None:
@@ -1081,3 +1104,60 @@ def test_overlong_project_name_is_refused(client: TestClient) -> None:
     response = client.post("/design/projects", json={"name": "big", "request": big})
     assert response.status_code == 422, response.status_code
     assert error(response)["detail"][0]["loc"] == ["body", "request", "info", "name"]
+
+
+# --------------------------------------------------------------------------- #
+# Approval identity: the signed-in account, never a typed name
+# --------------------------------------------------------------------------- #
+
+
+def test_submitting_someone_elses_name_is_refused(client: TestClient, engine: Engine) -> None:
+    saved = save(client)
+    for body in ({"approver": FORGED_APPROVER}, {"approver": FORGED_APPROVER, "note": "x"}):
+        response = client.post(f"/design/projects/{saved['id']}/revisions/1/approval", json=body)
+        assert response.status_code == 422, response.text
+    row = revision_row(engine, saved["id"], 1)
+    assert row["approved_at"] is None
+    assert row["approved_by"] is None
+
+
+def test_the_approval_names_the_account_everywhere_and_the_note_only_as_a_note(
+    client: TestClient, engine: Engine, caller: _Caller
+) -> None:
+    saved = save(client)
+    assert saved["approving_as"] == APPROVER
+    response = approve(client, saved["id"], 1, note=FORGED_APPROVER)
+    assert response.status_code == 200, response.text
+    (summary,) = response.json()["revisions"]
+    assert summary["approved_by"] == APPROVER
+    assert summary["approver_name"] == APPROVER
+    assert summary["approval_note"] == FORGED_APPROVER
+    assert "@" not in response.text
+    row = revision_row(engine, saved["id"], 1)
+    assert (row["approved_account"], str(row["approved_user_id"])) == (
+        caller.user.email,
+        caller.user.id,
+    )
+    for fmt in ("pdf", "calculations_pdf", "dxf", "json"):
+        exported = revision_export(client, saved["id"], 1, fmt)
+        assert exported.status_code == 200, (fmt, exported.text[:300])
+        body = text_of(fmt, exported.content)
+        assert APPROVER in body, fmt
+        assert caller.user.email not in body, fmt
+        assert f"approved by {FORGED_APPROVER}" not in body, fmt
+        if fmt == "calculations_pdf":
+            assert f"Review approved by {APPROVER}" in body
+            assert f"Approval note: {FORGED_APPROVER}" in body
+        if fmt in ("pdf", "dxf"):
+            assert FORGED_APPROVER not in body, fmt
+
+
+def test_a_trial_caller_is_refused_approval(
+    client: TestClient, engine: Engine, caller: _Caller
+) -> None:
+    saved = save(client)
+    caller.user = caller.user.model_copy(update={"email": "", "id": str(uuid.uuid4())})
+    response = approve(client, saved["id"], 1)
+    assert response.status_code == 403, response.text
+    assert error(response)["code"] == "approval_requires_account"
+    assert revision_row(engine, saved["id"], 1)["approved_at"] is None

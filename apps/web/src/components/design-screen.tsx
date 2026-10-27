@@ -164,8 +164,11 @@ const INITIAL_INFO: ProjectInfo = {
   contractor: '',
 };
 
+/** How long a download's object URL outlives the click that starts it. */
+export const REVOKE_AFTER_MS = 1000;
+
 /** Save a blob under a name, the way a download link does. */
-function saveBlob(blob: Blob, filename: string) {
+export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -173,7 +176,11 @@ function saveBlob(blob: Blob, filename: string) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revoked later, not at once: some browsers start reading the blob only
+  // after `click()` returns, and a revoked URL saves nothing.
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, REVOKE_AFTER_MS);
 }
 
 /** A market's supply as a board's defaults; IEC 60364's without one. */
@@ -219,12 +226,14 @@ export function snapshotOf(
 
 /**
  * The title block's revisions as a design depends on them. Who approved a
- * revision is left out: an approval signs the stored revision without
+ * revision, and the note to that approval, are left out: an approval signs the stored revision without
  * changing anything it was calculated from, so it does not make a design of
  * that revision stale. A row added or edited does.
  */
 export function titleBasis(rows: readonly TitleRevision[]): string {
-  return JSON.stringify(rows.map((row) => ({ ...row, approved_by: undefined })));
+  return JSON.stringify(
+    rows.map((row) => ({ ...row, approved_by: undefined, approval_note: undefined })),
+  );
 }
 
 /**
@@ -579,6 +588,9 @@ function DesignWorkspace({
         ? `trial:${trialId ?? ''}`
         : 'signed-out';
   const currentOwner = useRef(ownerKey);
+  // An export in flight: its buttons wait for it, so a double click sends one.
+  const [exporting, setExporting] = useState(false);
+  const exportingRef = useRef(false);
   useLayoutEffect(() => {
     currentOwner.current = ownerKey;
   });
@@ -818,6 +830,7 @@ function DesignWorkspace({
       revision: project.revision,
       revisions: project.revisions.map((revision) => revision.number),
       approval: approvalOf(project),
+      approvingAs: project.approving_as ?? null,
     });
     setHistory(project.revisions);
     // A save, an approval or an opening each answer with the revision as now
@@ -891,16 +904,44 @@ function DesignWorkspace({
     }
   }
 
+  /**
+   * Run one export at a time, and apply its outcome only while the page is
+   * still the identity's that asked: a file or refusal for the last identity
+   * (a trial since signed in, an account signed out) is let go.
+   */
+  async function exclusiveExport<T>(request: () => Promise<T>, handle: (outcome: T) => void) {
+    // A ref, not only the state: a second click before the re-render must not send again.
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExporting(true);
+    const owner = ownerKey;
+    try {
+      const outcome = await request();
+      if (currentOwner.current === owner) handle(outcome);
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
+    }
+  }
+
   async function download(format: ExportFormat) {
     // A design the inputs have moved on from is not exported as if current.
     if (token === null || result.kind !== 'designed' || result.basis !== basis) return;
     setExportError(null);
-    const outcome = await exportImpl({
-      token,
-      project: result.response.project,
-      format,
-      profile: result.profile,
-    });
+    const designedNow = result;
+    await exclusiveExport(
+      () =>
+        exportImpl({
+          token,
+          project: designedNow.response.project,
+          format,
+          profile: designedNow.profile,
+        }),
+      onDraftExported,
+    );
+  }
+
+  function onDraftExported(outcome: Awaited<ReturnType<typeof exportDesign>>) {
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
     } else {
@@ -918,13 +959,14 @@ function DesignWorkspace({
     if (token === null || opened === null || dirty) return;
     setRevisionError(null);
     setExecutionRefusal(null);
-    const outcome = await exportRevisionImpl({
-      token,
-      id: opened.id,
-      revision: opened.revision,
-      format,
-      purpose,
-    });
+    const { id: projectId, revision } = opened;
+    await exclusiveExport(
+      () => exportRevisionImpl({ token, id: projectId, revision, format, purpose }),
+      onRevisionExported,
+    );
+  }
+
+  function onRevisionExported(outcome: Awaited<ReturnType<typeof exportRevision>>) {
     if (outcome.kind === 'exported') {
       saveImpl(outcome.blob, outcome.filename);
       return;
@@ -1491,6 +1533,7 @@ function DesignWorkspace({
                 blockers={readiness.approvalBlockers}
                 blockingCount={readiness.blockingCount}
                 approvalCovers={readiness.approvalCovers}
+                trial={identity === 'trial'}
                 note={revisionNote}
                 onNoteChange={setRevisionNote}
                 onRefused={forOwner((refusal: Refusal) => {
@@ -1825,21 +1868,44 @@ function DesignWorkspace({
                             {entry.created_at.slice(0, 10)}
                           </td>
                           <td className="p-2">
-                            {entry.approved_by && entry.approved_at ? (
-                              <StatusBadge tone="success">
-                                {tw('revisions.approvedBy', {
-                                  name: entry.approved_by,
-                                  date: entry.approved_at.slice(0, 10),
-                                })}
-                              </StatusBadge>
+                            {entry.approved_at ? (
+                              <>
+                                {/* Covering only when the server's snapshot says so,
+                                    as the overview and the panel read it. */}
+                                <StatusBadge
+                                  tone={
+                                    entry.number === opened.revision &&
+                                    readiness.approved === 'done'
+                                      ? 'success'
+                                      : 'warning'
+                                  }
+                                  testId={`revision-approval-${String(entry.number)}`}
+                                >
+                                  {tw('revisions.approvedBy', {
+                                    name: entry.approver_name ?? t('projects.teamMember'),
+                                    date: entry.approved_at.slice(0, 10),
+                                  })}
+                                </StatusBadge>
+                                {entry.number !== opened.revision ? (
+                                  <span className="ms-2 text-xs text-text-muted">
+                                    {t('projects.approvalUnchecked', { revision: entry.number })}
+                                  </span>
+                                ) : (
+                                  !readiness.approvalCovers && (
+                                    <span className="ms-2 text-xs text-text-muted">
+                                      {t('projects.approvalNotCovering', {
+                                        revision: entry.number,
+                                      })}
+                                    </span>
+                                  )
+                                )}
+                              </>
                             ) : (
                               <StatusBadge tone="warning">{tw('context.draft')}</StatusBadge>
                             )}
-                            {entry.approved_at && entry.approver_account_recorded && (
+                            {entry.approved_at && entry.approval_note && (
                               <span className="ms-2 text-xs text-text-muted" dir="auto">
-                                {entry.approver_name
-                                  ? t('projects.approverAccount', { name: entry.approver_name })
-                                  : t('projects.approverAccountUnnamed')}
+                                {t('projects.approvalNoteShown', { note: entry.approval_note })}
                               </span>
                             )}
                           </td>
@@ -1966,18 +2032,14 @@ function DesignWorkspace({
                   <Notice tone={readiness.approved === 'done' ? 'success' : 'warning'} live={false}>
                     {t('projects.approvedBy', {
                       revision: opened.revision,
-                      name: opened.approval.by,
+                      name: opened.approval.by ?? t('projects.teamMember'),
                       date: opened.approval.at.slice(0, 10),
                     })}
                     {!readiness.approvalCovers &&
                       ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
                     {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
-                    {opened.approval.approver !== undefined &&
-                      ` ${
-                        opened.approval.approver.name === null
-                          ? t('projects.approverAccountUnnamed')
-                          : t('projects.approverAccount', { name: opened.approval.approver.name })
-                      }`}
+                    {opened.approval.note &&
+                      ` ${t('projects.approvalNoteShown', { note: opened.approval.note })}`}
                   </Notice>
                 ) : (
                   <Notice
@@ -2013,6 +2075,7 @@ function DesignWorkspace({
                       <ExportPanel
                         onExport={(format) => downloadRevision(format)}
                         exportError={revisionError}
+                        busy={exporting}
                         testIdPrefix="revision-export"
                       />
                       <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
@@ -2022,6 +2085,7 @@ function DesignWorkspace({
                             type="button"
                             className="btn btn-sm btn-secondary"
                             data-testid="execution-export"
+                            disabled={exporting}
                             onClick={() => {
                               void downloadRevision('pdf', 'execution');
                             }}
@@ -2051,7 +2115,7 @@ function DesignWorkspace({
                   <Notice tone="warning" live={false} title={t('exports.draftMark')}>
                     {t('exports.draftBody')}
                   </Notice>
-                  <ExportPanel onExport={download} exportError={exportError} />
+                  <ExportPanel onExport={download} exportError={exportError} busy={exporting} />
                 </div>
               ) : stale ? (
                 designAgain

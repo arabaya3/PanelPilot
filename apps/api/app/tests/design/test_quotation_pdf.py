@@ -47,3 +47,16 @@ def test_typed_text_is_not_read_as_markup_and_arabic_is_drawn(
         fonts = {c["fontname"].split("+")[-1] for p in pdf.pages for c in p.chars}
     assert "DejaVuSans-Bold" in fonts or "DejaVuSans" in fonts
     assert "<b>Tower & Co</b>" in _text(data)
+
+
+def test_a_forged_supplier_description_does_not_name_a_device(
+    hall_project: DesignProject,
+) -> None:
+    entries = [
+        PriceListEntry(key="EKM6-63X-3C63", description="FORGED 400 A MCCB", unit_price=Decimal(55))
+    ]
+    priced = quotation.price_project(hall_project, PricingSettings(price_list=entries))
+    incomer = next(line for line in priced.lines if line.key == "EKM6-63X-3C63")
+    text = _text(quotation_pdf.render_quotation_pdf(priced, hall_project))
+    assert "FORGED" not in text
+    assert incomer.description in text

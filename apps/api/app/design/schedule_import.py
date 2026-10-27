@@ -37,6 +37,9 @@ MAX_SCHEDULE_BYTES = 5 * 1024 * 1024
 #: does not.
 MAX_ROWS = 5000
 _MAX_COLUMNS = 60
+#: The longest CSV cell read: the csv module's default field limit, held here
+#: whatever that process-wide limit has been set to.
+_MAX_CSV_FIELD = 131_072
 _MAX_SHEETS = 20
 
 #: Pages of a PDF searched for the schedule: a schedule is a few pages, and
@@ -183,7 +186,21 @@ def _rows_from_csv(data: bytes) -> list[list[str]]:
     except csv.Error:
         delimiter = ","
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    return [[c.strip() for c in row[:_MAX_COLUMNS]] for row in itertools.islice(reader, MAX_ROWS)]
+    try:
+        rows = [row[:_MAX_COLUMNS] for row in itertools.islice(reader, MAX_ROWS)]
+    except csv.Error as exc:
+        # A field past the csv module's limit, or a malformed quote: the
+        # file is unreadable, which is the caller's to fix, not a 500.
+        raise ValidationError(f"the CSV file cannot be read: {exc}", code="csv_unreadable") from exc
+    # The csv module's field limit is process-wide, and another reader (the
+    # EPLAN ingest) may have raised it; this reader holds its own.
+    if any(len(cell) > _MAX_CSV_FIELD for row in rows for cell in row):
+        raise ValidationError(
+            f"the CSV file has a cell longer than {_MAX_CSV_FIELD} characters",
+            code="csv_field_too_long",
+            params={"limit": _MAX_CSV_FIELD},
+        )
+    return [[c.strip() for c in row] for row in rows]
 
 
 #: Column and row edges taken from the text's alignment, for a table drawn

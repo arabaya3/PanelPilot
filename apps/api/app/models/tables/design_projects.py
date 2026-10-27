@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,9 +64,17 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     author: Mapped[str] = mapped_column(String(320), nullable=False, default="")
     request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # Set once, when the engineer approves this revision; never cleared. The
-    # name is the one the title block prints; the account is who signed in.
+    # approver is the signed-in account: its email and (since f8c4a2e6d9b3)
+    # its id, from the token, never from the request. The API and every
+    # export name it by its display name, resolved in the tenant when they are
+    # built. ``approved_by`` is legacy: the free text typed at approval before
+    # then. It is kept for the audit and never shown; a new approval leaves it
+    # NULL.
     approved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     approved_account: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    approved_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # What the engineer added to the approval, optionally; never an identity.
+    approval_note: Mapped[str | None] = mapped_column(String(200), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # What the server designed from ``request`` when the revision was saved,
     # and what binds an approval and an export to it. All NULL on a revision

@@ -78,6 +78,7 @@ PHRASES: tuple[str, ...] = (
     "Consultant: {value}",
     "Revision {index}, {date}",
     "Review approved by {name}: a study, not for execution.",
+    "Approval note: {value}",
     "NOT APPROVED: for review only, not for execution.",
     "The design rules are this software's defaults; the company has not confirmed them.",
     "Basis of calculation",
@@ -270,9 +271,14 @@ def render_calculations_pdf(
     story.extend(_paragraph(d, styles["body"]) for d in details if d)
     if latest and latest.approved_by:
         approved = words(
-            "Review approved by {name}: a study, not for execution.", name=latest.approved_by
+            "Review approved by {name}: a study, not for execution.",
+            name=words.person(latest.approved_by),
         )
         story.append(_paragraph(approved, styles["body"], bold=True))
+        if latest.approval_note:
+            # Labelled as a note, apart from the line naming the approver.
+            note = words("Approval note: {value}", value=latest.approval_note)
+            story.append(_paragraph(note, styles["body"]))
     else:
         refused = words("NOT APPROVED: for review only, not for execution.")
         story.append(_paragraph(refused, styles["body"], bold=True))
@@ -301,7 +307,7 @@ def render_calculations_pdf(
             [
                 _paragraph(name, styles["body"])
                 for name in (
-                    (latest.drawn_by, latest.checked_by, latest.approved_by)
+                    (latest.drawn_by, latest.checked_by, words.person(latest.approved_by))
                     if latest
                     else ("", "", "")
                 )

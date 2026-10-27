@@ -18,7 +18,7 @@ import type {
 
 import type * as DesignModule from '@/lib/design';
 
-import { renderApp } from './helpers';
+import { asSignedIn, renderApp } from './helpers';
 
 /**
  * Unsaved work and stale results on `/design`: what a save marks as saved,
@@ -118,15 +118,19 @@ function renderScreen(
     designImpl?: typeof designProject;
     exportImpl?: typeof exportDesign;
     saveImpl?: (blob: Blob, filename: string) => void;
+    /** Render as a signed-in account (approving needs one), not a trial. */
+    account?: boolean;
   } = {},
 ) {
-  renderApp(
+  const { account = false, ...impls } = extra;
+  const screenUi = (
     <DesignScreen
       acquireImpl={vi.fn().mockResolvedValue(READY)}
       marketsImpl={vi.fn().mockResolvedValue(null)}
-      {...extra}
-    />,
+      {...impls}
+    />
   );
+  renderApp(account ? asSignedIn(screenUi) : screenUi);
 }
 
 /*
@@ -392,10 +396,23 @@ describe('a design the inputs have moved on from', () => {
 });
 
 describe('approval', () => {
-  it('cannot approve the stored revision while the page has unsaved changes', async () => {
+  it('is unavailable to a trial, which has no account, and says why', async () => {
     renderScreen();
     await openStored();
-    type(overviewField('Approving engineer'), 'A. Engineer');
+    const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
+    expect(approve.disabled).toBe(true);
+    expect(projects().getByTestId('approve-held-trial').textContent).toBe(
+      'Approving a revision needs a signed-in account. Sign in to approve; a trial cannot.',
+    );
+    expect(projects().queryByTestId('approving-as')).toBeNull();
+    fireEvent.click(approve);
+    expect(api.approve).not.toHaveBeenCalled();
+  });
+
+  it('cannot approve the stored revision while the page has unsaved changes', async () => {
+    renderScreen({ account: true });
+    await openStored();
+    type(overviewField('Approval note (optional)'), 'A. Engineer');
     const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
     expect(approve.disabled).toBe(false);
 
@@ -421,6 +438,7 @@ describe('approval', () => {
             drawn_by: '',
             checked_by: '',
             approved_by: approver,
+            approval_note: '',
           },
         ],
       },
@@ -429,6 +447,8 @@ describe('approval', () => {
       stored.revisions = stored.revisions.map((entry) => ({
         ...entry,
         approved_by: approver,
+        approver_name: approver,
+        approver_account_recorded: true,
         approved_at: '2026-10-03T10:00:00Z',
       }));
     }
@@ -441,13 +461,13 @@ describe('approval', () => {
     const designImpl = vi
       .fn<typeof designProject>()
       .mockResolvedValue({ kind: 'designed', response: DESIGNED });
-    renderScreen({ designImpl });
+    renderScreen({ designImpl, account: true });
     await openStored();
     fireEvent.click(designButton());
     await screen.findByTestId('design-result');
     expect(screen.queryByTestId('design-stale')).toBeNull();
 
-    type(overviewField('Approving engineer'), 'A. Engineer');
+    type(overviewField('Approval note (optional)'), 'A. Engineer');
     fireEvent.click(projects().getByText('Approve revision 1'));
     await waitFor(() => {
       expect(api.approve).toHaveBeenCalledTimes(1);
@@ -532,6 +552,7 @@ describe('a save after designing', () => {
             drawn_by: 'e',
             checked_by: '',
             approved_by: '',
+            approval_note: '',
           },
         ],
       },

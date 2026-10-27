@@ -18,6 +18,7 @@ drawings.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
@@ -59,10 +60,26 @@ class StrictModel(BaseModel):
 _NAME_TEXT = 200
 _NOTE_TEXT = 500
 _PERSON_TEXT = 100
+#: An approval's optional note (the ``approval_note`` column).
+_APPROVAL_NOTE_TEXT = 200
 _SHORT_TEXT = 40
 #: A title block lists at most every revision a project holds
 #: (``app.domain.design_projects.MAX_REVISIONS``).
 _MAX_TITLE_REVISIONS = 200
+
+
+#: Bounds on the engineering figures a sent project carries, far above any
+#: real panel's and above every value the design's tables give (the largest
+#: MCCB held is 800 A and 200 kA; the largest tabulated section 630 mm²). A figure
+#: past them is a 422, never a 500 from the arithmetic or a megabyte finding.
+MAX_RATED_CURRENT_A = Decimal(10000)
+MAX_SECTION_MM2 = Decimal(1000)
+MAX_BREAKING_CAPACITY_KA = Decimal(200)
+MAX_RESIDUAL_CURRENT_MA = Decimal(3000)
+#: k²S² of a 1000 mm² cable at the largest k tabulated is about 2·10⁴ (kA)²s.
+MAX_WITHSTAND_KA2S = Decimal(1000000)
+#: Digits a computed figure may carry: the decimal context's 28, with room.
+_COMPUTED_DIGITS = 40
 
 
 class DesignNote(StrictModel):
@@ -253,10 +270,31 @@ class Device(StrictModel):
     designation: Designation | None = None
     part_key: str | None = None
     poles: int | None = Field(default=None, ge=1, le=4)
-    rated_current_a: Decimal | None = None
-    residual_current_ma: Decimal | None = None
+    rated_current_a: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_RATED_CURRENT_A,
+        max_digits=8,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
+    residual_current_ma: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_RESIDUAL_CURRENT_MA,
+        max_digits=5,
+        decimal_places=1,
+        allow_inf_nan=False,
+    )
     curve: str | None = None
-    breaking_capacity_ka: Decimal | None = None
+    breaking_capacity_ka: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_BREAKING_CAPACITY_KA,
+        max_digits=5,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
     description: str = ""
     upstream_id: str | None = None
 
@@ -283,14 +321,23 @@ class Cable(StrictModel):
     id: str
     designation: Designation | None = None
     cores: int = Field(ge=1)
-    cross_section_mm2: Decimal
+    cross_section_mm2: Decimal = Field(
+        gt=0, le=MAX_SECTION_MM2, max_digits=6, decimal_places=2, allow_inf_nan=False
+    )
     material: str = "Cu"
     insulation: str = "PVC"
     # Bounded as a load's length is (it is copied from one): a sent project's
     # cable length multiplies a per-metre price in the quotation.
     length_m: Decimal | None = Field(default=None, gt=0, le=10000, allow_inf_nan=False)
     part_key: str | None = None
-    withstand_ka2s: Decimal | None = None
+    withstand_ka2s: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=MAX_WITHSTAND_KA2S,
+        max_digits=10,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
     parallel: int = Field(default=1, ge=1, le=6)
 
     @property
@@ -328,16 +375,31 @@ class Circuit(StrictModel):
     id: str
     description: str
     load: LoadKind
-    power_kw: Decimal
-    design_current_a: Decimal
+    # Computed figures carry up to the decimal context's 28 digits; the bound
+    # on digits keeps a sent exponent (1e-999999) from printing a megabyte.
+    power_kw: Decimal = Field(ge=0, max_digits=_COMPUTED_DIGITS, allow_inf_nan=False)
+    design_current_a: Decimal = Field(ge=0, max_digits=_COMPUTED_DIGITS, allow_inf_nan=False)
     phase: Phase
     upstream_id: str | None = None
     device_ids: list[str] = Field(default_factory=list)
     cable_id: str | None = None
     feeds: str | None = None
     starter: MotorStarter | None = None
-    voltage_drop_percent: Decimal | None = None
-    earth_loop_ohm: Decimal | None = None
+    voltage_drop_percent: Decimal | None = Field(
+        default=None, ge=0, max_digits=_COMPUTED_DIGITS, allow_inf_nan=False
+    )
+    earth_loop_ohm: Decimal | None = Field(
+        default=None, ge=0, max_digits=_COMPUTED_DIGITS, allow_inf_nan=False
+    )
+
+    @model_validator(mode="after")
+    def _starter_only_for_a_motor(self) -> Circuit:
+        # A starter decides which device the integrity check reads as the
+        # cable's overload protection (a drive's is not checked at all), so
+        # one on a circuit that feeds no motor is refused, not trusted.
+        if self.starter is not None and self.load is not LoadKind.MOTOR:
+            raise ValueError(f"circuit {self.id}: a starter is only for a motor circuit")
+        return self
 
 
 class Supply(StrictModel):
@@ -448,7 +510,10 @@ class Revision(StrictModel):
         description: What changed.
         drawn_by: Initials or name.
         checked_by: Initials or name.
-        approved_by: Initials or name.
+        approved_by: Initials or name. On a saved revision, the approving
+            account's display name (or "a team member"), set by the server.
+        approval_note: The note added to that approval, set by the server;
+            never who approved.
     """
 
     index: str = Field(max_length=_SHORT_TEXT)
@@ -457,6 +522,7 @@ class Revision(StrictModel):
     drawn_by: str = Field(default="", max_length=_PERSON_TEXT)
     checked_by: str = Field(default="", max_length=_PERSON_TEXT)
     approved_by: str = Field(default="", max_length=_PERSON_TEXT)
+    approval_note: str = Field(default="", max_length=_APPROVAL_NOTE_TEXT)
 
 
 class ProjectInfo(StrictModel):
@@ -720,6 +786,8 @@ class LoadInput(StrictModel):
     def _one_or_three(self) -> LoadInput:
         if self.phases not in (1, 3):
             raise ValueError("phases must be 1 or 3")
+        if self.starter is not None and self.load is not LoadKind.MOTOR:
+            raise ValueError("a starter is only for a motor load")
         return self
 
 
@@ -983,7 +1051,8 @@ class PriceListEntry(StrictModel):
             or a rating key ("circuit_breaker:1P:C16",
             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
             metre) for a device whose article is not chosen yet.
-        description: The supplier's description, for the quotation.
+        description: The supplier's description, kept with the price. It
+            never names a quotation line: a line is the designed item's.
         unit_price: Price of one, or of one metre for a cable.
     """
 
@@ -1063,6 +1132,46 @@ class PricingSettings(StrictModel):
         decimal_places=PRICE_DECIMAL_PLACES,
         allow_inf_nan=False,
     )
+
+    @model_validator(mode="after")
+    def _keys_are_distinct(self) -> PricingSettings:
+        # Keys match as ``price_key`` normalises them: two that normalise
+        # alike would price a line by whichever came last, silently.
+        duplicates = duplicate_price_keys(entry.key for entry in self.price_list)
+        if duplicates:
+            raise ValueError(f"duplicate price-list key: {', '.join(duplicates)}")
+        return self
+
+
+def price_key(key: str) -> str:
+    """A price-list key as it is matched: case, spaces and padding ignored.
+
+    Args:
+        key: As written.
+
+    Returns:
+        The key matched by.
+    """
+    return key.strip().lower().replace(" ", "")
+
+
+def duplicate_price_keys(keys: Iterable[str]) -> list[str]:
+    """The keys, as written, that match a key written before them.
+
+    Args:
+        keys: The price list's keys, in order.
+
+    Returns:
+        Each repeated key as written, in order; empty when all are distinct.
+    """
+    seen: set[str] = set()
+    repeated: list[str] = []
+    for key in keys:
+        matched = price_key(key)
+        if matched in seen:
+            repeated.append(key)
+        seen.add(matched)
+    return repeated
 
 
 class QuotationLine(BaseModel):
@@ -1247,8 +1356,10 @@ class RevisionSummary(BaseModel):
             the tenant's users when the response is built; ``""`` when that
             account has no display name. Never its email.
         created_at: When, ISO 8601.
-        approved_by: The engineer who approved it, as the title block
-            prints them; ``None`` while it is not approved.
+        approved_by: The approver as every export prints it: the approving
+            account's display name, or "a team member" when it has none or
+            is not recorded (an approval made before accounts were). Never
+            a name typed at approval. ``None`` while it is not approved.
         approved_at: When, ISO 8601.
         approver_account_recorded: Whether the server recorded the
             signed-in account that approved it (from the approver's token,
@@ -1259,6 +1370,7 @@ class RevisionSummary(BaseModel):
             recorded or it has no display name, which a client shows as "a
             team member". The account's email, kept in the database as the
             audit identity, is never sent.
+        approval_note: The note added at approval, if any; never an identity.
         validated: Whether the server designed it from its request when it
             was saved, and holds that design; ``False`` for an older one.
         export_status: What it can be exported as now.
@@ -1272,6 +1384,7 @@ class RevisionSummary(BaseModel):
     approved_at: str | None = None
     approver_account_recorded: bool = False
     approver_name: str | None = None
+    approval_note: str | None = None
     validated: bool = False
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
 
@@ -1279,13 +1392,18 @@ class RevisionSummary(BaseModel):
 class ApproveRevisionRequest(StrictModel):
     """An engineer's approval of one revision.
 
+    The approver is the signed-in account, never anything the request says: a
+    field naming one (``approver``) is refused with 422, as any other field
+    this model does not define.
+
     Attributes:
-        approver: Their name as the title block is to print it.
+        note: An optional note to the approval, printed labelled "Approval
+            note", never where the approver is named.
     """
 
-    approver: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=_PERSON_TEXT)
-    ]
+    note: Annotated[
+        str, StringConstraints(strip_whitespace=True, max_length=_APPROVAL_NOTE_TEXT)
+    ] = ""
 
 
 class ProjectSummary(BaseModel):
@@ -1337,6 +1455,9 @@ class SavedProject(BaseModel):
         execution_blockers: Why it cannot be exported for execution: the
             parts of an execution package this service does not produce yet,
             then ``approval`` and each blocking finding's code, as they apply.
+        approving_as: The signed-in caller's display name, as an approval
+            they made now would name them; ``None`` when they have none,
+            which a client shows as "a team member". Never their email.
     """
 
     id: str
@@ -1351,6 +1472,7 @@ class SavedProject(BaseModel):
     approved_snapshot_sha256: str | None = None
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
     execution_blockers: list[str] = Field(default_factory=list)
+    approving_as: str | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

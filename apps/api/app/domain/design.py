@@ -435,7 +435,7 @@ def _as_draft(sent: DesignProject) -> DesignProject:
     a draft prints neither.
     """
     revisions = [
-        revision.model_copy(update={"checked_by": "", "approved_by": ""})
+        revision.model_copy(update={"checked_by": "", "approved_by": "", "approval_note": ""})
         for revision in sent.info.revisions
     ]
     return sent.model_copy(update={"info": sent.info.model_copy(update={"revisions": revisions})})
@@ -453,7 +453,7 @@ def draft_mark(designated: DesignProject) -> marking.ExportMark:
     return marking.ExportMark(
         label=marking.DRAFT_LABEL,
         identity=DRAFT_IDENTITY,
-        findings=tuple(integrity.project_findings(designated)),
+        findings=tuple(integrity.draft_findings(designated)),
     )
 
 
@@ -671,7 +671,8 @@ def price_design(*, user: CurrentUser, request: QuotationRequest) -> QuotationEs
     """
     company = _profile(request.profile)
     project = designations.designate_project(_as_draft(request.project), company)
-    findings = integrity.project_findings(project)
+    # The notes and conditions are the page's: the findings say so.
+    findings = integrity.draft_findings(project)
     blocking = integrity.blocking(findings)
     # The page's estimate is said in the profile's language; the quotation
     # exports (PDF and CSV) are English throughout, so they price in English.

@@ -1239,8 +1239,9 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
         which has no user by design, so the tenant stays claimable.
 
     Raises:
-        AuthenticationError: If the user is gone, inactive, or no longer in the
-            tenant their token claims; or, for a trial, if the session is
+        AuthenticationError: If the tenant is gone or deactivated; if the user
+            is gone, inactive, or no longer in the tenant their token claims;
+            or, for a trial, if the session is
             missing, expired, already claimed, or in another tenant.
     """
     try:
@@ -1256,6 +1257,12 @@ def resolve_caller(*, session: Session, caller: CurrentUser) -> User | None:
         bind_tenant(session, caller.tenant_id)
     except TenantScopeError as exc:
         raise AuthenticationError("token tenant is not valid") from exc
+
+    # Login and refresh refuse a deactivated tenant; an access token minted
+    # before the deactivation must not outlive it either.
+    tenant = session.get(TenantRow, uuid.UUID(caller.tenant_id))
+    if tenant is None or not tenant.is_active:
+        raise AuthenticationError("account is not active")
 
     user = session.get(User, subject)
     if user is None:

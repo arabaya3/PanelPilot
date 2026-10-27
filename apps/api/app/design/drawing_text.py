@@ -27,6 +27,11 @@ _LOCALES = Path(__file__).parent / "locale"
 #: Drawing languages with a catalogue; any other is drawn in English.
 LANGUAGES = frozenset({"en", "ar", "he"})
 
+#: How an export names an approver who has no display name to print. It is a
+#: phrase of the drawing, so it is said in the drawing's language
+#: (:meth:`Words.person`); a real name never is.
+APPROVER_FALLBACK = "a team member"
+
 #: A note's params that hold one of the drawing's own phrases (a market's
 #: name and its code's, from ``app.design.markets``), said in the drawing's
 #: language like any other. Every other param is a value: a board name, a
@@ -165,6 +170,17 @@ class Words:
         """
         template = _catalogue(self.language)["drawing"].get(text, text)
         return template.format(**params) if params else template
+
+    def person(self, name: str) -> str:
+        """A person's name as written, or the approver fallback in this language.
+
+        Args:
+            name: A display name, or :data:`APPROVER_FALLBACK`.
+
+        Returns:
+            The name unchanged; the fallback said in this language.
+        """
+        return self(APPROVER_FALLBACK) if name == APPROVER_FALLBACK else name
 
     def note(self, made: DesignNote) -> str:
         """Say a design note.

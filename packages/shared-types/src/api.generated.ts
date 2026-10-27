@@ -1208,12 +1208,20 @@ export interface components {
      * ApproveRevisionRequest
      * @description An engineer's approval of one revision.
      *
+     *     The approver is the signed-in account, never anything the request says: a
+     *     field naming one (``approver``) is refused with 422, as any other field
+     *     this model does not define.
+     *
      *     Attributes:
-     *         approver: Their name as the title block is to print it.
+     *         note: An optional note to the approval, printed labelled "Approval
+     *             note", never where the approver is named.
      */
     ApproveRevisionRequest: {
-      /** Approver */
-      approver: string;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /**
      * Board
@@ -4171,7 +4179,10 @@ export interface components {
      *         description: What changed.
      *         drawn_by: Initials or name.
      *         checked_by: Initials or name.
-     *         approved_by: Initials or name.
+     *         approved_by: Initials or name. On a saved revision, the approving
+     *             account's display name (or "a team member"), set by the server.
+     *         approval_note: The note added to that approval, set by the server;
+     *             never who approved.
      */
     Revision: {
       /** Index */
@@ -4198,6 +4209,11 @@ export interface components {
        * @default
        */
       approved_by: string;
+      /**
+       * Approval Note
+       * @default
+       */
+      approval_note: string;
     };
     /**
      * RevisionExportRequest
@@ -4225,8 +4241,10 @@ export interface components {
      *             the tenant's users when the response is built; ``""`` when that
      *             account has no display name. Never its email.
      *         created_at: When, ISO 8601.
-     *         approved_by: The engineer who approved it, as the title block
-     *             prints them; ``None`` while it is not approved.
+     *         approved_by: The approver as every export prints it: the approving
+     *             account's display name, or "a team member" when it has none or
+     *             is not recorded (an approval made before accounts were). Never
+     *             a name typed at approval. ``None`` while it is not approved.
      *         approved_at: When, ISO 8601.
      *         approver_account_recorded: Whether the server recorded the
      *             signed-in account that approved it (from the approver's token,
@@ -4237,6 +4255,7 @@ export interface components {
      *             recorded or it has no display name, which a client shows as "a
      *             team member". The account's email, kept in the database as the
      *             audit identity, is never sent.
+     *         approval_note: The note added at approval, if any; never an identity.
      *         validated: Whether the server designed it from its request when it
      *             was saved, and holds that design; ``False`` for an older one.
      *         export_status: What it can be exported as now.
@@ -4261,6 +4280,8 @@ export interface components {
       approver_account_recorded: boolean;
       /** Approver Name */
       approver_name?: string | null;
+      /** Approval Note */
+      approval_note?: string | null;
       /**
        * Validated
        * @default false
@@ -4323,6 +4344,9 @@ export interface components {
      *         execution_blockers: Why it cannot be exported for execution: the
      *             parts of an execution package this service does not produce yet,
      *             then ``approval`` and each blocking finding's code, as they apply.
+     *         approving_as: The signed-in caller's display name, as an approval
+     *             they made now would name them; ``None`` when they have none,
+     *             which a client shows as "a team member". Never their email.
      */
     SavedProject: {
       /** Id */
@@ -4351,6 +4375,8 @@ export interface components {
       export_status: components['schemas']['ExportStatus'];
       /** Execution Blockers */
       execution_blockers?: string[];
+      /** Approving As */
+      approving_as?: string | null;
     };
     /**
      * ScheduleSuggestionRequest

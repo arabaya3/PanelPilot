@@ -415,7 +415,7 @@ def _frame(
         TitleField.DATE: latest.date if latest else "",
         TitleField.DRAWN_BY: latest.drawn_by if latest else "",
         TitleField.CHECKED_BY: latest.checked_by if latest else "",
-        TitleField.APPROVED_BY: latest.approved_by if latest else "",
+        TitleField.APPROVED_BY: say.person(latest.approved_by) if latest else "",
     }
     fields = profile.title_fields
     per_row = max(1, -(-len(fields) // 2))
@@ -542,7 +542,14 @@ def _draw_title(sheet: Sheet, project: DesignProject, profile: CompanyProfile, s
                 (say("Review approved"), 30.0),
             ],
             [
-                [r.index, r.date, r.description, r.drawn_by, r.checked_by, r.approved_by]
+                [
+                    r.index,
+                    r.date,
+                    r.description,
+                    r.drawn_by,
+                    r.checked_by,
+                    say.person(r.approved_by),
+                ]
                 for r in info.revisions
             ],
         )

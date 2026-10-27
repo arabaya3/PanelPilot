@@ -34,6 +34,8 @@ from app.models.schemas.design import (
     PricingSettings,
     Quotation,
     QuotationLine,
+    duplicate_price_keys,
+    price_key,
 )
 
 _CENT = Decimal("0.01")
@@ -92,10 +94,6 @@ def cable_key(cable: Cable) -> str:
     )
 
 
-def _normalise(key: str) -> str:
-    return key.strip().lower().replace(" ", "")
-
-
 @dataclass
 class _Item:
     """Identical devices or cable runs gathered onto one quotation line."""
@@ -124,19 +122,20 @@ def price_project(
         pricing: The company's prices and rates.
         language: The language the lines this module writes are said in
             (a device without an article, a cable, the labour lines). A
-            supplier's description and a part's manufacturer and type are
-            printed as they are. Units stay "pcs" and "m": codes, as keys are.
+            part's manufacturer and type are printed as they are. A
+            supplier's description never names a line: the line is the
+            designed item's. Units stay "pcs" and "m": codes, as keys are.
 
     Returns:
         The quotation, with every unpriced line named.
     """
     say = Words(language)
-    prices = {_normalise(entry.key): entry for entry in pricing.price_list}
+    prices = {price_key(entry.key): entry for entry in pricing.price_list}
 
     def find(*keys: str | None) -> tuple[str, PriceListEntry | None]:
         for key in keys:
-            if key and _normalise(key) in prices:
-                return key, prices[_normalise(key)]
+            if key and price_key(key) in prices:
+                return key, prices[price_key(key)]
         return next((k for k in keys if k), ""), None
 
     # Identical items share a line, in the order first seen.
@@ -191,7 +190,10 @@ def price_project(
             unpriced.append(f"{key} (no {missing})")
         lines.append(
             QuotationLine(
-                description=(item.entry.description if item.entry else "") or item.name,
+                # The line is named by the designed item, never by the price
+                # list: a supplier's text cannot rename the device a revision's
+                # quotation prices.
+                description=item.name,
                 designations=item.labels,
                 quantity=item.quantity,
                 unit=item.unit,
@@ -253,8 +255,8 @@ def read_price_list(data: bytes) -> list[PriceListEntry]:
         The prices.
 
     Raises:
-        ValidationError: If the file has no key and price columns, or no
-            row with both.
+        ValidationError: If the file has no key and price columns, no row
+            with both, or two keys that match alike (case and spaces ignored).
     """
     rows = read_rows(data)
     keys = ("key", "order number", "order no", "code", "item", "article", "الكود", "الرمز", "الصنف")
@@ -304,6 +306,15 @@ def read_price_list(data: bytes) -> list[PriceListEntry]:
         if not entries:
             raise ValidationError(
                 "the price list has no row with both a key and a price", code="price_list_empty"
+            )
+        duplicates = duplicate_price_keys(entry.key for entry in entries)
+        if duplicates:
+            # Refused rather than kept last-wins: which row prices a line
+            # must not depend on the order of a spreadsheet's rows.
+            raise ValidationError(
+                f"the price list repeats keys (case and spaces ignored): {', '.join(duplicates)}",
+                code="price_list_duplicate_key",
+                params={"keys": ", ".join(duplicates)},
             )
         return entries
     raise ValidationError(

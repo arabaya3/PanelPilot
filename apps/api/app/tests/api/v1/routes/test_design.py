@@ -425,9 +425,16 @@ def test_an_unknown_nested_profile_setting_is_refused(client: TestClient) -> Non
     assert exported.json()["code"] == "profile_unknown_settings"
 
 
-def test_an_approver_of_only_whitespace_is_refused(client: TestClient) -> None:
-    refused = client.post("/design/projects/p1/revisions/1/approval", json={"approver": "   "})
-    assert refused.status_code == 422
+def test_an_approval_naming_an_approver_is_refused(client: TestClient) -> None:
+    """The approver is the signed-in account: a client cannot submit a name."""
+    for body in (
+        {"approver": "Someone Else"},
+        {"approver": "Someone Else", "note": "ok"},
+        {"approved_by": "Someone Else"},
+        {"note": "n" * 201},
+    ):
+        refused = client.post("/design/projects/p1/revisions/1/approval", json=body)
+        assert refused.status_code == 422, body
 
 
 def test_a_saved_request_that_no_longer_validates_is_sent_as_stored(
@@ -527,12 +534,9 @@ def test_project_routes_call_the_domain(
     assert client.get("/design/projects/p1?revision=1").json()["revision"] == 1
     revision = {"request": body["request"], "note": "more"}
     assert client.post("/design/projects/p1/revisions", json=revision).status_code == 201
-    approval = client.post("/design/projects/p1/revisions/1/approval", json={"approver": "A"})
+    approval = client.post("/design/projects/p1/revisions/1/approval", json={"note": "A"})
     assert approval.status_code == 200
-    assert (
-        client.post("/design/projects/p1/revisions/0/approval", json={"approver": "A"}).status_code
-        == 422
-    )
+    assert client.post("/design/projects/p1/revisions/0/approval", json={}).status_code == 422
     assert client.delete("/design/projects/p1").status_code == 204
     assert calls == ["save", "list", "open", "revise", "approve", "delete"]
 

@@ -286,20 +286,47 @@ function has(payload: object, ...keys: string[]): boolean {
   return keys.every((key) => key in payload);
 }
 
+/** The longest name a download is saved under, in characters. */
+const NAME_LIMIT = 120;
+
+/**
+ * A server-given name made safe to save under: no path separators, no
+ * characters a file system refuses, no control characters, no `..`, no
+ * leading or trailing dots or spaces, and at most `NAME_LIMIT` characters
+ * (keeping the extension). Null when nothing usable is left.
+ */
+export function safeFileName(name: string): string | null {
+  const cleaned = name
+    // eslint-disable-next-line no-control-regex -- control characters are what is removed
+    .replace(/[\u0000-\u001f\u007f-\u009f/\\:*?"<>|]/g, '_')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[\s._]+|[\s.]+$/g, '');
+  if (cleaned === '' || /^_+$/.test(cleaned)) return null;
+  const chars = Array.from(cleaned);
+  if (chars.length <= NAME_LIMIT) return cleaned;
+  const dot = cleaned.lastIndexOf('.');
+  const extension = dot > 0 ? Array.from(cleaned.slice(dot)) : [];
+  if (extension.length > 10) return chars.slice(0, NAME_LIMIT).join('');
+  return chars.slice(0, NAME_LIMIT - extension.length).join('') + extension.join('');
+}
+
 /**
  * The name a download is saved under: the project's own (RFC 6266
- * `filename*`, which keeps an Arabic name), else the ASCII `filename`.
+ * `filename*`, which keeps an Arabic name), else the ASCII `filename`,
+ * either made safe (`safeFileName`).
  */
 export function savedName(disposition: string): string | null {
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
   if (encoded) {
     try {
-      return decodeURIComponent(encoded.trim());
+      const name = safeFileName(decodeURIComponent(encoded.trim()));
+      if (name !== null) return name;
     } catch {
       // A malformed encoding falls back to the plain name.
     }
   }
-  return /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
+  const plain = /filename="([^"]+)"/.exec(disposition)?.[1];
+  return plain === undefined ? null : safeFileName(plain);
 }
 
 function upload(file: Blob, filename: string): FormData {
@@ -541,15 +568,19 @@ export async function exportRevision(
   return download(response, format);
 }
 
-/** Approve one revision, once, by the engineer's name for the title block. */
+/**
+ * Approve one revision, once, as the signed-in account. The request names no
+ * one: the server records the account from the token, and names it by its
+ * display name. `note` is an optional note to the approval, never an identity.
+ */
 export function approveRevision(
-  options: Transport & { id: string; revision: number; approver: string },
+  options: Transport & { id: string; revision: number; note?: string },
 ): Promise<ProjectOutcome> {
-  const { id, revision, approver } = options;
+  const { id, revision, note = '' } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
-    { approver },
+    { note },
     saved,
   );
 }

@@ -34,13 +34,13 @@ from typing import Any
 
 import structlog
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.design import CATALOGUE_VERSION, RULES_VERSION, integrity, marking, snapshot
+from app.design import CATALOGUE_VERSION, RULES_VERSION, drawing_text, integrity, marking, snapshot
 from app.domain import billing
 from app.domain import design as design_domain
 from app.domain.plans import Feature
@@ -276,6 +276,12 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     return blockers
 
 
+#: How an approval names its approver when the account has no display name,
+#: is no longer the tenant's, or was not recorded (an approval made before
+#: accounts were). Never the name typed at approval, nor an email.
+APPROVER_FALLBACK = drawing_text.APPROVER_FALLBACK
+
+
 def _display_name(full_name: str | None) -> str | None:
     """An account's name as a revision list may show it; ``None`` if it has none.
 
@@ -286,46 +292,98 @@ def _display_name(full_name: str | None) -> str | None:
     return name if name and "@" not in name else None
 
 
-def _display_names(
-    session: Session, tenant: uuid.UUID, revisions: Sequence[DesignRevisionRow]
-) -> dict[str, str]:
-    """The display name of each account the revisions record, by its email.
+def _account_id(user: CurrentUser) -> uuid.UUID | None:
+    """The caller's account id; ``None`` for a caller with no account row id (a trial)."""
+    try:
+        return uuid.UUID(user.id)
+    except ValueError:
+        return None
 
-    The rows record an account by its email (the audit identity, kept as it
-    was). Its name is read now, from the project's own tenant only: an account
-    of another tenant's, or one deleted since, has no name here.
+
+@dataclass(frozen=True)
+class _Names:
+    """The display names of the accounts a project's revisions record.
+
+    Read when a response or export is built, from the project's own tenant
+    only: an account of another tenant's, or one deleted since, has no name.
+    """
+
+    by_email: dict[str, str]
+    by_id: dict[uuid.UUID, str]
+
+    def author(self, row: DesignRevisionRow) -> str:
+        return self.by_email.get(row.author.lower(), "") if row.author else ""
+
+    def approver(self, row: DesignRevisionRow) -> str | None:
+        """The approving account's display name; ``None`` if none resolves.
+
+        An approval that recorded the account's id is resolved by it alone:
+        the email it recorded may since belong to another account. One made
+        before ids were recorded is resolved by its email, in the tenant. The
+        legacy typed name (``approved_by``) is never used.
+        """
+        if row.approved_at is None:
+            return None
+        if row.approved_user_id is not None:
+            return self.by_id.get(row.approved_user_id)
+        if row.approved_account:
+            return self.by_email.get(row.approved_account.lower())
+        return None
+
+    def printed_approver(self, row: DesignRevisionRow) -> str:
+        """The approver as an export prints it: the display name, or the fallback."""
+        return self.approver(row) or APPROVER_FALLBACK
+
+
+def _display_names(
+    session: Session,
+    tenant: uuid.UUID,
+    revisions: Sequence[DesignRevisionRow],
+    *,
+    also: uuid.UUID | None = None,
+) -> _Names:
+    """The display names of the accounts the revisions record (and ``also``).
+
+    The rows record an author by email, and an approver by id (or, approved
+    before ids were recorded, by email): the audit identity, kept as it was.
     """
     emails = {
         email.lower() for row in revisions for email in (row.author, row.approved_account) if email
     }
-    if not emails:
-        return {}
+    ids = {row.approved_user_id for row in revisions if row.approved_user_id is not None}
+    if also is not None:
+        ids.add(also)
+    if not emails and not ids:
+        return _Names(by_email={}, by_id={})
     found = session.execute(
-        select(User.email, User.full_name).where(
-            User.tenant_id == tenant, func.lower(User.email).in_(emails)
+        select(User.id, User.email, User.full_name).where(
+            User.tenant_id == tenant,
+            or_(func.lower(User.email).in_(emails), User.id.in_(ids)),
         )
     ).all()
-    names: dict[str, str] = {}
-    for email, full_name in found:
+    by_email: dict[str, str] = {}
+    by_id: dict[uuid.UUID, str] = {}
+    for user_id, email, full_name in found:
         name = _display_name(full_name)
         if name is not None:
-            names[email.lower()] = name
-    return names
+            by_email[email.lower()] = name
+            by_id[user_id] = name
+    return _Names(by_email=by_email, by_id=by_id)
 
 
-def _summary(
-    row: DesignRevisionRow, names: dict[str, str], *, thorough: bool = False
-) -> RevisionSummary:
-    approver = row.approved_account if row.approved_at is not None else None
+def _summary(row: DesignRevisionRow, names: _Names, *, thorough: bool = False) -> RevisionSummary:
+    approved = row.approved_at is not None
     return RevisionSummary(
         number=row.number,
         note=row.note,
-        author=names.get(row.author.lower(), "") if row.author else "",
+        author=names.author(row),
         created_at=row.created_at.isoformat(),
-        approved_by=row.approved_by,
+        approved_by=names.printed_approver(row) if approved else None,
         approved_at=row.approved_at.isoformat() if row.approved_at else None,
-        approver_account_recorded=bool(approver),
-        approver_name=names.get(approver.lower()) if approver else None,
+        approver_account_recorded=approved
+        and (row.approved_user_id is not None or bool(row.approved_account)),
+        approver_name=names.approver(row),
+        approval_note=(row.approval_note or None) if approved else None,
         validated=row.design_snapshot is not None,
         # One of up to MAX_REVISIONS rows: compared by recorded versions only.
         # The revision opened is checked in full (``_opened``), and approval and
@@ -335,26 +393,36 @@ def _summary(
 
 
 def _title_revisions(
-    revisions: Sequence[DesignRevisionRow], upto: int, *, bound_only: bool = False
+    revisions: Sequence[DesignRevisionRow],
+    upto: int,
+    names: _Names,
+    *,
+    bound_only: bool = False,
 ) -> list[Revision]:
     """The title block's revision list: each saved revision up to ``upto``.
 
     Args:
         revisions: The project's revisions, in order.
         upto: The last revision listed.
+        names: The accounts' display names, which name the approver.
         bound_only: Name an approver only where the approval is of the design
             the revision holds, as an export prints it.
     """
-    return [
-        Revision(
-            index=f"{row.number:02d}",
-            date=(row.approved_at or row.created_at).date().isoformat(),
-            description=row.note,
-            approved_by=(row.approved_by or "") if not bound_only or _approval_bound(row) else "",
+    listed: list[Revision] = []
+    for row in revisions:
+        if row.number > upto:
+            continue
+        shown = row.approved_at is not None and (not bound_only or _approval_bound(row))
+        listed.append(
+            Revision(
+                index=f"{row.number:02d}",
+                date=(row.approved_at or row.created_at).date().isoformat(),
+                description=row.note,
+                approved_by=names.printed_approver(row) if shown else "",
+                approval_note=(row.approval_note or "") if shown else "",
+            )
         )
-        for row in revisions
-        if row.number <= upto
-    ]
+    return listed
 
 
 def _design_refused(exc: ValidationError) -> DesignFinding:
@@ -435,7 +503,9 @@ def _revisions(session: Session, project: DesignProjectRow) -> Sequence[DesignRe
     ).all()
 
 
-def _opened(session: Session, project: DesignProjectRow, number: int | None) -> SavedProject:
+def _opened(
+    session: Session, project: DesignProjectRow, number: int | None, viewer: CurrentUser
+) -> SavedProject:
     revisions = _revisions(session, project)
     chosen = (
         revisions[-1]
@@ -444,8 +514,9 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
     )
     if chosen is None:
         raise NotFoundError("no such revision", code="revision_not_found")
-    title = _title_revisions(revisions, chosen.number)
-    names = _display_names(session, project.tenant_id, revisions)
+    viewer_id = _account_id(viewer)
+    names = _display_names(session, project.tenant_id, revisions, also=viewer_id)
+    title = _title_revisions(revisions, chosen.number, names)
     checked = _validation(chosen)
     readable = _request_problem(chosen) is None
     if readable:
@@ -476,6 +547,7 @@ def _opened(session: Session, project: DesignProjectRow, number: int | None) -> 
         approved_snapshot_sha256=chosen.approved_snapshot_sha256,
         export_status=checked.status,
         execution_blockers=_execution_blockers(checked),
+        approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
     )
     return opened if readable else opened.as_stored(stored)
 
@@ -521,7 +593,7 @@ def save_project(
         _release(session)
         raise
     logger.info("design.project_saved", tenant_id=str(tenant), project_id=str(project.id))
-    return _opened(session, project, None)
+    return _opened(session, project, None, user)
 
 
 def revise_project(
@@ -572,7 +644,7 @@ def revise_project(
         project_id=str(project.id),
         revision=number,
     )
-    return _opened(session, project, number)
+    return _opened(session, project, number, user)
 
 
 def open_project(
@@ -600,7 +672,7 @@ def open_project(
     project = (
         _load(session, project_id) if revision is None else _revision_project(session, project_id)
     )
-    return _opened(session, project, revision)
+    return _opened(session, project, revision, user)
 
 
 def _revision_project(session: Session, project_id: str, *, lock: bool = False) -> DesignProjectRow:
@@ -691,7 +763,8 @@ def approve_revision(
         user: The authenticated caller; recorded as the approving account.
         project_id: The project.
         number: The revision.
-        request: The approving engineer's name, for the title block.
+        request: An optional note to the approval. It names no one: the
+            approver is ``user``, shown by its display name.
 
     Returns:
         The project, opened at that revision.
@@ -704,8 +777,11 @@ def approve_revision(
             (``snapshot_integrity_failed``), its rules or settings changed
             (``revision_stale``), or it has blocking findings
             (``revision_has_blocking_findings``).
-        AuthorizationError: If the caller's plan does not include approval.
+        AuthorizationError: If the caller is not a signed-in account
+            (``approval_requires_account``: a trial has none), or their plan
+            does not include approval.
     """
+    _require_account(user)
     billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)
     tenant = _scope_to(session, user)
     try:
@@ -714,9 +790,12 @@ def approve_revision(
         # approved, and neither can wait on the other's second lock.
         project = _revision_project(session, project_id, lock=True)
         row = _locked_revision(session, project, number)
-        _approvable(row, number)
-        row.approved_by = request.approver.strip()
+        _approvable(session, project, row, number)
+        # Who approves is the signed-in account, from its token: the request
+        # names no one. ``approved_by`` (the legacy typed name) stays NULL.
         row.approved_account = user.email
+        row.approved_user_id = _account_id(user)
+        row.approval_note = request.note or None
         row.approved_at = datetime.now(UTC)
         row.approved_snapshot_sha256 = row.snapshot_sha256
         session.commit()
@@ -731,16 +810,32 @@ def approve_revision(
         revision=number,
         snapshot_sha256=row.snapshot_sha256,
     )
-    return _opened(session, project, number)
+    return _opened(session, project, number, user)
 
 
-def _approvable(row: DesignRevisionRow, number: int) -> None:
+def _require_account(user: CurrentUser) -> None:
+    """Refuse an approval by a caller with no account: it would name no one.
+
+    A trial token resolves to an engineer with no email and no account row,
+    so an approval it made could identify nobody.
+    """
+    if not user.email or _account_id(user) is None:
+        raise AuthorizationError(
+            "approving a revision requires a signed-in account",
+            code="approval_requires_account",
+        )
+
+
+def _approvable(
+    session: Session, project: DesignProjectRow, row: DesignRevisionRow, number: int
+) -> None:
     """Refuse approving a revision that is approved, unvalidated, stale or blocked."""
     if row.approved_at is not None:
+        approver = _display_names(session, project.tenant_id, [row]).printed_approver(row)
         raise ConflictError(
-            f"revision {number} is approved already, by {row.approved_by}",
+            f"revision {number} is approved already, by {approver}",
             code="revision_already_approved",
-            params={"revision": str(number), "approver": row.approved_by or ""},
+            params={"revision": str(number), "approver": approver},
         )
     _check_snapshot(row, number)
     _refuse_stale(row, number)
@@ -759,13 +854,17 @@ def _approvable(row: DesignRevisionRow, number: int) -> None:
 
 
 def _revision_mark(
-    project: DesignProjectRow, row: DesignRevisionRow, findings: list[DesignFinding]
+    project: DesignProjectRow,
+    row: DesignRevisionRow,
+    findings: list[DesignFinding],
+    names: _Names,
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
     if _approval_bound(row) and row.approved_at is not None:
+        approver = names.printed_approver(row)
         identity = (
-            f"{where}, approved by {row.approved_by} on {row.approved_at.date().isoformat()}, "
+            f"{where}, approved by {approver} on {row.approved_at.date().isoformat()}, "
             f"design {digest}, rules {row.rules_version}"
         )
         label = marking.REVIEW_APPROVED_LABEL
@@ -857,15 +956,16 @@ def export_revision(
     company = design_domain.resolve_profile(
         ProjectDesignRequest.model_validate(row.request).profile
     )
+    names = _display_names(session, project.tenant_id, revisions)
     info: ProjectInfo = designed.info.model_copy(
-        update={"revisions": _title_revisions(revisions, number, bound_only=True)}
+        update={"revisions": _title_revisions(revisions, number, names, bound_only=True)}
     )
     exported = design_domain.render_export(
         designated=designed.model_copy(update={"info": info}),
         company=company,
         export_format=request.format,
         pricing=_revision_pricing(request.pricing),
-        mark=_revision_mark(project, row, findings),
+        mark=_revision_mark(project, row, findings, names),
     )
     logger.info(
         "design.revision_exported",

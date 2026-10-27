@@ -306,9 +306,12 @@ export function ExportPanel({
   onExport,
   exportError,
   testIdPrefix = 'design-export',
+  busy = false,
 }: {
   onExport: (format: ExportFormat) => Promise<void>;
   exportError: string | null;
+  /** An export is in flight: the buttons wait for it. */
+  busy?: boolean;
   /** Tells a draft export's buttons from a revision export's. */
   testIdPrefix?: string;
 }) {
@@ -324,6 +327,8 @@ export function ExportPanel({
             key={format}
             type="button"
             data-testid={`${testIdPrefix}-${format}`}
+            disabled={busy}
+            aria-busy={busy || undefined}
             onClick={() => {
               void onExport(format);
             }}

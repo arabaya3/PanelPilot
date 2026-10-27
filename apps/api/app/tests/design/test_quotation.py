@@ -53,7 +53,8 @@ def test_a_fully_priced_board(hall_project: DesignProject) -> None:
     assert result.complete
     assert result.unpriced == []
     incomer = next(line for line in result.lines if line.key == "EKM6-63X-3C63")
-    assert incomer.description == "ETEK MCB"
+    # Named by the designed part, not the supplier's "ETEK MCB".
+    assert incomer.description == "ETEK EKM6-63X-3C63"
     assert incomer.total == Decimal("55.00")
     board = hall_project.boards[0]
     # Every device and cable is on exactly one line.
@@ -209,4 +210,42 @@ def test_supplier_and_catalogue_text_is_never_translated(hall_project: DesignPro
     entries = [*_entries(hall_project)]
     said = quotation.price_project(hall_project, PricingSettings(price_list=entries), language="ar")
     incomer = next(line for line in said.lines if line.key == "EKM6-63X-3C63")
-    assert incomer.description == "ETEK MCB"
+    # Named by the designed part, not the supplier's "ETEK MCB".
+    assert incomer.description == "ETEK EKM6-63X-3C63"
+
+
+def test_a_supplier_description_never_names_the_line(hall_project: DesignProject) -> None:
+    """The line's identity is the designed item's; a price list cannot rename a device."""
+    plain = quotation.price_project(
+        hall_project, PricingSettings(price_list=_entries(hall_project))
+    )
+    forged = [
+        entry.model_copy(update={"description": "FORGED 400 A MCCB"})
+        for entry in _entries(hall_project)
+    ]
+    priced = quotation.price_project(hall_project, PricingSettings(price_list=forged))
+    assert [line.description for line in priced.lines] == [line.description for line in plain.lines]
+    assert not any("FORGED" in line.description for line in priced.lines)
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [("A30", "A30"), ("A30", " a30 "), ("ABB A30", "ABBA30"), ("cable:3G2.5", "CABLE:3G 2.5")],
+)
+def test_price_list_keys_that_collide_are_refused_by_name(keys: tuple[str, str]) -> None:
+    entries = [{"key": key, "unit_price": str(n + 1)} for n, key in enumerate(keys)]
+    with pytest.raises(PydanticValidationError, match="duplicate price-list key"):
+        PricingSettings.model_validate({"price_list": entries})
+
+
+def test_an_imported_price_list_with_colliding_keys_is_refused() -> None:
+    data = b"Key,Price,Description\nA30,40,first\nA 30,55,second\n"
+    with pytest.raises(ValidationError, match="A 30"):
+        quotation.read_price_list(data)
+
+
+def test_a_duplicate_key_import_error_carries_its_code() -> None:
+    with pytest.raises(ValidationError) as caught:
+        quotation.read_price_list(b"Key,Price\nA30,40\nA 30,55\n")
+    assert caught.value.code == "price_list_duplicate_key"
+    assert caught.value.params == {"keys": "A 30"}

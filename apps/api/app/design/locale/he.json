@@ -1,5 +1,6 @@
 {
   "drawing": {
+    "a team member": "חבר צוות",
     "Company": "חברה",
     "Project": "פרויקט",
     "Job number": "מספר עבודה",
@@ -86,6 +87,7 @@
     "Consultant: {value}": "יועץ: {value}",
     "Revision {index}, {date}": "גרסה {index}, {date}",
     "Review approved by {name}: a study, not for execution.": "אושר לסקירה על ידי {name}: לימוד, לא לביצוע.",
+    "Approval note: {value}": "הערת אישור: {value}",
     "NOT APPROVED: for review only, not for execution.": "לא מאושר: לסקירה בלבד, לא לביצוע.",
     "The design rules are this software's defaults; the company has not confirmed them.": "כללי התכנון הם ברירות המחדל של התוכנה; החברה לא אישרה אותם.",
     "Basis of calculation": "בסיס החישוב",

@@ -29,7 +29,7 @@ import {
 
 import type * as DesignModule from '@/lib/design';
 
-import { MESSAGES, renderApp } from './helpers';
+import { MESSAGES, asSignedIn, renderApp } from './helpers';
 
 /**
  * Phase 1, trustworthy export and approval, as the page shows it: a saved
@@ -153,6 +153,8 @@ function approved(fields: Record<string, unknown> = {}): SavedProject {
   project.revisions = project.revisions.map((entry) => ({
     ...entry,
     approved_by: 'A. Engineer',
+    approver_name: 'A. Engineer',
+    approver_account_recorded: true,
     approved_at: '2026-10-03T10:00:00Z',
   }));
   return project;
@@ -182,15 +184,19 @@ function renderScreen(
     exportImpl?: typeof exportDesign;
     designImpl?: typeof designProject;
     saveImpl?: (blob: Blob, filename: string) => void;
+    /** Render as a signed-in account (approving needs one), not a trial. */
+    account?: boolean;
   } = {},
 ) {
-  renderApp(
+  const { account = false, ...impls } = extra;
+  const screenUi = (
     <DesignScreen
       acquireImpl={vi.fn().mockResolvedValue(READY)}
       marketsImpl={vi.fn().mockResolvedValue(null)}
-      {...extra}
-    />,
+      {...impls}
+    />
   );
+  renderApp(account ? asSignedIn(screenUi) : screenUi);
 }
 
 const review = () => within(screen.getByTestId('view-review'));
@@ -469,7 +475,7 @@ describe('the review view', () => {
     });
 
     // Approval is held, said why, and not sent.
-    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+    fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'A. Engineer' },
     });
     const approve = overview().getByText<HTMLButtonElement>('Approve revision 1');
@@ -826,7 +832,7 @@ describe('the backend’s finding codes and approval refusals', () => {
         code: 'revision_already_approved',
         params: { revision: '1', approver: 'B. Other' },
       });
-    renderScreen();
+    renderScreen({ account: true });
     await openStored();
     expect(review().getByTestId('findings').textContent).toContain(
       'The design was refused, so this revision holds no validated design. Correct the inputs and save again. A three-phase load cannot be fed from a single-phase board.',
@@ -838,7 +844,7 @@ describe('the backend’s finding codes and approval refusals', () => {
     await waitFor(() => {
       expect(review().queryByTestId('findings')).toBeNull();
     });
-    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+    fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'A. Engineer' },
     });
     fireEvent.click(overview().getByText('Approve revision 1'));
@@ -909,9 +915,9 @@ describe('execution blockers, a second approver, and over-long fields', () => {
       code: 'revision_already_approved',
       params: { revision: '1', approver: 'A. Engineer' },
     });
-    renderScreen();
+    renderScreen({ account: true });
     await openStored();
-    fireEvent.change(overview().getByLabelText('Approving engineer'), {
+    fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'B. Second' },
     });
     fireEvent.click(overview().getByText('Approve revision 1'));

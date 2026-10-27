@@ -135,6 +135,26 @@ POLICY: dict[str, Classification] = {
     "drive_selected": _info(),
 }
 
+_ABB_2_3 = "ABB Electrical installation handbook Vol. 2, §2.3 (In <= Iz)"
+
+#: Every code ``app.design.integrity`` makes, classified as the notes are.
+#: Blocking where the project as exported breaks ``In <= Iz`` or leaves out
+#: what it needs (a cable, a reference, a rated protective device); a warning
+#: an engineer confirms where the check could not be made.
+INTEGRITY: dict[str, Classification] = {
+    "integrity_unknown_device": _blocking("project model: every reference resolves"),
+    "integrity_unknown_cable": _blocking("project model: every reference resolves"),
+    "integrity_cable_missing": _blocking("policy"),
+    "integrity_protection_missing": _blocking(_ABB_2_3),
+    "integrity_device_unrated": _blocking("policy"),
+    "integrity_device_above_cable_capacity": _blocking(_ABB_2_3),
+    "integrity_drive_cable_unchecked": _confirm(),
+    "integrity_cable_untabulated": _confirm(_ABB_2_3),
+    "integrity_conditions_unknown": _info(_ABB_2_3),
+    # A draft's notes and conditions are the page's, not the server's.
+    "draft_findings_not_rechecked": _confirm(),
+}
+
 #: How a code this policy does not classify is treated.
 UNCLASSIFIED = Classification(FindingSeverity.WARNING, True, "policy")
 

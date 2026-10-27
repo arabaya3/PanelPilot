@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+import { AccountSessionProvider } from '@/components/account-session';
 import { LocaleProvider } from '@/components/locale-provider';
 import { ThemeProvider, type Theme } from '@/components/theme-provider';
 import type { Locale } from '@/i18n/config';
@@ -53,4 +54,28 @@ export function renderApp(
       result.rerender(wrap(next));
     },
   };
+}
+
+/** An unsigned test token carrying `sub` and `tid`, as the page reads them. */
+function testToken(sub: string, tid: string): string {
+  const body = btoa(JSON.stringify({ sub, tid, nonce: '' }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `header.${body}.signature`;
+}
+
+/**
+ * `ui` as a signed-in account's page: only an account can approve a revision,
+ * so a test of approving renders the page this way, not as a trial's.
+ */
+export function asSignedIn(ui: ReactNode): ReactNode {
+  return (
+    <AccountSessionProvider
+      initial={{ status: 'signed-in', tokens: { accessToken: testToken('user-1', 'acct') } }}
+      refreshImpl={() => Promise.resolve({ kind: 'expired' })}
+    >
+      {ui}
+    </AccountSessionProvider>
+  );
 }

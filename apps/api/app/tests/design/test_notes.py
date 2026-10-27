@@ -89,3 +89,15 @@ def test_the_page_can_say_every_refusal_the_design_raises() -> None:
     for language in ("en", "ar", "he"):
         catalogue = json.loads((messages / f"{language}.json").read_text(encoding="utf-8"))
         assert raised <= set(catalogue["design"]["errors"]), language
+
+
+def test_the_page_has_a_sentence_for_every_integrity_finding_in_every_language() -> None:
+    import json
+    from pathlib import Path
+
+    from app.design import findings_policy
+
+    messages = Path(__file__).resolve().parents[4] / "web" / "src" / "messages"
+    for language in ("en", "ar", "he"):
+        catalogue = json.loads((messages / f"{language}.json").read_text(encoding="utf-8"))
+        assert set(findings_policy.INTEGRITY) <= set(catalogue["design"]["finding"]), language

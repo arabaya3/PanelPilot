@@ -19,6 +19,13 @@ import {
   type SavedProject,
 } from '@/lib/design';
 
+/** Approval refusals after which the revision is read again, so the page shows the server's state. */
+const REOPEN_ON = new Set([
+  'revision_already_approved',
+  'revision_stale',
+  'revision_not_validated',
+]);
+
 /** The project being worked on, once saved or opened. */
 export type OpenedProject = {
   id: string;
@@ -27,12 +34,17 @@ export type OpenedProject = {
   revisions: number[];
   /**
    * Who approved the revision open, and when (ISO 8601); null while not
-   * approved. `approver` is present when the server recorded the signed-in
-   * account the approval was made under (from the approver's token, never
-   * from the page); its `name` is that account's display name, or null when
-   * it has none, which reads as "a team member". Its email is never sent.
+   * approved. `by` is the approving account's display name as the server
+   * resolved it (from the approver's token, never from the page), or null
+   * when it has none, which reads as "a team member". Its email is never
+   * sent. `note` is the note added at approval, never who approved.
    */
-  approval: { by: string; at: string; approver?: { name: string | null } } | null;
+  approval: { by: string | null; at: string; note: string | null } | null;
+  /**
+   * The signed-in account's display name, as an approval made now would name
+   * it (from the server); null reads as "a team member".
+   */
+  approvingAs: string | null;
 };
 
 /** One line of the title block's revision list. */
@@ -41,13 +53,11 @@ export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions'
 /** Who approved a saved project's open revision, and when; null while not approved. */
 export function approvalOf(project: SavedProject): OpenedProject['approval'] {
   const revision = project.revisions.find((entry) => entry.number === project.revision);
-  return revision?.approved_by && revision.approved_at
+  return revision?.approved_at
     ? {
-        by: revision.approved_by,
+        by: revision.approver_name ?? null,
         at: revision.approved_at,
-        ...(revision.approver_account_recorded
-          ? { approver: { name: revision.approver_name ?? null } }
-          : {}),
+        note: revision.approval_note ?? null,
       }
     : null;
 }
@@ -74,6 +84,7 @@ export function ProjectsPanel({
   blockers = [],
   blockingCount = 0,
   approvalCovers = true,
+  trial = false,
   note: heldNote,
   onNoteChange,
   impls = {},
@@ -104,6 +115,8 @@ export function ProjectsPanel({
   blockingCount?: number;
   /** False when the stored approval does not sign the revision's validated snapshot. */
   approvalCovers?: boolean;
+  /** Whether the page is a trial's: a trial has no account, so it cannot approve. */
+  trial?: boolean;
   /**
    * The revision note, when the page keeps it (so it outlives this panel);
    * kept here otherwise. Both or neither.
@@ -138,10 +151,12 @@ export function ProjectsPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [approver, setApprover] = useState('');
+  const [approvalNote, setApprovalNote] = useState('');
   // Anything besides unsaved changes that keeps the revision from approval.
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
-  const held = dirty || reasons.length > 0;
+  const held = trial || dirty || reasons.length > 0;
+  // The revision open, unchanged: saving it again would only store a copy.
+  const unchanged = opened !== null && !dirty;
 
   // Read through refs: the page hands a new `onUnauthorized` (and the
   // translator a new `say`) on every render, and listing again on each one
@@ -154,6 +169,10 @@ export function ProjectsPanel({
   // Rate limited: no list is asked for again until the server's Retry-After
   // has passed, whatever else changes meanwhile.
   const quietUntil = useRef(0);
+  // Each save, open and approval takes the next number; only the latest one's
+  // answer is applied. A save that answers after an open began would
+  // otherwise attach the form now on the page to the project it saved.
+  const sequence = useRef(0);
 
   const refresh = useCallback(async () => {
     if (Date.now() < quietUntil.current) return;
@@ -175,13 +194,20 @@ export function ProjectsPanel({
   }, [refresh]);
 
   async function store() {
-    if (current === null) return;
+    if (current === null || working || unchanged) return;
+    const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
     onSaveState?.('saving');
     const outcome = opened
       ? await revise({ token, id: opened.id, request: current.request, note })
       : await save({ token, name: current.name, request: current.request, note });
+    // Overtaken by a later open: what is on the page now is not what was
+    // saved, so neither the page's baseline nor its project is touched.
+    if (ticket !== sequence.current) {
+      if (outcome.kind === 'saved') void refresh();
+      return;
+    }
     setWorking(false);
     onSaveState?.(outcome.kind === 'saved' ? 'saved' : 'failed');
     if (outcome.kind === 'saved') {
@@ -211,8 +237,12 @@ export function ProjectsPanel({
   }
 
   async function fetchAndOpen(projectId: string, revision?: number) {
+    const ticket = ++sequence.current;
+    setWorking(true);
     setMessage(null);
     const outcome = await open({ token, id: projectId, revision: revision ?? null });
+    if (ticket !== sequence.current) return;
+    setWorking(false);
     if (outcome.kind === 'saved') onOpened(outcome.project, true);
     else {
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
@@ -221,33 +251,39 @@ export function ProjectsPanel({
   }
 
   async function sign() {
-    if (opened === null || approver.trim() === '' || held) return;
+    if (opened === null || held || working) return;
+    const ticket = ++sequence.current;
     setWorking(true);
     setMessage(null);
     const outcome = await approve({
       token,
       id: opened.id,
       revision: opened.revision,
-      approver: approver.trim(),
+      note: approvalNote.trim(),
     });
+    if (ticket !== sequence.current) return;
     setWorking(false);
     if (outcome.kind === 'saved') {
-      setApprover('');
+      setApprovalNote('');
       setMessage(t('approvedNow', { revision: outcome.project.revision }));
       onOpened(outcome.project, false);
       return;
     }
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
     setMessage(say(outcome));
-    // Someone else approved it first: show their approval, keeping the form as it is.
-    if (outcome.kind === 'refused' && outcome.code === 'revision_already_approved') {
+    // Someone else approved it first, or the server no longer holds it as
+    // validated or current: read it again so the readiness shown is the
+    // server's, keeping the form as it is.
+    if (outcome.kind === 'refused' && outcome.code !== undefined && REOPEN_ON.has(outcome.code)) {
       const reopened = await open({ token, id: opened.id, revision: opened.revision });
+      if (ticket !== sequence.current) return;
       if (reopened.kind === 'saved') onOpened(reopened.project, false);
     }
   }
 
   async function erase(projectId: string) {
     setConfirming(null);
+    if (working) return;
     const outcome = await remove({ token, id: projectId });
     if (outcome.kind === 'deleted') void refresh();
     else {
@@ -267,6 +303,7 @@ export function ProjectsPanel({
               <select
                 id={`${id}-revision`}
                 value={opened.revision}
+                disabled={working}
                 onChange={(event) => {
                   load(opened.id, Number(event.target.value));
                 }}
@@ -288,15 +325,13 @@ export function ProjectsPanel({
             <p className="text-sm font-medium text-accent" data-testid="project-approval">
               {t('approvedBy', {
                 revision: opened.revision,
-                name: opened.approval.by,
+                name: opened.approval.by ?? t('teamMember'),
                 date: opened.approval.at.slice(0, 10),
               })}
             </p>
-            {opened.approval.approver !== undefined && (
-              <p className="text-sm text-text-muted" data-testid="project-approval-account">
-                {opened.approval.approver.name === null
-                  ? t('approverAccountUnnamed')
-                  : t('approverAccount', { name: opened.approval.approver.name })}
+            {opened.approval.note && (
+              <p className="text-sm text-text-muted" data-testid="project-approval-note">
+                {t('approvalNoteShown', { note: opened.approval.note })}
               </p>
             )}
             {/* An approval never reads as covering what it did not sign. */}
@@ -313,21 +348,29 @@ export function ProjectsPanel({
           </div>
         ) : (
           <>
+            {!trial && (
+              <p className="text-sm text-text-muted" data-testid="approving-as">
+                {opened.approvingAs === null
+                  ? t('approvingAsUnnamed')
+                  : t('approvingAs', { name: opened.approvingAs })}
+              </p>
+            )}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <Field id={`${id}-approver`} label={t('approver')}>
+              <Field id={`${id}-approval-note`} label={t('approvalNote')}>
                 <input
-                  id={`${id}-approver`}
-                  value={approver}
-                  maxLength={100}
+                  id={`${id}-approval-note`}
+                  value={approvalNote}
+                  maxLength={200}
+                  disabled={trial}
                   onChange={(event) => {
-                    setApprover(event.target.value);
+                    setApprovalNote(event.target.value);
                   }}
                   className="input w-full"
                 />
               </Field>
               <button
                 type="button"
-                disabled={approver.trim() === '' || working || held}
+                disabled={working || held}
                 aria-describedby={held ? `${id}-approve-held` : undefined}
                 onClick={() => {
                   void sign();
@@ -339,6 +382,11 @@ export function ProjectsPanel({
             </div>
             {held && (
               <div id={`${id}-approve-held`} className="flex flex-col gap-1">
+                {trial && (
+                  <p className="text-sm text-text-muted" data-testid="approve-held-trial">
+                    {t('approveTrial')}
+                  </p>
+                )}
                 {dirty && (
                   <p className="text-sm text-text-muted" data-testid="approve-dirty">
                     {t('approveDirty', { revision: opened.revision })}
@@ -374,7 +422,8 @@ export function ProjectsPanel({
         </Field>
         <button
           type="button"
-          disabled={current === null || working}
+          disabled={current === null || working || unchanged}
+          aria-describedby={unchanged ? `${id}-save-unchanged` : undefined}
           onClick={() => {
             void store();
           }}
@@ -383,6 +432,15 @@ export function ProjectsPanel({
           {opened ? t('saveRevision') : t('save')}
         </button>
       </div>
+      {opened && unchanged && (
+        <p
+          id={`${id}-save-unchanged`}
+          className="text-sm text-text-muted"
+          data-testid="save-unchanged"
+        >
+          {t('saveUnchanged', { revision: opened.revision })}
+        </p>
+      )}
       {message && (
         <p role="status" className="text-sm" data-testid="projects-message">
           {message}
@@ -405,6 +463,7 @@ export function ProjectsPanel({
               </span>
               <button
                 type="button"
+                disabled={working}
                 onClick={() => {
                   load(project.id);
                 }}
@@ -414,6 +473,7 @@ export function ProjectsPanel({
               </button>
               <button
                 type="button"
+                disabled={working}
                 onClick={() => {
                   if (confirming === project.id) void erase(project.id);
                   else setConfirming(project.id);

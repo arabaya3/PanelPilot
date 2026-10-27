@@ -1,5 +1,6 @@
 {
   "drawing": {
+    "a team member": "أحد أعضاء الفريق",
     "Company": "الشركة",
     "Project": "المشروع",
     "Job number": "رقم العمل",
@@ -86,6 +87,7 @@
     "Consultant: {value}": "الاستشاري: {value}",
     "Revision {index}, {date}": "المراجعة {index}، {date}",
     "Review approved by {name}: a study, not for execution.": "اعتمدها {name} للمراجعة: دراسة، ليست للتنفيذ.",
+    "Approval note: {value}": "ملاحظة الاعتماد: {value}",
     "NOT APPROVED: for review only, not for execution.": "غير معتمد: للمراجعة فقط، ليس للتنفيذ.",
     "The design rules are this software's defaults; the company has not confirmed them.": "قواعد التصميم هي الافتراضية لهذا البرنامج، ولم تعتمدها الشركة.",
     "Basis of calculation": "أسس الحساب",

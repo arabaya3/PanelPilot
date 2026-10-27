@@ -298,16 +298,17 @@ const FORGED = [
   const appr = `/design/projects/${pid}/revisions/1/approval`;
   r = await api('POST', appr, {
     token: A.token,
-    body: { approver: 'X', approved_snapshot_sha256: 'f'.repeat(64) },
+    body: { approved_snapshot_sha256: 'f'.repeat(64) },
   });
   rec('2.1a', 'approval with extra field approved_snapshot_sha256', '422', r, r.status === 422);
   r = await api('POST', appr, {
     token: A.token,
-    body: { approver: 'X', approved_at: '2020-01-01', approved_account: 'x@y.z' },
+    body: { approved_at: '2020-01-01', approved_account: 'x@y.z' },
   });
   rec('2.1b', 'approval with extra approved_at/approved_account', '422', r, r.status === 422);
-  r = await api('POST', appr, { token: A.token, body: { approver: '   ' } });
-  rec('2.2', 'whitespace approver', '422', r, r.status === 422);
+  // The approver is the signed-in account: naming one is refused.
+  r = await api('POST', appr, { token: A.token, body: { approver: 'Someone Else' } });
+  rec('2.2', "someone else's name as approver", '422', r, r.status === 422);
   // The JSON/PDF carry a 12-hex prefix of the snapshot hash ('design 40beff92fcac').
   // Unapproved state of every format, for 2.5 (and kept for inspection).
   const unapprovedFiles = {};
@@ -330,9 +331,9 @@ const FORGED = [
     !/REVIEW APPROVED/.test(unapprovedText),
     `statuses ${JSON.stringify(unapprovedFiles)}, stamp REVIEW APPROVED (case-sensitive; the DXF title-block field label 'Review approved' is not the stamp) =${/REVIEW APPROVED/.test(unapprovedText)}`,
   );
-  const ok = await api('POST', appr, { token: A.token, body: { approver: 'Eng. Final Approver' } });
+  const ok = await api('POST', appr, { token: A.token, body: { note: 'Final attack note' } });
   rec('2.3a', 'first approval', '200', ok, ok.status === 200);
-  r = await api('POST', appr, { token: A.token, body: { approver: 'Second' } });
+  r = await api('POST', appr, { token: A.token, body: { note: 'Second' } });
   rec('2.3b', 'second approval', '409', r, r.status === 409);
   const approvedText = [];
   const approvedStatus = {};
@@ -356,7 +357,7 @@ const FORGED = [
       aj.includes(rev1.snapshot_sha256.slice(0, 12)) &&
       aj.includes(String(rev1.rules_version)) &&
       !aj.includes('@'),
-    `statuses ${JSON.stringify(approvedStatus)}; json approver=${aj.includes('Eng. Final Approver')} hash=${aj.includes(rev1.snapshot_sha256.slice(0, 12))} rules=${aj.includes(String(rev1.rules_version))} at=${aj.includes('@')}`,
+    `statuses ${JSON.stringify(approvedStatus)}; json note=${aj.includes('Final attack note')} hash=${aj.includes(rev1.snapshot_sha256.slice(0, 12))} rules=${aj.includes(String(rev1.rules_version))} at=${aj.includes('@')}`,
   );
   meta.approval_response_contains_at = JSON.stringify(ok.body || {}).includes('@');
   meta.approval_response_contains_account_email = JSON.stringify(ok.body || {}).includes(A.email);
@@ -370,9 +371,7 @@ const FORGED = [
   };
   await t('3.1', 'GET', 'GET', `/design/projects/${pid}`);
   await t('3.2', 'export pdf', 'POST', ep(1), { format: 'pdf' });
-  await t('3.3', 'approve', 'POST', `/design/projects/${pid}/revisions/1/approval`, {
-    approver: 'B',
-  });
+  await t('3.3', 'approve', 'POST', `/design/projects/${pid}/revisions/1/approval`, {});
   await t('3.4', 'revise', 'POST', `/design/projects/${pid}/revisions`, { request: REQUEST });
   await t('3.5', 'delete', 'DELETE', `/design/projects/${pid}`);
   await t('3.6', 'quotation_pdf via revision export', 'POST', ep(1), {
@@ -396,7 +395,7 @@ const FORGED = [
     'no approver/email in any B response',
     null,
     !leak.includes('Eng. Final Approver') && !leak.includes(A.email) && !leak.includes('@'),
-    `approver=${leak.includes('Eng. Final Approver')} email=${leak.includes(A.email)}`,
+    `note=${leak.includes('Final attack note')} email=${leak.includes(A.email)}`,
   );
   const still = await api('GET', `/design/projects/${pid}`, { token: A.token });
   meta.a_project_after_b_delete = still.status;
@@ -535,7 +534,7 @@ const FORGED = [
     Array.from({ length: 3 }, (_, i) =>
       api('POST', `/design/projects/${pid}/revisions/${target}/approval`, {
         token: A.token,
-        body: { approver: `Par ${i}` },
+        body: { note: `Par ${i}` },
       }),
     ),
   );

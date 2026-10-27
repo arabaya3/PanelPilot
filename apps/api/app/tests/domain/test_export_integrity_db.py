@@ -65,7 +65,7 @@ def test_concurrent_approvals_record_one_bound_approval(
     pid = saved["id"]
 
     def approver(i: int) -> Callable[[TestClient], Any]:
-        return lambda c: approve(c, pid, 1, approver=f"Racer {i}")
+        return lambda c: approve(c, pid, 1, note=f"Racer {i}")
 
     results = _race(app, [approver(i) for i in range(THREADS)])
     statuses = [r.status_code for r in results]
@@ -76,7 +76,8 @@ def test_concurrent_approvals_record_one_bound_approval(
             assert r.json()["code"] == "revision_already_approved", r.text
     row = revision_row(engine, pid, 1)
     winner = next(r for r in results if r.status_code == 200)
-    assert row["approved_by"] in json.dumps(winner.json())
+    assert row["approval_note"] in json.dumps(winner.json())
+    assert winner.json()["revisions"][0]["approved_by"] == APPROVER
     assert row["approved_snapshot_sha256"] == row["snapshot_sha256"]
     assert row["snapshot_sha256"] == canonical_sha256(row["design_snapshot"])
 

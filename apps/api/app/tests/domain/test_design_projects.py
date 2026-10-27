@@ -19,7 +19,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import ConflictError, NotFoundError, ValidationError
+from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.design import RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
 from app.domain import design_projects
@@ -270,10 +270,13 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
         user=user,
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(approver=" A. Rabaya "),
+        request=ApproveRevisionRequest(note=" A. Rabaya "),
     )
     assert approved.revision == 1
-    assert approved.revisions[0].approved_by == "A. Rabaya"
+    # No users row is behind this caller, so the approver is the fallback:
+    # the note is never the approver.
+    assert approved.revisions[0].approved_by == design_projects.APPROVER_FALLBACK
+    assert approved.revisions[0].approval_note == "A. Rabaya"
     assert approved.revisions[0].approved_at is not None
     # The account comes from the approver's token, never from the request,
     # and is recorded; its email is not sent.
@@ -283,16 +286,20 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
     assert approved.revisions[1].approver_account_recorded is False
     # Opened at revision 1, the title block lists only revision 1, approved.
     (listed,) = approved.request.info.revisions
-    assert listed.approved_by == "A. Rabaya"
+    assert listed.approved_by == design_projects.APPROVER_FALLBACK
+    assert listed.approval_note == "A. Rabaya"
     latest = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
-    assert [r.approved_by for r in latest.request.info.revisions] == ["A. Rabaya", ""]
+    assert [r.approved_by for r in latest.request.info.revisions] == [
+        design_projects.APPROVER_FALLBACK,
+        "",
+    ]
     with pytest.raises(ConflictError) as again:
         design_projects.approve_revision(
             session=as_tenant(),
             user=user,
             project_id=saved.id,
             number=1,
-            request=ApproveRevisionRequest(approver="Someone else"),
+            request=ApproveRevisionRequest(note="Someone else"),
         )
     assert again.value.code == "revision_already_approved"
     with pytest.raises(NotFoundError):
@@ -301,7 +308,7 @@ def test_approve_revision_signs_it_once_and_locks_the_project(tenants, as_tenant
             user=user,
             project_id=saved.id,
             number=9,
-            request=ApproveRevisionRequest(approver="X"),
+            request=ApproveRevisionRequest(),
         )
     with pytest.raises(ValidationError) as locked:
         design_projects.delete_project(session=as_tenant(), user=user, project_id=saved.id)
@@ -335,13 +342,13 @@ def _export(
     )
 
 
-def _approve(as_tenant: Any, tenant: uuid.UUID, saved: Any, approver: str = "R. Engineer") -> Any:
+def _approve(as_tenant: Any, tenant: uuid.UUID, saved: Any, note: str = "R. Engineer") -> Any:
     return design_projects.approve_revision(
         session=as_tenant(),
         user=_user(tenant),
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(approver=approver),
+        request=ApproveRevisionRequest(note=note),
     )
 
 
@@ -382,7 +389,10 @@ def test_approval_binds_the_snapshot_and_export_says_review_approved(tenants, as
     assert approved.export_status is ExportStatus.REVIEW_APPROVED
     first = _first_line(_export(as_tenant, a, saved))
     assert "REVIEW APPROVED — STUDY, NOT FOR EXECUTION" in first
-    assert "R. Engineer" in first
+    # The caller has no users row: the account is named by the fallback, and
+    # the note sent with the approval is never the approver.
+    assert f"approved by {design_projects.APPROVER_FALLBACK}" in first
+    assert "R. Engineer" not in first
     assert (saved.snapshot_sha256 or "")[: design_projects.SHORT_HASH] in first
     assert _export(as_tenant, a, saved, fmt="calculations_pdf").content.startswith(b"%PDF")
 
@@ -615,7 +625,7 @@ def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant
 
     def second() -> None:
         try:
-            outcome["result"] = _approve(as_tenant, a, saved, approver="Second Approver")
+            outcome["result"] = _approve(as_tenant, a, saved, note="Second Approver")
         except BaseException as exc:
             outcome["result"] = exc
 
@@ -639,7 +649,10 @@ def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant
     assert isinstance(refused, ConflictError)
     assert refused.code == "revision_already_approved"
     opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
-    assert opened.revisions[0].approved_by == "First Approver"
+    # A legacy typed name is never the approver; its account is not this
+    # tenant's, so the approval names the fallback.
+    assert opened.revisions[0].approved_by == design_projects.APPROVER_FALLBACK
+    assert "First Approver" not in opened.model_dump_json()
     assert opened.approved_snapshot_sha256 == saved.snapshot_sha256
 
 
@@ -656,8 +669,8 @@ def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tena
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(row: Any, number: int) -> None:
-        original(row, number)
+    def slow(session: Any, project: Any, row: Any, number: int) -> None:
+        original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
 
@@ -729,8 +742,8 @@ def test_a_delete_during_an_approval_waits_then_is_refused(tenants, as_tenant, e
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(row: Any, number: int) -> None:
-        original(row, number)
+    def slow(session: Any, project: Any, row: Any, number: int) -> None:
+        original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
 
@@ -764,7 +777,7 @@ def test_a_delete_during_an_approval_waits_then_is_refused(tenants, as_tenant, e
     assert refused.code == "project_approved"
     with engine.connect() as conn:
         kept = conn.execute(
-            text("SELECT approved_by FROM design_project_revisions WHERE number = 1")
+            text("SELECT approval_note FROM design_project_revisions WHERE number = 1")
         ).scalar_one()
     assert kept == "R. Engineer"
 
@@ -803,11 +816,14 @@ def test_an_approval_during_a_delete_waits_then_finds_no_revision(tenants, as_te
     assert left == 0
 
 
-def test_an_approver_of_only_whitespace_is_refused() -> None:
-    for blank in ("", "   ", "\t\n"):
+def test_an_approval_request_names_no_one_and_bounds_its_note() -> None:
+    for named in ({"approver": "Someone Else"}, {"approver": "X", "note": "ok"}):
         with pytest.raises(PydanticValidationError):
-            ApproveRevisionRequest(approver=blank)
-    assert ApproveRevisionRequest(approver="  A. Rabaya ").approver == "A. Rabaya"
+            ApproveRevisionRequest.model_validate(named)
+    with pytest.raises(PydanticValidationError):
+        ApproveRevisionRequest(note="n" * 201)
+    assert ApproveRevisionRequest(note="  checked on site ").note == "checked on site"
+    assert ApproveRevisionRequest().note == ""
 
 
 def _long_description(engine: Engine) -> str:
@@ -892,108 +908,211 @@ def test_a_failed_rollback_does_not_replace_the_error() -> None:
     design_projects._release(GoneConnection())  # type: ignore[arg-type]
 
 
-# --- Approver privacy: a display name, never the account's email ------------
+# --- Approval identity: the signed-in account, by display name, never email --
 
 
-def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | None) -> None:
-    """A users row for ``email`` in ``tenant``, replacing any left by another test."""
+def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | None) -> CurrentUser:
+    """A users row for ``email`` in ``tenant``, replacing any left by another test.
+
+    Returns:
+        The caller signed in as that account.
+    """
     with sessionmaker(bind=engine)() as session:
         session.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
-        session.add(User(tenant_id=tenant, email=email, full_name=full_name))
+        user_id = uuid.uuid4()
+        session.add(User(id=user_id, tenant_id=tenant, email=email, full_name=full_name))
         session.commit()
+    return CurrentUser(id=str(user_id), email=email, tenant_id=str(tenant), roles=frozenset())
 
 
 def _emails_in(value: object) -> list[str]:
     return [token for token in json.dumps(value).split('"') if "@" in token]
 
 
-def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignore[no-untyped-def]
-    tenants, as_tenant, engine
-) -> None:
-    a, _ = tenants
-    _account(engine, a, "named-approver@example.com", "  Rana Haddad ")
-    user = _user(a, email="named-approver@example.com")
-    saved = design_projects.save_project(
-        session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
-    )
-    approved = design_projects.approve_revision(
+def _approve_as(as_tenant: Any, user: CurrentUser, saved: Any, note: str = "") -> Any:
+    return design_projects.approve_revision(
         session=as_tenant(),
         user=user,
         project_id=saved.id,
         number=1,
-        request=ApproveRevisionRequest(approver="R. Haddad"),
-    )
-    (revision,) = approved.revisions
-    assert revision.approver_account_recorded is True
-    assert revision.approver_name == "Rana Haddad"
-    assert revision.author == "Rana Haddad"
-    assert _emails_in(approved.model_dump(mode="json")) == []
-    opened = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
-    assert _emails_in(opened.model_dump(mode="json")) == []
-    listed = design_projects.list_projects(session=as_tenant(), user=user)
-    assert _emails_in(listed.model_dump(mode="json")) == []
-    # The audit identity stays in the database as it was recorded.
-    with engine.connect() as conn:
-        stored = conn.execute(
-            text("SELECT approved_account, author, approved_by FROM design_project_revisions")
-        ).one()
-    assert tuple(stored) == (
-        "named-approver@example.com",
-        "named-approver@example.com",
-        "R. Haddad",
+        request=ApproveRevisionRequest(note=note),
     )
 
 
-def test_every_export_of_an_approved_revision_holds_no_account_email(  # type: ignore[no-untyped-def]
+def _pdf_text(raw: bytes) -> str:
+    import io
+
+    import pdfplumber
+
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        return "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+
+def _body(exported: Any, fmt: str) -> str:
+    content = exported.content
+    raw = content if isinstance(content, bytes) else content.encode("utf-8")
+    return _pdf_text(raw) if fmt.endswith("pdf") else raw.decode("utf-8", "replace")
+
+
+def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignore[no-untyped-def]
     tenants, as_tenant, engine
 ) -> None:
     a, _ = tenants
-    _account(engine, a, "eng@example.com", "Rana Haddad")
+    user = _account(engine, a, "named-approver@example.com", "  Rana Haddad ")
+    saved = design_projects.save_project(
+        session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
+    )
+    assert saved.approving_as == "Rana Haddad"
+    approved = _approve_as(as_tenant, user, saved, note="R. Haddad")
+    (revision,) = approved.revisions
+    assert revision.approved_by == "Rana Haddad"
+    assert revision.approver_account_recorded is True
+    assert revision.approver_name == "Rana Haddad"
+    assert revision.approval_note == "R. Haddad"
+    assert revision.author == "Rana Haddad"
+    (listed,) = approved.request.info.revisions
+    assert (listed.approved_by, listed.approval_note) == ("Rana Haddad", "R. Haddad")
+    assert _emails_in(approved.model_dump(mode="json")) == []
+    opened = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert _emails_in(opened.model_dump(mode="json")) == []
+    page = design_projects.list_projects(session=as_tenant(), user=user)
+    assert _emails_in(page.model_dump(mode="json")) == []
+    # The audit identity is the server's: email and id, from the token. The
+    # legacy typed-name column is left empty, and the note is kept apart.
+    with engine.connect() as conn:
+        stored = conn.execute(
+            text(
+                "SELECT approved_account, approved_user_id, approved_by, approval_note "
+                "FROM design_project_revisions"
+            )
+        ).one()
+    assert tuple(stored) == ("named-approver@example.com", uuid.UUID(user.id), None, "R. Haddad")
+
+
+def test_every_export_names_the_account_and_labels_the_note(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, _ = tenants
+    user = _account(engine, a, "eng@example.com", "Rana Haddad")
     saved = _saved(as_tenant, a)
-    _approve(as_tenant, a, saved)
+    _approve_as(as_tenant, user, saved, note="Site check ZQN")
     for fmt in ("json", "pdf", "calculations_pdf", "dxf"):
         exported = _export(as_tenant, a, saved, fmt=fmt)
-        content = exported.content
-        raw = content if isinstance(content, bytes) else content.encode("utf-8")
-        assert b"eng@example.com" not in raw, fmt
-        if fmt.endswith("pdf"):
-            import io
-
-            import pdfplumber
-
-            with pdfplumber.open(io.BytesIO(raw)) as pdf:
-                text_out = "".join(page.extract_text() or "" for page in pdf.pages)
-            assert "eng@example.com" not in text_out, fmt
-            assert "R. Engineer" in text_out, fmt
+        body = _body(exported, fmt)
+        assert "eng@example.com" not in body, fmt
+        assert "Rana Haddad" in body, fmt
+        if fmt == "calculations_pdf":
+            assert "Review approved by Rana Haddad" in body
+            assert "Approval note: Site check ZQN" in body
+            assert "approved by Site check" not in body
+        if fmt == "json":
+            document = json.loads(body)
+            (row,) = document["project"]["info"]["revisions"]
+            assert (row["approved_by"], row["approval_note"]) == ("Rana Haddad", "Site check ZQN")
+            assert "approved by Rana Haddad" in json.dumps(document["export_status"])
+        if fmt in ("pdf", "dxf"):
+            # The drawing's slots name the approver only; the note has none.
+            assert "Site check ZQN" not in body, fmt
 
 
 @pytest.mark.parametrize("full_name", [None, "", "   ", "eng@example.com"])
-def test_an_account_without_a_usable_name_is_named_by_no_one(  # type: ignore[no-untyped-def]
+def test_an_account_without_a_usable_name_is_a_team_member(  # type: ignore[no-untyped-def]
     tenants, as_tenant, engine, full_name
 ) -> None:
     a, _ = tenants
-    _account(engine, a, "eng@example.com", full_name)
+    user = _account(engine, a, "eng@example.com", full_name)
     saved = _saved(as_tenant, a)
-    approved = _approve(as_tenant, a, saved)
+    opened = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert opened.approving_as is None
+    approved = _approve_as(as_tenant, user, saved)
     (revision,) = approved.revisions
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
+    assert revision.approved_by == design_projects.APPROVER_FALLBACK
     assert revision.author == ""
     assert _emails_in(approved.model_dump(mode="json")) == []
+    calc = _body(_export(as_tenant, a, saved, fmt="calculations_pdf"), "calculations_pdf")
+    assert "Review approved by a team member" in calc
+    assert "eng@example.com" not in calc
+
+
+@pytest.mark.parametrize(
+    ("email", "expected"),
+    [
+        ("legacy@example.com", "Real Legacy Account"),
+        ("gone@example.com", design_projects.APPROVER_FALLBACK),
+        (None, design_projects.APPROVER_FALLBACK),
+    ],
+)
+def test_a_legacy_typed_name_is_never_the_approver(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine, email, expected
+) -> None:
+    """A row approved before this change: a typed name, perhaps an email, no id."""
+    a, _ = tenants
+    viewer = _account(engine, a, "legacy@example.com", "Real Legacy Account")
+    saved = _saved(as_tenant, a)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE design_project_revisions SET approved_by = 'TYPED LEGACY ZQX', "
+                "approved_account = :e, approved_at = now(), "
+                "approved_snapshot_sha256 = snapshot_sha256 WHERE project_id = :p"
+            ),
+            {"e": email, "p": uuid.UUID(saved.id)},
+        )
+    opened = design_projects.open_project(session=as_tenant(), user=viewer, project_id=saved.id)
+    (revision,) = opened.revisions
+    assert revision.approved_by == expected
+    assert revision.approver_account_recorded is (email is not None)
+    assert "TYPED LEGACY ZQX" not in opened.model_dump_json()
+    for fmt in ("json", "pdf", "calculations_pdf", "dxf"):
+        body = _body(_export(as_tenant, a, saved, fmt=fmt), fmt)
+        assert "TYPED LEGACY ZQX" not in body, fmt
+        assert expected in body, fmt
+
+
+def test_an_approval_by_id_ignores_an_email_now_held_by_another_account(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, _ = tenants
+    first = _account(engine, a, "reused@example.com", "First Holder")
+    saved = _saved(as_tenant, a)
+    _approve_as(as_tenant, first, saved)
+    # The account is deleted and its email given to a new account.
+    _account(engine, a, "reused@example.com", "Second Holder")
+    opened = design_projects.open_project(session=as_tenant(), user=first, project_id=saved.id)
+    assert opened.revisions[0].approved_by == design_projects.APPROVER_FALLBACK
+    assert "Second Holder" not in opened.model_dump_json()
+
+
+def test_a_trial_caller_cannot_approve(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    # A trial token resolves to an engineer with no email (``resolve_roles``).
+    trial = CurrentUser(id=str(uuid.uuid4()), email="", tenant_id=str(a), roles=frozenset())
+    with pytest.raises(AuthorizationError) as refused:
+        _approve_as(as_tenant, trial, saved)
+    assert refused.value.code == "approval_requires_account"
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.revisions[0].approved_at is None
 
 
 def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ignore[no-untyped-def]
     tenants, as_tenant, engine
 ) -> None:
     a, b = tenants
-    # The approving account belongs to tenant B now: tenant A's revision
+    # The approving account's row belongs to tenant B: tenant A's revision
     # recorded it, but its name is not A's to read.
-    _account(engine, b, "eng@example.com", "Someone In B")
+    in_b = _account(engine, b, "eng@example.com", "Someone In B")
+    caller = in_b.model_copy(update={"tenant_id": str(a)})
     saved = _saved(as_tenant, a)
-    approved = _approve(as_tenant, a, saved)
+    approved = _approve_as(as_tenant, caller, saved)
     (revision,) = approved.revisions
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
+    assert revision.approved_by == design_projects.APPROVER_FALLBACK
+    assert approved.approving_as is None
+    assert "Someone In B" not in approved.model_dump_json()
     # Tenant B sees neither the project nor its approval.
     with pytest.raises(NotFoundError):
         design_projects.open_project(session=as_tenant(), user=_user(b), project_id=saved.id)

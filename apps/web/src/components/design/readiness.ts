@@ -86,7 +86,7 @@ export type ApprovalBlocker = 'unsaved' | 'dirty' | 'stale' | 'notValidated' | '
  * said the rules or the company profile changed since the revision was saved.
  */
 export function readinessOf(input: {
-  opened: { approval: { by: string; at: string } | null } | null;
+  opened: { approval: { by: string | null; at: string } | null } | null;
   validation: RevisionValidation | null;
   dirty: boolean;
   stale: boolean;

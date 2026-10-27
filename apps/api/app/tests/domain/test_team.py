@@ -175,3 +175,49 @@ def test_an_invitation_is_withdrawn_and_an_existing_member_refused(owner, engine
         assert caught.value.code == "team_member_exists"
         assert team.seats_taken(session=session) == 1
         assert session.execute(text("SELECT 1")).scalar() == 1
+
+
+def test_an_invitation_counts_only_its_own_tenants_seats(owner, engine, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Signup accepts an invitation with the tenant filter lifted: the seat check must not be.
+
+    With two tenants holding subscriptions, reading "the" subscription across
+    tenants found several (a 500), and counting members across tenants filled
+    a plan that has room.
+    """
+    from app.models.tables.billing import SubscriptionRow
+
+    until = datetime.now(UTC) + timedelta(days=365)
+    with _session(engine) as session, cross_tenant(session, reason="test setup"):
+        other = TenantRow(slug=f"team-other-{uuid.uuid4().hex[:8]}", name="Other")
+        session.add(other)
+        session.flush()
+        # Another tenant, crowded: many members on a one-seat subscription.
+        for _ in range(3):
+            session.add(
+                User(tenant_id=other.id, email=f"o-{uuid.uuid4().hex[:8]}@x.com", is_active=True)
+            )
+        session.add(
+            SubscriptionRow(tenant_id=other.id, plan="team", seats=1, current_period_end=until)
+        )
+        session.add(
+            SubscriptionRow(
+                tenant_id=uuid.UUID(owner.tenant_id), plan="team", seats=3, current_period_end=until
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(billing, "enforced", lambda: True)
+    colleague = f"col-{uuid.uuid4().hex[:8]}@x.com"
+    with _session(engine) as session:
+        created = team.invite(session=session, user=owner, email=colleague)
+        session.commit()
+    with _session(engine) as session:
+        auth.signup(
+            session=session,
+            email=colleague,
+            password="a-long-password-1",
+            invite_token=created.token,
+        )
+        session.commit()
+    with _session(engine) as session:
+        assert colleague in [m.email for m in team.members(session=session, user=owner)]

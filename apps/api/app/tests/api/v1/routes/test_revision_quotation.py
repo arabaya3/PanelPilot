@@ -102,3 +102,34 @@ def test_another_tenants_revision_quotation_is_404(
     response = revision_export(client, saved["id"], 1, "quotation_pdf")
     assert response.status_code == 404
     assert error(response)["code"] in ("revision_not_found", "project_not_found")
+
+
+def test_a_revision_quotation_names_each_line_by_the_snapshot_not_the_price_list(
+    client: TestClient,
+) -> None:
+    """A price list's description cannot rename a device on a revision's quotation."""
+    from app.design import quotation
+    from app.domain import design as design_domain
+    from app.models.schemas.design import ProjectDesignRequest
+
+    designed, _ = design_domain.build_design(ProjectDesignRequest.model_validate(REQUEST))
+    keys = {quotation.device_key(d) for b in designed.boards for d in b.devices}
+    keys |= {p.order_number for p in designed.parts if p.order_number}
+    keys |= {p.type_number for p in designed.parts if p.type_number}
+    saved = save(client)
+    response = revision_export(
+        client,
+        saved["id"],
+        1,
+        "quotation_pdf",
+        pricing={
+            "currency": "JOD",
+            "price_list": [
+                {"key": key, "description": "FORGED 400 A MCCB", "unit_price": "1"}
+                for key in sorted(keys)
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text[:500]
+    body = "\n".join(pdf_pages(response.content))
+    assert "FORGED" not in body
