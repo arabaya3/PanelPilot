@@ -3728,7 +3728,8 @@ export interface components {
      *             or a rating key ("circuit_breaker:1P:C16",
      *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
      *             metre) for a device whose article is not chosen yet.
-     *         description: The supplier's description, for the quotation.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
      *         unit_price: Price of one, or of one metre for a cable.
      */
     'PriceListEntry-Input': {
@@ -3751,7 +3752,8 @@ export interface components {
      *             or a rating key ("circuit_breaker:1P:C16",
      *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
      *             metre) for a device whose article is not chosen yet.
-     *         description: The supplier's description, for the quotation.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
      *         unit_price: Price of one, or of one metre for a cable.
      */
     'PriceListEntry-Output': {
