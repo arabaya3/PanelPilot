@@ -172,7 +172,7 @@ classDiagram
 
 #### 7.4 Schema versioning and snapshot migration (ADR-2)
 
-- The snapshot gains an envelope: `{ "schema": "pp-design/2", "model": {...}, "registry_lock": {...} }`. The `registry_lock` lists every template, rule and catalogue version the model was built with (replacing the single `RULES_VERSION` and `CATALOGUE_VERSION` constants by a precise lock; those constants stay as aggregated digests for the Phase 1 stale check).
+- *Corrected by M1 (Section 13a):* a later schema is stored in an envelope `{ "schema": "pp-design/N", "model": {...} }` with no other top-level key. `registry_lock` is **deferred** to the milestone that has templates and rules to lock (M2/M3); it will arrive through a schema version and a migration, not as an empty field now. The original proposal: the snapshot gains an envelope `{ "schema": "pp-design/2", "model": {...}, "registry_lock": {...} }`. The `registry_lock` lists every template, rule and catalogue version the model was built with (replacing the single `RULES_VERSION` and `CATALOGUE_VERSION` constants by a precise lock; those constants stay as aggregated digests for the Phase 1 stale check).
 - **A saved snapshot and its hash are never rewritten.** Today's rows have no schema field; they are read as `pp-design/1` by definition.
 - Migration is a pure, versioned function `migrate_1_to_2(snapshot_v1) -> model_v2`, run **on read** for display and for deriving a new revision. It is never used to export an old revision as if it were the same: an old approved revision exports from its v1 snapshot with v1 renderers (kept until deprecated), or it is `revision_stale` and must be re-saved. This keeps Phase 1's "never recalculates silently" rule.
 - Each migration has golden tests: every v1 fixture migrates, re-validates and round-trips; the v1 hash still verifies against the stored bytes.
@@ -345,7 +345,7 @@ Two independent gates (as Phase 1):
 
 | Milestone | Scope                                                                                                         | Acceptance criteria                                                                                                                                  | Risks                                                         |
 | --------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **M1**    | `pp-design/2` envelope and adapter from v1; schema field on new snapshots (Section 13)                        | See Section 13                                                                                                                                       | Hash churn; scope creep                                       |
+| **M1**    | Read-side versioning: one snapshot reader, v1 domain model, lossless adapter (Sections 13, 13a)               | See Section 13                                                                                                                                       | Hash churn; scope creep                                       |
 | M2        | Rule metadata registry for **existing** rules (provenance, version); `rule_ref` on findings; CalcRecords      | Every existing finding names a registered rule or `policy`; registry lint fails on a rule with no source; outputs identical on all existing fixtures | Provenance gaps surfaced (good, but needs engineer time)      |
 | M3        | Template registry with terminals; today's `DeviceKind`s expressed as templates; global vs tenant scope        | Every v1 device maps to a template; a new template added as data alone appears in a design with no code change (test)                                | Template granularity decisions (D-3)                          |
 | M4        | Connectivity graph: nets, connections, wires; power wiring derived for distribution boards; wire numbering    | Graph invariants (every terminal in at most one net, PE continuity, no L–N short) pass on all fixtures; terminal and wire list derived               | Ambiguity in jumper/busbar modelling                          |
@@ -364,6 +364,8 @@ Throughout: Phase 1 tests (hash binding, approval locking, tenant 404s, strict 4
 - **Refusal tests:** out-of-scope domains and unknown devices are measured separately as correct-refusal rate, so refusing cannot inflate accuracy (as the readiness assessment recommends).
 
 ### 13. Next implementation milestone: M1
+
+> **Superseded in part by Section 13a (M1 as built).** M1 was narrowed to read-side versioning: no `DesignModelV2`, no `pp-design/2`, no change to what a save writes. Items 1 and 3 below and the criterion "new revisions store `schema: "pp-design/2"`" are deferred. The empty-but-typed `nets`, `logic`, `layout`, `calc_records` and `assumptions` are **absent rather than fake**. The text below is the original proposal, kept for the record.
 
 **Goal:** give every new snapshot a schema identity and a lossless v2 representation, without changing any output.
 
@@ -385,6 +387,40 @@ Throughout: Phase 1 tests (hash binding, approval locking, tenant 404s, strict 4
 **Non-goals:** terminals, nets, logic, layout content; catalogue; UI changes; enabling any refused format; any execution path.
 
 **Risks:** an accidental hash change for new revisions (mitigated by a pinned-hash fixture); the adapter silently dropping a field (mitigated by round-trip property tests over the full v1 schema); premature v2 design choices (mitigated by keeping v2 additive and marking it `provisional` until M4).
+
+### 13a. M1 as built
+
+**Scope delivered.** Read-side versioning only. New saves write exactly the bytes they wrote before (the bare `DesignProject.model_dump(mode="json")`), so no stored or new hash changes and no Phase 1 behaviour changes for a v1 row.
+
+Package `apps/api/app/design/model/`:
+
+- `domain.py`: frozen dataclasses mirroring every v1 field by name (`DesignModel`, `ProjectInfo`, `Revision`, `Board`, `Supply`, `Device`, `Cable`, `Circuit`, `Note`, `Designation`, `Part`). Standard library only; `Decimal` quantities, tuples for ordered collections, read-only mappings, kinds as their v1 string values.
+- `convert_v1.py`: `from_v1(DesignProject | dict)`, `to_v1(model) -> DesignProject`, `to_v1_dict`. `unmapped_v1_fields()` proves every v1 field has a mirror, so a field added to v1 without a mapping fails a test instead of being dropped.
+- `serialize.py`: `to_stored_v1`, `canonical_v1`, `sha256_v1`, through `snapshot.canonical_json`: bytes identical to the stored v1 snapshot.
+- `versions.py`: `V1`, `ENVELOPED` (empty), `KNOWN`, `LATEST = V1`, `MIGRATIONS: dict[(from, to), fn]` (empty), `identify`, `payload`, `migrate`, and the errors `SnapshotSchemaUnknownError` (a `ConflictError`, code `snapshot_schema_unknown`, params `{schema}`) and `SnapshotUnreadableError`.
+- `read.py`: `read_snapshot(stored) -> VersionedModel(schema, project, model)`, the one way a stored snapshot is read.
+
+**ADR-2a: how a version is identified (accepted for M1).**
+
+- _Decision:_ a stored snapshot with no top-level `schema` key **is** `pp-design/1`. Any later schema is an envelope `{ "schema": "pp-design/N", "model": {...} }` with exactly those two keys. v1 is never enveloped: an envelope naming `pp-design/1` is refused as unknown, so one design never has two byte forms.
+- _Context:_ every stored row is bare v1; v1 is strict (`extra="forbid"`) and has no `schema` field, so the marker cannot collide with v1 content.
+- _Consequences (hash):_ the hash is taken, as today, over the stored JSON exactly as stored, envelope and marker included, so changing a marker fails the hash. When a v2 writer is introduced, its new revisions get new hashes (they are new designs); stored rows never change. Until then nothing writes an envelope.
+
+**ADR-2b: one strict reader (accepted for M1).**
+
+- _Decision:_ `read_snapshot` identifies the version, refuses an unknown one with `snapshot_schema_unknown`, and validates the payload with the v1 schema's own strict validation. An unknown field anywhere, or an unknown envelope key, is `SnapshotUnreadableError`, never ignored.
+- _Wiring (`domain/design_projects.py`):_ `_check_snapshot` (approve and export) checks the hash first, then reads through `read_snapshot` and returns the `VersionedModel`; export renders its `.project`. `_policy_changed` (open and the stale check) reads through it. `_validation` (open, revision list, execution blockers) reports an unknown schema as `not_validated` with a blocking `snapshot_schema_unknown` finding, so such a revision still opens but cannot be approved or exported.
+- _Open agrees with approve and export:_ on the thorough path (opening a revision), `_validation` checks the hash and reads the snapshot through `read_snapshot` as `_check_snapshot` does; an altered or unreadable snapshot opens as `not_validated` with a blocking `snapshot_integrity_failed` finding (`values.reason` is `hash_mismatch` or `unreadable`), never as `draft`. The revision list (`thorough=False`) stays cheap and does not read snapshots.
+- _Behaviour differences (for reviewers), none for a valid v1 row:_ (1) a snapshot that matches its hash but does not validate is now refused at **approval** as well (`snapshot_integrity_failed`; before, only export refused it); (2) at **export** it is refused before the stale and plan checks rather than after them, so a caller whose plan lacks the format gets 409 `snapshot_integrity_failed` there instead of 403; (3) **open** reports an altered or unreadable snapshot as `not_validated` with a blocking finding, where it could show `draft` before.
+
+**ADR-2c: evolution by explicit migrations (accepted, mechanism only).**
+
+- _Decision:_ `MIGRATIONS[(from, to)]` holds pure functions on JSON payloads; `migrate` chains them in a declared order and raises on a gap or a backward step. Only v1 exists, so the registry is empty; the mechanism is shown with a test-only dummy registry, not a fake v2 in production code.
+- _How the future plugs in:_ (1) component kinds are already strings in the domain model, so a later component-kind or template registry (M3) is data, not an enum change here; (2) terminals, nets and wires (M3/M4) arrive as new optional typed collections in a new schema version (`pp-design/2`): add it to `ENVELOPED`, register a pure `migrate_1_to_2` that gives every v1 design an empty or derived collection, and add its reader branch in `read.py`; (3) rule versions and the `registry_lock` (M2) join that envelope once there is something real to lock. Migration runs on read only (display, deriving a new revision); an old revision exports from its stored v1 snapshot or is stale.
+
+**Boundaries.** Not built and not claimed: terminals, nets, wires, logic, layout, calc records, assumptions, `registry_lock`, rule metadata, a template registry, any readiness or execution claim, any new export format, any UI change. No new dependency. Known gaps outside this package's ownership: the web client has no localized message for `snapshot_schema_unknown` (no stored row can reach it today), and the revision routes' 409 description does not list it yet.
+
+**Verification.** Unit tests of the mechanism in `apps/api/app/tests/design/model/test_unit_*.py`; the compatibility corpus (stored-hash fixtures, round trip over every fixture) is owned separately in the same directory.
 
 ### 14. Decision records (proposed)
 

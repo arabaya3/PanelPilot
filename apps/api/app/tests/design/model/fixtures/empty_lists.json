@@ -1,0 +1,220 @@
+{
+  "case": "empty_lists",
+  "request": {
+    "boards": [
+      {
+        "loads": [
+          {
+            "description": "Lighting ground",
+            "length_m": "15",
+            "load": "lighting",
+            "power_kw": "0.8"
+          },
+          {
+            "description": "Sockets kitchen",
+            "length_m": "12",
+            "load": "socket",
+            "power_kw": "2.0"
+          },
+          {
+            "description": "Water heater",
+            "load": "water_heater",
+            "power_kw": "3.0"
+          }
+        ],
+        "name": "DB-V",
+        "supply": {
+          "fault_level_ka": "6",
+          "phases": 1,
+          "voltage_v": "230"
+        }
+      }
+    ],
+    "info": {
+      "name": "Synthetic Villa",
+      "number": "SYN-001"
+    }
+  },
+  "source": "augmented",
+  "stored": {
+    "catalogue_version": "none",
+    "design_snapshot": {
+      "boards": [
+        {
+          "cables": [],
+          "circuits": [],
+          "devices": [],
+          "fed_from": null,
+          "function": null,
+          "id": "DB-V",
+          "incomer_ids": [],
+          "location": null,
+          "name": "DB-V",
+          "notes": [],
+          "supply": {
+            "earth_loop_ohm": null,
+            "earthing": "TN-S",
+            "fault_level_ka": "6",
+            "frequency_hz": "50",
+            "phases": 1,
+            "voltage_v": "230"
+          }
+        }
+      ],
+      "info": {
+        "consultant": "",
+        "contractor": "",
+        "customer": "",
+        "name": "Synthetic Villa",
+        "number": "SYN-001",
+        "revisions": []
+      },
+      "parts": [],
+      "profile": "iec-default"
+    },
+    "findings": [
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "discrimination_incomer_raised",
+        "device_id": null,
+        "message": "Incomer raised to 63 A, 1.6 x the 32 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "32",
+          "rated": "63",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 6 kA breaking capacity against 6 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "6",
+          "rating": "6"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "1 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 6 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "6"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-V",
+        "circuit_id": null,
+        "code": "enclosure_selected",
+        "device_id": null,
+        "message": "Enclosure: ABB Mini Center compact GDMS332 RX (2CVA250001P0001), 2 rows of 16 modules, H x W x D 498 x 400 x 117 mm, IP41, busbar 200/250 A, 35 kA; 24 modules are left for spare ways (ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7). The outgoing terminal strip is not counted.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "free": "24",
+          "order": "2CVA250001P0001",
+          "product": "ABB Mini Center compact GDMS332 RX",
+          "rows": "2",
+          "size": "498 x 400 x 117",
+          "source": "ABB Distribution Boards catalogue (1SKC802027C0201), Mini Center compact, pp. 5, 7",
+          "type": "GDMS332 RX"
+        }
+      }
+    ],
+    "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+    "rules_version": "2026.10.23.1",
+    "snapshot_sha256": "7f57defe6342d51a341860389a9bb0983cc09baf03ae8265a7dfee4b2ac5764b"
+  }
+}

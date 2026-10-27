@@ -41,6 +41,8 @@ from sqlalchemy.orm import Session
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
 from app.design import CATALOGUE_VERSION, RULES_VERSION, drawing_text, integrity, marking, snapshot
+from app.design.model import versions
+from app.design.model.read import VersionedModel, read_snapshot
 from app.domain import billing
 from app.domain import design as design_domain
 from app.domain.plans import Feature
@@ -48,7 +50,6 @@ from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DesignFinding,
-    DesignProject,
     ExportPurpose,
     ExportStatus,
     FindingSeverity,
@@ -191,9 +192,13 @@ def _policy_changed(row: DesignRevisionRow) -> bool:
     if row.design_snapshot is None or not _snapshot_matches(row):
         return False
     try:
-        designed = DesignProject.model_validate(row.design_snapshot)
+        designed = read_snapshot(row.design_snapshot).project
         request = ProjectDesignRequest.model_validate(row.request)
-    except PydanticValidationError:
+    except (
+        versions.SnapshotSchemaUnknownError,
+        versions.SnapshotUnreadableError,
+        PydanticValidationError,
+    ):
         return False
     conditions = {board.name: board.conditions for board in request.boards}
     current = integrity.project_findings(designed, conditions)
@@ -245,6 +250,57 @@ def _request_problem(row: DesignRevisionRow) -> DesignFinding | None:
     return None
 
 
+def _schema_problem(row: DesignRevisionRow) -> DesignFinding | None:
+    """Why the revision's snapshot is in a schema this version does not read; ``None`` if not.
+
+    Such a revision still opens, as stored, but it is not validated: it cannot
+    be approved or exported (``snapshot_schema_unknown``). A snapshot that is
+    not an object at all is left to the integrity check.
+    """
+    try:
+        versions.identify(row.design_snapshot)
+    except versions.SnapshotSchemaUnknownError as exc:
+        return DesignFinding(
+            code="snapshot_schema_unknown",
+            severity=FindingSeverity.BLOCKING,
+            values={"schema": exc.schema},
+            message=f"The stored design is in schema {exc.schema!r}, "
+            "which this version of PanelPilot does not read",
+            requires_engineering_confirmation=False,
+            source="policy",
+        )
+    except versions.SnapshotUnreadableError:
+        return None
+    return None
+
+
+def _integrity_problem(row: DesignRevisionRow) -> DesignFinding | None:
+    """Why approval and export would refuse the stored design as altered; ``None`` if not.
+
+    The snapshot is checked as ``_check_snapshot`` checks it, its hash first,
+    then read through ``read_snapshot``, so a revision opens as not validated
+    exactly when its design would be refused with ``snapshot_integrity_failed``.
+    """
+    if not _snapshot_matches(row):
+        reason = "hash_mismatch"
+    else:
+        try:
+            read_snapshot(row.design_snapshot)
+        except versions.SnapshotUnreadableError:
+            reason = "unreadable"
+        else:
+            return None
+    return DesignFinding(
+        code="snapshot_integrity_failed",
+        severity=FindingSeverity.BLOCKING,
+        values={"reason": reason},
+        message="The stored design does not match its recorded hash or no longer "
+        "reads as a design; save it again as a new revision",
+        requires_engineering_confirmation=False,
+        source="policy",
+    )
+
+
 def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation:
     findings = _stored_findings(row)
     bound = _approval_bound(row)
@@ -253,6 +309,12 @@ def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation
         return _Validation(ExportStatus.NOT_VALIDATED, [*findings, problem], bound)
     if row.design_snapshot is None or row.snapshot_sha256 is None:
         return _Validation(ExportStatus.NOT_VALIDATED, findings, bound)
+    unknown = _schema_problem(row)
+    if unknown is not None:
+        return _Validation(ExportStatus.NOT_VALIDATED, [*findings, unknown], bound)
+    unreadable = _integrity_problem(row) if thorough else None
+    if unreadable is not None:
+        return _Validation(ExportStatus.NOT_VALIDATED, [*findings, unreadable], bound)
     changed = _changed(row, thorough=thorough)
     if changed:
         return _Validation(ExportStatus.STALE, findings, bound, changed)
@@ -701,8 +763,13 @@ def _locked_revision(session: Session, project: DesignProjectRow, number: int) -
     return row
 
 
-def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
-    """The revision's stored design, refused unless it is there and unaltered."""
+def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
+    """The revision's stored design, refused unless it is there, unaltered and readable.
+
+    The hash is checked over the snapshot as stored; only then is it read,
+    through ``read_snapshot``, which refuses a schema this version does not
+    read (``snapshot_schema_unknown``) and content that does not validate.
+    """
     if row.design_snapshot is None or row.snapshot_sha256 is None:
         raise ConflictError(
             f"revision {number} was saved before designs were validated on save; "
@@ -724,7 +791,14 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
             code="snapshot_integrity_failed",
             params={"revision": number},
         )
-    return row.design_snapshot
+    try:
+        return read_snapshot(row.design_snapshot)
+    except versions.SnapshotUnreadableError as exc:
+        raise ConflictError(
+            f"revision {number}'s stored design no longer reads as a design",
+            code="snapshot_integrity_failed",
+            params={"revision": number},
+        ) from exc
 
 
 def _refuse_stale(row: DesignRevisionRow, number: int) -> None:
@@ -774,7 +848,8 @@ def approve_revision(
         ConflictError: If the revision is approved already (``revision_already_approved``).
         ConflictError: If it holds no validated design
             (``revision_not_validated``), its design was altered
-            (``snapshot_integrity_failed``), its rules or settings changed
+            (``snapshot_integrity_failed``), is in a schema this version does not
+            read (``snapshot_schema_unknown``), its rules or settings changed
             (``revision_stale``), or it has blocking findings
             (``revision_has_blocking_findings``).
         AuthorizationError: If the caller is not a signed-in account
@@ -902,6 +977,7 @@ def export_revision(
         NotFoundError: If no such project or revision is the caller's
             (``revision_not_found``).
         ConflictError: ``revision_not_validated``, ``snapshot_integrity_failed``,
+            ``snapshot_schema_unknown``,
             ``revision_stale``, ``export_format_unprotected`` for a format
             that cannot keep a mark once imported, or, for execution, always
             ``execution_package_incomplete``.
@@ -942,17 +1018,9 @@ def export_revision(
             },
         )
     design_domain.refuse_unprotected(request.format)
-    stored = _check_snapshot(row, number)
+    designed = _check_snapshot(row, number).project
     _refuse_stale(row, number)
     design_domain.require_format(session=session, user=user, export_format=request.format)
-    try:
-        designed = DesignProject.model_validate(stored)
-    except PydanticValidationError as exc:
-        raise ConflictError(
-            f"revision {number}'s stored design no longer reads as a design",
-            code="snapshot_integrity_failed",
-            params={"revision": number},
-        ) from exc
     company = design_domain.resolve_profile(
         ProjectDesignRequest.model_validate(row.request).profile
     )
