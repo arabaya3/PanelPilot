@@ -1318,3 +1318,113 @@ def test_an_approval_recorded_under_other_rules_is_not_current(  # type: ignore[
         _export(as_tenant, a, saved)
     assert stale.value.code == "revision_stale"
     assert stale.value.params["changed"] == "rules_version"
+
+
+# --- An approval of a snapshot that no longer reads; earlier revisions' approvals
+
+
+def _replace_snapshot(engine: Engine, stored: object, *, rehash: bool) -> None:
+    """Write ``stored`` as revision 1's design; with ``rehash`` its hash (and the approval's) too."""
+    digest = snapshot.sha256_of(stored)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE design_project_revisions SET design_snapshot = CAST(:stored AS JSONB)"
+                + (
+                    ", snapshot_sha256 = :digest, approved_snapshot_sha256 = :digest"
+                    if rehash
+                    else ""
+                )
+                + " WHERE number = 1"
+            ),
+            {"stored": json.dumps(stored), "digest": digest},
+        )
+
+
+@pytest.mark.parametrize(
+    ("stored", "rehash"),
+    [
+        # Hashes as recorded, but is a finding, not a design.
+        (
+            {
+                "code": "x",
+                "severity": "warning",
+                "values": {},
+                "message": "m",
+                "requires_engineering_confirmation": False,
+                "source": "policy",
+            },
+            True,
+        ),
+        ({"schema": "unknown-9"}, True),
+        # Altered without its hash: fails the hash check.
+        ({"schema": "unknown-9"}, False),
+    ],
+)
+def test_an_approval_of_a_snapshot_that_does_not_read_does_not_count(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine, stored, rehash
+) -> None:
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    _replace_snapshot(engine, stored, rehash=rehash)
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_current is False
+    assert "snapshot" in opened.approval_changed
+    assert opened.revisions[0].approval_current is False
+    assert "approval" in opened.execution_blockers
+    assert opened.export_status is not ExportStatus.REVIEW_APPROVED
+    with pytest.raises(ConflictError) as refused:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert refused.value.params["approval"] == "missing"
+    assert "approval" in refused.value.params["blockers"].split(",")
+
+
+def test_an_earlier_approval_under_another_profile_is_not_current_in_the_list(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    """The list and the title block compare an earlier approval's profile and findings too."""
+    a, _ = tenants
+    user = _account(engine, a, "earlier-approver@example.com", "Rana Haddad")
+    saved = _saved(as_tenant, a)
+    _approve_as(as_tenant, user, saved, note="Site check")
+    design_projects.revise_project(
+        session=as_tenant(),
+        user=_user(a),
+        project_id=saved.id,
+        request=ReviseProjectRequest(request=_request(kw="5"), note="more"),
+    )
+
+    def _listed_and_titled() -> tuple[bool | None, str]:
+        opened = design_projects.open_project(
+            session=as_tenant(), user=_user(a), project_id=saved.id
+        )
+        exported = design_projects.export_revision(
+            session=as_tenant(),
+            user=_user(a),
+            project_id=saved.id,
+            number=2,
+            request=RevisionExportRequest.model_validate({"format": "json", "purpose": "review"}),
+        )
+        first = json.loads(exported.content)["project"]["info"]["revisions"][0]
+        return opened.revisions[0].approval_current, first["approved_by"]
+
+    assert _listed_and_titled() == (True, "Rana Haddad")
+    for column, value in (
+        ("approved_profile_sha256", "d" * 64),
+        ("approved_findings_policy", "0" * 64),
+    ):
+        with engine.begin() as conn:
+            original = conn.execute(
+                text(f"SELECT {column} FROM design_project_revisions WHERE number = 1")
+            ).scalar_one()
+            conn.execute(
+                text(f"UPDATE design_project_revisions SET {column} = :v WHERE number = 1"),
+                {"v": value},
+            )
+        assert _listed_and_titled() == (False, ""), column
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"UPDATE design_project_revisions SET {column} = :v WHERE number = 1"),
+                {"v": original},
+            )

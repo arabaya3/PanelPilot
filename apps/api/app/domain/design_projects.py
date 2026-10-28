@@ -182,17 +182,32 @@ def _findings_fingerprint(classified: Sequence[tuple[str, str, bool]]) -> str:
     return snapshot.sha256_of([list(item) for item in classified])
 
 
-def _current_classification(row: DesignRevisionRow) -> list[tuple[str, str, bool]] | None:
-    """How today's findings policy classifies the frozen snapshot; ``None`` if it cannot.
+def _read_snapshot(row: DesignRevisionRow) -> DesignProject | None:
+    """The stored design, if it passes its hash check and reads as a design; else ``None``.
 
-    The policy and integrity checks are re-run on the stored design, which
-    recalculates nothing. A snapshot that no longer reads is left to the
-    integrity check, which refuses it with its own code.
+    ``None`` too for a revision with no snapshot. One that fails either check
+    (altered, or a finding or unknown shape stored with its own hash) is
+    refused by the integrity check with its own code.
     """
     if row.design_snapshot is None or not _snapshot_matches(row):
         return None
     try:
-        designed = DesignProject.model_validate(row.design_snapshot)
+        return DesignProject.model_validate(row.design_snapshot)
+    except PydanticValidationError:
+        return None
+
+
+def _current_classification(
+    row: DesignRevisionRow, designed: DesignProject | None
+) -> list[tuple[str, str, bool]] | None:
+    """How today's findings policy classifies the frozen snapshot; ``None`` if it cannot.
+
+    The policy and integrity checks are re-run on the stored design, which
+    recalculates nothing.
+    """
+    if designed is None:
+        return None
+    try:
         request = ProjectDesignRequest.model_validate(row.request)
     except PydanticValidationError:
         return None
@@ -204,9 +219,15 @@ def _current_classification(row: DesignRevisionRow) -> list[tuple[str, str, bool
 class _Applicable:
     """The policy that applies to a revision now, which its design and approval are held to.
 
-    ``profile_sha256`` and ``findings`` are read only for a thorough check:
-    the revision opened, approved or exported. The list of a project's other
-    revisions compares the recorded versions alone.
+    The snapshot is read only for a thorough check: the revision opened,
+    approved or exported (one snapshot read per request). The list of a
+    project's other revisions, and their rows in a title block, are checked
+    cheaply, from columns alone: the recorded versions, and an approval's
+    recorded profile hash against the one its stored request resolves to now
+    (``profile_sha256``). Their findings are not reclassified: that needs the
+    snapshot. A cheap check therefore misses a findings-policy change since an
+    earlier revision was approved, which the thorough check of that revision
+    (opening, approving or exporting it) catches.
     """
 
     thorough: bool
@@ -216,17 +237,22 @@ class _Applicable:
     profile_sha256: str | None = None
     #: Today's classification of the stored design; ``None`` when it does not read.
     findings: list[tuple[str, str, bool]] | None = None
+    #: Whether the stored design passes its hash check and reads (thorough only).
+    snapshot_reads: bool = True
 
 
 def _applicable(row: DesignRevisionRow, *, thorough: bool = True) -> _Applicable:
+    profile = _current_profile_sha256(row)
     if not thorough:
-        return _Applicable(False, RULES_VERSION, CATALOGUE_VERSION)
+        return _Applicable(False, RULES_VERSION, CATALOGUE_VERSION, profile_sha256=profile)
+    designed = _read_snapshot(row)
     return _Applicable(
         True,
         RULES_VERSION,
         CATALOGUE_VERSION,
-        profile_sha256=_current_profile_sha256(row),
-        findings=_current_classification(row),
+        profile_sha256=profile,
+        findings=_current_classification(row, designed),
+        snapshot_reads=designed is not None,
     )
 
 
@@ -257,7 +283,8 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
     """What no longer matches what the revision's approval was granted under.
 
     Empty when the approval counts, or when there is none. ``snapshot``: it
-    approved another design. Then each recorded policy value against the one
+    approved another design, or (thorough) the design it holds no longer
+    passes its hash check or reads as a design. Then each recorded policy value against the one
     that applies now. A version or profile hash the approval did not record
     (a row neither the approval nor the migration wrote) reads as the
     revision's own, which an approval required to be current; a findings
@@ -268,16 +295,27 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
     if row.approved_at is None:
         return ()
     changed: list[str] = []
-    if row.snapshot_sha256 is None or row.approved_snapshot_sha256 != row.snapshot_sha256:
+    if (
+        row.snapshot_sha256 is None
+        or row.approved_snapshot_sha256 != row.snapshot_sha256
+        or not applicable.snapshot_reads
+    ):
         changed.append("snapshot")
     if (row.approved_rules_version or row.rules_version) != applicable.rules_version:
         changed.append("rules_version")
     if (row.approved_catalogue_version or row.catalogue_version) != applicable.catalogue_version:
         changed.append("catalogue_version")
-    if not applicable.thorough:
-        return tuple(changed)
     if (row.approved_profile_sha256 or row.profile_sha256) != applicable.profile_sha256:
         changed.append("profile")
+    if not applicable.thorough:
+        # No snapshot read: the recorded fingerprint is held to the stored
+        # findings' classification only, which catches a row altered after
+        # approval but not a policy change (that needs the snapshot).
+        if row.approved_findings_policy is not None and row.approved_findings_policy != (
+            _findings_fingerprint(_classified(_stored_findings(row)))
+        ):
+            changed.append("findings_policy")
+        return tuple(changed)
     if applicable.findings is not None:
         approved = row.approved_findings_policy or _findings_fingerprint(
             _classified(_stored_findings(row))
@@ -448,7 +486,7 @@ def _summary(
     row: DesignRevisionRow, names: _Names, checked: _Validation | None = None
 ) -> RevisionSummary:
     approved = row.approved_at is not None
-    # One of up to MAX_REVISIONS rows: compared by recorded versions only.
+    # One of up to MAX_REVISIONS rows: checked from its columns alone (``_Applicable``).
     # The revision opened is checked in full (``_opened`` passes its check),
     # and approval and export check theirs in full again under the project lock.
     checked = checked or _validation(row, thorough=False)
@@ -485,7 +523,7 @@ def _title_revisions(
         names: The accounts' display names, which name the approver.
         bound_only: Name an approver only where the approval counts, as an
             export prints it: of the design the revision holds, under today's
-            policy (in full for ``upto``, by recorded versions for the others).
+            policy (in full for ``upto``, from their columns for the others).
     """
     listed: list[Revision] = []
     for row in revisions:
