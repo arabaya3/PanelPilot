@@ -382,9 +382,10 @@ def remove(*, session: Session, user: CurrentUser, member_id: str) -> None:
         NotFoundError: If no such member is the tenant's.
     """
     tenant = _require_manager(session, user, lock="update")
-    if member_id == user.id:
-        raise ValidationError("the owner cannot remove themselves", code="team_remove_self")
     row = _locked_member(session, tenant, member_id)
+    # The account looked up, not the id as sent: an uppercase or braced id is the caller too.
+    if _is_caller(row, user):
+        raise ValidationError("the owner cannot remove themselves", code="team_remove_self")
     if row.id == _owner_id(session, tenant):
         logger.warning("team.owner_removal_refused", user_id=member_id, by=user.id)
         raise ValidationError(
@@ -394,6 +395,14 @@ def remove(*, session: Session, user: CurrentUser, member_id: str) -> None:
     row.is_active = False
     session.flush()
     logger.info("team.removed", user_id=member_id, by=user.id)
+
+
+def _is_caller(row: User, user: CurrentUser) -> bool:
+    """Whether the account found is the caller's own, compared as UUIDs."""
+    try:
+        return row.id == uuid.UUID(user.id)
+    except ValueError:
+        return False
 
 
 def _locked_member(session: Session, tenant: uuid.UUID, member_id: str) -> User:
@@ -442,9 +451,9 @@ def transfer_ownership(*, session: Session, user: CurrentUser, member_id: str) -
         raise AuthorizationError(
             "only the account's owner transfers its ownership", code="team_transfer_owner_only"
         )
-    if member_id == user.id:
-        raise ValidationError("you already own the account", code="team_transfer_self")
     row = _locked_member(session, tenant, member_id)
+    if _is_caller(row, user):
+        raise ValidationError("you already own the account", code="team_transfer_self")
     session.execute(update(TenantRow).where(TenantRow.id == tenant).values(owner_user_id=row.id))
     session.flush()
     logger.info(
@@ -473,7 +482,8 @@ def assign_owner(*, session: Session, email: str) -> uuid.UUID:
     Raises:
         NotFoundError: If no active account has that email.
         ValidationError: If the tenant has another, active owner
-            (``team_owner_present``).
+            (``team_owner_present``), or is deactivated (``tenant_inactive``):
+            nobody there can sign in to use it.
     """
     account = session.scalars(select(User).where(User.email == email.strip().lower())).one_or_none()
     if account is None:
@@ -485,6 +495,11 @@ def assign_owner(*, session: Session, email: str) -> uuid.UUID:
         .with_for_update()
         .execution_options(populate_existing=True)
     ).one()
+    if not tenant.is_active:
+        raise ValidationError(
+            "the tenant is deactivated; reactivate it before recording an owner",
+            code="tenant_inactive",
+        )
     current = tenant.owner_user_id
     if current is not None and current != account.id:
         owner_active = session.scalar(
