@@ -4299,6 +4299,14 @@ export interface components {
      *         validated: Whether the server designed it from its request when it
      *             was saved, and holds that design; ``False`` for an older one.
      *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
      */
     RevisionSummary: {
       /** Number */
@@ -4329,6 +4337,10 @@ export interface components {
       validated: boolean;
       /** @default not_validated */
       export_status: components['schemas']['ExportStatus'];
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
     };
     /**
      * SaveCompanySettings
@@ -4381,6 +4393,14 @@ export interface components {
      *             ``None`` while it is not approved (or approved before approvals
      *             were bound to a design).
      *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
      *         execution_blockers: Why it cannot be exported for execution: the
      *             parts of an execution package this service does not produce yet,
      *             then ``approval`` and each blocking finding's code, as they apply.
@@ -4414,6 +4434,10 @@ export interface components {
       rules_version?: string | null;
       /** Approved Snapshot Sha256 */
       approved_snapshot_sha256?: string | null;
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
       /** @default not_validated */
       export_status: components['schemas']['ExportStatus'];
       /** Execution Blockers */
