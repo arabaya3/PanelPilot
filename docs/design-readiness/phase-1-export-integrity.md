@@ -314,7 +314,7 @@ These are the owner's decisions, implemented on the existing authentication arch
   - The approval request has no name field: only an optional `note` of up to 200 characters. A client that sends `approver`, `approved_by`, or any other field gets 422, so nobody can submit someone else's name.
   - Approving needs a real signed-in account. A trial gets 403 `approval_requires_account`, and the approve control shows the reason.
 - **What is recorded.** Every approval stores the server-owned audit identity: `approved_account` (the email from the token) and `approved_user_id` (migration `f8c4a2e6d9b3`; no foreign key, so the record survives deleting the account), plus `approval_note`. `approved_snapshot_sha256` is unchanged.
-- **What is shown.** The account's verified display name (`users.full_name`, resolved by id, or by email for older rows, within the project's tenant), or the neutral fallback "a team member". The same value appears in:
+- **What is shown.** The account's verified display name, frozen at approval in `approved_display_name` (see "Settings and approval"), or the neutral fallback "a team member". The same value appears in:
   - the API (`approved_by` / `approver_name`);
   - the UI, as "You are approving as …" before approving and the approver afterwards;
   - the drawing title block, the DXF, the calculations PDF ("Review approved by …"), the export identity line and the JSON.
@@ -577,7 +577,7 @@ Three actions used to need only a signed-in account. They are now explicit permi
 - **Atomic check and action:** permissions are read from the database, never from the token. `permissions.require` runs inside the acting transaction and locks the tenant row `FOR SHARE`, then the caller's account `FOR SHARE`, then reads its roles; `grant-role`/`revoke-role` lock the account `FOR UPDATE`, and a removal, transfer or `assign-owner` lock the tenant row (and the affected account) `FOR UPDATE`. Either the revocation, removal or transfer commits first and the waiting action is refused, or the action commits first and the change waits for it. Tested against Postgres with held locks in both orders (revocation and approval, removal and approval, transfer against approval and delete, two transfers).
 - Every member still reads projects and company settings, and saves, opens and exports revisions. Nothing new is granted to every member.
 - **Not found first:** the permission is checked after the project is found as the caller's, so another tenant's project is a 404 (`revision_not_found` / `project_not_found`) for every caller, never a 403.
-- **What the client sees:** `ProjectPage`, `SavedProject` and `CompanySettings` carry a `permissions` list for the caller, read from the database the same way as the check. The projects panel hides Delete without `delete_project`, the Approve control is disabled with an explanation without `approve_revision`, and the company settings form disables Save with an explanation without `edit_company_settings`. Each refusal code above has a message in English, Arabic and Hebrew. The team page has no transfer control yet: the API and `owns` are in place for it.
+- **What the client sees:** `ProjectPage`, `SavedProject` and `CompanySettings` carry a `permissions` list for the caller, read from the database the same way as the check. The projects panel hides Delete without `delete_project`, the Approve control is disabled with an explanation without `approve_revision`, and the company settings form disables Save with an explanation without `edit_company_settings`. Each refusal code above has a message in English, Arabic and Hebrew. On `/team`, the owner (`owns`) sees "Make owner" beside each other active member; it asks for confirmation, then calls `POST /api/v1/team/owner`, and `team_transfer_owner_only`, `team_transfer_self` and `team_member_not_found` are said in the reader's language.
 - **Locks:** approve and delete both lock the project row first, then the tenant and account rows. A refusal rolls back at once, so it holds no lock. Approve racing delete ends with exactly one of them applied and no 500 (tested).
 
 ### Compatibility for existing tenants
@@ -596,6 +596,52 @@ Migration `a7d3e9f1c2b4` adds `tenants.owner_user_id` and backfills it determini
   ```
   Both take effect on the member's next request.
 - **Downgrade** drops the column: transfers made since are lost, and ownership is derived from the oldest active account again.
+
+## Settings and approval
+
+Decided by the integration owner: an approval binds the policy that applied when it was granted, and live tenant company settings are not part of that policy.
+
+### What the code does (traced)
+
+- **Tenant company settings are never read for an existing revision.** A save freezes the settings the form sent into the revision's own `request.profile`. The revision stores `snapshot_sha256`, `profile_sha256` (the hash of that profile resolved over this software's default profile), `rules_version`, `catalogue_version` and its findings. `PUT /design/company-settings` changes only what pre-fills the next design.
+- **Staleness was already checked.** On open, approve and export, `_changed` compares the revision's recorded profile hash, rules and catalogue versions, and its findings classification with today's (the findings policy re-run on the frozen snapshot). Any difference is `revision_stale`, listing what changed.
+- **Before this change** an approval recorded only `approved_snapshot_sha256` and who approved; the approver's display name was resolved live from `users` each time a response or export was built.
+
+### What an approval records now (migration `b4e8d2f6a9c1`)
+
+| Column                       | Value at approval                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `approved_profile_sha256`    | The revision's profile resolved now (checked equal to the revision's own, or the approval is refused) |
+| `approved_rules_version`     | `RULES_VERSION`                                                                                       |
+| `approved_catalogue_version` | `CATALOGUE_VERSION`                                                                                   |
+| `approved_findings_policy`   | SHA-256 of the canonical JSON of the sorted (code, severity, engineering confirmation) classification |
+| `approved_display_name`      | The approving account's display name, or `""` when it has none ("a team member")                      |
+
+- **When an approval counts** (review-approved status and mark, the title block's approver, `approval: present` and no `approval` blocker for execution): the approved snapshot is the revision's, and every recorded policy value equals the value that applies now. Otherwise:
+  - `SavedProject` and each `RevisionSummary` carry `approval_current: false` and `approval_changed` (`snapshot`, `rules_version`, `catalogue_version`, `profile`, `findings_policy`); `approval_current` is `null` while not approved. The revision opened is checked in full; the other revisions in its list by recorded versions only.
+  - Export is refused with `revision_stale`, its `changed` naming the policy parts (from the revision and from its approval). An approval of another snapshot is unchanged: the export is a draft, as before.
+  - Execution stays refused, with `approval` among its blockers.
+  - The web shows "This approval no longer counts: … changed since revision N was approved" on the projects panel and in Review & export, and "No longer counts" in the revision list, in English, Arabic and Hebrew.
+- **Exports print the frozen name.** Renaming, deleting or reusing the approving account changes no export. Who would approve now (`approving_as`) is still read live.
+
+### The two cases
+
+1. **Tenant company settings change after approval** (including engineering values such as `default_max_voltage_drop_percent`): nothing about the approved revision changes. It stays review-approved and `approval_current: true`, and its JSON export is byte-identical before and after (tested).
+2. **An applicable code policy changes after approval** (`RULES_VERSION`, `CATALOGUE_VERSION`, a value of `DEFAULT_PROFILE` that the revision's settings inherit, or a findings classification): the approval is no longer current, export is refused `revision_stale` naming the part, and execution stays blocked (tested for each of the four). The engineer saves the project again as a new revision and approves that.
+
+### Legacy approved rows
+
+- **Backfill, deterministic:** the profile hash, rules and catalogue versions are copied from the revision's own stored values. An approval was only granted to a revision that was not stale, so those were the applicable values then.
+- **`approved_findings_policy` stays NULL** for them, and NULL is read as the fingerprint of the revision's own stored findings classification (which approval required to match the policy then). It is not computed in the migration, because the findings policy is code and a migration must not depend on the version installed when it runs.
+- **`approved_display_name`** is the approving account's display name at migration time, resolved as exports resolved it until then (by `approved_user_id`, else by `approved_account` case-insensitively, within the revision's tenant; blank or "@"-containing names are no name), or `""`.
+- The upgrade prints counts only (approved rows; named versus "a team member"). A row neither the approval nor the migration wrote (NULL columns) reads the same way as a backfilled one, and its approver is resolved live as before.
+- **Downgrade** drops the five columns: approvals bind to the snapshot alone again and names are resolved live.
+
+### Limitations
+
+- **Renderer wording is not versioned.** A change to how an export is laid out or worded (titles, labels, PDF layout) is not part of the recorded policy, so an approved revision exported after such a change reads differently while its approval still counts.
+- **Strict by design:** any change to the default profile that the revision's settings inherit changes the resolved profile hash, including purely presentational defaults (a title-block field, a page order). Such a change makes approved revisions not current and their exports refused until saved again.
+- The list of a project's other revisions compares recorded versions only; an approval made stale by a profile or findings-policy change shows as not current once that revision is opened.
 
 ## Remaining limitations
 
