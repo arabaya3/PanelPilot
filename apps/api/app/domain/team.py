@@ -47,7 +47,13 @@ def _tenant(user: CurrentUser) -> uuid.UUID:
 
 
 def _owner_id(session: Session) -> uuid.UUID | None:
-    """The tenant's first active account."""
+    """The tenant's first active account.
+
+    Derived, not stored: if that account is deactivated outside the API (an
+    operator, in the database), the next-oldest active account becomes the
+    owner. ``remove`` refuses the current owner, so no one hands ownership on
+    through the API.
+    """
     return session.scalar(
         select(User.id).where(User.is_active.is_(True)).order_by(User.created_at, User.id).limit(1)
     )
@@ -276,7 +282,10 @@ def remove(*, session: Session, user: CurrentUser, member_id: str) -> None:
 
     Raises:
         AuthorizationError: If the caller is not the owner.
-        ValidationError: If the owner tries to remove themselves.
+        ValidationError: If the owner tries to remove themselves
+            (``team_remove_self``), or an admin tries to remove the tenant's
+            first active account, whose ownership would otherwise pass
+            silently to the next-oldest account (``team_owner_not_removable``).
         NotFoundError: If no such member is the tenant's.
     """
     _require_owner(session, user)
@@ -289,6 +298,11 @@ def remove(*, session: Session, user: CurrentUser, member_id: str) -> None:
     row = session.get(User, key)
     if row is None or not row.is_active:
         raise NotFoundError("no such member", code="team_member_not_found")
+    if row.id == _owner_id(session):
+        logger.warning("team.owner_removal_refused", user_id=member_id, by=user.id)
+        raise ValidationError(
+            "the account's owner cannot be removed", code="team_owner_not_removable"
+        )
     row.is_active = False
     session.flush()
     logger.info("team.removed", user_id=member_id)

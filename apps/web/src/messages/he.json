@@ -1413,6 +1413,7 @@
       "team_invitation_email": "ההזמנה מיועדת לכתובת דוא\"ל אחרת.",
       "team_invitation_not_found": "ההזמנה אינה קיימת.",
       "team_member_not_found": "החבר אינו קיים.",
+      "team_owner_not_removable": "לא ניתן להסיר את בעל החשבון.",
       "team_remove_self": "הבעלים אינו יכול להסיר את עצמו."
     }
   },

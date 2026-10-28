@@ -18,9 +18,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.errors import AuthorizationError
+from app.core.errors import AuthorizationError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.domain import permissions, roles
+from app.domain import permissions, roles, team
 from app.models.schemas.auth import CurrentUser, Permission, Role
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
@@ -203,3 +203,58 @@ def test_ownership_is_per_tenant(engine: Engine, tenant: uuid.UUID) -> None:
     owner = _account(engine, tenant, "dom-perm-owner-x@example.com", created=datetime.now(UTC))
     elsewhere = owner.model_copy(update={"tenant_id": str(uuid.uuid4())})
     assert _allowed(engine, elsewhere) == []
+
+
+@needs_postgres
+def test_an_admin_cannot_remove_the_first_account(engine: Engine, tenant: uuid.UUID) -> None:
+    """Removing the owner would pass ownership silently to the next-oldest member."""
+    start = datetime.now(UTC) - timedelta(days=10)
+    first = _account(engine, tenant, "dom-succ-first@example.com", created=start)
+    admin = _account(
+        engine, tenant, "dom-succ-admin@example.com", created=start + timedelta(days=1)
+    )
+    member = _account(
+        engine, tenant, "dom-succ-member@example.com", created=start + timedelta(days=2)
+    )
+    _grant(engine, tenant, admin.email, Role.ADMIN)
+    admin = _reload(engine, admin)
+    with sessionmaker(bind=engine)() as session:
+        with pytest.raises(ValidationError) as raised:
+            team.remove(session=session, user=admin, member_id=first.id)
+        assert raised.value.code == "team_owner_not_removable"
+        session.rollback()
+    assert _allowed(engine, first) == EVERYTHING
+    assert _allowed(engine, member) == []
+    # A plain member is still removable by the admin.
+    with sessionmaker(bind=engine)() as session:
+        team.remove(session=session, user=admin, member_id=member.id)
+        session.commit()
+
+
+@needs_postgres
+def test_operator_deactivation_hands_ownership_to_the_next_oldest(
+    engine: Engine, tenant: uuid.UUID
+) -> None:
+    """Documented succession: deactivated outside the API, the next-oldest active account owns."""
+    start = datetime.now(UTC) - timedelta(days=10)
+    first = _account(engine, tenant, "dom-op-first@example.com", created=start)
+    second = _account(
+        engine, tenant, "dom-op-second@example.com", created=start + timedelta(days=1)
+    )
+    third = _account(engine, tenant, "dom-op-third@example.com", created=start + timedelta(days=2))
+    assert _allowed(engine, second) == []
+    with sessionmaker(bind=engine)() as session:
+        bind_tenant(session, tenant)
+        row = session.get(User, uuid.UUID(first.id))
+        assert row is not None
+        row.is_active = False
+        session.commit()
+    assert _allowed(engine, second) == EVERYTHING
+    assert _allowed(engine, third) == []
+    with sessionmaker(bind=engine)() as session:
+        assert team.is_owner(session=session, user=second)
+        owners = [m.email for m in team.members(session=session, user=second) if m.owner]
+    assert owners == [second.email]
+    # The operator's way to choose otherwise: grant admin explicitly.
+    _grant(engine, tenant, third.email, Role.ADMIN)
+    assert _allowed(engine, _reload(engine, third)) == EVERYTHING

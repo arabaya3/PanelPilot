@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import deps
 from app.api.v1.routes import design as design_route
+from app.api.v1.routes import team as team_route
 from app.core.db import get_session
 from app.core.errors import install_exception_handlers
 from app.core.tenancy import bind_tenant
@@ -144,6 +145,7 @@ def _app(engine: Engine, caller: _Caller) -> FastAPI:
 
     app = FastAPI()
     app.include_router(design_route.router, prefix="/design")
+    app.include_router(team_route.router, prefix="/team")
     app.dependency_overrides[deps.get_current_user] = lambda: caller.user
     app.dependency_overrides[get_session] = session
     app.dependency_overrides[deps.enforce_design_rate_limit] = lambda: None
@@ -334,12 +336,59 @@ def _race(calls: list[Callable[[], Any]]) -> list[Any]:
         return list(pool.map(run, calls))
 
 
+def _assert_approve_won(engine: Engine, pid: str, approved: Any, deleted: Any) -> None:
+    assert approved.status_code == 200, approved.text
+    assert deleted.status_code == 422, deleted.text
+    assert deleted.json()["code"] == "project_approved"
+    assert _project_exists(engine, pid)
+    row = revision_row(engine, pid, 1)
+    assert row["approved_snapshot_sha256"] == row["snapshot_sha256"]
+
+
+def _assert_delete_won(engine: Engine, pid: str, approved: Any, deleted: Any) -> None:
+    assert deleted.status_code == 204, deleted.text
+    assert approved.status_code == 404, approved.text
+    assert approved.json()["code"] == "revision_not_found"
+    assert not _project_exists(engine, pid)
+
+
+def test_approve_committed_then_delete_is_refused(
+    engine: Engine, team: _Team, client: TestClient, caller: _Caller
+) -> None:
+    """One ordering of the race, made deterministic: the approval commits first."""
+    pid = save(client)["id"]
+    _as(caller, team.reviewer)
+    approved = approve(client, pid, 1)
+    _as(caller, team.owner)
+    deleted = _delete(client, pid)
+    _assert_approve_won(engine, pid, approved, deleted)
+
+
+def test_delete_committed_then_approve_is_not_found(
+    engine: Engine, team: _Team, client: TestClient, caller: _Caller
+) -> None:
+    """The other ordering, made deterministic: the delete commits first."""
+    pid = save(client)["id"]
+    deleted = _delete(client, pid)
+    _as(caller, team.reviewer)
+    approved = approve(client, pid, 1)
+    _assert_delete_won(engine, pid, approved, deleted)
+
+
 @pytest.mark.parametrize("round_", range(6))
 def test_approve_racing_delete_ends_consistent(
-    round_: int, engine: Engine, team: _Team, client: TestClient
+    round_: int,
+    engine: Engine,
+    team: _Team,
+    client: TestClient,
+    request: pytest.FixtureRequest,
 ) -> None:
-    """Reviewer approves while the owner deletes: one wins, the other is told why."""
-    del round_
+    """Reviewer approves while the owner deletes: one wins, the other is told why.
+
+    Which one wins is up to the scheduler; each round records its outcome
+    (``race_outcome`` in the test's user properties, so in a JUnit report),
+    and both orderings are also tested deterministically above.
+    """
     pid = save(client)["id"]
     users = {"approve": team.reviewer, "delete": team.owner}
     factory = sessionmaker(bind=engine)
@@ -370,18 +419,14 @@ def test_approve_racing_delete_ends_consistent(
 
     approved, deleted = _race([racer("approve"), racer("delete")])
     assert 500 not in (approved.status_code, deleted.status_code), (approved.text, deleted.text)
-    if _project_exists(engine, pid):
-        # The approval won: the delete waited for it, then refused an approved project.
-        assert approved.status_code == 200, approved.text
-        assert deleted.status_code == 422, deleted.text
-        assert deleted.json()["code"] == "project_approved"
-        row = revision_row(engine, pid, 1)
-        assert row["approved_snapshot_sha256"] == row["snapshot_sha256"]
+    outcome = "approve_won" if _project_exists(engine, pid) else "delete_won"
+    request.node.user_properties.append(("race_outcome", f"round {round_}: {outcome}"))
+    if outcome == "approve_won":
+        # The delete waited for the approval, then refused an approved project.
+        _assert_approve_won(engine, pid, approved, deleted)
     else:
-        # The delete won: the approval waited for it, then found no revision.
-        assert deleted.status_code == 204, deleted.text
-        assert approved.status_code == 404, approved.text
-        assert approved.json()["code"] == "revision_not_found"
+        # The approval waited for the delete, then found no revision.
+        _assert_delete_won(engine, pid, approved, deleted)
 
 
 def test_a_refused_approval_holds_no_lock(
@@ -395,3 +440,47 @@ def test_a_refused_approval_holds_no_lock(
     _as(caller, team.owner)
     assert _delete(client, pid).status_code == 204
     assert not _project_exists(engine, pid)
+
+
+# --------------------------------------------------------------------------- #
+# Owner succession through the team routes
+# --------------------------------------------------------------------------- #
+
+
+def _remove(client: TestClient, member: CurrentUser) -> Any:
+    return client.delete(f"/team/members/{member.id}")
+
+
+def test_an_admin_cannot_remove_the_first_account(
+    team: _Team, client: TestClient, caller: _Caller
+) -> None:
+    """Otherwise the next-oldest plain member would silently become the owner."""
+    _as(caller, team.admin)
+    refused = _remove(client, team.owner)
+    assert refused.status_code == 422, refused.text
+    assert refused.json()["code"] == "team_owner_not_removable"
+    _as(caller, team.owner)
+    assert _put_settings(client).status_code == 200
+    # Removing a plain member is still the admin's to do.
+    _as(caller, team.admin)
+    assert _remove(client, team.member).status_code == 204
+
+
+def test_operator_deactivation_hands_ownership_to_the_next_oldest(
+    engine: Engine, team: _Team, client: TestClient, caller: _Caller
+) -> None:
+    """Documented succession: the first account deactivated outside the API."""
+    _as(caller, team.reviewer)
+    assert _put_settings(client).json()["code"] == "settings_not_permitted"
+    # The admin, next-oldest, is already allowed everything; deactivate it too
+    # so the plain reviewer is the oldest active account left.
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET is_active = false WHERE id IN (:a, :b)"),
+            {"a": uuid.UUID(team.owner.id), "b": uuid.UUID(team.admin.id)},
+        )
+    assert _put_settings(client).status_code == 200
+    _as(caller, team.member)
+    assert _put_settings(client).json()["code"] == "settings_not_permitted"
+    # The plain member, now next in line, still does not manage the team.
+    assert _remove(client, team.reviewer).json()["code"] == "team_owner_only"

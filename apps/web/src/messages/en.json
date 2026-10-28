@@ -1413,6 +1413,7 @@
       "team_invitation_email": "This invitation is for another email address.",
       "team_invitation_not_found": "That invitation is not there.",
       "team_member_not_found": "That member is not there.",
+      "team_owner_not_removable": "The account's owner cannot be removed.",
       "team_remove_self": "The owner cannot remove themselves."
     }
   },

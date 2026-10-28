@@ -1413,6 +1413,7 @@
       "team_invitation_email": "هذه الدعوة لبريد إلكتروني آخر.",
       "team_invitation_not_found": "هذه الدعوة غير موجودة.",
       "team_member_not_found": "هذا العضو غير موجود.",
+      "team_owner_not_removable": "لا يمكن إزالة مالك الحساب.",
       "team_remove_self": "لا يستطيع المالك إزالة نفسه."
     }
   },
