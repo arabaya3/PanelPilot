@@ -93,6 +93,7 @@ function saved(id = 'p1'): SavedProject {
     revision: 1,
     validated: false,
     export_status: 'not_validated',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: [
       {
         number: 1,
@@ -431,6 +432,7 @@ describe('the approval', () => {
           revisions: [1],
           approval: { by, at: '2026-10-03T10:00:00Z', note: 'R. Engineer' },
           approvingAs: 'Rana Haddad',
+          canApprove: true,
         }}
         onOpened={vi.fn()}
         trial={options.trial ?? false}
@@ -471,6 +473,7 @@ describe('approving in a trial', () => {
           revisions: [1],
           approval: null,
           approvingAs: null,
+          canApprove: true,
         }}
         onOpened={vi.fn()}
         trial

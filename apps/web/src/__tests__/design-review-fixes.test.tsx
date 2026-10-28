@@ -95,6 +95,7 @@ function stored(
     revision,
     validated: true,
     export_status: 'draft',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
@@ -190,6 +191,7 @@ beforeEach(() => {
   api.list.mockResolvedValue({
     kind: 'listed',
     page: {
+      permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
       projects: [
         { id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' },
         { id: 'p2', name: 'Other hall', revisions: 1, updated_at: 'now' },
@@ -257,7 +259,10 @@ describe('a save overtaken by an open', () => {
     const open = vi.fn<typeof openProject>().mockReturnValue(opening.promise);
     const list = vi.fn<typeof listProjects>().mockResolvedValue({
       kind: 'listed',
-      page: { projects: [{ id: 'p2', name: 'Other hall', revisions: 1, updated_at: 'now' }] },
+      page: {
+        permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
+        projects: [{ id: 'p2', name: 'Other hall', revisions: 1, updated_at: 'now' }],
+      },
     });
     const onOpened = vi.fn();
     const onSaveState = vi.fn();
@@ -272,6 +277,7 @@ describe('a save overtaken by an open', () => {
           revisions: [1],
           approval: null,
           approvingAs: null,
+          canApprove: true,
         }}
         dirty
         onOpened={onOpened}

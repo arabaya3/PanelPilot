@@ -126,6 +126,7 @@ function saved(fields: Record<string, unknown> = {}): SavedProject {
     revision: 1,
     validated: true,
     export_status: 'draft',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: [
       {
         number: 1,
@@ -221,7 +222,10 @@ function stepState(step: string): string | null {
 beforeEach(() => {
   api.list.mockResolvedValue({
     kind: 'listed',
-    page: { projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }] },
+    page: {
+      permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
+      projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }],
+    },
   });
   api.open.mockResolvedValue({ kind: 'saved', project: saved() });
 });

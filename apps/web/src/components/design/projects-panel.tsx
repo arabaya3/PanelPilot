@@ -11,6 +11,7 @@ import {
   deleteProject,
   listProjects,
   openProject,
+  permits,
   reviseProject,
   saveProject,
   type ProjectDesignRequest,
@@ -24,6 +25,8 @@ const REOPEN_ON = new Set([
   'revision_already_approved',
   'revision_stale',
   'revision_not_validated',
+  // The account's permissions changed since the revision was opened.
+  'approval_not_permitted',
 ]);
 
 /** The project being worked on, once saved or opened. */
@@ -45,6 +48,11 @@ export type OpenedProject = {
    * it (from the server); null reads as "a team member".
    */
   approvingAs: string | null;
+  /**
+   * Whether the signed-in account may approve (the tenant's owner, or a
+   * reviewer), as the server said; the server checks again when it is asked.
+   */
+  canApprove: boolean;
 };
 
 /** One line of the title block's revision list. */
@@ -154,7 +162,10 @@ export function ProjectsPanel({
   const [approvalNote, setApprovalNote] = useState('');
   // Anything besides unsaved changes that keeps the revision from approval.
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
-  const held = trial || dirty || reasons.length > 0;
+  // Not the owner or a reviewer: the server would refuse (`approval_not_permitted`).
+  const notPermitted = !trial && opened !== null && !opened.canApprove;
+  const held = trial || notPermitted || dirty || reasons.length > 0;
+  const canDelete = permits(page, 'delete_project');
   // The revision open, unchanged: saving it again would only store a copy.
   const unchanged = opened !== null && !dirty;
 
@@ -289,6 +300,10 @@ export function ProjectsPanel({
     else {
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       setMessage(say(outcome));
+      // No longer the owner: list again, so delete is no longer offered.
+      if (outcome.kind === 'refused' && outcome.code === 'project_delete_not_permitted') {
+        void refresh();
+      }
     }
   }
 
@@ -361,7 +376,7 @@ export function ProjectsPanel({
                   id={`${id}-approval-note`}
                   value={approvalNote}
                   maxLength={200}
-                  disabled={trial}
+                  disabled={trial || notPermitted}
                   onChange={(event) => {
                     setApprovalNote(event.target.value);
                   }}
@@ -385,6 +400,11 @@ export function ProjectsPanel({
                 {trial && (
                   <p className="text-sm text-text-muted" data-testid="approve-held-trial">
                     {t('approveTrial')}
+                  </p>
+                )}
+                {notPermitted && (
+                  <p className="text-sm text-text-muted" data-testid="approve-not-permitted">
+                    {t('approveNotPermitted')}
                   </p>
                 )}
                 {dirty && (
@@ -471,17 +491,20 @@ export function ProjectsPanel({
               >
                 {t('open')}
               </button>
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => {
-                  if (confirming === project.id) void erase(project.id);
-                  else setConfirming(project.id);
-                }}
-                className="btn btn-sm btn-secondary"
-              >
-                {confirming === project.id ? t('confirmDelete') : t('delete')}
-              </button>
+              {/* Only the owner deletes; the server refuses anyone else. */}
+              {canDelete && (
+                <button
+                  type="button"
+                  disabled={working}
+                  onClick={() => {
+                    if (confirming === project.id) void erase(project.id);
+                    else setConfirming(project.id);
+                  }}
+                  className="btn btn-sm btn-secondary"
+                >
+                  {confirming === project.id ? t('confirmDelete') : t('delete')}
+                </button>
+              )}
             </li>
           ))}
         </ul>

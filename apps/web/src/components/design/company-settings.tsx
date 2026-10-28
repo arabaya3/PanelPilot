@@ -17,7 +17,12 @@ import {
 } from '@/components/design/company-settings-model';
 import { useOutcomeText } from '@/components/design/note-text';
 import { LOAD_KINDS } from '@/components/design/schedule';
-import { getCompanySettings, saveCompanySettings, type CompanySettings } from '@/lib/design';
+import {
+  getCompanySettings,
+  permits,
+  saveCompanySettings,
+  type CompanySettings,
+} from '@/lib/design';
 
 /** A setting the form edits: its path, label key, unit, and the default it shows. */
 type Setting = { path: string[]; label: string; unit?: string; placeholder?: string };
@@ -151,6 +156,9 @@ export function CompanySettingsPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const parsed = parseSettings(text);
+  // Every member reads the settings; only the owner saves them (the server
+  // refuses anyone else with `settings_not_permitted`).
+  const canSave = permits(saved, 'edit_company_settings');
   // Read once per session: the latest callback, without re-reading when it changes.
   const loaded = useRef(onLoaded);
   loaded.current = onLoaded;
@@ -174,7 +182,7 @@ export function CompanySettingsPanel({
   }
 
   async function store() {
-    if (token === null || parsed === 'invalid') return;
+    if (token === null || parsed === 'invalid' || !canSave) return;
     setWorking(true);
     setMessage(null);
     const settings: Settings = { ...parsed, ...(language === 'en' ? {} : { language }) };
@@ -185,6 +193,10 @@ export function CompanySettingsPanel({
       setMessage(t('saved'));
     } else {
       setMessage(say(outcome));
+      // No longer the owner: the form stops offering to save.
+      if (outcome.kind === 'refused' && outcome.code === 'settings_not_permitted') {
+        setSaved((was) => (was ? { ...was, permissions: [] } : was));
+      }
     }
   }
 
@@ -391,7 +403,8 @@ export function CompanySettingsPanel({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={token === null || parsed === 'invalid' || working}
+          disabled={token === null || parsed === 'invalid' || working || !canSave}
+          aria-describedby={saved && !canSave ? `${id}-not-permitted` : undefined}
           onClick={() => {
             void store();
           }}
@@ -407,6 +420,15 @@ export function CompanySettingsPanel({
           </span>
         )}
       </div>
+      {saved && !canSave && (
+        <p
+          id={`${id}-not-permitted`}
+          className="text-sm text-text-muted"
+          data-testid="settings-not-permitted"
+        >
+          {t('notPermitted')}
+        </p>
+      )}
       {message && (
         <p role="status" className="text-sm" data-testid="settings-message">
           {message}

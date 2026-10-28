@@ -110,6 +110,7 @@ import {
   importSchedule,
   listProjects,
   openProject,
+  permits,
   suggestSchedule,
   type BoardDesignResponse,
   type SavedProject,
@@ -831,6 +832,7 @@ function DesignWorkspace({
       revisions: project.revisions.map((revision) => revision.number),
       approval: approvalOf(project),
       approvingAs: project.approving_as ?? null,
+      canApprove: permits(project, 'approve_revision'),
     });
     setHistory(project.revisions);
     // A save, an approval or an opening each answer with the revision as now
