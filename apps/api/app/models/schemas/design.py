@@ -36,6 +36,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.models.schemas.auth import Permission
 from app.models.schemas.calculations import ConductorMaterial, InstallationMethod
 from app.models.schemas.plc import PlcValidationResult
 
@@ -1428,10 +1429,14 @@ class ProjectPage(BaseModel):
     Attributes:
         projects: The page.
         next_cursor: Pass back for the next page; ``None`` on the last.
+        permissions: What the caller may do to a project
+            (``app.domain.permissions``), for the client to hide what it
+            may not; the server checks again on every request.
     """
 
     projects: list[ProjectSummary]
     next_cursor: str | None = None
+    permissions: list[Permission] = Field(default_factory=list)
 
 
 class SavedProject(BaseModel):
@@ -1458,6 +1463,9 @@ class SavedProject(BaseModel):
         approving_as: The signed-in caller's display name, as an approval
             they made now would name them; ``None`` when they have none,
             which a client shows as "a team member". Never their email.
+        permissions: What the caller may do to this project
+            (``app.domain.permissions``); the server checks again on every
+            request.
     """
 
     id: str
@@ -1473,6 +1481,7 @@ class SavedProject(BaseModel):
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
     execution_blockers: list[str] = Field(default_factory=list)
     approving_as: str | None = None
+    permissions: list[Permission] = Field(default_factory=list)
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is
@@ -1541,11 +1550,14 @@ class CompanySettings(BaseModel):
             profile; ``None`` while none are saved.
         updated_by: Who saved them last.
         updated_at: When, ISO 8601.
+        permissions: What the caller may do with them
+            (``edit_company_settings``, or nothing: every member reads them).
     """
 
     settings: dict[str, Any] | None = None
     updated_by: str = ""
     updated_at: str | None = None
+    permissions: list[Permission] = Field(default_factory=list)
 
 
 class SaveCompanySettings(StrictModel):

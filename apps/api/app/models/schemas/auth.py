@@ -43,3 +43,15 @@ class CurrentUser(BaseModel):
             ``True`` if the caller holds it.
         """
         return role in self.roles
+
+
+class Permission(StrEnum):
+    """An action the server checks the caller may take (``app.domain.permissions``).
+
+    Sent to the client so it can hide or disable what it may not do; the
+    server checks it again on every request regardless.
+    """
+
+    APPROVE_REVISION = "approve_revision"
+    DELETE_PROJECT = "delete_project"
+    EDIT_COMPANY_SETTINGS = "edit_company_settings"

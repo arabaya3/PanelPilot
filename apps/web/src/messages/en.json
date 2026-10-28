@@ -1042,7 +1042,10 @@
       "too_large": "{field} is too large: at most {max}.",
       "request_invalid": "The server did not accept this request as entered. Check the fields and try again.",
       "request_invalid_fields": "Fields: {fields}.",
-      "approval_requires_account": "Approving a revision needs a signed-in account; a trial cannot approve."
+      "approval_requires_account": "Approving a revision needs a signed-in account; a trial cannot approve.",
+      "approval_not_permitted": "Only the account's owner or a reviewer can approve a revision.",
+      "project_delete_not_permitted": "Only the account's owner can delete a project.",
+      "settings_not_permitted": "Only the account's owner can change the company settings."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1074,6 +1077,7 @@
       "approvalNoteShown": "Approval note: {note}",
       "teamMember": "a team member",
       "approveTrial": "Approving a revision needs a signed-in account. Sign in to approve; a trial cannot.",
+      "approveNotPermitted": "Only the account's owner or a reviewer can approve a revision. Ask the owner to approve it, or to have you made a reviewer.",
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
@@ -1180,6 +1184,7 @@
       "whichCircuit": "which circuit?"
     },
     "settings": {
+      "notPermitted": "Only the account's owner can save the company settings. You can read them, and try changes on this design.",
       "help": "What your company does differently from the default. A blank field keeps the default, shown greyed. Save them for the company, and every new project starts from them.",
       "invalid": "The settings below are not valid JSON; fix them there to use the form.",
       "rules": "Design rules",
@@ -1409,6 +1414,7 @@
       "team_invitation_email": "This invitation is for another email address.",
       "team_invitation_not_found": "That invitation is not there.",
       "team_member_not_found": "That member is not there.",
+      "team_owner_not_removable": "The account's owner cannot be removed.",
       "team_remove_self": "The owner cannot remove themselves."
     }
   },

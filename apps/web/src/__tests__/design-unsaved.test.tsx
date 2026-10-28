@@ -87,6 +87,7 @@ function saved(name: string, revision = 1): SavedProject {
     revision,
     validated: false,
     export_status: 'not_validated',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
@@ -212,7 +213,10 @@ function deferred<T>() {
 beforeEach(() => {
   api.list.mockResolvedValue({
     kind: 'listed',
-    page: { projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }] },
+    page: {
+      permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
+      projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }],
+    },
   });
   api.open.mockResolvedValue({ kind: 'saved', project: saved('Stored tower') });
 });

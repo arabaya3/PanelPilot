@@ -51,6 +51,20 @@ export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
 export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
+/** An action the server lets the caller take; it checks again on every request. */
+export type Permission = components['schemas']['Permission'];
+
+/**
+ * Whether a response says the caller may take an action. A response that
+ * names none (an older API) reads as not allowed: the page only hides or
+ * disables, and the server decides.
+ */
+export function permits(
+  subject: { permissions?: Permission[] } | null | undefined,
+  permission: Permission,
+): boolean {
+  return subject?.permissions?.includes(permission) ?? false;
+}
 export type MarkupReport = components['schemas']['MarkupReport'];
 export type MarkupSuggestion = components['schemas']['MarkupSuggestion'];
 

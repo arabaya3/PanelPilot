@@ -1867,6 +1867,8 @@ export interface components {
      *             profile; ``None`` while none are saved.
      *         updated_by: Who saved them last.
      *         updated_at: When, ISO 8601.
+     *         permissions: What the caller may do with them
+     *             (``edit_company_settings``, or nothing: every member reads them).
      */
     CompanySettings: {
       /** Settings */
@@ -1880,6 +1882,8 @@ export interface components {
       updated_by: string;
       /** Updated At */
       updated_at?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ConductorMaterial
@@ -3493,6 +3497,15 @@ export interface components {
       width_mm?: string | null;
     };
     /**
+     * Permission
+     * @description An action the server checks the caller may take (``app.domain.permissions``).
+     *
+     *     Sent to the client so it can hide or disable what it may not do; the
+     *     server checks it again on every request regardless.
+     * @enum {string}
+     */
+    Permission: 'approve_revision' | 'delete_project' | 'edit_company_settings';
+    /**
      * Phase
      * @description A line conductor, or all three.
      * @enum {string}
@@ -3903,12 +3916,17 @@ export interface components {
      *     Attributes:
      *         projects: The page.
      *         next_cursor: Pass back for the next page; ``None`` on the last.
+     *         permissions: What the caller may do to a project
+     *             (``app.domain.permissions``), for the client to hide what it
+     *             may not; the server checks again on every request.
      */
     ProjectPage: {
       /** Projects */
       projects: components['schemas']['ProjectSummary'][];
       /** Next Cursor */
       next_cursor?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ProjectSummary
@@ -4349,6 +4367,9 @@ export interface components {
      *         approving_as: The signed-in caller's display name, as an approval
      *             they made now would name them; ``None`` when they have none,
      *             which a client shows as "a team member". Never their email.
+     *         permissions: What the caller may do to this project
+     *             (``app.domain.permissions``); the server checks again on every
+     *             request.
      */
     SavedProject: {
       /** Id */
@@ -4379,6 +4400,8 @@ export interface components {
       execution_blockers?: string[];
       /** Approving As */
       approving_as?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ScheduleSuggestionRequest

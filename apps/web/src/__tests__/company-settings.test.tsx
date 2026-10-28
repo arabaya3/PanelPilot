@@ -87,7 +87,12 @@ describe('the company settings panel', () => {
   it('fills a blank form from the saved settings, edits, and saves for the company', async () => {
     const load = vi.fn<typeof getCompanySettings>().mockResolvedValue({
       kind: 'settings',
-      saved: { settings: { key: 'acme', name: 'Acme' }, updated_by: 'e', updated_at: null },
+      saved: {
+        settings: { key: 'acme', name: 'Acme' },
+        updated_by: 'e',
+        updated_at: null,
+        permissions: ['edit_company_settings'],
+      },
     });
     const save = vi.fn<typeof saveCompanySettings>().mockResolvedValue({
       kind: 'settings',
@@ -150,5 +155,55 @@ describe('the company settings panel', () => {
     expect(screen.getByTestId('text').textContent).toBe('{broken');
     expect(screen.getByRole('alert').textContent).toContain('not valid JSON');
     expect(screen.getByLabelText<HTMLInputElement>('Company name').disabled).toBe(true);
+  });
+});
+
+describe('company settings for a member who is not the owner', () => {
+  it('shows the saved settings but does not offer to save them', async () => {
+    const load = vi.fn<typeof getCompanySettings>().mockResolvedValue({
+      kind: 'settings',
+      saved: { settings: { key: 'acme', name: 'Acme' }, updated_by: 'e', updated_at: null },
+    });
+    const save = vi.fn<typeof saveCompanySettings>();
+    renderApp(<Harness load={load} save={save} />);
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLInputElement>('Company name').value).toBe('Acme');
+    });
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save for the company' });
+    expect(button.disabled).toBe(true);
+    expect(screen.getByTestId('settings-not-permitted').textContent).toContain(
+      "Only the account's owner can save the company settings.",
+    );
+    fireEvent.click(button);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('says why when the server refuses the save, and stops offering it', async () => {
+    const load = vi.fn<typeof getCompanySettings>().mockResolvedValue({
+      kind: 'settings',
+      saved: {
+        settings: { key: 'acme' },
+        updated_by: 'e',
+        updated_at: null,
+        permissions: ['edit_company_settings'],
+      },
+    });
+    const save = vi.fn<typeof saveCompanySettings>().mockResolvedValue({
+      kind: 'refused',
+      code: 'settings_not_permitted',
+      detail: "only the account's owner changes the company settings",
+    });
+    renderApp(<Harness load={load} save={save} />);
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save for the company' });
+    await waitFor(() => {
+      expect(button.disabled).toBe(false);
+    });
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-message').textContent).toBe(
+        "Only the account's owner can change the company settings.",
+      );
+    });
+    expect(button.disabled).toBe(true);
   });
 });

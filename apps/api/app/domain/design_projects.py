@@ -43,10 +43,10 @@ from app.core.tenancy import bind_tenant
 from app.design import CATALOGUE_VERSION, RULES_VERSION, drawing_text, integrity, marking, snapshot
 from app.design.model import versions
 from app.design.model.read import VersionedModel, read_snapshot
-from app.domain import billing
+from app.domain import billing, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
-from app.models.schemas.auth import CurrentUser
+from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DesignFinding,
@@ -628,6 +628,7 @@ def _opened(
         export_status=checked.status,
         execution_blockers=_execution_blockers(checked),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
+        permissions=permissions.allowed(session=session, user=viewer),
     )
     return opened if readable else opened.as_stored(stored)
 
@@ -871,8 +872,9 @@ def approve_revision(
             (``revision_stale``), or it has blocking findings
             (``revision_has_blocking_findings``).
         AuthorizationError: If the caller is not a signed-in account
-            (``approval_requires_account``: a trial has none), or their plan
-            does not include approval.
+            (``approval_requires_account``: a trial has none), their plan
+            does not include approval, or they are neither the tenant's owner
+            nor an admin nor a reviewer (``approval_not_permitted``).
     """
     _require_account(user)
     billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)
@@ -882,6 +884,9 @@ def approve_revision(
         # a delete take them: a delete cannot remove a revision as it is
         # approved, and neither can wait on the other's second lock.
         project = _revision_project(session, project_id, lock=True)
+        # Checked once the project is found as the caller's, so another
+        # tenant's project stays "not found" rather than "forbidden".
+        permissions.require(session=session, user=user, permission=Permission.APPROVE_REVISION)
         row = _locked_revision(session, project, number)
         _approvable(session, project, row, number)
         # Who approves is the signed-in account, from its token: the request
@@ -1135,6 +1140,7 @@ def list_projects(
             for row in page
         ],
         next_cursor=_cursor(page[-1].updated_at, page[-1].id) if len(rows) > limit else None,
+        permissions=permissions.allowed(session=session, user=user),
     )
 
 
@@ -1148,6 +1154,8 @@ def delete_project(*, session: Session, user: CurrentUser, project_id: str) -> N
 
     Raises:
         NotFoundError: If no such project is the caller's.
+        AuthorizationError: If the caller is not the tenant's owner
+            (``project_delete_not_permitted``).
         ValidationError: If a revision of it is approved.
     """
     tenant = _scope_to(session, user)
@@ -1156,6 +1164,8 @@ def delete_project(*, session: Session, user: CurrentUser, project_id: str) -> N
         # finishes before this reads whether any revision is approved, and one
         # that starts after waits, then finds no project.
         project = _load(session, project_id, lock=True)
+        # After the load: another tenant's project stays "not found".
+        permissions.require(session=session, user=user, permission=Permission.DELETE_PROJECT)
         approved = session.scalars(
             select(DesignRevisionRow.number).where(
                 DesignRevisionRow.project_id == project.id,

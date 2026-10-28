@@ -110,6 +110,7 @@ function saved(revision = 1): SavedProject {
     revision,
     validated: false,
     export_status: 'not_validated',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
