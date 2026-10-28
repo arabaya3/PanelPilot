@@ -245,5 +245,9 @@ describe('team after the access token expires', () => {
     );
     expect(await screen.findByText('Sign in to see your team.')).toBeTruthy();
     expect(teamImpl).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+    expect(screen.queryByText('Loading the team…')).toBeNull();
   });
 });

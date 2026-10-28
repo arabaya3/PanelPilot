@@ -157,8 +157,11 @@ export function TeamScreen({
         </div>
       )}
 
-      {loaded.kind === 'loading' && <p className="text-text-muted">{t('loading')}</p>}
-      {loaded.kind === 'failed' && (
+      {/* Signed out (the session ended): only the sign-in, not what the old token left. */}
+      {token !== null && loaded.kind === 'loading' && (
+        <p className="text-text-muted">{t('loading')}</p>
+      )}
+      {token !== null && loaded.kind === 'failed' && (
         <p role="alert" className="text-severity-critical">
           {t('error')}
         </p>
