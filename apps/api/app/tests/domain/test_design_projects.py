@@ -23,7 +23,7 @@ from app.core.errors import AuthorizationError, ConflictError, NotFoundError, Va
 from app.design import RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
 from app.domain import design_projects
-from app.models.schemas.auth import CurrentUser
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DistributionBoardRequest,
@@ -93,8 +93,14 @@ def _as_tenant(engine: Engine) -> Iterator[object]:
         session.close()
 
 
+#: The callers here hold every permission (``app.domain.permissions``):
+#: what an owner, a reviewer or another member may do is tested there and
+#: in ``routes/test_permissions.py``.
+ADMIN = frozenset({Role.ADMIN})
+
+
 def _user(tenant: uuid.UUID, email: str = "eng@example.com") -> CurrentUser:
-    return CurrentUser(id=str(uuid.uuid4()), email=email, tenant_id=str(tenant), roles=frozenset())
+    return CurrentUser(id=str(uuid.uuid4()), email=email, tenant_id=str(tenant), roles=ADMIN)
 
 
 def _request(name: str = "Tower", kw: str = "3") -> ProjectDesignRequest:
@@ -922,7 +928,7 @@ def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | Non
         user_id = uuid.uuid4()
         session.add(User(id=user_id, tenant_id=tenant, email=email, full_name=full_name))
         session.commit()
-    return CurrentUser(id=str(user_id), email=email, tenant_id=str(tenant), roles=frozenset())
+    return CurrentUser(id=str(user_id), email=email, tenant_id=str(tenant), roles=ADMIN)
 
 
 def _emails_in(value: object) -> list[str]:
@@ -1118,3 +1124,90 @@ def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ig
         design_projects.open_project(session=as_tenant(), user=_user(b), project_id=saved.id)
     listed = design_projects.list_projects(session=as_tenant(), user=_user(b))
     assert listed.model_dump(mode="json")["projects"] == []
+
+
+# --------------------------------------------------------------------------- #
+# Permissions (app.domain.permissions): who approves and who deletes
+# --------------------------------------------------------------------------- #
+
+
+def _member(tenant: uuid.UUID, *roles: Role) -> CurrentUser:
+    """A caller who is not the tenant's owner: no account row, and no admin."""
+    return CurrentUser(
+        id=str(uuid.uuid4()),
+        email="member@example.com",
+        tenant_id=str(tenant),
+        roles=frozenset({Role.ENGINEER, *roles}),
+    )
+
+
+def test_responses_carry_the_callers_permissions(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = design_projects.save_project(
+        session=as_tenant(), user=_user(a), request=SaveProjectRequest(name="T", request=_request())
+    )
+    assert saved.permissions == ["approve_revision", "delete_project", "edit_company_settings"]
+    page = design_projects.list_projects(session=as_tenant(), user=_member(a))
+    assert page.permissions == []
+    opened = design_projects.open_project(
+        session=as_tenant(), user=_member(a, Role.REVIEWER), project_id=saved.id
+    )
+    assert opened.permissions == ["approve_revision"]
+
+
+def test_a_member_may_neither_approve_nor_delete(tenants, as_tenant, engine) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = design_projects.save_project(
+        session=as_tenant(), user=_user(a), request=SaveProjectRequest(name="T", request=_request())
+    )
+    member = _member(a)
+    with pytest.raises(AuthorizationError) as refused:
+        _approve_as(as_tenant, member, saved)
+    assert refused.value.code == "approval_not_permitted"
+    with pytest.raises(AuthorizationError) as refused:
+        design_projects.delete_project(session=as_tenant(), user=member, project_id=saved.id)
+    assert refused.value.code == "project_delete_not_permitted"
+    # Nothing changed, and the refusals released the project's lock: the
+    # owner approves straight after.
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM design_projects")).scalar() == 1
+    approved = _approve_as(as_tenant, _user(a), saved)
+    assert approved.revisions[0].approved_at is not None
+
+
+def test_a_reviewer_approves_but_does_not_delete(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
+    a, _ = tenants
+    saved = design_projects.save_project(
+        session=as_tenant(), user=_user(a), request=SaveProjectRequest(name="T", request=_request())
+    )
+    other = design_projects.save_project(
+        session=as_tenant(), user=_user(a), request=SaveProjectRequest(name="U", request=_request())
+    )
+    reviewer = _member(a, Role.REVIEWER)
+    approved = _approve_as(as_tenant, reviewer, saved)
+    assert approved.revisions[0].approved_at is not None
+    with pytest.raises(AuthorizationError) as refused:
+        design_projects.delete_project(session=as_tenant(), user=reviewer, project_id=other.id)
+    assert refused.value.code == "project_delete_not_permitted"
+
+
+@pytest.mark.parametrize("who", ["admin", "member", "reviewer"])
+def test_another_tenants_project_is_not_found_whoever_asks(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, who
+) -> None:
+    """Checked after the project is found, so a refusal never confirms one exists."""
+    a, b = tenants
+    saved = design_projects.save_project(
+        session=as_tenant(), user=_user(a), request=SaveProjectRequest(name="T", request=_request())
+    )
+    caller = {
+        "admin": _user(b),
+        "member": _member(b),
+        "reviewer": _member(b, Role.REVIEWER),
+    }[who]
+    with pytest.raises(NotFoundError) as missing:
+        _approve_as(as_tenant, caller, saved)
+    assert missing.value.code == "revision_not_found"
+    with pytest.raises(NotFoundError) as missing:
+        design_projects.delete_project(session=as_tenant(), user=caller, project_id=saved.id)
+    assert missing.value.code == "project_not_found"

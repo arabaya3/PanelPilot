@@ -14,9 +14,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
-from app.core.errors import ValidationError
+from app.core.errors import AuthorizationError, ValidationError
 from app.domain import company_settings
-from app.models.schemas.auth import CurrentUser
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 
@@ -56,9 +56,10 @@ def _tenants(engine: Engine) -> tuple[uuid.UUID, uuid.UUID]:
         return ids[0], ids[1]
 
 
-def _user(tenant: uuid.UUID) -> CurrentUser:
+def _user(tenant: uuid.UUID, roles: frozenset[Role] = frozenset({Role.ADMIN})) -> CurrentUser:
+    """A caller; an admin unless told otherwise, so it may save the settings."""
     return CurrentUser(
-        id=str(uuid.uuid4()), email="eng@example.com", tenant_id=str(tenant), roles=frozenset()
+        id=str(uuid.uuid4()), email="eng@example.com", tenant_id=str(tenant), roles=roles
     )
 
 
@@ -103,3 +104,22 @@ def test_save_settings_refuses_an_unknown_nested_setting(tenants, engine) -> Non
         )
     assert refused.value.code == "profile_unknown_settings"
     assert "circuit_rules.lighting.breaker_amps" in refused.value.params["settings"]
+
+
+def test_a_member_reads_the_settings_but_may_not_save_them(tenants, engine) -> None:  # type: ignore[no-untyped-def]
+    """A caller with no account row is not the owner; without admin it holds nothing here."""
+    a, _ = tenants
+    saved = {"key": "acme"}
+    with sessionmaker(bind=engine)() as session:
+        owner_view = company_settings.save_settings(session=session, user=_user(a), settings=saved)
+    assert owner_view.permissions == ["edit_company_settings"]
+    member = _user(a, roles=frozenset({Role.ENGINEER, Role.REVIEWER}))
+    with sessionmaker(bind=engine)() as session:
+        read = company_settings.get_settings(session=session, user=member)
+    assert read.settings == saved
+    assert read.permissions == []
+    with sessionmaker(bind=engine)() as session, pytest.raises(AuthorizationError) as refused:
+        company_settings.save_settings(session=session, user=member, settings={"key": "evil"})
+    assert refused.value.code == "settings_not_permitted"
+    with sessionmaker(bind=engine)() as session:
+        assert company_settings.get_settings(session=session, user=member).settings == saved
