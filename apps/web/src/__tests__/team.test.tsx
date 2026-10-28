@@ -302,6 +302,29 @@ describe('transferring ownership', () => {
     expect(screen.queryByRole('button', { name: 'Make owner' })).toBeNull();
   });
 
+  it('keeps the open invitations for a previous owner who still manages the team', async () => {
+    const after: Team = {
+      ...TEAM,
+      members: [
+        { id: 'm', email: 'mem@x.com', full_name: null, owner: true },
+        { id: 'o', email: 'owner@x.com', full_name: 'Owner', owner: false },
+      ],
+      owner: true,
+      owns: false,
+    };
+    const transferImpl = vi
+      .fn<typeof transferOwnership>()
+      .mockResolvedValue({ kind: 'team', team: after });
+    screenWith({ transferImpl });
+    await screen.findByTestId('team-invitations');
+    fireEvent.click(screen.getByRole('button', { name: 'Make owner' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Make owner' })).toBeNull();
+    });
+    expect(screen.getByTestId('team-invitations').textContent).toContain('new@x.com');
+  });
+
   it.each([
     ['team_transfer_owner_only', "Only the account's owner can transfer ownership."],
     ['team_transfer_self', 'You already own the account'],

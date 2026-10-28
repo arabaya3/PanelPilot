@@ -151,8 +151,13 @@ export function TeamScreen({
     setTransferTo(null);
     const outcome = await transferImpl({ token, memberId });
     if (outcome.kind === 'team') {
-      // The team as the caller now sees it: no longer the owner, so no invitations.
-      setLoaded({ kind: 'ready', team: outcome.team, invitations: [] });
+      // The team as the caller now sees it. A caller who still manages it (an
+      // admin) keeps the open invitations; one who no longer does sees none.
+      setLoaded((previous) => ({
+        kind: 'ready',
+        team: outcome.team,
+        invitations: outcome.team.owner && previous.kind === 'ready' ? previous.invitations : [],
+      }));
     } else if (outcome.kind === 'unauthorized' && (await reauthorize(token))) {
       setMessage(t('renewed'));
     } else {
