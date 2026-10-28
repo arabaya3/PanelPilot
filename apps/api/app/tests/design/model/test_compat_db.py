@@ -313,6 +313,34 @@ def test_an_approved_revision_whose_schema_changes_is_refused(
     _refusal(_export(client, project_id, "pdf"), 409, "snapshot_schema_unknown")
 
 
+def test_an_approval_of_a_snapshot_rewritten_to_an_unknown_schema_does_not_count(
+    client: TestClient, engine: Engine
+) -> None:
+    """An approved snapshot rewritten to an unknown schema, rehashed, is approved no longer.
+
+    The hash passes, so it is the read that fails: the approval is of no
+    design this version reads, so it is not current and execution has none.
+    """
+    project_id = _save(client, DESIGNED["residential"]["request"])
+    assert _approve(client, project_id).status_code == 200
+    row = _row(engine, project_id)
+    enveloped = {"schema": UNKNOWN, "model": row["design_snapshot"]}
+    _write_snapshot(engine, project_id, enveloped, snapshot.sha256_of(enveloped))
+
+    opened = _summary(_open(client, project_id))
+    assert opened["approval_current"] is False
+    assert "snapshot" in opened["approval_changed"]
+    assert opened["export_status"] == "not_validated"
+    assert "approval" in opened["execution_blockers"]
+    execution = client.post(
+        f"/design/projects/{project_id}/revisions/1/export",
+        json={"format": "json", "purpose": "execution"},
+    )
+    body = _refusal(execution, 409, "execution_package_incomplete")
+    assert body["params"]["approval"] == "missing"
+    assert "approval" in body["params"]["blockers"].split(",")
+
+
 def test_v1_in_an_envelope_is_refused_through_the_api(client: TestClient, engine: Engine) -> None:
     project_id = _save(client, DESIGNED["residential"]["request"])
     row = _row(engine, project_id)
