@@ -99,8 +99,16 @@ def _client(engine: Engine, tenant: str) -> Iterator[TestClient]:
         tenant_id=tenant,
         roles=frozenset({Role.ENGINEER}),
     )
-    # Approval is the account's: give the caller a users row, as a login would.
+    # Approval is the owner's or a reviewer's: give the caller a users row, as a
+    # login would, and make it the tenant's owner.
     with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email = :e)"
+            ),
+            {"e": user.email},
+        )
         conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": user.email})
         conn.execute(
             text(
@@ -113,6 +121,10 @@ def _client(engine: Engine, tenant: str) -> Iterator[TestClient]:
                 "e": user.email,
                 "n": APPROVER_NAME,
             },
+        )
+        conn.execute(
+            text("UPDATE tenants SET owner_user_id = :u WHERE id = :t"),
+            {"u": uuid.UUID(user.id), "t": uuid.UUID(tenant)},
         )
     app = FastAPI()
     app.include_router(design_route.router, prefix="/design")

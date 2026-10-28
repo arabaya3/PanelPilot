@@ -587,9 +587,7 @@ def _title_revisions(
         if row.number > upto:
             continue
         applicable = (
-            bound_to
-            if bound_to is None or row.number == upto
-            else _applicable(row, thorough=False)
+            bound_to if bound_to is None or row.number == upto else _applicable(row, thorough=False)
         )
         shown = row.approved_at is not None and (
             applicable is None or not _approval_changed(row, applicable)
@@ -923,9 +921,7 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
         ) from exc
 
 
-def _refuse_stale(
-    row: DesignRevisionRow, number: int, applicable: _Applicable
-) -> None:
+def _refuse_stale(row: DesignRevisionRow, number: int, applicable: _Applicable) -> None:
     """Refuse a revision designed, or approved, under other rules or settings.
 
     An approved revision whose approval was granted under another policy is
