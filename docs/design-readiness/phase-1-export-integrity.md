@@ -564,24 +564,38 @@ Three actions used to need only a signed-in account. They are now explicit permi
 | Approve a revision    | `approve_revision`      | yes   | yes   | yes      | no           | no    | 403 `approval_not_permitted` (a trial: `approval_requires_account`) |
 | Delete a project      | `delete_project`        | yes   | yes   | no       | no           | no    | 403 `project_delete_not_permitted`                                  |
 | Save company settings | `edit_company_settings` | yes   | yes   | no       | no           | no    | 403 `settings_not_permitted`                                        |
+| Manage the team       | (team routes)           | yes   | yes   | no       | no           | no    | 403 `team_owner_only`                                               |
+| Transfer ownership    | `POST /team/owner`      | yes   | no    | no       | no           | no    | 403 `team_transfer_owner_only`                                      |
+| Remove the owner      | -                       | no    | no    | no       | no           | no    | 422 `team_owner_not_removable`                                      |
 
-- **Owner** is `team.is_owner`: the tenant's first active account, or any account holding `admin`. **Reviewer** is the stored `reviewer` role.
+- **Owner** is the tenant's recorded owner, `tenants.owner_user_id`, never the oldest account. It must be an account of the same tenant (a composite foreign key to `users (id, tenant_id)`). **Admin** and **Reviewer** are stored roles.
 - **One `reviewer` role, two duties (deliberate):** the same stored role that lets an account clear operator review items (ADR 0001) now also lets it approve design revisions. The requirement named the existing role rather than a new one, so a reviewer granted for either duty holds both.
-- **Owner succession:** the owner is derived, not stored. The API refuses to remove the current owner (422 `team_owner_not_removable`), so an admin cannot hand ownership on. If an operator deactivates the first account outside the API, the next-oldest active account becomes the owner, with every permission and team management. To choose someone else, grant that account `admin` explicitly (`python -m app.worker grant-role person@example.com admin`).
+- **Where the owner comes from:** the signup that creates a tenant records its account as owner; the signup that claims a trial records the claiming account (a trial tenant has no accounts until then). Joining by invitation never does.
+- **Transfer:** the owner hands ownership to another active member of the same tenant with `POST /team/owner {"member_id": ...}` (returns the team; logged as `team.ownership_transferred` with tenant and account ids). The former owner stays a member with only the roles it holds. An admin cannot transfer or take ownership. Refused: not the owner (403 `team_transfer_owner_only`), naming oneself (422 `team_transfer_self`), an inactive, missing or other tenant's account (404 `team_member_not_found`). `GET /team` carries `owns` for the caller, and each member's `owner` flag.
+- **No removal of the owner:** nobody, admin or owner, removes the owner through the API (422 `team_owner_not_removable`); the owner transfers first. The worker has no deactivation command. An owner deactivated outside the API (an operator, in the database) passes ownership to **nobody**: the tenant's admins keep managing it, and `owner-report` lists it.
+- **Operator remedies:** `python -m app.worker owner-report` lists every active tenant with accounts but no active owner (`no_owner` or `owner_inactive`), its active admin count, and marks one with no admin `needs assign-owner` (exit code 1 while any does). `python -m app.worker assign-owner person@example.com` records that active account as its tenant's owner, only where the tenant has no active owner (otherwise 1, `team_owner_present`).
+- **Atomic check and action:** permissions are read from the database, never from the token. `permissions.require` runs inside the acting transaction and locks the tenant row `FOR SHARE`, then the caller's account `FOR SHARE`, then reads its roles; `grant-role`/`revoke-role` lock the account `FOR UPDATE`, and a removal, transfer or `assign-owner` lock the tenant row (and the affected account) `FOR UPDATE`. Either the revocation, removal or transfer commits first and the waiting action is refused, or the action commits first and the change waits for it. Tested against Postgres with held locks in both orders (revocation and approval, removal and approval, transfer against approval and delete, two transfers).
 - Every member still reads projects and company settings, and saves, opens and exports revisions. Nothing new is granted to every member.
 - **Not found first:** the permission is checked after the project is found as the caller's, so another tenant's project is a 404 (`revision_not_found` / `project_not_found`) for every caller, never a 403.
-- **What the client sees:** `ProjectPage`, `SavedProject` and `CompanySettings` carry a `permissions` list for the caller. The projects panel hides Delete without `delete_project`, the Approve control is disabled with an explanation without `approve_revision`, and the company settings form disables Save with an explanation without `edit_company_settings`. Each new 403 code has a message in English, Arabic and Hebrew.
-- **Locks:** approve and delete both lock the project row first. A refusal rolls back at once, so it holds no lock. Approve racing delete ends with exactly one of them applied and no 500 (tested).
+- **What the client sees:** `ProjectPage`, `SavedProject` and `CompanySettings` carry a `permissions` list for the caller, read from the database the same way as the check. The projects panel hides Delete without `delete_project`, the Approve control is disabled with an explanation without `approve_revision`, and the company settings form disables Save with an explanation without `edit_company_settings`. Each refusal code above has a message in English, Arabic and Hebrew. The team page has no transfer control yet: the API and `owns` are in place for it.
+- **Locks:** approve and delete both lock the project row first, then the tenant and account rows. A refusal rolls back at once, so it holds no lock. Approve racing delete ends with exactly one of them applied and no 500 (tested).
 
 ### Compatibility for existing tenants
 
-- **No migration.** Ownership is derived from the accounts, not stored, and no role is added to the database.
-- **Existing owners keep everything.** A tenant's first active account (or an `admin`) keeps approve, delete and settings.
-- **Other existing members lose** approve, delete and settings. To let a member approve again, an operator grants `reviewer` with the existing worker command, which allows approval only:
+Migration `a7d3e9f1c2b4` adds `tenants.owner_user_id` and backfills it deterministically, never granting more than the old derived rule (the oldest active account) did:
+
+- **Owner recorded:** the tenant's oldest account (by `created_at`, active or not) is active and no other account shares its `created_at`. Several admins do not make this ambiguous: admins keep admin's powers whoever owns the tenant.
+- **Left without an owner** (its admins still manage it):
+  - `first_account_inactive`: the oldest account is deactivated. The old rule handed ownership silently to the next-oldest member; nobody is chosen now.
+  - `created_at_tie`: two or more accounts share the oldest `created_at`; the old tie-break by id was arbitrary.
+  - `no_accounts`: an unclaimed trial; the claiming signup records the owner.
+- The upgrade prints the count of each case and of those with no active admin (no ids, no personal data). A tenant with no owner and no active admin cannot manage its team: run `owner-report` after the upgrade and resolve each with `assign-owner`.
+- **Other existing members lose** approve, delete and settings. To let a member approve again, an operator grants `reviewer` (approval only) or `admin` (everything but transferring):
   ```
   python -m app.worker grant-role engineer@example.com reviewer
   ```
-  Granting `admin` instead allows all three. Both take effect on the member's next request.
+  Both take effect on the member's next request.
+- **Downgrade** drops the column: transfers made since are lost, and ownership is derived from the oldest active account again.
 
 ## Remaining limitations
 
