@@ -24,6 +24,7 @@ const TEAM: Team = {
     { id: 'm', email: 'mem@x.com', full_name: null, owner: false },
   ],
   owner: true,
+  owns: true,
   seats: 3,
   seats_taken: 3,
 };

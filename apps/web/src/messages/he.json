@@ -1413,8 +1413,10 @@
       "team_invitation_email": "ההזמנה מיועדת לכתובת דוא\"ל אחרת.",
       "team_invitation_not_found": "ההזמנה אינה קיימת.",
       "team_member_not_found": "החבר אינו קיים.",
-      "team_owner_not_removable": "לא ניתן להסיר את בעל החשבון.",
-      "team_remove_self": "הבעלים אינו יכול להסיר את עצמו."
+      "team_owner_not_removable": "לא ניתן להסיר את בעל החשבון לפני העברת הבעלות.",
+      "team_remove_self": "הבעלים אינו יכול להסיר את עצמו.",
+      "team_transfer_owner_only": "רק בעל החשבון יכול להעביר את הבעלות.",
+      "team_transfer_self": "החשבון כבר בבעלותך; בחר חבר צוות אחר."
     }
   },
   "join": {

@@ -869,6 +869,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/team/owner': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer Ownership
+     * @description Hand the tenant's ownership to another active member; the owner only.
+     */
+    post: operations['transfer_ownership_api_v1_team_owner_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ingestion/crawl-jobs': {
     parameters: {
       query?: never;
@@ -3362,7 +3382,7 @@ export interface components {
      *         id: The account.
      *         email: Its address.
      *         full_name: Its name, if given.
-     *         owner: Whether it manages the team.
+     *         owner: Whether it is the tenant's recorded owner.
      */
     Member: {
       /** Id */
@@ -4677,8 +4697,10 @@ export interface components {
      * @description The caller's team.
      *
      *     Attributes:
-     *         members: Its active accounts, owner first.
-     *         owner: Whether the caller manages it.
+     *         members: Its active accounts, the owner first.
+     *         owner: Whether the caller manages it: the owner, or an admin.
+     *         owns: Whether the caller is the recorded owner, the one account
+     *             that may transfer ownership.
      *         seats: The seats the plan holds; ``None`` while billing is not
      *             enforced.
      *         seats_taken: Members plus invitations still open.
@@ -4688,6 +4710,8 @@ export interface components {
       members: components['schemas']['Member'][];
       /** Owner */
       owner: boolean;
+      /** Owns */
+      owns: boolean;
       /** Seats */
       seats: number | null;
       /** Seats Taken */
@@ -4713,6 +4737,14 @@ export interface components {
       | 'approved_by'
       | 'date'
       | 'company';
+    /**
+     * TransferOwnershipRequest
+     * @description Hand the tenant's ownership to another active member.
+     */
+    TransferOwnershipRequest: {
+      /** Member Id */
+      member_id: string;
+    };
     /**
      * TrialResumeRequest
      * @description Get a fresh access token for a trial this browser already started.
@@ -6269,6 +6301,39 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  transfer_ownership_api_v1_team_owner_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TransferOwnershipRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
       };
       /** @description Validation Error */
       422: {
