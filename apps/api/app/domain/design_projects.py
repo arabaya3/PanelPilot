@@ -7,8 +7,12 @@ canonical SHA-256, the profile hash, the rules and catalogue versions, and the
 findings (``app.design.integrity``); a design the client sent is never stored.
 
 An engineer approves a revision once, by name, with the revision row locked;
-the approval records the snapshot hash it approved, and counts only while that
-equals the revision's. A revision with no snapshot (saved before snapshots
+the approval records the snapshot hash it approved and the applicable policy it
+was granted under (the resolved profile hash, the rules and catalogue versions
+and the findings classification), and counts only while each equals the
+revision's and today's. The tenant's live company settings are not part of
+that policy: a saved revision carries its own. The approver's display name is
+frozen with the approval, and every export prints that. A revision with no snapshot (saved before snapshots
 were kept, or whose design was refused) or with blocking findings cannot be
 approved. A revision export is made from the stored snapshot alone, after its
 hash, rules version and profile hash are checked again: a revision whose rules
@@ -127,9 +131,12 @@ class _Validation:
 
     status: ExportStatus
     findings: list[DesignFinding]
+    #: Whether its approval counts: of the design it holds, under today's policy.
     approval_bound: bool
     #: What changed since it was saved, for a stale revision.
     changed: tuple[str, ...] = ()
+    #: What changed since it was approved; empty when it counts or none was given.
+    approval_changed: tuple[str, ...] = ()
 
 
 def _stored_findings(row: DesignRevisionRow) -> list[DesignFinding]:
@@ -146,15 +153,6 @@ def _snapshot_matches(row: DesignRevisionRow) -> bool:
         return snapshot.sha256_of(row.design_snapshot) == row.snapshot_sha256
     except ValueError:
         return False
-
-
-def _approval_bound(row: DesignRevisionRow) -> bool:
-    """Whether the revision's approval is of the design it holds."""
-    return (
-        row.approved_at is not None
-        and row.snapshot_sha256 is not None
-        and row.approved_snapshot_sha256 == row.snapshot_sha256
-    )
 
 
 def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
@@ -179,45 +177,113 @@ def _classified(findings: Sequence[DesignFinding]) -> list[tuple[str, str, bool]
     )
 
 
-def _policy_changed(row: DesignRevisionRow) -> bool:
-    """Whether today's findings policy reads the frozen snapshot differently.
+def _findings_fingerprint(classified: Sequence[tuple[str, str, bool]]) -> str:
+    """The SHA-256 of a findings classification's canonical JSON."""
+    return snapshot.sha256_of([list(item) for item in classified])
+
+
+def _current_classification(row: DesignRevisionRow) -> list[tuple[str, str, bool]] | None:
+    """How today's findings policy classifies the frozen snapshot; ``None`` if it cannot.
 
     The policy and integrity checks are re-run on the stored design, which
-    recalculates nothing; a reclassification (a warning made blocking) then
-    makes the revision stale, rather than leaving its saved findings to say
-    what the policy no longer does. A snapshot that no longer reads is left to
-    the integrity check, which refuses it with its own code.
+    recalculates nothing. A snapshot that no longer reads is left to the
+    integrity check, which refuses it with its own code.
     """
     if row.design_snapshot is None or not _snapshot_matches(row):
-        return False
+        return None
     try:
         designed = DesignProject.model_validate(row.design_snapshot)
         request = ProjectDesignRequest.model_validate(row.request)
     except PydanticValidationError:
-        return False
+        return None
     conditions = {board.name: board.conditions for board in request.boards}
-    current = integrity.project_findings(designed, conditions)
-    return _classified(current) != _classified(_stored_findings(row))
+    return _classified(integrity.project_findings(designed, conditions))
 
 
-def _changed(row: DesignRevisionRow, *, thorough: bool = True) -> tuple[str, ...]:
+@dataclass(frozen=True)
+class _Applicable:
+    """The policy that applies to a revision now, which its design and approval are held to.
+
+    ``profile_sha256`` and ``findings`` are read only for a thorough check:
+    the revision opened, approved or exported. The list of a project's other
+    revisions compares the recorded versions alone.
+    """
+
+    thorough: bool
+    rules_version: str
+    catalogue_version: str
+    #: The revision's own saved settings, resolved over today's default profile.
+    profile_sha256: str | None = None
+    #: Today's classification of the stored design; ``None`` when it does not read.
+    findings: list[tuple[str, str, bool]] | None = None
+
+
+def _applicable(row: DesignRevisionRow, *, thorough: bool = True) -> _Applicable:
+    if not thorough:
+        return _Applicable(False, RULES_VERSION, CATALOGUE_VERSION)
+    return _Applicable(
+        True,
+        RULES_VERSION,
+        CATALOGUE_VERSION,
+        profile_sha256=_current_profile_sha256(row),
+        findings=_current_classification(row),
+    )
+
+
+def _changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
     """What no longer matches what the revision was designed under.
 
-    ``thorough=False`` compares only the recorded versions, for the list of a
-    project's revisions; the revision opened, approved or exported is always
-    checked in full, its profile and findings policy included.
+    A reclassification of its findings (a warning made blocking) makes it
+    stale, rather than leaving its saved findings to say what the policy no
+    longer does.
     """
     changed: list[str] = []
-    if row.rules_version != RULES_VERSION:
+    if row.rules_version != applicable.rules_version:
         changed.append("rules_version")
-    if row.catalogue_version != CATALOGUE_VERSION:
+    if row.catalogue_version != applicable.catalogue_version:
         changed.append("catalogue_version")
-    if not thorough:
+    if not applicable.thorough:
         return tuple(changed)
-    if row.profile_sha256 != _current_profile_sha256(row):
+    if row.profile_sha256 != applicable.profile_sha256:
         changed.append("profile")
-    if _policy_changed(row):
+    if applicable.findings is not None and applicable.findings != _classified(
+        _stored_findings(row)
+    ):
         changed.append("findings_policy")
+    return tuple(changed)
+
+
+def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
+    """What no longer matches what the revision's approval was granted under.
+
+    Empty when the approval counts, or when there is none. ``snapshot``: it
+    approved another design. Then each recorded policy value against the one
+    that applies now. A version or profile hash the approval did not record
+    (a row neither the approval nor the migration wrote) reads as the
+    revision's own, which an approval required to be current; a findings
+    policy not recorded (an approval made before it was) reads as the
+    classification of the revision's stored findings, which an approval
+    required to match the policy then.
+    """
+    if row.approved_at is None:
+        return ()
+    changed: list[str] = []
+    if row.snapshot_sha256 is None or row.approved_snapshot_sha256 != row.snapshot_sha256:
+        changed.append("snapshot")
+    if (row.approved_rules_version or row.rules_version) != applicable.rules_version:
+        changed.append("rules_version")
+    if (row.approved_catalogue_version or row.catalogue_version) != applicable.catalogue_version:
+        changed.append("catalogue_version")
+    if not applicable.thorough:
+        return tuple(changed)
+    if (row.approved_profile_sha256 or row.profile_sha256) != applicable.profile_sha256:
+        changed.append("profile")
+    if applicable.findings is not None:
+        approved = row.approved_findings_policy or _findings_fingerprint(
+            _classified(_stored_findings(row))
+        )
+        if approved != _findings_fingerprint(applicable.findings):
+            changed.append("findings_policy")
     return tuple(changed)
 
 
@@ -245,22 +311,26 @@ def _request_problem(row: DesignRevisionRow) -> DesignFinding | None:
     return None
 
 
-def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation:
+def _validation(
+    row: DesignRevisionRow, *, thorough: bool = True, applicable: _Applicable | None = None
+) -> _Validation:
     findings = _stored_findings(row)
-    bound = _approval_bound(row)
-    problem = _request_problem(row) if thorough else None
+    applicable = applicable or _applicable(row, thorough=thorough)
+    moved = _approval_changed(row, applicable)
+    bound = row.approved_at is not None and not moved
+    problem = _request_problem(row) if applicable.thorough else None
     if problem is not None:
-        return _Validation(ExportStatus.NOT_VALIDATED, [*findings, problem], bound)
+        return _Validation(ExportStatus.NOT_VALIDATED, [*findings, problem], bound, (), moved)
     if row.design_snapshot is None or row.snapshot_sha256 is None:
-        return _Validation(ExportStatus.NOT_VALIDATED, findings, bound)
-    changed = _changed(row, thorough=thorough)
+        return _Validation(ExportStatus.NOT_VALIDATED, findings, bound, (), moved)
+    changed = _changed(row, applicable)
     if changed:
-        return _Validation(ExportStatus.STALE, findings, bound, changed)
+        return _Validation(ExportStatus.STALE, findings, bound, changed, moved)
     if integrity.blocking(findings):
-        return _Validation(ExportStatus.BLOCKED, findings, bound)
+        return _Validation(ExportStatus.BLOCKED, findings, bound, (), moved)
     if bound:
         return _Validation(ExportStatus.REVIEW_APPROVED, findings, bound)
-    return _Validation(ExportStatus.DRAFT, findings, bound)
+    return _Validation(ExportStatus.DRAFT, findings, bound, (), moved)
 
 
 def _execution_blockers(checked: _Validation) -> list[str]:
@@ -324,6 +394,9 @@ class _Names:
         """
         if row.approved_at is None:
             return None
+        if row.approved_display_name is not None:
+            # Frozen with the approval (or by the migration): "" is no name.
+            return row.approved_display_name or None
         if row.approved_user_id is not None:
             return self.by_id.get(row.approved_user_id)
         if row.approved_account:
@@ -371,8 +444,14 @@ def _display_names(
     return _Names(by_email=by_email, by_id=by_id)
 
 
-def _summary(row: DesignRevisionRow, names: _Names, *, thorough: bool = False) -> RevisionSummary:
+def _summary(
+    row: DesignRevisionRow, names: _Names, checked: _Validation | None = None
+) -> RevisionSummary:
     approved = row.approved_at is not None
+    # One of up to MAX_REVISIONS rows: compared by recorded versions only.
+    # The revision opened is checked in full (``_opened`` passes its check),
+    # and approval and export check theirs in full again under the project lock.
+    checked = checked or _validation(row, thorough=False)
     return RevisionSummary(
         number=row.number,
         note=row.note,
@@ -385,10 +464,9 @@ def _summary(row: DesignRevisionRow, names: _Names, *, thorough: bool = False) -
         approver_name=names.approver(row),
         approval_note=(row.approval_note or None) if approved else None,
         validated=row.design_snapshot is not None,
-        # One of up to MAX_REVISIONS rows: compared by recorded versions only.
-        # The revision opened is checked in full (``_opened``), and approval and
-        # export check theirs in full again under the project lock.
-        export_status=_validation(row, thorough=thorough).status,
+        export_status=checked.status,
+        approval_current=checked.approval_bound if approved else None,
+        approval_changed=list(checked.approval_changed),
     )
 
 
@@ -405,14 +483,18 @@ def _title_revisions(
         revisions: The project's revisions, in order.
         upto: The last revision listed.
         names: The accounts' display names, which name the approver.
-        bound_only: Name an approver only where the approval is of the design
-            the revision holds, as an export prints it.
+        bound_only: Name an approver only where the approval counts, as an
+            export prints it: of the design the revision holds, under today's
+            policy (in full for ``upto``, by recorded versions for the others).
     """
     listed: list[Revision] = []
     for row in revisions:
         if row.number > upto:
             continue
-        shown = row.approved_at is not None and (not bound_only or _approval_bound(row))
+        shown = row.approved_at is not None and (
+            not bound_only
+            or not _approval_changed(row, _applicable(row, thorough=row.number == upto))
+        )
         listed.append(
             Revision(
                 index=f"{row.number:02d}",
@@ -537,7 +619,7 @@ def _opened(
     opened = SavedProject(
         id=str(project.id),
         name=project.name,
-        revisions=[_summary(r, names, thorough=r is chosen) for r in revisions],
+        revisions=[_summary(r, names, checked if r is chosen else None) for r in revisions],
         revision=chosen.number,
         request=request,
         findings=checked.findings,
@@ -545,6 +627,8 @@ def _opened(
         snapshot_sha256=chosen.snapshot_sha256,
         rules_version=chosen.rules_version,
         approved_snapshot_sha256=chosen.approved_snapshot_sha256,
+        approval_current=checked.approval_bound if chosen.approved_at is not None else None,
+        approval_changed=list(checked.approval_changed),
         export_status=checked.status,
         execution_blockers=_execution_blockers(checked),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
@@ -728,8 +812,23 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
     return row.design_snapshot
 
 
-def _refuse_stale(row: DesignRevisionRow, number: int) -> None:
-    changed = _changed(row)
+def _refuse_stale(
+    row: DesignRevisionRow, number: int, applicable: _Applicable | None = None
+) -> None:
+    """Refuse a revision designed, or approved, under other rules or settings.
+
+    An approved revision whose approval was granted under another policy is
+    refused as well, the parts that changed since the approval listed: an
+    export never prints it as approved, nor quietly as a draft.
+    """
+    applicable = applicable or _applicable(row)
+    changed = list(_changed(row, applicable))
+    changed += [
+        part
+        for part in _approval_changed(row, applicable)
+        # Another design approved is not a policy change: it exports as a draft.
+        if part != "snapshot" and part not in changed
+    ]
     if changed:
         raise ConflictError(
             f"revision {number} was designed under other rules or settings "
@@ -795,7 +894,8 @@ def approve_revision(
         # tenant's project stays "not found" rather than "forbidden".
         permissions.require(session=session, user=user, permission=Permission.APPROVE_REVISION)
         row = _locked_revision(session, project, number)
-        _approvable(session, project, row, number)
+        applicable = _applicable(row)
+        _approvable(session, project, row, number, applicable)
         # Who approves is the signed-in account, from its token: the request
         # names no one. ``approved_by`` (the legacy typed name) stays NULL.
         row.approved_account = user.email
@@ -803,6 +903,17 @@ def approve_revision(
         row.approval_note = request.note or None
         row.approved_at = datetime.now(UTC)
         row.approved_snapshot_sha256 = row.snapshot_sha256
+        # The policy it is granted under (checked current just now), and the
+        # name it is granted by, as every export will print them.
+        row.approved_profile_sha256 = applicable.profile_sha256
+        row.approved_rules_version = applicable.rules_version
+        row.approved_catalogue_version = applicable.catalogue_version
+        row.approved_findings_policy = (
+            _findings_fingerprint(applicable.findings) if applicable.findings is not None else None
+        )
+        approver = _account_id(user)
+        named = _display_names(session, project.tenant_id, [], also=approver)
+        row.approved_display_name = named.by_id.get(approver, "") if approver is not None else ""
         session.commit()
     except BaseException:
         # Release the locks now, whatever failed, not when the session is closed.
@@ -832,7 +943,11 @@ def _require_account(user: CurrentUser) -> None:
 
 
 def _approvable(
-    session: Session, project: DesignProjectRow, row: DesignRevisionRow, number: int
+    session: Session,
+    project: DesignProjectRow,
+    row: DesignRevisionRow,
+    number: int,
+    applicable: _Applicable,
 ) -> None:
     """Refuse approving a revision that is approved, unvalidated, stale or blocked."""
     if row.approved_at is not None:
@@ -843,7 +958,7 @@ def _approvable(
             params={"revision": str(number), "approver": approver},
         )
     _check_snapshot(row, number)
-    _refuse_stale(row, number)
+    _refuse_stale(row, number, applicable)
     blocking = integrity.blocking(_stored_findings(row))
     if blocking:
         raise ConflictError(
@@ -863,10 +978,11 @@ def _revision_mark(
     row: DesignRevisionRow,
     findings: list[DesignFinding],
     names: _Names,
+    approval_counts: bool,
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
-    if _approval_bound(row) and row.approved_at is not None:
+    if approval_counts and row.approved_at is not None:
         approver = names.printed_approver(row)
         identity = (
             f"{where}, approved by {approver} on {row.approved_at.date().isoformat()}, "
@@ -924,7 +1040,8 @@ def export_revision(
     if request.purpose is ExportPurpose.EXECUTION:
         # Refused before anything else is checked: whatever state the revision
         # is in, no execution package exists, and the refusal says all of why.
-        missing = _execution_blockers(_validation(row))
+        checked = _validation(row)
+        missing = _execution_blockers(checked)
         if (
             row.design_snapshot is not None
             and row.snapshot_sha256 is not None
@@ -939,7 +1056,7 @@ def export_revision(
             params={
                 "revision": number,
                 "missing": ",".join(marking.EXECUTION_PACKAGE_MISSING),
-                "approval": "present" if _approval_bound(row) else "missing",
+                "approval": "present" if checked.approval_bound else "missing",
                 "blocking_findings": ",".join(
                     sorted({found.code for found in integrity.blocking(findings)})
                 ),
@@ -948,7 +1065,10 @@ def export_revision(
         )
     design_domain.refuse_unprotected(request.format)
     stored = _check_snapshot(row, number)
-    _refuse_stale(row, number)
+    applicable = _applicable(row)
+    _refuse_stale(row, number, applicable)
+    # Not stale, so any approval left that does not count approved another design.
+    approval_counts = row.approved_at is not None and not _approval_changed(row, applicable)
     design_domain.require_format(session=session, user=user, export_format=request.format)
     try:
         designed = DesignProject.model_validate(stored)
@@ -970,7 +1090,7 @@ def export_revision(
         company=company,
         export_format=request.format,
         pricing=_revision_pricing(request.pricing),
-        mark=_revision_mark(project, row, findings, names),
+        mark=_revision_mark(project, row, findings, names, approval_counts),
     )
     logger.info(
         "design.revision_exported",
@@ -978,7 +1098,7 @@ def export_revision(
         project_id=str(project.id),
         revision=number,
         format=request.format.value,
-        approved=_approval_bound(row),
+        approved=approval_counts,
         snapshot_sha256=row.snapshot_sha256,
     )
     return exported
