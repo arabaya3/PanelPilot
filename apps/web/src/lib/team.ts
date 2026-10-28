@@ -1,5 +1,7 @@
 import type { components } from '@panelpilot/shared-types';
 
+import { signupProblemsOf, type SignupProblem } from '@/lib/trial';
+
 export type Team = components['schemas']['Team'];
 export type InvitationOut = components['schemas']['InvitationOut'];
 export type InvitationCreated = components['schemas']['InvitationCreated'];
@@ -102,7 +104,11 @@ export function joinLink(origin: string, token: string): string {
 }
 
 export type JoinOutcome =
-  { kind: 'joined' } | { kind: 'email-taken' } | TeamRefusal | { kind: 'failed' };
+  | { kind: 'joined' }
+  | { kind: 'email-taken' }
+  | { kind: 'invalid'; problems: SignupProblem[] }
+  | TeamRefusal
+  | { kind: 'failed' };
 
 /** Create an account in the inviting team: `POST /api/v1/auth/signup` with the invitation. */
 export async function signupWithInvite(options: {
@@ -137,6 +143,9 @@ export async function signupWithInvite(options: {
     } catch {
       payload = null;
     }
+    // Refused as entered (a reserved email domain, a short password): per field.
+    const problems = response.status === 422 ? signupProblemsOf(payload) : [];
+    if (problems.length > 0) return { kind: 'invalid', problems };
     return refusal(payload);
   }
   return { kind: 'failed' };

@@ -130,6 +130,15 @@
       "trial-gone": "This trial has expired, so the conversation cannot be carried over. The account can still be created.",
       "failed": "The account could not be created. Check the connection and try again."
     },
+    "invalid": {
+      "email": "This email address cannot be used. Enter an address on a real, public domain; reserved domains such as .test or .example are refused.",
+      "passwordShort": "The password needs at least {min} characters.",
+      "passwordLong": "The password can be at most {max} characters.",
+      "password": "The password was not accepted. Choose another one.",
+      "nameLong": "The name can be at most {max} characters.",
+      "name": "The name was not accepted. Check it and try again.",
+      "other": "The account details were not accepted. Check them and try again."
+    },
     "landing": {
       "headline": "Diagnose a fault without signing up",
       "subhead": "Ask a question now. No access request, no waiting.",

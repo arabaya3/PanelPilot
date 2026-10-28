@@ -184,3 +184,22 @@ describe('team under the shared account session', () => {
     expect(teamImpl).not.toHaveBeenCalled();
   });
 });
+
+describe('joining with an address the server refuses', () => {
+  it('says the email cannot be used, and keeps what was typed', async () => {
+    const signupImpl = vi.fn<typeof signupWithInvite>().mockResolvedValue({
+      kind: 'invalid',
+      problems: [{ field: 'email' }],
+    });
+    renderApp(<JoinScreen initialInvite="tok" signupImpl={signupImpl} />);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'c@x.test' } });
+    fireEvent.change(screen.getByLabelText(/^Password/), {
+      target: { value: 'a-long-password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create my account' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'This email address cannot be used',
+    );
+    expect(screen.getByLabelText<HTMLInputElement>('Email').value).toBe('c@x.test');
+  });
+});
