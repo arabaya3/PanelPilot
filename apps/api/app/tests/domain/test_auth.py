@@ -110,6 +110,12 @@ def db() -> Iterator[Session]:
                 ),
                 {"p": f"{_SLUG_PREFIX}%"},
             )
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email LIKE '%@test.invalid')"
+            )
+        )
         session.execute(text("DELETE FROM users WHERE email LIKE '%@test.invalid'"))
         session.execute(text("DELETE FROM tenants WHERE slug LIKE :p"), {"p": f"{_SLUG_PREFIX}%"})
         session.commit()
@@ -1168,6 +1174,12 @@ def test_a_token_whose_tenant_no_longer_matches_is_rejected(db: Session) -> None
     other = TenantRow(slug=f"{_SLUG_PREFIX}other-{uuid.uuid4().hex[:8]}", name="Other")
     db.add(other)
     db.commit()
+    # The account owns the tenant it signed up into; an owner cannot be moved
+    # out from under its tenant (the owner key is ``(id, tenant_id)``).
+    db.execute(
+        text("UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id = :i"),
+        {"i": uuid.UUID(caller.id)},
+    )
     db.execute(
         text("UPDATE users SET tenant_id = :t WHERE id = :i"),
         {"t": other.id, "i": uuid.UUID(caller.id)},

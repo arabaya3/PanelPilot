@@ -20,9 +20,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
+from app.core.tenancy import bind_tenant
 from app.design import RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
-from app.domain import design_projects
+from app.domain import design_projects, roles
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.design import (
     ApproveRevisionRequest,
@@ -40,6 +41,7 @@ from app.models.schemas.design import (
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
+from app.tests.accounts import account
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -100,7 +102,8 @@ ADMIN = frozenset({Role.ADMIN})
 
 
 def _user(tenant: uuid.UUID, email: str = "eng@example.com") -> CurrentUser:
-    return CurrentUser(id=str(uuid.uuid4()), email=email, tenant_id=str(tenant), roles=ADMIN)
+    """A new admin account of ``tenant`` (permissions are read from its row)."""
+    return account(tenant, ADMIN, email)
 
 
 def _request(name: str = "Tower", kw: str = "3") -> ProjectDesignRequest:
@@ -924,9 +927,19 @@ def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | Non
         The caller signed in as that account.
     """
     with sessionmaker(bind=engine)() as session:
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email = :email)"
+            ),
+            {"email": email},
+        )
         session.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
         user_id = uuid.uuid4()
         session.add(User(id=user_id, tenant_id=tenant, email=email, full_name=full_name))
+        session.flush()
+        bind_tenant(session, tenant)
+        roles.grant_role(session=session, email=email, role=Role.ADMIN)
         session.commit()
     return CurrentUser(id=str(user_id), email=email, tenant_id=str(tenant), roles=ADMIN)
 
@@ -1109,10 +1122,21 @@ def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ig
     a, b = tenants
     # The approving account's row belongs to tenant B: tenant A's revision
     # recorded it, but its name is not A's to read.
+    # A caller whose token names tenant A but whose account is B's holds no
+    # permission in A (``permissions.require`` reads the account in A), so
+    # the recorded approver is pointed at B's account directly.
     in_b = _account(engine, b, "eng@example.com", "Someone In B")
-    caller = in_b.model_copy(update={"tenant_id": str(a)})
+    forged = in_b.model_copy(update={"tenant_id": str(a)})
     saved = _saved(as_tenant, a)
-    approved = _approve_as(as_tenant, caller, saved)
+    with pytest.raises(AuthorizationError):
+        _approve_as(as_tenant, forged, saved)
+    _approve_as(as_tenant, _user(a), saved)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE design_project_revisions SET approved_user_id = :u WHERE project_id = :p"),
+            {"u": uuid.UUID(in_b.id), "p": uuid.UUID(saved.id)},
+        )
+    approved = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     (revision,) = approved.revisions
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
@@ -1132,13 +1156,8 @@ def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ig
 
 
 def _member(tenant: uuid.UUID, *roles: Role) -> CurrentUser:
-    """A caller who is not the tenant's owner: no account row, and no admin."""
-    return CurrentUser(
-        id=str(uuid.uuid4()),
-        email="member@example.com",
-        tenant_id=str(tenant),
-        roles=frozenset({Role.ENGINEER, *roles}),
-    )
+    """A caller who is not the tenant's owner, holding ``roles`` and no admin."""
+    return account(tenant, frozenset(roles), "member@example.com")
 
 
 def test_responses_carry_the_callers_permissions(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]

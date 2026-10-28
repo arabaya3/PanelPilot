@@ -10,7 +10,7 @@ question has to be answerable in a join.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, ForeignKey, String, Table
+from sqlalchemy import Boolean, Column, ForeignKey, String, Table, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -28,6 +28,8 @@ class User(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     """A person who signs in to PanelPilot."""
 
     __tablename__ = "users"
+    # Referenced by ``tenants (owner_user_id, id)``: an owner is the tenant's own.
+    __table_args__ = (UniqueConstraint("id", "tenant_id", name="uq_users_id_tenant_id"),)
 
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(200))

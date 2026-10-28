@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr
+from typing import Literal
+
+from pydantic import BaseModel, EmailStr, Field
 
 
 class Member(BaseModel):
@@ -12,7 +14,7 @@ class Member(BaseModel):
         id: The account.
         email: Its address.
         full_name: Its name, if given.
-        owner: Whether it manages the team.
+        owner: Whether it is the tenant's recorded owner.
     """
 
     id: str
@@ -25,8 +27,10 @@ class Team(BaseModel):
     """The caller's team.
 
     Attributes:
-        members: Its active accounts, owner first.
-        owner: Whether the caller manages it.
+        members: Its active accounts, the owner first.
+        owner: Whether the caller manages it: the owner, or an admin.
+        owns: Whether the caller is the recorded owner, the one account
+            that may transfer ownership.
         seats: The seats the plan holds; ``None`` while billing is not
             enforced.
         seats_taken: Members plus invitations still open.
@@ -34,8 +38,30 @@ class Team(BaseModel):
 
     members: list[Member]
     owner: bool
+    owns: bool
     seats: int | None
     seats_taken: int
+
+
+class TransferOwnershipRequest(BaseModel):
+    """Hand the tenant's ownership to another active member."""
+
+    member_id: str = Field(min_length=1, max_length=64)
+
+
+class OwnershipIssue(BaseModel):
+    """A tenant with accounts but no active owner, for an operator.
+
+    Attributes:
+        tenant_id: The tenant.
+        issue: ``no_owner`` or ``owner_inactive``.
+        active_admins: Active admins who can still manage it; with none,
+            nobody can until an operator runs ``assign-owner``.
+    """
+
+    tenant_id: str
+    issue: Literal["no_owner", "owner_inactive"]
+    active_admins: int
 
 
 class InviteRequest(BaseModel):

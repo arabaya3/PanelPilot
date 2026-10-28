@@ -164,11 +164,24 @@ class _Caller:
     def __init__(self, tenant: str, engine: Engine) -> None:
         self.user = _user(tenant)
         _account_row(engine, self.user, APPROVER)
+        # The tenant's owner: approves, deletes and saves settings.
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE tenants SET owner_user_id = :u WHERE id = :t"),
+                {"u": uuid.UUID(self.user.id), "t": uuid.UUID(tenant)},
+            )
 
 
 def _account_row(engine: Engine, user: CurrentUser, full_name: str | None) -> None:
     """The users row behind ``user``, replacing any left by another test."""
     with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email = :e)"
+            ),
+            {"e": user.email},
+        )
         conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": user.email})
         conn.execute(
             text(

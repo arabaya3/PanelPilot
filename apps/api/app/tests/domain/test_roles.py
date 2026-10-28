@@ -64,6 +64,12 @@ def db() -> Iterator[Session]:
             )
         )
         session.execute(text(f"DELETE FROM refresh_tokens WHERE tenant_id IN {tenants}"))
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                f"(SELECT id FROM users WHERE tenant_id IN {tenants})"
+            )
+        )
         session.execute(text(f"DELETE FROM users WHERE tenant_id IN {tenants}"))
         session.execute(text(f"DELETE FROM tenants WHERE slug LIKE '{_PREFIX}%'"))
         session.commit()

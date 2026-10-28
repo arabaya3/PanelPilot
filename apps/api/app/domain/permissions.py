@@ -8,29 +8,37 @@ Permission                 Owner  Admin  Reviewer  Other member  Trial
 ``approve_revision``       yes    yes    yes       no            no
 ``delete_project``         yes    yes    no        no            no
 ``edit_company_settings``  yes    yes    no        no            no
+manage the team            yes    yes    no        no            no
+transfer ownership         yes    no     no        no            no
 =========================  =====  =====  ========  ============  =====
 
-"Owner" is ``team.is_owner``: the tenant's first active account, or any
-account holding ``admin``. "Reviewer" is the stored ``reviewer`` role
-(``roles.roles_of``). The ``reviewer`` role is deliberately the same one
-that clears operator review items (ADR 0001): the requirement reused the
-existing role, so an account granted it for either duty holds both.
+"Owner" is the tenant's recorded owner, ``tenants.owner_user_id``
+(``team.standing``), never the oldest account. "Admin" and "Reviewer" are
+stored roles (``roles.roles_of``). The ``reviewer`` role is deliberately the
+same one that clears operator review items (ADR 0001): an account granted it
+for either duty holds both. Managing the team is inviting, withdrawing an
+invitation and removing a member (``app.domain.team``); nobody, admin or
+owner, removes the owner.
 
-Owner succession: the owner is derived, not stored. ``team.remove`` refuses
-the current owner (``team_owner_not_removable``), so no admin hands ownership
-on through the API. If an operator deactivates the first account outside the
-API, the next-oldest active account becomes the owner, with every permission
-here and the team's management; to choose another, grant that account
-``admin`` explicitly.
+Ownership changes in two ways only: the owner transfers it to another active
+member of the tenant (``team.transfer_ownership``, ``POST /team/owner``), or
+an operator records one with the worker's ``assign-owner`` where there is no
+active owner. Deactivating the owner's account is refused through the API
+until ownership is transferred; the worker has no deactivation command.
 
-Every member still reads projects and settings, and
-saves and exports revisions; nothing here is granted to every member.
+Every check reads the database, not the token, and ``require`` reads it
+under row locks inside the acting transaction: the tenant row ``FOR SHARE``,
+then the caller's account ``FOR SHARE``, then its roles. A revocation, grant,
+removal or transfer locks the same rows ``FOR UPDATE``, so either it commits
+first and the action is refused, or the action commits first.
 
-Compatibility: ownership is derived, not stored, so no migration is needed.
-A tenant created before these checks keeps its first account as owner, with
-every permission. Its other members lose approve, delete and settings until
-an operator grants them ``reviewer`` with the worker's ``grant-role`` command
-(which allows approval only) or ``admin`` (which allows all three).
+Compatibility (migration ``a7d3e9f1c2b4``): a tenant's oldest account becomes
+its owner when that is unambiguous (active, and no other account created at
+the same instant); otherwise the owner is left NULL, its admins still manage
+it, and the worker's ``owner-report`` lists it, flagging one with no active
+admin for an operator's ``assign-owner``. Other legacy members gain nothing:
+an operator grants ``reviewer`` (approval only) or ``admin`` (everything but
+transferring) with ``grant-role``.
 
 Domain functions call ``require`` after loading what they act on, so a
 project of another tenant's is still "not found" rather than "forbidden".
@@ -50,6 +58,7 @@ from app.models.schemas.auth import CurrentUser, Permission, Role
 
 #: Granted by a stored role, beyond what the owner holds.
 _BY_ROLE: dict[Role, frozenset[Permission]] = {
+    Role.ADMIN: frozenset(Permission),
     Role.REVIEWER: frozenset({Permission.APPROVE_REVISION}),
 }
 
@@ -81,29 +90,37 @@ def _has_account(user: CurrentUser) -> bool:
     return True
 
 
+def _granted(found: team.Standing | None) -> list[Permission]:
+    if found is None:
+        return []
+    if found.owner:
+        return sorted(Permission)
+    held: set[Permission] = set()
+    for role, granted in _BY_ROLE.items():
+        if role in found.roles:
+            held |= granted
+    return sorted(held)
+
+
 def allowed(*, session: Session, user: CurrentUser) -> list[Permission]:
-    """Every permission the caller holds, in a stable order.
+    """Every permission the caller holds, in a stable order, read unlocked.
+
+    For what a response shows; an action is checked with ``require``.
 
     Args:
         session: Open database session; bound to the caller's tenant here.
-        user: The caller, its roles as read from the database this request.
+        user: The caller; its ownership and roles are read from the database.
 
     Returns:
         The permissions, sorted by name.
     """
     if not _has_account(user):
         return []
-    if team.is_owner(session=session, user=user):
-        return sorted(Permission)
-    held: set[Permission] = set()
-    for role, granted in _BY_ROLE.items():
-        if user.has_role(role):
-            held |= granted
-    return sorted(held)
+    return _granted(team.standing(session=session, user=user))
 
 
 def can(*, session: Session, user: CurrentUser, permission: Permission) -> bool:
-    """Whether the caller holds one permission.
+    """Whether the caller holds one permission (unlocked, for display).
 
     Args:
         session: Open database session; bound to the caller's tenant here.
@@ -117,7 +134,11 @@ def can(*, session: Session, user: CurrentUser, permission: Permission) -> bool:
 
 
 def require(*, session: Session, user: CurrentUser, permission: Permission) -> None:
-    """Refuse the caller unless it holds a permission.
+    """Refuse the caller unless it holds a permission, locked until commit.
+
+    Reads the caller's standing under ``FOR SHARE`` locks on the tenant row
+    and its account (``team.standing``), held until the caller's transaction
+    ends: call it inside the transaction that acts, and commit after acting.
 
     Args:
         session: Open database session; bound to the caller's tenant here.
@@ -129,6 +150,7 @@ def require(*, session: Session, user: CurrentUser, permission: Permission) -> N
             (``approval_not_permitted``, ``project_delete_not_permitted`` or
             ``settings_not_permitted``).
     """
-    if not can(session=session, user=user, permission=permission):
+    found = team.standing(session=session, user=user, lock="share") if _has_account(user) else None
+    if permission not in _granted(found):
         message, code = _REFUSALS[permission]
         raise AuthorizationError(message, code=code)
