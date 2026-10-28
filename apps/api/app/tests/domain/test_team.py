@@ -11,14 +11,14 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.core.tenancy import cross_tenant
-from app.domain import auth, billing, team
-from app.models.schemas.auth import CurrentUser
+from app.domain import auth, billing, roles, team
+from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
@@ -54,6 +54,8 @@ def _owner(engine: Engine) -> CurrentUser:
         session.flush()
         user = User(tenant_id=tenant.id, email=f"own-{uuid.uuid4().hex[:8]}@x.com", is_active=True)
         session.add(user)
+        session.flush()
+        tenant.owner_user_id = user.id
         session.commit()
         return CurrentUser(
             id=str(user.id), email=user.email, tenant_id=str(tenant.id), roles=frozenset()
@@ -221,3 +223,203 @@ def test_an_invitation_counts_only_its_own_tenants_seats(owner, engine, monkeypa
         session.commit()
     with _session(engine) as session:
         assert colleague in [m.email for m in team.members(session=session, user=owner)]
+
+
+# --------------------------------------------------------------------------- #
+# The recorded owner: signup, transfer, the operator's remedy
+# --------------------------------------------------------------------------- #
+
+
+def _member(engine: Engine, owner: CurrentUser, *, admin: bool = False) -> CurrentUser:
+    """Another active account in the owner's tenant, roles as stored."""
+    email = f"mem-{uuid.uuid4().hex[:8]}@x.com"
+    with _session(engine) as session, cross_tenant(session, reason="test setup"):
+        row = User(tenant_id=uuid.UUID(owner.tenant_id), email=email, is_active=True)
+        session.add(row)
+        session.flush()
+        if admin:
+            roles.grant_role(session=session, email=email, role=Role.ADMIN)
+        held = roles.roles_of(row)
+        session.commit()
+        return CurrentUser(id=str(row.id), email=email, tenant_id=owner.tenant_id, roles=held)
+
+
+def _owner_of(engine: Engine, tenant_id: str) -> uuid.UUID | None:
+    with engine.connect() as conn:
+        found: object = conn.execute(
+            text("SELECT owner_user_id FROM tenants WHERE id = :t"), {"t": uuid.UUID(tenant_id)}
+        ).scalar_one()
+    return None if found is None else uuid.UUID(str(found))
+
+
+def test_signup_records_the_new_tenants_owner_and_an_invitee_is_not(engine) -> None:  # type: ignore[no-untyped-def]
+    email = f"new-{uuid.uuid4().hex[:8]}@x.com"
+    with _session(engine) as session:
+        auth.signup(session=session, email=email, password="a-long-password-1")
+        session.commit()
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        row = session.scalars(select(User).where(User.email == email)).one()
+        tenant = session.get(TenantRow, row.tenant_id)
+        assert tenant is not None
+        assert tenant.owner_user_id == row.id
+        owner = CurrentUser(
+            id=str(row.id), email=email, tenant_id=str(row.tenant_id), roles=frozenset()
+        )
+    with _session(engine) as session:
+        created = team.invite(session=session, user=owner, email=f"inv-{email}")
+        session.commit()
+    with _session(engine) as session:
+        auth.signup(
+            session=session,
+            email=f"inv-{email}",
+            password="a-long-password-1",
+            invite_token=created.token,
+        )
+        session.commit()
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)
+
+
+def test_claiming_a_trial_records_its_owner(engine) -> None:  # type: ignore[no-untyped-def]
+    with _session(engine) as session:
+        trial = auth.start_trial(session=session, access_token_ttl_seconds=60)
+        session.commit()
+    email = f"claim-{uuid.uuid4().hex[:8]}@x.com"
+    with _session(engine) as session:
+        auth.signup(
+            session=session,
+            email=email,
+            password="a-long-password-1",
+            claim_session_id=trial.session_id,
+            claim_secret=trial.claim_secret,
+        )
+        session.commit()
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        row = session.scalars(select(User).where(User.email == email)).one()
+        tenant = session.get(TenantRow, row.tenant_id)
+        assert tenant is not None
+        assert tenant.owner_user_id == row.id
+
+
+def test_the_owner_transfers_ownership_and_loses_it(owner, engine) -> None:  # type: ignore[no-untyped-def]
+    member = _member(engine, owner)
+    with _session(engine) as session:
+        team.transfer_ownership(session=session, user=owner, member_id=member.id)
+        session.commit()
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(member.id)
+    with _session(engine) as session:
+        shown = team.team(session=session, user=member)
+        assert shown.owns
+        assert shown.owner
+        assert [m.id for m in shown.members if m.owner] == [member.id]
+        assert shown.members[0].id == member.id
+        before = team.team(session=session, user=owner)
+        assert not before.owns
+        assert not before.owner
+        # The former owner is a plain member now: it manages nothing.
+        with pytest.raises(AuthorizationError) as refused:
+            team.transfer_ownership(session=session, user=owner, member_id=member.id)
+        assert refused.value.code == "team_transfer_owner_only"
+        session.rollback()
+        with pytest.raises(AuthorizationError):
+            team.invite(session=session, user=owner, email="x@x.com")
+
+
+def test_an_admin_cannot_transfer_nor_remove_the_owner(owner, engine) -> None:  # type: ignore[no-untyped-def]
+    admin = _member(engine, owner, admin=True)
+    member = _member(engine, owner)
+    with _session(engine) as session:
+        with pytest.raises(AuthorizationError) as refused:
+            team.transfer_ownership(session=session, user=admin, member_id=admin.id)
+        assert refused.value.code == "team_transfer_owner_only"
+        session.rollback()
+        with pytest.raises(ValidationError) as kept:
+            team.remove(session=session, user=admin, member_id=owner.id)
+        assert kept.value.code == "team_owner_not_removable"
+        session.rollback()
+        # Still an admin: it removes a plain member.
+        team.remove(session=session, user=admin, member_id=member.id)
+        session.commit()
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)
+
+
+@pytest.mark.parametrize("target", ["self", "inactive", "other_tenant", "missing", "malformed"])
+def test_a_transfer_needs_another_active_member_of_the_tenant(owner, engine, target) -> None:  # type: ignore[no-untyped-def]
+    if target == "self":
+        member_id = owner.id
+    elif target == "inactive":
+        gone = _member(engine, owner)
+        with _session(engine) as session:
+            team.remove(session=session, user=owner, member_id=gone.id)
+            session.commit()
+        member_id = gone.id
+    elif target == "other_tenant":
+        with _session(engine) as session, cross_tenant(session, reason="test setup"):
+            other = TenantRow(slug=f"team-x-{uuid.uuid4().hex[:8]}", name="X")
+            session.add(other)
+            session.flush()
+            stranger = User(tenant_id=other.id, email=f"s-{uuid.uuid4().hex[:8]}@x.com")
+            session.add(stranger)
+            session.commit()
+            member_id = str(stranger.id)
+    elif target == "missing":
+        member_id = str(uuid.uuid4())
+    else:
+        member_id = "not-a-uuid"
+    with (
+        _session(engine) as session,
+        pytest.raises((ValidationError, NotFoundError)) as refused,
+    ):
+        team.transfer_ownership(session=session, user=owner, member_id=member_id)
+    expected = "team_transfer_self" if target == "self" else "team_member_not_found"
+    assert refused.value.code == expected
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)
+
+
+def test_the_operator_assigns_an_owner_only_where_none_is_active(owner, engine) -> None:  # type: ignore[no-untyped-def]
+    member = _member(engine, owner)
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        with pytest.raises(ValidationError) as present:
+            team.assign_owner(session=session, email=member.email)
+        assert present.value.code == "team_owner_present"
+        session.rollback()
+        # The owner deactivated outside the API: an operator, in the database.
+        session.execute(
+            text("UPDATE users SET is_active = false WHERE id = :u"), {"u": uuid.UUID(owner.id)}
+        )
+        session.commit()
+    # Ownership did not pass silently to anyone.
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)
+    with _session(engine) as session:
+        assert not team.team(session=session, user=member).owner
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        issues = {i.tenant_id: i for i in team.ownership_report(session=session)}
+        assert issues[owner.tenant_id].issue == "owner_inactive"
+        assert issues[owner.tenant_id].active_admins == 0
+        with pytest.raises(NotFoundError):
+            team.assign_owner(session=session, email=owner.email)
+        session.rollback()
+        assigned = team.assign_owner(session=session, email=member.email.upper())
+        assert assigned == uuid.UUID(owner.tenant_id)
+        session.commit()
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(member.id)
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        assert owner.tenant_id not in {i.tenant_id for i in team.ownership_report(session=session)}
+
+
+def test_the_report_lists_a_tenant_without_owner_and_its_admins(owner, engine) -> None:  # type: ignore[no-untyped-def]
+    admin = _member(engine, owner, admin=True)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE tenants SET owner_user_id = NULL WHERE id = :t"),
+            {"t": uuid.UUID(owner.tenant_id)},
+        )
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        issues = {i.tenant_id: i for i in team.ownership_report(session=session)}
+    assert issues[owner.tenant_id].issue == "no_owner"
+    assert issues[owner.tenant_id].active_admins == 1
+    # Without an owner, the oldest account is a plain member; the admin manages.
+    with _session(engine) as session:
+        assert not team.team(session=session, user=owner).owner
+        shown = team.team(session=session, user=admin)
+        assert shown.owner
+        assert not shown.owns

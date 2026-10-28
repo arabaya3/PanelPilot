@@ -130,6 +130,15 @@
       "trial-gone": "This trial has expired, so the conversation cannot be carried over. The account can still be created.",
       "failed": "The account could not be created. Check the connection and try again."
     },
+    "invalid": {
+      "email": "This email address cannot be used. Enter an address on a real, public domain; reserved domains such as .test or .example are refused.",
+      "passwordShort": "The password needs at least {min} characters.",
+      "passwordLong": "The password can be at most {max} characters.",
+      "password": "The password was not accepted. Choose another one.",
+      "nameLong": "The name can be at most {max} characters.",
+      "name": "The name was not accepted. Check it and try again.",
+      "other": "The account details were not accepted. Check them and try again."
+    },
     "landing": {
       "headline": "Diagnose a fault without signing up",
       "subhead": "Ask a question now. No access request, no waiting.",
@@ -1081,6 +1090,14 @@
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
+      "approvalNotCurrent": "This approval no longer counts: {changes} changed since revision {revision} was approved. Its exports are refused; save it again as a new revision and approve that.",
+      "approvalNotCurrentListed": "No longer counts: the rules or defaults it was approved under changed.",
+      "approvalParts": {
+        "rules_version": "the calculation rules",
+        "catalogue_version": "the parts catalogue",
+        "profile": "the default company profile",
+        "findings_policy": "the findings policy"
+      },
       "approvalChanged": "The page has changes since revision {revision}; the approval does not cover them.",
       "approveHeld": {
         "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",
@@ -1391,6 +1408,7 @@
   "team": {
     "title": "Team",
     "intro": "The engineers on your account. The owner invites colleagues by email and sends them the link.",
+    "renewed": "Your session had expired and has been renewed. Try again.",
     "signIn": "Sign in to see your team.",
     "loading": "Loading the team…",
     "error": "The team could not be loaded or changed; try again.",
@@ -1406,6 +1424,10 @@
     "waiting": "Waiting",
     "withdraw": "Withdraw",
     "notOwner": "Only the account's owner invites colleagues.",
+    "makeOwner": "Make owner",
+    "transferConfirm": "Make {member} the account's owner? You will stay a member but no longer own the account, and only the new owner can give it back.",
+    "transfer": "Transfer ownership",
+    "cancel": "Cancel",
     "errors": {
       "team_owner_only": "Only the account's owner manages the team.",
       "team_seats_full": "Your plan holds {seats} seats, all taken; change plan to add more.",
@@ -1414,8 +1436,10 @@
       "team_invitation_email": "This invitation is for another email address.",
       "team_invitation_not_found": "That invitation is not there.",
       "team_member_not_found": "That member is not there.",
-      "team_owner_not_removable": "The account's owner cannot be removed.",
-      "team_remove_self": "The owner cannot remove themselves."
+      "team_owner_not_removable": "The account's owner cannot be removed until ownership is transferred.",
+      "team_remove_self": "The owner cannot remove themselves.",
+      "team_transfer_owner_only": "Only the account's owner can transfer ownership.",
+      "team_transfer_self": "You already own the account; choose another member."
     }
   },
   "join": {

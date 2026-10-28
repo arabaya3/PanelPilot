@@ -19,6 +19,7 @@ from app.domain import company_settings
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
+from app.tests.accounts import account
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -58,9 +59,7 @@ def _tenants(engine: Engine) -> tuple[uuid.UUID, uuid.UUID]:
 
 def _user(tenant: uuid.UUID, roles: frozenset[Role] = frozenset({Role.ADMIN})) -> CurrentUser:
     """A caller; an admin unless told otherwise, so it may save the settings."""
-    return CurrentUser(
-        id=str(uuid.uuid4()), email="eng@example.com", tenant_id=str(tenant), roles=roles
-    )
+    return account(tenant, roles)
 
 
 def test_get_settings_is_empty_until_saved(tenants, engine) -> None:  # type: ignore[no-untyped-def]

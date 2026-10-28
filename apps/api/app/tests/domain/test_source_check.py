@@ -193,6 +193,13 @@ def db() -> Iterator[Session]:
         session.execute(
             text("DELETE FROM verification_items WHERE chunk_id LIKE :p"), {"p": f"{tag}-%"}
         )
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE tenant_id = :t)"
+            ),
+            {"t": tenant.id},
+        )
         session.execute(text("DELETE FROM users WHERE tenant_id = :t"), {"t": tenant.id})
         session.execute(text("DELETE FROM tenants WHERE id = :t"), {"t": tenant.id})
         session.commit()

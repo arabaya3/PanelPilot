@@ -9,10 +9,12 @@ import {
   parseSettings,
   readList,
   readSetting,
+  refusedSetting,
   settingsText,
   toggled,
   writeList,
   writeSetting,
+  withListedSettings,
   type Settings,
 } from '@/components/design/company-settings-model';
 import { useOutcomeText } from '@/components/design/note-text';
@@ -154,6 +156,9 @@ export function CompanySettingsPanel({
   const { load = getCompanySettings, save = saveCompanySettings } = impls;
   const [saved, setSaved] = useState<CompanySettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Why the last save was refused, and the setting it names (a dotted path)
+  // while that field is unchanged. What was typed is kept either way.
+  const [problem, setProblem] = useState<{ text: string; path: string | null } | null>(null);
   const [working, setWorking] = useState(false);
   const parsed = parseSettings(text);
   // Every member reads the settings; only the owner saves them (the server
@@ -178,6 +183,7 @@ export function CompanySettingsPanel({
 
   function change(path: string[], value: string) {
     if (parsed === 'invalid') return;
+    if (problem?.path === path.join('.')) setProblem({ ...problem, path: null });
     onText(settingsText(writeSetting(parsed, path, value)));
   }
 
@@ -185,27 +191,44 @@ export function CompanySettingsPanel({
     if (token === null || parsed === 'invalid' || !canSave) return;
     setWorking(true);
     setMessage(null);
+    setProblem(null);
     const settings: Settings = { ...parsed, ...(language === 'en' ? {} : { language }) };
     const outcome = await save({ token, settings });
     setWorking(false);
     if (outcome.kind === 'settings') {
       setSaved(outcome.saved);
       setMessage(t('saved'));
-    } else {
-      setMessage(say(outcome));
+    } else if (outcome.kind === 'refused') {
+      setProblem({ text: say(withListedSettings(outcome)), path: refusedSetting(outcome) });
       // No longer the owner: the form stops offering to save.
-      if (outcome.kind === 'refused' && outcome.code === 'settings_not_permitted') {
+      if (outcome.code === 'settings_not_permitted') {
         setSaved((was) => (was ? { ...was, permissions: [] } : was));
       }
+    } else {
+      setProblem({ text: say(outcome), path: null });
     }
+  }
+
+  /** Whether the last refused save named the setting at `path`. */
+  function refused(path: string[]): boolean {
+    return problem?.path === path.join('.');
   }
 
   function input(setting: Setting, key: string) {
     const fieldId = `${id}-${key}`;
+    const error = refused(setting.path) ? problem?.text : undefined;
     return (
-      <Field key={key} id={fieldId} label={t(`field.${setting.label}`)} unit={setting.unit ?? ''}>
+      <Field
+        key={key}
+        id={fieldId}
+        label={t(`field.${setting.label}`)}
+        unit={setting.unit ?? ''}
+        error={error}
+      >
         <input
           id={fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${fieldId}-error` : undefined}
           dir="auto"
           value={parsed === 'invalid' ? '' : readSetting(parsed, setting.path)}
           placeholder={setting.placeholder}
@@ -313,6 +336,7 @@ export function CompanySettingsPanel({
             <input
               key={column}
               aria-label={`${label}: ${t(`col.${column}`)}`}
+              aria-invalid={refused(path) || undefined}
               dir="ltr"
               inputMode="decimal"
               value={readSetting(settings, path)}
@@ -369,6 +393,7 @@ export function CompanySettingsPanel({
               dir="ltr"
               maxLength={3}
               aria-label={`${t('letters')}: ${t(`device.${kind}`)}`}
+              aria-invalid={refused(['letters', kind]) || undefined}
               value={readSetting(settings, ['letters', kind])}
               placeholder={letter}
               disabled={parsed === 'invalid'}
@@ -427,6 +452,11 @@ export function CompanySettingsPanel({
           data-testid="settings-not-permitted"
         >
           {t('notPermitted')}
+        </p>
+      )}
+      {problem && (
+        <p role="alert" className="text-sm text-severity-critical" data-testid="settings-message">
+          {problem.text}
         </p>
       )}
       {message && (

@@ -81,7 +81,7 @@ def grant_role(*, session: Session, email: str, role: Role) -> bool:
     """
     if role in IMPLICIT_ROLES:
         raise ValidationError(f"{role.value} is held by every account; it is not granted")
-    user = _account(session=session, email=email)
+    user = _account(session=session, email=email, lock=True)
     if any(row.name == role.value for row in user.roles):
         return False
 
@@ -117,7 +117,7 @@ def revoke_role(*, session: Session, email: str, role: Role) -> bool:
     """
     if role in IMPLICIT_ROLES:
         raise ValidationError(f"{role.value} is held by every account; it cannot be revoked")
-    user = _account(session=session, email=email)
+    user = _account(session=session, email=email, lock=True)
     kept = [row for row in user.roles if row.name != role.value]
     if len(kept) == len(user.roles):
         return False
@@ -154,12 +154,16 @@ def reviewer_by_email(*, session: Session, email: str) -> CurrentUser:
     )
 
 
-def _account(*, session: Session, email: str) -> User:
+def _account(*, session: Session, email: str, lock: bool = False) -> User:
     """Load an account by email.
 
     Args:
         session: Open database session.
         email: The address, compared case-insensitively as signup stores it.
+        lock: Lock the account ``FOR UPDATE`` and read it afresh: a grant or
+            revocation then waits for an action the account is taking (which
+            holds it ``FOR SHARE``, ``permissions.require``), or the action
+            waits for it and sees the change.
 
     Returns:
         The account.
@@ -167,9 +171,10 @@ def _account(*, session: Session, email: str) -> User:
     Raises:
         NotFoundError: If there is none.
     """
-    user = session.execute(
-        select(User).where(User.email == email.strip().lower())
-    ).scalar_one_or_none()
+    statement = select(User).where(User.email == email.strip().lower())
+    if lock:
+        statement = statement.with_for_update().execution_options(populate_existing=True)
+    user = session.execute(statement).scalar_one_or_none()
     if user is None:
         raise NotFoundError("no account with that email")
     return user

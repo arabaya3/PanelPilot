@@ -92,6 +92,22 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # Set with the approval, in the same locked transaction: the snapshot
     # hash approved. An approval counts only while it equals snapshot_sha256.
     approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Also set with the approval (since b4e8d2f6a9c1): the applicable policy it
+    # was granted under, and the approver's display name as it was then. An
+    # approval counts only while each recorded policy value equals the one
+    # that applies now (``app.domain.design_projects``). The rules, catalogue
+    # and profile hash of a row approved before then were backfilled from the
+    # revision's own (checked not stale at approval); its findings policy is
+    # NULL, read as the classification of the revision's stored findings.
+    approved_profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    approved_catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # SHA-256 of the canonical findings classification (code, severity,
+    # engineering confirmation) of the approved design under the policy then.
+    approved_findings_policy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The approver's display name, frozen: "" when the account had none (an
+    # export says "a team member"). Exports never re-read it from the account.
+    approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     project: Mapped[DesignProjectRow] = relationship(back_populates="revisions")
 

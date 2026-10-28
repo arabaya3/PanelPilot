@@ -20,9 +20,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
+from app.core.tenancy import bind_tenant
 from app.design import RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
-from app.domain import design_projects
+from app.domain import design_projects, roles
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.schemas.design import (
     ApproveRevisionRequest,
@@ -40,6 +41,7 @@ from app.models.schemas.design import (
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
+from app.tests.accounts import account
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -100,7 +102,8 @@ ADMIN = frozenset({Role.ADMIN})
 
 
 def _user(tenant: uuid.UUID, email: str = "eng@example.com") -> CurrentUser:
-    return CurrentUser(id=str(uuid.uuid4()), email=email, tenant_id=str(tenant), roles=ADMIN)
+    """A new admin account of ``tenant`` (permissions are read from its row)."""
+    return account(tenant, ADMIN, email)
 
 
 def _request(name: str = "Tower", kw: str = "3") -> ProjectDesignRequest:
@@ -675,10 +678,11 @@ def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tena
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(session: Any, project: Any, row: Any, number: int) -> None:
-        original(session, project, row, number)
+    def slow(session: Any, project: Any, row: Any, number: int) -> Any:
+        applicable = original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
+        return applicable
 
     def approve() -> None:
         outcome["approved"] = _approve(as_tenant, a, saved)
@@ -748,10 +752,11 @@ def test_a_delete_during_an_approval_waits_then_is_refused(tenants, as_tenant, e
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(session: Any, project: Any, row: Any, number: int) -> None:
-        original(session, project, row, number)
+    def slow(session: Any, project: Any, row: Any, number: int) -> Any:
+        applicable = original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
+        return applicable
 
     def approve() -> None:
         outcome["approved"] = _approve(as_tenant, a, saved)
@@ -924,9 +929,19 @@ def _account(engine: Engine, tenant: uuid.UUID, email: str, full_name: str | Non
         The caller signed in as that account.
     """
     with sessionmaker(bind=engine)() as session:
+        session.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email = :email)"
+            ),
+            {"email": email},
+        )
         session.execute(text("DELETE FROM users WHERE email = :email"), {"email": email})
         user_id = uuid.uuid4()
         session.add(User(id=user_id, tenant_id=tenant, email=email, full_name=full_name))
+        session.flush()
+        bind_tenant(session, tenant)
+        roles.grant_role(session=session, email=email, role=Role.ADMIN)
         session.commit()
     return CurrentUser(id=str(user_id), email=email, tenant_id=str(tenant), roles=ADMIN)
 
@@ -1087,7 +1102,9 @@ def test_an_approval_by_id_ignores_an_email_now_held_by_another_account(  # type
     # The account is deleted and its email given to a new account.
     _account(engine, a, "reused@example.com", "Second Holder")
     opened = design_projects.open_project(session=as_tenant(), user=first, project_id=saved.id)
-    assert opened.revisions[0].approved_by == design_projects.APPROVER_FALLBACK
+    # The name is frozen with the approval: who signed stays who signed, and
+    # the email's new holder never lends a name.
+    assert opened.revisions[0].approved_by == "First Holder"
     assert "Second Holder" not in opened.model_dump_json()
 
 
@@ -1109,10 +1126,21 @@ def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ig
     a, b = tenants
     # The approving account's row belongs to tenant B: tenant A's revision
     # recorded it, but its name is not A's to read.
+    # A caller whose token names tenant A but whose account is B's holds no
+    # permission in A (``permissions.require`` reads the account in A), so
+    # the recorded approver is pointed at B's account directly.
     in_b = _account(engine, b, "eng@example.com", "Someone In B")
-    caller = in_b.model_copy(update={"tenant_id": str(a)})
+    forged = in_b.model_copy(update={"tenant_id": str(a)})
     saved = _saved(as_tenant, a)
-    approved = _approve_as(as_tenant, caller, saved)
+    with pytest.raises(AuthorizationError):
+        _approve_as(as_tenant, forged, saved)
+    _approve_as(as_tenant, _user(a), saved)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE design_project_revisions SET approved_user_id = :u WHERE project_id = :p"),
+            {"u": uuid.UUID(in_b.id), "p": uuid.UUID(saved.id)},
+        )
+    approved = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     (revision,) = approved.revisions
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
@@ -1132,13 +1160,8 @@ def test_another_tenants_account_lends_no_name_and_sees_no_approval(  # type: ig
 
 
 def _member(tenant: uuid.UUID, *roles: Role) -> CurrentUser:
-    """A caller who is not the tenant's owner: no account row, and no admin."""
-    return CurrentUser(
-        id=str(uuid.uuid4()),
-        email="member@example.com",
-        tenant_id=str(tenant),
-        roles=frozenset({Role.ENGINEER, *roles}),
-    )
+    """A caller who is not the tenant's owner, holding ``roles`` and no admin."""
+    return account(tenant, frozenset(roles), "member@example.com")
 
 
 def test_responses_carry_the_callers_permissions(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]
@@ -1211,3 +1234,89 @@ def test_another_tenants_project_is_not_found_whoever_asks(  # type: ignore[no-u
     with pytest.raises(NotFoundError) as missing:
         design_projects.delete_project(session=as_tenant(), user=caller, project_id=saved.id)
     assert missing.value.code == "project_not_found"
+
+
+def test_an_approval_records_the_policy_and_name_it_was_granted_under(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    a, _ = tenants
+    user = _account(engine, a, "policy-approver@example.com", " Lina Odeh ")
+    saved = _saved(as_tenant, a)
+    _approve_as(as_tenant, user, saved)
+    with engine.connect() as conn:
+        row = (
+            conn.execute(
+                text(
+                    "SELECT profile_sha256, rules_version, catalogue_version, findings, "
+                    "approved_profile_sha256, approved_rules_version, "
+                    "approved_catalogue_version, approved_findings_policy, "
+                    "approved_display_name FROM design_project_revisions"
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["approved_profile_sha256"] == row["profile_sha256"]
+    assert row["approved_rules_version"] == row["rules_version"] == RULES_VERSION
+    assert row["approved_catalogue_version"] == row["catalogue_version"]
+    stored = sorted(
+        [f["code"], f["severity"], f["requires_engineering_confirmation"]] for f in row["findings"]
+    )
+    assert row["approved_findings_policy"] == snapshot.sha256_of(stored)
+    assert row["approved_display_name"] == "Lina Odeh"
+    opened = design_projects.open_project(session=as_tenant(), user=user, project_id=saved.id)
+    assert opened.approval_current is True
+    assert opened.approval_changed == []
+
+
+@pytest.mark.parametrize("backfilled", [True, False])
+def test_a_legacy_approved_row_counts_as_current(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine, backfilled
+) -> None:
+    """A row approved before the policy was recorded: as the migration leaves it, or untouched."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE design_project_revisions SET approved_at = now(), "
+                "approved_snapshot_sha256 = snapshot_sha256, approved_account = 'x@example.com'"
+            )
+        )
+        if backfilled:
+            # What b4e8d2f6a9c1 writes: the revision's own versions and hash,
+            # the findings policy left NULL, the name frozen ("" for none).
+            conn.execute(
+                text(
+                    "UPDATE design_project_revisions SET "
+                    "approved_profile_sha256 = profile_sha256, "
+                    "approved_rules_version = rules_version, "
+                    "approved_catalogue_version = catalogue_version, "
+                    "approved_display_name = ''"
+                )
+            )
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_current is True
+    assert opened.export_status is ExportStatus.REVIEW_APPROVED
+    first = _first_line(_export(as_tenant, a, saved))
+    assert "REVIEW APPROVED" in first
+    assert f"approved by {design_projects.APPROVER_FALLBACK}" in first
+
+
+def test_an_approval_recorded_under_other_rules_is_not_current(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    """The recorded policy is compared even where the revision's own still matches."""
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    _set(engine, approved_rules_version="0.0.0-approved")
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_current is False
+    assert opened.approval_changed == ["rules_version"]
+    assert opened.export_status is ExportStatus.DRAFT
+    assert "approval" in opened.execution_blockers
+    with pytest.raises(ConflictError) as stale:
+        _export(as_tenant, a, saved)
+    assert stale.value.code == "revision_stale"
+    assert stale.value.params["changed"] == "rules_version"

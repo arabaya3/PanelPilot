@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -26,11 +33,29 @@ class TenantRow(UUIDPrimaryKey, TimestampMixin, Base):
     """A customer organisation. The root of every ownership chain."""
 
     __tablename__ = "tenants"
+    __table_args__ = (
+        # The owner is one of this tenant's own accounts: the pair references
+        # ``users (id, tenant_id)``, so an account of another tenant cannot be
+        # recorded. ``use_alter``: users reference tenants too.
+        ForeignKeyConstraint(
+            ["owner_user_id", "id"],
+            ["users.id", "users.tenant_id"],
+            name="fk_tenants_owner_user_id_users",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+    )
 
     # Human-readable identifier used in URLs and support conversations.
     slug: Mapped[str] = mapped_column(String(63), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # The account that owns the tenant (``app.domain.team``): set when signup
+    # creates the tenant or claims a trial, changed only by a transfer or an
+    # operator's ``assign-owner``. NULL for an unclaimed trial, and for a
+    # legacy tenant whose first account was ambiguous when the column was
+    # added (migration ``a7d3e9f1c2b4``).
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
 
     # Free-tier usage, counted server-side. A client-reported count is a number
     # the client can choose, so this is the only figure the quota check reads.
@@ -77,3 +102,9 @@ class ModelUsageRow(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     #: The UTC calendar month, as ``YYYY-MM``.
     period: Mapped[str] = mapped_column(String(7), nullable=False)
     calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ``tenants.owner_user_id`` references ``users``, and ``users`` this module's
+# mixin: imported last, once the mixin exists, so importing this module alone
+# still resolves every foreign key (``tests/models/tables/test_package.py``).
+from app.models.tables import user as _user  # noqa: E402,F401

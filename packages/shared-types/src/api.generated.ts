@@ -869,6 +869,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/team/owner': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer Ownership
+     * @description Hand the tenant's ownership to another active member; the owner only.
+     */
+    post: operations['transfer_ownership_api_v1_team_owner_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ingestion/crawl-jobs': {
     parameters: {
       query?: never;
@@ -3362,7 +3382,7 @@ export interface components {
      *         id: The account.
      *         email: Its address.
      *         full_name: Its name, if given.
-     *         owner: Whether it manages the team.
+     *         owner: Whether it is the tenant's recorded owner.
      */
     Member: {
       /** Id */
@@ -4279,6 +4299,14 @@ export interface components {
      *         validated: Whether the server designed it from its request when it
      *             was saved, and holds that design; ``False`` for an older one.
      *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
      */
     RevisionSummary: {
       /** Number */
@@ -4309,6 +4337,10 @@ export interface components {
       validated: boolean;
       /** @default not_validated */
       export_status: components['schemas']['ExportStatus'];
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
     };
     /**
      * SaveCompanySettings
@@ -4361,6 +4393,14 @@ export interface components {
      *             ``None`` while it is not approved (or approved before approvals
      *             were bound to a design).
      *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
      *         execution_blockers: Why it cannot be exported for execution: the
      *             parts of an execution package this service does not produce yet,
      *             then ``approval`` and each blocking finding's code, as they apply.
@@ -4394,6 +4434,10 @@ export interface components {
       rules_version?: string | null;
       /** Approved Snapshot Sha256 */
       approved_snapshot_sha256?: string | null;
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
       /** @default not_validated */
       export_status: components['schemas']['ExportStatus'];
       /** Execution Blockers */
@@ -4677,8 +4721,10 @@ export interface components {
      * @description The caller's team.
      *
      *     Attributes:
-     *         members: Its active accounts, owner first.
-     *         owner: Whether the caller manages it.
+     *         members: Its active accounts, the owner first.
+     *         owner: Whether the caller manages it: the owner, or an admin.
+     *         owns: Whether the caller is the recorded owner, the one account
+     *             that may transfer ownership.
      *         seats: The seats the plan holds; ``None`` while billing is not
      *             enforced.
      *         seats_taken: Members plus invitations still open.
@@ -4688,6 +4734,8 @@ export interface components {
       members: components['schemas']['Member'][];
       /** Owner */
       owner: boolean;
+      /** Owns */
+      owns: boolean;
       /** Seats */
       seats: number | null;
       /** Seats Taken */
@@ -4713,6 +4761,14 @@ export interface components {
       | 'approved_by'
       | 'date'
       | 'company';
+    /**
+     * TransferOwnershipRequest
+     * @description Hand the tenant's ownership to another active member.
+     */
+    TransferOwnershipRequest: {
+      /** Member Id */
+      member_id: string;
+    };
     /**
      * TrialResumeRequest
      * @description Get a fresh access token for a trial this browser already started.
@@ -6269,6 +6325,39 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  transfer_ownership_api_v1_team_owner_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TransferOwnershipRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
       };
       /** @description Validation Error */
       422: {

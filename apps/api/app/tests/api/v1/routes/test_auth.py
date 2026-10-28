@@ -103,6 +103,13 @@ def _delete_rows() -> None:
             ),
             {"p": f"{_SLUG_PREFIX}%"},
         )
+        conn.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email LIKE :p)"
+            ),
+            {"p": f"{_SLUG_PREFIX}%"},
+        )
         conn.execute(text("DELETE FROM users WHERE email LIKE :p"), {"p": f"{_SLUG_PREFIX}%"})
         conn.execute(text("DELETE FROM tenants WHERE slug LIKE :p"), {"p": f"{_SLUG_PREFIX}%"})
 

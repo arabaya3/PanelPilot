@@ -164,11 +164,24 @@ class _Caller:
     def __init__(self, tenant: str, engine: Engine) -> None:
         self.user = _user(tenant)
         _account_row(engine, self.user, APPROVER)
+        # The tenant's owner: approves, deletes and saves settings.
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE tenants SET owner_user_id = :u WHERE id = :t"),
+                {"u": uuid.UUID(self.user.id), "t": uuid.UUID(tenant)},
+            )
 
 
 def _account_row(engine: Engine, user: CurrentUser, full_name: str | None) -> None:
     """The users row behind ``user``, replacing any left by another test."""
     with engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE tenants SET owner_user_id = NULL WHERE owner_user_id IN "
+                "(SELECT id FROM users WHERE email = :e)"
+            ),
+            {"e": user.email},
+        )
         conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": user.email})
         conn.execute(
             text(
@@ -1161,3 +1174,149 @@ def test_a_trial_caller_is_refused_approval(
     assert response.status_code == 403, response.text
     assert error(response)["code"] == "approval_requires_account"
     assert revision_row(engine, saved["id"], 1)["approved_at"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Settings and approval: the approval binds the applicable policy
+# (docs/design-readiness/phase-1-export-integrity.md, Settings and approval)
+# --------------------------------------------------------------------------- #
+
+
+def opened(client: TestClient, project_id: str) -> dict[str, Any]:
+    response = client.get(f"/design/projects/{project_id}")
+    assert response.status_code == 200, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def _patch_constant(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> int:
+    import sys
+
+    patched = 0
+    for module_name, module in list(sys.modules.items()):
+        if module_name.startswith("app") and module is not None and hasattr(module, name):
+            monkeypatch.setattr(module, name, value)
+            patched += 1
+    return patched
+
+
+def test_tenant_settings_changed_after_approval_leave_it_current_and_identical(
+    client: TestClient,
+) -> None:
+    saved = save(client)
+    assert approve(client, saved["id"], 1).status_code == 200
+    before = revision_export(client, saved["id"], 1, "json")
+    assert before.status_code == 200, before.text[:300]
+    changed = client.put(
+        "/design/company-settings",
+        json={
+            "settings": {
+                "key": "adv-co",
+                "name": "ADV Engineering Change Co",
+                "default_max_voltage_drop_percent": "2",
+            }
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    after = revision_export(client, saved["id"], 1, "json")
+    assert after.status_code == 200, after.text[:300]
+    assert hashlib.sha256(after.content).hexdigest() == hashlib.sha256(before.content).hexdigest()
+    shown = opened(client, saved["id"])
+    assert shown["export_status"] == "review_approved"
+    assert shown["approval_current"] is True
+    assert shown["approval_changed"] == []
+    assert revision_of(shown, 1)["approval_current"] is True
+
+
+def _reclassify_a_finding(monkeypatch: pytest.MonkeyPatch, saved: dict[str, Any]) -> None:
+    from app.design import findings_policy
+    from app.design.findings_policy import Classification
+    from app.models.schemas.design import FindingSeverity
+
+    code = next(f["code"] for f in saved["findings"] if f["code"] in findings_policy.POLICY)
+    current = findings_policy.POLICY[code]
+    severity = (
+        FindingSeverity.INFO
+        if current.severity is FindingSeverity.BLOCKING
+        else FindingSeverity.BLOCKING
+    )
+    monkeypatch.setitem(findings_policy.POLICY, code, Classification(severity, False, "test"))
+
+
+def _change_policy(monkeypatch: pytest.MonkeyPatch, part: str, saved: dict[str, Any]) -> None:
+    if part == "rules_version":
+        assert _patch_constant(monkeypatch, "RULES_VERSION", "adv-bumped-rules") >= 1
+    elif part == "catalogue_version":
+        assert _patch_constant(monkeypatch, "CATALOGUE_VERSION", "adv-bumped-catalogue") >= 1
+    elif part == "profile":
+        from decimal import Decimal
+
+        from app.design import profile
+
+        monkeypatch.setattr(
+            profile,
+            "DEFAULT_PROFILE",
+            profile.DEFAULT_PROFILE.model_copy(
+                update={"default_max_voltage_drop_percent": Decimal("1.5")}
+            ),
+        )
+    else:
+        _reclassify_a_finding(monkeypatch, saved)
+
+
+@pytest.mark.parametrize(
+    "part", ["rules_version", "catalogue_version", "profile", "findings_policy"]
+)
+def test_an_applicable_policy_changed_after_approval_makes_it_not_current(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, part: str
+) -> None:
+    saved = save(client)
+    assert approve(client, saved["id"], 1).status_code == 200
+    _change_policy(monkeypatch, part, saved)
+
+    shown = opened(client, saved["id"])
+    assert shown["approval_current"] is False
+    assert part in shown["approval_changed"]
+    assert "snapshot" not in shown["approval_changed"]
+    assert shown["export_status"] != "review_approved"
+    assert "approval" in shown["execution_blockers"]
+    # The revision list says so too (the versions alone for a listed one).
+    assert revision_of(shown, 1)["approval_current"] is False
+
+    response = revision_export(client, saved["id"], 1, "json")
+    assert response.status_code == 409, response.text[:300]
+    body = error(response)
+    assert body["code"] == "revision_stale"
+    assert part in body["params"]["changed"].split(",")
+
+    execution = revision_export(client, saved["id"], 1, "json", purpose="execution")
+    assert execution.status_code == 409
+    refused = error(execution)
+    assert refused["code"] == "execution_package_incomplete"
+    assert refused["params"]["approval"] == "missing"
+    assert "approval" in refused["params"]["blockers"].split(",")
+
+
+def test_an_approver_renamed_after_approval_changes_no_export(
+    client: TestClient, engine: Engine, caller: _Caller
+) -> None:
+    saved = save(client)
+    assert approve(client, saved["id"], 1).status_code == 200
+    before = {fmt: revision_export(client, saved["id"], 1, fmt) for fmt in ("json", "pdf")}
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET full_name = 'Renamed Later ZQX' WHERE id = :u"),
+            {"u": uuid.UUID(caller.user.id)},
+        )
+    after = revision_export(client, saved["id"], 1, "json")
+    assert after.status_code == 200
+    assert after.content == before["json"].content
+    pdf = "\n".join(pdf_pages(revision_export(client, saved["id"], 1, "pdf").content))
+    assert APPROVER in pdf
+    assert "Renamed Later ZQX" not in pdf
+    shown = opened(client, saved["id"])
+    assert revision_of(shown, 1)["approved_by"] == APPROVER
+    assert revision_of(shown, 1)["approver_name"] == APPROVER
+    # Who would approve now is the account as it is now.
+    assert shown["approving_as"] == "Renamed Later ZQX"
+    assert revision_row(engine, saved["id"], 1)["approved_display_name"] == APPROVER

@@ -56,6 +56,7 @@ import {
 import {
   executionBlockersOf,
   executionRefusalOf,
+  listOf,
   readinessOf,
   rowOf,
   validationOf,
@@ -1535,6 +1536,7 @@ function DesignWorkspace({
                 blockers={readiness.approvalBlockers}
                 blockingCount={readiness.blockingCount}
                 approvalCovers={readiness.approvalCovers}
+                approvalOutdated={readiness.approvalOutdated}
                 trial={identity === 'trial'}
                 note={revisionNote}
                 onNoteChange={setRevisionNote}
@@ -1890,7 +1892,13 @@ function DesignWorkspace({
                                 </StatusBadge>
                                 {entry.number !== opened.revision ? (
                                   <span className="ms-2 text-xs text-text-muted">
-                                    {t('projects.approvalUnchecked', { revision: entry.number })}
+                                    {entry.approval_current === false
+                                      ? t('projects.approvalNotCurrentListed')
+                                      : t('projects.approvalUnchecked', { revision: entry.number })}
+                                  </span>
+                                ) : readiness.approvalOutdated.length > 0 ? (
+                                  <span className="ms-2 text-xs text-text-muted">
+                                    {t('projects.approvalNotCurrentListed')}
                                   </span>
                                 ) : (
                                   !readiness.approvalCovers && (
@@ -2037,8 +2045,18 @@ function DesignWorkspace({
                       name: opened.approval.by ?? t('projects.teamMember'),
                       date: opened.approval.at.slice(0, 10),
                     })}
-                    {!readiness.approvalCovers &&
-                      ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
+                    {readiness.approvalOutdated.length > 0
+                      ? ` ${t('projects.approvalNotCurrent', {
+                          revision: opened.revision,
+                          changes: listOf(
+                            locale,
+                            readiness.approvalOutdated.map((part) =>
+                              t(`projects.approvalParts.${part}`),
+                            ),
+                          ),
+                        })}`
+                      : !readiness.approvalCovers &&
+                        ` ${t('projects.approvalNotCovering', { revision: opened.revision })}`}
                     {dirty && ` ${t('projects.approvalChanged', { revision: opened.revision })}`}
                     {opened.approval.note &&
                       ` ${t('projects.approvalNoteShown', { note: opened.approval.note })}`}

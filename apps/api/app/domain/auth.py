@@ -204,6 +204,12 @@ def signup(
             # rather than the 500 an escaped IntegrityError used to be.
             raise ValidationError(_EMAIL_TAKEN) from exc
 
+        # The account that creates a tenant, or claims a trial's (which has
+        # none), owns it; one joining by invitation does not.
+        if not invite_token and tenant.owner_user_id is None:
+            tenant.owner_user_id = user.id
+            session.flush()
+
         if claimed is not None:
             claimed.claimed_by_user_id = user.id
             claimed.claimed_at = datetime.now(UTC)
