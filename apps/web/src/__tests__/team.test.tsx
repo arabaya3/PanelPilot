@@ -203,3 +203,47 @@ describe('joining with an address the server refuses', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Email').value).toBe('c@x.test');
   });
 });
+
+describe('team after the access token expires', () => {
+  it('renews the shared session after a 401 and loads with the new token', async () => {
+    const teamImpl = vi
+      .fn<typeof getTeam>()
+      .mockImplementation(({ token }) =>
+        Promise.resolve(
+          token === 'renewed' ? { kind: 'team', team: TEAM } : { kind: 'unauthorized' },
+        ),
+      );
+    const invitationsImpl = vi
+      .fn<typeof listInvitations>()
+      .mockResolvedValue({ kind: 'listed', invitations: [] });
+    const refreshImpl = vi
+      .fn<typeof refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'renewed' });
+    renderApp(
+      <AccountSessionProvider
+        initial={{ status: 'signed-in', tokens: { accessToken: 'stale' } }}
+        refreshImpl={refreshImpl}
+      >
+        <TeamScreen teamImpl={teamImpl} invitationsImpl={invitationsImpl} />
+      </AccountSessionProvider>,
+    );
+    expect((await screen.findByTestId('team-members')).textContent).toContain('mem@x.com');
+    expect(refreshImpl).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('asks for a sign-in when the session cannot be renewed', async () => {
+    const teamImpl = vi.fn<typeof getTeam>().mockResolvedValue({ kind: 'unauthorized' });
+    const refreshImpl = vi.fn<typeof refreshSession>().mockResolvedValue({ kind: 'expired' });
+    renderApp(
+      <AccountSessionProvider
+        initial={{ status: 'signed-in', tokens: { accessToken: 'stale' } }}
+        refreshImpl={refreshImpl}
+      >
+        <TeamScreen teamImpl={teamImpl} />
+      </AccountSessionProvider>,
+    );
+    expect(await screen.findByText('Sign in to see your team.')).toBeTruthy();
+    expect(teamImpl).toHaveBeenCalledTimes(1);
+  });
+});

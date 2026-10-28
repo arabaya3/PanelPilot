@@ -1399,6 +1399,7 @@
   "team": {
     "title": "Team",
     "intro": "The engineers on your account. The owner invites colleagues by email and sends them the link.",
+    "renewed": "Your session had expired and has been renewed. Try again.",
     "signIn": "Sign in to see your team.",
     "loading": "Loading the team…",
     "error": "The team could not be loaded or changed; try again.",

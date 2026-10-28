@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { useAccountSession } from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
@@ -59,6 +59,23 @@ export function TeamScreen({
   const [ownToken, setOwnToken] = useState<string | null>(initialToken);
   const token = account?.state.status === 'signed-in' ? account.state.tokens.accessToken : ownToken;
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'idle' });
+  // The token a renewal was already asked for, so a server that refuses the
+  // renewed token too is said as an error rather than renewed in a loop.
+  const renewedFor = useRef<string | null>(null);
+
+  /**
+   * After a 401: renew the shared session, as `/design` does. A renewed
+   * token reloads the team (the token changes); one that cannot be renewed
+   * ends the session, and the page asks for a sign-in. True when renewed.
+   */
+  const reauthorize = useCallback(
+    async (access: string): Promise<boolean> => {
+      if (account === null || renewedFor.current === access) return false;
+      renewedFor.current = access;
+      return (await account.renew()) === 'refreshed';
+    },
+    [account],
+  );
   const [email, setEmail] = useState('');
   const [link, setLink] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -78,6 +95,7 @@ export function TeamScreen({
     async (access: string) => {
       setLoaded({ kind: 'loading' });
       const shown = await teamImpl({ token: access });
+      if (shown.kind === 'unauthorized' && (await reauthorize(access))) return;
       if (shown.kind !== 'team') {
         setLoaded({ kind: 'failed' });
         return;
@@ -89,7 +107,7 @@ export function TeamScreen({
         invitations: open?.kind === 'listed' ? open.invitations : [],
       });
     },
-    [teamImpl, invitationsImpl],
+    [teamImpl, invitationsImpl, reauthorize],
   );
 
   useEffect(() => {
@@ -105,6 +123,8 @@ export function TeamScreen({
       setLink(joinLink(window.location.origin, outcome.invitation.token));
       setEmail('');
       void load(token);
+    } else if (outcome.kind === 'unauthorized' && (await reauthorize(token))) {
+      setMessage(t('renewed'));
     } else {
       setMessage(say(outcome));
     }
@@ -115,6 +135,8 @@ export function TeamScreen({
     setMessage(null);
     const outcome = await run();
     if (outcome.kind === 'done') void load(token);
+    else if (outcome.kind === 'unauthorized' && (await reauthorize(token)))
+      setMessage(t('renewed'));
     else setMessage(say(outcome));
   }
 
