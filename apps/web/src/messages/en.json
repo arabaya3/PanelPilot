@@ -1089,6 +1089,14 @@
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
+      "approvalNotCurrent": "This approval no longer counts: {changes} changed since revision {revision} was approved. Its exports are refused; save it again as a new revision and approve that.",
+      "approvalNotCurrentListed": "No longer counts: the rules or defaults it was approved under changed.",
+      "approvalParts": {
+        "rules_version": "the calculation rules",
+        "catalogue_version": "the parts catalogue",
+        "profile": "the default company profile",
+        "findings_policy": "the findings policy"
+      },
       "approvalChanged": "The page has changes since revision {revision}; the approval does not cover them.",
       "approveHeld": {
         "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",

@@ -31,6 +31,13 @@ export type RevisionValidation = {
   exportStatus: ExportStatus;
   /** Why it cannot be exported for execution, as the API lists them. */
   executionBlockers: string[];
+  /**
+   * Whether its approval still counts, as the server checked it: of this
+   * design, under the policy that applies now. Null while not approved.
+   */
+  approvalCurrent: boolean | null;
+  /** What changed since the approval, when it no longer counts. */
+  approvalChanged: string[];
 };
 
 const SEVERITIES: readonly FindingSeverity[] = ['blocking', 'warning', 'info'];
@@ -57,8 +64,19 @@ export function validationOf(project: SavedProject): RevisionValidation {
     rulesVersion: project.rules_version ?? null,
     exportStatus: project.export_status,
     executionBlockers: project.execution_blockers ?? [],
+    approvalCurrent: project.approval_current ?? null,
+    approvalChanged: project.approval_changed ?? [],
   };
 }
+
+/** What changed since an approval, in the order the page names them. */
+export const APPROVAL_POLICY_PARTS = [
+  'rules_version',
+  'catalogue_version',
+  'profile',
+  'findings_policy',
+] as const;
+export type ApprovalPolicyPart = (typeof APPROVAL_POLICY_PARTS)[number];
 
 export type StepState = 'done' | 'pending' | 'blocked' | 'stale';
 
@@ -71,8 +89,16 @@ export type Readiness = {
   canApprove: boolean;
   /** Why approval cannot be given, most pressing first. */
   approvalBlockers: ApprovalBlocker[];
-  /** The stored approval signs the snapshot exported (not a legacy or mismatched one). */
+  /**
+   * The stored approval signs the snapshot exported (not a legacy or
+   * mismatched one), under the policy that applies now.
+   */
   approvalCovers: boolean;
+  /**
+   * The policy parts that changed since the approval of the very design
+   * stored: the approval no longer counts. Empty otherwise.
+   */
+  approvalOutdated: ApprovalPolicyPart[];
   blockingCount: number;
 };
 
@@ -97,11 +123,18 @@ export function readinessOf(input: {
   const blockingCount =
     validation?.findings.filter((finding) => finding.severity === 'blocking').length ?? 0;
   const validated = opened !== null && validation?.validated === true;
-  const approvalCovers =
+  const signsSnapshot =
     opened?.approval != null &&
     validated &&
     validation.snapshotSha256 != null &&
     validation.approvedSnapshotSha256 === validation.snapshotSha256;
+  const approvalOutdated =
+    signsSnapshot && validation.approvalCurrent === false
+      ? APPROVAL_POLICY_PARTS.filter((part) => validation.approvalChanged.includes(part))
+      : [];
+  // The server said it no longer counts: never shown as covering, even with
+  // no part the page knows how to name.
+  const approvalCovers = signsSnapshot && validation.approvalCurrent !== false;
 
   const approvalBlockers: ApprovalBlocker[] = [];
   if (opened === null) approvalBlockers.push('unsaved');
@@ -127,6 +160,7 @@ export function readinessOf(input: {
     canApprove: opened !== null && opened.approval === null && approvalBlockers.length === 0,
     approvalBlockers,
     approvalCovers,
+    approvalOutdated,
     blockingCount,
   };
 }
@@ -220,4 +254,9 @@ export function rowOf(finding: Pick<DesignFinding, 'circuit_id' | 'device_id'>):
   if (!match?.[1]) return null;
   const number = Number(match[1]);
   return number >= 1 ? number - 1 : null;
+}
+
+/** Items as one phrase in the reader's language ("A, B and C"). */
+export function listOf(locale: string, items: readonly string[]): string {
+  return new Intl.ListFormat(locale, { type: 'conjunction' }).format(items);
 }

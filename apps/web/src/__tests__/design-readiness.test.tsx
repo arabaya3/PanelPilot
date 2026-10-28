@@ -326,9 +326,37 @@ describe('the readiness steps', () => {
     rulesVersion: 'r1',
     exportStatus: 'draft',
     executionBlockers: [],
+    approvalCurrent: null,
+    approvalChanged: [],
     ...fields,
   });
   const by = { by: 'A. Engineer', at: '2026-10-03' };
+
+  it('does not count an approval the server says is no longer current', () => {
+    const outdated = readinessOf({
+      opened: { approval: by },
+      validation: validation({
+        approvedSnapshotSha256: SHA,
+        approvalCurrent: false,
+        approvalChanged: ['rules_version', 'profile'],
+        exportStatus: 'stale',
+      }),
+      dirty: false,
+      stale: false,
+    });
+    expect(outdated).toMatchObject({
+      approvalCovers: false,
+      approvalOutdated: ['rules_version', 'profile'],
+    });
+    expect(outdated.approved).not.toBe('done');
+    const current = readinessOf({
+      opened: { approval: by },
+      validation: validation({ approvedSnapshotSha256: SHA, approvalCurrent: true }),
+      dirty: false,
+      stale: false,
+    });
+    expect(current).toMatchObject({ approved: 'done', approvalCovers: true, approvalOutdated: [] });
+  });
 
   it('starts unsaved, with execution always blocked', () => {
     const readiness = readinessOf({ opened: null, validation: null, dirty: false, stale: false });
@@ -622,6 +650,28 @@ describe('the review view', () => {
     // The revision export would not hold the edits, so it is not offered.
     expect(review().getByTestId('revision-export-dirty')).toBeTruthy();
     expect(review().queryByTestId('revision-export-pdf')).toBeNull();
+  });
+
+  it('says an approval granted under a policy that changed no longer counts', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: approved({
+        export_status: 'stale',
+        approval_current: false,
+        approval_changed: ['rules_version', 'findings_policy'],
+      }),
+    });
+    renderScreen();
+    await openStored();
+    expect(stepState('approved')).not.toBe('done');
+    const said = overview().getByTestId('approval-not-current').textContent;
+    expect(said).toContain('no longer counts');
+    expect(said).toContain('calculation rules');
+    expect(said).toContain('findings policy');
+    expect(overview().queryByTestId('approval-not-covering')).toBeNull();
+    expect(screen.getAllByTestId('context-approval')[0]?.textContent).toBe(
+      'Approval does not cover this',
+    );
   });
 
   it('does not show a legacy approval as covering the revision', async () => {

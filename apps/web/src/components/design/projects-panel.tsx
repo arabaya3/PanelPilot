@@ -1,11 +1,16 @@
 'use client';
 
+import { useLocale } from 'next-intl';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
-import type { ApprovalBlocker } from '@/components/design/readiness';
+import {
+  listOf,
+  type ApprovalBlocker,
+  type ApprovalPolicyPart,
+} from '@/components/design/readiness';
 import {
   approveRevision,
   deleteProject,
@@ -92,6 +97,7 @@ export function ProjectsPanel({
   blockers = [],
   blockingCount = 0,
   approvalCovers = true,
+  approvalOutdated = [],
   trial = false,
   note: heldNote,
   onNoteChange,
@@ -123,6 +129,8 @@ export function ProjectsPanel({
   blockingCount?: number;
   /** False when the stored approval does not sign the revision's validated snapshot. */
   approvalCovers?: boolean;
+  /** What changed since the approval was granted, when it no longer counts. */
+  approvalOutdated?: readonly ApprovalPolicyPart[];
   /** Whether the page is a trial's: a trial has no account, so it cannot approve. */
   trial?: boolean;
   /**
@@ -141,6 +149,7 @@ export function ProjectsPanel({
   }>;
 }) {
   const t = useIsolatingTranslations('design.projects');
+  const locale = useLocale();
   const ta = useIsolatingTranslations('design.account');
   const say = useOutcomeText();
   const id = useId();
@@ -349,8 +358,20 @@ export function ProjectsPanel({
                 {t('approvalNoteShown', { note: opened.approval.note })}
               </p>
             )}
-            {/* An approval never reads as covering what it did not sign. */}
-            {!approvalCovers && (
+            {/* An approval never reads as covering what it did not sign, nor
+                as counting once the policy it was granted under changed. */}
+            {approvalOutdated.length > 0 && (
+              <p className="text-sm text-text-muted" data-testid="approval-not-current">
+                {t('approvalNotCurrent', {
+                  revision: opened.revision,
+                  changes: listOf(
+                    locale,
+                    approvalOutdated.map((part) => t(`approvalParts.${part}`)),
+                  ),
+                })}
+              </p>
+            )}
+            {!approvalCovers && approvalOutdated.length === 0 && (
               <p className="text-sm text-text-muted" data-testid="approval-not-covering">
                 {t('approvalNotCovering', { revision: opened.revision })}
               </p>
