@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { AccountSessionProvider } from '@/components/account-session';
 import { JoinScreen } from '@/components/join-screen';
 import { TeamScreen } from '@/components/team-screen';
+import type { refreshSession } from '@/lib/auth';
 import type {
   getTeam,
   invite,
@@ -142,5 +144,43 @@ describe('join', () => {
   it('needs an invitation', () => {
     renderApp(<JoinScreen initialInvite="" />);
     expect(screen.getByText(/needs an invitation link/)).toBeTruthy();
+  });
+});
+
+describe('team under the shared account session', () => {
+  function stubs() {
+    return {
+      teamImpl: vi.fn<typeof getTeam>().mockResolvedValue({ kind: 'team', team: TEAM }),
+      invitationsImpl: vi
+        .fn<typeof listInvitations>()
+        .mockResolvedValue({ kind: 'listed', invitations: [] }),
+    };
+  }
+
+  it('uses the session restored from the cookie on load, not a sign-in of its own', async () => {
+    const { teamImpl, invitationsImpl } = stubs();
+    const refreshImpl = vi
+      .fn<typeof refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'restored' });
+    renderApp(
+      <AccountSessionProvider restore refreshImpl={refreshImpl}>
+        <TeamScreen teamImpl={teamImpl} invitationsImpl={invitationsImpl} />
+      </AccountSessionProvider>,
+    );
+    expect((await screen.findByTestId('team-members')).textContent).toContain('mem@x.com');
+    expect(teamImpl).toHaveBeenCalledWith({ token: 'restored' });
+    expect(screen.queryByText('Sign in to see your team.')).toBeNull();
+  });
+
+  it('asks for a sign-in only when the browser has no session', async () => {
+    const { teamImpl, invitationsImpl } = stubs();
+    const refreshImpl = vi.fn<typeof refreshSession>().mockResolvedValue({ kind: 'expired' });
+    renderApp(
+      <AccountSessionProvider restore refreshImpl={refreshImpl}>
+        <TeamScreen teamImpl={teamImpl} invitationsImpl={invitationsImpl} />
+      </AccountSessionProvider>,
+    );
+    expect(await screen.findByText('Sign in to see your team.')).toBeTruthy();
+    expect(teamImpl).not.toHaveBeenCalled();
   });
 });

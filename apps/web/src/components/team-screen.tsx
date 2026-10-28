@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useId, useState } from 'react';
 
+import { useAccountSession } from '@/components/account-session';
 import { AppShell } from '@/components/app-shell';
 import { PageHeader, Panel, StatusBadge } from '@/components/ui';
 import { SignInForm } from '@/components/sign-in-form';
@@ -31,6 +32,11 @@ type Loaded =
  * first engineer) invites by email and gets a link to send, shown once;
  * the colleague opens it, signs up and joins. Once billing is enforced the
  * plan's seats bound how many.
+ *
+ * The token is the app's shared account session (`AccountSessionProvider`,
+ * restored from the session cookie on every load), as on `/design`; a
+ * sign-in here signs the whole app in. `initialToken` stands in only where
+ * no session is shared (tests).
  */
 export function TeamScreen({
   teamImpl = getTeam,
@@ -49,7 +55,9 @@ export function TeamScreen({
 }) {
   const t = useTranslations('team');
   const id = useId();
-  const [token, setToken] = useState<string | null>(initialToken);
+  const account = useAccountSession();
+  const [ownToken, setOwnToken] = useState<string | null>(initialToken);
+  const token = account?.state.status === 'signed-in' ? account.state.tokens.accessToken : ownToken;
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'idle' });
   const [email, setEmail] = useState('');
   const [link, setLink] = useState<string | null>(null);
@@ -119,7 +127,8 @@ export function TeamScreen({
           <p className="mb-3 text-sm">{t('signIn')}</p>
           <SignInForm
             onSignedIn={(tokens) => {
-              setToken(tokens.accessToken);
+              if (account) account.signedIn(tokens);
+              else setOwnToken(tokens.accessToken);
             }}
             onCancel={() => undefined}
           />
