@@ -207,3 +207,111 @@ describe('company settings for a member who is not the owner', () => {
     expect(button.disabled).toBe(true);
   });
 });
+
+describe('a save the server refuses', () => {
+  const OWNER = vi.fn<typeof getCompanySettings>().mockResolvedValue({
+    kind: 'settings',
+    saved: {
+      settings: { key: 'acme', name: 'Acme' },
+      updated_by: 'e',
+      updated_at: null,
+      permissions: ['edit_company_settings'],
+    },
+  });
+
+  async function saveRefused(refusal: Awaited<ReturnType<typeof saveCompanySettings>>) {
+    const save = vi.fn<typeof saveCompanySettings>().mockResolvedValue(refusal);
+    renderApp(<Harness load={OWNER} save={save} />);
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save for the company' });
+    await waitFor(() => {
+      expect(button.disabled).toBe(false);
+    });
+    return { save, button };
+  }
+
+  it('says a missing profile key beside the key, and keeps what was typed', async () => {
+    const { button } = await saveRefused({
+      kind: 'refused',
+      code: 'profile_no_key',
+      detail: 'a company profile needs a key',
+    });
+    fireEvent.change(screen.getByLabelText('Profile key'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'Acme Ltd' } });
+    fireEvent.click(button);
+    const key = screen.getByLabelText<HTMLInputElement>('Profile key');
+    await waitFor(() => {
+      expect(key.getAttribute('aria-invalid')).toBe('true');
+    });
+    const describedBy = key.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(describedBy)?.textContent).toBe(
+      'The company settings need a key.',
+    );
+    expect(screen.getByRole('alert').textContent).toBe('The company settings need a key.');
+    expect(screen.getByLabelText<HTMLInputElement>('Company name').value).toBe('Acme Ltd');
+    // Typing a key clears the field's error.
+    fireEvent.change(key, { target: { value: 'acme' } });
+    expect(key.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('marks the setting it names as not valid', async () => {
+    const { button } = await saveRefused({
+      kind: 'refused',
+      code: 'profile_setting_invalid',
+      detail: 'profile setting max_circuits_per_rcd: Input should be a valid integer',
+      params: { setting: 'max_circuits_per_rcd' },
+      values: { setting: 'max_circuits_per_rcd' },
+    });
+    fireEvent.click(button);
+    const field = screen.getByLabelText<HTMLInputElement>('Circuits per RCD');
+    await waitFor(() => {
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+    });
+    expect(screen.getByRole('alert').textContent).toContain('max_circuits_per_rcd');
+  });
+
+  it('lists the unknown settings', async () => {
+    const { button } = await saveRefused({
+      kind: 'refused',
+      code: 'profile_unknown_settings',
+      detail: "unknown profile settings: ['colour', 'size']",
+      params: {},
+      values: { settings: ['colour', 'size'] },
+    });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Unknown company settings: colour, size.',
+    );
+  });
+
+  it.each([
+    ['plan_feature', 'Your plan does not include this; see Pricing to change it.'],
+    [
+      'request_invalid',
+      'The server did not accept this request as entered. Check the fields and try again.',
+    ],
+  ])('says %s as an alert beside the save', async (code, text) => {
+    const { button } = await saveRefused({ kind: 'refused', code, detail: '' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toContain(text);
+  });
+
+  it.each(['ar', 'he'] as const)('says a missing key in %s', async (locale) => {
+    const save = vi.fn<typeof saveCompanySettings>().mockResolvedValue({
+      kind: 'refused',
+      code: 'profile_no_key',
+      detail: 'a company profile needs a key',
+    });
+    renderApp(<Harness load={OWNER} save={save} />, { locale });
+    const button = await waitFor(() => {
+      const found = document.querySelector<HTMLButtonElement>(
+        '[data-testid="company-settings"] button.btn-secondary:not([aria-label])',
+      );
+      if (!found || found.disabled) throw new Error('not ready');
+      return found;
+    });
+    fireEvent.click(button);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).not.toBe('');
+    expect(alert.textContent).not.toBe('The company settings need a key.');
+  });
+});
