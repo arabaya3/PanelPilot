@@ -98,6 +98,18 @@ export async function removeMember(
   return 'ok' in result ? { kind: 'done' } : result;
 }
 
+/**
+ * Hand the account's ownership to another active member:
+ * `POST /api/v1/team/owner`. The owner only; the team comes back as the
+ * caller now sees it (no longer the owner).
+ */
+export async function transferOwnership(
+  options: Options & { memberId: string },
+): Promise<{ kind: 'team'; team: Team } | Failure> {
+  const result = await send(options, '/owner', 'POST', { member_id: options.memberId });
+  return 'ok' in result ? { kind: 'team', team: result.payload as Team } : result;
+}
+
 /** The link a colleague opens to join. */
 export function joinLink(origin: string, token: string): string {
   return `${origin}/join?invite=${encodeURIComponent(token)}`;

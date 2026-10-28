@@ -13,8 +13,9 @@ import type {
   revokeInvitation,
   signupWithInvite,
   Team,
+  transferOwnership,
 } from '@/lib/team';
-import { joinLink } from '@/lib/team';
+import { joinLink, transferOwnership as realTransfer } from '@/lib/team';
 
 import { renderApp } from './helpers';
 
@@ -249,5 +250,94 @@ describe('team after the access token expires', () => {
       expect(screen.queryByRole('alert')).toBeNull();
     });
     expect(screen.queryByText('Loading the team…')).toBeNull();
+  });
+});
+
+describe('transferring ownership', () => {
+  it('offers "Make owner" only to the owner, for the other members', async () => {
+    screenWith();
+    await screen.findByTestId('team-members');
+    expect(screen.getAllByRole('button', { name: 'Make owner' })).toHaveLength(1);
+  });
+
+  it('does not offer it to a manager who is not the owner', async () => {
+    const teamImpl = vi
+      .fn<typeof getTeam>()
+      .mockResolvedValue({ kind: 'team', team: { ...TEAM, owns: false } });
+    screenWith({ teamImpl });
+    await screen.findByTestId('team-members');
+    expect(screen.queryByRole('button', { name: 'Make owner' })).toBeNull();
+  });
+
+  it('asks before transferring, and cancelling sends nothing', async () => {
+    const transferImpl = vi.fn<typeof transferOwnership>();
+    screenWith({ transferImpl });
+    fireEvent.click(await screen.findByRole('button', { name: 'Make owner' }));
+    expect(screen.getByTestId('team-transfer-confirm').textContent).toContain('mem@x.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByTestId('team-transfer-confirm')).toBeNull();
+    expect(transferImpl).not.toHaveBeenCalled();
+  });
+
+  it('transfers on confirmation and shows the team it returns', async () => {
+    const after: Team = {
+      ...TEAM,
+      members: [
+        { id: 'm', email: 'mem@x.com', full_name: null, owner: true },
+        { id: 'o', email: 'owner@x.com', full_name: 'Owner', owner: false },
+      ],
+      owner: false,
+      owns: false,
+    };
+    const transferImpl = vi
+      .fn<typeof transferOwnership>()
+      .mockResolvedValue({ kind: 'team', team: after });
+    screenWith({ transferImpl });
+    fireEvent.click(await screen.findByRole('button', { name: 'Make owner' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }));
+    await waitFor(() => {
+      expect(transferImpl).toHaveBeenCalledWith({ token: 'tok', memberId: 'm' });
+    });
+    expect(await screen.findByText("Only the account's owner invites colleagues.")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Make owner' })).toBeNull();
+  });
+
+  it.each([
+    ['team_transfer_owner_only', "Only the account's owner can transfer ownership."],
+    ['team_transfer_self', 'You already own the account'],
+    ['team_member_not_found', 'That member is not there.'],
+  ])('says the refusal %s in the reader language', async (code, text) => {
+    const transferImpl = vi
+      .fn<typeof transferOwnership>()
+      .mockResolvedValue({ kind: 'refused', code, params: {} });
+    screenWith({ transferImpl });
+    fireEvent.click(await screen.findByRole('button', { name: 'Make owner' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(text);
+  });
+
+  it('posts the member to /api/v1/team/owner', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify(TEAM), { status: 200 }));
+    const result = await realTransfer({ token: 'tok', memberId: 'm', fetchImpl });
+    expect(result).toEqual({ kind: 'team', team: TEAM });
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe('/api/v1/team/owner');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBe(JSON.stringify({ member_id: 'm' }));
+  });
+
+  it('reads a 403 refusal code from the server', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 'team_transfer_owner_only' }), { status: 403 }),
+      );
+    expect(await realTransfer({ token: 'tok', memberId: 'm', fetchImpl })).toEqual({
+      kind: 'refused',
+      code: 'team_transfer_owner_only',
+      params: {},
+    });
   });
 });

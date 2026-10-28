@@ -14,6 +14,7 @@ import {
   listInvitations,
   removeMember,
   revokeInvitation,
+  transferOwnership,
   type InvitationOut,
   type Team,
   type TeamRefusal,
@@ -44,6 +45,7 @@ export function TeamScreen({
   invitationsImpl = listInvitations,
   revokeImpl = revokeInvitation,
   removeImpl = removeMember,
+  transferImpl = transferOwnership,
   initialToken = null,
 }: {
   teamImpl?: typeof getTeam;
@@ -51,6 +53,7 @@ export function TeamScreen({
   invitationsImpl?: typeof listInvitations;
   revokeImpl?: typeof revokeInvitation;
   removeImpl?: typeof removeMember;
+  transferImpl?: typeof transferOwnership;
   initialToken?: string | null;
 }) {
   const t = useTranslations('team');
@@ -79,6 +82,8 @@ export function TeamScreen({
   const [email, setEmail] = useState('');
   const [link, setLink] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // The member a transfer awaits confirmation for: ownership is not undone by the caller.
+  const [transferTo, setTransferTo] = useState<string | null>(null);
 
   const say = useCallback(
     (outcome: { kind: string }) => {
@@ -140,6 +145,21 @@ export function TeamScreen({
     else setMessage(say(outcome));
   }
 
+  async function transfer(memberId: string) {
+    if (token === null) return;
+    setMessage(null);
+    setTransferTo(null);
+    const outcome = await transferImpl({ token, memberId });
+    if (outcome.kind === 'team') {
+      // The team as the caller now sees it: no longer the owner, so no invitations.
+      setLoaded({ kind: 'ready', team: outcome.team, invitations: [] });
+    } else if (outcome.kind === 'unauthorized' && (await reauthorize(token))) {
+      setMessage(t('renewed'));
+    } else {
+      setMessage(say(outcome));
+    }
+  }
+
   return (
     <AppShell>
       <PageHeader title={t('title')} description={t('intro')} />
@@ -186,6 +206,18 @@ export function TeamScreen({
                     {member.full_name ? `${member.full_name} · ${member.email}` : member.email}
                   </span>
                   {member.owner && <StatusBadge tone="accent">{t('owner')}</StatusBadge>}
+                  {loaded.team.owns && !member.owner && transferTo !== member.id && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => {
+                        setMessage(null);
+                        setTransferTo(member.id);
+                      }}
+                    >
+                      {t('makeOwner')}
+                    </button>
+                  )}
                   {loaded.team.owner && !member.owner && (
                     <button
                       type="button"
@@ -194,6 +226,33 @@ export function TeamScreen({
                     >
                       {t('remove')}
                     </button>
+                  )}
+                  {loaded.team.owns && transferTo === member.id && (
+                    <div
+                      className="flex w-full flex-wrap items-center gap-2 text-sm"
+                      data-testid="team-transfer-confirm"
+                    >
+                      <p className="min-w-0 flex-1 break-words">
+                        {t('transferConfirm', { member: member.full_name ?? member.email })}{' '}
+                        <span dir="ltr">({member.email})</span>
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() => void transfer(member.id)}
+                      >
+                        {t('transfer')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => {
+                          setTransferTo(null);
+                        }}
+                      >
+                        {t('cancel')}
+                      </button>
+                    </div>
                   )}
                 </li>
               ))}

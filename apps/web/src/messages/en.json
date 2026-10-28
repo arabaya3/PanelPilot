@@ -1415,6 +1415,10 @@
     "waiting": "Waiting",
     "withdraw": "Withdraw",
     "notOwner": "Only the account's owner invites colleagues.",
+    "makeOwner": "Make owner",
+    "transferConfirm": "Make {member} the account's owner? You will stay a member but no longer own the account, and only the new owner can give it back.",
+    "transfer": "Transfer ownership",
+    "cancel": "Cancel",
     "errors": {
       "team_owner_only": "Only the account's owner manages the team.",
       "team_seats_full": "Your plan holds {seats} seats, all taken; change plan to add more.",
