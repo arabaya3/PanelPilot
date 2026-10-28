@@ -92,11 +92,24 @@ def test_a_legacy_approval_reads_the_revisions_own_values() -> None:
     assert _approval_changed(legacy, _now(rules_version="r2")) == ("rules_version",)
 
 
-def test_a_listed_revision_compares_the_versions_alone() -> None:
-    row = _row(**{**_recorded(), "approved_profile_sha256": "d"})
-    shallow = _Applicable(False, RULES_VERSION, CATALOGUE_VERSION)
+def test_a_listed_revision_is_checked_from_its_columns_alone() -> None:
+    """No snapshot read: versions, the profile hash, and the recorded findings fingerprint."""
+    row = _row(**_recorded())
+    shallow = _Applicable(False, RULES_VERSION, CATALOGUE_VERSION, profile_sha256=PROFILE)
     assert _approval_changed(row, shallow) == ()
-    assert _approval_changed(row, _Applicable(False, "r2", CATALOGUE_VERSION)) == ("rules_version",)
+    assert _approval_changed(
+        row, _Applicable(False, "r2", CATALOGUE_VERSION, profile_sha256=PROFILE)
+    ) == ("rules_version",)
+    other_profile = _row(**{**_recorded(), "approved_profile_sha256": "d"})
+    assert _approval_changed(other_profile, shallow) == ("profile",)
+    altered = _row(**{**_recorded(), "approved_findings_policy": "0" * 64})
+    assert _approval_changed(altered, shallow) == ("findings_policy",)
+    # A policy change since approval needs the snapshot: the cheap check misses it.
+    assert _approval_changed(_row(), shallow) == ()
+
+
+def test_an_approval_of_a_snapshot_that_does_not_read_does_not_count() -> None:
+    assert _approval_changed(_row(**_recorded()), _now(snapshot_reads=False)) == ("snapshot",)
 
 
 def test_a_snapshot_that_does_not_read_leaves_the_findings_to_the_integrity_check() -> None:

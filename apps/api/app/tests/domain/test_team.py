@@ -423,3 +423,36 @@ def test_the_report_lists_a_tenant_without_owner_and_its_admins(owner, engine) -
         shown = team.team(session=session, user=admin)
         assert shown.owner
         assert not shown.owns
+
+
+@pytest.mark.parametrize("spelled", [str.upper, lambda value: "{" + value + "}"])
+def test_a_self_id_spelled_otherwise_is_still_the_caller(owner, engine, spelled) -> None:  # type: ignore[no-untyped-def]
+    """The self checks compare the account looked up, not the string sent."""
+    admin = _member(engine, owner, admin=True)
+    with _session(engine) as session, pytest.raises(ValidationError) as removed:
+        team.remove(session=session, user=admin, member_id=spelled(admin.id))
+    assert removed.value.code == "team_remove_self"
+    with _session(engine) as session, pytest.raises(ValidationError) as transferred:
+        team.transfer_ownership(session=session, user=owner, member_id=spelled(owner.id))
+    assert transferred.value.code == "team_transfer_self"
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        assert session.scalar(select(User.is_active).where(User.id == uuid.UUID(admin.id)))
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)
+
+
+def test_the_operator_assigns_no_owner_in_a_deactivated_tenant(owner, engine) -> None:  # type: ignore[no-untyped-def]
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        session.execute(
+            text("UPDATE users SET is_active = false WHERE id = :u"), {"u": uuid.UUID(owner.id)}
+        )
+        session.execute(
+            text("UPDATE tenants SET is_active = false WHERE id = :t"),
+            {"t": uuid.UUID(owner.tenant_id)},
+        )
+        session.commit()
+    member = _member(engine, owner)
+    with _session(engine) as session, cross_tenant(session, reason="test"):
+        with pytest.raises(ValidationError) as refused:
+            team.assign_owner(session=session, email=member.email)
+        assert refused.value.code == "tenant_inactive"
+    assert _owner_of(engine, owner.tenant_id) == uuid.UUID(owner.id)

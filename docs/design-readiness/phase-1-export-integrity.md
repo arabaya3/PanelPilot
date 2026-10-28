@@ -68,7 +68,7 @@ connectivity, soft-starter control, mechanical layout) has not started.
 
 - **Company settings never change a saved revision.** They only pre-fill new designs, because the design reads the profile inside its own request. Changing ordinary company defaults therefore cannot rewrite an approved snapshot, and cannot override the revision's declared engineering profile.
 - **A policy change is caught, not silently passed.** Re-running today's findings policy on a revision's frozen snapshot recalculates nothing. If it now classifies a finding differently (say a warning becomes blocking), the revision is `revision_stale` with `findings_policy`. Its snapshot and approval are untouched, and it cannot be exported until it is saved again as a new revision.
-- **Lists use a cheaper check.** A project's revision list compares recorded versions only. The revision opened, approved or exported is always checked in full.
+- **Lists use a cheaper check.** A project's revision list, and the earlier revisions in an export's title block, are checked from their columns alone, without reading their snapshots (see "Cheap and thorough approval checks" under Settings and approval). The revision opened, approved or exported is always checked in full.
 
 ## Export formats
 
@@ -503,10 +503,11 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
 
 1. Back up the database.
 2. Set `WEB_ORIGINS` to the exact HTTPS web origins. Optionally set `REFRESH_TOKEN_KEY`. Keep `AUTH_COOKIE_SECURE` at its default (true outside dev).
-3. Run `alembic upgrade head` (through `b2e8d5f7c3a1`). Every migration is additive and safe while old pods still run; legacy tokens are refused.
-4. Tell users they will sign in once. Saved projects and drafts are kept.
-5. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Revisions with names over 200 characters must be renamed and saved again.
-6. Later, a contract migration drops the unused `grace_used_at`, once no old pod can run.
+3. Run `alembic upgrade head` (through `b4e8d2f6a9c1`). Every migration is additive and safe while old pods still run; legacy tokens are refused.
+4. **Mandatory gate:** run `python -m app.worker owner-report`. Exit code 1 blocks the rollout: at least one tenant has no active owner and no active admin, so nobody in it can manage its team (invite, remove, grant nothing, transfer nothing) and nobody can approve, delete or change settings, because existing members no longer hold those powers. For each line marked `needs assign-owner`, record an active account of that tenant as its owner with `python -m app.worker assign-owner person@example.com` (agreed with the customer), then run `owner-report` again until it exits 0. A deactivated tenant is refused (`tenant_inactive`): reactivate it first, or leave it. Lines without the mark (a tenant whose admins still manage it) do not block.
+5. Tell users they will sign in once. Saved projects and drafts are kept.
+6. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Revisions with names over 200 characters must be renamed and saved again.
+7. Later, a contract migration drops the unused `grace_used_at`, once no old pod can run.
 
 ## Second independent review and final verification (2026-10-27)
 
@@ -589,7 +590,7 @@ Migration `a7d3e9f1c2b4` adds `tenants.owner_user_id` and backfills it determini
   - `first_account_inactive`: the oldest account is deactivated. The old rule handed ownership silently to the next-oldest member; nobody is chosen now.
   - `created_at_tie`: two or more accounts share the oldest `created_at`; the old tie-break by id was arbitrary.
   - `no_accounts`: an unclaimed trial; the claiming signup records the owner.
-- The upgrade prints the count of each case and of those with no active admin (no ids, no personal data). A tenant with no owner and no active admin cannot manage its team: run `owner-report` after the upgrade and resolve each with `assign-owner`.
+- The upgrade prints the count of each case and of those with no active admin (no ids, no personal data). A tenant with no owner and no active admin is locked out: nobody can manage its team, and no member can approve, delete or change settings. `owner-report` after the upgrade is a mandatory gate (Deployment steps, step 4); resolve each such tenant with `assign-owner`. `users.created_at` is `NOT NULL` (since the initial schema), so a missing creation time cannot make the backfill's choice ambiguous.
 - **Other existing members lose** approve, delete and settings. To let a member approve again, an operator grants `reviewer` (approval only) or `admin` (everything but transferring):
   ```
   python -m app.worker grant-role engineer@example.com reviewer
@@ -617,8 +618,8 @@ Decided by the integration owner: an approval binds the policy that applied when
 | `approved_findings_policy`   | SHA-256 of the canonical JSON of the sorted (code, severity, engineering confirmation) classification |
 | `approved_display_name`      | The approving account's display name, or `""` when it has none ("a team member")                      |
 
-- **When an approval counts** (review-approved status and mark, the title block's approver, `approval: present` and no `approval` blocker for execution): the approved snapshot is the revision's, and every recorded policy value equals the value that applies now. Otherwise:
-  - `SavedProject` and each `RevisionSummary` carry `approval_current: false` and `approval_changed` (`snapshot`, `rules_version`, `catalogue_version`, `profile`, `findings_policy`); `approval_current` is `null` while not approved. The revision opened is checked in full; the other revisions in its list by recorded versions only.
+- **When an approval counts** (review-approved status and mark, the title block's approver, `approval: present` and no `approval` blocker for execution): the approved snapshot is the revision's, it still passes its hash check and reads as a design (a full check; otherwise `snapshot`), and every recorded policy value equals the value that applies now. Otherwise:
+  - `SavedProject` and each `RevisionSummary` carry `approval_current: false` and `approval_changed` (`snapshot`, `rules_version`, `catalogue_version`, `profile`, `findings_policy`); `approval_current` is `null` while not approved. The revision opened is checked in full; the other revisions in its list by the cheap check: from columns alone, no snapshot read (rules and catalogue versions, the recorded profile hash against the profile its stored request resolves to now, and the recorded findings fingerprint against its stored findings).
   - Export is refused with `revision_stale`, its `changed` naming the policy parts (from the revision and from its approval). An approval of another snapshot is unchanged: the export is a draft, as before.
   - Execution stays refused, with `approval` among its blockers.
   - The web shows "This approval no longer counts: … changed since revision N was approved" on the projects panel and in Review & export, and "No longer counts" in the revision list, in English, Arabic and Hebrew.
@@ -628,6 +629,11 @@ Decided by the integration owner: an approval binds the policy that applied when
 
 1. **Tenant company settings change after approval** (including engineering values such as `default_max_voltage_drop_percent`): nothing about the approved revision changes. It stays review-approved and `approval_current: true`, and its JSON export is byte-identical before and after (tested).
 2. **An applicable code policy changes after approval** (`RULES_VERSION`, `CATALOGUE_VERSION`, a value of `DEFAULT_PROFILE` that the revision's settings inherit, or a findings classification): the approval is no longer current, export is refused `revision_stale` naming the part, and execution stays blocked (tested for each of the four). The engineer saves the project again as a new revision and approves that.
+
+### Cheap and thorough approval checks
+
+- **Thorough** (the revision opened, approved or exported; one snapshot read per request): the snapshot's hash and that it reads as a design, the rules and catalogue versions, the profile hash, and today's findings classification re-run on the snapshot, each against what the approval recorded.
+- **Cheap** (every other revision in the list, and in an export's title block): the cheap check: from columns alone, no snapshot read (rules and catalogue versions, the recorded profile hash against the profile its stored request resolves to now, and the recorded findings fingerprint against its stored findings). Reclassifying findings needs the snapshot, so the cheap findings check only catches a fingerprint that disagrees with the stored findings (a row altered after approval), not a policy change since. An earlier approval that fails the cheap check shows `approval_current: false` in the list and names no approver in an export's title block.
 
 ### Legacy approved rows
 
@@ -641,7 +647,7 @@ Decided by the integration owner: an approval binds the policy that applied when
 
 - **Renderer wording is not versioned.** A change to how an export is laid out or worded (titles, labels, PDF layout) is not part of the recorded policy, so an approved revision exported after such a change reads differently while its approval still counts.
 - **Strict by design:** any change to the default profile that the revision's settings inherit changes the resolved profile hash, including purely presentational defaults (a title-block field, a page order). Such a change makes approved revisions not current and their exports refused until saved again.
-- The list of a project's other revisions compares recorded versions only; an approval made stale by a profile or findings-policy change shows as not current once that revision is opened.
+- The cheap check (below) misses a findings-policy reclassification and a snapshot that no longer reads; such an approval shows as not current once that revision is opened, approved or exported.
 
 ## Remaining limitations
 
