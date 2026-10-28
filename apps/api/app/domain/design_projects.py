@@ -781,7 +781,7 @@ def approve_revision(
         AuthorizationError: If the caller is not a signed-in account
             (``approval_requires_account``: a trial has none), their plan
             does not include approval, or they are neither the tenant's owner
-            nor a reviewer (``approval_not_permitted``).
+            nor an admin nor a reviewer (``approval_not_permitted``).
     """
     _require_account(user)
     billing.require_feature(session=session, user=user, feature=Feature.APPROVAL_WORKFLOW)

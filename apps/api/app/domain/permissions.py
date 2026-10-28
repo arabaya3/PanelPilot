@@ -12,7 +12,18 @@ Permission                 Owner  Admin  Reviewer  Other member  Trial
 
 "Owner" is ``team.is_owner``: the tenant's first active account, or any
 account holding ``admin``. "Reviewer" is the stored ``reviewer`` role
-(``roles.roles_of``). Every member still reads projects and settings, and
+(``roles.roles_of``). The ``reviewer`` role is deliberately the same one
+that clears operator review items (ADR 0001): the requirement reused the
+existing role, so an account granted it for either duty holds both.
+
+Owner succession: the owner is derived, not stored. ``team.remove`` refuses
+the current owner (``team_owner_not_removable``), so no admin hands ownership
+on through the API. If an operator deactivates the first account outside the
+API, the next-oldest active account becomes the owner, with every permission
+here and the team's management; to choose another, grant that account
+``admin`` explicitly.
+
+Every member still reads projects and settings, and
 saves and exports revisions; nothing here is granted to every member.
 
 Compatibility: ownership is derived, not stored, so no migration is needed.

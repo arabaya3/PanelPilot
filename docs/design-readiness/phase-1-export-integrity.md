@@ -566,6 +566,8 @@ Three actions used to need only a signed-in account. They are now explicit permi
 | Save company settings | `edit_company_settings` | yes   | yes   | no       | no           | no    | 403 `settings_not_permitted`                                        |
 
 - **Owner** is `team.is_owner`: the tenant's first active account, or any account holding `admin`. **Reviewer** is the stored `reviewer` role.
+- **One `reviewer` role, two duties (deliberate):** the same stored role that lets an account clear operator review items (ADR 0001) now also lets it approve design revisions. The requirement named the existing role rather than a new one, so a reviewer granted for either duty holds both.
+- **Owner succession:** the owner is derived, not stored. The API refuses to remove the current owner (422 `team_owner_not_removable`), so an admin cannot hand ownership on. If an operator deactivates the first account outside the API, the next-oldest active account becomes the owner, with every permission and team management. To choose someone else, grant that account `admin` explicitly (`python -m app.worker grant-role person@example.com admin`).
 - Every member still reads projects and company settings, and saves, opens and exports revisions. Nothing new is granted to every member.
 - **Not found first:** the permission is checked after the project is found as the caller's, so another tenant's project is a 404 (`revision_not_found` / `project_not_found`) for every caller, never a 403.
 - **What the client sees:** `ProjectPage`, `SavedProject` and `CompanySettings` carry a `permissions` list for the caller. The projects panel hides Delete without `delete_project`, the Approve control is disabled with an explanation without `approve_revision`, and the company settings form disables Save with an explanation without `edit_company_settings`. Each new 403 code has a message in English, Arabic and Hebrew.
@@ -590,7 +592,7 @@ Three actions used to need only a signed-in account. They are now explicit permi
 5. **Sessions:**
    - **Single tab:** a lone tab whose refresh answer is truly lost, followed by its next refresh more than 10 s later with no other open tab to lend a current access token, ends that session. It fails safe, and the user signs in once.
    - **Key compromise:** follow the documented revoke-all-sessions step.
-   - **Approval roles:** superseded. Approval is now limited to the tenant's owner and reviewers (see "Permissions" below).
+   - **Approval roles:** superseded. Approval is now limited to the tenant's owner, admins and reviewers (see "Permissions" above).
 6. **Approvals show "a team member"** when an account has no display name. This is accepted for this phase.
 7. **Trial projects stay with the trial** when signing in to an existing account, by decision.
 8. **Native Arabic and Hebrew review** of every new string is still outstanding. The AI review is not a native-speaker review.
