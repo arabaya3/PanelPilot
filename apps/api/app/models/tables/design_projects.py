@@ -102,6 +102,9 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     approved_profile_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     approved_rules_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     approved_catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # The renderer version it was granted under (since c5d1e8a3f7b2); NULL
+    # for an older approval, read as ``RENDERER_BASELINE``, which matches no version.
+    approved_renderer_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # SHA-256 of the canonical findings classification (code, severity,
     # engineering confirmation) of the approved design under the policy then.
     approved_findings_policy: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.design import CATALOGUE_VERSION, RULES_VERSION
+import pytest
+
+from app.core.errors import ConflictError
+from app.design import CATALOGUE_VERSION, RENDERER_BASELINE, RENDERER_VERSION, RULES_VERSION
 from app.domain import design_projects
 from app.domain.design_projects import _Applicable, _approval_changed, _findings_fingerprint
 from app.models.tables.design_projects import DesignRevisionRow
@@ -54,6 +57,7 @@ def _recorded() -> dict[str, object]:
         "approved_rules_version": RULES_VERSION,
         "approved_catalogue_version": CATALOGUE_VERSION,
         "approved_findings_policy": _findings_fingerprint(CLASSIFIED),
+        "approved_renderer_version": RENDERER_VERSION,
     }
 
 
@@ -86,10 +90,12 @@ def test_another_design_approved_is_named_snapshot() -> None:
 
 def test_a_legacy_approval_reads_the_revisions_own_values() -> None:
     """Unrecorded values read as the revision's own; the findings as its stored ones."""
-    legacy = _row()
+    legacy = _row(approved_renderer_version=RENDERER_VERSION)
     assert _approval_changed(legacy, _now()) == ()
     assert _approval_changed(legacy, _now(findings=[("x", "info", False)])) == ("findings_policy",)
     assert _approval_changed(legacy, _now(rules_version="r2")) == ("rules_version",)
+    # With no renderer recorded either, it does not count (see the renderer tests).
+    assert _approval_changed(_row(), _now()) == ("renderer_version",)
 
 
 def test_a_listed_revision_is_checked_from_its_columns_alone() -> None:
@@ -105,7 +111,7 @@ def test_a_listed_revision_is_checked_from_its_columns_alone() -> None:
     altered = _row(**{**_recorded(), "approved_findings_policy": "0" * 64})
     assert _approval_changed(altered, shallow) == ("findings_policy",)
     # A policy change since approval needs the snapshot: the cheap check misses it.
-    assert _approval_changed(_row(), shallow) == ()
+    assert _approval_changed(_row(approved_renderer_version=RENDERER_VERSION), shallow) == ()
 
 
 def test_an_approval_of_a_snapshot_that_does_not_read_does_not_count() -> None:
@@ -135,3 +141,47 @@ def test_the_frozen_name_is_the_approver() -> None:
     )
     # Only a row neither the approval nor the migration wrote is resolved live.
     assert names.approver(_row(approved_account="e@x.com")) == "Live Name"
+
+
+# --- The renderer an approval was granted under
+
+
+def test_a_renderer_change_since_approval_stops_it_counting() -> None:
+    """A material change to what the exports print is not the same approval."""
+    row = _row(**_recorded())
+    assert _approval_changed(row, _now()) == ()
+    assert _approval_changed(row, _now(renderer_version="r-next")) == ("renderer_version",)
+    shallow = _Applicable(
+        False, RULES_VERSION, CATALOGUE_VERSION, profile_sha256=PROFILE, renderer_version="r-next"
+    )
+    assert _approval_changed(row, shallow) == ("renderer_version",)
+
+
+def test_an_approval_without_a_recorded_renderer_does_not_count() -> None:
+    """Which renderer it was exported with is unknown: it is granted again."""
+    row = _row(**{**_recorded(), "approved_renderer_version": None})
+    assert row.approved_renderer_version is None
+    assert RENDERER_BASELINE == "unversioned" != RENDERER_VERSION
+    assert _approval_changed(row, _now()) == ("renderer_version",)
+
+
+def test_a_renderer_change_leaves_an_unapproved_revision_alone() -> None:
+    """The design is not the renderer's: a revision without an approval is not stale."""
+    row = _row(approved_at=None)
+    assert design_projects._changed(row, _now(renderer_version="r-next")) == ()
+    assert _approval_changed(row, _now(renderer_version="r-next")) == ()
+
+
+def test_the_stale_details_name_the_version_each_check_compared() -> None:
+    """The approval's recorded rules version, not the revision's own twice."""
+    row = _row(**{**_recorded(), "approved_rules_version": "r0"}, number=1)
+    with pytest.raises(ConflictError) as approved_under_other:
+        design_projects._refuse_stale(row, 1, _now())
+    params = approved_under_other.value.params
+    assert params["changed"] == "rules_version"
+    assert params["recorded_rules_version"] == "r0"
+    assert params["saved_rules_version"] == params["current_rules_version"] == RULES_VERSION
+    with pytest.raises(ConflictError) as saved_under_other:
+        design_projects._refuse_stale(_row(**_recorded(), rules_version="r-old"), 1, _now())
+    assert saved_under_other.value.params["recorded_rules_version"] == "r-old"
+    assert saved_under_other.value.params["current_rules_version"] == RULES_VERSION

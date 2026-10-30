@@ -158,8 +158,18 @@ export function CompanySettingsPanel({
   const [message, setMessage] = useState<string | null>(null);
   // Why the last save was refused, and the setting it names (a dotted path)
   // while that field is unchanged. What was typed is kept either way.
-  const [problem, setProblem] = useState<{ text: string; path: string | null } | null>(null);
+  // `inJson`: the refusal names settings only the JSON text holds.
+  const [problem, setProblem] = useState<{
+    text: string;
+    path: string | null;
+    inJson?: boolean;
+  } | null>(null);
   const [working, setWorking] = useState(false);
+  // Bumped by each refused save, to move focus to where it can be fixed.
+  const [focusRequest, setFocusRequest] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const jsonDetails = useRef<HTMLDetailsElement>(null);
+  const jsonText = useRef<HTMLTextAreaElement>(null);
   const parsed = parseSettings(text);
   // Every member reads the settings; only the owner saves them (the server
   // refuses anyone else with `settings_not_permitted`).
@@ -181,6 +191,22 @@ export function CompanySettingsPanel({
     };
   }, [token, load]);
 
+  // After a refused save, focus the first field marked invalid; when the
+  // refusal names a setting no field shows, the JSON text, opened, where any
+  // setting can be fixed, as unknown settings are. A refusal naming no
+  // setting leaves focus alone.
+  useEffect(() => {
+    if (focusRequest === 0 || !problem || (problem.path === null && !problem.inJson)) return;
+    const field = root.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (field) {
+      field.focus();
+      return;
+    }
+    if (jsonDetails.current) jsonDetails.current.open = true;
+    jsonText.current?.focus();
+    // Only a new refusal moves focus, not later edits.
+  }, [focusRequest]);
+
   function change(path: string[], value: string) {
     if (parsed === 'invalid') return;
     if (problem?.path === path.join('.')) setProblem({ ...problem, path: null });
@@ -199,7 +225,12 @@ export function CompanySettingsPanel({
       setSaved(outcome.saved);
       setMessage(t('saved'));
     } else if (outcome.kind === 'refused') {
-      setProblem({ text: say(withListedSettings(outcome)), path: refusedSetting(outcome) });
+      setProblem({
+        text: say(withListedSettings(outcome)),
+        path: refusedSetting(outcome),
+        inJson: outcome.code === 'profile_unknown_settings',
+      });
+      setFocusRequest((count) => count + 1);
       // No longer the owner: the form stops offering to save.
       if (outcome.code === 'settings_not_permitted') {
         setSaved((was) => (was ? { ...was, permissions: [] } : was));
@@ -308,7 +339,7 @@ export function CompanySettingsPanel({
     );
   }
   return (
-    <div className="flex flex-col gap-4" data-testid="company-settings">
+    <div ref={root} className="flex flex-col gap-4" data-testid="company-settings">
       <p className="text-sm text-text-muted">{t('help')}</p>
       {parsed === 'invalid' && (
         <p role="alert" className="text-sm text-severity-critical">
@@ -407,13 +438,14 @@ export function CompanySettingsPanel({
       </div>
       {orderedList('title_fields', DEFAULT_TITLE_FIELDS, TITLE_FIELDS, 'titleFields', 'titleField')}
       {orderedList('page_order', DEFAULT_PAGES, DEFAULT_PAGES, 'pageOrder', 'page')}
-      <details>
+      <details ref={jsonDetails}>
         <summary className="cursor-pointer text-sm font-semibold">{t('json')}</summary>
         <p className="my-2 text-sm text-text-muted">{t('jsonHelp')}</p>
         <label htmlFor={`${id}-json`} className="sr-only">
           {t('json')}
         </label>
         <textarea
+          ref={jsonText}
           id={`${id}-json`}
           dir="ltr"
           rows={6}

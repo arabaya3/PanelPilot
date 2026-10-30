@@ -269,6 +269,45 @@ describe('a save the server refuses', () => {
     expect(screen.getByRole('alert').textContent).toContain('max_circuits_per_rcd');
   });
 
+  it('moves focus to the field a refused save names', async () => {
+    const { button } = await saveRefused({
+      kind: 'refused',
+      code: 'profile_setting_invalid',
+      detail: 'profile setting circuit_rules.socket.breaker_a: Input should be a valid decimal',
+      params: { setting: 'circuit_rules.socket.breaker_a' },
+    });
+    button.focus();
+    fireEvent.click(button);
+    const field = screen.getByLabelText<HTMLInputElement>('Sockets: Breaker A');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(field);
+    });
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('opens the JSON text and focuses it for settings no field shows', async () => {
+    const { button } = await saveRefused({
+      kind: 'refused',
+      code: 'profile_unknown_settings',
+      detail: "unknown profile settings: ['colour']",
+      values: { settings: ['colour'] },
+    });
+    fireEvent.click(button);
+    const json = screen.getByLabelText<HTMLTextAreaElement>('Settings as JSON');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(json);
+    });
+    expect(json.closest('details')?.open).toBe(true);
+  });
+
+  it('leaves focus alone for a refusal that names no setting', async () => {
+    const { button } = await saveRefused({ kind: 'refused', code: 'plan_feature', detail: '' });
+    button.focus();
+    fireEvent.click(button);
+    await screen.findByRole('alert');
+    expect(document.activeElement).toBe(button);
+  });
+
   it('lists the unknown settings', async () => {
     const { button } = await saveRefused({
       kind: 'refused',

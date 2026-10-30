@@ -1090,12 +1090,13 @@
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
       "approvalNotCurrent": "This approval no longer counts: {changes} changed since revision {revision} was approved. Its exports are refused; save it again as a new revision and approve that.",
-      "approvalNotCurrentListed": "No longer counts: the rules or defaults it was approved under changed.",
+      "approvalNotCurrentListed": "No longer counts: the rules, defaults or export renderer it was approved under changed.",
       "approvalParts": {
         "rules_version": "the calculation rules",
         "catalogue_version": "the parts catalogue",
         "profile": "the default company profile",
-        "findings_policy": "the findings policy"
+        "findings_policy": "the findings policy",
+        "renderer_version": "how exports are worded and drawn"
       },
       "approvalChanged": "The page has changes since revision {revision}; the approval does not cover them.",
       "approveHeld": {

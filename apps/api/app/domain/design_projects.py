@@ -44,7 +44,16 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.design import CATALOGUE_VERSION, RULES_VERSION, drawing_text, integrity, marking, snapshot
+from app.design import (
+    CATALOGUE_VERSION,
+    RENDERER_BASELINE,
+    RENDERER_VERSION,
+    RULES_VERSION,
+    drawing_text,
+    integrity,
+    marking,
+    snapshot,
+)
 from app.domain import billing, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
@@ -239,12 +248,20 @@ class _Applicable:
     findings: list[tuple[str, str, bool]] | None = None
     #: Whether the stored design passes its hash check and reads (thorough only).
     snapshot_reads: bool = True
+    #: What the exports print a stored design with (``RENDERER_VERSION``).
+    renderer_version: str = RENDERER_VERSION
 
 
 def _applicable(row: DesignRevisionRow, *, thorough: bool = True) -> _Applicable:
     profile = _current_profile_sha256(row)
     if not thorough:
-        return _Applicable(False, RULES_VERSION, CATALOGUE_VERSION, profile_sha256=profile)
+        return _Applicable(
+            False,
+            RULES_VERSION,
+            CATALOGUE_VERSION,
+            profile_sha256=profile,
+            renderer_version=RENDERER_VERSION,
+        )
     designed = _read_snapshot(row)
     return _Applicable(
         True,
@@ -253,6 +270,7 @@ def _applicable(row: DesignRevisionRow, *, thorough: bool = True) -> _Applicable
         profile_sha256=profile,
         findings=_current_classification(row, designed),
         snapshot_reads=designed is not None,
+        renderer_version=RENDERER_VERSION,
     )
 
 
@@ -307,6 +325,8 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         changed.append("catalogue_version")
     if (row.approved_profile_sha256 or row.profile_sha256) != applicable.profile_sha256:
         changed.append("profile")
+    if (row.approved_renderer_version or RENDERER_BASELINE) != applicable.renderer_version:
+        changed.append("renderer_version")
     if not applicable.thorough:
         # No snapshot read: the recorded fingerprint is held to the stored
         # findings' classification only, which catches a row altered after
@@ -850,6 +870,17 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> dict[str, Any]:
     return row.design_snapshot
 
 
+def _recorded_rules_version(row: DesignRevisionRow, applicable: _Applicable) -> str:
+    """The rules version the stale check found out of date.
+
+    The revision's own when it was designed under other rules; else, for an
+    approval granted under other rules, the version that approval recorded.
+    """
+    if row.rules_version != applicable.rules_version or row.approved_at is None:
+        return row.rules_version or ""
+    return row.approved_rules_version or row.rules_version or ""
+
+
 def _refuse_stale(
     row: DesignRevisionRow, number: int, applicable: _Applicable | None = None
 ) -> None:
@@ -861,11 +892,15 @@ def _refuse_stale(
     """
     applicable = applicable or _applicable(row)
     changed = list(_changed(row, applicable))
+    approval = _approval_changed(row, applicable)
     changed += [
         part
-        for part in _approval_changed(row, applicable)
-        # Another design approved is not a policy change: it exports as a draft.
-        if part != "snapshot" and part not in changed
+        for part in approval
+        # Another design approved is not a policy change: it exports as a draft,
+        # and which renderer printed that other design does not matter.
+        if part != "snapshot"
+        and not (part == "renderer_version" and "snapshot" in approval)
+        and part not in changed
     ]
     if changed:
         raise ConflictError(
@@ -875,8 +910,17 @@ def _refuse_stale(
             params={
                 "revision": number,
                 "changed": ",".join(changed),
+                # The version each check compared: the revision's own for the
+                # design, the approval's for the approval, which may differ.
                 "saved_rules_version": row.rules_version or "",
-                "current_rules_version": RULES_VERSION,
+                "recorded_rules_version": _recorded_rules_version(row, applicable),
+                "current_rules_version": applicable.rules_version,
+                "approved_renderer_version": (
+                    (row.approved_renderer_version or RENDERER_BASELINE)
+                    if row.approved_at is not None
+                    else ""
+                ),
+                "current_renderer_version": applicable.renderer_version,
             },
         )
 
@@ -946,6 +990,7 @@ def approve_revision(
         row.approved_profile_sha256 = applicable.profile_sha256
         row.approved_rules_version = applicable.rules_version
         row.approved_catalogue_version = applicable.catalogue_version
+        row.approved_renderer_version = applicable.renderer_version
         row.approved_findings_policy = (
             _findings_fingerprint(applicable.findings) if applicable.findings is not None else None
         )

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.design import RULES_VERSION, findings_policy, marking, snapshot
+from app.design import RENDERER_VERSION, RULES_VERSION, findings_policy, marking, snapshot
 from app.design.findings_policy import Classification
 from app.domain import design_projects, roles
 from app.models.schemas.auth import CurrentUser, Role
@@ -1075,9 +1075,11 @@ def test_a_legacy_typed_name_is_never_the_approver(  # type: ignore[no-untyped-d
             text(
                 "UPDATE design_project_revisions SET approved_by = 'TYPED LEGACY ZQX', "
                 "approved_account = :e, approved_at = now(), "
-                "approved_snapshot_sha256 = snapshot_sha256 WHERE project_id = :p"
+                "approved_snapshot_sha256 = snapshot_sha256, "
+                # Recorded, so the export shows the name it is about.
+                "approved_renderer_version = :r WHERE project_id = :p"
             ),
-            {"e": email, "p": uuid.UUID(saved.id)},
+            {"e": email, "p": uuid.UUID(saved.id), "r": RENDERER_VERSION},
         )
     opened = design_projects.open_project(session=as_tenant(), user=viewer, project_id=saved.id)
     (revision,) = opened.revisions
@@ -1268,7 +1270,7 @@ def test_an_approval_records_the_policy_and_name_it_was_granted_under(  # type: 
 
 
 @pytest.mark.parametrize("backfilled", [True, False])
-def test_a_legacy_approved_row_counts_as_current(  # type: ignore[no-untyped-def]
+def test_a_legacy_approved_row_counts_only_with_a_recorded_renderer(  # type: ignore[no-untyped-def]
     tenants, as_tenant, engine, backfilled
 ) -> None:
     """A row approved before the policy was recorded: as the migration leaves it, or untouched."""
@@ -1293,6 +1295,17 @@ def test_a_legacy_approved_row_counts_as_current(  # type: ignore[no-untyped-def
                     "approved_display_name = ''"
                 )
             )
+    # No renderer is recorded for it: which one exported it is unknown, so it
+    # does not count, and its exports are refused until it is granted again.
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_current is False
+    assert opened.approval_changed == ["renderer_version"]
+    with pytest.raises(ConflictError) as stale:
+        _export(as_tenant, a, saved)
+    assert stale.value.params["changed"] == "renderer_version"
+    assert stale.value.params["approved_renderer_version"] == "unversioned"
+    # Otherwise it counts, as the policy the migration recorded says.
+    _set(engine, approved_renderer_version=RENDERER_VERSION)
     opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     assert opened.approval_current is True
     assert opened.export_status is ExportStatus.REVIEW_APPROVED
@@ -1318,6 +1331,79 @@ def test_an_approval_recorded_under_other_rules_is_not_current(  # type: ignore[
         _export(as_tenant, a, saved)
     assert stale.value.code == "revision_stale"
     assert stale.value.params["changed"] == "rules_version"
+
+
+def test_a_renderer_change_since_approval_refuses_the_approved_export(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine, monkeypatch
+) -> None:
+    """A material renderer change never prints a different file as the same approval.
+
+    The snapshot, its hash and the approval record are frozen; only the
+    approval stops counting. A revision saved again under the new renderer
+    can be approved and exported.
+    """
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    with engine.connect() as conn:
+        frozen = conn.execute(
+            text(
+                "SELECT design_snapshot, snapshot_sha256, approved_snapshot_sha256, "
+                "approved_renderer_version FROM design_project_revisions"
+            )
+        ).one()
+    assert frozen.approved_renderer_version == RENDERER_VERSION
+    assert "REVIEW APPROVED" in _first_line(_export(as_tenant, a, saved))
+
+    monkeypatch.setattr(design_projects, "RENDERER_VERSION", "9999.01.01.1")
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_current is False
+    assert opened.approval_changed == ["renderer_version"]
+    for fmt in ("json", "pdf", "dxf"):
+        with pytest.raises(ConflictError) as stale:
+            _export(as_tenant, a, saved, fmt=fmt)
+        assert stale.value.code == "revision_stale"
+        assert stale.value.params["changed"] == "renderer_version"
+        assert stale.value.params["approved_renderer_version"] == frozen.approved_renderer_version
+        assert stale.value.params["current_renderer_version"] == "9999.01.01.1"
+    with pytest.raises(ConflictError) as execution:
+        _export(as_tenant, a, saved, purpose="execution")
+    assert execution.value.code == "execution_package_incomplete"
+    with engine.connect() as conn:
+        after = conn.execute(
+            text(
+                "SELECT design_snapshot, snapshot_sha256, approved_snapshot_sha256, "
+                "approved_renderer_version FROM design_project_revisions"
+            )
+        ).one()
+    assert tuple(after) == tuple(frozen)
+
+
+def test_an_unrelated_settings_change_leaves_the_approved_exports_unchanged(  # type: ignore[no-untyped-def]
+    tenants, as_tenant
+) -> None:
+    """A live company settings change does not reach a saved revision's files.
+
+    The drawing PDF, calculations PDF and DXF of an approved revision are
+    exported, the tenant's company settings are changed, and they are
+    exported again: byte for byte the same. The files carry no time of
+    export (the PDF is written ``invariant``), so nothing is expected to
+    differ.
+    """
+    from app.domain import company_settings
+
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    formats = ("pdf", "calculations_pdf", "dxf")
+    before = {fmt: _export(as_tenant, a, saved, fmt=fmt).content for fmt in formats}
+    company_settings.save_settings(
+        session=as_tenant(),
+        user=_user(a),
+        settings={"key": "synthetic-co", "name": "Synthetic Renamed Co", "max_circuits_per_rcd": 4},
+    )
+    after = {fmt: _export(as_tenant, a, saved, fmt=fmt).content for fmt in formats}
+    assert after == before
 
 
 # --- An approval of a snapshot that no longer reads; earlier revisions' approvals
