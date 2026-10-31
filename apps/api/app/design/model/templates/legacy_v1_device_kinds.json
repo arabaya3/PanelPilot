@@ -1,0 +1,365 @@
+{
+  "_comment": "Frozen legacy templates shipped with migrate_1_to_2: one per pp-design/1 DeviceKind, no terminals, unreviewed. Never edit a version in place; a change is a new version and a new migration.",
+  "templates": [
+    {
+      "ref": "global/legacy-bus_actuator@1",
+      "function": "bus_actuator",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'bus_actuator'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-busbar@1",
+      "function": "busbar",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'busbar'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-cable@1",
+      "function": "cable",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'cable'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-circuit_breaker@1",
+      "function": "circuit_breaker",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'circuit_breaker'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-contactor@1",
+      "function": "contactor",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'contactor'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-drive@1",
+      "function": "drive",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'drive'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-fuse@1",
+      "function": "fuse",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'fuse'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-indicator_lamp@1",
+      "function": "indicator_lamp",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'indicator_lamp'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-meter@1",
+      "function": "meter",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'meter'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-motor@1",
+      "function": "motor",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'motor'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-other@1",
+      "function": "other",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'other'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-overload_relay@1",
+      "function": "overload_relay",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'overload_relay'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-power_supply@1",
+      "function": "power_supply",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'power_supply'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-relay@1",
+      "function": "relay",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'relay'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-residual_current_device@1",
+      "function": "residual_current_device",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'residual_current_device'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-surge_protector@1",
+      "function": "surge_protector",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'surge_protector'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-switch_disconnector@1",
+      "function": "switch_disconnector",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'switch_disconnector'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    },
+    {
+      "ref": "global/legacy-terminal_strip@1",
+      "function": "terminal_strip",
+      "terminals": [],
+      "contact_groups": [],
+      "parameters": [],
+      "provenance": {
+        "source": "Mirrors the pp-design/1 device kind 'terminal_strip'; v1 holds no terminal data, so this template defines no terminals.",
+        "author": "PanelPilot pp-design/1 to pp-design/2 migration",
+        "created": "2026-10-31"
+      },
+      "review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "standards": [],
+        "scope_note": null
+      },
+      "restricted_scope": []
+    }
+  ]
+}
