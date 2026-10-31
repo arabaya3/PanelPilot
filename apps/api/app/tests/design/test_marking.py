@@ -68,6 +68,28 @@ def test_the_page_stamp_label_and_identity_do_not_overlap() -> None:
     assert lines[1] == identity
 
 
+def test_a_long_stamp_identity_wraps_inside_the_page() -> None:
+    """A provisional estimate's identity ran off the page, hiding that its prices are not approved."""
+    identity = (
+        "Estimate for A rather long synthetic project name for wrapping, revision 01, design "
+        "d3b7645bb418, rules 2026.10.23.1, renderer 2026.10.31.3; design review approved "
+        "(covers the design only). Prices supplied with this export (3970057ce26a), not "
+        "reviewed or approved"
+    )
+    mark = marking.ExportMark(marking.PROVISIONAL_ESTIMATE_LABEL, identity)
+    buffer = io.BytesIO()
+    stamp = marking.pdf_page_stamp(mark)
+    document = SimpleDocTemplate(buffer, pagesize=A4)
+    document.build([Paragraph("Body", getSampleStyleSheet()["Normal"])], onFirstPage=stamp)
+    with pdfplumber.open(io.BytesIO(buffer.getvalue())) as pdf:
+        page = pdf.pages[0]
+        assert all(char["x1"] <= page.width - document.rightMargin + 0.5 for char in page.chars)
+        words = " ".join((page.extract_text() or "").split())
+    # Every word of the identity is printed, at the top and again at the foot.
+    assert words.count("not reviewed or approved") == 2
+    assert words.count("covers the design only") == 2
+
+
 def test_every_title_block_counts_the_findings_sheets(hall_project: DesignProject) -> None:
     """D6: a 10-page PDF said "1 of 9"; the findings sheets were not counted."""
     from app.design import profile

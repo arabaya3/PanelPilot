@@ -24,7 +24,7 @@ def test_a_complete_quotation(hall_project: DesignProject) -> None:
     priced = quotation.price_project(hall_project, PricingSettings(price_list=entries))
     text = _text(quotation_pdf.render_quotation_pdf(priced, hall_project, company="Acme Panels"))
     assert "Acme Panels" in text
-    assert "Quotation: Pocket" in text
+    assert "Provisional estimate: Pocket" in text
     assert "55.00" in text
     assert "Total (JOD)" in text
 

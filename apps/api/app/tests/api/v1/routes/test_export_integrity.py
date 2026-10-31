@@ -639,8 +639,17 @@ def test_approved_revision_export_carries_db_approval(
     response = revision_export(client, saved["id"], 1, fmt)
     assert response.status_code == 200, response.text[:500]
     body = text_of(fmt, response.content)
-    assert "REVIEW APPROVED" in body, f"{fmt}: approved revision not labelled"
     assert DRAFT_WORDS in body  # "STUDY, NOT FOR EXECUTION"
+    if fmt == "quotation_pdf":
+        # Its prices are the export's, not approved: never labelled approved,
+        # and the approver is not named; the design and its hash are.
+        assert "PROVISIONAL ESTIMATE" in body
+        assert "REVIEW APPROVED" not in body
+        assert APPROVER not in body
+        assert row["snapshot_sha256"][:12] in body
+        assert "design review approved (covers the design only)" in body
+        return
+    assert "REVIEW APPROVED" in body, f"{fmt}: approved revision not labelled"
     if fmt in ("pdf", "calculations_pdf"):
         assert APPROVER in body
         assert row["snapshot_sha256"][:8] in body

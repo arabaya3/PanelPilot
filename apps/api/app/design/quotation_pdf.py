@@ -76,7 +76,7 @@ def render_quotation_pdf(
         rightMargin=15 * mm,
         topMargin=15 * mm,
         bottomMargin=15 * mm,
-        title=f"Quotation - {project.info.name}",
+        title=f"Provisional estimate - {project.info.name}",
         author=company,
         creator="PanelPilot",
         invariant=True,
@@ -84,7 +84,14 @@ def render_quotation_pdf(
     story: list[object] = []
     if company:
         story.append(_paragraph(company, styles["Heading2"]))
-    story.append(_paragraph(f"Quotation: {project.info.name}", styles["Title"]))
+    story.append(_paragraph(f"Provisional estimate: {project.info.name}", styles["Title"]))
+    story.append(
+        _paragraph(
+            "Prices and rates are as supplied with this export. They are not reviewed or "
+            "approved, and no design review approval covers them.",
+            styles["BodyText"],
+        )
+    )
     details = [
         f"Job number: {project.info.number}" if project.info.number else "",
         f"Customer: {project.info.customer}" if project.info.customer else "",

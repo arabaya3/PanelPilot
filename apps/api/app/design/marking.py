@@ -30,6 +30,7 @@ from xml.sax.saxutils import escape
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import BaseDocTemplate, Flowable, Paragraph, Spacer
 
@@ -50,6 +51,9 @@ from app.models.schemas.design import DesignFinding, FindingSeverity
 
 DRAFT_LABEL = "DRAFT — NOT FOR EXECUTION"
 REVIEW_APPROVED_LABEL = "REVIEW APPROVED — STUDY, NOT FOR EXECUTION"
+#: Every quotation file's label, whatever the design's state: its prices are
+#: supplied with the export and no review or approval covers them.
+PROVISIONAL_ESTIMATE_LABEL = "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION"
 
 #: What an execution package needs that no export produces yet.
 EXECUTION_PACKAGE_MISSING: tuple[str, ...] = (
@@ -71,7 +75,8 @@ class ExportMark:
     """What an export is labelled with.
 
     Attributes:
-        label: :data:`DRAFT_LABEL` or :data:`REVIEW_APPROVED_LABEL`.
+        label: :data:`DRAFT_LABEL`, :data:`REVIEW_APPROVED_LABEL`, or for a
+            quotation always :data:`PROVISIONAL_ESTIMATE_LABEL`.
         identity: What the file is: the revision, its approval and the
             design's hash, or that it is an unsaved draft.
         findings: The unresolved findings, printed in the file where its
@@ -196,22 +201,47 @@ def pdf_page_stamp(mark: ExportMark) -> PageStamp:
     """
 
     def stamp(canvas: Canvas, document: BaseDocTemplate) -> None:
-        _, height = document.pagesize
+        width, height = document.pagesize
+        room = width - document.leftMargin - document.rightMargin
         canvas.saveState()
         font, label = font_for(mark.label, bold=True)
         canvas.setFont(font, 10)
         canvas.setFillColor(colors.HexColor("#b00020"))
         canvas.drawString(document.leftMargin, height - 7 * mm, label)
-        # On its own line: a long identity drawn beside the label overran it.
-        font, identity = font_for(mark.identity, right_to_left=has_rtl(mark.identity))
-        canvas.setFont(font, 7)
-        canvas.drawString(document.leftMargin, height - 10.5 * mm, identity)
-        font, banner = font_for(mark.banner, bold=True, right_to_left=has_rtl(mark.banner))
-        canvas.setFont(font, 7)
-        canvas.drawString(document.leftMargin, 5 * mm, banner)
+        # On its own lines, wrapped to the page: a long identity drawn on one
+        # line ran off the page, and with it what the file is.
+        for index, line in enumerate(_wrapped(mark.identity, room, bold=False)):
+            font, drawn = font_for(line, right_to_left=has_rtl(line))
+            canvas.setFont(font, 7)
+            canvas.drawString(document.leftMargin, height - (10.5 + 3 * index) * mm, drawn)
+        # The foot repeats the label and identity, wrapped upwards from 5 mm.
+        lines = _wrapped(mark.banner, room, bold=True)
+        for index, line in enumerate(reversed(lines)):
+            font, drawn = font_for(line, bold=True, right_to_left=has_rtl(line))
+            canvas.setFont(font, 7)
+            canvas.drawString(document.leftMargin, (5 + 3 * index) * mm, drawn)
         canvas.restoreState()
 
     return stamp
+
+
+def _wrapped(text: str, room: float, *, bold: bool) -> list[str]:
+    """``text`` split into lines of at most ``room`` points at 7 pt, by words.
+
+    At most three lines, which the page margins hold; a longer text keeps
+    its first three. A word wider than the room stays whole on its line.
+    """
+    lines: list[str] = []
+    for word in text.split(" "):
+        candidate = f"{lines[-1]} {word}" if lines else word
+        font, drawn = font_for(candidate, bold=bold, right_to_left=has_rtl(candidate))
+        if lines and stringWidth(drawn, font, 7) > room:
+            lines.append(word)
+        elif lines:
+            lines[-1] = candidate
+        else:
+            lines.append(word)
+    return lines[:3]
 
 
 def pdf_findings_section(

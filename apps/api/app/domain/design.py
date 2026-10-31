@@ -47,6 +47,7 @@ from app.design import (
     render_pdf,
     schedule_import,
     schedule_split,
+    snapshot,
 )
 from app.design.notes import note
 from app.design.sheet import Sheet
@@ -362,6 +363,7 @@ def render_export(
     export_format: ExportFormat,
     pricing: PricingSettings | None,
     mark: marking.ExportMark,
+    estimate_for: str | None = None,
 ) -> ExportedFile:
     """Write a designated project as one file, carrying its mark.
 
@@ -370,7 +372,10 @@ def render_export(
         company: The company it is issued under.
         export_format: The file to produce.
         pricing: The company's prices, for a quotation.
-        mark: The status mark and findings the file carries.
+        mark: The status mark and findings the file carries. A quotation
+            never carries its label: see :func:`estimate_mark`.
+        estimate_for: For a quotation, the design it prices, said without
+            any approval of prices; the mark's identity if not given.
 
     Returns:
         The file.
@@ -398,10 +403,13 @@ def render_export(
                 "a quotation needs the company's pricing settings", code="quotation_needs_pricing"
             )
         priced = quotation.price_project(designated, pricing)
+        estimate = estimate_mark(mark, design=estimate_for or mark.identity, pricing=pricing)
         content = (
-            quotation_pdf.render_quotation_pdf(priced, designated, company=company.name, mark=mark)
+            quotation_pdf.render_quotation_pdf(
+                priced, designated, company=company.name, mark=estimate
+            )
             if export_format is ExportFormat.QUOTATION_PDF
-            else marking.mark_csv(quotation.quotation_csv(priced), mark).encode("utf-8")
+            else marking.mark_csv(quotation.quotation_csv(priced), estimate).encode("utf-8")
         )
     elif export_format in (ExportFormat.PLC_ST, ExportFormat.PLC_IO_CSV):
         program = _program(designated)
@@ -420,6 +428,36 @@ def render_export(
         media_type=media_type,
         filename=f"{_slug(designated.info.name)}.{extension}",
         display_name=f"{_unicode_slug(designated.info.name)}.{extension}",
+    )
+
+
+def estimate_mark(
+    mark: marking.ExportMark, *, design: str, pricing: PricingSettings
+) -> marking.ExportMark:
+    """The mark a quotation carries: a provisional estimate, never an approval.
+
+    Its prices are the ones sent with the export, so no review or approval
+    covers them, whatever the design's own state. The design it prices is
+    named on its own, and the price list by a short hash of its canonical
+    JSON, so two estimates priced differently say so.
+
+    Args:
+        mark: The design's mark; only its findings are kept.
+        design: The design priced: the revision, its design hash, rules and
+            renderer, and its review state, or that it is an unsaved draft.
+        pricing: The prices and rates sent with this export.
+
+    Returns:
+        The mark.
+    """
+    prices = snapshot.sha256_of(pricing.model_dump(mode="json"))[:12]
+    return marking.ExportMark(
+        label=marking.PROVISIONAL_ESTIMATE_LABEL,
+        identity=(
+            f"Estimate for {design}. Prices supplied with this export ({prices}), "
+            "not reviewed or approved"
+        ),
+        findings=mark.findings,
     )
 
 
@@ -495,6 +533,7 @@ def export_design(
         export_format=request.format,
         pricing=request.pricing,
         mark=mark,
+        estimate_for="an unsaved draft, not a saved, validated or approved revision",
     )
     logger.info(
         "design.exported",

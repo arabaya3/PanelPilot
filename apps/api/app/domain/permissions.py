@@ -65,15 +65,15 @@ _BY_ROLE: dict[Role, frozenset[Permission]] = {
 #: The refusal each permission is reported with.
 _REFUSALS: dict[Permission, tuple[str, str]] = {
     Permission.APPROVE_REVISION: (
-        "approving a revision is for the account's owner or a reviewer",
+        "approving a revision is for the account's owner, an admin or a reviewer",
         "approval_not_permitted",
     ),
     Permission.DELETE_PROJECT: (
-        "only the account's owner deletes a project",
+        "only the account's owner or an admin deletes a project",
         "project_delete_not_permitted",
     ),
     Permission.EDIT_COMPANY_SETTINGS: (
-        "only the account's owner changes the company settings",
+        "only the account's owner or an admin changes the company settings",
         "settings_not_permitted",
     ),
 }
