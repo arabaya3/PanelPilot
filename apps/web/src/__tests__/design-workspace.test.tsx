@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -90,13 +91,13 @@ describe('workspace views', () => {
   });
 });
 
-describe('unsaved changes', () => {
-  function leave(): boolean {
-    const event = new Event('beforeunload', { cancelable: true });
-    window.dispatchEvent(event);
-    return event.defaultPrevented;
-  }
+function leave(): boolean {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
 
+describe('unsaved changes', () => {
   it('asks before leaving only once something has been entered', async () => {
     renderScreen();
     await screen.findByTestId('design-incomplete');
@@ -132,6 +133,58 @@ describe('unsaved changes', () => {
     );
     await screen.findByTestId('market-basis');
     expect(screen.queryByText('Unsaved changes')).toBeNull();
+    expect(leave()).toBe(false);
+  });
+});
+
+describe('a market detected as the engineer types', () => {
+  const SA = {
+    code: 'SA',
+    name: 'Saudi Arabia',
+    voltage_v: 400,
+    frequency_hz: 60,
+    earthing: 'TN-S',
+    regulation: 'SBC 401',
+    currency: 'SAR',
+  };
+
+  it('is not an edit, and does not make an edit typed with it saved', async () => {
+    // The detection answers in the same batch as a keystroke: the keystroke
+    // is queued but not yet rendered when the market lands on what still
+    // looks like an untouched form. Only the market may be taken as clean.
+    let answer: ((listed: (typeof SA)[]) => void) | null = null;
+    const marketsImpl = vi.fn(() => ({
+      then(resolve: (listed: (typeof SA)[]) => void) {
+        answer = resolve;
+      },
+    }));
+    renderApp(
+      <DesignScreen
+        acquireImpl={vi.fn().mockResolvedValue(READY)}
+        marketsImpl={marketsImpl as never}
+        readMarketImpl={() => 'SA'}
+      />,
+    );
+    await screen.findByTestId('design-incomplete');
+    expect(answer).not.toBeNull();
+    const name = screen.getByLabelText<HTMLInputElement>('Project name');
+    function TypesAsTheMarketLands() {
+      useLayoutEffect(() => {
+        fireEvent.change(name, { target: { value: 'Tower' } });
+        answer?.([SA]);
+      }, []);
+      return null;
+    }
+    render(<TypesAsTheMarketLands />);
+    expect(name.value).toBe('Tower');
+    await screen.findByTestId('market-basis');
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    expect(leave()).toBe(true);
+    // Undoing the keystroke leaves only the market: untouched again.
+    fireEvent.change(name, { target: { value: '' } });
+    await waitFor(() => {
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+    });
     expect(leave()).toBe(false);
   });
 });

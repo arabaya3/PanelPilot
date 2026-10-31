@@ -252,6 +252,26 @@ describe('saving', () => {
     });
   });
 
+  it('keeps a keystroke typed in the same batch as the save answer unsaved', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof saveProject>>>();
+    api.save.mockReturnValue(pending.promise);
+    renderScreen();
+    await completeForm();
+    fireEvent.click(projects().getByText('Save project'));
+    expect(await screen.findByText('Saving…')).toBeTruthy();
+
+    // The answer and the keystroke land together: the save adopts only what
+    // it sent, never the keystroke.
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: saved('Tower') });
+      type(overviewField('Customer'), 'Typed as it answered');
+      await pending.promise;
+    });
+    expect(await screen.findByText('Saved as revision 1.')).toBeTruthy();
+    expect(overviewField('Customer').value).toBe('Typed as it answered');
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  });
+
   it('keeps every input when a save fails', async () => {
     api.save.mockResolvedValue({ kind: 'failed' });
     renderScreen();

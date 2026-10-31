@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -712,6 +713,31 @@ describe('the review view', () => {
       expect(said).toContain('{reason}');
       expect(said).not.toBe(en.design.readiness.integrityFailed);
     }
+  });
+
+  it('keeps a keystroke whose update React runs after the event', async () => {
+    // React runs a state updater lazily when the component already has an
+    // update queued, and may run it only after it has put the controlled
+    // input back to the value it last rendered. An updater that reads the
+    // event then reads that old value: the keystroke is lost, and the form
+    // reads as unchanged since the approval. Typing while React is committing
+    // another tree makes that order certain: the changes are rendered only
+    // after the event, once the input has been restored.
+    api.open.mockResolvedValue({ kind: 'saved', project: approved({ findings: [WARNING] }) });
+    renderScreen();
+    await openStored();
+    const customer = overview().getByLabelText<HTMLInputElement>('Customer');
+    function TypesWhileCommitting() {
+      useLayoutEffect(() => {
+        fireEvent.change(customer, { target: { value: 'C' } });
+        fireEvent.change(customer, { target: { value: 'Changed' } });
+      }, []);
+      return null;
+    }
+    render(<TypesWhileCommitting />);
+    expect(customer.value).toBe('Changed');
+    expect(stepState('saved')).toBe('stale');
+    expect(stepState('approved')).toBe('stale');
   });
 
   it('never lets an approval read as covering edits made since', async () => {
