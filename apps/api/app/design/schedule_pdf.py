@@ -56,6 +56,37 @@ DISCLAIMER = (
 
 _HEAD = colors.HexColor("#e7eef4")
 
+#: The most characters of an assumption's statement a table cell shows; every
+#: statement is printed in full under "Assumptions" (a table row cannot be
+#: split across pages, so a cell must stay well under a page tall).
+STATEMENT_EXCERPT = 120
+
+#: The most characters any other table cell shows; a longer value is printed in
+#: full under "Full values", with a note number in the cell.
+CELL_LIMIT = 400
+
+
+class _Overflow:
+    """The long values of one schedule, printed in full after its tables."""
+
+    def __init__(self) -> None:
+        self.assumptions: dict[str, str] = {}
+        self.values: list[str] = []
+
+    def assumption(self, assumption_id: str | None, statement: str | None) -> str:
+        key = assumption_id or "?"
+        text = statement or ""
+        self.assumptions.setdefault(key, text)
+        if len(text) <= STATEMENT_EXCERPT:
+            return f"assumption {key}: {text}"
+        return f"assumption {key}: {text[:STATEMENT_EXCERPT]}… (full statement under Assumptions)"
+
+    def bounded(self, text: str) -> str:
+        if len(text) <= CELL_LIMIT:
+            return text
+        self.values.append(text)
+        return f"{text[:CELL_LIMIT]}… (full value: note {len(self.values)} under Full values)"
+
 
 @dataclass(frozen=True)
 class ScheduleHeader:
@@ -111,11 +142,11 @@ def _stamp(mark: ExportMark) -> object:
     return stamp
 
 
-def _cell(cell: schedules.AttributeCell) -> str:
+def _cell(cell: schedules.AttributeCell, overflow: _Overflow) -> str:
     """A value with its source: ``"<value> [data]"``, ``"— [unresolved]"``."""
     value = cell.value if cell.value is not None else "—"
     if cell.source == "assumption":
-        return f"{value} [assumption {cell.assumption_id}: {cell.assumption_statement}]"
+        return f"{value} [{overflow.assumption(cell.assumption_id, cell.assumption_statement)}]"
     return f"{value} [{cell.source}]"
 
 
@@ -132,9 +163,10 @@ def _table(
     rows: Sequence[Sequence[str]],
     widths: Sequence[float],
     styles: dict[str, ParagraphStyle],
+    overflow: _Overflow,
 ) -> Table:
     data = [[_p(h, styles["head"]) for h in head]]
-    data += [[_p(value, styles["cell"]) for value in row] for row in rows]
+    data += [[_p(overflow.bounded(value), styles["cell"]) for value in row] for row in rows]
     if not rows:
         data.append([_p("(none)", styles["cell"])] + [_p("", styles["cell"])] * (len(head) - 1))
     table = Table(data, colWidths=[w * mm for w in widths], repeatRows=1)
@@ -150,7 +182,9 @@ def _table(
     return table
 
 
-def _findings(structural: Sequence[V2Finding], styles: dict[str, ParagraphStyle]) -> list[object]:
+def _findings(
+    structural: Sequence[V2Finding], styles: dict[str, ParagraphStyle], overflow: _Overflow
+) -> list[object]:
     blocking = sum(1 for f in structural if f.severity == "blocking")
     unresolved = sum(1 for f in structural if f.unresolved)
     out: list[object] = [
@@ -187,8 +221,26 @@ def _findings(structural: Sequence[V2Finding], styles: dict[str, ParagraphStyle]
             rows,
             (24, 52, 72, 48, 30, 26, 25),
             styles,
+            overflow,
         )
     )
+    return out
+
+
+def _long_values(overflow: _Overflow, styles: dict[str, ParagraphStyle]) -> list[object]:
+    out: list[object] = []
+    if overflow.assumptions:
+        out += [Spacer(1, 4 * mm), _p("Assumptions", styles["h2"])]
+        out += [
+            _p(f"{key}: {statement}", styles["body"])
+            for key, statement in sorted(overflow.assumptions.items())
+        ]
+    if overflow.values:
+        out += [Spacer(1, 4 * mm), _p("Full values", styles["h2"])]
+        out += [
+            _p(f"Note {number}: {value}", styles["body"])
+            for number, value in enumerate(overflow.values, start=1)
+        ]
     return out
 
 
@@ -198,8 +250,9 @@ def _render(
     mark: ExportMark,
     table: Table,
     structural: Sequence[V2Finding],
+    styles: dict[str, ParagraphStyle],
+    overflow: _Overflow,
 ) -> bytes:
-    styles = _styles()
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer,
@@ -230,7 +283,8 @@ def _render(
         Spacer(1, 3 * mm),
         table,
     ]
-    story.extend(_findings(structural, styles))
+    story.extend(_findings(structural, styles, overflow))
+    story.extend(_long_values(overflow, styles))
     story.extend(pdf_findings_section(mark, styles["h2"], styles["small"]))
     stamp = _stamp(mark)
     document.build(story, onFirstPage=stamp, onLaterPages=stamp)
@@ -255,6 +309,7 @@ def render_terminal_schedule(
         The PDF's bytes.
     """
     styles = _styles()
+    overflow = _Overflow()
     body = [
         [
             row.board_id,
@@ -286,8 +341,11 @@ def render_terminal_schedule(
         body,
         (14, 30, 26, 22, 26, 26, 36, 44, 52),
         styles,
+        overflow,
     )
-    return _render("Terminal schedule (review only)", header, mark, table, structural)
+    return _render(
+        "Terminal schedule (review only)", header, mark, table, structural, styles, overflow
+    )
 
 
 def render_wire_schedule(
@@ -308,6 +366,7 @@ def render_wire_schedule(
         The PDF's bytes.
     """
     styles = _styles()
+    overflow = _Overflow()
     body = [
         [
             row.board_id,
@@ -315,9 +374,9 @@ def render_wire_schedule(
             row.start,
             row.end,
             row.signal,
-            _cell(row.number),
-            _cell(row.cross_section_mm2),
-            _cell(row.colour),
+            _cell(row.number, overflow),
+            _cell(row.cross_section_mm2, overflow),
+            _cell(row.colour, overflow),
             row.pattern_ref or "—",
             ", ".join(row.flags) or "—",
         ]
@@ -339,5 +398,6 @@ def render_wire_schedule(
         body,
         (14, 34, 26, 26, 16, 30, 30, 30, 36, 34),
         styles,
+        overflow,
     )
-    return _render("Wire schedule (review only)", header, mark, table, structural)
+    return _render("Wire schedule (review only)", header, mark, table, structural, styles, overflow)

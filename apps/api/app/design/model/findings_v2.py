@@ -146,6 +146,19 @@ class StructuralFinding:
     unresolved: bool = False
 
 
+#: The most characters of one id, label or value a finding's message quotes;
+#: a longer one is cut with an ellipsis (its full value stays in the finding's
+#: location), so a printed findings line always wraps inside its frame.
+MESSAGE_VALUE_CHARS = 32
+
+
+def _short(value: object) -> str:
+    text = str(value)
+    if len(text) <= MESSAGE_VALUE_CHARS:
+        return text
+    return text[: MESSAGE_VALUE_CHARS - 1] + "…"
+
+
 def _finding(code: str, message: str, **location: str) -> StructuralFinding:
     return StructuralFinding(
         code=code,
@@ -164,7 +177,7 @@ def _review_findings(
         return [
             _finding(
                 f"{kind}_rejected",
-                f"uses {kind} {ref}, which a reviewer rejected; "
+                f"uses {kind} {_short(ref)}, which a reviewer rejected; "
                 "it may not be approved or executed",
                 **{kind: ref},
                 **location,
@@ -174,7 +187,7 @@ def _review_findings(
         return [
             _finding(
                 f"{kind}_unreviewed",
-                f"uses {kind} {ref}, which no qualified engineer has reviewed; "
+                f"uses {kind} {_short(ref)}, which no qualified engineer has reviewed; "
                 "it may not be executed",
                 **{kind: ref},
                 **location,
@@ -191,8 +204,8 @@ def _template_findings(
         out.append(
             _finding(
                 "out_of_execution_scope",
-                f"uses template {template.ref}, restricted to "
-                f"{', '.join(template.restricted_scope)}; outside what may be executed",
+                f"uses template {_short(template.ref)}, restricted to "
+                f"{', '.join(_short(s) for s in template.restricted_scope)}; outside what may be executed",
                 template=template.ref,
                 **location,
             )
@@ -225,8 +238,8 @@ def _terminal_findings(
                 out.append(
                     _finding(
                         "unconnected_required_terminal",
-                        f"required terminal {terminal.marking} of component "
-                        f"{component.id} is in no net",
+                        f"required terminal {_short(terminal.marking)} of component "
+                        f"{_short(component.id)} is in no net",
                         **where,
                     )
                 )
@@ -239,7 +252,7 @@ def _terminal_findings(
                 out.append(
                     _finding(
                         "terminal_requiredness_unresolved",
-                        f"terminal {terminal.marking} of component {component.id} is in "
+                        f"terminal {_short(terminal.marking)} of component {_short(component.id)} is in "
                         f"no net and {why}; unresolved",
                         **where,
                     )
@@ -277,7 +290,7 @@ def _net_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:
             out.append(
                 _finding(
                     "net_unrealised",
-                    f"net {net.id} ({net.signal}) has {len(net.members)} members, but its "
+                    f"net {_short(net.id)} ({_short(net.signal)}) has {len(net.members)} members, but its "
                     f"connections join them into {groups} separate groups",
                     board_id=net.board_id,
                     net=net.id,
@@ -292,8 +305,8 @@ def _net_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:
             out.append(
                 _finding(
                     "net_signal_conflict",
-                    f"{len(net_ids)} different nets on board {board_id} carry the signal "
-                    f"label {signal}; confirm they are meant to be separate",
+                    f"{len(net_ids)} different nets on board {_short(board_id)} carry the signal "
+                    f"label {_short(signal)}; confirm they are meant to be separate",
                     board_id=board_id,
                     signal=signal,
                     nets=",".join(sorted(net_ids)),
@@ -317,7 +330,7 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
                 out.append(
                     _finding(
                         "wire_attribute_unset",
-                        f"wire {wire.id} has no {name}; no rule sets it yet",
+                        f"wire {_short(wire.id)} has no {name}; no rule sets it yet",
                         board_id=board_id,
                         wire=wire.id,
                         attribute=name,
@@ -327,7 +340,7 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
                 out.append(
                     _finding(
                         "wire_attribute_assumed",
-                        f"wire {wire.id}'s {name} is an assumption ({attribute.assumption}); "
+                        f"wire {_short(wire.id)}'s {name} is an assumption ({_short(attribute.assumption)}); "
                         "confirm it",
                         board_id=board_id,
                         wire=wire.id,
@@ -344,7 +357,7 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
             out.append(
                 _finding(
                     "wire_number_duplicate",
-                    f"{len(wire_ids)} wires in one {scope} carry the number {number}; "
+                    f"{len(wire_ids)} wires in one {scope} carry the number {_short(number)}; "
                     "whether numbers must be unique there is not decided yet",
                     scope=scope,
                     number=number,

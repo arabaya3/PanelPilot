@@ -24,6 +24,7 @@ import json
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from reportlab.pdfgen.canvas import Canvas
@@ -270,7 +271,11 @@ AVAILABLE_V2: dict[ExportFormat, Callable[[bytes], object]] = {
 }
 
 
-def v2_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[str, bytes]:
+def v2_exports(
+    case: str,
+    label: str = marking.REVIEW_APPROVED_LABEL,
+    v2_edit: Callable[[Any], Any] | None = None,
+) -> dict[str, bytes]:
     """Every review export of a configured v2 design, as ``export_revision`` makes it.
 
     The mark prints every finding (v1 checks and the structural ones), as a
@@ -287,6 +292,10 @@ def v2_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
     stored = write.snapshot_v2_from_v1(v1, configuration)
     read = read_snapshot(stored)
     assert read.v2 is not None
+    if v2_edit is not None:
+        read = dataclasses.replace(read, v2=v2_edit(read.v2))
+    v2 = read.v2
+    assert v2 is not None
     request = ProjectDesignRequest.model_validate(DESIGNED[CONFIGS[case]["fixture"]]["request"])
     company = design_domain.resolve_profile(request.profile)
     conditions = {board.name: board.conditions for board in request.boards}
@@ -316,7 +325,7 @@ def v2_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
     )
     structural = [
         design_configuration.finding_view(f, design_projects._V2_CONFIRM)
-        for f in findings_v2.structural_findings(read.v2)
+        for f in findings_v2.structural_findings(v2)
     ]
     plain = marking.ExportMark(
         label=mark.label,
@@ -324,10 +333,10 @@ def v2_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
         findings=tuple(f for f in mark.findings if f.code not in findings_v2.CODES),
     )
     found[ExportFormat.TERMINAL_SCHEDULE_PDF.value] = schedule_pdf.render_terminal_schedule(
-        schedules.terminal_schedule(read.v2), header, plain, structural
+        schedules.terminal_schedule(v2), header, plain, structural
     )
     found[ExportFormat.WIRE_SCHEDULE_PDF.value] = schedule_pdf.render_wire_schedule(
-        schedules.wire_schedule(read.v2), header, plain, structural
+        schedules.wire_schedule(v2), header, plain, structural
     )
     return found
 

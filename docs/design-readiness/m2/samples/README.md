@@ -2,7 +2,7 @@
 
 **Synthetic data only. Review content only, NOT FOR EXECUTION.** Every template and pattern in these files is unreviewed; no qualified engineer has reviewed them, and nothing here states or implies compliance with any standard. Markings, signals, wire numbers, colours and assumption statements are illustrative labels from the committed test configurations, not conventions or engineering values.
 
-Each sample is a configured `pp-design/2` design of a committed synthetic case (`apps/api/app/tests/design/model/configurations/`), rendered as an **unapproved** revision 02 (the draft mark) through the same functions a revision export uses, under renderer `2026.10.31.v2-2`:
+Each sample is a configured `pp-design/2` design of a committed synthetic case (`apps/api/app/tests/design/model/configurations/`), rendered as an **unapproved** revision 02 (the draft mark) through the same functions a revision export uses, under renderer `2026.10.31.v2-3`:
 
 | Case                                     | Drawing PDF                     | Terminal schedule                         | Wire schedule                         |
 | ---------------------------------------- | ------------------------------- | ----------------------------------------- | ------------------------------------- |

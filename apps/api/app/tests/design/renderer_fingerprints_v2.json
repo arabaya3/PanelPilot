@@ -1,23 +1,23 @@
 {
-  "renderer_version": "2026.10.31.v2-2",
+  "renderer_version": "2026.10.31.v2-3",
   "variants": {
     "pe_n_distribution": {
-      "pdf": "4b9fdae344ec69c2bca5be0eb0394dedd08d68c16f1bd1a489d46f72ddf1d410",
-      "calculations_pdf": "3cdb572447b0c181e7f0313fae9ec76b1728bc29f9e4ede088620e088ff1bc67",
-      "quotation_pdf": "b5c46f4273020e1c3dbfa443f336df72052511eb339e63e1ff178f748b9f3481",
-      "dxf": "9d42548d81deea594db9105096f01d05dbb405d3d7469c4bf1462e443ae1c172",
-      "json": "cef2c78153ca3aff3a4865cff47d517550b4fd35f535f995abbb0dc7ea2f2181",
-      "terminal_schedule_pdf": "3ade6a7cfc467cef80cf832122daf70e405c4d4ca828df11097f62c58598e305",
-      "wire_schedule_pdf": "0486912f7e3dd28340079c2466e03067f14ec3267aef1d0a2ccf02575dfd1d97"
+      "pdf": "156fee306ae473be4701190eb739de51b7b59899c437ff19e95cfd53b6e4d881",
+      "calculations_pdf": "294865c9db2b9ab8fb1ae2cf1678cce2f503817780b671a910210e29b65b2160",
+      "quotation_pdf": "546a8318d5851a688a6e1749074fce75d2d44d1d9b7f622d5e57bc6d44dde91c",
+      "dxf": "2bab4ddc5b9c071c923a8b2ae92f49d68a4fea88e12615da4e025df23682e5db",
+      "json": "342775e89798105532c774012d50fc5396f4b880d63e0beb27fd6c551befe986",
+      "terminal_schedule_pdf": "fa2d76b14a700d2265354bc79cbe39d0ed8a7fb6709986d6a3f29a4b5f3d959b",
+      "wire_schedule_pdf": "912062172669519e8eb1f12b2e576083359e25836f1eabb801f4980505a5c06c"
     },
     "io_marshalling": {
-      "pdf": "f09e3414fbcb94516cc47096ff00ab331a6dbc03f1b41b18ca80f7f52ff87fca",
-      "calculations_pdf": "ce43defa1df85cb3700857e0630552da1fc8f18e435ebe02c2a063c8463fee81",
-      "quotation_pdf": "320b9f4584544c70234abf38559069f77b539955e9f0c4c4f4ac4aeb43ba1383",
-      "dxf": "d34a5be0f2cf7cd6af3aa698e5fda01b2ea162e082f0ddacb9e7c5d6c41fdbb9",
-      "json": "97a8109b9e4556f169a4e6a5682044f809a1069226214eb5347612b8ee1b13e9",
-      "terminal_schedule_pdf": "afec9de6a41dc7f7022314e726dc1541860e8e731f6dd2d2f546d17ada6b5f2b",
-      "wire_schedule_pdf": "8ec3a4cf28d4b7f73c623be58dd0025c429075f87c8d1acf3b403602a3db578d"
+      "pdf": "42bd46809ff430fab123554c3cc711581adfb47c59b43803230a6e8d0e852dfe",
+      "calculations_pdf": "2d94c5ed52b83e338ae106d82d0b48a60f43e5d2c571b69132db58e5de1b26f7",
+      "quotation_pdf": "26bf27692c129763bb6fd2f064aaf9b33017fe1498fe35194ca0b8d5ce5fcfa0",
+      "dxf": "4ad6c2e390820b5c4be1f9667b6e29f59a1f24415eb761107171c86b71edf68a",
+      "json": "367718a7a8b1acc0bbc9c59e9d08c25aa608cb39287142bbe919b7a41f2b0604",
+      "terminal_schedule_pdf": "053cc5d7c379c72f8bf4ee6eee3bc13d245a584202eb3e9ba869d755362e1852",
+      "wire_schedule_pdf": "f420120488fe03cbd8a24a4ea0c30f107da5b1732555eb5ffb1ab859870985ce"
     }
   }
 }
