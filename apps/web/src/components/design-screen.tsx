@@ -457,16 +457,13 @@ function DesignWorkspace({
   // What the work looked like when last saved or opened (or when the page
   // started); anything else is unsaved.
   const [clean, setClean] = useState(snapshot);
-  // Set when a change that is not the engineer's (the detected market) lands
-  // on an untouched form, so that form is still untouched afterwards. Applied
-  // during render, so the form never flashes as unsaved in between.
-  const [rebaseline, setRebaseline] = useState(false);
-  if (rebaseline) {
-    setRebaseline(false);
-    setClean(snapshot);
-  }
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
+  // The form as last committed, for a callback that outlives the render. A
+  // change that is not the engineer's (the detected market) is applied to
+  // this, never to the next render's state, which may already hold a
+  // keystroke queued in the same batch.
+  const committed = useRef({ info, boards, profileText, chosenLanguage });
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
@@ -475,6 +472,7 @@ function DesignWorkspace({
   // read the state from before it.
   useLayoutEffect(() => {
     pristine.current = !dirty;
+    committed.current = { info, boards, profileText, chosenLanguage };
   });
   const unsaved = useUnsavedChangesGuard(dirty, leaveImpl);
 
@@ -545,11 +543,24 @@ function DesignWorkspace({
 
   /** Use a market: its supply on every board, remembered when the engineer chose it. */
   function chooseMarket(code: string, listed: MarketInfo[], chosen: boolean) {
+    const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
     // A detected market is not an edit: an untouched form stays untouched.
-    if (!chosen && pristine.current) setRebaseline(true);
+    // The clean form is the committed one with only the market applied, so a
+    // keystroke queued alongside it is still unsaved.
+    if (!chosen && pristine.current) {
+      const base = committed.current;
+      setClean(
+        snapshotOf(
+          base.info,
+          base.boards.map((board) => ({ ...board, ...defaults })),
+          base.profileText,
+          base.chosenLanguage,
+          code,
+        ),
+      );
+    }
     setMarket(code);
     if (chosen) storeMarket(code);
-    const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
     setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
   }
 
@@ -1040,7 +1051,10 @@ function DesignWorkspace({
           dir={ltr ? 'ltr' : undefined}
           value={info[key]}
           onChange={(event) => {
-            setInfo((current) => ({ ...current, [key]: event.target.value }));
+            // Read now: React may run the updater after the event, once it
+            // has put the controlled input back to its rendered value.
+            const { value } = event.target;
+            setInfo((current) => ({ ...current, [key]: value }));
           }}
           className="input w-full"
         />
