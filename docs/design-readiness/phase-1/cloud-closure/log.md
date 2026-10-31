@@ -45,11 +45,11 @@ owner-report: 0 without an active owner, 0 need assign-owner          exit=0
 
 One synthetic revision saved and approved; drawing PDF, calculations PDF and DXF exported; the tenant's company settings changed (name, key, circuits per RCD); exported again.
 
-| Format | Bytes | SHA-256 before (first 16) | After | Result |
-|---|---|---|---|---|
-| Drawing PDF | 26544 | `b2e76909d55357e4` | `b2e76909d55357e4` | identical |
-| Calculations PDF | 6323 | `facc4420b00b97ad` | `facc4420b00b97ad` | identical |
-| DXF | 77368 | `6c4dc3b541dd5353` | `6c4dc3b541dd5353` | identical |
+| Format           | Bytes | SHA-256 before (first 16) | After              | Result    |
+| ---------------- | ----- | ------------------------- | ------------------ | --------- |
+| Drawing PDF      | 26544 | `b2e76909d55357e4`        | `b2e76909d55357e4` | identical |
+| Calculations PDF | 6323  | `facc4420b00b97ad`        | `facc4420b00b97ad` | identical |
+| DXF              | 77368 | `6c4dc3b541dd5353`        | `6c4dc3b541dd5353` | identical |
 
 No metadata difference is expected, and none was found: the PDFs are written by ReportLab in invariant mode (fixed `CreationDate`/`ModDate` `D:20000101000000+00'00'`, deterministic `/ID`), their author is the company name from the revision's own stored profile, not the live settings; the DXF is R12 with only `$ACADVER` and `$INSUNITS` in its header (no creation time, no GUID). The same check is a test: `test_an_unrelated_settings_change_leaves_the_approved_exports_unchanged`.
 
