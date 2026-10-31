@@ -1391,7 +1391,8 @@ class V2Definition(BaseModel):
     Attributes:
         ref: Its ref.
         kind: ``template`` or ``pattern``.
-        review_status: ``unreviewed``, ``approved`` or ``rejected``, as embedded.
+        review_status: ``unreviewed``, ``approved`` or ``rejected``, as the server's
+            recorded decisions for its exact digest give it (M3); never more.
         provenance_source: The source its provenance documents, or ``None``.
         restricted_scope: For a template, the uses it may not be executed for.
     """

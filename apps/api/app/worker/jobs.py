@@ -632,6 +632,79 @@ def run_assign_owner(args: list[str]) -> int:
     return 0
 
 
+def run_record_global_review(args: list[str]) -> int:
+    """Record a global-scope engineering review decision (operator only).
+
+    ``record-global-review --kind <template|pattern|rule> --ref <ref>
+    --digest <sha256> --decision <approved|rejected|withdrawn>
+    --reviewer <label> --qualification <statement> --reason <text>
+    --recorded-by <operator> [--standard <reference>]...``
+
+    The global scope has no web path: a decision here applies in every
+    tenant. The reviewer label and qualification statement are entered as
+    the owner supplied them for the qualified engineer they designated;
+    nothing is filled in. The decision is appended, never changes a row, and
+    makes nothing ready for execution.
+
+    Args:
+        args: The flags above.
+
+    Returns:
+        ``0`` on success, ``1`` if the domain refuses, ``2`` on bad arguments.
+    """
+    import argparse
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.domain import engineering_reviews
+
+    parser = argparse.ArgumentParser(prog="record-global-review", exit_on_error=False)
+    for flag in (
+        "kind",
+        "ref",
+        "digest",
+        "decision",
+        "reviewer",
+        "qualification",
+        "reason",
+        "recorded-by",
+    ):
+        parser.add_argument(f"--{flag}", required=True)
+    parser.add_argument("--standard", action="append", default=[])
+    try:
+        parsed = parser.parse_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        print(
+            "usage: record-global-review --kind K --ref R --digest D --decision X "
+            "--reviewer LABEL --qualification TEXT --reason TEXT --recorded-by OPERATOR "
+            "[--standard S]...",
+            file=sys.stderr,
+        )
+        return 2
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session):
+        try:
+            row = engineering_reviews.record_global_decision(
+                session=session,
+                subject_kind=parsed.kind,
+                subject_ref=parsed.ref,
+                subject_digest=parsed.digest,
+                decision=parsed.decision,
+                reviewer_label=parsed.reviewer,
+                qualification_statement=parsed.qualification,
+                standards=parsed.standard,
+                reason=parsed.reason,
+                recorded_by=parsed.recorded_by,
+            )
+        except ValidationError as exc:
+            print(f"record-global-review: {exc}", file=sys.stderr)
+            return 1
+        session.commit()
+    print(f"record-global-review: decision {row.id} recorded ({row.decision} {row.subject_ref})")
+    return 0
+
+
 def run_set_plan(args: list[str]) -> int:
     """Put a tenant on a plan: ``set-plan <tenant-slug> <plan> <interval> <seats> [<until>]``.
 
@@ -794,6 +867,11 @@ REGISTRY: dict[str, JobSpec] = {
             run_assign_owner,
         ),
         JobSpec("set-plan", "Put a tenant on a subscription plan.", run_set_plan),
+        JobSpec(
+            "record-global-review",
+            "Record a global-scope engineering review decision (operator only).",
+            run_record_global_review,
+        ),
         JobSpec(
             "enqueue-deferred",
             "Queue the next batch of a source's staged passages a crawl deferred.",

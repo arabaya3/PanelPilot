@@ -1,0 +1,485 @@
+"""The engineering-review routes, and anchoring end to end, on the disposable Postgres (M3).
+
+* The routes: strict 422s, 403 for who may not, 404 across tenants, 201 for
+  the owner's designation and a designated reviewer's decision.
+* Anchoring: a configured ``pp-design/2`` revision's definitions count as
+  approved only with a server-side decision for their exact digest; a stored
+  claim without one is refused, one that is exactly the server's record
+  counts; changing a definition after its approval makes it unreviewed again.
+* Execution stays refused with every definition approved.
+
+Every tenant, account, statement and decision is synthetic
+(``app.tests.domain.review_support``); no engineering review is implied.
+"""
+
+from __future__ import annotations
+
+import copy
+import uuid
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.api import deps
+from app.api.v1.routes import design as design_route
+from app.api.v1.routes import engineering_reviews as reviews_route
+from app.core.db import get_session
+from app.core.errors import install_exception_handlers
+from app.design import snapshot
+from app.design.model import anchoring, codec_v2
+from app.design.model.read import read_snapshot
+from app.models.schemas.auth import CurrentUser
+from app.models.tables.base import Base
+from app.tests import db_target
+from app.tests.api.v1.routes.test_export_integrity import (
+    DATABASE_URL,
+    approve,
+    error,
+    revision_export,
+    revision_row,
+    update_row,
+)
+from app.tests.design.model.compat_support import DESIGNED
+from app.tests.design.model.v2_support import CONFIGS, config_case
+from app.tests.domain.review_support import SYNTHETIC_QUALIFICATION, new_account, new_tenant
+
+pytestmark = pytest.mark.skipif(
+    not DATABASE_URL.startswith("postgresql"),
+    reason="needs Postgres: decisions, approvals and tenancy are the database's",
+)
+
+CASE = "pe_n_distribution"
+
+
+@pytest.fixture(scope="module", name="engine")
+def _engine() -> Iterator[Engine]:
+    db_target.require_disposable(DATABASE_URL)
+    engine = create_engine(DATABASE_URL)
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+
+
+class _As:
+    """Who the next request is from."""
+
+    def __init__(self) -> None:
+        self.user: CurrentUser | None = None
+
+
+@pytest.fixture(name="who")
+def _who() -> _As:
+    return _As()
+
+
+@pytest.fixture(name="client")
+def _client(engine: Engine, who: _As) -> Iterator[TestClient]:
+    factory = sessionmaker(bind=engine)
+
+    def session() -> Iterator[Session]:
+        opened = factory()
+        try:
+            yield opened
+        finally:
+            opened.close()
+
+    app = FastAPI()
+    app.include_router(design_route.router, prefix="/design")
+    app.include_router(reviews_route.router, prefix="/engineering-reviews")
+    app.dependency_overrides[deps.get_current_user] = lambda: who.user
+    app.dependency_overrides[get_session] = session
+    app.dependency_overrides[deps.enforce_design_rate_limit] = lambda: None
+    install_exception_handlers(app)
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
+
+
+@pytest.fixture(name="team")
+def _team(engine: Engine) -> dict[str, CurrentUser]:
+    tenant = new_tenant(engine)
+    other = new_tenant(engine)
+    return {
+        "owner": new_account(engine, tenant, owner=True),
+        "engineer": new_account(engine, tenant),
+        "stranger": new_account(engine, other, owner=True),
+    }
+
+
+@pytest.fixture(name="v2")
+def _v2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+
+
+def _request() -> dict[str, Any]:
+    request: dict[str, Any] = copy.deepcopy(DESIGNED[CONFIGS[CASE]["fixture"]]["request"])
+    return request
+
+
+def _revise(client: TestClient, project_id: str) -> int:
+    response = client.post(
+        f"/design/projects/{project_id}/revisions",
+        json={"request": _request(), "note": "configured", "configuration": config_case(CASE)[1]},
+    )
+    assert response.status_code == 201, response.text[:500]
+    number: int = max(r["number"] for r in response.json()["revisions"])
+    return number
+
+
+def _configured(client: TestClient) -> tuple[str, int]:
+    response = client.post(
+        "/design/projects", json={"name": "M3 synthetic", "request": _request(), "note": "r1"}
+    )
+    assert response.status_code == 201, response.text[:500]
+    project_id: str = response.json()["id"]
+    return project_id, _revise(client, project_id)
+
+
+def _open(client: TestClient, project_id: str, number: int) -> dict[str, Any]:
+    response = client.get(f"/design/projects/{project_id}", params={"revision": number})
+    assert response.status_code == 200, response.text[:500]
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def _subjects(engine: Engine, project_id: str, number: int) -> list[tuple[str, str, str]]:
+    model = read_snapshot(revision_row(engine, project_id, number)["design_snapshot"]).v2
+    assert model is not None
+    return [("template", t.ref, anchoring.definition_digest(t)) for t in model.templates] + [
+        ("pattern", p.ref, anchoring.definition_digest(p)) for p in model.patterns
+    ]
+
+
+def _decide(
+    client: TestClient, kind: str, ref: str, digest: str, decision: str = "approved"
+) -> Any:
+    return client.post(
+        "/engineering-reviews/decisions",
+        json={
+            "subject_kind": kind,
+            "subject_ref": ref,
+            "subject_digest": digest,
+            "decision": decision,
+            "standards": ["SYNTHETIC-STANDARD-REF"],
+            "reason": "Synthetic test decision",
+        },
+    )
+
+
+def _designate(client: TestClient, who: _As, team: dict[str, CurrentUser]) -> None:
+    who.user = team["owner"]
+    response = client.post(
+        "/engineering-reviews/reviewers",
+        json={"member_id": team["engineer"].id, "qualification_statement": SYNTHETIC_QUALIFICATION},
+    )
+    assert response.status_code == 201, response.text
+
+
+def _codes(body: dict[str, Any]) -> set[str]:
+    return {f["code"] for f in body["findings"]}
+
+
+# --------------------------------------------------------------------------- #
+# The routes
+# --------------------------------------------------------------------------- #
+
+
+def test_who_may_designate_and_decide(
+    client: TestClient, who: _As, team: dict[str, CurrentUser]
+) -> None:
+    digest = "a" * 64
+    ref = "tenant/m3-synthetic-template/v1"
+    for caller in ("owner", "engineer"):
+        who.user = team[caller]
+        refused = _decide(client, "template", ref, digest)
+        assert refused.status_code == 403
+        assert error(refused)["code"] == "engineering_review_not_permitted"
+    who.user = team["engineer"]
+    refused = client.post(
+        "/engineering-reviews/reviewers",
+        json={"member_id": team["engineer"].id, "qualification_statement": "self-made"},
+    )
+    assert refused.status_code == 403
+    assert error(refused)["code"] == "reviewer_designation_owner_only"
+    assert client.get("/engineering-reviews/reviewers").status_code == 403
+
+    _designate(client, who, team)
+    listed = client.get("/engineering-reviews/reviewers").json()
+    assert [r["member_id"] for r in listed] == [team["engineer"].id]
+
+    who.user = team["engineer"]
+    recorded = _decide(client, "template", ref, digest)
+    assert recorded.status_code == 201, recorded.text
+    body = recorded.json()
+    assert body["scope"] == "tenant"
+    assert body["current"] is True
+    assert body["qualification_statement"] == SYNTHETIC_QUALIFICATION
+    history = client.get(
+        "/engineering-reviews/decisions", params={"subject_kind": "template", "subject_ref": ref}
+    )
+    assert [d["id"] for d in history.json()] == [body["id"]]
+
+    who.user = team["owner"]
+    assert client.delete(f"/engineering-reviews/reviewers/{team['engineer'].id}").status_code == 204
+    who.user = team["engineer"]
+    assert _decide(client, "template", ref, digest).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"extra": True},
+        {"subject_kind": "design"},
+        {"subject_digest": "XYZ"},
+        {"decision": "approve"},
+        {"reviewer": "Synthetic someone"},
+        {"reason": ""},
+    ],
+)
+def test_a_malformed_decision_is_a_422(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], body: dict[str, Any]
+) -> None:
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    good = {
+        "subject_kind": "template",
+        "subject_ref": "tenant/m3-synthetic/v1",
+        "subject_digest": "a" * 64,
+        "decision": "approved",
+        "standards": [],
+        "reason": "Synthetic",
+    }
+    response = client.post("/engineering-reviews/decisions", json={**good, **body})
+    assert response.status_code == 422
+
+
+def test_a_malformed_ref_is_a_422(
+    client: TestClient, who: _As, team: dict[str, CurrentUser]
+) -> None:
+    who.user = team["owner"]
+    for params in (
+        {"subject_kind": "template", "subject_ref": "tenant/x@v1"},
+        {"subject_kind": "design", "subject_ref": "tenant/x/v1"},
+        {"subject_kind": "template"},
+    ):
+        assert client.get("/engineering-reviews/decisions", params=params).status_code == 422
+
+
+def test_another_tenant_is_not_found_and_sees_nothing(
+    client: TestClient, who: _As, team: dict[str, CurrentUser]
+) -> None:
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    ref = "tenant/m3-isolated/v1"
+    assert _decide(client, "template", ref, "a" * 64).status_code == 201
+    who.user = team["stranger"]
+    listed = client.get(
+        "/engineering-reviews/decisions", params={"subject_kind": "template", "subject_ref": ref}
+    )
+    assert listed.status_code == 200
+    assert listed.json() == []
+    for member in (team["engineer"].id, str(uuid.uuid4())):
+        designated = client.post(
+            "/engineering-reviews/reviewers",
+            json={"member_id": member, "qualification_statement": SYNTHETIC_QUALIFICATION},
+        )
+        assert designated.status_code == 404
+        assert client.delete(f"/engineering-reviews/reviewers/{member}").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Anchoring, end to end
+# --------------------------------------------------------------------------- #
+
+
+def _rewrite(
+    stored: dict[str, Any], review_of: Callable[[str, dict[str, Any]], dict[str, Any] | None]
+) -> dict[str, Any]:
+    """The stored snapshot with reviews replaced where ``review_of`` says, locks recomputed."""
+    out = copy.deepcopy(stored)
+    model = out["model"]
+    for kind, key in (("template", "templates"), ("pattern", "patterns")):
+        for definition in model[key]:
+            review = review_of(kind, definition)
+            if review is not None:
+                definition["review"] = review
+    model["registry_lock"]["templates"] = [
+        {"ref": t["ref"], "digest": codec_v2.template_digest(codec_v2.parse_template(t))}
+        for t in model["templates"]
+    ]
+    model["registry_lock"]["patterns"] = [
+        {"ref": p["ref"], "digest": codec_v2.pattern_digest(codec_v2.parse_pattern(p))}
+        for p in model["patterns"]
+    ]
+    return out
+
+
+def test_definitions_count_as_approved_only_with_a_matching_record(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    who.user = team["owner"]
+    project_id, first = _configured(client)
+    opened = _open(client, project_id, first)
+    assert {"template_unreviewed", "pattern_unreviewed"} <= _codes(opened)
+    assert {d["review_status"] for d in opened["model_v2"]["definitions"]} == {"unreviewed"}
+
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    subjects = _subjects(engine, project_id, first)
+    for kind, ref, digest in subjects:
+        assert _decide(client, kind, ref, digest).status_code == 201
+
+    # What revision `first` was saved under no longer holds: it is stale,
+    # never carried over as if the reviews had always said so.
+    who.user = team["owner"]
+    assert _open(client, project_id, first)["export_status"] == "stale"
+
+    second = _revise(client, project_id)
+    opened = _open(client, project_id, second)
+    assert opened["export_status"] == "draft"
+    assert not {"template_unreviewed", "pattern_unreviewed"} & _codes(opened)
+    assert {d["review_status"] for d in opened["model_v2"]["definitions"]} == {"approved"}
+
+    # Approved everywhere, approved revision: execution is still refused.
+    assert approve(client, project_id, second).status_code == 200
+    refused = revision_export(client, project_id, second, "pdf", purpose="execution")
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "execution_package_incomplete"
+    for fmt in ("qet", "aml", "plc_st", "devices_csv"):
+        assert revision_export(client, project_id, second, fmt).status_code in (409, 422), fmt
+    assert revision_export(client, project_id, second, "pdf").status_code == 200
+
+    # Another tenant's decisions never reach this one, and the project is 404 there.
+    who.user = team["stranger"]
+    assert client.get(f"/design/projects/{project_id}").status_code == 404
+
+
+def test_a_stored_claim_must_be_the_servers_record(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    who.user = team["owner"]
+    project_id, number = _configured(client)
+    stored = revision_row(engine, project_id, number)["design_snapshot"]
+
+    # A claim with no record: refused like an altered design (M2's rule kept).
+    forged_review: dict[str, Any] = {
+        "status": "approved",
+        "reviewer": "Synthetic forged reviewer",
+        "reviewed_at": "2026-01-01",
+        "standards": [],
+        "scope_note": None,
+    }
+    forged = _rewrite(stored, lambda _k, _d: dict(forged_review))
+    update_row(
+        engine,
+        project_id,
+        number,
+        design_snapshot=forged,
+        snapshot_sha256=snapshot.sha256_of(forged),
+    )
+    opened = _open(client, project_id, number)
+    assert opened["export_status"] == "not_validated"
+    assert "snapshot_integrity_failed" in _codes(opened)
+
+    # Record approvals; a claim exactly as the server records them counts.
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    recorded: dict[tuple[str, str], dict[str, Any]] = {}
+    for kind, ref, digest in _subjects(engine, project_id, number):
+        response = _decide(client, kind, ref, digest)
+        assert response.status_code == 201
+        body = response.json()
+        recorded[(kind, ref)] = {
+            "status": "approved",
+            "reviewer": f"server-record:tenant:{body['id']}",
+            "reviewed_at": _decided_at(engine, team["owner"], body["id"]),
+            "standards": body["standards"],
+            "scope_note": None,
+        }
+    who.user = team["owner"]
+    honest = _rewrite(stored, lambda k, d: recorded[(k, d["ref"])])
+    update_row(
+        engine,
+        project_id,
+        number,
+        design_snapshot=honest,
+        snapshot_sha256=snapshot.sha256_of(honest),
+    )
+    opened = _open(client, project_id, number)
+    # It reads: no integrity failure. Its saved findings said "unreviewed",
+    # which the records no longer do, so it is stale (and shows no summary).
+    assert "snapshot_integrity_failed" not in _codes(opened)
+    assert opened["export_status"] == "stale"
+
+    # The forged claim is still refused, records or not.
+    update_row(
+        engine,
+        project_id,
+        number,
+        design_snapshot=forged,
+        snapshot_sha256=snapshot.sha256_of(forged),
+    )
+    assert _open(client, project_id, number)["export_status"] == "not_validated"
+
+
+def _decided_at(engine: Engine, user: CurrentUser, decision_id: str) -> str:
+    from app.domain import engineering_reviews
+
+    with sessionmaker(bind=engine)() as session:
+        anchor = engineering_reviews.anchor_for(
+            session=session, tenant_id=uuid.UUID(user.tenant_id)
+        )
+    for decided in anchor.tenant.values():
+        if decided.record_id == decision_id:
+            return decided.decided_at
+    raise AssertionError(decision_id)
+
+
+def test_changing_a_definition_after_approval_makes_it_unreviewed(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    who.user = team["owner"]
+    project_id, number = _configured(client)
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    for kind, ref, digest in _subjects(engine, project_id, number):
+        assert _decide(client, kind, ref, digest).status_code == 201
+    who.user = team["owner"]
+    number = _revise(client, project_id)
+    assert not {"template_unreviewed"} & _codes(_open(client, project_id, number))
+
+    # Edit one template's content outside the application, locks and hash
+    # recomputed: its approval was for another digest, so it is unreviewed,
+    # and the revision's findings no longer hold.
+    stored = copy.deepcopy(revision_row(engine, project_id, number)["design_snapshot"])
+    target = next(t for t in stored["model"]["templates"] if t["ref"].startswith("tenant/"))
+    target["function"] = target["function"] + "-edited"
+    edited = _rewrite(stored, lambda _k, _d: None)
+    update_row(
+        engine,
+        project_id,
+        number,
+        design_snapshot=edited,
+        snapshot_sha256=snapshot.sha256_of(edited),
+    )
+    opened = _open(client, project_id, number)
+    assert opened["export_status"] == "stale"
+    assert "snapshot_integrity_failed" not in _codes(opened)
+    # Its anchored review is unreviewed: the decision was for the old digest.
+    from app.domain import engineering_reviews
+
+    model = read_snapshot(edited).v2
+    assert model is not None
+    with sessionmaker(bind=engine)() as session:
+        anchor = engineering_reviews.anchor_for(
+            session=session, tenant_id=uuid.UUID(team["owner"].tenant_id)
+        )
+    anchored = anchoring.anchor_model(model, anchor)
+    statuses = {t.ref: t.review.status for t in anchored.templates}
+    assert statuses[target["ref"]] == "unreviewed"
+    assert {s for r, s in statuses.items() if r != target["ref"]} == {"approved"}

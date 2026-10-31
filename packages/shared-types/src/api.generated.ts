@@ -909,6 +909,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/engineering-reviews/decisions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Decisions
+     * @description Every decision on a subject, this tenant's and global, newest first.
+     */
+    get: operations['list_decisions_api_v1_engineering_reviews_decisions_get'];
+    put?: never;
+    /**
+     * Record Decision
+     * @description Record a decision; a designated reviewer only.
+     */
+    post: operations['record_decision_api_v1_engineering_reviews_decisions_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/engineering-reviews/reviewers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Reviewers
+     * @description The current designations; the owner or an admin.
+     */
+    get: operations['list_reviewers_api_v1_engineering_reviews_reviewers_get'];
+    put?: never;
+    /**
+     * Designate
+     * @description Designate an account as a qualified engineering reviewer; the owner only.
+     */
+    post: operations['designate_api_v1_engineering_reviews_reviewers_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/engineering-reviews/reviewers/{member_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke
+     * @description Revoke a designation; the owner only. Decisions already recorded stay.
+     */
+    delete: operations['revoke_api_v1_engineering_reviews_reviewers__member_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ingestion/crawl-jobs': {
     parameters: {
       query?: never;
@@ -2056,6 +2124,96 @@ export interface components {
      */
     CrawlJobStatus: 'queued' | 'running' | 'succeeded' | 'failed';
     /**
+     * DecisionOut
+     * @description One recorded decision.
+     *
+     *     Attributes:
+     *         id: The record.
+     *         scope: ``tenant`` or ``global``.
+     *         subject_kind: What was reviewed.
+     *         subject_ref: Its ref.
+     *         subject_digest: Its digest.
+     *         decision: What was decided.
+     *         reviewer: For a tenant decision the reviewer's account id; for a
+     *             global one the label the operator recorded.
+     *         qualification_statement: As the owner supplied it; not verified.
+     *         standards: As the reviewer named them.
+     *         reason: Why.
+     *         recorded_at: When.
+     *         current: Whether it is the newest decision for its scope and digest.
+     */
+    DecisionOut: {
+      /** Id */
+      id: string;
+      /**
+       * Scope
+       * @enum {string}
+       */
+      scope: 'tenant' | 'global';
+      /**
+       * Subject Kind
+       * @enum {string}
+       */
+      subject_kind: 'template' | 'pattern' | 'rule';
+      /** Subject Ref */
+      subject_ref: string;
+      /** Subject Digest */
+      subject_digest: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'approved' | 'rejected' | 'withdrawn';
+      /** Reviewer */
+      reviewer: string;
+      /** Qualification Statement */
+      qualification_statement: string;
+      /** Standards */
+      standards: string[];
+      /** Reason */
+      reason: string;
+      /**
+       * Recorded At
+       * Format: date-time
+       */
+      recorded_at: string;
+      /** Current */
+      current: boolean;
+    };
+    /**
+     * DecisionRequest
+     * @description Record a decision on one definition, bound to its digest.
+     *
+     *     Attributes:
+     *         subject_kind: ``template``, ``pattern`` or ``rule``.
+     *         subject_ref: ``<scope>/<id>/v<version>``.
+     *         subject_digest: The SHA-256 of the definition reviewed (for a template
+     *             or pattern, with its review unset).
+     *         decision: ``approved``, ``rejected`` or ``withdrawn``.
+     *         standards: The standards the reviewer relied on, as they name them.
+     *         reason: Why.
+     */
+    DecisionRequest: {
+      /**
+       * Subject Kind
+       * @enum {string}
+       */
+      subject_kind: 'template' | 'pattern' | 'rule';
+      /** Subject Ref */
+      subject_ref: string;
+      /** Subject Digest */
+      subject_digest: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'approved' | 'rejected' | 'withdrawn';
+      /** Standards */
+      standards?: string[];
+      /** Reason */
+      reason: string;
+    };
+    /**
      * DependencyState
      * @description Reachability of a dependency.
      * @enum {string}
@@ -2185,6 +2343,21 @@ export interface components {
       boards?: components['schemas']['Board-Output'][];
       /** Parts */
       parts?: components['schemas']['Part-Output'][];
+    };
+    /**
+     * DesignateRequest
+     * @description The owner designates an account as a qualified engineering reviewer.
+     *
+     *     Attributes:
+     *         member_id: An active account of the tenant.
+     *         qualification_statement: The owner's statement of the engineer's
+     *             qualification, recorded verbatim and never verified by the server.
+     */
+    DesignateRequest: {
+      /** Member Id */
+      member_id: string;
+      /** Qualification Statement */
+      qualification_statement: string;
     };
     /**
      * Designation
@@ -3590,7 +3763,11 @@ export interface components {
      *     server checks it again on every request regardless.
      * @enum {string}
      */
-    Permission: 'approve_revision' | 'delete_project' | 'edit_company_settings';
+    Permission:
+      | 'approve_revision'
+      | 'delete_project'
+      | 'edit_company_settings'
+      | 'review_engineering_definitions';
     /**
      * Phase
      * @description A line conductor, or all three.
@@ -4258,6 +4435,32 @@ export interface components {
        * @default false
        */
       anchored: boolean;
+    };
+    /**
+     * ReviewerOut
+     * @description A current designation.
+     *
+     *     Attributes:
+     *         member_id: The account.
+     *         full_name: Its name, if given.
+     *         qualification_statement: As the owner supplied it.
+     *         granted_by: The account that granted it.
+     *         granted_at: When.
+     */
+    ReviewerOut: {
+      /** Member Id */
+      member_id: string;
+      /** Full Name */
+      full_name?: string | null;
+      /** Qualification Statement */
+      qualification_statement: string;
+      /** Granted By */
+      granted_by: string;
+      /**
+       * Granted At
+       * Format: date-time
+       */
+      granted_at: string;
     };
     /**
      * ReviseProjectRequest
@@ -6772,6 +6975,153 @@ export interface operations {
         content: {
           'application/json': components['schemas']['Team'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_decisions_api_v1_engineering_reviews_decisions_get: {
+    parameters: {
+      query: {
+        subject_kind: 'template' | 'pattern' | 'rule';
+        subject_ref: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DecisionOut'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  record_decision_api_v1_engineering_reviews_decisions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DecisionOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_reviewers_api_v1_engineering_reviews_reviewers_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReviewerOut'][];
+        };
+      };
+    };
+  };
+  designate_api_v1_engineering_reviews_reviewers_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DesignateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReviewerOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revoke_api_v1_engineering_reviews_reviewers__member_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

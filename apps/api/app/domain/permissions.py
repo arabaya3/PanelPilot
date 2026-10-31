@@ -2,15 +2,22 @@
 
 The policy, in one place:
 
-=========================  =====  =====  ========  ============  =====
-Permission                 Owner  Admin  Reviewer  Other member  Trial
-=========================  =====  =====  ========  ============  =====
-``approve_revision``       yes    yes    yes       no            no
-``delete_project``         yes    yes    no        no            no
-``edit_company_settings``  yes    yes    no        no            no
-manage the team            yes    yes    no        no            no
-transfer ownership         yes    no     no        no            no
-=========================  =====  =====  ========  ============  =====
+==================================  =====  =====  ========  ============  =====
+Permission                          Owner  Admin  Reviewer  Other member  Trial
+==================================  =====  =====  ========  ============  =====
+``approve_revision``                yes    yes    yes       no            no
+``delete_project``                  yes    yes    no        no            no
+``edit_company_settings``           yes    yes    no        no            no
+``review_engineering_definitions``  grant  grant  grant     grant         no
+manage the team                     yes    yes    no        no            no
+transfer ownership                  yes    no     no        no            no
+==================================  =====  =====  ========  ============  =====
+
+``review_engineering_definitions`` (M3) is held by no role, and not by the
+owner or an admin implicitly: only by an active account with a current grant
+the tenant's owner recorded (``app.domain.engineering_reviews``), the owner's
+own account included when the owner designates it. "grant" above means
+exactly that.
 
 "Owner" is the tenant's recorded owner, ``tenants.owner_user_id``
 (``team.standing``), never the oldest account. "Admin" and "Reviewer" are
@@ -56,9 +63,15 @@ from app.core.errors import AuthorizationError
 from app.domain import team
 from app.models.schemas.auth import CurrentUser, Permission, Role
 
+#: Held only through the owner's grant, never through a role or ownership.
+_BY_GRANT: frozenset[Permission] = frozenset({Permission.REVIEW_ENGINEERING_DEFINITIONS})
+
+#: What the owner holds by being the owner.
+_OWNER: frozenset[Permission] = frozenset(Permission) - _BY_GRANT
+
 #: Granted by a stored role, beyond what the owner holds.
 _BY_ROLE: dict[Role, frozenset[Permission]] = {
-    Role.ADMIN: frozenset(Permission),
+    Role.ADMIN: _OWNER,
     Role.REVIEWER: frozenset({Permission.APPROVE_REVISION}),
 }
 
@@ -76,6 +89,11 @@ _REFUSALS: dict[Permission, tuple[str, str]] = {
         "only the account's owner or an admin changes the company settings",
         "settings_not_permitted",
     ),
+    Permission.REVIEW_ENGINEERING_DEFINITIONS: (
+        "recording an engineering review decision is for an account the owner "
+        "has designated as a qualified engineer",
+        "engineering_review_not_permitted",
+    ),
 }
 
 
@@ -90,16 +108,23 @@ def _has_account(user: CurrentUser) -> bool:
     return True
 
 
-def _granted(found: team.Standing | None) -> list[Permission]:
+def _granted(found: team.Standing | None, *, designated: bool = False) -> list[Permission]:
     if found is None:
         return []
-    if found.owner:
-        return sorted(Permission)
-    held: set[Permission] = set()
+    held: set[Permission] = set(_OWNER) if found.owner else set()
     for role, granted in _BY_ROLE.items():
         if role in found.roles:
             held |= granted
+    if designated:
+        held |= _BY_GRANT
     return sorted(held)
+
+
+def _designated(session: Session, user: CurrentUser) -> bool:
+    # Imported here: engineering_reviews imports this module.
+    from app.domain import engineering_reviews
+
+    return engineering_reviews.is_designated(session=session, user=user)
 
 
 def allowed(*, session: Session, user: CurrentUser) -> list[Permission]:
@@ -116,7 +141,8 @@ def allowed(*, session: Session, user: CurrentUser) -> list[Permission]:
     """
     if not _has_account(user):
         return []
-    return _granted(team.standing(session=session, user=user))
+    found = team.standing(session=session, user=user)
+    return _granted(found, designated=found is not None and _designated(session, user))
 
 
 def can(*, session: Session, user: CurrentUser, permission: Permission) -> bool:
@@ -147,10 +173,13 @@ def require(*, session: Session, user: CurrentUser, permission: Permission) -> N
 
     Raises:
         AuthorizationError: If it does not, with the permission's own code
-            (``approval_not_permitted``, ``project_delete_not_permitted`` or
-            ``settings_not_permitted``).
+            (``approval_not_permitted``, ``project_delete_not_permitted``,
+            ``settings_not_permitted`` or ``engineering_review_not_permitted``).
     """
     found = team.standing(session=session, user=user, lock="share") if _has_account(user) else None
-    if permission not in _granted(found):
+    # The grant is read after the account row is locked FOR SHARE: a
+    # revocation locks it FOR UPDATE, so the two serialise.
+    designated = found is not None and permission in _BY_GRANT and _designated(session, user)
+    if permission not in _granted(found, designated=designated):
         message, code = _REFUSALS[permission]
         raise AuthorizationError(message, code=code)

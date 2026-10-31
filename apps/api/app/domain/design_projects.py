@@ -45,7 +45,7 @@ import structlog
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.core import config
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
@@ -61,10 +61,10 @@ from app.design import (
     schedule_pdf,
     snapshot,
 )
-from app.design.model import entities, findings_v2, schedules, versions
+from app.design.model import anchoring, entities, findings_v2, schedules, versions
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
-from app.domain import billing, design_configuration, permissions
+from app.domain import billing, design_configuration, engineering_reviews, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
@@ -526,28 +526,42 @@ def _read_stored(row: DesignRevisionRow) -> VersionedModel | DesignFinding:
         return _schema_finding(exc)
     except versions.SnapshotUnreadableError:
         return _integrity_finding("unreadable")
-    if _review_not_issued(read):
+    anchored = _anchored(read, row)
+    if anchored is None:
         return _integrity_finding("review_not_issued")
-    return read
+    return anchored
 
 
-def _review_not_issued(read: VersionedModel) -> bool:
-    """Whether a stored v2 design holds a review status this server never issued.
+def _anchor_of(row: DesignRevisionRow) -> anchoring.ReviewAnchor:
+    """The server's review decisions that apply in the revision's tenant (M3)."""
+    session = object_session(row)
+    if session is None:  # pragma: no cover - every row read here is loaded
+        return anchoring.EMPTY
+    return engineering_reviews.anchor_for(session=session, tenant_id=row.tenant_id)
 
-    No review of templates or connection patterns can be recorded yet: that
-    waits on the qualified electrical engineer the owner designates and a
-    server-side record of their decisions. Every definition a save writes is
-    therefore ``unreviewed``, so any other stored status (with a reviewer,
-    date or standards) was written outside the application, even if the row's
-    lock and hash were recomputed to match. Such a design is refused like an
-    altered one, never approved or exported. An independent review showed a
-    consistently rewritten row was otherwise accepted.
+
+def _anchored(read: VersionedModel, row: DesignRevisionRow) -> VersionedModel | None:
+    """The stored design with its review statuses anchored to the server's decisions.
+
+    Each template's and pattern's review is replaced, in memory only, by the
+    one the server's decisions give for its exact definition digest in the
+    revision's tenant or the global scope (``anchoring.anchor_model``):
+    approved or rejected only with a matching record, else unreviewed.
+    ``None`` when a stored review claims anything else: it was written
+    outside the application, even if the row's lock and hash were recomputed
+    to match, and the design is refused like an altered one
+    (``review_not_issued``). With no decisions recorded this is M2's rule:
+    any stored status other than ``unreviewed`` is refused.
     """
     if read.v2 is None:
-        return False
-    return any(t.review.status != "unreviewed" for t in read.v2.templates) or any(
-        p.review.status != "unreviewed" for p in read.v2.patterns
-    )
+        return read
+    try:
+        model = anchoring.anchor_model(read.v2, _anchor_of(row))
+    except anchoring.ReviewClaimUnmatchedError:
+        return None
+    if model is read.v2:
+        return read
+    return VersionedModel(schema=read.schema, project=read.project, v2=model)
 
 
 def _integrity_finding(reason: str) -> DesignFinding:
@@ -823,7 +837,9 @@ def _design_refused(exc: ValidationError) -> DesignFinding:
 
 
 def _validate(
-    request: ProjectDesignRequest, configuration: Mapping[str, Any] | None = None
+    request: ProjectDesignRequest,
+    configuration: Mapping[str, Any] | None = None,
+    anchor: anchoring.ReviewAnchor = anchoring.EMPTY,
 ) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
@@ -867,6 +883,11 @@ def _validate(
         # what every later read sees.
         stored = snapshot_v2_from_v1(stored)
         v2 = read_snapshot(stored).v2
+    # The findings of what every later read sees: its reviews anchored to the
+    # server's decisions (a save writes only ``unreviewed``), so a revision
+    # saved after a decision does not read as stale.
+    if v2 is not None:
+        v2 = anchoring.anchor_model(v2, anchor)
     findings = _design_findings(designed, conditions, v2)
     return {
         "design_snapshot": stored,
@@ -914,7 +935,11 @@ def _add_revision(
             note=note,
             author=user.email,
             request=request.model_dump(mode="json"),
-            **_validate(request, configuration),
+            **_validate(
+                request,
+                configuration,
+                engineering_reviews.anchor_for(session=session, tenant_id=tenant),
+            ),
         )
     )
 
@@ -1186,13 +1211,14 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             code="snapshot_integrity_failed",
             params={"revision": number},
         ) from exc
-    if _review_not_issued(read):
+    anchored = _anchored(read, row)
+    if anchored is None:
         raise ConflictError(
             f"revision {number}'s stored design holds a review status this server never issued",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "review_not_issued"},
         )
-    return read
+    return anchored
 
 
 def _recorded_rules_version(row: DesignRevisionRow, applicable: _Applicable) -> str:
@@ -1680,6 +1706,9 @@ def validate_configuration(
     model = read.v2
     if model is None:  # pragma: no cover - compose always writes v2
         raise ValidationError("the configuration did not compose", code="configuration_refused")
+    model = anchoring.anchor_model(
+        model, engineering_reviews.anchor_for(session=session, tenant_id=project.tenant_id)
+    )
     conditions = {board.name: board.conditions for board in entered.boards}
     written = _written_schema()
     return ConfigurationReview(
