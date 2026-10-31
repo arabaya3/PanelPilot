@@ -50,6 +50,11 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     update_row,
 )
 from app.tests.design import render_content
+from app.tests.domain.test_design_projects_configured_db import CASE, _configuration, _revise
+from app.tests.domain.test_design_projects_configured_db import _save as _save_configured
+
+#: The synthetic distribution bar template of ``CASE`` (``pe_n_distribution``).
+BAR = "tenant/synth-dist-bar-3way/v1"
 
 Switch = Callable[[str], None]
 
@@ -200,7 +205,39 @@ def test_v2_quotation_stays_a_provisional_estimate(client: TestClient, switch: S
 def test_an_unconnected_required_terminal_blocks_approval(
     client: TestClient, engine: Engine, switch: Switch
 ) -> None:
-    """The mapping, end to end: a required terminal in no net is a blocking finding."""
+    """The mapping, end to end: a required terminal in no net is a blocking finding.
+
+    Saved through the real save path: a configuration whose template requires
+    a terminal explicitly, with a documented provenance source, and leaves it
+    in no net. The pipeline finds it, the row stores it as blocking, and the
+    approval is refused for it (not as an integrity failure).
+    """
+    switch("pp-design/2")
+    configuration = _configuration(CASE)
+    bar = next(t for t in configuration["templates"] if t["ref"] == BAR)
+    next(t for t in bar["terminals"] if t["id"] == "feed")["required"] = True
+    bar["provenance"]["source"] = "synthetic test data"
+    project_id = _save_configured(client)
+    saved = _revise(client, project_id, configuration, CASE)
+    assert saved.status_code == 201, saved.text[:500]
+    row = revision_row(engine, project_id, 2)
+    found = [f for f in row["findings"] if f["code"] == "unconnected_required_terminal"]
+    assert found, row["findings"]
+    assert all(f["severity"] == "blocking" for f in found)
+    refused = approve(client, project_id, 2)
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "revision_has_blocking_findings"
+    assert revision_row(engine, project_id, 2)["approved_at"] is None
+
+
+def test_a_finding_written_into_the_row_is_an_integrity_failure(
+    client: TestClient, engine: Engine, switch: Switch
+) -> None:
+    """A blocking finding written into a row, not found in its design, fails integrity.
+
+    The stored findings no longer belong to the stored design under the same
+    rules (``findings_mismatch``), not a rules change (``revision_stale``).
+    """
     switch("pp-design/2")
     saved = save(client)
     row = revision_row(engine, saved["id"], 1)
@@ -217,10 +254,6 @@ def test_an_unconnected_required_terminal_blocks_approval(
     update_row(engine, saved["id"], 1, findings=findings)
     refused = approve(client, saved["id"], 1)
     assert refused.status_code == 409
-    # The finding is written into the row, not found in its design: the stored
-    # findings no longer belong to the stored design under the same rules,
-    # which is an integrity failure (it was accepted as ``revision_stale``,
-    # misleadingly called a rules change, before the cause was told apart).
     body = error(refused)
     assert body["code"] == "snapshot_integrity_failed"
     assert body["params"]["reason"] == "findings_mismatch"
