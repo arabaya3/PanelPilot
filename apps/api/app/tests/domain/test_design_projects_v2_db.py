@@ -5,7 +5,7 @@ with the fixtures of the Phase 1 export-integrity suite. The invariants:
 
 * switch off (the default): a save is a bare v1 snapshot, exactly as before;
 * switch on: a save is a v2 envelope, hashed as stored, that opens, approves
-  and exports with the same content as the v1 export of the same design;
+  and exports printing its structural findings under the v2 renderer version;
   execution is refused naming ``template_unreviewed``; restricted formats
   stay refused; the quotation stays a provisional estimate;
 * a v1 approved revision followed by a v2 one: the v1 row is untouched and
@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
+from app import design
 from app.core.config import get_settings
 from app.design import marking, snapshot
 from app.domain import design_projects
@@ -126,7 +127,7 @@ def test_switch_on_saves_a_v2_envelope_that_opens_validated(
     assert "template_unreviewed" in opened["execution_blockers"]
 
 
-def test_v2_revision_approves_and_exports_the_same_content_as_v1(
+def test_v2_revision_approves_and_exports_printing_its_structural_findings(
     client: TestClient, engine: Engine, switch: Switch, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The identity line prints the snapshot's hash, which differs between the
@@ -145,7 +146,16 @@ def test_v2_revision_approves_and_exports_the_same_content_as_v1(
         second = revision_export(client, v2["id"], 1, fmt)
         assert first.status_code == 200, (fmt, first.text[:300])
         assert second.status_code == 200, (fmt, second.text[:300])
-        assert content(first.content) == content(second.content), fmt
+        # Since per-schema renderer versions, a v2 revision's review exports
+        # print its structural findings under the v2 renderer; v1 is as before.
+        assert content(first.content) != content(second.content), fmt
+        assert b"template_unreviewed" not in first.content, fmt
+        if fmt == "json":
+            assert "template_unreviewed" in second.content.decode(), fmt
+        elif fmt != "dxf":
+            text = " ".join(" ".join(pdf_pages(second.content)).split())
+            assert "template_unreviewed" in text, fmt
+            assert f"renderer {design.renderer_version('pp-design/2')}" in text, fmt
     # The approval binding holds for v2 exactly as for v1.
     row = revision_row(engine, v2["id"], 1)
     assert row["approved_snapshot_sha256"] == row["snapshot_sha256"]
