@@ -503,10 +503,10 @@ Three tabs refreshing at once used to end every session. That rule is replaced:
 
 1. Back up the database.
 2. Set `WEB_ORIGINS` to the exact HTTPS web origins. Optionally set `REFRESH_TOKEN_KEY`. Keep `AUTH_COOKIE_SECURE` at its default (true outside dev).
-3. Run `alembic upgrade head` (through `b4e8d2f6a9c1`). Every migration is additive and safe while old pods still run; legacy tokens are refused.
-4. **Mandatory gate:** run `python -m app.worker owner-report`. Exit code 1 blocks the rollout: at least one tenant has no active owner and no active admin, so nobody in it can manage its team (invite, remove, grant nothing, transfer nothing) and nobody can approve, delete or change settings, because existing members no longer hold those powers. For each line marked `needs assign-owner`, record an active account of that tenant as its owner with `python -m app.worker assign-owner person@example.com` (agreed with the customer), then run `owner-report` again until it exits 0. A deactivated tenant is refused (`tenant_inactive`): reactivate it first, or leave it. Lines without the mark (a tenant whose admins still manage it) do not block.
+3. Run `alembic upgrade head` (through `c5d1e8a3f7b2`). Every migration is additive; legacy tokens are refused. `a7d3e9f1c2b4` adds a unique constraint on `users` and a foreign key on `tenants`, which lock those tables briefly while they are built, so sign-in from old pods waits for that time.
+4. **Mandatory gate:** run `python -m app.worker owner-report`. Exit code 1 blocks the rollout: at least one tenant has no active owner and no active admin, so nobody in it can manage its team (invite, remove, grant nothing, transfer nothing) and nobody can approve, delete or change settings, because existing members no longer hold those powers. For each line marked `needs assign-owner`, record an active account of that tenant as its owner with `python -m app.worker assign-owner person@example.com` (agreed with the customer), then run `owner-report` again until it exits 0. A deactivated tenant is refused (`tenant_inactive`): reactivate it first, or leave it. Lines without the mark (a tenant whose admins still manage it) do not block. The report is a snapshot: run it again once the old pods are drained, since they can still deactivate accounts until then. It skips deactivated tenants and tenants with no active member; **after reactivating a tenant or its only members, run `owner-report` again** and, if needed, `assign-owner`.
 5. Tell users they will sign in once. Saved projects and drafts are kept.
-6. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Revisions with names over 200 characters must be renamed and saved again.
+6. Revisions saved before Phase 1 must be saved again to be validated and re-approved. Every approval granted before `c5d1e8a3f7b2` stops counting (no renderer was recorded for it); its revision is saved again and approved. Revisions with names over 200 characters must be renamed and saved again.
 7. Later, a contract migration drops the unused `grace_used_at`, once no old pod can run.
 
 ## Second independent review and final verification (2026-10-27)
@@ -645,9 +645,54 @@ Decided by the integration owner: an approval binds the policy that applied when
 
 ### Limitations
 
-- **Renderer wording is not versioned.** A change to how an export is laid out or worded (titles, labels, PDF layout) is not part of the recorded policy, so an approved revision exported after such a change reads differently while its approval still counts.
+- **Renderer wording is versioned since `c5d1e8a3f7b2`** (see "Renderer version" below). The version is only as good as its upkeep; a test of reference exports enforces it for the content it reads.
 - **Strict by design:** any change to the default profile that the revision's settings inherit changes the resolved profile hash, including purely presentational defaults (a title-block field, a page order). Such a change makes approved revisions not current and their exports refused until saved again.
 - The cheap check (below) misses a findings-policy reclassification and a snapshot that no longer reads; such an approval shows as not current once that revision is opened, approved or exported.
+
+### Renderer version
+
+An approval now also records `approved_renderer_version` (migration `c5d1e8a3f7b2`, one nullable column, single head). `app.design.RENDERER_VERSION` is the version of what the available exports print from a stored design. An approval counts only while the version it recorded equals the current one; otherwise opening the revision shows `approval_changed: ["renderer_version"]` and every revision export (PDF, calculations PDF, quotation PDF, DXF, JSON) is refused with 409 `revision_stale`, `changed: renderer_version`. Execution stays refused first, with `execution_package_incomplete`; CSV, QET, AML and PLC stay refused with `export_format_unprotected`.
+
+- **No backfill, fail-safe.** NULL (an approval granted before the column) is read as `RENDERER_BASELINE = "unversioned"`, which matches no version, so such an approval stops counting and its exports are refused until the revision is saved again and approved. Which renderer exported an earlier approval was never recorded, and the export content did change while approvals existed (the stamp layout and the quotation's item names), so treating them as current could print a different file as the same approval. An approval of another design (`snapshot` changed) still exports as a draft; its renderer is not a reason to refuse it.
+- **An unapproved revision is not affected.** A renderer change does not change the design; only an approval stops counting. Saving the revision again and approving it under the new renderer is the remedy, as for a rules change.
+- **`revision_stale` details** now give `saved_rules_version` (the revision's own), `recorded_rules_version` (the version the failing check compared: the revision's own when it was designed under other rules, otherwise the one its approval recorded), `current_rules_version`, `approved_renderer_version` and `current_renderer_version`. Before, the revision's own rules version could appear as both the recorded and the current one.
+
+**What is frozen and what is regenerated.**
+
+| Frozen when saved or approved, never rewritten | Regenerated on every export |
+|---|---|
+| The design snapshot and its SHA-256; the stored request and findings; rules, catalogue and profile hash of the revision | The file bytes, rendered from the snapshot by the current renderer |
+| The approval: snapshot hash, profile hash, rules, catalogue and renderer versions, findings fingerprint, approver display name, date | The status mark (label, identity line, findings sheet), from the frozen approval record |
+| | The title-block revision table, from the frozen rows of the project's revisions |
+
+Nothing is recalculated on export. A renderer change therefore cannot alter a frozen snapshot, but it can alter the file printed from it; that is what the renderer version guards.
+
+**What counts as material.** The documents settle the principle (`docs/architecture/dynamic-design-engine.md`: every artifact is a function of snapshot, profile hash and renderer version, and renderer versions must make a renderer change detectable), not a list. From the code, the content a reader acts on is:
+
+- **PDFs:** the page count and the words on each page, in reading order: figures, units, designations, titles, notes, the status label and identity, findings.
+- **DXF:** every entity's layer, type, text and geometry (to 0.001 mm).
+- **JSON:** the whole document, with its `export_status`.
+
+Fonts, colours, line widths, dash patterns, DXF layer colours, line types, text styles, handles and file metadata are treated as presentation. `app/tests/design/test_renderer_version.py` renders a fixed synthetic project in the five formats and compares that content with fingerprints recorded for the current version (`renderer_fingerprints.json`): a content change without a version bump fails. Its own tests show a reworded approval label changes all five, and a changed PDF dash pattern and DXF layer colours change none.
+
+**Needs an engineering decision** (counted as material until decided, the strict reading):
+
+1. Whether moving printed text or drawing geometry without changing it (a layout change) is material.
+2. Whether a change to the findings sheet's wording alone, with the same codes and severities, is material.
+3. Whether a correction of a typographical error in a label is material.
+4. Whether the quotation PDF (a provisional estimate, never an approved price) should bind approvals at all.
+
+**Limits.** The reference project covers one board with two loads; a renderer change confined to content it does not exercise (a motor circuit, a PLC page, Arabic or Hebrew text) is not caught by the test and depends on the developer bumping the version. Every bump makes every approval stop counting.
+
+### Database targets for destructive tests
+
+The database tests create and drop tables, and the migration tests drop and create whole databases. Since this round:
+
+- `app/tests/db_target.py` accepts only an explicitly named `TEST_DATABASE_URL` whose database is `panelpilot_phase1_*`, `panelpilot_ci_*` or `panelpilot_test_*`, and refuses `panelpilot`, `postgres`, `template0` and `template1` by name. There is no fallback to `DATABASE_URL` and no exception for CI.
+- `app/tests/conftest.py` checks it when pytest starts, before any test or fixture runs, and stops the run otherwise.
+- The migration tests check the scratch databases they derive as well, before `DROP DATABASE`.
+- CI's Postgres service database is now `panelpilot_ci_test`.
+- `apps/api/scripts/recreate-test-db.sh --container <exact name> --database <name>` is the only supported way to recreate a local test database. It never selects a container by filter or order. It requires the exact container name, a running Postgres image in the `panelpilot` compose project and a `panelpilot` role (a read-only query) before it sends `DROP` or `CREATE`, and `DRY_RUN=1` shows what it would send.
 
 ## Remaining limitations
 

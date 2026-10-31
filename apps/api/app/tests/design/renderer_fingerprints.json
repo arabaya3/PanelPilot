@@ -1,0 +1,10 @@
+{
+  "renderer_version": "2026.10.31.1",
+  "formats": {
+    "pdf": "6fd94dde39e6c20834963c42061e7878aff5e2a9b11f9d10e35f268be14f928a",
+    "calculations_pdf": "36dd60ce39c5d1073b50b03596e5b4483c840fde1833c05787ffd1fbc8f27b2d",
+    "quotation_pdf": "aadcb5e236d8ce4ccebbc40e162a0c0aef6100d7b6eac3418c4b29dd60b8e0d6",
+    "dxf": "83d66b4603b8c89fb7e4a1415a6dbe6c159010e0cbc32071229bcb1f37d52234",
+    "json": "e89594b803651681780f928de752148a46d30b8373ef1c6cceef4b7e77bc8b8a"
+  }
+}

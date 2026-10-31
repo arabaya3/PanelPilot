@@ -33,6 +33,7 @@ from app.core.db import get_session
 from app.core.errors import install_exception_handlers
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.tenant import TenantRow
+from app.tests import db_target
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -119,13 +120,11 @@ def _engine() -> Iterator[Engine]:
             "(panelpilot_phase1_test); these gates may not be skipped"
         )
     # Locally the dev database shares the compose Postgres, so only a
-    # panelpilot_phase1_* database is accepted. CI's database is a service
-    # container created for the job and discarded with it.
-    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-    if not in_ci and not DATABASE_URL.rsplit("/", 1)[-1].startswith("panelpilot_phase1_"):
-        pytest.fail(
-            f"refusing to run against a database other than the disposable one: {DATABASE_URL}"
-        )
+    # disposable database is accepted, in CI as well (see app.tests.db_target).
+    try:
+        db_target.require_disposable(DATABASE_URL)
+    except db_target.UnsafeDatabaseTargetError as exc:
+        pytest.fail(str(exc))
     engine = create_engine(DATABASE_URL)
     yield engine
     engine.dispose()

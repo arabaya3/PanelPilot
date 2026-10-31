@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.core.tenancy import cross_tenant
 from app.domain import team
+from app.tests import db_target
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 API_ROOT = Path(__file__).resolve().parents[4]
@@ -56,11 +57,12 @@ def _alembic(url: str, *args: str) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture(scope="module", name="scratch_url")
 def _scratch_url() -> Iterator[str]:
+    try:
+        scratch = db_target.scratch_url(DATABASE_URL, "owner_mig")
+    except db_target.UnsafeDatabaseTargetError as exc:
+        pytest.fail(str(exc))
     base = make_url(DATABASE_URL)
-    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-    if not in_ci and not (base.database or "").startswith("panelpilot_phase1_"):
-        pytest.fail(f"refusing to run against a database other than the disposable one: {base}")
-    name = f"{base.database}_owner_mig"
+    name = scratch.database
     admin = create_engine(base, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
