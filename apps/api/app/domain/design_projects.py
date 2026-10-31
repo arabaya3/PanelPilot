@@ -355,7 +355,11 @@ def _renderer_of(row: DesignRevisionRow, read: VersionedModel | None = None) -> 
 
 
 def _applicable(
-    row: DesignRevisionRow, *, thorough: bool = True, read: VersionedModel | None = None
+    row: DesignRevisionRow,
+    *,
+    thorough: bool = True,
+    read: VersionedModel | None = None,
+    read_checked: bool = False,
 ) -> _Applicable:
     """The policy that applies to ``row`` now.
 
@@ -365,6 +369,9 @@ def _applicable(
         read: Its snapshot as the caller read it once (hash checked first);
             ``None`` when it is absent or did not read, so no findings are
             classified and an approval of it does not count (``snapshot_reads``).
+        read_checked: For a cheap check, whether the caller read the snapshot
+            for integrity (a listed revision): then an approval of one that
+            did not read does not count; otherwise it is not judged here.
     """
     profile = _current_profile_sha256(row)
     if not thorough:
@@ -375,7 +382,7 @@ def _applicable(
             profile_sha256=profile,
             # A listed revision's snapshot is read for integrity as well: an
             # approval of one that fails it does not count, as when opened.
-            snapshot_reads=read is not None or row.design_snapshot is None,
+            snapshot_reads=read is not None or not read_checked,
             renderer_version=_renderer_of(row, read),
         )
     return _Applicable(
@@ -627,7 +634,10 @@ def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation
         # calls a revision validated that opening it would refuse.
         stored = _read_stored(row)
     applicable = _applicable(
-        row, thorough=thorough, read=stored if isinstance(stored, VersionedModel) else None
+        row,
+        thorough=thorough,
+        read=stored if isinstance(stored, VersionedModel) else None,
+        read_checked=stored is not None,
     )
     moved = _approval_changed(row, applicable)
     bound = row.approved_at is not None and not moved
