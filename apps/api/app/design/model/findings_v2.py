@@ -1,53 +1,124 @@
-"""Structural findings of a ``pp-design/2`` model: its own completeness, not engineering.
+"""Structural findings of a ``pp-design/2`` model: its own consistency, not engineering.
 
 Each finding is a plain record shaped like ``DesignFinding`` (code, severity,
 message, where), with ``source="integrity"`` and no rule reference: it checks
 only what the model's data says. None of them judges a rating, a
-cross-section, a colour, a numbering format or a standards clause; those need
-registered rules (M3).
+cross-section, a colour, a numbering format, electrical compatibility or a
+standards clause; those need registered rules (M3). Passing every check here
+proves the saved data is consistent with itself, nothing more.
 
-Codes:
+This module is the single source of each code's severity (:data:`SEVERITIES`)
+and of which codes block execution (:data:`EXECUTION_BLOCKING`).
+
+Codes (inputs are model data only):
 
 ``template_unreviewed``
-    A component or strip uses a template no qualified engineer has reviewed.
-    A warning for design review (every legacy template is unreviewed), and
-    an execution blocker: nothing designed on an unreviewed template may be
-    executed.
+    A component or strip uses a template whose ``review.status`` is not
+    ``approved`` or ``rejected``. A warning for design review (every legacy
+    template is unreviewed), and an execution blocker.
 ``template_rejected``
     A component or strip uses a template a reviewer rejected. Blocking for
     approval, and an execution blocker.
 ``out_of_execution_scope``
     A template carries a ``restricted_scope`` (e.g. ``fire_pump``,
     ``life_safety``). Blocking for approval, and an execution blocker.
+``pattern_unreviewed``
+    An embedded connection pattern is not ``approved`` (nor ``rejected``).
+    As for templates: a warning, and an execution blocker.
+``pattern_rejected``
+    An embedded connection pattern was rejected by a reviewer. Blocking for
+    approval, and an execution blocker.
 ``unconnected_required_terminal``
-    A ``required`` terminal of a component is in no net. Blocking for
-    approval (the proposed D-M2-6 default); a draft may hold it.
+    A terminal of a component is in no net, and its template **explicitly**
+    requires it (:func:`entities.explicitly_required`: ``required`` is
+    ``true`` and the template's provenance documents a source). Blocking for
+    approval; a draft may hold it.
+``terminal_requiredness_unresolved``
+    A terminal of a component is in no net, and whether it must be connected
+    is not documented: ``required`` is ``null``, or ``true`` in a template
+    whose provenance names no source. A warning that stays unresolved; it is
+    never guessed either way and never blocks. ``required: false`` gives no
+    finding.
+``net_unrealised``
+    A net has two or more members, and the net's own connections (every
+    connection whose ``net_id`` is the net, any ``via``) do not join all of
+    them into one connected group (graph connectivity, members as vertices,
+    connections as edges). Blocking for approval: the data declares a
+    potential its own connections do not make, an inconsistency of the
+    declaration itself, which a reviewer cannot resolve by confirming.
+``net_signal_conflict``
+    Two or more different nets on one board carry the same ``signal`` label.
+    A warning that needs confirmation: a data-consistency check on labels
+    only, not an electrical rule (two separate potentials may share a label
+    on purpose, e.g. per outgoing circuit).
+``wire_number_duplicate``
+    Two or more wires in one uniqueness scope carry the same explicit
+    ``number`` value (an ``unset`` number is ignored). The scope is
+    :data:`WIRE_NUMBER_SCOPE` (``board``) unless the caller passes another of
+    :data:`WIRE_NUMBER_SCOPES`; which scope is right is the open decision
+    D-M2-5, so this is a warning and the scope is a parameter a later
+    profile setting will supply as data.
 ``wire_attribute_unset``
-    A wire's number, cross-section or colour has no value. A warning that
-    needs confirmation; M2 never fills one.
+    A wire's number, cross-section or colour has no value (unresolved). A
+    warning that needs confirmation; M2 never fills one.
+``wire_attribute_assumed``
+    A wire's number, cross-section or colour holds a value its input stated
+    as an assumption (it names the assumption record). A warning that needs
+    confirmation.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
 from app.design.model import entities
 
-#: Every code this module produces.
-CODES = (
-    "template_unreviewed",
-    "template_rejected",
-    "out_of_execution_scope",
-    "unconnected_required_terminal",
-    "wire_attribute_unset",
+#: Every code this module produces, with its severity: the single source.
+SEVERITIES: Mapping[str, str] = MappingProxyType(
+    {
+        "template_unreviewed": "warning",
+        "template_rejected": "blocking",
+        "out_of_execution_scope": "blocking",
+        "pattern_unreviewed": "warning",
+        "pattern_rejected": "blocking",
+        "unconnected_required_terminal": "blocking",
+        "terminal_requiredness_unresolved": "warning",
+        "net_unrealised": "blocking",
+        "net_signal_conflict": "warning",
+        "wire_number_duplicate": "warning",
+        "wire_attribute_unset": "warning",
+        "wire_attribute_assumed": "warning",
+    }
 )
+
+#: Every code this module produces.
+CODES: tuple[str, ...] = tuple(SEVERITIES)
 
 #: The codes that make execution impossible, whatever else is resolved.
 EXECUTION_BLOCKING = frozenset(
-    {"template_unreviewed", "template_rejected", "out_of_execution_scope"}
+    {
+        "template_unreviewed",
+        "template_rejected",
+        "out_of_execution_scope",
+        "pattern_unreviewed",
+        "pattern_rejected",
+    }
 )
+
+#: The codes that record missing information: unresolved until data gives it.
+UNRESOLVED = frozenset({"terminal_requiredness_unresolved", "wire_attribute_unset"})
+
+#: The scopes wire-number uniqueness may be checked in (D-M2-5 is open).
+WIRE_NUMBER_SCOPES = ("board", "design")
+
+#: The scope used until a profile supplies one as data.
+WIRE_NUMBER_SCOPE = "board"
+
+#: The wire attributes a value source is recorded for.
+WIRE_ATTRIBUTES = ("number", "cross_section_mm2", "colour")
 
 
 @dataclass(frozen=True)
@@ -56,11 +127,14 @@ class StructuralFinding:
 
     Attributes:
         code: One of :data:`CODES`.
-        severity: ``"blocking"`` or ``"warning"``.
+        severity: ``"blocking"`` or ``"warning"``, as :data:`SEVERITIES` says.
         message: In English.
-        location: The ids it is about (``board_id``, ``component``, ``wire`` ...).
+        location: The ids it is about (``board_id``, ``component``, ``wire`` ...);
+            a finding about several ids of one kind joins them with ``,``
+            under a plural key (``nets``, ``wires``).
         source: Always ``"integrity"``.
         blocks_execution: Whether it is an execution blocker.
+        unresolved: Whether it records missing information (:data:`UNRESOLVED`).
     """
 
     code: str
@@ -69,49 +143,54 @@ class StructuralFinding:
     location: Mapping[str, str]
     source: str = "integrity"
     blocks_execution: bool = False
+    unresolved: bool = False
 
 
-def _finding(code: str, severity: str, message: str, **location: str) -> StructuralFinding:
+def _finding(code: str, message: str, **location: str) -> StructuralFinding:
     return StructuralFinding(
         code=code,
-        severity=severity,
+        severity=SEVERITIES[code],
         message=message,
         location=MappingProxyType(dict(location)),
         blocks_execution=code in EXECUTION_BLOCKING,
+        unresolved=code in UNRESOLVED,
     )
+
+
+def _review_findings(
+    kind: str, ref: str, review: entities.Review, **location: str
+) -> list[StructuralFinding]:
+    if review.status == "rejected":
+        return [
+            _finding(
+                f"{kind}_rejected",
+                f"uses {kind} {ref}, which a reviewer rejected; "
+                "it may not be approved or executed",
+                **{kind: ref},
+                **location,
+            )
+        ]
+    if review.status != "approved":
+        return [
+            _finding(
+                f"{kind}_unreviewed",
+                f"uses {kind} {ref}, which no qualified engineer has reviewed; "
+                "it may not be executed",
+                **{kind: ref},
+                **location,
+            )
+        ]
+    return []
 
 
 def _template_findings(
     template: entities.ComponentTemplate, **location: str
 ) -> list[StructuralFinding]:
-    out: list[StructuralFinding] = []
-    if template.review.status == "rejected":
-        out.append(
-            _finding(
-                "template_rejected",
-                "blocking",
-                f"uses template {template.ref}, which a reviewer rejected; "
-                "it may not be approved or executed",
-                template=template.ref,
-                **location,
-            )
-        )
-    elif template.review.status != "approved":
-        out.append(
-            _finding(
-                "template_unreviewed",
-                "warning",
-                f"uses template {template.ref}, which no qualified engineer has reviewed; "
-                "it may not be executed",
-                template=template.ref,
-                **location,
-            )
-        )
+    out = _review_findings("template", template.ref, template.review, **location)
     if template.restricted_scope:
         out.append(
             _finding(
                 "out_of_execution_scope",
-                "blocking",
                 f"uses template {template.ref}, restricted to "
                 f"{', '.join(template.restricted_scope)}; outside what may be executed",
                 template=template.ref,
@@ -121,52 +200,186 @@ def _template_findings(
     return out
 
 
-def structural_findings(model: entities.DesignModelV2) -> tuple[StructuralFinding, ...]:
-    """Every structural finding of a model, in a stable order.
-
-    Args:
-        model: A v2 model, as read (its invariants hold).
-
-    Returns:
-        The findings, sorted by code and location.
-    """
-    templates = {t.ref: t for t in model.templates}
+def _terminal_findings(
+    model: entities.DesignModelV2, templates: Mapping[str, entities.ComponentTemplate]
+) -> list[StructuralFinding]:
     connected = {m.key for net in model.nets for m in net.members}
-    found: list[StructuralFinding] = []
+    out: list[StructuralFinding] = []
     for component in model.components:
         template = templates[component.template_ref]
-        found += _template_findings(template, board_id=component.board_id, component=component.id)
         for terminal in template.terminals:
             ref = entities.TerminalRef(component=component.id, terminal=terminal.id)
-            if terminal.required and ref.key not in connected:
-                found.append(
+            if ref.key in connected or terminal.required is False:
+                continue
+            where = {
+                "board_id": component.board_id,
+                "component": component.id,
+                "terminal": terminal.id,
+            }
+            if entities.explicitly_required(template, terminal):
+                out.append(
                     _finding(
                         "unconnected_required_terminal",
-                        "blocking",
                         f"required terminal {terminal.marking} of component "
                         f"{component.id} is in no net",
-                        board_id=component.board_id,
-                        component=component.id,
-                        terminal=terminal.id,
+                        **where,
                     )
                 )
-    for strip in model.strips:
-        if strip.template_ref is not None:
-            found += _template_findings(
-                templates[strip.template_ref], board_id=strip.board_id, strip=strip.id
+            else:
+                why = (
+                    "its template does not say whether it must be connected"
+                    if terminal.required is None
+                    else "its template documents no source for requiring it"
+                )
+                out.append(
+                    _finding(
+                        "terminal_requiredness_unresolved",
+                        f"terminal {terminal.marking} of component {component.id} is in "
+                        f"no net and {why}; unresolved",
+                        **where,
+                    )
+                )
+    return out
+
+
+def _groups(
+    members: tuple[entities.TerminalRef, ...], connections: list[entities.Connection]
+) -> int:
+    """How many connected groups ``connections`` join ``members`` into (union-find)."""
+    parent = {m.key: m.key for m in members}
+
+    def root(key: tuple[str, str, str]) -> tuple[str, str, str]:
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+
+    for connection in connections:
+        parent[root(connection.start.key)] = root(connection.end.key)
+    return len({root(m.key) for m in members})
+
+
+def _net_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:
+    out: list[StructuralFinding] = []
+    by_net: dict[str, list[entities.Connection]] = defaultdict(list)
+    for connection in model.connections:
+        by_net[connection.net_id].append(connection)
+    for net in model.nets:
+        if len(net.members) < 2:
+            continue
+        groups = _groups(net.members, by_net[net.id])
+        if groups > 1:
+            out.append(
+                _finding(
+                    "net_unrealised",
+                    f"net {net.id} ({net.signal}) has {len(net.members)} members, but its "
+                    f"connections join them into {groups} separate groups",
+                    board_id=net.board_id,
+                    net=net.id,
+                    groups=str(groups),
+                )
             )
+    by_signal: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for net in model.nets:
+        by_signal[(net.board_id, net.signal)].append(net.id)
+    for (board_id, signal), net_ids in sorted(by_signal.items()):
+        if len(net_ids) > 1:
+            out.append(
+                _finding(
+                    "net_signal_conflict",
+                    f"{len(net_ids)} different nets on board {board_id} carry the signal "
+                    f"label {signal}; confirm they are meant to be separate",
+                    board_id=board_id,
+                    signal=signal,
+                    nets=",".join(sorted(net_ids)),
+                )
+            )
+    return out
+
+
+def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[StructuralFinding]:
+    if scope not in WIRE_NUMBER_SCOPES:
+        raise ValueError(f"wire number scope is one of {list(WIRE_NUMBER_SCOPES)}")
+    net_board = {n.id: n.board_id for n in model.nets}
+    connection_board = {x.id: net_board[x.net_id] for x in model.connections}
+    out: list[StructuralFinding] = []
+    numbered: dict[tuple[str, str], list[str]] = defaultdict(list)
     for wire in model.wires:
-        for name in ("number", "cross_section_mm2", "colour"):
-            if getattr(wire, name).source == "unset":
-                found.append(
+        board_id = connection_board[wire.connection_id]
+        for name in WIRE_ATTRIBUTES:
+            attribute: entities.WireAttribute = getattr(wire, name)
+            if attribute.source == "unset":
+                out.append(
                     _finding(
                         "wire_attribute_unset",
-                        "warning",
                         f"wire {wire.id} has no {name}; no rule sets it yet",
                         wire=wire.id,
                         attribute=name,
                     )
                 )
+            elif attribute.source == "assumption":
+                out.append(
+                    _finding(
+                        "wire_attribute_assumed",
+                        f"wire {wire.id}'s {name} is an assumption ({attribute.assumption}); "
+                        "confirm it",
+                        wire=wire.id,
+                        attribute=name,
+                        assumption=str(attribute.assumption),
+                    )
+                )
+        if wire.number.value is not None:
+            key = board_id if scope == "board" else ""
+            numbered[(key, str(wire.number.value))].append(wire.id)
+    for (key, number), wire_ids in sorted(numbered.items()):
+        if len(wire_ids) > 1:
+            where = {"board_id": key} if scope == "board" else {}
+            out.append(
+                _finding(
+                    "wire_number_duplicate",
+                    f"{len(wire_ids)} wires in one {scope} carry the number {number}; "
+                    "whether numbers must be unique there is not decided yet",
+                    scope=scope,
+                    number=number,
+                    wires=",".join(sorted(wire_ids)),
+                    **where,
+                )
+            )
+    return out
+
+
+def structural_findings(
+    model: entities.DesignModelV2, *, wire_number_scope: str = WIRE_NUMBER_SCOPE
+) -> tuple[StructuralFinding, ...]:
+    """Every structural finding of a model, in a stable order.
+
+    Args:
+        model: A v2 model, as read (its invariants hold).
+        wire_number_scope: Where wire numbers are compared, one of
+            :data:`WIRE_NUMBER_SCOPES`.
+
+    Returns:
+        The findings, sorted by code and location.
+
+    Raises:
+        ValueError: If ``wire_number_scope`` is not a known scope.
+    """
+    templates = {t.ref: t for t in model.templates}
+    found: list[StructuralFinding] = []
+    for pattern in model.patterns:
+        found += _review_findings("pattern", pattern.ref, pattern.review)
+    for component in model.components:
+        found += _template_findings(
+            templates[component.template_ref], board_id=component.board_id, component=component.id
+        )
+    for strip in model.strips:
+        if strip.template_ref is not None:
+            found += _template_findings(
+                templates[strip.template_ref], board_id=strip.board_id, strip=strip.id
+            )
+    found += _terminal_findings(model, templates)
+    found += _net_findings(model)
+    found += _wire_findings(model, wire_number_scope)
     return tuple(sorted(found, key=lambda f: (f.code, sorted(f.location.items()))))
 
 
@@ -177,6 +390,6 @@ def execution_blockers(model: entities.DesignModelV2) -> tuple[StructuralFinding
         model: A v2 model, as read.
 
     Returns:
-        Every ``template_unreviewed`` and ``out_of_execution_scope`` finding.
+        Every finding whose code is in :data:`EXECUTION_BLOCKING`.
     """
     return tuple(f for f in structural_findings(model) if f.blocks_execution)

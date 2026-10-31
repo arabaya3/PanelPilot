@@ -6,7 +6,9 @@ A **configuration** is pure data (JSON-shaped):
     Template definitions (see :func:`codec_v2.parse_template`), embedded in
     the result when used.
 ``patterns``
-    Connection patterns. Each has a ``ref``; ``slots`` (components it joins:
+    Connection patterns, versioned and reviewed like templates. Each has a
+    ``ref`` (``<scope>/<id>/v<version>``), a ``provenance`` and a ``review``
+    (the template shapes and vocabulary); ``slots`` (components it joins:
     ``id``, ``template`` ref, optional ``device_kind`` for picking a v1
     device of a bound circuit); ``strips`` (strip roles); ``points`` (strip
     points it allocates: ``id``, ``strip`` role, ``offset`` ≥ 1 within the
@@ -28,8 +30,18 @@ A **configuration** is pure data (JSON-shaped):
     ``strips`` (strip role to configuration strip id), ``markings`` (pattern
     point id to the printed marking), ``cable`` (a v1 cable id or ``null``),
     ``wires`` (``"<net role>/<connection index>"`` to given ``number``,
-    ``cross_section_mm2`` and ``colour`` values, recorded with source
-    ``"data"``).
+    ``cross_section_mm2`` and ``colour`` values). A value given as text is
+    recorded with source ``"data"``. A value given as an object
+    ``{"value": text, "source": "user" | "data" | "assumption"}`` keeps that
+    source; ``"assumption"`` also needs ``"statement"`` (non-empty text), and
+    records an :class:`~entities.Assumption` with that statement, whose id the
+    attribute names. An assumption exists only where the input states one;
+    the composer never makes one up. A value not given stays ``"unset"``.
+
+Every pattern a binding uses is embedded in the result in its canonical form
+(:func:`codec_v2.dump_pattern`) and locked in ``registry_lock.patterns``; the
+components, strip points, nets and connections a binding creates record the
+pattern's ref (``pattern_refs`` / ``pattern_ref``), so provenance is traceable.
 
 The composer is generic: it never branches on a template, pattern or
 configuration id. Each v1 device bound to a slot becomes a component on the
@@ -38,9 +50,11 @@ migration gives it. Strip points are allocated per strip in binding id order
 (then by ``offset`` and ``level``), so positions do not depend on list order.
 
 It **refuses rather than guesses**: every gap or contradiction raises
-:class:`CompositionRefusedError` with a stable ``code``. A required terminal
-left unconnected is *not* a refusal: a draft may be incomplete, so it is the
-structural finding ``unconnected_required_terminal`` (:mod:`findings_v2`).
+:class:`CompositionRefusedError` with a stable ``code``. A terminal left
+unconnected is *not* a refusal: a draft may be incomplete, so it is a
+structural finding (``unconnected_required_terminal`` or
+``terminal_requiredness_unresolved``, :mod:`findings_v2`), as are nets that
+connections do not realise, repeated signal labels and repeated wire numbers.
 No wire number, cross-section or colour is ever computed or defaulted.
 """
 
@@ -55,7 +69,7 @@ from app.design.model import codec_v2, entities, ids, migrate_v2, versions
 
 _CONFIG_KEYS = ("templates", "patterns", "strips", "components", "bindings")
 _OPTIONAL_CONFIG_KEYS = ("name", "_comment")
-_PATTERN_KEYS = ("ref", "slots", "strips", "points", "nets")
+_PATTERN_KEYS = ("ref", "slots", "strips", "points", "nets", "provenance", "review")
 _BINDING_KEYS = (
     "id",
     "pattern",
@@ -68,6 +82,7 @@ _BINDING_KEYS = (
     "wires",
 )
 _WIRE_FIELDS = ("number", "cross_section_mm2", "colour")
+_GIVEN_SOURCES = ("user", "data", "assumption")
 
 
 class CompositionRefusedError(ValueError):
@@ -148,6 +163,41 @@ def _ordered(raw: Any) -> Any:
     return out
 
 
+def _ordered_pattern(raw: Any) -> Any:
+    """A configured pattern in canonical form: optional keys filled with ``null``, sets sorted.
+
+    The order of a net's members (connections name them by index) and of its
+    connections (ids derive from the index) is kept. Anything malformed is
+    left for :func:`codec_v2.parse_pattern` to refuse.
+    """
+    if not isinstance(raw, Mapping):
+        return raw
+    out = dict(raw)
+    try:
+        out["slots"] = sorted(
+            ({"template": None, "device_kind": None, **slot} for slot in out["slots"]),
+            key=operator.itemgetter("id"),
+        )
+        out["strips"] = sorted(out["strips"])
+        out["points"] = sorted(out["points"], key=operator.itemgetter("id"))
+        out["nets"] = sorted(
+            (
+                {
+                    **net,
+                    "connections": [{"core": None, "label": None, **c} for c in net["connections"]],
+                }
+                for net in out["nets"]
+            ),
+            key=operator.itemgetter("role"),
+        )
+        review = out.get("review")
+        if isinstance(review, Mapping) and isinstance(review.get("standards"), list):
+            out["review"] = {**review, "standards": sorted(review["standards"])}
+    except (KeyError, TypeError):
+        return raw
+    return out
+
+
 class _Composer:
     def __init__(self, design_v1: dict[str, Any], configuration: Mapping[str, Any]) -> None:
         self.design_json = copy.deepcopy(design_v1)
@@ -171,11 +221,16 @@ class _Composer:
                     ref=template.ref,
                 )
             self.templates[template.ref] = template
-        self.patterns = _unique(
-            [_obj(p, _PATTERN_KEYS, "patterns[]") for p in _list(config["patterns"], "patterns")],
-            "ref",
-            "patterns",
-        )
+        self.patterns: dict[str, dict[str, Any]] = {}
+        for item in _list(config["patterns"], "patterns"):
+            _obj(item, _PATTERN_KEYS, "patterns[]")
+            try:
+                pattern = codec_v2.parse_pattern(_ordered_pattern(item), "configuration.patterns[]")
+            except versions.SnapshotUnreadableError as exc:
+                _refuse("pattern_invalid", str(exc))
+            if pattern.ref in self.patterns:
+                _refuse("configuration_invalid", "a pattern ref is repeated", ref=pattern.ref)
+            self.patterns[pattern.ref] = codec_v2.dump_pattern(pattern)
         self.strip_defs = _unique(
             [
                 _obj(s, ("id", "board", "designation", "template"), "strips[]")
@@ -208,6 +263,10 @@ class _Composer:
         self.connections: dict[str, dict[str, Any]] = {}
         self.wires: dict[str, dict[str, Any]] = {}
         self.cores: set[tuple[str, int]] = set()
+        self.assumptions: dict[str, dict[str, Any]] = {}
+        # Provenance: which patterns created or joined each entity.
+        self.component_patterns: dict[str, set[str]] = {}
+        self.net_patterns: dict[str, set[str]] = {}
 
     # -- lookups ------------------------------------------------------------ #
 
@@ -293,6 +352,14 @@ class _Composer:
                     candidates=",".join(candidates),
                 )
             given = {"device": candidates[0]}
+        cid, template = self._slot_component(binding, slot, board, given)
+        self.component_patterns.setdefault(cid, set()).add(binding["pattern"])
+        return cid, template
+
+    def _slot_component(
+        self, binding: Mapping[str, Any], slot: Mapping[str, Any], board: Any, given: Any
+    ) -> tuple[str, entities.ComponentTemplate]:
+        bid, slot_id = binding["id"], slot["id"]
         given = _obj(given, (), f"bindings[{bid}].slots.{slot_id}", ("device", "component"))
         if len(given) != 1:
             _refuse(
@@ -424,6 +491,7 @@ class _Composer:
                     "level": raw["level"],
                     "marking": marking,
                     "kind": raw["kind"],
+                    "pattern_ref": binding["pattern"],
                 }
             )
             self.next_position[strip_id] = max(self.next_position[strip_id], position + 1)
@@ -474,6 +542,7 @@ class _Composer:
                     "members": [],
                 },
             )
+            self.net_patterns.setdefault(nid, set()).add(binding["pattern"])
             for member in members:
                 key = codec_v2.ref_key(member)
                 owner = self.member_net.get(key)
@@ -547,7 +616,7 @@ class _Composer:
                 _refuse("core_reused", "one cable core would make two connections", cable=cable.id)
             self.cores.add((cable.id, index_))
             core = {"cable_id": cable.id, "index": index_, "label": raw.get("label")}
-        elif "core" in raw or "label" in raw:
+        elif raw.get("core") is not None or raw.get("label") is not None:
             _refuse("pattern_invalid", "only a cable core connection names a core", role=role)
         xid = ids.derive("x", bid, role, str(index))
         self.connections[xid] = {
@@ -557,6 +626,7 @@ class _Composer:
             "to": ends[1],
             "via": via,
             "core": core,
+            "pattern_ref": binding["pattern"],
         }
         if via != "wire":
             return
@@ -566,13 +636,47 @@ class _Composer:
         wid = ids.derive("w", bid, role, str(index))
         wire: dict[str, Any] = {"id": wid, "connection_id": xid, "_key": key, "_binding": bid}
         for name in _WIRE_FIELDS:
-            value = given.get(name)
-            if value is not None and not isinstance(value, str):
-                _refuse("configuration_invalid", "wire data is given as text", field=name)
-            wire[name] = {"value": value, "source": "unset" if value is None else "data"}
+            wire[name] = self.wire_attribute(given.get(name), name, bid, key, wid)
         self.wires[wid] = wire
 
+    def wire_attribute(self, value: Any, name: str, bid: str, key: str, wid: str) -> dict[str, Any]:
+        """A wire attribute as given: text is data, an object names its source; never filled in."""
+        if value is None:
+            return {"value": None, "source": "unset", "assumption": None}
+        if isinstance(value, str):
+            return {"value": value, "source": "data", "assumption": None}
+        if not isinstance(value, Mapping):
+            _refuse("configuration_invalid", "wire data is given as text", field=name)
+        value = _obj(
+            value, ("value", "source"), f"bindings[{bid}].wires.{key}.{name}", ("statement",)
+        )
+        given, source = value["value"], value["source"]
+        if not isinstance(given, str) or not given or source not in _GIVEN_SOURCES:
+            _refuse(
+                "configuration_invalid",
+                "a given wire value is text with source user, data or assumption",
+                field=name,
+            )
+        statement = value.get("statement")
+        if source != "assumption":
+            if "statement" in value:
+                _refuse("configuration_invalid", "only an assumption has a statement", field=name)
+            return {"value": given, "source": source, "assumption": None}
+        if not isinstance(statement, str) or not statement.strip():
+            _refuse("configuration_invalid", "an assumption states what it assumes", field=name)
+        aid = ids.derive("a", bid, key, name)
+        self.assumptions[aid] = {
+            "id": aid,
+            "subject": f"wire {wid} {name}",
+            "statement": statement,
+        }
+        return {"value": given, "source": "assumption", "assumption": aid}
+
     def payload(self) -> dict[str, Any]:
+        for cid, component in self.components.items():
+            component["pattern_refs"] = sorted(self.component_patterns.get(cid, ()))
+        for nid, net in self.nets.items():
+            net["pattern_refs"] = sorted(self.net_patterns.get(nid, ()))
         components = [self.components[k] for k in sorted(self.components)]
         strips = []
         for strip in sorted(self.strips.values(), key=lambda s: s["id"]):
@@ -591,6 +695,8 @@ class _Composer:
         for net in sorted(self.nets.values(), key=lambda n: n["id"]):
             net["members"].sort(key=codec_v2.ref_key)
             nets.append(net)
+        used_patterns = sorted({b["pattern"] for b in self.bindings.values()})
+        patterns = [copy.deepcopy(self.patterns[ref]) for ref in used_patterns]
         wires = [
             {k: v for k, v in w.items() if not k.startswith("_")}
             for w in sorted(self.wires.values(), key=lambda w: w["id"])
@@ -598,13 +704,14 @@ class _Composer:
         payload = {
             "design": self.design_json,
             "templates": copy.deepcopy(templates),
-            "registry_lock": migrate_v2.lock_of(templates),
+            "registry_lock": migrate_v2.lock_of(templates, patterns),
             "components": components,
             "strips": strips,
             "nets": nets,
             "connections": [self.connections[k] for k in sorted(self.connections)],
             "wires": wires,
-            "assumptions": [],
+            "assumptions": [self.assumptions[k] for k in sorted(self.assumptions)],
+            "patterns": patterns,
         }
         try:
             codec_v2.parse_model(payload)

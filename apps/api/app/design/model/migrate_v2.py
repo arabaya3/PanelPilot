@@ -4,7 +4,7 @@
 randomness or profile is read; its only input besides the payload is the
 frozen legacy template data shipped with it (``templates/``). It adds one
 component per v1 device, bound to the legacy template of the device's v1
-kind, and embeds and locks those templates. Strips, nets, connections, wires
+kind, and embeds and locks those templates (and no connection pattern). Strips, nets, connections, wires
 and assumptions stay empty: deriving any of them would be choosing
 engineering content on read, which is forbidden.
 
@@ -87,21 +87,28 @@ def legacy_components(design: dict[str, Any], skip: set[tuple[str, str]]) -> lis
                     "designation": copy.deepcopy(device["designation"]),
                     "parameters": [],
                     "legacy_device_id": device["id"],
+                    "pattern_refs": [],
                 }
             )
     return out
 
 
-def lock_of(templates: list[dict[str, Any]]) -> dict[str, Any]:
-    """The ``registry_lock`` of a list of canonical template JSON values.
+def lock_of(
+    templates: list[dict[str, Any]], patterns: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """The ``registry_lock`` of canonical template and connection pattern JSON values.
 
     Args:
         templates: The embedded templates, sorted by ref.
+        patterns: The embedded patterns, sorted by ref (none if omitted).
 
     Returns:
-        ``{"templates": [{"ref", "digest"}]}``.
+        ``{"templates": [{"ref", "digest"}], "patterns": [{"ref", "digest"}]}``.
     """
-    return {"templates": [{"ref": t["ref"], "digest": snapshot.sha256_of(t)} for t in templates]}
+    return {
+        "templates": [{"ref": t["ref"], "digest": snapshot.sha256_of(t)} for t in templates],
+        "patterns": [{"ref": p["ref"], "digest": snapshot.sha256_of(p)} for p in patterns or []],
+    }
 
 
 def migrate_1_to_2(payload_v1: dict[str, Any]) -> dict[str, Any]:
@@ -128,4 +135,5 @@ def migrate_1_to_2(payload_v1: dict[str, Any]) -> dict[str, Any]:
         "connections": [],
         "wires": [],
         "assumptions": [],
+        "patterns": [],
     }

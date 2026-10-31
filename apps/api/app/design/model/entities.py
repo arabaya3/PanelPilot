@@ -23,17 +23,22 @@ from decimal import Decimal
 
 from app.design.model import domain
 
-#: Where a wire attribute's value came from. ``unset`` means there is none.
-WIRE_SOURCES = ("user", "data", "unset")
+#: Where a wire attribute's value came from. ``unset`` means there is none (unresolved);
+#: ``assumption`` means the value was stated as an assumption by its input, and names
+#: the :class:`Assumption` record that says so (never created automatically).
+WIRE_SOURCES = ("user", "data", "assumption", "unset")
 
-#: A template's review statuses. Only ``approved`` is reviewed and accepted.
+#: A template's or a connection pattern's review statuses. Only ``approved`` is
+#: reviewed and accepted.
 REVIEW_STATUSES = ("unreviewed", "approved", "rejected")
 
 #: A template ref's scopes.
 SCOPES = ("global", "tenant")
 
-#: How a connection is made.
-VIAS = ("wire", "cable_core", "jumper", "busbar")
+#: How a connection is made. ``internal`` joins the inner and outer side of
+#: one strip point through the point itself; it exists only where data
+#: declares it (no strip point is assumed to conduct between its sides).
+VIAS = ("wire", "cable_core", "jumper", "busbar", "internal")
 
 #: The sides of a strip point.
 SIDES = ("inner", "outer")
@@ -50,14 +55,17 @@ class TerminalDef:
         id: Unique within the template; what a :class:`TerminalRef` names.
         marking: The printed marking, from the template's data only.
         kind: An open-vocabulary string (``power_line``, ``coil`` ...).
-        required: Whether a design must connect it.
+        required: ``True`` if the template says a design must connect it,
+            ``False`` if it says it need not, ``None`` if it does not say.
+            Missing requiredness stays unresolved; it is never guessed. Only
+            :func:`explicitly_required` decides whether it blocks approval.
         group: The contact group it belongs to, or ``None``.
     """
 
     id: str
     marking: str
     kind: str
-    required: bool
+    required: bool | None
     group: str | None
 
 
@@ -80,11 +88,27 @@ class ParameterDef:
 
 @dataclass(frozen=True)
 class Provenance:
-    """Where a template definition came from."""
+    """Where a template or pattern definition came from.
 
-    source: str
+    ``source`` is the document the definition is taken from, or ``None`` when
+    the definition documents none (see :func:`documents_a_source`).
+    """
+
+    source: str | None
     author: str
     created: str
+
+
+def documents_a_source(provenance: Provenance) -> bool:
+    """Whether a provenance names a source: ``source`` is set and not blank.
+
+    Args:
+        provenance: A template's or pattern's provenance.
+
+    Returns:
+        ``True`` exactly when ``source`` holds a non-whitespace character.
+    """
+    return provenance.source is not None and provenance.source.strip() != ""
 
 
 @dataclass(frozen=True)
@@ -137,9 +161,103 @@ class ComponentTemplate:
         return None
 
 
+def explicitly_required(template: ComponentTemplate, terminal: TerminalDef) -> bool:
+    """Whether a documented template explicitly identifies a terminal as required.
+
+    The one definition the ``unconnected_required_terminal`` finding uses: the
+    terminal's ``required`` is ``True`` (not ``None``, not ``False``) **and**
+    the template's provenance documents a source (:func:`documents_a_source`).
+    A ``required: true`` in a template that names no source is not enough: it
+    is unresolved, like ``required: null``.
+
+    Args:
+        template: The template holding the terminal.
+        terminal: One of its terminals.
+
+    Returns:
+        ``True`` exactly in that case.
+    """
+    return terminal.required is True and documents_a_source(template.provenance)
+
+
+@dataclass(frozen=True)
+class PatternSlot:
+    """A component a pattern joins: its template (or ``None``) and, optionally, a v1 device kind."""
+
+    id: str
+    template: str | None
+    device_kind: str | None
+
+
+@dataclass(frozen=True)
+class PatternPoint:
+    """A strip point a pattern allocates, relative to the binding's base position."""
+
+    id: str
+    strip: str
+    offset: int
+    level: int
+    kind: str
+
+
+@dataclass(frozen=True)
+class PatternMember:
+    """A net member of a pattern: ``slot``/``terminal`` or ``point``/``side``."""
+
+    slot: str | None = None
+    terminal: str | None = None
+    point: str | None = None
+    side: str | None = None
+
+
+@dataclass(frozen=True)
+class PatternConnection:
+    """A connection of a pattern net, between two member indexes."""
+
+    start: int
+    end: int
+    via: str
+    core: int | None
+    label: str | None
+
+
+@dataclass(frozen=True)
+class PatternNet:
+    """A net a pattern declares, by role; ``scope`` is ``binding`` or ``board``."""
+
+    role: str
+    signal: str
+    scope: str
+    members: tuple[PatternMember, ...]
+    connections: tuple[PatternConnection, ...]
+
+
+@dataclass(frozen=True)
+class ConnectionPattern:
+    """A reusable connection pattern, as data, versioned and reviewed like a template.
+
+    Attributes:
+        ref: ``"<scope>/<id>/v<version>"`` (no ``@``), unique per snapshot.
+        slots: By id.
+        strips: The strip roles, sorted.
+        points: By id.
+        nets: By role.
+        provenance: Its source.
+        review: Its review record (same vocabulary as a template's).
+    """
+
+    ref: str
+    slots: tuple[PatternSlot, ...]
+    strips: tuple[str, ...]
+    points: tuple[PatternPoint, ...]
+    nets: tuple[PatternNet, ...]
+    provenance: Provenance
+    review: Review
+
+
 @dataclass(frozen=True)
 class LockEntry:
-    """The SHA-256 of one embedded template's canonical JSON."""
+    """The SHA-256 of one embedded template's or pattern's canonical JSON."""
 
     ref: str
     digest: str
@@ -164,6 +282,8 @@ class Component:
         designation: Copied from the v1 device it mirrors, or from input data.
         parameters: By name; each names a parameter of the template.
         legacy_device_id: The v1 device on the same board it mirrors, or ``None``.
+        pattern_refs: The embedded patterns whose bindings created or joined
+            it, sorted; empty for a legacy or configured-only component.
     """
 
     id: str
@@ -172,17 +292,22 @@ class Component:
     designation: domain.Designation | None
     parameters: tuple[ParameterValue, ...]
     legacy_device_id: str | None
+    pattern_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class StripPoint:
-    """One point of a terminal strip; ``(marking, level)`` is unique per strip."""
+    """One point of a terminal strip; ``(marking, level)`` is unique per strip.
+
+    ``pattern_ref`` is the embedded pattern that allocated it, or ``None``.
+    """
 
     id: str
     position: int
     level: int
     marking: str
     kind: str
+    pattern_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -218,13 +343,18 @@ class TerminalRef:
 
 @dataclass(frozen=True)
 class Net:
-    """Terminals that are one potential, by declared signal label (data, e.g. ``"L1"``)."""
+    """Terminals that are one potential, by declared signal label (data, e.g. ``"L1"``).
+
+    ``pattern_refs`` are the embedded patterns that declared it, sorted (a
+    board-scoped net may be declared by several); empty for a user net.
+    """
 
     id: str
     board_id: str
     signal: str
     origin: str
     members: tuple[TerminalRef, ...]
+    pattern_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -247,6 +377,7 @@ class Connection:
         end: The ``to`` end (``to`` in JSON).
         via: How it is made, one of :data:`VIAS`.
         core: The cable core, exactly when ``via`` is ``"cable_core"``.
+        pattern_ref: The embedded pattern that created it, or ``None``.
     """
 
     id: str
@@ -255,14 +386,20 @@ class Connection:
     end: TerminalRef
     via: str
     core: CableCore | None
+    pattern_ref: str | None = None
 
 
 @dataclass(frozen=True)
 class WireAttribute:
-    """A wire attribute's value and its source; ``value`` is ``None`` exactly when unset."""
+    """A wire attribute's value and its source; ``value`` is ``None`` exactly when unset.
+
+    ``assumption`` is the id of the :class:`Assumption` that states the value,
+    exactly when ``source`` is ``"assumption"``.
+    """
 
     value: str | Decimal | None
     source: str
+    assumption: str | None = None
 
 
 #: The attribute every wire leaves unset unless input data gives a value.
@@ -293,7 +430,9 @@ class Assumption:
 class DesignModelV2:
     """A whole ``pp-design/2`` design: the v1 design plus connectivity.
 
-    Every collection is sorted by id (templates and the lock by ref).
+    Every collection is sorted by id (templates, patterns and the locks by ref).
+    ``registry_lock`` locks the templates and ``pattern_lock`` the patterns;
+    stored, both sit under ``registry_lock`` (``templates`` and ``patterns``).
     """
 
     design: domain.DesignModel
@@ -305,6 +444,8 @@ class DesignModelV2:
     connections: tuple[Connection, ...]
     wires: tuple[Wire, ...]
     assumptions: tuple[Assumption, ...]
+    patterns: tuple[ConnectionPattern, ...] = ()
+    pattern_lock: tuple[LockEntry, ...] = ()
 
     def template(self, ref: str) -> ComponentTemplate | None:
         """The embedded template with this ref, or ``None``.
@@ -318,4 +459,32 @@ class DesignModelV2:
         for template in self.templates:
             if template.ref == ref:
                 return template
+        return None
+
+    def pattern(self, ref: str) -> ConnectionPattern | None:
+        """The embedded connection pattern with this ref, or ``None``.
+
+        Args:
+            ref: A pattern ref.
+
+        Returns:
+            The pattern, if embedded.
+        """
+        for pattern in self.patterns:
+            if pattern.ref == ref:
+                return pattern
+        return None
+
+    def assumption(self, assumption_id: str) -> Assumption | None:
+        """The assumption record with this id, or ``None``.
+
+        Args:
+            assumption_id: An :attr:`Assumption.id`.
+
+        Returns:
+            The record, if present.
+        """
+        for assumption in self.assumptions:
+            if assumption.id == assumption_id:
+                return assumption
         return None

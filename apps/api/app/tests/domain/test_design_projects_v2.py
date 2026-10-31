@@ -147,6 +147,8 @@ def test_the_findings_module_grades_the_codes_as_decided() -> None:
         "template_unreviewed",
         "template_rejected",
         "out_of_execution_scope",
+        "pattern_unreviewed",
+        "pattern_rejected",
     } == findings_v2.EXECUTION_BLOCKING
 
 

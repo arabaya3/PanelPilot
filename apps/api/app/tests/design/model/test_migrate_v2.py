@@ -44,6 +44,7 @@ def test_one_legacy_template_per_v1_device_kind_and_nothing_else() -> None:
         assert template.review.status == "unreviewed"
         assert template.review.standards == ()
         assert template.restricted_scope == ()
+        assert template.provenance.source is not None
         assert "pp-design/1" in template.provenance.source
         assert codec_v2.dump_template(template) == raw
 
@@ -103,4 +104,4 @@ def test_a_migrated_model_pins_its_hash() -> None:
     assert snapshot.sha256_of(envelope) == PINNED_MIGRATED_RESIDENTIAL
 
 
-PINNED_MIGRATED_RESIDENTIAL = "049f97a20875f85cb91af6eea8e306c269e35e403d7d4740abef885e537f2144"
+PINNED_MIGRATED_RESIDENTIAL = "20cdee3ae39369763c4065b4a34f7b4fd67677530e4a296dacc9ca535bb6012a"

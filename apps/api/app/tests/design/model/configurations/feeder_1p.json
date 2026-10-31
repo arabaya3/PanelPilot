@@ -193,6 +193,11 @@
                 "to": 3,
                 "via": "cable_core",
                 "core": 1
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
               }
             ]
           },
@@ -229,6 +234,11 @@
                 "to": 3,
                 "via": "cable_core",
                 "core": 2
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
               }
             ]
           },
@@ -265,10 +275,27 @@
                 "to": 3,
                 "via": "cable_core",
                 "core": 3
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
               }
             ]
           }
-        ]
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
       }
     ],
     "strips": [
@@ -406,8 +433,8 @@
   "expect": {
     "strip_points": 9,
     "nets": 5,
-    "connections": 18,
+    "connections": 27,
     "wires": 9,
-    "sha256": "1311d031bc902b548cb587200c29d259cedb8683214811a3b33aa8a593cc20b8"
+    "sha256": "4be9044d8e27308c7814d7a84e0e3a85e86cbf3f893f7e8799dcf0c742d754e3"
   }
 }

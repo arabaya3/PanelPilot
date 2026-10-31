@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import sys
 from collections.abc import Callable
@@ -12,13 +13,13 @@ from typing import Any
 import pytest
 
 from app.design import snapshot
-from app.design.model import codec_v2, entities, migrate_v2, versions, write
+from app.design.model import codec_v2, migrate_v2, versions, write
 from app.design.model.read import read_snapshot
 from app.tests.design.model.v2_support import config_case, v1_snapshot
 
 MODEL_DIR = Path(migrate_v2.__file__).parent
 API_ROOT = MODEL_DIR.parents[2]
-PURE_MODULES = ("entities.py", "findings_v2.py", "domain.py")
+PURE_MODULES = ("entities.py", "findings_v2.py", "domain.py", "schedules.py")
 FRAMEWORKS = ("pydantic", "fastapi", "sqlalchemy", "starlette")
 
 
@@ -46,19 +47,18 @@ def test_read_of_write_is_the_model(name: str) -> None:
 def test_dump_sorts_a_model_built_out_of_order() -> None:
     model = read_snapshot(_composed()).v2
     assert model is not None
-    shuffled = entities.DesignModelV2(
-        design=model.design,
+    shuffled = dataclasses.replace(
+        model,
         templates=model.templates[::-1],
         registry_lock=model.registry_lock[::-1],
         components=model.components[::-1],
         strips=model.strips[::-1],
-        nets=tuple(
-            entities.Net(n.id, n.board_id, n.signal, n.origin, n.members[::-1])
-            for n in model.nets[::-1]
-        ),
+        nets=tuple(dataclasses.replace(n, members=n.members[::-1]) for n in model.nets[::-1]),
         connections=model.connections[::-1],
         wires=model.wires[::-1],
-        assumptions=model.assumptions,
+        assumptions=model.assumptions[::-1],
+        patterns=model.patterns[::-1],
+        pattern_lock=model.pattern_lock[::-1],
     )
     assert write.to_stored_v2(shuffled) == write.to_stored_v2(model)
 
@@ -103,7 +103,7 @@ def _template_unused(model: dict[str, Any]) -> None:
     extra = copy.deepcopy(migrate_v2.LEGACY_TEMPLATES["other"])
     extra["ref"] = "global/zzz-unused/v1"
     model["templates"].append(extra)
-    model["registry_lock"] = migrate_v2.lock_of(model["templates"])
+    model["registry_lock"] = migrate_v2.lock_of(model["templates"], model["patterns"])
 
 
 def _unsorted_components(model: dict[str, Any]) -> None:
@@ -176,15 +176,15 @@ def _float_position(model: dict[str, Any]) -> None:
 
 
 def _float_cross_section(model: dict[str, Any]) -> None:
-    model["wires"][0]["cross_section_mm2"] = {"value": 1.5, "source": "data"}
+    model["wires"][0]["cross_section_mm2"] = {"value": 1.5, "source": "data", "assumption": None}
 
 
 def _unset_with_a_value(model: dict[str, Any]) -> None:
-    model["wires"][0]["colour"] = {"value": "x", "source": "unset"}
+    model["wires"][0]["colour"] = {"value": "x", "source": "unset", "assumption": None}
 
 
 def _given_without_a_value(model: dict[str, Any]) -> None:
-    model["wires"][0]["colour"] = {"value": None, "source": "user"}
+    model["wires"][0]["colour"] = {"value": None, "source": "user", "assumption": None}
 
 
 def _unknown_field(model: dict[str, Any]) -> None:
@@ -218,6 +218,72 @@ def _bool_as_int(model: dict[str, Any]) -> None:
 
 def _two_wires_on_a_connection(model: dict[str, Any]) -> None:
     model["wires"][1]["connection_id"] = model["wires"][0]["connection_id"]
+
+
+def _pattern_changed(model: dict[str, Any]) -> None:
+    model["patterns"][0]["nets"][0]["signal"] = "SOMETHING-ELSE"
+
+
+def _pattern_lock_digest_changed(model: dict[str, Any]) -> None:
+    model["registry_lock"]["patterns"][0]["digest"] = "0" * 64
+
+
+def _pattern_lock_entry_missing(model: dict[str, Any]) -> None:
+    model["registry_lock"]["patterns"].pop()
+
+
+def _pattern_lock_entry_extra(model: dict[str, Any]) -> None:
+    model["registry_lock"]["patterns"].append({"ref": "global/zzz/v1", "digest": "0" * 64})
+
+
+def _pattern_unused(model: dict[str, Any]) -> None:
+    extra = copy.deepcopy(model["patterns"][0])
+    extra["ref"] = "global/zzz-unused/v1"
+    model["patterns"].append(extra)
+    model["registry_lock"] = migrate_v2.lock_of(model["templates"], model["patterns"])
+
+
+def _pattern_not_embedded(model: dict[str, Any]) -> None:
+    model["patterns"] = []
+    model["registry_lock"]["patterns"] = []
+
+
+def _dangling_pattern_ref(model: dict[str, Any]) -> None:
+    model["connections"][0]["pattern_ref"] = "global/zzz/v1"
+
+
+def _pattern_ref_with_at(model: dict[str, Any]) -> None:
+    model["connections"][0]["pattern_ref"] = "global/a@b/v1"
+
+
+def _pattern_unsorted_slots(model: dict[str, Any]) -> None:
+    model["patterns"][0]["slots"].reverse()
+    model["registry_lock"] = migrate_v2.lock_of(model["templates"], model["patterns"])
+
+
+def _required_not_tri_state(model: dict[str, Any]) -> None:
+    template = next(t for t in model["templates"] if t["terminals"])
+    template["terminals"][0]["required"] = "yes"
+    model["registry_lock"] = migrate_v2.lock_of(model["templates"], model["patterns"])
+
+
+def _assumption_dangling(model: dict[str, Any]) -> None:
+    model["wires"][0]["colour"] = {"value": "x", "source": "assumption", "assumption": "a-none"}
+
+
+def _assumption_without_record_id(model: dict[str, Any]) -> None:
+    model["wires"][0]["colour"] = {"value": "x", "source": "assumption", "assumption": None}
+
+
+def _record_id_without_assumption(model: dict[str, Any]) -> None:
+    model["wires"][0]["colour"] = {"value": "x", "source": "data", "assumption": "a-1"}
+
+
+def _internal_between_two_points(model: dict[str, Any]) -> None:
+    connection = next(
+        x for x in model["connections"] if "point" in x["from"] and "component" in x["to"]
+    )
+    connection["via"] = "internal"
 
 
 TAMPERS: dict[str, Callable[[dict[str, Any]], None]] = {
@@ -255,6 +321,20 @@ TAMPERS: dict[str, Callable[[dict[str, Any]], None]] = {
         _core_past_the_cable,
         _bool_as_int,
         _two_wires_on_a_connection,
+        _pattern_changed,
+        _pattern_lock_digest_changed,
+        _pattern_lock_entry_missing,
+        _pattern_lock_entry_extra,
+        _pattern_unused,
+        _pattern_not_embedded,
+        _dangling_pattern_ref,
+        _pattern_ref_with_at,
+        _pattern_unsorted_slots,
+        _required_not_tri_state,
+        _assumption_dangling,
+        _assumption_without_record_id,
+        _record_id_without_assumption,
+        _internal_between_two_points,
     )
 }
 
@@ -293,6 +373,20 @@ REASONS: dict[str, str] = {
     "unset_with_a_value": "null exactly when",
     "unsorted_components": "is not sorted",
     "unsorted_points": "is not sorted",
+    "pattern_changed": "does not match its pattern",
+    "pattern_lock_digest_changed": "does not match its pattern",
+    "pattern_lock_entry_missing": "does not lock exactly the embedded patterns",
+    "pattern_lock_entry_extra": "does not lock exactly the embedded patterns",
+    "pattern_unused": "embeds a pattern the design does not use",
+    "pattern_not_embedded": "names no embedded pattern",
+    "dangling_pattern_ref": "names no embedded pattern",
+    "pattern_ref_with_at": "is not <global|tenant>",
+    "pattern_unsorted_slots": "is not sorted",
+    "required_not_tri_state": "is not true, false or null",
+    "assumption_dangling": "names no assumption record",
+    "assumption_without_record_id": "names an assumption exactly when",
+    "record_id_without_assumption": "names an assumption exactly when",
+    "internal_between_two_points": "two sides of one strip point",
 }
 
 
@@ -392,3 +486,30 @@ def test_no_shipped_ref_holds_an_at_sign() -> None:
     assert all("@" not in t["ref"] for t in migrate_v2.LEGACY_TEMPLATES.values())
     envelope = _composed()
     assert "@" not in json.dumps(envelope)
+
+
+def test_every_embedded_pattern_is_locked_by_its_digest() -> None:
+    model = read_snapshot(_composed()).v2
+    assert model is not None
+    assert model.patterns
+    assert [e.ref for e in model.pattern_lock] == [p.ref for p in model.patterns]
+    for entry, pattern in zip(model.pattern_lock, model.patterns, strict=True):
+        assert entry.digest == codec_v2.pattern_digest(pattern)
+        assert codec_v2.parse_pattern(codec_v2.dump_pattern(pattern)) == pattern
+
+
+def test_a_terminal_may_leave_requiredness_unsaid() -> None:
+    v1, configuration = config_case("pe_n_distribution")
+    model = read_snapshot(write.snapshot_v2_from_v1(v1, configuration)).v2
+    assert model is not None
+    states = {t.required for template in model.templates for t in template.terminals}
+    assert states == {True, False, None}
+
+
+def test_a_provenance_may_document_no_source() -> None:
+    raw = copy.deepcopy(_composed()["model"]["templates"][-1])
+    raw["provenance"]["source"] = None
+    assert codec_v2.parse_template(raw).provenance.source is None
+    raw["provenance"]["source"] = ""
+    with pytest.raises(versions.SnapshotUnreadableError):
+        codec_v2.parse_template(raw)

@@ -275,7 +275,19 @@
               }
             ]
           }
-        ]
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
       }
     ],
     "strips": [
@@ -336,6 +348,6 @@
     "nets": 4,
     "connections": 7,
     "wires": 7,
-    "sha256": "c82f5e813c65a04eb9152982623f115d512bfd160e34fe081f0c61097c9e6943"
+    "sha256": "f63269cf2f6c462075ed95f753aef76b6bc44e9a7c4ce06ececda36751be33c9"
   }
 }

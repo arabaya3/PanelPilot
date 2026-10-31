@@ -125,6 +125,7 @@ def _configured_ids() -> set[str]:
 def test_no_design_code_names_a_configured_template_or_pattern() -> None:
     ids = _configured_ids()
     assert "synth-heldout-radial" in ids
+    assert "tenant/synth-pe-n-distribution/v1" in ids  # pattern refs are checked too
     hits = []
     for path in sorted(DESIGN_DIR.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -242,6 +243,37 @@ def _numeric_wire_number(c: dict[str, Any]) -> None:
     c["bindings"][0]["wires"] = {"line/0": {"number": 101}}
 
 
+def _assumption_without_statement(c: dict[str, Any]) -> None:
+    c["bindings"][0]["wires"] = {"line/0": {"colour": {"value": "x", "source": "assumption"}}}
+
+
+def _statement_without_assumption(c: dict[str, Any]) -> None:
+    c["bindings"][0]["wires"] = {
+        "line/0": {"colour": {"value": "x", "source": "data", "statement": "s"}}
+    }
+
+
+def _unknown_wire_source(c: dict[str, Any]) -> None:
+    c["bindings"][0]["wires"] = {"line/0": {"colour": {"value": "x", "source": "rule"}}}
+
+
+def _empty_given_value(c: dict[str, Any]) -> None:
+    c["bindings"][0]["wires"] = {"line/0": {"colour": {"value": "", "source": "user"}}}
+
+
+def _pattern_without_review(c: dict[str, Any]) -> None:
+    del _pattern(c)["review"]
+
+
+def _pattern_ref_with_at(c: dict[str, Any]) -> None:
+    _pattern(c)["ref"] = "global/a@b/v1"
+    c["bindings"][0]["pattern"] = "global/a@b/v1"
+
+
+def _internal_to_a_component(c: dict[str, Any]) -> None:
+    _pattern(c)["nets"][0]["connections"][0]["via"] = "internal"
+
+
 REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     "unknown_template": (_unknown_template, "unknown_template", {"binding", "slot"}),
     "unknown_pattern": (_unknown_pattern, "unknown_pattern", {"binding"}),
@@ -270,6 +302,21 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     "legacy_redefined": (_legacy_redefined, "template_conflict", {"ref"}),
     "board_mismatch": (_board_mismatch, "board_mismatch", {"component"}),
     "numeric_wire_number": (_numeric_wire_number, "configuration_invalid", {"field"}),
+    "assumption_without_statement": (
+        _assumption_without_statement,
+        "configuration_invalid",
+        {"field"},
+    ),
+    "statement_without_assumption": (
+        _statement_without_assumption,
+        "configuration_invalid",
+        {"field"},
+    ),
+    "unknown_wire_source": (_unknown_wire_source, "configuration_invalid", {"field"}),
+    "empty_given_value": (_empty_given_value, "configuration_invalid", {"field"}),
+    "pattern_without_review": (_pattern_without_review, "configuration_invalid", {"where"}),
+    "pattern_ref_with_at": (_pattern_ref_with_at, "pattern_invalid", set()),
+    "internal_to_a_component": (_internal_to_a_component, "pattern_invalid", set()),
 }
 
 
@@ -323,3 +370,65 @@ def test_an_invalid_v1_design_is_unreadable_not_composed() -> None:
     v1["boards"][0]["unexpected"] = 1
     with pytest.raises(versions.SnapshotUnreadableError):
         compose.compose(v1, configuration)
+
+
+# --------------------------------------------------------------------------- #
+# Patterns: embedded, locked and traceable
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("name", sorted(CONFIGS))
+def test_every_used_pattern_is_embedded_and_every_created_entity_names_it(name: str) -> None:
+    v1, configuration = config_case(name)
+    model = read_snapshot(write.snapshot_v2_from_v1(v1, configuration)).v2
+    assert model is not None
+    used = {b["pattern"] for b in configuration["bindings"]}
+    assert {p.ref for p in model.patterns} == used
+    assert {e.ref for e in model.pattern_lock} == used
+    assert all(x.pattern_ref in used for x in model.connections)
+    assert all(n.pattern_refs and set(n.pattern_refs) <= used for n in model.nets)
+    assert all(p.pattern_ref in used for s in model.strips for p in s.points)
+    for component in model.components:
+        if component.legacy_device_id is None or component.pattern_refs:
+            assert set(component.pattern_refs) <= used
+    legacy = [c for c in model.components if c.template_ref.startswith("global/legacy")]
+    assert all(c.pattern_refs == () for c in legacy)
+
+
+def test_a_migrated_design_embeds_no_pattern() -> None:
+    model = read_snapshot(write.snapshot_v2_from_v1(v1_snapshot("residential"))).v2
+    assert model is not None
+    assert model.patterns == ()
+    assert model.pattern_lock == ()
+
+
+def test_wire_values_keep_the_source_their_input_states() -> None:
+    v1, configuration = config_case("pe_n_distribution")
+    model = read_snapshot(write.snapshot_v2_from_v1(v1, configuration)).v2
+    assert model is not None
+    sources = sorted(
+        (getattr(w, n).source, getattr(w, n).value)
+        for w in model.wires
+        for n in ("number", "cross_section_mm2", "colour")
+        if getattr(w, n).source != "unset"
+    )
+    assert sources == [("assumption", "SYN-COLOUR-A"), ("data", "SYN-1"), ("user", "SYN-2")]
+    (assumed,) = [w.colour for w in model.wires if w.colour.source == "assumption"]
+    (record,) = model.assumptions
+    assert assumed.assumption == record.id
+    assert record.statement.startswith("Synthetic illustrative assumption")
+
+
+def test_no_assumption_is_ever_made_up() -> None:
+    for name in sorted(CONFIGS):
+        v1, configuration = config_case(name)
+        model = read_snapshot(write.snapshot_v2_from_v1(v1, configuration)).v2
+        assert model is not None
+        stated = [
+            given
+            for b in configuration["bindings"]
+            for wire in b["wires"].values()
+            for given in wire.values()
+            if isinstance(given, dict) and given.get("source") == "assumption"
+        ]
+        assert len(model.assumptions) == len(stated)
