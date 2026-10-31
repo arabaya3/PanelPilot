@@ -20,7 +20,7 @@ CATALOGUE_VERSION = "none"
 #: the content of its reference exports changes and this does not. What is
 #: material is set out in ``docs/design-readiness/phase-1-export-integrity.md``
 #: ("Renderer version").
-RENDERER_VERSION = "2026.10.31.3"
+RENDERER_VERSION = "2026.10.31.4"
 
 #: What an approval recorded before renderer versions were (a NULL) is read
 #: as. Which renderer exported it was never recorded, and export content did

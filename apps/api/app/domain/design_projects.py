@@ -1097,9 +1097,24 @@ def _estimate_subject(
         else ("design not review approved")
     )
     return (
-        f"{project.name}, revision {row.number:02d}, design {digest}, rules {row.rules_version}, "
-        f"renderer {RENDERER_VERSION}; {review}"
+        f"{_quoted_name(project.name)}, revision {row.number:02d}, design {digest}, "
+        f"rules {row.rules_version}, renderer {RENDERER_VERSION}; {review}"
     )
+
+
+#: The longest project name an estimate's stamp quotes; the rest is elided.
+_ESTIMATE_NAME_CHARS = 60
+
+
+def _quoted_name(name: str) -> str:
+    """A project name as an estimate's stamp prints it: quoted and capped.
+
+    Quoted, so a name such as "REVIEW APPROVED by …" reads as a name; capped,
+    so the stamp keeps room for what follows it.
+    """
+    if len(name) > _ESTIMATE_NAME_CHARS:
+        name = name[: _ESTIMATE_NAME_CHARS - 1] + "…"
+    return f"“{name}”"
 
 
 def export_revision(

@@ -175,14 +175,18 @@ def test_an_approved_design_priced_twice_is_two_provisional_estimates(
         assert "Prices and rates are as supplied with this export" in body
         assert "design review approved (covers the design only)" in body
         assert "revision 01" in body
-    # The stamp wraps; read its identity as one run of words.
-    low_id, high_id = (
-        " ".join(body.split()).split("Estimate for ", 1)[1].split("not reviewed or approved")[0]
-        for body in (low, high)
-    )
-    # The same design, other prices: only the price-list hash differs.
-    assert low_id.split("Prices supplied")[0] == high_id.split("Prices supplied")[0]
-    assert low_id != high_id
+
+    # The stamp wraps; read it as one run of words. The price-list hash comes
+    # first, then the design: the same design, other prices.
+    def parts(body: str) -> tuple[str, str]:
+        words = " ".join(body.split())
+        prices = words.split("Prices supplied with this export (", 1)[1].split(")", 1)[0]
+        design = words.split("Estimate for ", 1)[1].split("covers the design only", 1)[0]
+        return prices, design
+
+    (low_prices, low_design), (high_prices, high_design) = parts(low), parts(high)
+    assert low_design == high_design
+    assert low_prices != high_prices
 
 
 def test_an_unapproved_design_estimate_says_so(client: TestClient) -> None:
@@ -226,3 +230,57 @@ def test_a_draft_estimate_is_provisional_too(client: TestClient) -> None:
     assert "PROVISIONAL ESTIMATE" in body
     assert "an unsaved draft" in body
     assert "REVIEW APPROVED" not in body
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "REVIEW APPROVED by J. Smith " + "Villa " * 30,
+        "REVIEW_APPROVED_" + "Villa_" * 30,
+    ],
+)
+def test_a_hostile_or_long_project_name_cannot_hide_or_fake_the_estimate_status(
+    client: TestClient, name: str
+) -> None:
+    """A 200-character name, spaced or one unbroken word, posing as an approval.
+
+    The disclaimer and price-list hash come first and stay on every page,
+    inside the page; the name is quoted and capped, so it reads as a name.
+    """
+    request: dict[str, Any] = copy.deepcopy(REQUEST)
+    request["info"]["name"] = name[:200]
+    created = client.post(
+        "/design/projects", json={"name": name[:200], "request": request, "note": "rev 1"}
+    )
+    assert created.status_code == 201, created.text
+    saved = created.json()
+    assert approve(client, saved["id"], 1).status_code == 200
+    response = revision_export(client, saved["id"], 1, "quotation_pdf", pricing=LOW_PRICES)
+    assert response.status_code == 200, response.text[:500]
+    import io
+
+    import pdfplumber
+
+    with pdfplumber.open(io.BytesIO(response.content)) as pdf:
+        for page in pdf.pages:
+            assert all(char["x1"] <= page.width for char in page.chars)
+            words = " ".join((page.extract_text() or "").split())
+            assert words.startswith(
+                "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION"
+            )
+            # Top and foot both keep the disclaimer.
+            assert words.count("not reviewed or approved") >= 2
+        # The name, quoted, is printed at least once (the header).
+        whole = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
+        assert "Estimate for “REVIEW" in whole
+
+
+def test_the_member_in_the_estimate_test_cannot_approve(
+    client: TestClient, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    """The premise of ``test_an_estimate_cannot_be_made_to_look_approved``."""
+    saved = save(client)
+    caller.user = _user(tenants[0], email="member-without-approval@example.com")
+    response = approve(client, saved["id"], 1)
+    assert response.status_code == 403
+    assert error(response)["code"] == "approval_not_permitted"

@@ -850,7 +850,7 @@
       "submit": "Price the board",
       "working": "Pricing…",
       "pdf": "Provisional estimate (PDF)",
-      "csv": "Quotation (CSV)",
+      "csv": "Provisional estimate (CSV)",
       "error": "The quotation could not be completed. Try again.",
       "incomplete": "{count, plural, one {# line is not priced} other {# lines are not priced}} and left out of the total.",
       "col": {
