@@ -30,6 +30,7 @@ from sqlalchemy.engine import Engine
 
 from app.design import snapshot
 from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixtures)
+    APPROVER,
     _account_row,
     _app,
     _Caller,
@@ -37,10 +38,12 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     _change_policy,
     _client,
     _engine,
+    _reclassify_a_finding,
     _tenants,
     _user,
     approve,
     error,
+    pdf_pages,
     pytestmark,
     revision_export,
     revision_row,
@@ -241,11 +244,9 @@ def test_the_integrity_status_on_open_list_approval_and_every_export(
     other = _open(client, project_id, 1)
     listed = next(r for r in other["revisions"] if r["number"] == 2)
     assert listed["validated"] is validated, case
-    if status == "stale" and policy == "findings_policy":
-        # Listed from columns alone: a reclassification needs the snapshot.
-        assert listed["export_status"] in ("stale", "blocked", "draft")
-    else:
-        assert listed["export_status"] == status, case
+    # Listed, the snapshot read for integrity classifies the findings too, so
+    # a findings-policy change is stale in the list as on open.
+    assert listed["export_status"] == status, case
     # Older revision and its approval are unaffected.
     first = next(r for r in other["revisions"] if r["number"] == 1)
     assert first["validated"] is True
@@ -345,3 +346,74 @@ def test_an_approved_revision_that_fails_integrity_is_listed_as_such(
         "findings_mismatch" if rehash else "hash_mismatch"
     )
     assert _kept(revision_row(engine, project_id, 1)) == before
+
+
+def _title_rows(client: TestClient, project_id: str, number: int) -> list[dict[str, Any]]:
+    """The title block's revision rows of a review JSON export."""
+    response = revision_export(client, project_id, number, "json")
+    assert response.status_code == 200, response.text[:300]
+    found: list[list[dict[str, Any]]] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            rows = value.get("revisions")
+            if (
+                isinstance(rows, list)
+                and rows
+                and isinstance(rows[0], dict)
+                and {"approved_by", "index"} <= rows[0].keys()
+            ):
+                found.append(rows)
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(response.json())
+    assert found, "no title block revisions in the export"
+    return found[0]
+
+
+@pytest.mark.parametrize("altered", [False, True])
+def test_an_earlier_approval_prints_in_the_title_block_only_while_it_counts(
+    client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, altered: bool
+) -> None:
+    """The title block agrees with the revision list about an earlier approval.
+
+    An earlier approved revision whose stored design fails integrity is
+    listed as not validated and its approval not current; an export of a
+    later revision must not print it as approved either. An intact one still
+    prints its approver.
+    """
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
+    project_id = _save(client)
+    assert approve(client, project_id, 1).status_code == 200
+    assert _revise(client, project_id, None, CASE).status_code == 201
+    if altered:
+        stored = copy.deepcopy(revision_row(engine, project_id, 1)["design_snapshot"])
+        _v1_value(stored)
+        update_row(engine, project_id, 1, design_snapshot=stored)
+    listed = next(r for r in _open(client, project_id, 2)["revisions"] if r["number"] == 1)
+    assert listed["approval_current"] is (not altered)
+    first = next(r for r in _title_rows(client, project_id, 2) if r["index"] == "01")
+    assert (first["approved_by"] == "") is altered, first
+    pdf = revision_export(client, project_id, 2, "pdf")
+    assert pdf.status_code == 200, pdf.text[:300]
+    words = " ".join(" ".join(pdf_pages(pdf.content)).split())
+    assert ("01 " + first["date"] + " r1 " + APPROVER in words) is (not altered)
+
+
+def test_a_findings_policy_change_shows_on_a_listed_approved_revision(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Listed, not opened, a reclassified approved revision is stale and its approval not current."""
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
+    project_id = _save(client)
+    assert approve(client, project_id, 1).status_code == 200
+    assert _revise(client, project_id, None, CASE).status_code == 201
+    _reclassify_a_finding(monkeypatch, _open(client, project_id, 1))
+    listed = next(r for r in _open(client, project_id, 2)["revisions"] if r["number"] == 1)
+    assert listed["export_status"] == "stale"
+    assert listed["approval_current"] is False
+    assert "findings_policy" in listed["approval_changed"]

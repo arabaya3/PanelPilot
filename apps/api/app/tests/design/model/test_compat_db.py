@@ -343,6 +343,19 @@ def test_unknown_schema_opens_as_not_validated_with_the_finding(
     assert found[0]["values"]["schema"] == UNKNOWN
 
 
+def test_unknown_schema_execution_export_names_the_schema_refusal(
+    client: TestClient, unknown_schema: str
+) -> None:
+    """Execution names every integrity refusal by its own code, the schema's too."""
+    execution = client.post(
+        f"/design/projects/{unknown_schema}/revisions/1/export",
+        json={"format": "json", "purpose": "execution"},
+    )
+    body = _refusal(execution, 409, "execution_package_incomplete")
+    assert "snapshot_schema_unknown" in body["params"]["blockers"].split(",")
+    assert "snapshot_integrity_failed" not in body["params"]["blockers"].split(",")
+
+
 def test_an_approved_revision_whose_schema_changes_is_refused(
     client: TestClient, engine: Engine
 ) -> None:
