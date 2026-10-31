@@ -1,0 +1,855 @@
+{
+  "case": "motors",
+  "request": {
+    "boards": [
+      {
+        "loads": [
+          {
+            "description": "Pump DOL",
+            "length_m": "20",
+            "load": "motor",
+            "phases": 3,
+            "power_kw": "5.5",
+            "starter": "dol"
+          },
+          {
+            "description": "Fan star-delta",
+            "load": "motor",
+            "phases": 3,
+            "power_kw": "22",
+            "starter": "star_delta"
+          },
+          {
+            "description": "Compressor drive",
+            "load": "motor",
+            "phases": 3,
+            "power_kw": "15",
+            "starter": "drive"
+          }
+        ],
+        "name": "MCC-1",
+        "supply": {
+          "fault_level_ka": "15"
+        }
+      }
+    ],
+    "info": {
+      "name": "Synthetic Pump Room"
+    }
+  },
+  "source": "pipeline",
+  "stored": {
+    "catalogue_version": "none",
+    "design_snapshot": {
+      "boards": [
+        {
+          "cables": [
+            {
+              "cores": 4,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": "20",
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.030"
+            },
+            {
+              "cores": 7,
+              "cross_section_mm2": "4",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "W2"
+              },
+              "id": "c2-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.212"
+            },
+            {
+              "cores": 4,
+              "cross_section_mm2": "6",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "W3"
+              },
+              "id": "c3-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.476"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Pump DOL",
+              "design_current_a": "11.5",
+              "device_ids": [
+                "c1-breaker",
+                "c1-line",
+                "c1-overload"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "motor",
+              "phase": "L1L2L3",
+              "power_kw": "5.5",
+              "starter": "dol",
+              "upstream_id": null,
+              "voltage_drop_percent": "1.44"
+            },
+            {
+              "cable_id": "c2-cable",
+              "description": "Fan star-delta",
+              "design_current_a": "42",
+              "device_ids": [
+                "c2-breaker",
+                "c2-line",
+                "c2-delta",
+                "c2-star",
+                "c2-overload"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c2",
+              "load": "motor",
+              "phase": "L1L2L3",
+              "power_kw": "22",
+              "starter": "star_delta",
+              "upstream_id": null,
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c3-cable",
+              "description": "Compressor drive",
+              "design_current_a": "28.30",
+              "device_ids": [
+                "c3-fuses",
+                "c3-drive"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c3",
+              "load": "motor",
+              "phase": "L1L2L3",
+              "power_kw": "15",
+              "starter": "drive",
+              "upstream_id": null,
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": "15",
+              "curve": "C",
+              "description": "Main incomer",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "100",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": "MF",
+              "description": "Pump DOL motor protection",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": "ABB/T2S160 MF 12.5",
+              "poles": 3,
+              "rated_current_a": "12.5",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Pump DOL line contactor",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-line",
+              "kind": "contactor",
+              "part_key": "ABB/A30",
+              "poles": 3,
+              "rated_current_a": null,
+              "residual_current_ma": null,
+              "upstream_id": "c1-breaker"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Pump DOL overload, set to 11.5 A",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "c1-overload",
+              "kind": "overload_relay",
+              "part_key": "ABB/TA25DU14",
+              "poles": 3,
+              "rated_current_a": "11.5",
+              "residual_current_ma": null,
+              "upstream_id": "c1-line"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": "MA",
+              "description": "Fan star-delta motor protection",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q4"
+              },
+              "id": "c2-breaker",
+              "kind": "circuit_breaker",
+              "part_key": "ABB/T2S160 MA52",
+              "poles": 3,
+              "rated_current_a": "52",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fan star-delta line contactor",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q5"
+              },
+              "id": "c2-line",
+              "kind": "contactor",
+              "part_key": "ABB/A50",
+              "poles": 3,
+              "rated_current_a": null,
+              "residual_current_ma": null,
+              "upstream_id": "c2-breaker"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fan star-delta delta contactor",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q6"
+              },
+              "id": "c2-delta",
+              "kind": "contactor",
+              "part_key": "ABB/A50",
+              "poles": 3,
+              "rated_current_a": null,
+              "residual_current_ma": null,
+              "upstream_id": "c2-line"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fan star-delta star contactor",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "Q7"
+              },
+              "id": "c2-star",
+              "kind": "contactor",
+              "part_key": "ABB/A26",
+              "poles": 3,
+              "rated_current_a": null,
+              "residual_current_ma": null,
+              "upstream_id": "c2-line"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Fan star-delta overload, set to 24.25 A",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "F2"
+              },
+              "id": "c2-overload",
+              "kind": "overload_relay",
+              "part_key": "ABB/TA75DU32",
+              "poles": 3,
+              "rated_current_a": "24.25",
+              "residual_current_ma": null,
+              "upstream_id": "c2-line"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": "aR",
+              "description": "Compressor drive drive input fuses",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "F3"
+              },
+              "id": "c3-fuses",
+              "kind": "fuse",
+              "part_key": "Bussmann/170M1315",
+              "poles": 3,
+              "rated_current_a": "63",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Compressor drive drive",
+              "designation": {
+                "function": "MCC-1",
+                "location": null,
+                "product": "T1"
+              },
+              "id": "c3-drive",
+              "kind": "drive",
+              "part_key": "ABB/ACS880-01-032A-3",
+              "poles": null,
+              "rated_current_a": "32.00",
+              "residual_current_ma": null,
+              "upstream_id": "c3-fuses"
+            }
+          ],
+          "fed_from": null,
+          "function": null,
+          "id": "MCC-1",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "MCC-1",
+          "notes": [
+            {
+              "code": "motor_current_table",
+              "params": {
+                "current": "11.5",
+                "load": "Pump DOL",
+                "power": "5.5",
+                "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3"
+              },
+              "text": "Pump DOL: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate."
+            },
+            {
+              "code": "starter_table",
+              "params": {
+                "load": "Pump DOL",
+                "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+                "starter": "dol"
+              },
+              "text": "Pump DOL: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2."
+            },
+            {
+              "code": "motor_current_table",
+              "params": {
+                "current": "42",
+                "load": "Fan star-delta",
+                "power": "22",
+                "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3"
+              },
+              "text": "Fan star-delta: Ir 42 A, the typical Ir of a 22 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate."
+            },
+            {
+              "code": "starter_table",
+              "params": {
+                "load": "Fan star-delta",
+                "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2",
+                "starter": "star_delta"
+              },
+              "text": "Fan star-delta: star_delta starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2."
+            },
+            {
+              "code": "star_delta_interlock",
+              "params": {
+                "load": "Fan star-delta"
+              },
+              "text": "Fan star-delta: star and delta contactors need a mechanical interlock; the motor is fed by six conductors (U1 V1 W1, U2 V2 W2)."
+            },
+            {
+              "code": "motor_current_formula",
+              "params": {
+                "current": "28.30",
+                "efficiency": "0.9",
+                "load": "Compressor drive",
+                "power": "15",
+                "power_factor": "0.85"
+              },
+              "text": "Compressor drive: Ir 28.30 A from 15 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate."
+            },
+            {
+              "code": "drive_selected",
+              "params": {
+                "ambient": "30",
+                "drive": "ACS880-01-032A-3",
+                "fuse": "63",
+                "load": "Compressor drive",
+                "source": "ABB ACS880-01 hardware manual (3AUA0000078093)"
+              },
+              "text": "Compressor drive: ACS880-01-032A-3 for normal duty at 30 °C, behind 63 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends."
+            },
+            {
+              "code": "drive_fuse_fault_level",
+              "params": {
+                "current": "250",
+                "load": "Compressor drive"
+              },
+              "text": "Compressor drive: the fuses need at least 250 A prospective short-circuit current at the board to operate fast enough."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "15",
+                "rating": "15"
+              },
+              "text": "Breakers are rated for at least 15 kA breaking capacity against 15 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "2"
+              },
+              "text": "2 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "earth_fault_no_ze",
+              "params": {},
+              "text": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "15"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 15 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "11"
+              },
+              "text": "Enclosure: none named, since 11 devices have no width (rail_widths_mm in the company settings)."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": null,
+            "earthing": "TN-S",
+            "fault_level_ka": "15",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        }
+      ],
+      "info": {
+        "consultant": "",
+        "contractor": "",
+        "customer": "",
+        "name": "Synthetic Pump Room",
+        "number": "",
+        "revisions": []
+      },
+      "parts": [
+        {
+          "description": "Moulded-case circuit-breaker, motor protection",
+          "key": "ABB/T2S160 MF 12.5",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "T2S160 MF 12.5",
+          "width_mm": null
+        },
+        {
+          "description": "Contactor, AC-3",
+          "key": "ABB/A30",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "A30",
+          "width_mm": null
+        },
+        {
+          "description": "Thermal overload relay",
+          "key": "ABB/TA25DU14",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "TA25DU14",
+          "width_mm": null
+        },
+        {
+          "description": "Moulded-case circuit-breaker, motor protection",
+          "key": "ABB/T2S160 MA52",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "T2S160 MA52",
+          "width_mm": null
+        },
+        {
+          "description": "Contactor, AC-3",
+          "key": "ABB/A50",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "A50",
+          "width_mm": null
+        },
+        {
+          "description": "Contactor, AC-3",
+          "key": "ABB/A26",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "A26",
+          "width_mm": null
+        },
+        {
+          "description": "Thermal overload relay",
+          "key": "ABB/TA75DU32",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3",
+          "type_number": "TA75DU32",
+          "width_mm": null
+        },
+        {
+          "description": "aR fuse, DIN 43653 stud-mount (one per phase)",
+          "key": "Bussmann/170M1315",
+          "manufacturer": "Bussmann",
+          "order_number": null,
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+          "type_number": "170M1315",
+          "width_mm": null
+        },
+        {
+          "description": "Variable-speed drive",
+          "key": "ABB/ACS880-01-032A-3",
+          "manufacturer": "ABB",
+          "order_number": null,
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)",
+          "type_number": "ACS880-01-032A-3",
+          "width_mm": null
+        }
+      ],
+      "profile": "iec-default"
+    },
+    "findings": [
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c3",
+        "code": "integrity_drive_cable_unchecked",
+        "device_id": null,
+        "message": "Compressor drive: the cable after a drive is protected by the drive's motor overload setting, which is not checked here.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c1",
+        "code": "motor_current_table",
+        "device_id": null,
+        "message": "Pump DOL: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "11.5",
+          "load": "Pump DOL",
+          "power": "5.5",
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c1",
+        "code": "starter_table",
+        "device_id": null,
+        "message": "Pump DOL: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "load": "Pump DOL",
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+          "starter": "dol"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c2",
+        "code": "motor_current_table",
+        "device_id": null,
+        "message": "Fan star-delta: Ir 42 A, the typical Ir of a 22 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3; check it against the nameplate.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "42",
+          "load": "Fan star-delta",
+          "power": "22",
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c2",
+        "code": "starter_table",
+        "device_id": null,
+        "message": "Fan star-delta: star_delta starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "load": "Fan star-delta",
+          "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), §3.3 Table 5: 400 V 50 kA Y/D Normal Type 2",
+          "starter": "star_delta"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c2",
+        "code": "star_delta_interlock",
+        "device_id": null,
+        "message": "Fan star-delta: star and delta contactors need a mechanical interlock; the motor is fed by six conductors (U1 V1 W1, U2 V2 W2).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "load": "Fan star-delta"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c3",
+        "code": "motor_current_formula",
+        "device_id": null,
+        "message": "Compressor drive: Ir 28.30 A from 15 kW shaft power at cos phi 0.85, efficiency 0.9; check it against the nameplate.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "28.30",
+          "efficiency": "0.9",
+          "load": "Compressor drive",
+          "power": "15",
+          "power_factor": "0.85"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c3",
+        "code": "drive_selected",
+        "device_id": null,
+        "message": "Compressor drive: ACS880-01-032A-3 for normal duty at 30 °C, behind 63 A aR fuses (ABB ACS880-01 hardware manual (3AUA0000078093)). Use a screened, symmetrical motor cable, earthed 360° at both ends.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "drive": "ACS880-01-032A-3",
+          "fuse": "63",
+          "load": "Compressor drive",
+          "source": "ABB ACS880-01 hardware manual (3AUA0000078093)"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": "c3",
+        "code": "drive_fuse_fault_level",
+        "device_id": null,
+        "message": "Compressor drive: the fuses need at least 250 A prospective short-circuit current at the board to operate fast enough.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "current": "250",
+          "load": "Compressor drive"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 15 kA breaking capacity against 15 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "15",
+          "rating": "15"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "2 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "2"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "earth_fault_no_ze",
+        "device_id": null,
+        "message": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 15 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "15"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "MCC-1",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 11 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "11"
+        }
+      }
+    ],
+    "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+    "rules_version": "2026.10.23.1",
+    "snapshot_sha256": "70872fc3ef446ef64df5509d7c1648eb4849127d4b568d836302e73daf06c5d4"
+  }
+}

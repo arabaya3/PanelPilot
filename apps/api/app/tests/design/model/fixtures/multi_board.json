@@ -1,0 +1,2119 @@
+{
+  "case": "multi_board",
+  "request": {
+    "boards": [
+      {
+        "loads": [
+          {
+            "description": "Plant lighting",
+            "load": "lighting",
+            "power_kw": "1.2"
+          }
+        ],
+        "name": "MDB",
+        "supply": {
+          "earth_loop_ohm": "0.2",
+          "fault_level_ka": "25"
+        }
+      },
+      {
+        "fed_from": "MDB",
+        "feeder_length_m": "40",
+        "loads": [
+          {
+            "description": "Floor 1 sockets",
+            "load": "socket",
+            "power_kw": "3.0"
+          },
+          {
+            "description": "Floor 1 lighting",
+            "load": "lighting",
+            "power_kw": "1"
+          }
+        ],
+        "name": "SMDB-1"
+      },
+      {
+        "fed_from": "MDB",
+        "loads": [
+          {
+            "description": "Floor 2 sockets",
+            "load": "socket",
+            "power_kw": "2.5"
+          }
+        ],
+        "name": "SMDB-2"
+      },
+      {
+        "fed_from": "SMDB-2",
+        "loads": [
+          {
+            "description": "Office lighting",
+            "load": "lighting",
+            "power_kw": "0.6"
+          }
+        ],
+        "name": "DB-2A"
+      }
+    ],
+    "info": {
+      "name": "Synthetic Tower",
+      "number": "SYN-002"
+    }
+  },
+  "source": "pipeline",
+  "stored": {
+    "catalogue_version": "none",
+    "design_snapshot": {
+      "boards": [
+        {
+          "cables": [
+            {
+              "cores": 3,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.030"
+            },
+            {
+              "cores": 5,
+              "cross_section_mm2": "16",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "W2"
+              },
+              "id": "c2-cable",
+              "insulation": "PVC",
+              "length_m": "40",
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "3.386"
+            },
+            {
+              "cores": 5,
+              "cross_section_mm2": "16",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "W3"
+              },
+              "id": "c3-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "3.386"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Plant lighting",
+              "design_current_a": "5.77",
+              "device_ids": [
+                "c1-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "lighting",
+              "phase": "L1",
+              "power_kw": "1.2",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c2-cable",
+              "description": "Feeder to SMDB-1",
+              "design_current_a": "14.43",
+              "device_ids": [
+                "c2-breaker"
+              ],
+              "earth_loop_ohm": "0.303",
+              "feeds": "SMDB-1",
+              "id": "c2",
+              "load": "sub_board",
+              "phase": "L1L2L3",
+              "power_kw": "10.00",
+              "starter": null,
+              "upstream_id": null,
+              "voltage_drop_percent": "0.35"
+            },
+            {
+              "cable_id": "c3-cable",
+              "description": "Feeder to SMDB-2",
+              "design_current_a": "14.94",
+              "device_ids": [
+                "c3-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": "SMDB-2",
+              "id": "c3",
+              "load": "sub_board",
+              "phase": "L1L2L3",
+              "power_kw": "10.35",
+              "starter": null,
+              "upstream_id": null,
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Main incomer",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "125",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Group 1 supply",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "g1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "16",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Group 1 residual current",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "g1-rcd",
+              "kind": "residual_current_device",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "16",
+              "residual_current_ma": "30",
+              "upstream_id": "g1-breaker"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Plant lighting",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "10",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Feeder to SMDB-1",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "Q4"
+              },
+              "id": "c2-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "63",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Feeder to SMDB-2",
+              "designation": {
+                "function": "MDB",
+                "location": null,
+                "product": "Q5"
+              },
+              "id": "c3-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "63",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            }
+          ],
+          "fed_from": null,
+          "function": null,
+          "id": "MDB",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "MDB",
+          "notes": [
+            {
+              "code": "discrimination_feeder_raised",
+              "params": {
+                "after": "32",
+                "board": "SMDB-1",
+                "rated": "63",
+                "ratio": "1.6"
+              },
+              "text": "Feeder to SMDB-1 raised to 63 A, 1.6 x the 32 A breaker after it on SMDB-1, for discrimination; its cable is sized for 63 A."
+            },
+            {
+              "code": "discrimination_feeder_raised",
+              "params": {
+                "after": "32",
+                "board": "SMDB-2",
+                "rated": "63",
+                "ratio": "1.6"
+              },
+              "text": "Feeder to SMDB-2 raised to 63 A, 1.6 x the 32 A breaker after it on SMDB-2, for discrimination; its cable is sized for 63 A."
+            },
+            {
+              "code": "discrimination_group_raised",
+              "params": {
+                "after": "10",
+                "group": "1",
+                "rated": "16",
+                "ratio": "1.6"
+              },
+              "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+            },
+            {
+              "code": "phase_imbalance",
+              "params": {
+                "imbalance": "16.4",
+                "limit": "10"
+              },
+              "text": "Phase imbalance 16.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+            },
+            {
+              "code": "discrimination_incomer_raised",
+              "params": {
+                "after": "63",
+                "rated": "125",
+                "ratio": "1.6"
+              },
+              "text": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "25",
+                "rating": "25"
+              },
+              "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "default_power_factor",
+              "params": {},
+              "text": "Loads without a power factor were taken at cos phi 0.9."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "2"
+              },
+              "text": "2 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "earth_fault_basis",
+              "params": {
+                "voltage": "231",
+                "ze": "0.2"
+              },
+              "text": "Earth fault disconnection checked from Ze 0.2 Ω at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4)."
+            },
+            {
+              "code": "earth_fault_unchecked",
+              "params": {
+                "count": "1"
+              },
+              "text": "1 circuit(s) are not checked for earth fault disconnection: no cable length, a motor starter's breaker, or a breaker not selected here."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "25"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "1"
+              },
+              "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": "0.2",
+            "earthing": "TN-S",
+            "fault_level_ka": "25",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        },
+        {
+          "cables": [
+            {
+              "cores": 3,
+              "cross_section_mm2": "2.5",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.083"
+            },
+            {
+              "cores": 3,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "W2"
+              },
+              "id": "c2-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.030"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Floor 1 sockets",
+              "design_current_a": "14.43",
+              "device_ids": [
+                "c1-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "socket",
+              "phase": "L1",
+              "power_kw": "3.0",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c2-cable",
+              "description": "Floor 1 lighting",
+              "design_current_a": "4.81",
+              "device_ids": [
+                "c2-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c2",
+              "load": "lighting",
+              "phase": "L2",
+              "power_kw": "1",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Main switch",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "switch_disconnector",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "63",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": "6",
+              "curve": "C",
+              "description": "Group 1 supply",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "g1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "32",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Group 1 residual current",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "g1-rcd",
+              "kind": "residual_current_device",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "40",
+              "residual_current_ma": "30",
+              "upstream_id": "g1-breaker"
+            },
+            {
+              "breaking_capacity_ka": "6",
+              "curve": "C",
+              "description": "Floor 1 sockets",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "16",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            },
+            {
+              "breaking_capacity_ka": "6",
+              "curve": "C",
+              "description": "Floor 1 lighting",
+              "designation": {
+                "function": "SMDB-1",
+                "location": null,
+                "product": "Q4"
+              },
+              "id": "c2-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "10",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            }
+          ],
+          "fed_from": "MDB",
+          "function": null,
+          "id": "SMDB-1",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "SMDB-1",
+          "notes": [
+            {
+              "code": "voltage_drop_upstream",
+              "params": {
+                "percent": "0.35"
+              },
+              "text": "0.35 % is dropped on the feeders before this board, and taken from every circuit's limit."
+            },
+            {
+              "code": "discrimination_group_raised",
+              "params": {
+                "after": "16",
+                "group": "1",
+                "rated": "32",
+                "ratio": "1.6"
+              },
+              "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+            },
+            {
+              "code": "phase_imbalance",
+              "params": {
+                "imbalance": "100",
+                "limit": "10"
+              },
+              "text": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+            },
+            {
+              "code": "incomer_isolator",
+              "params": {
+                "board": "MDB"
+              },
+              "text": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "5.5",
+                "rating": "6"
+              },
+              "text": "Breakers are rated for at least 6 kA breaking capacity against 5.5 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "default_power_factor",
+              "params": {},
+              "text": "Loads without a power factor were taken at cos phi 0.9."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "2"
+              },
+              "text": "2 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "5.5"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 5.5 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "1"
+              },
+              "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+            },
+            {
+              "code": "fed_from",
+              "params": {
+                "board": "MDB"
+              },
+              "text": "Fed from MDB."
+            },
+            {
+              "code": "fault_level_calculated",
+              "params": {
+                "board": "MDB",
+                "fault": "5.5",
+                "length": "40",
+                "material": "Cu",
+                "section": "16",
+                "upstream": "25"
+              },
+              "text": "Fault level 5.5 kA, calculated from MDB's 25 kA through 40 m of 16 mm² Cu feeder (IEC 60909, conductors at 20 °C)."
+            },
+            {
+              "code": "earth_loop_calculated",
+              "params": {
+                "board": "MDB",
+                "length": "40",
+                "material": "Cu",
+                "section": "16",
+                "upstream": "0.2",
+                "ze": "0.304"
+              },
+              "text": "Ze 0.304 Ω, from MDB's 0.2 Ω plus the loop of 40 m of 16 mm² Cu feeder at its maximum operating temperature."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": "0.304",
+            "earthing": "TN-S",
+            "fault_level_ka": "5.5",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        },
+        {
+          "cables": [
+            {
+              "cores": 3,
+              "cross_section_mm2": "2.5",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.083"
+            },
+            {
+              "cores": 5,
+              "cross_section_mm2": "6",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "W2"
+              },
+              "id": "c2-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.476"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Floor 2 sockets",
+              "design_current_a": "12.03",
+              "device_ids": [
+                "c1-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "socket",
+              "phase": "L1",
+              "power_kw": "2.5",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            },
+            {
+              "cable_id": "c2-cable",
+              "description": "Feeder to DB-2A",
+              "design_current_a": "2.90",
+              "device_ids": [
+                "c2-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": "DB-2A",
+              "id": "c2",
+              "load": "sub_board",
+              "phase": "L1L2L3",
+              "power_kw": "2.01",
+              "starter": null,
+              "upstream_id": null,
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Main switch",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "switch_disconnector",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "63",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Group 1 supply",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "g1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "32",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Group 1 residual current",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "g1-rcd",
+              "kind": "residual_current_device",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "40",
+              "residual_current_ma": "30",
+              "upstream_id": "g1-breaker"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Floor 2 sockets",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "16",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Feeder to DB-2A",
+              "designation": {
+                "function": "SMDB-2",
+                "location": null,
+                "product": "Q4"
+              },
+              "id": "c2-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "32",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            }
+          ],
+          "fed_from": "MDB",
+          "function": null,
+          "id": "SMDB-2",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "SMDB-2",
+          "notes": [
+            {
+              "code": "discrimination_feeder_raised",
+              "params": {
+                "after": "16",
+                "board": "DB-2A",
+                "rated": "32",
+                "ratio": "1.6"
+              },
+              "text": "Feeder to DB-2A raised to 32 A, 1.6 x the 16 A breaker after it on DB-2A, for discrimination; its cable is sized for 32 A."
+            },
+            {
+              "code": "discrimination_group_raised",
+              "params": {
+                "after": "16",
+                "group": "1",
+                "rated": "32",
+                "ratio": "1.6"
+              },
+              "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+            },
+            {
+              "code": "phase_imbalance",
+              "params": {
+                "imbalance": "80.6",
+                "limit": "10"
+              },
+              "text": "Phase imbalance 80.6 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+            },
+            {
+              "code": "incomer_isolator",
+              "params": {
+                "board": "MDB"
+              },
+              "text": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "25",
+                "rating": "25"
+              },
+              "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "default_power_factor",
+              "params": {},
+              "text": "Loads without a power factor were taken at cos phi 0.9."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "2"
+              },
+              "text": "2 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "earth_fault_no_ze",
+              "params": {},
+              "text": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "25"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "1"
+              },
+              "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+            },
+            {
+              "code": "fed_from",
+              "params": {
+                "board": "MDB"
+              },
+              "text": "Fed from MDB."
+            },
+            {
+              "code": "fault_level_inherited",
+              "params": {
+                "board": "MDB",
+                "fault": "25"
+              },
+              "text": "Fault level 25 kA taken from MDB, not reduced by the feeder cable; enter this board's own fault level to rate its breakers lower."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": null,
+            "earthing": "TN-S",
+            "fault_level_ka": "25",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        },
+        {
+          "cables": [
+            {
+              "cores": 3,
+              "cross_section_mm2": "1.5",
+              "designation": {
+                "function": "DB-2A",
+                "location": null,
+                "product": "W1"
+              },
+              "id": "c1-cable",
+              "insulation": "PVC",
+              "length_m": null,
+              "material": "Cu",
+              "parallel": 1,
+              "part_key": null,
+              "withstand_ka2s": "0.030"
+            }
+          ],
+          "circuits": [
+            {
+              "cable_id": "c1-cable",
+              "description": "Office lighting",
+              "design_current_a": "2.89",
+              "device_ids": [
+                "c1-breaker"
+              ],
+              "earth_loop_ohm": null,
+              "feeds": null,
+              "id": "c1",
+              "load": "lighting",
+              "phase": "L1",
+              "power_kw": "0.6",
+              "starter": null,
+              "upstream_id": "g1-rcd",
+              "voltage_drop_percent": null
+            }
+          ],
+          "devices": [
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Main switch",
+              "designation": {
+                "function": "DB-2A",
+                "location": null,
+                "product": "Q1"
+              },
+              "id": "incomer",
+              "kind": "switch_disconnector",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "32",
+              "residual_current_ma": null,
+              "upstream_id": null
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Group 1 supply",
+              "designation": {
+                "function": "DB-2A",
+                "location": null,
+                "product": "Q2"
+              },
+              "id": "g1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 3,
+              "rated_current_a": "16",
+              "residual_current_ma": null,
+              "upstream_id": "incomer"
+            },
+            {
+              "breaking_capacity_ka": null,
+              "curve": null,
+              "description": "Group 1 residual current",
+              "designation": {
+                "function": "DB-2A",
+                "location": null,
+                "product": "F1"
+              },
+              "id": "g1-rcd",
+              "kind": "residual_current_device",
+              "part_key": null,
+              "poles": 4,
+              "rated_current_a": "16",
+              "residual_current_ma": "30",
+              "upstream_id": "g1-breaker"
+            },
+            {
+              "breaking_capacity_ka": "25",
+              "curve": "C",
+              "description": "Office lighting",
+              "designation": {
+                "function": "DB-2A",
+                "location": null,
+                "product": "Q3"
+              },
+              "id": "c1-breaker",
+              "kind": "circuit_breaker",
+              "part_key": null,
+              "poles": 1,
+              "rated_current_a": "10",
+              "residual_current_ma": null,
+              "upstream_id": "g1-rcd"
+            }
+          ],
+          "fed_from": "SMDB-2",
+          "function": null,
+          "id": "DB-2A",
+          "incomer_ids": [
+            "incomer"
+          ],
+          "location": null,
+          "name": "DB-2A",
+          "notes": [
+            {
+              "code": "discrimination_group_raised",
+              "params": {
+                "after": "10",
+                "group": "1",
+                "rated": "16",
+                "ratio": "1.6"
+              },
+              "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+            },
+            {
+              "code": "phase_imbalance",
+              "params": {
+                "imbalance": "100",
+                "limit": "10"
+              },
+              "text": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+            },
+            {
+              "code": "incomer_isolator",
+              "params": {
+                "board": "SMDB-2"
+              },
+              "text": "The incomer is a switch-disconnector: SMDB-2's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers."
+            },
+            {
+              "code": "breaking_capacity",
+              "params": {
+                "fault": "25",
+                "rating": "25"
+              },
+              "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+            },
+            {
+              "code": "spare_ways",
+              "params": {
+                "count": "1",
+                "percent": "20"
+              },
+              "text": "Leave 1 spare outgoing ways (20 %)."
+            },
+            {
+              "code": "default_power_factor",
+              "params": {},
+              "text": "Loads without a power factor were taken at cos phi 0.9."
+            },
+            {
+              "code": "discrimination",
+              "params": {
+                "ratio": "1.6"
+              },
+              "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+            },
+            {
+              "code": "voltage_drop_unchecked",
+              "params": {
+                "count": "1"
+              },
+              "text": "1 circuit(s) have no cable length given; their voltage drop is not checked."
+            },
+            {
+              "code": "short_circuit_withstand",
+              "params": {
+                "fault": "25"
+              },
+              "text": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4)."
+            },
+            {
+              "code": "cable_conditions",
+              "params": {
+                "ambient": "30",
+                "grouped": "1",
+                "insulation": "70",
+                "method": "B1"
+              },
+              "text": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation."
+            },
+            {
+              "code": "rules_unconfirmed",
+              "params": {},
+              "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+            },
+            {
+              "code": "enclosure_unknown_widths",
+              "params": {
+                "count": "1"
+              },
+              "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+            },
+            {
+              "code": "fed_from",
+              "params": {
+                "board": "SMDB-2"
+              },
+              "text": "Fed from SMDB-2."
+            },
+            {
+              "code": "fault_level_inherited",
+              "params": {
+                "board": "SMDB-2",
+                "fault": "25"
+              },
+              "text": "Fault level 25 kA taken from SMDB-2, not reduced by the feeder cable; enter this board's own fault level to rate its breakers lower."
+            }
+          ],
+          "supply": {
+            "earth_loop_ohm": null,
+            "earthing": "TN-S",
+            "fault_level_ka": "25",
+            "frequency_hz": "50",
+            "phases": 3,
+            "voltage_v": "400"
+          }
+        }
+      ],
+      "info": {
+        "consultant": "",
+        "contractor": "",
+        "customer": "",
+        "name": "Synthetic Tower",
+        "number": "SYN-002",
+        "revisions": []
+      },
+      "parts": [],
+      "profile": "iec-default"
+    },
+    "findings": [
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "discrimination_feeder_raised",
+        "device_id": null,
+        "message": "Feeder to SMDB-1 raised to 63 A, 1.6 x the 32 A breaker after it on SMDB-1, for discrimination; its cable is sized for 63 A.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "32",
+          "board": "SMDB-1",
+          "rated": "63",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "discrimination_feeder_raised",
+        "device_id": null,
+        "message": "Feeder to SMDB-2 raised to 63 A, 1.6 x the 32 A breaker after it on SMDB-2, for discrimination; its cable is sized for 63 A.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "32",
+          "board": "SMDB-2",
+          "rated": "63",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "discrimination_group_raised",
+        "device_id": null,
+        "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "10",
+          "group": "1",
+          "rated": "16",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "phase_imbalance",
+        "device_id": null,
+        "message": "Phase imbalance 16.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "company max_phase_imbalance_percent",
+        "values": {
+          "imbalance": "16.4",
+          "limit": "10"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "discrimination_incomer_raised",
+        "device_id": null,
+        "message": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "63",
+          "rated": "125",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "25",
+          "rating": "25"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "2 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "2"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "earth_fault_basis",
+        "device_id": null,
+        "message": "Earth fault disconnection checked from Ze 0.2 Ω at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 §411.4.4).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "IEC 60364-4-41 §411.4.4/§411.4.5",
+        "values": {
+          "voltage": "231",
+          "ze": "0.2"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "earth_fault_unchecked",
+        "device_id": null,
+        "message": "1 circuit(s) are not checked for earth fault disconnection: no cable length, a motor starter's breaker, or a breaker not selected here.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "25"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "MDB",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "voltage_drop_upstream",
+        "device_id": null,
+        "message": "0.35 % is dropped on the feeders before this board, and taken from every circuit's limit.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "percent": "0.35"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "discrimination_group_raised",
+        "device_id": null,
+        "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "16",
+          "group": "1",
+          "rated": "32",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "phase_imbalance",
+        "device_id": null,
+        "message": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "company max_phase_imbalance_percent",
+        "values": {
+          "imbalance": "100",
+          "limit": "10"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "incomer_isolator",
+        "device_id": null,
+        "message": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "MDB"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 6 kA breaking capacity against 5.5 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "5.5",
+          "rating": "6"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "2 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "2"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 5.5 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "5.5"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "fed_from",
+        "device_id": null,
+        "message": "Fed from MDB.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "MDB"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "fault_level_calculated",
+        "device_id": null,
+        "message": "Fault level 5.5 kA, calculated from MDB's 25 kA through 40 m of 16 mm² Cu feeder (IEC 60909, conductors at 20 °C).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "IEC 60909",
+        "values": {
+          "board": "MDB",
+          "fault": "5.5",
+          "length": "40",
+          "material": "Cu",
+          "section": "16",
+          "upstream": "25"
+        }
+      },
+      {
+        "board_id": "SMDB-1",
+        "circuit_id": null,
+        "code": "earth_loop_calculated",
+        "device_id": null,
+        "message": "Ze 0.304 Ω, from MDB's 0.2 Ω plus the loop of 40 m of 16 mm² Cu feeder at its maximum operating temperature.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "MDB",
+          "length": "40",
+          "material": "Cu",
+          "section": "16",
+          "upstream": "0.2",
+          "ze": "0.304"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "discrimination_feeder_raised",
+        "device_id": null,
+        "message": "Feeder to DB-2A raised to 32 A, 1.6 x the 16 A breaker after it on DB-2A, for discrimination; its cable is sized for 32 A.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "16",
+          "board": "DB-2A",
+          "rated": "32",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "discrimination_group_raised",
+        "device_id": null,
+        "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "16",
+          "group": "1",
+          "rated": "32",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "phase_imbalance",
+        "device_id": null,
+        "message": "Phase imbalance 80.6 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "company max_phase_imbalance_percent",
+        "values": {
+          "imbalance": "80.6",
+          "limit": "10"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "incomer_isolator",
+        "device_id": null,
+        "message": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "MDB"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "25",
+          "rating": "25"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "2 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "2"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "earth_fault_no_ze",
+        "device_id": null,
+        "message": "No Ze is given for this board, so circuits not under a residual current device are not checked for disconnection on an earth fault; enter the measured or declared Ze.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "25"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "fed_from",
+        "device_id": null,
+        "message": "Fed from MDB.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "MDB"
+        }
+      },
+      {
+        "board_id": "SMDB-2",
+        "circuit_id": null,
+        "code": "fault_level_inherited",
+        "device_id": null,
+        "message": "Fault level 25 kA taken from MDB, not reduced by the feeder cable; enter this board's own fault level to rate its breakers lower.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "board": "MDB",
+          "fault": "25"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "discrimination_group_raised",
+        "device_id": null,
+        "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "after": "10",
+          "group": "1",
+          "rated": "16",
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "phase_imbalance",
+        "device_id": null,
+        "message": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "company max_phase_imbalance_percent",
+        "values": {
+          "imbalance": "100",
+          "limit": "10"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "incomer_isolator",
+        "device_id": null,
+        "message": "The incomer is a switch-disconnector: SMDB-2's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "SMDB-2"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "breaking_capacity",
+        "device_id": null,
+        "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "fault": "25",
+          "rating": "25"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "spare_ways",
+        "device_id": null,
+        "message": "Leave 1 spare outgoing ways (20 %).",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "count": "1",
+          "percent": "20"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "default_power_factor",
+        "device_id": null,
+        "message": "Loads without a power factor were taken at cos phi 0.9.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "discrimination",
+        "device_id": null,
+        "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ratio": "1.6"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "voltage_drop_unchecked",
+        "device_id": null,
+        "message": "1 circuit(s) have no cable length given; their voltage drop is not checked.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "short_circuit_withstand",
+        "device_id": null,
+        "message": "Each cable's withstand k²S² is in the cable list; compare it with the selected breaker's let-through I²t at 25 kA from its maker's curve (ABB handbook §2.4).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "fault": "25"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "cable_conditions",
+        "device_id": null,
+        "message": "Cables sized for method B1, 30 °C, 1 grouped circuit(s), 70 °C insulation.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "ambient": "30",
+          "grouped": "1",
+          "insulation": "70",
+          "method": "B1"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "rules_unconfirmed",
+        "device_id": null,
+        "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {}
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "enclosure_unknown_widths",
+        "device_id": null,
+        "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "count": "1"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "fed_from",
+        "device_id": null,
+        "message": "Fed from SMDB-2.",
+        "requires_engineering_confirmation": false,
+        "severity": "info",
+        "source": "policy",
+        "values": {
+          "board": "SMDB-2"
+        }
+      },
+      {
+        "board_id": "DB-2A",
+        "circuit_id": null,
+        "code": "fault_level_inherited",
+        "device_id": null,
+        "message": "Fault level 25 kA taken from SMDB-2, not reduced by the feeder cable; enter this board's own fault level to rate its breakers lower.",
+        "requires_engineering_confirmation": true,
+        "severity": "warning",
+        "source": "policy",
+        "values": {
+          "board": "SMDB-2",
+          "fault": "25"
+        }
+      }
+    ],
+    "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+    "rules_version": "2026.10.23.1",
+    "snapshot_sha256": "d387aa3f164d0e9f54c346fc12dd66720eed9da57a644fdd566151f71e682dea"
+  }
+}

@@ -678,10 +678,11 @@ def test_a_save_during_an_approval_is_a_new_unapproved_revision(tenants, as_tena
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(session: Any, project: Any, row: Any, number: int, applicable: Any) -> None:
-        original(session, project, row, number, applicable)
+    def slow(session: Any, project: Any, row: Any, number: int) -> Any:
+        applicable = original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
+        return applicable
 
     def approve() -> None:
         outcome["approved"] = _approve(as_tenant, a, saved)
@@ -751,10 +752,11 @@ def test_a_delete_during_an_approval_waits_then_is_refused(tenants, as_tenant, e
     outcome: dict[str, Any] = {}
     original = design_projects._approvable
 
-    def slow(session: Any, project: Any, row: Any, number: int, applicable: Any) -> None:
-        original(session, project, row, number, applicable)
+    def slow(session: Any, project: Any, row: Any, number: int) -> Any:
+        applicable = original(session, project, row, number)
         approving.set()
         release.wait(timeout=30)
+        return applicable
 
     def approve() -> None:
         outcome["approved"] = _approve(as_tenant, a, saved)
