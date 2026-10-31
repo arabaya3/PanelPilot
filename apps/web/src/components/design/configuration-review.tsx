@@ -223,12 +223,15 @@ export function ValidationScopeNote() {
 
 function Table({
   label,
+  name,
   testId,
   head,
   children,
   empty,
 }: {
   label: string;
+  /** The region's and table's accessible name: the label, with whose review it is. */
+  name: string;
   testId: string;
   head: string[];
   children: ReactNode[];
@@ -240,8 +243,8 @@ function Table({
       {children.length === 0 ? (
         <p className="text-sm text-text-muted">{empty}</p>
       ) : (
-        <TableFrame label={label}>
-          <table className="data-table w-full text-sm" data-testid={testId}>
+        <TableFrame label={name}>
+          <table className="data-table w-full text-sm" aria-label={name} data-testid={testId}>
             <thead>
               <tr>
                 {head.map((cell) => (
@@ -274,9 +277,14 @@ function Tokens({ values }: { values: readonly string[] }) {
   );
 }
 
-/** Every table of a model, read-only. */
-export function ModelReview({ model }: { model: V2ModelSummary }) {
+/**
+ * Every table of a model, read-only. `context` names whose review it is
+ * ("Saved revision 2", "Validation result"), so two reviews on one page never
+ * share region or table names.
+ */
+export function ModelReview({ model, context }: { model: V2ModelSummary; context: string }) {
   const t = useTranslations('configuration');
+  const named = (label: string) => t('tableName', { context, label });
   const h = (key: string) => t(`column.${key}`);
   const empty = t('emptyTable');
   return (
@@ -286,6 +294,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Notice>
       <Table
         label={t('tables.definitions')}
+        name={named(t('tables.definitions'))}
         testId="table-definitions"
         empty={empty}
         head={[h('ref'), h('kind'), h('reviewStatus'), h('provenance'), h('restrictedScope')]}
@@ -316,6 +325,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.components')}
+        name={named(t('tables.components'))}
         testId="table-components"
         empty={empty}
         head={[h('id'), h('board'), h('designation'), h('template'), h('patterns'), h('source')]}
@@ -345,6 +355,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.strips')}
+        name={named(t('tables.strips'))}
         testId="table-strips"
         empty={empty}
         head={[h('strip'), h('board'), h('marking'), h('position'), h('level'), h('kind')]}
@@ -376,6 +387,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.terminals')}
+        name={named(t('tables.terminals'))}
         testId="table-terminals"
         empty={empty}
         head={[
@@ -420,6 +432,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.nets')}
+        name={named(t('tables.nets'))}
         testId="table-nets"
         empty={empty}
         head={[h('id'), h('board'), h('signal'), h('origin'), h('members')]}
@@ -446,6 +459,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.connections')}
+        name={named(t('tables.connections'))}
         testId="table-connections"
         empty={empty}
         head={[h('id'), h('net'), h('start'), h('end'), h('via'), h('cableCore')]}
@@ -475,6 +489,7 @@ export function ModelReview({ model }: { model: V2ModelSummary }) {
       </Table>
       <Table
         label={t('tables.wires')}
+        name={named(t('tables.wires'))}
         testId="table-wires"
         empty={empty}
         head={[

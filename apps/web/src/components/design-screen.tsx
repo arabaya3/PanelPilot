@@ -2033,7 +2033,10 @@ function DesignWorkspace({
                 {openedModel ? (
                   <div className="flex flex-col gap-4">
                     <ValidationScopeNote />
-                    <ModelReview model={openedModel} />
+                    <ModelReview
+                      model={openedModel}
+                      context={tc('contextSaved', { revision: opened.revision })}
+                    />
                   </div>
                 ) : openedSchema === 'pp-design/1' || openedSchema === undefined ? (
                   <p className="text-sm text-text-muted" data-testid="opened-configuration-v1">

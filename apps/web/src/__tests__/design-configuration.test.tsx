@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
 import { ConfigurationPanel, parseConfiguration } from '@/components/design/configuration-panel';
-import { groupOf } from '@/components/design/configuration-review';
+import { groupOf, ModelReview } from '@/components/design/configuration-review';
 import { ExecutionRefused } from '@/components/design/revision-status';
 import type * as DesignModule from '@/lib/design';
 import type {
@@ -248,6 +248,76 @@ function enter(text = '{"templates": []}') {
 beforeEach(() => {
   api.validate.mockReset();
   api.revise.mockReset();
+});
+
+describe('keyboard focus after validating, saving and opening', () => {
+  it('moves to the review once validated, not to the page', async () => {
+    api.validate.mockResolvedValue({ kind: 'reviewed', review: REVIEW });
+    renderPanel();
+    enter();
+    const validate = screen.getByTestId<HTMLButtonElement>('configuration-validate');
+    validate.focus();
+    fireEvent.click(validate);
+    await screen.findByTestId('configuration-review');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('configuration-result'));
+    });
+    expect(
+      screen
+        .getByTestId('configuration-result')
+        .contains(screen.getByTestId('configuration-review')),
+    ).toBe(true);
+  });
+
+  it('moves to the outcome once saved, or refused', async () => {
+    api.revise.mockResolvedValue({
+      kind: 'saved',
+      project: { id: 'p1', revision: 2, revisions: [], request: {} } as unknown as SavedProject,
+    });
+    renderPanel();
+    enter();
+    fireEvent.click(screen.getByTestId('configuration-save'));
+    await screen.findByTestId('configuration-saved');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('configuration-result'));
+    });
+    expect(document.activeElement?.textContent).toContain('2');
+  });
+});
+
+describe('two reviews on one page', () => {
+  it('give every region and table a distinct accessible name', async () => {
+    api.validate.mockResolvedValue({ kind: 'reviewed', review: REVIEW });
+    renderApp(
+      <>
+        <ModelReview model={REVIEW.model} context="Saved revision 1" />
+        <ConfigurationPanel
+          token="t"
+          projectId="p1"
+          latestRevision={1}
+          request={REQUEST}
+          note=""
+          dirty={false}
+          onSaved={vi.fn()}
+          onUnauthorized={vi.fn()}
+          validateImpl={api.validate}
+          reviseImpl={api.revise}
+        />
+      </>,
+    );
+    enter();
+    fireEvent.click(screen.getByTestId('configuration-validate'));
+    await screen.findByTestId('configuration-review');
+    const regions = screen.getAllByRole('region').map((r) => r.getAttribute('aria-label') ?? '');
+    const tables = screen.getAllByRole('table').map((r) => r.getAttribute('aria-label') ?? '');
+    expect(tables.length).toBeGreaterThan(1);
+    expect(tables.every((name) => name !== '')).toBe(true);
+    expect(new Set(tables).size).toBe(tables.length);
+    const named = regions.filter((name) => name !== '');
+    expect(new Set(named).size).toBe(named.length);
+    expect(tables.some((name) => name.includes('Saved revision 1'))).toBe(true);
+    expect(tables.some((name) => name.includes(c.contextValidation))).toBe(true);
+  });
 });
 
 describe('a configuration as text', () => {
@@ -592,6 +662,8 @@ describe('the configuration view and review schedules of a revision', () => {
     api.open.mockResolvedValue({ kind: 'saved', project: saved(null) });
     renderScreen();
     await openStored();
+    // Open moved focus to what was opened, not to the page.
+    expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
     expect(review().queryByTestId('revision-export-terminal_schedule_pdf')).toBeNull();
     expect(review().queryByTestId('revision-export-wire_schedule_pdf')).toBeNull();
     expect(review().getByTestId('revision-schedules-v1').textContent).toBe(

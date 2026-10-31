@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import {
@@ -86,6 +86,14 @@ export function ConfigurationPanel({
   const [disabledHere, setDisabledHere] = useState<string | null>(null);
   const parsed = parseConfiguration(text);
   const working = outcome.kind === 'working';
+  // Validate and Save are disabled while they work, which drops keyboard
+  // focus to the page: once answered, focus moves to the answer instead.
+  const focusResult = useRef(false);
+  useEffect(() => {
+    if (!focusResult.current || outcome.kind === 'working' || outcome.kind === 'idle') return;
+    focusResult.current = false;
+    document.getElementById(`${id}-result`)?.focus();
+  }, [outcome, id]);
 
   function refusalText(refusal: Refusal): { message: string; disabled: string | null } {
     const code = refusal.code ?? '';
@@ -130,6 +138,7 @@ export function ConfigurationPanel({
 
   async function validate() {
     if (typeof parsed !== 'object' || working) return;
+    focusResult.current = true;
     setOutcome({ kind: 'working' });
     const result = await validateImpl({ token, id: projectId, configuration: parsed });
     if (result.kind === 'reviewed') {
@@ -142,6 +151,7 @@ export function ConfigurationPanel({
 
   async function save() {
     if (typeof parsed !== 'object' || request === null || working || dirty) return;
+    focusResult.current = true;
     setOutcome({ kind: 'working' });
     const result = await reviseImpl({
       token,
@@ -235,32 +245,39 @@ export function ConfigurationPanel({
         </Notice>
       )}
       {working && <LoadingState>{t('working')}</LoadingState>}
-      {outcome.kind === 'error' && outcome.disabled === null && (
-        <Notice tone="critical" testId="configuration-error">
-          {outcome.message}
-        </Notice>
-      )}
-      {outcome.kind === 'saved' && (
-        <Notice tone="success" testId="configuration-saved">
-          {t('saved', { revision: String(outcome.revision) })}
-        </Notice>
-      )}
-      {reviewed && (
-        <div className="flex flex-col gap-4" data-testid="configuration-review">
-          {!reviewCurrent && (
-            <Notice tone="warning" live={false}>
-              {t('reviewOutdated')}
-            </Notice>
-          )}
-          <p className="text-sm">
-            {t('reviewedAgainst', { revision: String(reviewed.review.based_on_revision) })}{' '}
-            <TechnicalToken>{reviewed.review.snapshot_schema}</TechnicalToken>{' '}
-            <TechnicalToken className="text-xs">{reviewed.review.snapshot_sha256}</TechnicalToken>
-          </p>
-          <ModelReview model={reviewed.review.model} />
-          <GroupedFindingsOfDesign findings={reviewed.review.findings} />
-        </div>
-      )}
+      <div
+        id={`${id}-result`}
+        tabIndex={-1}
+        className="flex flex-col gap-4"
+        data-testid="configuration-result"
+      >
+        {outcome.kind === 'error' && outcome.disabled === null && (
+          <Notice tone="critical" testId="configuration-error">
+            {outcome.message}
+          </Notice>
+        )}
+        {outcome.kind === 'saved' && (
+          <Notice tone="success" testId="configuration-saved">
+            {t('saved', { revision: String(outcome.revision) })}
+          </Notice>
+        )}
+        {reviewed && (
+          <div className="flex flex-col gap-4" data-testid="configuration-review">
+            {!reviewCurrent && (
+              <Notice tone="warning" live={false}>
+                {t('reviewOutdated')}
+              </Notice>
+            )}
+            <p className="text-sm">
+              {t('reviewedAgainst', { revision: String(reviewed.review.based_on_revision) })}{' '}
+              <TechnicalToken>{reviewed.review.snapshot_schema}</TechnicalToken>{' '}
+              <TechnicalToken className="text-xs">{reviewed.review.snapshot_sha256}</TechnicalToken>
+            </p>
+            <ModelReview model={reviewed.review.model} context={t('contextValidation')} />
+            <GroupedFindingsOfDesign findings={reviewed.review.findings} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
