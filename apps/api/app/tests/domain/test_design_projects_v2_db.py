@@ -317,6 +317,7 @@ def test_an_altered_v2_row_is_never_approved_or_exported(
 def test_an_opened_revision_names_its_stored_schema(
     client: TestClient, engine: Engine, switch: Switch
 ) -> None:
+    switch("pp-design/1")
     saved = save(client)
     assert _opened(client, saved["id"], 1)["snapshot_schema"] == "pp-design/1"
     update_row(engine, saved["id"], 1, design_snapshot={"schema": "pp-design/9", "x": 1})
