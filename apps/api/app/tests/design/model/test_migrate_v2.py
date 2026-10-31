@@ -37,7 +37,7 @@ def test_one_legacy_template_per_v1_device_kind_and_nothing_else() -> None:
     assert [p.name for p in (MODEL_DIR / "templates").iterdir()] == ["legacy_v1_device_kinds.json"]
     for kind, raw in migrate_v2.LEGACY_TEMPLATES.items():
         template = codec_v2.parse_template(raw)
-        assert template.ref == f"global/legacy-{kind}@1" == migrate_v2.legacy_ref(kind)
+        assert template.ref == f"global/legacy-{kind}/v1" == migrate_v2.legacy_ref(kind)
         assert template.function == kind
         assert template.terminals == ()
         assert template.parameters == ()
@@ -103,4 +103,4 @@ def test_a_migrated_model_pins_its_hash() -> None:
     assert snapshot.sha256_of(envelope) == PINNED_MIGRATED_RESIDENTIAL
 
 
-PINNED_MIGRATED_RESIDENTIAL = "90867a9095c35beea675828fb927c54dcc1ecce77eb33ed1d65fd0002a27518a"
+PINNED_MIGRATED_RESIDENTIAL = "049f97a20875f85cb91af6eea8e306c269e35e403d7d4740abef885e537f2144"

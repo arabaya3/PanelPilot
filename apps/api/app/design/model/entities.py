@@ -103,7 +103,7 @@ class ComponentTemplate:
     """What a kind of component is, as data: its terminals and parameters.
 
     Attributes:
-        ref: ``"<scope>/<id>@<version>"``, unique per snapshot.
+        ref: ``"<scope>/<id>/v<version>"``, unique per snapshot.
         function: Open-vocabulary string, e.g. ``"contactor"``.
         terminals: By id.
         contact_groups: By id.

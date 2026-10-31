@@ -2,7 +2,7 @@
   "_comment": "Frozen legacy templates shipped with migrate_1_to_2: one per pp-design/1 DeviceKind, no terminals, unreviewed. Never edit a version in place; a change is a new version and a new migration.",
   "templates": [
     {
-      "ref": "global/legacy-bus_actuator@1",
+      "ref": "global/legacy-bus_actuator/v1",
       "function": "bus_actuator",
       "terminals": [],
       "contact_groups": [],
@@ -22,7 +22,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-busbar@1",
+      "ref": "global/legacy-busbar/v1",
       "function": "busbar",
       "terminals": [],
       "contact_groups": [],
@@ -42,7 +42,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-cable@1",
+      "ref": "global/legacy-cable/v1",
       "function": "cable",
       "terminals": [],
       "contact_groups": [],
@@ -62,7 +62,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-circuit_breaker@1",
+      "ref": "global/legacy-circuit_breaker/v1",
       "function": "circuit_breaker",
       "terminals": [],
       "contact_groups": [],
@@ -82,7 +82,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-contactor@1",
+      "ref": "global/legacy-contactor/v1",
       "function": "contactor",
       "terminals": [],
       "contact_groups": [],
@@ -102,7 +102,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-drive@1",
+      "ref": "global/legacy-drive/v1",
       "function": "drive",
       "terminals": [],
       "contact_groups": [],
@@ -122,7 +122,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-fuse@1",
+      "ref": "global/legacy-fuse/v1",
       "function": "fuse",
       "terminals": [],
       "contact_groups": [],
@@ -142,7 +142,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-indicator_lamp@1",
+      "ref": "global/legacy-indicator_lamp/v1",
       "function": "indicator_lamp",
       "terminals": [],
       "contact_groups": [],
@@ -162,7 +162,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-meter@1",
+      "ref": "global/legacy-meter/v1",
       "function": "meter",
       "terminals": [],
       "contact_groups": [],
@@ -182,7 +182,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-motor@1",
+      "ref": "global/legacy-motor/v1",
       "function": "motor",
       "terminals": [],
       "contact_groups": [],
@@ -202,7 +202,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-other@1",
+      "ref": "global/legacy-other/v1",
       "function": "other",
       "terminals": [],
       "contact_groups": [],
@@ -222,7 +222,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-overload_relay@1",
+      "ref": "global/legacy-overload_relay/v1",
       "function": "overload_relay",
       "terminals": [],
       "contact_groups": [],
@@ -242,7 +242,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-power_supply@1",
+      "ref": "global/legacy-power_supply/v1",
       "function": "power_supply",
       "terminals": [],
       "contact_groups": [],
@@ -262,7 +262,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-relay@1",
+      "ref": "global/legacy-relay/v1",
       "function": "relay",
       "terminals": [],
       "contact_groups": [],
@@ -282,7 +282,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-residual_current_device@1",
+      "ref": "global/legacy-residual_current_device/v1",
       "function": "residual_current_device",
       "terminals": [],
       "contact_groups": [],
@@ -302,7 +302,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-surge_protector@1",
+      "ref": "global/legacy-surge_protector/v1",
       "function": "surge_protector",
       "terminals": [],
       "contact_groups": [],
@@ -322,7 +322,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-switch_disconnector@1",
+      "ref": "global/legacy-switch_disconnector/v1",
       "function": "switch_disconnector",
       "terminals": [],
       "contact_groups": [],
@@ -342,7 +342,7 @@
       "restricted_scope": []
     },
     {
-      "ref": "global/legacy-terminal_strip@1",
+      "ref": "global/legacy-terminal_strip/v1",
       "function": "terminal_strip",
       "terminals": [],
       "contact_groups": [],

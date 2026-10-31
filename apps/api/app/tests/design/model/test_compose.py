@@ -117,7 +117,7 @@ def _configured_ids() -> set[str]:
         refs += [p["ref"] for p in configuration["patterns"]]
         for ref in refs:
             ids.add(ref)
-            ids.add(ref.split("/", 1)[1].split("@", 1)[0])
+            ids.add(ref.split("/")[1])
         ids.add(configuration["name"])
     return ids
 
@@ -148,11 +148,11 @@ def _template(config: dict[str, Any], ref: str) -> dict[str, Any]:
 
 
 def _unknown_template(c: dict[str, Any]) -> None:
-    _pattern(c)["slots"][0]["template"] = "global/not-there@1"
+    _pattern(c)["slots"][0]["template"] = "global/not-there/v1"
 
 
 def _unknown_pattern(c: dict[str, Any]) -> None:
-    c["bindings"][0]["pattern"] = "global/not-there@1"
+    c["bindings"][0]["pattern"] = "global/not-there/v1"
 
 
 def _no_device_kind(c: dict[str, Any]) -> None:
@@ -180,7 +180,7 @@ def _terminal_not_on_template(c: dict[str, Any]) -> None:
 
 
 def _restricted_scope(c: dict[str, Any]) -> None:
-    _template(c, "global/synth-mcb-1p@1")["restricted_scope"] = ["fire_pump"]
+    _template(c, "global/synth-mcb-1p/v1")["restricted_scope"] = ["fire_pump"]
 
 
 def _contradictory_nets(c: dict[str, Any]) -> None:
@@ -230,7 +230,7 @@ def _invalid_template(c: dict[str, Any]) -> None:
 
 def _legacy_redefined(c: dict[str, Any]) -> None:
     c["templates"].append(
-        {**copy.deepcopy(c["templates"][0]), "ref": "global/legacy-circuit_breaker@1"}
+        {**copy.deepcopy(c["templates"][0]), "ref": "global/legacy-circuit_breaker/v1"}
     )
 
 
@@ -312,7 +312,7 @@ def test_naming_the_device_resolves_the_ambiguity() -> None:
 
 def test_one_device_bound_to_two_templates_is_refused() -> None:
     v1, configuration = config_case("motor_dol_with_control")
-    configuration["patterns"][1]["slots"][1]["template"] = "global/synth-overload-3p@1"
+    configuration["patterns"][1]["slots"][1]["template"] = "global/synth-overload-3p/v1"
     with pytest.raises(compose.CompositionRefusedError) as refused:
         compose.compose(v1, configuration)
     assert refused.value.code in {"conflicting_binding", "terminal_not_on_template"}

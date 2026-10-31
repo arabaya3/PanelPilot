@@ -69,14 +69,14 @@ def test_an_approved_template_is_no_finding_but_legacy_ones_still_are() -> None:
 def test_a_rejected_template_is_a_finding() -> None:
     def reject(configuration: dict[str, Any]) -> None:
         _approve_all(configuration)
-        bar = next(t for t in configuration["templates"] if t["ref"] == "global/synth-bar@1")
+        bar = next(t for t in configuration["templates"] if t["ref"] == "global/synth-bar/v1")
         bar["review"]["status"] = "rejected"
 
     model = _composed("feeder_1p", reject)
     rejected = [
         f
         for f in _codes(model, "template_unreviewed")
-        if f.location["template"] == "global/synth-bar@1"
+        if f.location["template"] == "global/synth-bar/v1"
     ]
     assert rejected
     assert all(f.blocks_execution for f in rejected)
@@ -86,7 +86,7 @@ def test_a_restricted_template_is_out_of_execution_scope() -> None:
     v1, configuration = config_case("feeder_1p")
     envelope = write.snapshot_v2_from_v1(v1, configuration)
     payload = copy.deepcopy(envelope["model"])
-    template = next(t for t in payload["templates"] if t["ref"] == "global/synth-mcb-1p@1")
+    template = next(t for t in payload["templates"] if t["ref"] == "global/synth-mcb-1p/v1")
     template["restricted_scope"] = ["fire_pump", "life_safety"]
     payload["registry_lock"] = migrate_v2.lock_of(payload["templates"])
     model = _model(write.envelope(payload))

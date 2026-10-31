@@ -52,8 +52,10 @@ MODEL_KEYS = frozenset(
     }
 )
 
-#: A template ref: ``<scope>/<id>@<version>``.
-REF_PATTERN = re.compile(r"^(global|tenant)/([a-z0-9][a-z0-9_.-]{0,99})@([1-9][0-9]{0,8})$")
+#: A template ref: ``<scope>/<id>/v<version>``. It never holds an ``@``: refs
+#: appear in finding messages and values, and API responses must hold no ``@``
+#: (an email must never leak, and the privacy tests refuse any).
+REF_PATTERN = re.compile(r"^(global|tenant)/([a-z0-9][a-z0-9_.-]{0,99})/v([1-9][0-9]{0,8})$")
 
 #: The longest id, marking or label accepted.
 MAX_TEXT = 200
@@ -162,8 +164,8 @@ def parse_template(value: Any, where: str = "template") -> entities.ComponentTem
     _refuse_floats(value, where)
     raw = _obj(value, _TEMPLATE_KEYS, where)
     ref = _text(raw["ref"], f"{where}.ref")
-    if not REF_PATTERN.match(ref):
-        _bad(f"{where}.ref", "is not <global|tenant>/<id>@<version>")
+    if "@" in ref or not REF_PATTERN.fullmatch(ref):
+        _bad(f"{where}.ref", "is not <global|tenant>/<id>/v<version>")
     groups = _strictly_sorted(
         [
             entities.ContactGroup(

@@ -89,7 +89,7 @@ Two layers, with different consequences:
 
 - **Pure and deterministic.** No registry lookup, clock, randomness or profile read. Ids are derived from v1 ids (for example `c:<device id>`), so the same input always gives the same bytes.
 - `design` = the v1 payload unchanged.
-- Each v1 device becomes a `Component` with `template_ref = legacy/<device kind>@1.0.0` and `legacy_device_id` set. The legacy templates are **frozen data shipped with the migration** (function = kind, no terminals). Their content is versioned with the migration, not with the live registry.
+- Each v1 device becomes a `Component` with `template_ref = legacy/<device kind>/v1` and `legacy_device_id` set. The legacy templates are **frozen data shipped with the migration** (function = kind, no terminals). Their content is versioned with the migration, not with the live registry.
 - `strips`, `nets`, `connections`, `wires` and `assumptions` are **empty**. The migration does not derive the `-X1` strip from `terminals.py`, because that module chooses articles (an engineering selection). Deriving it would be recalculating, which Phase 1 forbids on read.
 - Use: **display and deriving a new revision only.** An old revision is approved, exported and checked for staleness from its stored v1 bytes, through the v1 path. A migrated payload is never hashed as, or exported as, the old revision. Saving a revision from it re-runs the design and produces a new v2 snapshot with a new hash (Section 7.4 of the architecture).
 - Golden tests: every committed v1 fixture migrates. The result reads as strict v2. `project_v1(migrate(v1)) == v1`, byte for byte. The v1 stored hash still verifies. Migrating twice gives the same bytes.
@@ -116,10 +116,10 @@ The examples below are synthetic and invented for this document. Values marked `
 **Example A: single-phase outgoing circuits to a strip.**
 
 ```yaml
-templates: [ {ref: global/mcb-1p@1, function: circuit_breaker,
+templates: [ {ref: global/mcb-1p/v1, function: circuit_breaker,
               terminals: [{id: in1, marking: "1", kind: power_line, required: true},
                           {id: out1, marking: "2", kind: power_line, required: true}]} ]
-pattern: global/feeder-1p@1
+pattern: global/feeder-1p/v1
   roles: [line, neutral, pe]
   joins: {line: [mcb.out1, strip:+, core:1], neutral: [busbar:N, strip:+, core:2],
           pe: [busbar:PE, strip:+, core:3]}
@@ -131,18 +131,18 @@ wires: {number: null, cross_section_mm2: null, colour: null}   # awaiting rules
 ```yaml
 templates:
   [
-    contactor-3p-coil@1 (L1..L3,
+    contactor-3p-coil/v1 (L1..L3,
     T1..T3,
     A1/A2 coil group,
     13/14 contact_no in same group),
-    overload-3p@1,
-    psu-dc@1 (L,
+    overload-3p/v1,
+    psu-dc/v1 (L,
     N,
     PE,
     +,
     -),
   ]
-patterns: [global/motor-dol-power@1, global/coil-via-contact@1]
+patterns: [global/motor-dol-power/v1, global/coil-via-contact/v1]
 nets: power roles L1-L3 → T1-T3 → strip U/V/W/PE;  control roles "ctrl+", "ctrl-", "coil-cmd"
 ```
 
@@ -151,9 +151,9 @@ The coil and its contacts share a contact group, so cross-references come from d
 **Example C: a new configuration, I/O marshalling, added as data only.**
 
 ```yaml
-templates: [tenant/acme-io-8di@1 (8 × signal_di, required: false; 2 × supply, required: true),
-            tenant/strip-2level@1 (points with level 1/2)]
-pattern: tenant/di-marshal@1
+templates: [tenant/acme-io-8di/v1 (8 × signal_di, required: false; 2 × supply, required: true),
+            tenant/strip-2level/v1 (points with level 1/2)]
+pattern: tenant/di-marshal/v1
   per channel n: join io.DI[n] ↔ strip point (n, level 1); sensor supply ↔ (n, level 2)
 ```
 

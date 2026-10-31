@@ -6,7 +6,7 @@
     "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
     "templates": [
       {
-        "ref": "tenant/synth-io-4di@1",
+        "ref": "tenant/synth-io-4di/v1",
         "function": "io_module",
         "terminals": [
           {
@@ -69,7 +69,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "tenant/synth-strip-2level@1",
+        "ref": "tenant/synth-strip-2level/v1",
         "function": "terminal_type",
         "terminals": [],
         "contact_groups": [],
@@ -91,11 +91,11 @@
     ],
     "patterns": [
       {
-        "ref": "tenant/synth-di-marshal-4ch@1",
+        "ref": "tenant/synth-di-marshal-4ch/v1",
         "slots": [
           {
             "id": "io",
-            "template": "tenant/synth-io-4di@1"
+            "template": "tenant/synth-io-4di/v1"
           }
         ],
         "strips": [
@@ -287,14 +287,14 @@
           "location": null,
           "product": "X2"
         },
-        "template": "tenant/synth-strip-2level@1"
+        "template": "tenant/synth-strip-2level/v1"
       }
     ],
     "components": [
       {
         "id": "io1",
         "board": "CP-1",
-        "template": "tenant/synth-io-4di@1",
+        "template": "tenant/synth-io-4di/v1",
         "designation": {
           "function": null,
           "location": null,
@@ -305,7 +305,7 @@
     "bindings": [
       {
         "id": "io1-di",
-        "pattern": "tenant/synth-di-marshal-4ch@1",
+        "pattern": "tenant/synth-di-marshal-4ch/v1",
         "board": "CP-1",
         "circuit": null,
         "slots": {
@@ -336,6 +336,6 @@
     "nets": 4,
     "connections": 7,
     "wires": 7,
-    "sha256": "f0655d093b8ded64cdd9cb58fa86c4c621f6cb21f0afb8fe40546938aac7b05b"
+    "sha256": "c82f5e813c65a04eb9152982623f115d512bfd160e34fe081f0c61097c9e6943"
   }
 }

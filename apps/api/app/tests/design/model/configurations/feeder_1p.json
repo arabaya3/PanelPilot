@@ -6,7 +6,7 @@
     "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
     "templates": [
       {
-        "ref": "global/synth-mcb-1p@1",
+        "ref": "global/synth-mcb-1p/v1",
         "function": "circuit_breaker",
         "terminals": [
           {
@@ -41,7 +41,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-load-1ph@1",
+        "ref": "global/synth-load-1ph/v1",
         "function": "load",
         "terminals": [
           {
@@ -83,7 +83,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-bar@1",
+        "ref": "global/synth-bar/v1",
         "function": "busbar",
         "terminals": [
           {
@@ -113,24 +113,24 @@
     ],
     "patterns": [
       {
-        "ref": "global/synth-feeder-1p@1",
+        "ref": "global/synth-feeder-1p/v1",
         "slots": [
           {
             "id": "breaker",
-            "template": "global/synth-mcb-1p@1",
+            "template": "global/synth-mcb-1p/v1",
             "device_kind": "circuit_breaker"
           },
           {
             "id": "load",
-            "template": "global/synth-load-1ph@1"
+            "template": "global/synth-load-1ph/v1"
           },
           {
             "id": "nbar",
-            "template": "global/synth-bar@1"
+            "template": "global/synth-bar/v1"
           },
           {
             "id": "pebar",
-            "template": "global/synth-bar@1"
+            "template": "global/synth-bar/v1"
           }
         ],
         "strips": [
@@ -287,38 +287,38 @@
       {
         "id": "load-c1",
         "board": "DB-V",
-        "template": "global/synth-load-1ph@1",
+        "template": "global/synth-load-1ph/v1",
         "designation": null
       },
       {
         "id": "load-c2",
         "board": "DB-V",
-        "template": "global/synth-load-1ph@1",
+        "template": "global/synth-load-1ph/v1",
         "designation": null
       },
       {
         "id": "load-c3",
         "board": "DB-V",
-        "template": "global/synth-load-1ph@1",
+        "template": "global/synth-load-1ph/v1",
         "designation": null
       },
       {
         "id": "nbar",
         "board": "DB-V",
-        "template": "global/synth-bar@1",
+        "template": "global/synth-bar/v1",
         "designation": null
       },
       {
         "id": "pebar",
         "board": "DB-V",
-        "template": "global/synth-bar@1",
+        "template": "global/synth-bar/v1",
         "designation": null
       }
     ],
     "bindings": [
       {
         "id": "feeder-c1",
-        "pattern": "global/synth-feeder-1p@1",
+        "pattern": "global/synth-feeder-1p/v1",
         "board": "DB-V",
         "circuit": "c1",
         "slots": {
@@ -349,7 +349,7 @@
       },
       {
         "id": "feeder-c2",
-        "pattern": "global/synth-feeder-1p@1",
+        "pattern": "global/synth-feeder-1p/v1",
         "board": "DB-V",
         "circuit": "c2",
         "slots": {
@@ -376,7 +376,7 @@
       },
       {
         "id": "feeder-c3",
-        "pattern": "global/synth-feeder-1p@1",
+        "pattern": "global/synth-feeder-1p/v1",
         "board": "DB-V",
         "circuit": "c3",
         "slots": {
@@ -408,6 +408,6 @@
     "nets": 5,
     "connections": 18,
     "wires": 9,
-    "sha256": "c16f85d23763b35412803234bb88dfbbca547096f3193ec30c4e92de6124c17f"
+    "sha256": "1311d031bc902b548cb587200c29d259cedb8683214811a3b33aa8a593cc20b8"
   }
 }

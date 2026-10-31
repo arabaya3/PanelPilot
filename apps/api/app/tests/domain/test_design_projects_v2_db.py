@@ -263,7 +263,7 @@ def _lock_digest(stored: dict[str, Any]) -> None:
 
 
 def _dangling(stored: dict[str, Any]) -> None:
-    stored["model"]["components"][0]["template_ref"] = "global/no-such-template@1"
+    stored["model"]["components"][0]["template_ref"] = "global/no-such-template/v1"
 
 
 def _extra_key(stored: dict[str, Any]) -> None:

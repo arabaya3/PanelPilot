@@ -6,7 +6,7 @@
     "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
     "templates": [
       {
-        "ref": "tenant/synth-heldout-mcb@1",
+        "ref": "tenant/synth-heldout-mcb/v1",
         "function": "circuit_breaker",
         "terminals": [
           {
@@ -41,7 +41,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "tenant/synth-heldout-bar@1",
+        "ref": "tenant/synth-heldout-bar/v1",
         "function": "busbar",
         "terminals": [
           {
@@ -78,15 +78,15 @@
     ],
     "patterns": [
       {
-        "ref": "tenant/synth-heldout-radial@1",
+        "ref": "tenant/synth-heldout-radial/v1",
         "slots": [
           {
             "id": "mcb",
-            "template": "tenant/synth-heldout-mcb@1"
+            "template": "tenant/synth-heldout-mcb/v1"
           },
           {
             "id": "bar",
-            "template": "tenant/synth-heldout-bar@1"
+            "template": "tenant/synth-heldout-bar/v1"
           }
         ],
         "strips": [
@@ -177,14 +177,14 @@
       {
         "id": "bar1",
         "board": "SMDB-1",
-        "template": "tenant/synth-heldout-bar@1",
+        "template": "tenant/synth-heldout-bar/v1",
         "designation": null
       }
     ],
     "bindings": [
       {
         "id": "r-c1",
-        "pattern": "tenant/synth-heldout-radial@1",
+        "pattern": "tenant/synth-heldout-radial/v1",
         "board": "SMDB-1",
         "circuit": "c1",
         "slots": {
@@ -207,7 +207,7 @@
       },
       {
         "id": "r-c2",
-        "pattern": "tenant/synth-heldout-radial@1",
+        "pattern": "tenant/synth-heldout-radial/v1",
         "board": "SMDB-1",
         "circuit": "c2",
         "slots": {
@@ -235,6 +235,6 @@
     "nets": 3,
     "connections": 6,
     "wires": 2,
-    "sha256": "349161beeb0c0db4afa24c28aad1d8e83e1d37f2d21dcef7fac5813b16ad3274"
+    "sha256": "233b349c2084cdb87ed3859de4217528a7f6516ada769458e82fc64a7f26ff03"
   }
 }

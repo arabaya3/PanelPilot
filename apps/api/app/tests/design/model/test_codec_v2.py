@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -95,12 +96,12 @@ def _lock_entry_missing(model: dict[str, Any]) -> None:
 
 
 def _lock_entry_extra(model: dict[str, Any]) -> None:
-    model["registry_lock"]["templates"].append({"ref": "global/zzz@1", "digest": "0" * 64})
+    model["registry_lock"]["templates"].append({"ref": "global/zzz/v1", "digest": "0" * 64})
 
 
 def _template_unused(model: dict[str, Any]) -> None:
     extra = copy.deepcopy(migrate_v2.LEGACY_TEMPLATES["other"])
-    extra["ref"] = "global/zzz-unused@1"
+    extra["ref"] = "global/zzz-unused/v1"
     model["templates"].append(extra)
     model["registry_lock"] = migrate_v2.lock_of(model["templates"])
 
@@ -143,7 +144,7 @@ def _dangling_device(model: dict[str, Any]) -> None:
 
 
 def _dangling_template(model: dict[str, Any]) -> None:
-    model["components"][0]["template_ref"] = "global/zzz@1"
+    model["components"][0]["template_ref"] = "global/zzz/v1"
 
 
 def _dangling_connection(model: dict[str, Any]) -> None:
@@ -349,3 +350,45 @@ def test_nesting_past_the_recursion_limit_is_unreadable() -> None:
     envelope["model"]["assumptions"] = deep
     with pytest.raises(versions.SnapshotUnreadableError):
         read_snapshot(envelope)
+
+
+# --------------------------------------------------------------------------- #
+# Template ref grammar
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "ref", ["global/legacy-circuit_breaker/v1", "tenant/synth-io.4di/v12", "global/a/v999999999"]
+)
+def test_a_ref_is_scope_id_and_version(ref: str) -> None:
+    template = copy.deepcopy(migrate_v2.LEGACY_TEMPLATES["other"])
+    template["ref"] = ref
+    assert codec_v2.parse_template(template).ref == ref
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "global/legacy-other@1",
+        "global/legacy-other/v1@1",
+        "global/a@b/v1",
+        "@global/a/v1",
+        "global/a/v0",
+        "global/a/1",
+        "local/a/v1",
+        "global/A/v1",
+        "global/a/v1\n",
+        "global/a/b/v1",
+    ],
+)
+def test_a_ref_outside_the_grammar_is_refused(ref: str) -> None:
+    template = copy.deepcopy(migrate_v2.LEGACY_TEMPLATES["other"])
+    template["ref"] = ref
+    with pytest.raises(versions.SnapshotUnreadableError, match="is not <global"):
+        codec_v2.parse_template(template)
+
+
+def test_no_shipped_ref_holds_an_at_sign() -> None:
+    assert all("@" not in t["ref"] for t in migrate_v2.LEGACY_TEMPLATES.values())
+    envelope = _composed()
+    assert "@" not in json.dumps(envelope)

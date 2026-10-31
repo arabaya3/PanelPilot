@@ -42,7 +42,7 @@ def legacy_ref(kind: str) -> str:
         kind: A v1 ``DeviceKind`` value.
 
     Returns:
-        ``"global/legacy-<kind>@1"``.
+        ``"global/legacy-<kind>/v1"``.
 
     Raises:
         KeyError: If no legacy template exists for the kind.

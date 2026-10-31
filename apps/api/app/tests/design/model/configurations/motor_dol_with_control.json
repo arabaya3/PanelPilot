@@ -6,7 +6,7 @@
     "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
     "templates": [
       {
-        "ref": "global/synth-mcb-3p@1",
+        "ref": "global/synth-mcb-3p/v1",
         "function": "circuit_breaker",
         "terminals": [
           {
@@ -69,7 +69,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-contactor-3p@1",
+        "ref": "global/synth-contactor-3p/v1",
         "function": "contactor",
         "terminals": [
           {
@@ -165,7 +165,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-overload-3p@1",
+        "ref": "global/synth-overload-3p/v1",
         "function": "overload_relay",
         "terminals": [
           {
@@ -247,7 +247,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-psu-dc@1",
+        "ref": "global/synth-psu-dc/v1",
         "function": "power_supply",
         "terminals": [
           {
@@ -303,7 +303,7 @@
         "restricted_scope": []
       },
       {
-        "ref": "global/synth-motor-3ph@1",
+        "ref": "global/synth-motor-3ph/v1",
         "function": "motor",
         "terminals": [
           {
@@ -354,26 +354,26 @@
     ],
     "patterns": [
       {
-        "ref": "global/synth-motor-dol-power@1",
+        "ref": "global/synth-motor-dol-power/v1",
         "slots": [
           {
             "id": "breaker",
-            "template": "global/synth-mcb-3p@1",
+            "template": "global/synth-mcb-3p/v1",
             "device_kind": "circuit_breaker"
           },
           {
             "id": "contactor",
-            "template": "global/synth-contactor-3p@1",
+            "template": "global/synth-contactor-3p/v1",
             "device_kind": "contactor"
           },
           {
             "id": "overload",
-            "template": "global/synth-overload-3p@1",
+            "template": "global/synth-overload-3p/v1",
             "device_kind": "overload_relay"
           },
           {
             "id": "motor",
-            "template": "global/synth-motor-3ph@1"
+            "template": "global/synth-motor-3ph/v1"
           }
         ],
         "strips": [
@@ -680,20 +680,20 @@
         ]
       },
       {
-        "ref": "global/synth-coil-via-contact@1",
+        "ref": "global/synth-coil-via-contact/v1",
         "slots": [
           {
             "id": "psu",
-            "template": "global/synth-psu-dc@1"
+            "template": "global/synth-psu-dc/v1"
           },
           {
             "id": "contactor",
-            "template": "global/synth-contactor-3p@1",
+            "template": "global/synth-contactor-3p/v1",
             "device_kind": "contactor"
           },
           {
             "id": "overload",
-            "template": "global/synth-overload-3p@1",
+            "template": "global/synth-overload-3p/v1",
             "device_kind": "overload_relay"
           }
         ],
@@ -785,20 +785,20 @@
       {
         "id": "psu",
         "board": "MCC-1",
-        "template": "global/synth-psu-dc@1",
+        "template": "global/synth-psu-dc/v1",
         "designation": null
       },
       {
         "id": "motor-c1",
         "board": "MCC-1",
-        "template": "global/synth-motor-3ph@1",
+        "template": "global/synth-motor-3ph/v1",
         "designation": null
       }
     ],
     "bindings": [
       {
         "id": "c1-power",
-        "pattern": "global/synth-motor-dol-power@1",
+        "pattern": "global/synth-motor-dol-power/v1",
         "board": "MCC-1",
         "circuit": "c1",
         "slots": {
@@ -820,7 +820,7 @@
       },
       {
         "id": "c1-control",
-        "pattern": "global/synth-coil-via-contact@1",
+        "pattern": "global/synth-coil-via-contact/v1",
         "board": "MCC-1",
         "circuit": "c1",
         "slots": {
@@ -840,6 +840,6 @@
     "nets": 13,
     "connections": 16,
     "wires": 12,
-    "sha256": "44f1212972f6d283dfbc2e3612237805d5b4cc907438794bb601c4928cab5303"
+    "sha256": "b5345f31381abf980c895cc8d6db9dff0d38e5b879af677cf8dc56f6f1831cd5"
   }
 }
