@@ -16,6 +16,7 @@ from app.design.model import versions
 from app.design.model.read import VersionedModel, read_snapshot
 from app.domain import design_projects
 from app.models.schemas.design import DesignProject, ExportStatus
+from app.tests.design import stored_design
 from app.tests.domain.test_design_projects import (
     DATABASE_URL,
     _approve,
@@ -112,7 +113,7 @@ def _rewrite_snapshot(engine: Engine, change: Any) -> None:
 
 
 def _with_unknown_field(stored: dict[str, Any]) -> dict[str, Any]:
-    stored["boards"][0]["devices"][0]["terminals"] = []
+    stored_design.design_of(stored)["boards"][0]["devices"][0]["terminals"] = []
     return stored
 
 
