@@ -38,4 +38,20 @@ FROM (
 ) AS newest
 WHERE renderer IS NULL;
 
+-- pp-design/2 approvals by the renderer version they recorded (per-schema
+-- renderer versions, M2). A v2 approval counts only while it recorded the
+-- current v2 version (app.design.RENDERER_VERSIONS['pp-design/2']); any other
+-- value listed here is an approval that must be granted again. v1 approvals
+-- are compared with the v1 version as before and are not listed here. v2 rows
+-- exist only where DESIGN_SNAPSHOT_SCHEMA was set to pp-design/2.
+SELECT to_jsonb(r) ->> 'approved_renderer_version' AS v2_approved_renderer_version,
+       count(*) AS v2_approved_revisions,
+       count(DISTINCT project_id) AS v2_projects,
+       count(DISTINCT tenant_id) AS v2_tenants
+FROM design_project_revisions AS r
+WHERE approved_at IS NOT NULL
+  AND to_jsonb(r) -> 'design_snapshot' ->> 'schema' = 'pp-design/2'
+GROUP BY 1
+ORDER BY 1;
+
 ROLLBACK;

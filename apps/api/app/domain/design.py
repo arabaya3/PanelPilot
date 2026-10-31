@@ -101,7 +101,16 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.PLC_ST: ("text/plain; charset=utf-8", "st"),
     ExportFormat.PLC_IO_CSV: ("text/csv; charset=utf-8", "io.csv"),
     ExportFormat.JSON: ("application/json", "json"),
+    ExportFormat.TERMINAL_SCHEDULE_PDF: ("application/pdf", "terminal-schedule.pdf"),
+    ExportFormat.WIRE_SCHEDULE_PDF: ("application/pdf", "wire-schedule.pdf"),
 }
+
+#: The review-only schedules of a saved ``pp-design/2`` revision's terminals
+#: and wires. PDF only, every page marked and "NOT FOR EXECUTION". They are
+#: rendered from a saved v2 model alone (``design_projects``), so a draft,
+#: which has none, and a v1 revision are refused (``schedule_requires_v2``).
+#: Not plan-gated, as the drawing and calculations PDFs are not.
+SCHEDULE_FORMATS = frozenset({ExportFormat.TERMINAL_SCHEDULE_PDF, ExportFormat.WIRE_SCHEDULE_PDF})
 
 #: The formats another drawing program opens: on plans with ``ECAD_EXPORT``.
 ECAD_FORMATS = frozenset(
@@ -189,6 +198,42 @@ class ExportedFile:
     media_type: str
     filename: str
     display_name: str = ""
+
+
+def exported_file(content: bytes, media_type: str, name: str, extension: str) -> ExportedFile:
+    """A file named after a project, in ASCII and in the project's own script.
+
+    Args:
+        content: Its bytes.
+        media_type: Its MIME type.
+        name: The project's name.
+        extension: What follows the name (``"wire-schedule.pdf"``).
+
+    Returns:
+        The file.
+    """
+    return ExportedFile(
+        content=content,
+        media_type=media_type,
+        filename=f"{_slug(name)}.{extension}",
+        display_name=f"{_unicode_slug(name)}.{extension}",
+    )
+
+
+def refuse_schedule(export_format: ExportFormat) -> None:
+    """Refuse a schedule format where there is no saved v2 model to schedule.
+
+    Raises:
+        ConflictError: ``schedule_requires_v2`` for a format in
+            :data:`SCHEDULE_FORMATS`.
+    """
+    if export_format in SCHEDULE_FORMATS:
+        raise ConflictError(
+            f"{export_format.value} is rendered from a saved pp-design/2 revision's "
+            "terminals, nets and wires only; export it from such a revision",
+            code="schedule_requires_v2",
+            params={"format": export_format.value},
+        )
 
 
 def _profile(settings: dict[str, Any] | None) -> CompanyProfile:
@@ -385,6 +430,7 @@ def render_export(
             settings, or a control program for a project with no PLC-switched
             circuit.
     """
+    refuse_schedule(export_format)
     content: bytes
     if export_format is ExportFormat.PDF:
         sheets = drawing_sheets(designated, company, mark)

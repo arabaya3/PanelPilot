@@ -53,24 +53,28 @@ from app.core.tenancy import bind_tenant
 from app.design import (
     CATALOGUE_VERSION,
     RENDERER_BASELINE,
-    RENDERER_VERSION,
     RULES_VERSION,
     drawing_text,
     integrity,
     marking,
+    renderer_version,
+    schedule_pdf,
     snapshot,
 )
-from app.design.model import entities, findings_v2, versions
+from app.design.model import entities, findings_v2, schedules, versions
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
-from app.domain import billing, permissions
+from app.domain import billing, design_configuration, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import (
     ApproveRevisionRequest,
+    ConfigurationReview,
+    ConfigurationValidateRequest,
     DesignFinding,
     DesignProject,
+    ExportFormat,
     ExportPurpose,
     ExportStatus,
     FindingSeverity,
@@ -156,6 +160,8 @@ class _Validation:
     changed: tuple[str, ...] = ()
     #: What changed since it was approved; empty when it counts or none was given.
     approval_changed: tuple[str, ...] = ()
+    #: The stored snapshot as read, when it passed its hash check and read.
+    read: VersionedModel | None = None
 
 
 def _stored_findings(row: DesignRevisionRow) -> list[DesignFinding]:
@@ -227,13 +233,29 @@ def _current_classification(
 
 
 #: Which ``pp-design/2`` structural findings an engineer must confirm. Their
-#: severity is the findings module's own (``findings_v2``): an unreviewed
-#: template is a warning for design review (every legacy template is
-#: unreviewed) and an execution blocker; a rejected or restricted-scope
-#: template, or a required terminal in no net, blocks approval; a wire
-#: attribute with no value is a warning (decided by the integration owner, M2a).
+#: severity is the findings module's own (``findings_v2.SEVERITIES``, the
+#: single source), and so is their execution effect
+#: (``findings_v2.EXECUTION_BLOCKING``): an unreviewed template or pattern is a
+#: warning for design review (every legacy template is unreviewed) and an
+#: execution blocker; a rejected or restricted-scope template, a rejected
+#: pattern, or an explicitly required terminal in no net blocks approval.
+#: Every review decision, every unresolved or assumed value, and the label
+#: and number repeats a reviewer must judge, need confirmation; the two
+#: blocking consistency codes (``unconnected_required_terminal``,
+#: ``net_unrealised``) are fixed in the data, not confirmed.
 _V2_CONFIRM: frozenset[str] = frozenset(
-    {"template_unreviewed", "template_rejected", "out_of_execution_scope", "wire_attribute_unset"}
+    {
+        "template_unreviewed",
+        "template_rejected",
+        "out_of_execution_scope",
+        "pattern_unreviewed",
+        "pattern_rejected",
+        "terminal_requiredness_unresolved",
+        "net_signal_conflict",
+        "wire_number_duplicate",
+        "wire_attribute_unset",
+        "wire_attribute_assumed",
+    }
 )
 
 
@@ -306,8 +328,30 @@ class _Applicable:
     findings: list[tuple[str, str, bool]] | None = None
     #: Whether the stored design passes its hash check and reads (thorough only).
     snapshot_reads: bool = True
-    #: What the exports print a stored design with (``RENDERER_VERSION``).
-    renderer_version: str = RENDERER_VERSION
+    #: What the exports print the stored design with: the renderer version of
+    #: the revision's own schema (``RENDERER_VERSIONS``), so a v2 renderer
+    #: change never touches a v1 approval.
+    renderer_version: str = renderer_version(versions.V1)
+
+
+def _row_schema(row: DesignRevisionRow, read: VersionedModel | None = None) -> str:
+    """The schema a revision's snapshot is stored in; v1 when it has none or is unknown.
+
+    Read from the marker alone (no hash, no parse) unless the caller read it.
+    An unknown or unreadable snapshot is never approvable or exported, so the
+    version it is compared with does not decide anything for it.
+    """
+    if read is not None:
+        return read.schema
+    try:
+        return versions.identify(row.design_snapshot)
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return versions.V1
+
+
+def _renderer_of(row: DesignRevisionRow, read: VersionedModel | None = None) -> str:
+    """The renderer version that applies to a revision now, by its schema."""
+    return renderer_version(_row_schema(row, read))
 
 
 def _applicable(
@@ -329,7 +373,7 @@ def _applicable(
             RULES_VERSION,
             CATALOGUE_VERSION,
             profile_sha256=profile,
-            renderer_version=RENDERER_VERSION,
+            renderer_version=_renderer_of(row),
         )
     return _Applicable(
         True,
@@ -338,7 +382,7 @@ def _applicable(
         profile_sha256=profile,
         findings=_current_classification(row, read),
         snapshot_reads=read is not None,
-        renderer_version=RENDERER_VERSION,
+        renderer_version=_renderer_of(row, read),
     )
 
 
@@ -526,14 +570,15 @@ def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation
         unknown = _schema_problem(row)
         if unknown is not None:
             return _Validation(ExportStatus.NOT_VALIDATED, [*findings, unknown], bound, (), moved)
+    read = stored if isinstance(stored, VersionedModel) else None
     changed = _changed(row, applicable)
     if changed:
-        return _Validation(ExportStatus.STALE, findings, bound, changed, moved)
+        return _Validation(ExportStatus.STALE, findings, bound, changed, moved, read)
     if integrity.blocking(findings):
-        return _Validation(ExportStatus.BLOCKED, findings, bound, (), moved)
+        return _Validation(ExportStatus.BLOCKED, findings, bound, (), moved, read)
     if bound:
-        return _Validation(ExportStatus.REVIEW_APPROVED, findings, bound)
-    return _Validation(ExportStatus.DRAFT, findings, bound, (), moved)
+        return _Validation(ExportStatus.REVIEW_APPROVED, findings, bound, read=read)
+    return _Validation(ExportStatus.DRAFT, findings, bound, (), moved, read)
 
 
 def _execution_blockers(checked: _Validation) -> list[str]:
@@ -560,8 +605,16 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     return blockers
 
 
-def _printed(findings: Sequence[DesignFinding]) -> list[DesignFinding]:
-    """The findings a v1 renderer prints: all but a v2 model's structural ones."""
+def _printed(findings: Sequence[DesignFinding], schema: str) -> list[DesignFinding]:
+    """The findings a revision's review exports print.
+
+    A v2 revision's exports print every finding, its structural ones too
+    (warnings and unresolved items included), so a review document exposes
+    them; that is the v2 renderer version. A v1 revision holds no structural
+    finding, so it prints exactly what it always did.
+    """
+    if schema == versions.V2:
+        return list(findings)
     return [found for found in findings if found.code not in findings_v2.CODES]
 
 
@@ -747,7 +800,9 @@ def _design_refused(exc: ValidationError) -> DesignFinding:
     )
 
 
-def _validate(request: ProjectDesignRequest) -> dict[str, Any]:
+def _validate(
+    request: ProjectDesignRequest, configuration: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
     The snapshot's title block carries no revision rows: who checked and
@@ -757,21 +812,37 @@ def _validate(request: ProjectDesignRequest) -> dict[str, Any]:
     A request the design refuses is still saved, so no entered work is lost,
     with no snapshot and its refusal as a blocking finding: it opens, and
     cannot be approved until a revision of it designs.
+
+    With a configuration, the switch must be ``pp-design/2`` (v1 cannot hold
+    one: ``configuration_requires_v2``), and the design must not be refused:
+    a configuration is never dropped while the revision is saved without it.
     """
+    if configuration is not None:
+        _require_v2_writes()
+        design_configuration.check_configuration(configuration)
     as_entered = request.model_copy(
         update={"info": request.info.model_copy(update={"revisions": []})}
     )
     try:
         designed, company = design_domain.build_design(as_entered)
     except ValidationError as exc:
+        if configuration is not None:
+            raise ValidationError(
+                f"the design was refused, so the configuration cannot be applied: {exc}",
+                code="configuration_refused",
+                params={"refusal": "design_refused", **exc.params},
+            ) from exc
         return {"findings": [_design_refused(exc).model_dump(mode="json")]}
     conditions = {board.name: board.conditions for board in request.boards}
     stored = designed.model_dump(mode="json")
     v2: entities.DesignModelV2 | None = None
-    if _written_schema() == versions.V2:
-        # No configuration input yet (no API for one): the v1 devices become
-        # components on their legacy templates. Read back through the one
-        # reader, so what is stored is what every later read sees.
+    if configuration is not None:
+        stored = design_configuration.compose_snapshot(stored, configuration)
+        v2 = read_snapshot(stored).v2
+    elif _written_schema() == versions.V2:
+        # No configuration: the v1 devices become components on their legacy
+        # templates. Read back through the one reader, so what is stored is
+        # what every later read sees.
         stored = snapshot_v2_from_v1(stored)
         v2 = read_snapshot(stored).v2
     findings = _design_findings(designed, conditions, v2)
@@ -785,6 +856,18 @@ def _validate(request: ProjectDesignRequest) -> dict[str, Any]:
     }
 
 
+def _require_v2_writes() -> None:
+    """Refuse a configuration where new revisions are written in ``pp-design/1``."""
+    written = _written_schema()
+    if written != versions.V2:
+        raise ConflictError(
+            f"this deployment writes revisions in {written}, which cannot hold a "
+            "configuration; it is stored only where DESIGN_SNAPSHOT_SCHEMA is pp-design/2",
+            code="configuration_requires_v2",
+            params={"written_schema": written, "required_schema": versions.V2},
+        )
+
+
 def _add_revision(
     session: Session,
     project: DesignProjectRow,
@@ -792,6 +875,7 @@ def _add_revision(
     user: CurrentUser,
     request: ProjectDesignRequest,
     note: str,
+    configuration: Mapping[str, Any] | None = None,
 ) -> None:
     if project.revision_count >= MAX_REVISIONS:
         raise ValidationError(
@@ -808,7 +892,7 @@ def _add_revision(
             note=note,
             author=user.email,
             request=request.model_dump(mode="json"),
-            **_validate(request),
+            **_validate(request, configuration),
         )
     )
 
@@ -867,6 +951,11 @@ def _opened(
         approval_changed=list(checked.approval_changed),
         export_status=checked.status,
         execution_blockers=_execution_blockers(checked),
+        model_v2=(
+            design_configuration.summary(checked.read.v2, _V2_CONFIRM)
+            if checked.read is not None and checked.read.v2 is not None
+            else None
+        ),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
         permissions=permissions.allowed(session=session, user=viewer),
     )
@@ -943,7 +1032,9 @@ def revise_project(
         design_domain.resolve_profile(request.request.profile)
         # Raising the revision count updates the row, which moves its
         # ``updated_at`` (the list's order) to now.
-        _add_revision(session, project, tenant, user, request.request, request.note)
+        _add_revision(
+            session, project, tenant, user, request.request, request.note, request.configuration
+        )
         # The number this save took: by the time it is opened, a concurrent
         # save may have added a later one.
         number = project.revision_count
@@ -1255,6 +1346,7 @@ def _revision_mark(
     findings: list[DesignFinding],
     names: _Names,
     approval_counts: bool,
+    renderer: str,
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
@@ -1262,20 +1354,20 @@ def _revision_mark(
         approver = names.printed_approver(row)
         identity = (
             f"{where}, approved by {approver} on {row.approved_at.date().isoformat()}, "
-            f"design {digest}, rules {row.rules_version}, renderer {RENDERER_VERSION}"
+            f"design {digest}, rules {row.rules_version}, renderer {renderer}"
         )
         label = marking.REVIEW_APPROVED_LABEL
     else:
         identity = (
             f"{where}, not approved, design {digest}, rules {row.rules_version}, "
-            f"renderer {RENDERER_VERSION}"
+            f"renderer {renderer}"
         )
         label = marking.DRAFT_LABEL
     return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
 
 
 def _estimate_subject(
-    project: DesignProjectRow, row: DesignRevisionRow, approval_counts: bool
+    project: DesignProjectRow, row: DesignRevisionRow, approval_counts: bool, renderer: str
 ) -> str:
     """The design a quotation of this revision prices, without approving its prices.
 
@@ -1291,7 +1383,7 @@ def _estimate_subject(
     )
     return (
         f"{_quoted_name(project.name)}, revision {row.number:02d}, design {digest}, "
-        f"rules {row.rules_version}, renderer {RENDERER_VERSION}; {review}"
+        f"rules {row.rules_version}, renderer {renderer}; {review}"
     )
 
 
@@ -1387,10 +1479,30 @@ def export_revision(
     approval_counts = row.approved_at is not None and not _approval_changed(row, applicable)
     designed = read.project
     design_domain.require_format(session=session, user=user, export_format=request.format)
+    names = _display_names(session, project.tenant_id, revisions)
+    mark = _revision_mark(
+        project,
+        row,
+        _printed(findings, read.schema),
+        names,
+        approval_counts,
+        applicable.renderer_version,
+    )
+    if request.format in design_domain.SCHEDULE_FORMATS:
+        exported = _schedule_export(project, row, read, request.format, mark, applicable)
+        logger.info(
+            "design.revision_exported",
+            tenant_id=str(tenant),
+            project_id=str(project.id),
+            revision=number,
+            format=request.format.value,
+            approved=approval_counts,
+            snapshot_sha256=row.snapshot_sha256,
+        )
+        return exported
     company = design_domain.resolve_profile(
         ProjectDesignRequest.model_validate(row.request).profile
     )
-    names = _display_names(session, project.tenant_id, revisions)
     info: ProjectInfo = designed.info.model_copy(
         update={"revisions": _title_revisions(revisions, number, names, bound_to=applicable)}
     )
@@ -1399,12 +1511,10 @@ def export_revision(
         company=company,
         export_format=request.format,
         pricing=_revision_pricing(request.pricing),
-        # The v1 renderers print the v1 findings only: a v2 revision's
-        # structural findings are not drawn by them (RENDERER_VERSION is
-        # unchanged), so its export equals the v1 export of the same design.
-        # They are shown on open and named by the execution refusal.
-        mark=_revision_mark(project, row, _printed(findings), names, approval_counts),
-        estimate_for=_estimate_subject(project, row, approval_counts),
+        # A v2 revision prints its structural findings too (``_printed``),
+        # under its own renderer version; a v1 revision prints what it did.
+        mark=mark,
+        estimate_for=_estimate_subject(project, row, approval_counts, applicable.renderer_version),
     )
     logger.info(
         "design.revision_exported",
@@ -1416,6 +1526,127 @@ def export_revision(
         snapshot_sha256=row.snapshot_sha256,
     )
     return exported
+
+
+def _schedule_export(
+    project: DesignProjectRow,
+    row: DesignRevisionRow,
+    read: VersionedModel,
+    export_format: ExportFormat,
+    mark: marking.ExportMark,
+    applicable: _Applicable,
+) -> design_domain.ExportedFile:
+    """A review-only terminal or wire schedule, from the saved v2 model alone.
+
+    Raises:
+        ConflictError: ``schedule_requires_v2`` for a v1 revision: it holds
+            no terminals, nets or wires to schedule.
+    """
+    if read.v2 is None:
+        raise ConflictError(
+            f"revision {row.number} is stored in {read.schema}, which holds no terminals, "
+            "nets or wires to schedule",
+            code="schedule_requires_v2",
+            params={"revision": row.number, "schema": read.schema, "format": export_format.value},
+        )
+    model = read.v2
+    header = schedule_pdf.ScheduleHeader(
+        project=project.name,
+        revision=f"{row.number:02d}",
+        design_sha256=row.snapshot_sha256 or "",
+        schema=read.schema,
+        rules_version=row.rules_version or "",
+        renderer_version=applicable.renderer_version,
+    )
+    structural = [
+        design_configuration.finding_view(found, _V2_CONFIRM)
+        for found in findings_v2.structural_findings(model)
+    ]
+    other = [found for found in mark.findings if found.code not in findings_v2.CODES]
+    plain = marking.ExportMark(label=mark.label, identity=mark.identity, findings=tuple(other))
+    if export_format is ExportFormat.TERMINAL_SCHEDULE_PDF:
+        content = schedule_pdf.render_terminal_schedule(
+            schedules.terminal_schedule(model), header, plain, structural
+        )
+        suffix = "terminal-schedule.pdf"
+    else:
+        content = schedule_pdf.render_wire_schedule(
+            schedules.wire_schedule(model), header, plain, structural
+        )
+        suffix = "wire-schedule.pdf"
+    return design_domain.exported_file(content, "application/pdf", project.name, suffix)
+
+
+def validate_configuration(
+    *,
+    session: Session,
+    user: CurrentUser,
+    project_id: str,
+    request: ConfigurationValidateRequest,
+) -> ConfigurationReview:
+    """Compose a configuration with the latest revision's request, designed now; save nothing.
+
+    Args:
+        session: Open database session.
+        user: The authenticated caller.
+        project_id: The project.
+        request: The configuration.
+
+    Returns:
+        The composed model, its findings and schedules, and the hash it
+        would be stored under.
+
+    Raises:
+        NotFoundError: If no such project is the caller's.
+        ConflictError: ``revision_not_validated`` if the latest revision's
+            request no longer validates.
+        ValidationError: ``configuration_too_large``,
+            ``configuration_claims_review``, ``configuration_ref_reserved`` or
+            ``configuration_refused``.
+    """
+    _scope_to(session, user)
+    project = _load(session, project_id)
+    revisions = _revisions(session, project)
+    latest = revisions[-1]
+    try:
+        entered = ProjectDesignRequest.model_validate(latest.request)
+    except PydanticValidationError as exc:
+        raise ConflictError(
+            f"revision {latest.number}'s saved project no longer validates; "
+            "correct it and save it again first",
+            code="revision_not_validated",
+            params={"revision": latest.number, "reason": "request_not_valid"},
+        ) from exc
+    design_configuration.check_configuration(request.configuration)
+    as_entered = entered.model_copy(
+        update={"info": entered.info.model_copy(update={"revisions": []})}
+    )
+    try:
+        designed, _company = design_domain.build_design(as_entered)
+    except ValidationError as exc:
+        raise ValidationError(
+            f"the design was refused, so the configuration cannot be applied: {exc}",
+            code="configuration_refused",
+            params={"refusal": "design_refused", **exc.params},
+        ) from exc
+    stored = design_configuration.compose_snapshot(
+        designed.model_dump(mode="json"), request.configuration
+    )
+    read = read_snapshot(stored)
+    model = read.v2
+    if model is None:  # pragma: no cover - compose always writes v2
+        raise ValidationError("the configuration did not compose", code="configuration_refused")
+    conditions = {board.name: board.conditions for board in entered.boards}
+    written = _written_schema()
+    return ConfigurationReview(
+        based_on_revision=latest.number,
+        snapshot_schema=read.schema,
+        written_schema=written,
+        saveable=written == versions.V2,
+        snapshot_sha256=snapshot.sha256_of(stored),
+        findings=_design_findings(read.project, conditions, model),
+        model=design_configuration.summary(model, _V2_CONFIRM),
+    )
 
 
 def _revision_pricing(pricing: PricingSettings | None) -> PricingSettings | None:

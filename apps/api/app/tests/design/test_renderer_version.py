@@ -249,3 +249,165 @@ def test_a_demonstrably_cosmetic_change_is_not_material(monkeypatch: pytest.Monk
     original = Canvas.setCreator
     monkeypatch.setattr(Canvas, "setCreator", lambda self, _value: original(self, "Other"))
     assert _all() == before
+
+
+# --------------------------------------------------------------------------- #
+# pp-design/2: its own renderer version, its own fingerprints
+# --------------------------------------------------------------------------- #
+
+RECORDED_V2 = Path(__file__).with_name("renderer_fingerprints_v2.json")
+
+#: The configured synthetic cases a v2 revision's exports are rendered from:
+#: the data-only PE/N distribution and the I/O marshalling strip.
+V2_CASES = ("pe_n_distribution", "io_marshalling")
+
+#: What a v2 revision exports for review: the v1 formats (printing the v2
+#: structural findings too) and the two review-only schedules.
+AVAILABLE_V2: dict[ExportFormat, Callable[[bytes], object]] = {
+    **AVAILABLE,
+    ExportFormat.TERMINAL_SCHEDULE_PDF: render_content.pdf_content,
+    ExportFormat.WIRE_SCHEDULE_PDF: render_content.pdf_content,
+}
+
+
+def v2_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[str, bytes]:
+    """Every review export of a configured v2 design, as ``export_revision`` makes it.
+
+    The mark prints every finding (v1 checks and the structural ones), as a
+    v2 revision's export does; the schedules come from the saved model alone.
+    """
+    from app.design import schedule_pdf, snapshot
+    from app.design.model import findings_v2, schedules, versions, write
+    from app.design.model.read import read_snapshot
+    from app.domain import design_configuration, design_projects
+    from app.tests.design.model.compat_support import DESIGNED
+    from app.tests.design.model.v2_support import CONFIGS, config_case
+
+    v1, configuration = config_case(case)
+    stored = write.snapshot_v2_from_v1(v1, configuration)
+    read = read_snapshot(stored)
+    assert read.v2 is not None
+    request = ProjectDesignRequest.model_validate(DESIGNED[CONFIGS[case]["fixture"]]["request"])
+    company = design_domain.resolve_profile(request.profile)
+    conditions = {board.name: board.conditions for board in request.boards}
+    findings = design_projects._design_findings(read.project, conditions, read.v2)
+    mark = marking.ExportMark(
+        label=label,
+        identity=IDENTITY,
+        findings=tuple(design_projects._printed(findings, versions.V2)),
+    )
+    pricing = PricingSettings.model_validate({"currency": "JOD", "labour_per_circuit": "10"})
+    found: dict[str, bytes] = {}
+    for export_format in AVAILABLE:
+        found[export_format.value] = design_domain.render_export(
+            designated=read.project,
+            company=company,
+            export_format=export_format,
+            pricing=pricing,
+            mark=mark,
+        ).content
+    header = schedule_pdf.ScheduleHeader(
+        project="Renderer reference v2",
+        revision="01",
+        design_sha256=snapshot.sha256_of(stored),
+        schema=versions.V2,
+        rules_version=design.RULES_VERSION,
+        renderer_version="(fixed for the fingerprint)",
+    )
+    structural = [
+        design_configuration.finding_view(f, design_projects._V2_CONFIRM)
+        for f in findings_v2.structural_findings(read.v2)
+    ]
+    plain = marking.ExportMark(
+        label=mark.label,
+        identity=mark.identity,
+        findings=tuple(f for f in mark.findings if f.code not in findings_v2.CODES),
+    )
+    found[ExportFormat.TERMINAL_SCHEDULE_PDF.value] = schedule_pdf.render_terminal_schedule(
+        schedules.terminal_schedule(read.v2), header, plain, structural
+    )
+    found[ExportFormat.WIRE_SCHEDULE_PDF.value] = schedule_pdf.render_wire_schedule(
+        schedules.wire_schedule(read.v2), header, plain, structural
+    )
+    return found
+
+
+def _v2_contents(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[str, str]:
+    exported = v2_exports(case, label)
+    return {
+        name.value: render_content.fingerprint(read(exported[name.value]))
+        for name, read in AVAILABLE_V2.items()
+    }
+
+
+def test_each_schema_has_its_own_renderer_version() -> None:
+    """v1 keeps ``RENDERER_VERSION`` (no v1 approval moves); v2 has its own."""
+    from app.design.model import versions
+
+    assert set(design.RENDERER_VERSIONS) == set(versions.ORDER)
+    assert design.RENDERER_VERSIONS[versions.V1] == design.RENDERER_VERSION
+    assert design.renderer_version(versions.V2) != design.RENDERER_VERSION
+    # Each fits the approval column (String(40)) and is never the baseline.
+    for value in design.RENDERER_VERSIONS.values():
+        assert len(value) <= 40
+        assert value != design.RENDERER_BASELINE
+
+
+def test_the_recorded_v2_content_is_the_v2_renderer_versions() -> None:
+    from app.design.model import versions
+
+    current = design.renderer_version(versions.V2)
+    found = {case: _v2_contents(case) for case in V2_CASES}
+    if os.environ.get("RECORD_RENDERER_FINGERPRINTS") == "1":
+        previous = (
+            json.loads(RECORDED_V2.read_text(encoding="utf-8")) if RECORDED_V2.exists() else {}
+        )
+        assert previous.get("renderer_version") != current or (
+            previous.get("variants") == found
+        ), "the v2 content changed: bump RENDERER_VERSIONS['pp-design/2'] before re-recording"
+        RECORDED_V2.write_text(
+            json.dumps({"renderer_version": current, "variants": found}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    recorded = json.loads(RECORDED_V2.read_text(encoding="utf-8"))
+    assert (
+        recorded["renderer_version"] == current
+    ), "RENDERER_VERSIONS['pp-design/2'] changed: re-record renderer_fingerprints_v2.json"
+    changed = sorted(
+        f"{case} {name}"
+        for case, formats in found.items()
+        for name, value in formats.items()
+        if recorded["variants"].get(case, {}).get(name) != value
+    )
+    assert not changed, (
+        f"what {', '.join(changed)} v2 exports say changed under the same v2 renderer "
+        "version: bump RENDERER_VERSIONS['pp-design/2'] in app/design/__init__.py "
+        "(approvals of v2 revisions granted under the old one stop counting), then re-record"
+    )
+
+
+def test_v2_variants_differ_and_a_v2_wording_change_is_material() -> None:
+    found = {case: _v2_contents(case) for case in V2_CASES}
+    for name in AVAILABLE_V2:
+        assert found[V2_CASES[0]][name.value] != found[V2_CASES[1]][name.value], name
+    reworded = _v2_contents(V2_CASES[0], "REVIEW APPROVED — STUDY ONLY, NOT FOR EXECUTION")
+    assert {n for n in reworded if reworded[n] != found[V2_CASES[0]][n]} == set(reworded) - {
+        ExportFormat.QUOTATION_PDF.value
+    }
+
+
+def test_v2_exports_print_the_structural_findings() -> None:
+    """A v2 review document exposes its warnings and unresolved items; v1 has none."""
+    import io
+
+    import pdfplumber
+
+    exported = v2_exports("pe_n_distribution")
+    for name in ("pdf", "calculations_pdf", "terminal_schedule_pdf", "wire_schedule_pdf"):
+        with pdfplumber.open(io.BytesIO(exported[name])) as pdf:
+            pages = [page.extract_text() or "" for page in pdf.pages]
+        text = " ".join(" ".join(pages).split())
+        assert "template_unreviewed" in text, name
+        assert "terminal_requiredness_unresolved" in text, name
+        assert all("NOT FOR EXECUTION" in page for page in pages), name
+    assert "template_unreviewed" in exported["json"].decode()

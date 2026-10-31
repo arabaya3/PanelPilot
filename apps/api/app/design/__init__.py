@@ -22,6 +22,35 @@ CATALOGUE_VERSION = "none"
 #: ("Renderer version").
 RENDERER_VERSION = "2026.10.31.4"
 
+#: The renderer version of each snapshot schema, by schema marker: what an
+#: approval of a revision stored in that schema records and is compared with.
+#: ``pp-design/1`` keeps :data:`RENDERER_VERSION`, so no v1 approval is
+#: touched by a v2 renderer change. ``pp-design/2`` exports print the v2
+#: structural findings and add the review schedules, so their content differs
+#: from the v1 export of the same design and has its own version. Bump the v2
+#: entry for any change of what a v2 export says
+#: (``tests/design/test_renderer_version.py`` holds both to their fingerprints).
+RENDERER_VERSIONS: dict[str, str] = {
+    "pp-design/1": RENDERER_VERSION,
+    "pp-design/2": "2026.10.31.v2-1",
+}
+
+
+def renderer_version(schema: str) -> str:
+    """The renderer version for a snapshot schema; :data:`RENDERER_VERSION` for v1.
+
+    Args:
+        schema: A schema marker (``pp-design/1`` or ``pp-design/2``).
+
+    Returns:
+        Its renderer version.
+
+    Raises:
+        KeyError: For a schema this software does not render.
+    """
+    return RENDERER_VERSIONS[schema]
+
+
 #: What an approval recorded before renderer versions were (a NULL) is read
 #: as. Which renderer exported it was never recorded, and export content did
 #: change while such approvals existed, so it matches no real version: those

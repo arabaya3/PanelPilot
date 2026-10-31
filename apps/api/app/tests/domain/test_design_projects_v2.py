@@ -171,14 +171,49 @@ def test_execution_blockers_name_the_v2_execution_codes() -> None:
     assert "approval" not in blockers
 
 
-def test_printed_findings_leave_out_the_v2_structural_ones() -> None:
+def test_v2_review_exports_print_the_structural_findings_v1_ones_do_not() -> None:
     kept = DesignFinding(
         code="cable_overloaded", severity=FindingSeverity.BLOCKING, message="m", source="policy"
     )
-    dropped = DesignFinding(
+    structural = DesignFinding(
         code="template_unreviewed", severity=FindingSeverity.WARNING, message="m", source="x"
     )
-    assert design_projects._printed([kept, dropped]) == [kept]
+    assert design_projects._printed([kept, structural], "pp-design/1") == [kept]
+    assert design_projects._printed([kept, structural], "pp-design/2") == [kept, structural]
+
+
+def test_the_new_v2_codes_need_engineering_confirmation() -> None:
+    """Every warning or review decision a reviewer must judge is flagged for confirmation."""
+    for code in (
+        "pattern_unreviewed",
+        "pattern_rejected",
+        "terminal_requiredness_unresolved",
+        "net_signal_conflict",
+        "wire_number_duplicate",
+        "wire_attribute_assumed",
+    ):
+        assert code in design_projects._V2_CONFIRM, code
+    # Every code it names is one the findings module produces (one source of codes).
+    assert set(findings_v2.CODES) >= design_projects._V2_CONFIRM
+    # The two blocking data-consistency codes are fixed in the data, not confirmed.
+    assert not {"unconnected_required_terminal", "net_unrealised"} & design_projects._V2_CONFIRM
+
+
+def test_execution_blockers_name_the_pattern_review_codes() -> None:
+    found = [
+        DesignFinding(
+            code=code,
+            severity=FindingSeverity.WARNING,
+            message=code,
+            requires_engineering_confirmation=True,
+            source="integrity",
+        )
+        for code in ("pattern_unreviewed", "pattern_rejected", "wire_attribute_assumed")
+    ]
+    checked = design_projects._Validation(ExportStatus.REVIEW_APPROVED, found, True)
+    blockers = design_projects._execution_blockers(checked)
+    assert {"pattern_unreviewed", "pattern_rejected"} <= set(blockers)
+    assert "wire_attribute_assumed" not in blockers
 
 
 def test_the_written_schema_default_agrees_in_both_places() -> None:
