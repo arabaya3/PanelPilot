@@ -282,7 +282,7 @@ export function Notice({
   return (
     <div role={role} className={`notice notice-${tone}`} data-testid={testId}>
       <Icon width="18" height="18" className="notice-icon" />
-      <div className="min-w-0 flex-1 basis-48">
+      <div className="min-w-0 flex-[1_1_12rem]">
         {title && <p className="font-semibold">{title}</p>}
         {children && <div className="text-sm">{children}</div>}
       </div>
