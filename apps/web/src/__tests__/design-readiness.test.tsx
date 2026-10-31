@@ -298,6 +298,7 @@ describe('reading what the server recorded', () => {
       approvalMissing: true,
       notValidated: false,
       stale: true,
+      definitions: [],
     });
     // Present approval and no blockers read as nothing else in the way.
     expect(
@@ -313,7 +314,22 @@ describe('reading what the server recorded', () => {
       approvalMissing: false,
       notValidated: false,
       stale: false,
+      definitions: [],
     });
+    // A configured revision: unreviewed definitions are named, not dropped.
+    expect(
+      executionRefusalOf({
+        kind: 'refused',
+        detail: '',
+        code: 'execution_package_incomplete',
+        params: {
+          missing: 'control_schematics',
+          approval: 'present',
+          blocking_findings: '',
+          blockers: 'control_schematics,template_unreviewed,pattern_unreviewed',
+        },
+      }).definitions,
+    ).toEqual(['template_unreviewed', 'pattern_unreviewed']);
   });
 });
 
@@ -965,7 +981,17 @@ describe('execution blockers, a second approver, and over-long fields', () => {
       approvalMissing: true,
       notValidated: true,
       stale: false,
+      definitions: [],
     });
+  });
+
+  it('lists a configured revision’s unreviewed definitions, not as raw gaps', () => {
+    const validation = validationOf(
+      saved({ execution_blockers: [...BLOCKERS, 'template_unreviewed', 'out_of_execution_scope'] }),
+    );
+    const read = executionBlockersOf(validation);
+    expect(read.definitions).toEqual(['template_unreviewed', 'out_of_execution_scope']);
+    expect(read.missing).not.toContain('template_unreviewed');
   });
 
   it('shows why execution is blocked before any export is tried', async () => {

@@ -1171,7 +1171,14 @@
       "gapNotValidated": "A validated revision (save again to validate)",
       "gapStale": "A revision saved under the current rules and company settings",
       "schedulesTitle": "Review schedules — NOT FOR EXECUTION",
-      "schedulesBody": "Terminal and wire schedules of revision {revision}, from its saved terminals, nets and wires. They are review documents, NOT FOR EXECUTION: they state or check no rating, cross-section, colour, numbering convention or standard."
+      "schedulesBody": "Terminal and wire schedules of revision {revision}, from its saved terminals, nets and wires. They are review documents, NOT FOR EXECUTION: they state or check no rating, cross-section, colour, numbering convention or standard.",
+      "gapDefinitions": {
+        "template_unreviewed": "Every template reviewed by a qualified electrical engineer designated by the owner (some are unreviewed)",
+        "template_rejected": "No rejected template in the design",
+        "pattern_unreviewed": "Every connection pattern reviewed by a qualified electrical engineer designated by the owner (some are unreviewed)",
+        "pattern_rejected": "No rejected connection pattern in the design",
+        "out_of_execution_scope": "No fire-pump or life-safety definitions: they are outside execution scope"
+      }
     },
     "finding": {
       "integrity_unknown_device": "Device {device} is not on this board.",

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesignScreen } from '@/components/design-screen';
 import { ConfigurationPanel, parseConfiguration } from '@/components/design/configuration-panel';
 import { groupOf } from '@/components/design/configuration-review';
+import { ExecutionRefused } from '@/components/design/revision-status';
 import type * as DesignModule from '@/lib/design';
 import type {
   ConfigurationReview,
@@ -596,5 +597,28 @@ describe('the configuration view and review schedules of a revision', () => {
       en.design.errors.schedule_requires_v2,
     );
     expect(configuration().getByTestId('opened-configuration-v1')).toBeTruthy();
+  });
+});
+
+describe('an execution refusal of a configured revision', () => {
+  it('names unreviewed definitions in words, never as approved', () => {
+    renderApp(
+      <ExecutionRefused
+        refusal={{
+          missing: ['control_schematics'],
+          blockingFindings: [],
+          approvalMissing: false,
+          notValidated: false,
+          stale: false,
+          definitions: ['template_unreviewed', 'pattern_unreviewed'],
+        }}
+      />,
+    );
+    const notice = screen.getByTestId('execution-refused');
+    expect(notice.textContent).toContain(
+      'Every template reviewed by a qualified electrical engineer designated by the owner',
+    );
+    expect(notice.textContent).toContain('Every connection pattern reviewed');
+    expect(notice.textContent).not.toContain('template_unreviewed');
   });
 });
