@@ -459,18 +459,17 @@ def test_an_altered_configured_row_is_never_approved_or_exported(
         values["snapshot_sha256"] = snapshot.sha256_of(stored)
     update_row(engine, project_id, 2, **values)
     opened = _open(client, project_id, 2)
-    if rehash and alter is _wire_value:
-        # Well-formed and rehashed: it reads, but it is not the design saved:
-        # its stored findings no longer match what today's checks find.
-        assert opened["export_status"] in ("stale", "not_validated")
-    else:
-        assert opened["export_status"] == "not_validated"
-        assert "snapshot_integrity_failed" in {f["code"] for f in opened["findings"]}
-        assert opened["model_v2"] is None
+    # Well-formed and rehashed, a wire edit reads, but its stored findings are
+    # not the findings of the design it holds under the same rules: an
+    # integrity failure (``findings_mismatch``), never a rules change.
+    assert opened["export_status"] == "not_validated"
+    assert opened["validated"] is False
+    assert "snapshot_integrity_failed" in {f["code"] for f in opened["findings"]}
+    assert opened["model_v2"] is None
     for fmt in ("pdf", "json", "terminal_schedule_pdf", "wire_schedule_pdf"):
         refused = revision_export(client, project_id, 2, fmt)
         assert refused.status_code == 409, (fmt, refused.text[:200])
-        assert error(refused)["code"] in ("snapshot_integrity_failed", "revision_stale")
+        assert error(refused)["code"] == "snapshot_integrity_failed"
     refused = approve(client, project_id, 2)
     assert refused.status_code == 409
     assert revision_row(engine, project_id, 2)["approved_at"] is None

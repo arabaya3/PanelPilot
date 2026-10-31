@@ -35,6 +35,7 @@ existed.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -313,10 +314,14 @@ class _Applicable:
     project's other revisions, and their rows in a title block, are checked
     cheaply, from columns alone: the recorded versions, and an approval's
     recorded profile hash against the one its stored request resolves to now
-    (``profile_sha256``). Their findings are not reclassified: that needs the
-    snapshot. A cheap check therefore misses a findings-policy change since an
-    earlier revision was approved, which the thorough check of that revision
-    (opening, approving or exporting it) catches.
+    (``profile_sha256``). Their snapshots are read for integrity as well
+    (``_read_classified``), and where that read classified the stored design
+    under today's policy (the revision records the current rules and
+    catalogue), the classification is reused: a findings-policy change shows
+    as ``stale`` (and an approval as not current) in the list as on open, at
+    no extra cost. Under other rules the revision is stale by its version
+    anyway. Only a profile change since the revision was saved is left to
+    the thorough check of that revision (opening, approving or exporting it).
     """
 
     thorough: bool
@@ -355,7 +360,12 @@ def _renderer_of(row: DesignRevisionRow, read: VersionedModel | None = None) -> 
 
 
 def _applicable(
-    row: DesignRevisionRow, *, thorough: bool = True, read: VersionedModel | None = None
+    row: DesignRevisionRow,
+    *,
+    thorough: bool = True,
+    read: VersionedModel | None = None,
+    read_checked: bool = False,
+    classified: list[tuple[str, str, bool]] | None = None,
 ) -> _Applicable:
     """The policy that applies to ``row`` now.
 
@@ -365,6 +375,13 @@ def _applicable(
         read: Its snapshot as the caller read it once (hash checked first);
             ``None`` when it is absent or did not read, so no findings are
             classified and an approval of it does not count (``snapshot_reads``).
+        read_checked: For a cheap check, whether the caller read the snapshot
+            for integrity (a listed revision): then an approval of one that
+            did not read does not count; otherwise it is not judged here.
+        classified: For a cheap check, today's classification of the stored
+            design when the integrity read already computed it
+            (``_read_classified``), so a findings-policy change shows at no
+            extra cost; ``None`` leaves the findings policy unjudged.
     """
     profile = _current_profile_sha256(row)
     if not thorough:
@@ -373,7 +390,11 @@ def _applicable(
             RULES_VERSION,
             CATALOGUE_VERSION,
             profile_sha256=profile,
-            renderer_version=_renderer_of(row),
+            findings=classified if read is not None else None,
+            # A listed revision's snapshot is read for integrity as well: an
+            # approval of one that fails it does not count, as when opened.
+            snapshot_reads=read is not None or not read_checked,
+            renderer_version=_renderer_of(row, read),
         )
     return _Applicable(
         True,
@@ -398,15 +419,126 @@ def _changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]
         changed.append("rules_version")
     if row.catalogue_version != applicable.catalogue_version:
         changed.append("catalogue_version")
-    if not applicable.thorough:
-        return tuple(changed)
-    if row.profile_sha256 != applicable.profile_sha256:
+    if applicable.thorough and row.profile_sha256 != applicable.profile_sha256:
         changed.append("profile")
-    if applicable.findings is not None and applicable.findings != _classified(
-        _stored_findings(row)
-    ):
-        changed.append("findings_policy")
+    if applicable.findings is not None:
+        changed += _findings_parts(_classified(_stored_findings(row)), applicable.findings)
     return tuple(changed)
+
+
+def _findings_parts(
+    stored: Sequence[tuple[str, str, bool]], current: Sequence[tuple[str, str, bool]]
+) -> list[str]:
+    """What changed between a stored and today's classification of the same design.
+
+    ``findings_policy``: the same findings (codes, review findings aside)
+    classified differently. ``review_decisions``: the review findings differ
+    (a review decision recorded, superseded or withdrawn since, M3) while
+    every other finding code is the same. Other findings altogether are
+    neither: under other rules they are explained by the version the stale
+    check names; under the same rules the stored findings no longer belong
+    to the design (``_findings_mismatch``).
+    """
+    parts: list[str] = []
+    plain_stored, plain_current = _without_reviews(stored), _without_reviews(current)
+    if _codes(plain_stored) != _codes(plain_current):
+        return parts
+    if plain_stored != plain_current:
+        parts.append("findings_policy")
+    if _only_reviews(stored) != _only_reviews(current):
+        parts.append("review_decisions")
+    return parts
+
+
+#: The finding codes a template's or pattern's review status alone decides
+#: (``findings_v2._review_findings``): what a server-side review decision
+#: legitimately changes in a stored design's findings (M3).
+_REVIEW_CODES: frozenset[str] = frozenset(
+    {"template_unreviewed", "template_rejected", "pattern_unreviewed", "pattern_rejected"}
+)
+
+
+def _without_reviews(
+    classified: Sequence[tuple[str, str, bool]],
+) -> list[tuple[str, str, bool]]:
+    return [item for item in classified if item[0] not in _REVIEW_CODES]
+
+
+def _only_reviews(classified: Sequence[tuple[str, str, bool]]) -> list[tuple[str, str, bool]]:
+    return [item for item in classified if item[0] in _REVIEW_CODES]
+
+
+def _review_groups(
+    findings: Sequence[DesignFinding],
+) -> dict[tuple[str, str], tuple[set[str], list[str]]] | None:
+    """The review findings by ``(kind, ref)``: their statuses and sorted locations.
+
+    ``None`` if one does not name its definition (it was not written here).
+    """
+    groups: dict[tuple[str, str], tuple[set[str], list[str]]] = {}
+    for found in findings:
+        if found.code not in _REVIEW_CODES:
+            continue
+        kind, status = found.code.split("_", 1)
+        ref = found.values.get(kind)
+        if ref is None:
+            return None
+        statuses, places = groups.setdefault((kind, ref), (set(), []))
+        statuses.add(status)
+        places.append(snapshot.sha256_of(dict(sorted(found.values.items()))))
+    for _, places in groups.values():
+        places.sort()
+    return groups
+
+
+def _reviews_explained(row: DesignRevisionRow, read: VersionedModel) -> bool:
+    """Whether the stored review findings are those of the stored design under some decisions.
+
+    Each definition the design uses gives, under any set of decisions, either
+    no review finding (approved) or one ``*_unreviewed`` or ``*_rejected``
+    finding at each place it is used, all of the one status. So the stored
+    review findings must name, for each definition, exactly the places an
+    unreviewed definition is found at, with a single status, or none of
+    them. Anything else was not written by a save (whatever decisions stood
+    then) and is an integrity failure.
+    """
+    stored = _review_groups(_stored_findings(row))
+    if stored is None:
+        return False
+    if read.v2 is None:
+        return not stored
+    bare = dataclasses.replace(
+        read.v2,
+        templates=tuple(
+            dataclasses.replace(t, review=anchoring.UNREVIEWED) for t in read.v2.templates
+        ),
+        patterns=tuple(
+            dataclasses.replace(p, review=anchoring.UNREVIEWED) for p in read.v2.patterns
+        ),
+    )
+    expected = _review_groups(_v2_findings(bare)) or {}
+    for key, (statuses, places) in stored.items():
+        if key not in expected or len(statuses) != 1 or places != expected[key][1]:
+            return False
+    return True
+
+
+def _explained(
+    row: DesignRevisionRow, read: VersionedModel, current: list[tuple[str, str, bool]]
+) -> bool:
+    """Whether today's findings of the stored design account for its stored findings.
+
+    The same codes; or the same codes but for the review findings, which
+    are then those of the stored design under some set of review decisions
+    (``_reviews_explained``): a decision recorded since the save (M3),
+    which makes the revision stale (``review_decisions``), not altered.
+    """
+    stored = _stored_findings(row)
+    if _codes(current) == _codes(stored):
+        return True
+    if _codes(_without_reviews(current)) != _codes(_without_reviews(_classified(stored))):
+        return False
+    return _reviews_explained(row, read)
 
 
 def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
@@ -439,10 +571,11 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         changed.append("profile")
     if (row.approved_renderer_version or RENDERER_BASELINE) != applicable.renderer_version:
         changed.append("renderer_version")
-    if not applicable.thorough:
-        # No snapshot read: the recorded fingerprint is held to the stored
-        # findings' classification only, which catches a row altered after
-        # approval but not a policy change (that needs the snapshot).
+    if not applicable.thorough and applicable.findings is None:
+        # No classification of the snapshot (a cheap check whose integrity
+        # read did not classify it): the recorded fingerprint is held to the
+        # stored findings' classification only, which catches a row altered
+        # after approval but not a policy change (that needs the snapshot).
         if row.approved_findings_policy is not None and row.approved_findings_policy != (
             _findings_fingerprint(_classified(_stored_findings(row)))
         ):
@@ -453,7 +586,15 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
             _classified(_stored_findings(row))
         )
         if approved != _findings_fingerprint(applicable.findings):
-            changed.append("findings_policy")
+            stored = _classified(_stored_findings(row))
+            # An approval of the stored findings: name what moved since, a
+            # review decision included; else (or nothing named) the policy.
+            parts = (
+                _findings_parts(stored, applicable.findings)
+                if approved == _findings_fingerprint(stored)
+                else []
+            )
+            changed += parts or ["findings_policy"]
     return tuple(changed)
 
 
@@ -498,18 +639,14 @@ def _schema_finding(exc: versions.SnapshotSchemaUnknownError) -> DesignFinding:
     )
 
 
-def _schema_problem(row: DesignRevisionRow) -> DesignFinding | None:
-    """The revision list's cheap check: the schema marker alone, no hash, no read."""
-    try:
-        versions.identify(row.design_snapshot)
-    except versions.SnapshotSchemaUnknownError as exc:
-        return _schema_finding(exc)
-    except versions.SnapshotUnreadableError:
-        return None
-    return None
-
-
 def _read_stored(row: DesignRevisionRow) -> VersionedModel | DesignFinding:
+    """The revision's snapshot read once (``_read_classified`` without the classification)."""
+    return _read_classified(row)[0]
+
+
+def _read_classified(
+    row: DesignRevisionRow,
+) -> tuple[VersionedModel | DesignFinding, list[tuple[str, str, bool]] | None]:
     """The revision's snapshot read once, or the blocking finding approval and export refuse it with.
 
     Checked as ``_check_snapshot`` checks it: the hash first, over the
@@ -517,19 +654,79 @@ def _read_stored(row: DesignRevisionRow) -> VersionedModel | DesignFinding:
     validated exactly when approval and export refuse it, with the same code:
     an altered snapshot is ``snapshot_integrity_failed`` whatever marker it
     holds; an unaltered one in an unknown schema is ``snapshot_schema_unknown``.
+
+    Also returns today's classification of the stored design when the
+    findings check computed it (the recorded rules and catalogue are the
+    current ones), else ``None``; a listed revision reuses it for its
+    findings-policy check, so that costs no second run of the checks.
     """
     if not _snapshot_matches(row):
-        return _integrity_finding("hash_mismatch")
+        return _integrity_finding("hash_mismatch"), None
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotSchemaUnknownError as exc:
-        return _schema_finding(exc)
+        return _schema_finding(exc), None
     except versions.SnapshotUnreadableError:
-        return _integrity_finding("unreadable")
+        return _integrity_finding("unreadable"), None
     anchored = _anchored(read, row)
     if anchored is None:
-        return _integrity_finding("review_not_issued")
-    return anchored
+        return _integrity_finding("review_not_issued"), None
+    current = _current_classification(row, anchored) if _versions_current(row) else None
+    if _findings_mismatch(row, anchored, current):
+        return _integrity_finding("findings_mismatch"), None
+    return anchored, current
+
+
+#: The codes of the findings a revision is refused with when its stored
+#: design fails integrity; a revision holding one is never ``validated``.
+_INTEGRITY_CODES: frozenset[str] = frozenset(
+    {"snapshot_integrity_failed", "snapshot_schema_unknown"}
+)
+
+
+def _codes(findings: Sequence[DesignFinding] | Sequence[tuple[str, str, bool]]) -> list[str]:
+    return sorted(item.code if isinstance(item, DesignFinding) else item[0] for item in findings)
+
+
+def _versions_current(row: DesignRevisionRow) -> bool:
+    return row.rules_version == RULES_VERSION and row.catalogue_version == CATALOGUE_VERSION
+
+
+def _findings_mismatch(
+    row: DesignRevisionRow,
+    read: VersionedModel,
+    current: list[tuple[str, str, bool]] | None = None,
+) -> bool:
+    """Whether the stored findings are not the findings of the stored design.
+
+    The checks are re-run on the stored design under the rules and catalogue
+    it records. While those versions are still the current ones, the same
+    design gives the same findings, so a different set of finding codes
+    means the stored findings no longer belong to the stored design (a row
+    rewritten outside the application with its hash recomputed): an
+    integrity failure, not a rules change. Only a different classification of
+    the same codes is a findings-policy change (``_changed``). When the rules
+    or catalogue version differs, the difference is left to the stale check,
+    which names that version.
+
+    This holds only while every change to what the checks find bumps
+    ``RULES_VERSION``: a check changed under an unchanged version would make
+    every intact row it affects read as an integrity failure. CI enforces it
+    (``app/tests/design/test_findings_fingerprint.py`` records a digest of the
+    finding codes the checks produce on every committed fixture and
+    configuration, keyed by ``RULES_VERSION``).
+
+    Args:
+        row: The revision.
+        read: Its snapshot, hash-checked and read.
+        current: Today's classification of it, if the caller computed it.
+    """
+    if not _versions_current(row):
+        return False
+    current = current if current is not None else _current_classification(row, read)
+    if current is None:
+        return False
+    return not _explained(row, read, current)
 
 
 def _anchor_of(row: DesignRevisionRow) -> anchoring.ReviewAnchor:
@@ -564,14 +761,26 @@ def _anchored(read: VersionedModel, row: DesignRevisionRow) -> VersionedModel | 
     return VersionedModel(schema=read.schema, project=read.project, v2=model)
 
 
+#: Why a stored design failed its integrity check, as a finding says it.
+_INTEGRITY_MESSAGES: dict[str, str] = {
+    "hash_mismatch": "The stored design does not match its recorded hash",
+    "unreadable": "The stored design no longer reads as a design",
+    "review_not_issued": "The stored design holds a review status this server never issued",
+    "findings_mismatch": "The findings stored with this revision are not the findings of "
+    "its stored design under the rules it records",
+}
+
+
 def _integrity_finding(reason: str) -> DesignFinding:
-    """The blocking finding of a snapshot altered (``hash_mismatch``) or unreadable."""
+    """The blocking finding of a snapshot that failed integrity, ``reason`` saying how.
+
+    ``hash_mismatch``, ``unreadable``, ``review_not_issued`` or ``findings_mismatch``.
+    """
     return DesignFinding(
         code="snapshot_integrity_failed",
         severity=FindingSeverity.BLOCKING,
         values={"reason": reason},
-        message="The stored design does not match its recorded hash or no longer "
-        "reads as a design; save it again as a new revision",
+        message=f"{_INTEGRITY_MESSAGES[reason]}; save it again as a new revision",
         requires_engineering_confirmation=False,
         source="policy",
     )
@@ -580,19 +789,28 @@ def _integrity_finding(reason: str) -> DesignFinding:
 def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation:
     """The revision's export status and findings.
 
-    Thorough, the stored snapshot is read once (``_read_stored``: hash first),
-    and that read is what today's findings policy classifies.
+    The stored snapshot is read once (``_read_stored``: hash first, then
+    read, review status and findings), thorough or not, so a listed revision
+    that fails integrity is ``not_validated`` as it is when opened. Thorough,
+    that read is also what today's findings policy classifies.
     """
     findings = _stored_findings(row)
     problem = _request_problem(row) if thorough else None
     has_snapshot = row.design_snapshot is not None and row.snapshot_sha256 is not None
     stored: VersionedModel | DesignFinding | None = None
-    if thorough and has_snapshot:
+    classified: list[tuple[str, str, bool]] | None = None
+    if has_snapshot:
         # Read even when the request no longer validates: whether it reads
-        # decides whether an approval of it counts (``snapshot_reads``).
-        stored = _read_stored(row)
+        # decides whether an approval of it counts (``snapshot_reads``). A
+        # listed revision is checked for integrity too, so the list never
+        # calls a revision validated that opening it would refuse.
+        stored, classified = _read_classified(row)
     applicable = _applicable(
-        row, thorough=thorough, read=stored if isinstance(stored, VersionedModel) else None
+        row,
+        thorough=thorough,
+        read=stored if isinstance(stored, VersionedModel) else None,
+        read_checked=stored is not None,
+        classified=classified,
     )
     moved = _approval_changed(row, applicable)
     bound = row.approved_at is not None and not moved
@@ -602,10 +820,6 @@ def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation
         return _Validation(ExportStatus.NOT_VALIDATED, findings, bound, (), moved)
     if isinstance(stored, DesignFinding):
         return _Validation(ExportStatus.NOT_VALIDATED, [*findings, stored], bound, (), moved)
-    if not thorough:
-        unknown = _schema_problem(row)
-        if unknown is not None:
-            return _Validation(ExportStatus.NOT_VALIDATED, [*findings, unknown], bound, (), moved)
     read = stored if isinstance(stored, VersionedModel) else None
     changed = _changed(row, applicable)
     if changed:
@@ -615,6 +829,11 @@ def _validation(row: DesignRevisionRow, *, thorough: bool = True) -> _Validation
     if bound:
         return _Validation(ExportStatus.REVIEW_APPROVED, findings, bound, read=read)
     return _Validation(ExportStatus.DRAFT, findings, bound, (), moved, read)
+
+
+def _intact(checked: _Validation) -> bool:
+    """Whether the stored design passed its integrity checks (hash, read, review, findings)."""
+    return not any(found.code in _INTEGRITY_CODES for found in checked.findings)
 
 
 def _execution_blockers(checked: _Validation) -> list[str]:
@@ -762,7 +981,9 @@ def _summary(
     row: DesignRevisionRow, names: _Names, checked: _Validation | None = None
 ) -> RevisionSummary:
     approved = row.approved_at is not None
-    # One of up to MAX_REVISIONS rows: checked from its columns alone (``_Applicable``).
+    # One of up to MAX_REVISIONS rows: its policy checked from its columns alone
+    # (``_Applicable``), its stored design for integrity (``_read_stored``), so
+    # ``validated`` and ``not_validated`` agree with what opening it would say.
     # The revision opened is checked in full (``_opened`` passes its check),
     # and approval and export check theirs in full again under the project lock.
     checked = checked or _validation(row, thorough=False)
@@ -777,7 +998,7 @@ def _summary(
         and (row.approved_user_id is not None or bool(row.approved_account)),
         approver_name=names.approver(row),
         approval_note=(row.approval_note or None) if approved else None,
-        validated=row.design_snapshot is not None,
+        validated=row.design_snapshot is not None and _intact(checked),
         export_status=checked.status,
         approval_current=checked.approval_bound if approved else None,
         approval_changed=list(checked.approval_changed),
@@ -807,9 +1028,22 @@ def _title_revisions(
     for row in revisions:
         if row.number > upto:
             continue
-        applicable = (
-            bound_to if bound_to is None or row.number == upto else _applicable(row, thorough=False)
-        )
+        applicable = bound_to
+        if bound_to is not None and row.number != upto and row.approved_at is not None:
+            # Read for integrity as the revision list reads it, so an earlier
+            # approval of a design that fails it never prints as approved.
+            stored, classified = (
+                _read_classified(row)
+                if row.design_snapshot is not None and row.snapshot_sha256 is not None
+                else (None, None)
+            )
+            applicable = _applicable(
+                row,
+                thorough=False,
+                read=stored if isinstance(stored, VersionedModel) else None,
+                read_checked=stored is not None,
+                classified=classified,
+            )
         shown = row.approved_at is not None and (
             applicable is None or not _approval_changed(row, applicable)
         )
@@ -1000,7 +1234,7 @@ def _opened(
         revision=chosen.number,
         request=request,
         findings=checked.findings,
-        validated=readable and chosen.design_snapshot is not None,
+        validated=readable and chosen.design_snapshot is not None and _intact(checked),
         snapshot_sha256=chosen.snapshot_sha256,
         rules_version=chosen.rules_version,
         approved_snapshot_sha256=chosen.approved_snapshot_sha256,
@@ -1201,7 +1435,7 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
         raise ConflictError(
             f"revision {number}'s stored design does not match its recorded hash",
             code="snapshot_integrity_failed",
-            params={"revision": number},
+            params={"revision": number, "reason": "hash_mismatch"},
         )
     try:
         read = read_snapshot(row.design_snapshot)
@@ -1209,7 +1443,7 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
         raise ConflictError(
             f"revision {number}'s stored design no longer reads as a design",
             code="snapshot_integrity_failed",
-            params={"revision": number},
+            params={"revision": number, "reason": "unreadable"},
         ) from exc
     anchored = _anchored(read, row)
     if anchored is None:
@@ -1217,6 +1451,13 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             f"revision {number}'s stored design holds a review status this server never issued",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "review_not_issued"},
+        )
+    if _findings_mismatch(row, anchored):
+        raise ConflictError(
+            f"revision {number}'s stored findings are not the findings of its stored design "
+            "under the rules it records; save it again as a new revision",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "findings_mismatch"},
         )
     return anchored
 
@@ -1520,12 +1761,11 @@ def export_revision(
         # is in, no execution package exists, and the refusal says all of why.
         checked = _validation(row)
         missing = _execution_blockers(checked)
-        if (
-            row.design_snapshot is not None
-            and row.snapshot_sha256 is not None
-            and not _snapshot_matches(row)
-        ):
-            missing.append("snapshot_integrity_failed")
+        # Every integrity refusal is named by its own code: an altered design
+        # and one in a schema this version does not read alike.
+        missing.extend(
+            sorted({found.code for found in checked.findings if found.code in _INTEGRITY_CODES})
+        )
         raise ConflictError(
             "an execution package cannot be exported yet: "
             + ", ".join(marking.EXECUTION_PACKAGE_MISSING)

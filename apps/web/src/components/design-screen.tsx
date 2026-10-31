@@ -21,6 +21,7 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
+import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { ConfigurationPanel } from '@/components/design/configuration-panel';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
@@ -1082,6 +1083,21 @@ function DesignWorkspace({
     return typeof schema === 'string' ? schema : '?';
   })();
   const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
+  // Why the opened revision is not validated: its stored design failed its
+  // integrity check, is in a format this version does not read, or (else) it
+  // was saved before validation.
+  const notValidatedText = (revision: number): string => {
+    if (schemaUnknown) return t('errors.snapshot_schema_unknown', { schema: schemaUnknown });
+    const failed = validation?.findings.find((item) => item.code === 'snapshot_integrity_failed');
+    if (failed) {
+      const reason = failed.values?.reason;
+      return t('readiness.integrityFailed', {
+        revision,
+        reason: typeof reason === 'string' ? reason : '?',
+      });
+    }
+    return t('readiness.notValidated', { revision });
+  };
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -2104,7 +2120,7 @@ function DesignWorkspace({
                 )}
                 {opened && validation !== null && !validation.validated && (
                   <Notice tone="warning" live={false} testId="readiness-not-validated">
-                    {t('readiness.notValidated', { revision: opened.revision })}
+                    {notValidatedText(opened.revision)}
                   </Notice>
                 )}
                 <p className="text-sm text-text-muted" data-testid="readiness-execution-note">
@@ -2176,13 +2192,14 @@ function DesignWorkspace({
                     </Notice>
                   ) : validation !== null && !validation.validated ? (
                     <Notice tone="warning" live={false} testId="revision-export-not-validated">
-                      {t('readiness.notValidated', { revision: opened.revision })}
+                      {notValidatedText(opened.revision)}
                     </Notice>
                   ) : (
                     <>
                       <p className="text-sm text-text-muted">
                         {t('exports.revisionBody', { revision: opened.revision })}
                       </p>
+                      <EnglishExportsNote testId="revision-export-english" />
                       <ExportPanel
                         onExport={(format) => downloadRevision(format)}
                         exportError={revisionError}
@@ -2264,6 +2281,7 @@ function DesignWorkspace({
                   <Notice tone="warning" live={false} title={t('exports.draftMark')}>
                     {t('exports.draftBody')}
                   </Notice>
+                  <EnglishExportsNote testId="draft-export-english" />
                   <ExportPanel onExport={download} exportError={exportError} busy={exporting} />
                 </div>
               ) : stale ? (

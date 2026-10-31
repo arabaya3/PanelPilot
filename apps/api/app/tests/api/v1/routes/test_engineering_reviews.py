@@ -483,3 +483,170 @@ def test_changing_a_definition_after_approval_makes_it_unreviewed(
     statuses = {t.ref: t.review.status for t in anchored.templates}
     assert statuses[target["ref"]] == "unreviewed"
     assert {s for r, s in statuses.items() if r != target["ref"]} == {"approved"}
+
+
+# --------------------------------------------------------------------------- #
+# A review decision since the save is stale, not altered (M2 x M3)
+# --------------------------------------------------------------------------- #
+
+#: The review formats every refusal below is checked on.
+_REVIEW_FORMATS = ("pdf", "json", "terminal_schedule_pdf", "wire_schedule_pdf")
+
+
+def _listed(client: TestClient, project_id: str, number: int) -> dict[str, Any]:
+    response = client.get(f"/design/projects/{project_id}")
+    assert response.status_code == 200, response.text[:500]
+    found: dict[str, Any] = next(r for r in response.json()["revisions"] if r["number"] == number)
+    return found
+
+
+def _approved_then_decided(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine
+) -> tuple[str, int, int]:
+    """A configured revision approved for review and one not, then every definition approved.
+
+    Returns the project, the approved revision and the unapproved one.
+    """
+    who.user = team["owner"]
+    project_id, number = _configured(client)
+    assert approve(client, project_id, number).status_code == 200
+    assert _open(client, project_id, number)["export_status"] == "review_approved"
+    unapproved = _revise(client, project_id)
+    assert _open(client, project_id, unapproved)["export_status"] == "draft"
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    for kind, ref, digest in _subjects(engine, project_id, number):
+        assert _decide(client, kind, ref, digest).status_code == 201
+    who.user = team["owner"]
+    return project_id, number, unapproved
+
+
+def test_a_review_decision_since_the_save_makes_the_revision_stale_not_altered(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    """Finding codes change legitimately (``template_unreviewed`` gone): stale, intact."""
+    project_id, number, unapproved = _approved_then_decided(client, who, team, engine)
+    stored_codes = {f["code"] for f in revision_row(engine, project_id, number)["findings"]}
+    assert {"template_unreviewed", "pattern_unreviewed"} <= stored_codes
+
+    opened = _open(client, project_id, number)
+    assert opened["export_status"] == "stale"
+    assert opened["validated"] is True
+    assert "snapshot_integrity_failed" not in _codes(opened)
+    assert opened["approval_current"] is False
+    assert "review_decisions" in opened["approval_changed"]
+    assert "findings_policy" not in opened["approval_changed"]
+    assert opened["model_v2"] is None
+    listed = _listed(client, project_id, number)
+    assert listed["export_status"] == "stale"
+    assert listed["validated"] is True
+    assert listed["approval_current"] is False
+    assert "review_decisions" in listed["approval_changed"]
+
+    for fmt in _REVIEW_FORMATS:
+        refused = revision_export(client, project_id, number, fmt)
+        assert refused.status_code == 409, fmt
+        assert error(refused)["code"] == "revision_stale", fmt
+        assert "review_decisions" in error(refused)["params"]["changed"].split(","), fmt
+    refused = revision_export(client, project_id, number, "pdf", purpose="execution")
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "execution_package_incomplete"
+    # The revision not approved: stale too, so it cannot be approved now.
+    assert _open(client, project_id, unapproved)["export_status"] == "stale"
+    assert _listed(client, project_id, unapproved)["validated"] is True
+    refused = approve(client, project_id, unapproved)
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "revision_stale"
+    assert error(refused)["params"]["changed"].split(",") == ["review_decisions"]
+    assert revision_row(engine, project_id, unapproved)["approved_at"] is None
+
+    # Withdrawn again: the stored findings hold once more, but the approval
+    # was granted before the decisions and its row is unchanged, so it counts.
+    who.user = team["engineer"]
+    for kind, ref, digest in _subjects(engine, project_id, number):
+        assert _decide(client, kind, ref, digest, "withdrawn").status_code == 201
+    who.user = team["owner"]
+    assert _open(client, project_id, number)["export_status"] == "review_approved"
+    assert revision_export(client, project_id, number, "pdf").status_code == 200
+
+
+def _drop_plain(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A finding the review decisions do not decide, removed."""
+    target = next(f for f in findings if f["code"] == "wire_attribute_assumed")
+    return [f for f in findings if f is not target]
+
+
+def _drop_one_place(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One place of a template used at several, its unreviewed finding removed."""
+    by_ref: dict[str, list[dict[str, Any]]] = {}
+    for found in findings:
+        if found["code"] == "template_unreviewed":
+            by_ref.setdefault(found["values"]["template"], []).append(found)
+    target = next(group for group in by_ref.values() if len(group) > 1)[0]
+    return [f for f in findings if f is not target]
+
+
+def _invent_review(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A review finding for a definition the design does not hold."""
+    made = copy.deepcopy(next(f for f in findings if f["code"] == "pattern_unreviewed"))
+    made["values"]["pattern"] = "tenant/m3-synthetic-absent/v1"
+    return [*findings, made]
+
+
+def _mixed_status(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One template both unreviewed and rejected: no set of decisions gives that."""
+    out = copy.deepcopy(findings)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for found in out:
+        if found["code"] == "template_unreviewed":
+            groups.setdefault(found["values"]["template"], []).append(found)
+    group = next(g for g in groups.values() if len(g) > 1)
+    group[0]["code"] = "template_rejected"
+    group[0]["severity"] = "blocking"
+    return out
+
+
+@pytest.mark.parametrize("decided", [False, True])
+@pytest.mark.parametrize("alter", [_drop_plain, _drop_one_place, _invent_review, _mixed_status])
+def test_a_tampered_findings_row_is_still_an_integrity_failure(
+    client: TestClient,
+    who: _As,
+    team: dict[str, CurrentUser],
+    engine: Engine,
+    v2: None,
+    alter: Callable[[list[dict[str, Any]]], list[dict[str, Any]]],
+    decided: bool,
+) -> None:
+    """Stored findings rewritten outside the application, decisions recorded or not."""
+    if decided:
+        project_id, number, unapproved = _approved_then_decided(client, who, team, engine)
+    else:
+        who.user = team["owner"]
+        project_id, number = _configured(client)
+        assert approve(client, project_id, number).status_code == 200
+        unapproved = _revise(client, project_id)
+    for target in (number, unapproved):
+        findings = alter(copy.deepcopy(revision_row(engine, project_id, target)["findings"]))
+        update_row(engine, project_id, target, findings=findings)
+
+    opened = _open(client, project_id, number)
+    assert opened["export_status"] == "not_validated"
+    assert opened["validated"] is False
+    integrity = [f for f in opened["findings"] if f["code"] == "snapshot_integrity_failed"]
+    assert [f["values"]["reason"] for f in integrity] == ["findings_mismatch"]
+    assert opened["model_v2"] is None
+    assert opened["approval_current"] is False
+    listed = _listed(client, project_id, number)
+    assert listed["validated"] is False
+    assert listed["export_status"] == "not_validated"
+    assert listed["approval_current"] is False
+    for fmt in _REVIEW_FORMATS:
+        refused = revision_export(client, project_id, number, fmt)
+        assert refused.status_code == 409, fmt
+        assert error(refused)["code"] == "snapshot_integrity_failed", fmt
+        assert error(refused)["params"]["reason"] == "findings_mismatch", fmt
+    refused = approve(client, project_id, unapproved)
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "snapshot_integrity_failed"
+    assert error(refused)["params"]["reason"] == "findings_mismatch"
+    assert revision_row(engine, project_id, unapproved)["approved_at"] is None

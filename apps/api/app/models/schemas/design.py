@@ -1609,7 +1609,9 @@ class RevisionSummary(BaseModel):
             audit identity, is never sent.
         approval_note: The note added at approval, if any; never an identity.
         validated: Whether the server designed it from its request when it
-            was saved, and holds that design; ``False`` for an older one.
+            was saved, and holds that design intact; ``False`` for an older
+            one, and for one whose stored design fails integrity (hash,
+            read, review status, findings) or is in an unknown schema.
         export_status: What it can be exported as now.
         approval_current: Whether its approval still counts: of the design
             it holds, under the policy that applies now (the resolved profile
@@ -1618,7 +1620,8 @@ class RevisionSummary(BaseModel):
             approved. The tenant's company settings are not part of it.
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
-            ``catalogue_version``, ``findings_policy``.
+            ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``review_decisions`` (a review decision recorded since, M3).
     """
 
     number: int
@@ -1696,7 +1699,9 @@ class SavedProject(BaseModel):
         request: That revision as entered.
         findings: What the checks found in the design the server built for
             that revision when it was saved; empty for an older revision.
-        validated: Whether that revision holds a server-built design.
+        validated: Whether that revision holds a server-built design that
+            passes its integrity checks (``False`` when it fails them or is
+            in an unknown schema; ``export_status`` is then ``not_validated``).
         snapshot_sha256: The SHA-256 of that design's canonical JSON.
         rules_version: The calculation rules it was designed under.
         approved_snapshot_sha256: The design its approval is bound to;
@@ -1710,7 +1715,8 @@ class SavedProject(BaseModel):
             approved. The tenant's company settings are not part of it.
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
-            ``catalogue_version``, ``findings_policy``.
+            ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``review_decisions`` (a review decision recorded since, M3).
         execution_blockers: Why it cannot be exported for execution: the
             parts of an execution package this service does not produce yet,
             then ``approval`` and each blocking finding's code, as they apply.
