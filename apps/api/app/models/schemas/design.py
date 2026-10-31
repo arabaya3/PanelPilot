@@ -1722,6 +1722,12 @@ class SavedProject(BaseModel):
         model_v2: For a ``pp-design/2`` revision whose snapshot reads, its
             components, nets, wires (each value with its source), schedules
             and structural findings, for review; ``None`` otherwise.
+        snapshot_schema: The schema its stored design names, identified from
+            the stored JSON without reading it (``pp-design/1`` or
+            ``pp-design/2``); ``None`` when there is none or it names no
+            schema this server knows. It says nothing about whether the design
+            reads or passes its integrity check (see ``export_status`` and the
+            findings).
     """
 
     id: str
@@ -1741,6 +1747,7 @@ class SavedProject(BaseModel):
     approving_as: str | None = None
     permissions: list[Permission] = Field(default_factory=list)
     model_v2: V2ModelSummary | None = None
+    snapshot_schema: str | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

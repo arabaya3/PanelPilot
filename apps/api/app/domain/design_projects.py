@@ -919,6 +919,16 @@ def _add_revision(
     )
 
 
+def _stored_schema(stored: Any) -> str | None:
+    """The schema a stored design names (its marker alone), or ``None`` if none is known."""
+    if stored is None:
+        return None
+    try:
+        return versions.identify(stored)
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return None
+
+
 def _revisions(session: Session, project: DesignProjectRow) -> Sequence[DesignRevisionRow]:
     return session.scalars(
         select(DesignRevisionRow)
@@ -982,6 +992,7 @@ def _opened(
             and checked.status is not ExportStatus.STALE
             else None
         ),
+        snapshot_schema=_stored_schema(chosen.design_snapshot),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
         permissions=permissions.allowed(session=session, user=viewer),
     )

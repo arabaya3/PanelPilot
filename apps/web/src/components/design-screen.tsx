@@ -425,6 +425,11 @@ function DesignWorkspace({
   const [opened, setOpened] = useState<OpenedProject | null>(null);
   /** The opened revision's `pp-design/2` model, or null for a v1 revision. */
   const [openedModel, setOpenedModel] = useState<V2ModelSummary | null>(null);
+  /**
+   * The schema the opened revision's stored design names (from its marker,
+   * not a read of it): null when unknown, undefined from an older server.
+   */
+  const [openedSchema, setOpenedSchema] = useState<string | null | undefined>(undefined);
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
@@ -844,6 +849,7 @@ function DesignWorkspace({
     });
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
+    setOpenedSchema(project.snapshot_schema);
     // A save, an approval or an opening each answer with the revision as now
     // stored: its validation replaces whatever was known of the last one.
     setValidation(validationOf(project));
@@ -2029,9 +2035,17 @@ function DesignWorkspace({
                     <ValidationScopeNote />
                     <ModelReview model={openedModel} />
                   </div>
-                ) : (
+                ) : openedSchema === 'pp-design/1' || openedSchema === undefined ? (
                   <p className="text-sm text-text-muted" data-testid="opened-configuration-v1">
                     {tc('openedV1', { revision: opened.revision, schema: 'pp-design/1' })}
+                  </p>
+                ) : validation?.exportStatus === 'stale' ? (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-stale">
+                    {tc('openedStale', { revision: opened.revision })}
+                  </p>
+                ) : (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-unread">
+                    {tc('openedUnread', { revision: opened.revision })}
                   </p>
                 )}
               </Panel>

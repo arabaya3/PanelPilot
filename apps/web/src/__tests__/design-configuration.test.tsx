@@ -504,6 +504,7 @@ function saved(model: V2ModelSummary | null): SavedProject {
     request: SAVED_REQUEST,
     findings: [],
     model_v2: model,
+    snapshot_schema: model ? 'pp-design/2' : 'pp-design/1',
   } as unknown as SavedProject;
 }
 
@@ -597,6 +598,33 @@ describe('the configuration view and review schedules of a revision', () => {
       en.design.errors.schedule_requires_v2,
     );
     expect(configuration().getByTestId('opened-configuration-v1')).toBeTruthy();
+  });
+
+  it('never calls a v2 revision that failed its integrity check v1', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: {
+        ...saved(null),
+        snapshot_schema: 'pp-design/2',
+        export_status: 'not_validated',
+        findings: [
+          {
+            code: 'snapshot_integrity_failed',
+            severity: 'blocking',
+            message: 'The stored design does not match its recorded hash',
+            source: 'integrity',
+            values: {},
+          },
+        ],
+      } as unknown as SavedProject,
+    });
+    renderScreen();
+    await openStored();
+    expect(configuration().queryByTestId('opened-configuration-v1')).toBeNull();
+    expect(configuration().getByTestId('opened-configuration-unread').textContent).toBe(
+      en.configuration.openedUnread.replace('{revision}', '1'),
+    );
+    expect(configuration().queryByText(/pp-design\/1/)).toBeNull();
   });
 });
 

@@ -300,6 +300,10 @@ def test_an_altered_v2_row_is_never_approved_or_exported(
     opened = _opened(client, saved["id"], 1)
     assert opened["export_status"] == "not_validated"
     assert "snapshot_integrity_failed" in {f["code"] for f in opened["findings"]}
+    # The stored schema is named from its marker alone, so a page never calls
+    # an unreadable v2 design v1; it is not read (no model).
+    assert opened["snapshot_schema"] == "pp-design/2"
+    assert opened["model_v2"] is None
     for fmt in ("pdf", "json", "dxf"):
         refused = revision_export(client, saved["id"], 1, fmt)
         assert refused.status_code == 409
@@ -308,3 +312,12 @@ def test_an_altered_v2_row_is_never_approved_or_exported(
     assert refused.status_code == 409
     assert error(refused)["code"] == "snapshot_integrity_failed"
     assert revision_row(engine, saved["id"], 1)["approved_at"] is None
+
+
+def test_an_opened_revision_names_its_stored_schema(
+    client: TestClient, engine: Engine, switch: Switch
+) -> None:
+    saved = save(client)
+    assert _opened(client, saved["id"], 1)["snapshot_schema"] == "pp-design/1"
+    update_row(engine, saved["id"], 1, design_snapshot={"schema": "pp-design/9", "x": 1})
+    assert _opened(client, saved["id"], 1)["snapshot_schema"] is None

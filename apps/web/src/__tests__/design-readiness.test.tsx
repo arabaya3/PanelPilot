@@ -1145,3 +1145,48 @@ describe('the strict 422 envelope (request_invalid)', () => {
     });
   });
 });
+
+describe('a revision whose stored design failed its integrity check', () => {
+  it('counts the same blocking findings in the overview and in the execution list', () => {
+    const unconnected = Array.from({ length: 6 }, () => ({
+      code: 'unconnected_required_terminal',
+      severity: 'blocking' as const,
+      message: 'required terminal 1 of component c1 is in no net',
+      source: 'integrity',
+      values: {},
+    }));
+    const validation = validationOf({
+      validated: true,
+      export_status: 'not_validated',
+      findings: [
+        ...unconnected,
+        {
+          code: 'snapshot_integrity_failed',
+          severity: 'blocking',
+          message: 'The stored design does not match its recorded hash',
+          source: 'integrity',
+          values: {},
+        },
+      ],
+      execution_blockers: [
+        'wiring_and_terminal_connectivity',
+        'not_validated',
+        'approval',
+        ...unconnected.map(() => 'finding:unconnected_required_terminal'),
+        'finding:snapshot_integrity_failed',
+        'template_unreviewed',
+      ],
+    } as never);
+    const readiness = readinessOf({
+      opened: { approval: null },
+      validation,
+      dirty: false,
+      stale: false,
+    });
+    const refusal = executionBlockersOf(validation);
+    expect(readiness.blockingCount).toBe(7);
+    expect(refusal.blockingFindings).toHaveLength(readiness.blockingCount);
+    // "Not validated" is its own item, never counted as a finding.
+    expect(refusal.notValidated).toBe(true);
+  });
+});

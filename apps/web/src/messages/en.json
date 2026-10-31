@@ -1476,6 +1476,8 @@
     "newTitle": "Try a configuration",
     "openedTitle": "Configuration of revision {revision} (read-only)",
     "openedV1": "Revision {revision} is stored as {schema}: it holds no components, terminals, nets or wires to review.",
+    "openedUnread": "Revision {revision}'s stored design could not be read or failed its integrity check, so its configuration is not shown. Nothing in it can be approved or exported; save the design again as a new revision.",
+    "openedStale": "Revision {revision} is stale: the rules or company profile changed since it was saved, so its configuration is not shown. Save it again as a new revision.",
     "intro": "Paste or load a configuration (JSON). Validate composes it on the server with the project's latest saved revision ({revision}); nothing is saved.",
     "file": "Configuration file (.json)",
     "fileHelp": "The file is read into the box below; nothing is sent until you validate or save.",
