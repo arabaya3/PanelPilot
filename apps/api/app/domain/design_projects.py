@@ -47,7 +47,7 @@ from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core import config
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
 from app.design import (
@@ -567,7 +567,8 @@ def _printed(findings: Sequence[DesignFinding]) -> list[DesignFinding]:
 
 def _written_schema() -> str:
     """The schema a new revision is written in: ``DESIGN_SNAPSHOT_SCHEMA`` (v1 by default)."""
-    return get_settings().design_snapshot_schema
+    # Only the switch: a save must not need the database URL or secrets.
+    return config.design_snapshot_schema()
 
 
 #: How an approval names its approver when the account has no display name,

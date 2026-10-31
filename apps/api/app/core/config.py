@@ -401,6 +401,38 @@ def get_settings() -> Settings:
         raise ConfigurationError(_format_validation_error(exc)) from exc
 
 
+class _DesignSnapshotSwitch(BaseSettings):
+    """The write switch alone, read from the same sources as :class:`Settings`.
+
+    Saving a revision needs this one value, not the database URL or secrets:
+    a code path (or a unit test without an environment) that designs and saves
+    must not fail on configuration it does not use. Startup still validates it
+    with everything else through :class:`Settings`.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    design_snapshot_schema: Literal["pp-design/1", "pp-design/2"] = "pp-design/1"
+
+
+def design_snapshot_schema() -> str:
+    """The schema new revisions are written in (``DESIGN_SNAPSHOT_SCHEMA``).
+
+    Read on each call, from the environment and ``.env`` like :class:`Settings`,
+    so a test that changes it needs no cache to clear.
+
+    Returns:
+        ``"pp-design/1"`` (the default) or ``"pp-design/2"``.
+
+    Raises:
+        ConfigurationError: If it is set to anything else.
+    """
+    try:
+        return _DesignSnapshotSwitch().design_snapshot_schema
+    except PydanticValidationError as exc:
+        raise ConfigurationError(_format_validation_error(exc)) from exc
+
+
 def load_settings_or_exit() -> Settings:
     """Return settings, or print the reason and end the process.
 

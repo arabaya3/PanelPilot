@@ -285,3 +285,20 @@ def test_an_unknown_design_snapshot_schema_stops_startup(
         assert exited.value.code == config.EXIT_CONFIG_ERROR
     finally:
         config.get_settings.cache_clear()
+
+
+def test_the_write_switch_reads_alone_without_the_rest_of_the_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A save reads only the switch: no database URL or secret is needed for it."""
+    from app.core import config
+
+    for name in ("ENVIRONMENT", "DATABASE_URL", "OPENSEARCH_URL", "JWT_SECRET", "REDIS_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("DESIGN_SNAPSHOT_SCHEMA", raising=False)
+    assert config.design_snapshot_schema() == "pp-design/1"
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+    assert config.design_snapshot_schema() == "pp-design/2"
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/3")
+    with pytest.raises(config.ConfigurationError):
+        config.design_snapshot_schema()
