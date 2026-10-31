@@ -29,6 +29,10 @@ import {
 
 import type * as DesignModule from '@/lib/design';
 
+import ar from '@/messages/ar.json';
+import en from '@/messages/en.json';
+import he from '@/messages/he.json';
+
 import { MESSAGES, asSignedIn, renderApp } from './helpers';
 
 /**
@@ -679,6 +683,35 @@ describe('the review view', () => {
     );
     expect(review().queryByTestId('revision-export-pdf')).toBeNull();
     expect(overview().getByTestId('approve-held-notValidated')).toBeTruthy();
+  });
+
+  it('names an integrity failure, not a save before validation', async () => {
+    const failed = {
+      code: 'snapshot_integrity_failed',
+      severity: 'blocking',
+      message: 'The findings stored with this revision are not the findings of its stored design',
+      values: { reason: 'findings_mismatch' },
+      requires_engineering_confirmation: false,
+      source: 'policy',
+    };
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: saved({ validated: false, export_status: 'not_validated', findings: [failed] }),
+    });
+    renderScreen();
+    await openStored();
+    for (const id of ['revision-export-not-validated', 'readiness-not-validated']) {
+      const shown = review().getByTestId(id).textContent;
+      expect(shown).toContain(
+        "Revision 1's stored design failed its integrity check (findings_mismatch)",
+      );
+      expect(shown).not.toContain('Revision 1 was saved before validation');
+    }
+    for (const messages of [ar, he]) {
+      const said = messages.design.readiness.integrityFailed;
+      expect(said).toContain('{reason}');
+      expect(said).not.toBe(en.design.readiness.integrityFailed);
+    }
   });
 
   it('never lets an approval read as covering edits made since', async () => {

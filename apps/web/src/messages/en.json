@@ -1128,6 +1128,7 @@
       },
       "dirty": "The page has changes revision {revision} does not hold. Its validation, findings and approval do not cover them; save a new revision.",
       "notValidated": "Revision {revision} was saved before validation: save again to validate it.",
+      "integrityFailed": "Revision {revision}'s stored design failed its integrity check ({reason}), so it is not validated and cannot be approved or exported. Save the design again as a new revision.",
       "executionBlocked": "Execution ready is not available yet: PanelPilot does not produce wiring and terminal connectivity, control schematics, orderable parts or a mechanical layout, so nothing is exported for execution."
     },
     "findings": {
@@ -1154,7 +1155,7 @@
       "draftBody": "Exported from the design on this page, not from a saved and validated revision. Every file is marked DRAFT — NOT FOR EXECUTION, lists the unresolved findings and carries no approval.",
       "revisionTitle": "Revision {revision} export",
       "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
-      "englishOnly": "Exported documents (drawing set, calculations, schedules and quotation) are in English.",
+      "englishOnly": "The drawing set and calculations are in the company profile's drawing language, with their status marks and findings in English. The quotation, the terminal and wire schedules and the DXF drawing are in English; the JSON project file holds the data as entered. Names you typed are kept as typed.",
       "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
       "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
       "execution": "Request execution export",

@@ -1083,6 +1083,21 @@ function DesignWorkspace({
     return typeof schema === 'string' ? schema : '?';
   })();
   const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
+  // Why the opened revision is not validated: its stored design failed its
+  // integrity check, is in a format this version does not read, or (else) it
+  // was saved before validation.
+  const notValidatedText = (revision: number): string => {
+    if (schemaUnknown) return t('errors.snapshot_schema_unknown', { schema: schemaUnknown });
+    const failed = validation?.findings.find((item) => item.code === 'snapshot_integrity_failed');
+    if (failed) {
+      const reason = failed.values?.reason;
+      return t('readiness.integrityFailed', {
+        revision,
+        reason: typeof reason === 'string' ? reason : '?',
+      });
+    }
+    return t('readiness.notValidated', { revision });
+  };
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -2105,7 +2120,7 @@ function DesignWorkspace({
                 )}
                 {opened && validation !== null && !validation.validated && (
                   <Notice tone="warning" live={false} testId="readiness-not-validated">
-                    {t('readiness.notValidated', { revision: opened.revision })}
+                    {notValidatedText(opened.revision)}
                   </Notice>
                 )}
                 <p className="text-sm text-text-muted" data-testid="readiness-execution-note">
@@ -2177,7 +2192,7 @@ function DesignWorkspace({
                     </Notice>
                   ) : validation !== null && !validation.validated ? (
                     <Notice tone="warning" live={false} testId="revision-export-not-validated">
-                      {t('readiness.notValidated', { revision: opened.revision })}
+                      {notValidatedText(opened.revision)}
                     </Notice>
                   ) : (
                     <>
