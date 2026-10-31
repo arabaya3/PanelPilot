@@ -106,6 +106,7 @@ def notes_for(board: Board, profile: CompanyProfile) -> list[DesignNote]:
         note(
             "enclosure_selected",
             type=chosen.type_number,
+            product=f"ABB Mini Center compact {chosen.type_number}",
             order=chosen.order_number,
             rows=chosen.rows,
             size=f"{height} x {width} x {depth}",

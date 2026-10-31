@@ -845,3 +845,82 @@ def test_enqueue_deferred_needs_one_source(capsys: pytest.CaptureFixture[str]) -
     assert jobs.run_enqueue_deferred([]) == 2
     assert jobs.run_enqueue_deferred(["abb", "siemens"]) == 2
     assert "usage: enqueue-deferred" in capsys.readouterr().err
+
+
+# --- owner-report / assign-owner -----------------------------------------------
+
+
+def _patch_owner_session(monkeypatch: pytest.MonkeyPatch) -> Any:
+    class _Session:
+        closed = False
+        committed = False
+
+        def __init__(self) -> None:
+            self.info: dict[str, object] = {}
+
+        def commit(self) -> None:
+            _Session.committed = True
+
+        def close(self) -> None:
+            _Session.closed = True
+
+    monkeypatch.setattr("app.core.db.get_session", lambda: iter([_Session()]))
+    return _Session
+
+
+def test_owner_report_lists_ids_and_flags_the_stranded(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import team
+    from app.models.schemas.team import OwnershipIssue
+
+    session_class = _patch_owner_session(monkeypatch)
+    seen: list[dict[str, object]] = []
+
+    def report(*, session: Any) -> list[OwnershipIssue]:
+        seen.append(dict(session.info))
+        return [
+            OwnershipIssue(tenant_id="t-1", issue="no_owner", active_admins=0),
+            OwnershipIssue(tenant_id="t-2", issue="owner_inactive", active_admins=2),
+        ]
+
+    monkeypatch.setattr(team, "ownership_report", report)
+    assert jobs.run_owner_report([]) == 1
+    out = capsys.readouterr().out
+    assert "t-1 no_owner admins=0 needs assign-owner" in out
+    assert "t-2 owner_inactive admins=2\n" in out
+    assert "2 without an active owner, 1 need assign-owner" in out
+    assert seen[0], "tenants were listed without declaring it spans tenants"
+    assert session_class.closed
+    assert not session_class.committed
+
+    monkeypatch.setattr(team, "ownership_report", lambda **_kw: [])
+    _patch_owner_session(monkeypatch)
+    assert jobs.run_owner_report([]) == 0
+    assert jobs.run_owner_report(["extra"]) == 2
+    assert jobs.get_job("owner-report").handler is jobs.run_owner_report
+
+
+def test_assign_owner_commits_or_reports_the_refusal(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import team
+
+    tenant = uuid.uuid4()
+    session_class = _patch_owner_session(monkeypatch)
+    monkeypatch.setattr(team, "assign_owner", lambda **_kw: tenant)
+    assert jobs.run_assign_owner(["a@example.com"]) == 0
+    assert session_class.committed
+    assert session_class.closed
+    assert str(tenant) in capsys.readouterr().out
+
+    def present(**_kw: Any) -> uuid.UUID:
+        raise ValidationError("the tenant has an active owner", code="team_owner_present")
+
+    refused_class = _patch_owner_session(monkeypatch)
+    monkeypatch.setattr(team, "assign_owner", present)
+    assert jobs.run_assign_owner(["a@example.com"]) == 1
+    assert not refused_class.committed
+    assert "active owner" in capsys.readouterr().err
+    assert jobs.run_assign_owner([]) == 2
+    assert jobs.get_job("assign-owner").handler is jobs.run_assign_owner

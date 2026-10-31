@@ -15,8 +15,10 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.config import RateLimitBackend, get_settings
+from app.api.csrf import CSRF_HEADER, check_same_site_request
+from app.core.config import RateLimitBackend, Settings, get_settings
 from app.core.db import get_session
+from app.core.errors import AuthenticationError
 from app.core.security import decode_access_token
 from app.domain import auth as auth_domain
 from app.domain.rate_limit import (
@@ -282,4 +284,106 @@ def get_current_user(
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
 
-__all__ = ["CurrentUserDep", "SessionDep", "get_current_user"]
+
+def get_app_settings(request: Request) -> Settings:
+    """Return the settings the running app was built with.
+
+    Args:
+        request: The incoming request.
+
+    Returns:
+        ``app.state.settings`` as ``create_app`` set it; the process settings
+        for an app built some other way.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    return settings if isinstance(settings, Settings) else get_settings()
+
+
+AppSettingsDep = Annotated[Settings, Depends(get_app_settings)]
+
+
+def require_same_site_request(request: Request, settings: AppSettingsDep) -> None:
+    """Refuse a cross-site request to an endpoint the refresh cookie authenticates.
+
+    Args:
+        request: The incoming request, for its ``Origin``, ``Referer`` and
+            ``X-PanelPilot-CSRF`` headers.
+        settings: For the web app's trusted origins.
+
+    Raises:
+        AuthorizationError: 403 ``csrf_origin_refused`` or
+            ``csrf_header_missing``; see ``app.api.csrf``.
+    """
+    check_same_site_request(
+        origin=request.headers.get("origin"),
+        referer=request.headers.get("referer"),
+        csrf_header=request.headers.get(CSRF_HEADER),
+        trusted_origins=settings.trusted_web_origins,
+    )
+
+
+def get_optional_current_user(
+    session: SessionDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> CurrentUser | None:
+    """Resolve the caller when an access token came, and ``None`` when none did.
+
+    For sign-out, which must work with only the refresh cookie (the access
+    token may already have expired) and must not fail because the token it
+    is ending is no longer valid.
+
+    Args:
+        session: Request-scoped database session.
+        credentials: Bearer credentials, if any.
+
+    Returns:
+        The authenticated caller, or ``None`` when there are no credentials or
+        they no longer authenticate.
+    """
+    if credentials is None:
+        return None
+    try:
+        return get_current_user(session, credentials)
+    except AuthenticationError:
+        return None
+
+
+OptionalCurrentUserDep = Annotated[CurrentUser | None, Depends(get_optional_current_user)]
+
+
+def get_bearer_claims(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> CurrentUser | None:
+    """The access token's verified claims, when one came and is still valid.
+
+    For refresh, where the access token is offered as proof of possession of
+    the session (`auth.refresh`), not as authentication: a missing, expired
+    or forged token is simply no proof, never a refusal of its own. The
+    signature and expiry are checked here; whether it names the session and
+    its account is the domain's check.
+
+    Args:
+        credentials: Bearer credentials, if any.
+
+    Returns:
+        The decoded caller, or ``None``.
+    """
+    if credentials is None:
+        return None
+    try:
+        return decode_access_token(credentials.credentials)
+    except AuthenticationError:
+        return None
+
+
+BearerClaimsDep = Annotated[CurrentUser | None, Depends(get_bearer_claims)]
+
+__all__ = [
+    "AppSettingsDep",
+    "BearerClaimsDep",
+    "CurrentUserDep",
+    "OptionalCurrentUserDep",
+    "SessionDep",
+    "get_current_user",
+    "require_same_site_request",
+]

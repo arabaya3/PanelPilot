@@ -1,5 +1,7 @@
 import type { components } from '@panelpilot/shared-types';
 
+import { signupProblemsOf, type SignupProblem } from '@/lib/trial';
+
 export type Team = components['schemas']['Team'];
 export type InvitationOut = components['schemas']['InvitationOut'];
 export type InvitationCreated = components['schemas']['InvitationCreated'];
@@ -96,13 +98,29 @@ export async function removeMember(
   return 'ok' in result ? { kind: 'done' } : result;
 }
 
+/**
+ * Hand the account's ownership to another active member:
+ * `POST /api/v1/team/owner`. The owner only; the team comes back as the
+ * caller now sees it (no longer the owner).
+ */
+export async function transferOwnership(
+  options: Options & { memberId: string },
+): Promise<{ kind: 'team'; team: Team } | Failure> {
+  const result = await send(options, '/owner', 'POST', { member_id: options.memberId });
+  return 'ok' in result ? { kind: 'team', team: result.payload as Team } : result;
+}
+
 /** The link a colleague opens to join. */
 export function joinLink(origin: string, token: string): string {
   return `${origin}/join?invite=${encodeURIComponent(token)}`;
 }
 
 export type JoinOutcome =
-  { kind: 'joined' } | { kind: 'email-taken' } | TeamRefusal | { kind: 'failed' };
+  | { kind: 'joined' }
+  | { kind: 'email-taken' }
+  | { kind: 'invalid'; problems: SignupProblem[] }
+  | TeamRefusal
+  | { kind: 'failed' };
 
 /** Create an account in the inviting team: `POST /api/v1/auth/signup` with the invitation. */
 export async function signupWithInvite(options: {
@@ -137,6 +155,9 @@ export async function signupWithInvite(options: {
     } catch {
       payload = null;
     }
+    // Refused as entered (a reserved email domain, a short password): per field.
+    const problems = response.status === 422 ? signupProblemsOf(payload) : [];
+    if (problems.length > 0) return { kind: 'invalid', problems };
     return refusal(payload);
   }
   return { kind: 'failed' };

@@ -560,6 +560,78 @@ def run_enqueue_deferred(args: list[str]) -> int:
     return 0
 
 
+def run_owner_report(args: list[str]) -> int:
+    """List the tenants with accounts but no active owner: ``owner-report``.
+
+    One line per tenant, ids and counts only: ``no_owner`` (migration
+    ``a7d3e9f1c2b4`` found its first account ambiguous) or ``owner_inactive``
+    (deactivated outside the API), and its active admins. A tenant with no
+    active admin is marked ``needs assign-owner``: nobody can manage its team.
+
+    Args:
+        args: None.
+
+    Returns:
+        ``0`` when no tenant needs an operator, ``1`` when one does, ``2`` on
+        bad arguments.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import team
+
+    if args:
+        print("usage: owner-report", file=sys.stderr)
+        return 2
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="an operator audits every tenant's owner"):
+        issues = team.ownership_report(session=session)
+    stranded = 0
+    for issue in issues:
+        needs = issue.active_admins == 0
+        stranded += needs
+        suffix = " needs assign-owner" if needs else ""
+        print(f"{issue.tenant_id} {issue.issue} admins={issue.active_admins}{suffix}")
+    print(f"owner-report: {len(issues)} without an active owner, {stranded} need assign-owner")
+    return 1 if stranded else 0
+
+
+def run_assign_owner(args: list[str]) -> int:
+    """Record an account as its tenant's owner: ``assign-owner <email>``.
+
+    Only where the tenant has no active owner (``owner-report``); an active
+    owner hands ownership on themselves, from the team page.
+
+    Args:
+        args: ``[email]``.
+
+    Returns:
+        ``0`` on success, ``1`` if the domain refuses, ``2`` on bad arguments.
+    """
+    from contextlib import closing
+
+    from app.core.db import get_session
+    from app.core.tenancy import cross_tenant
+    from app.domain import team
+
+    if len(args) != 1:
+        print("usage: assign-owner <email>", file=sys.stderr)
+        return 2
+    sessions = get_session()
+    session = next(sessions)
+    with closing(session), cross_tenant(session, reason="an operator records a tenant's owner"):
+        try:
+            tenant = team.assign_owner(session=session, email=args[0])
+        except (NotFoundError, ValidationError) as exc:
+            print(f"assign-owner: {exc}", file=sys.stderr)
+            return 1
+        session.commit()
+    print(f"assign-owner: tenant {tenant} owner recorded")
+    return 0
+
+
 def run_set_plan(args: list[str]) -> int:
     """Put a tenant on a plan: ``set-plan <tenant-slug> <plan> <interval> <seats> [<until>]``.
 
@@ -711,6 +783,16 @@ REGISTRY: dict[str, JobSpec] = {
             "grant-role", "Give an account a role (reviewer, ingestion, admin).", run_grant_role
         ),
         JobSpec("revoke-role", "Take a role away from an account.", run_revoke_role),
+        JobSpec(
+            "owner-report",
+            "List tenants with accounts but no active owner.",
+            run_owner_report,
+        ),
+        JobSpec(
+            "assign-owner",
+            "Record an account as owner of a tenant that has no active owner.",
+            run_assign_owner,
+        ),
         JobSpec("set-plan", "Put a tenant on a subscription plan.", run_set_plan),
         JobSpec(
             "enqueue-deferred",

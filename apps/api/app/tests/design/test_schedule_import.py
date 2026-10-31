@@ -173,3 +173,27 @@ def test_only_the_first_rows_and_columns_are_read() -> None:
         *[["Lights", 1] for _ in range(schedule_import.MAX_ROWS + 10)],
     ]
     assert len(schedule_import.read_rows(_xlsx(workbook_rows))) == schedule_import.MAX_ROWS
+
+
+def test_an_oversized_csv_field_is_a_validation_error_not_a_500() -> None:
+    import csv
+
+    data = ("Description,Power\n" + '"' + "x" * 200_000 + '",1\n').encode()
+    previous = csv.field_size_limit()
+    try:
+        # Whatever the process-wide limit (the EPLAN ingest raises it), the
+        # schedule reader holds its own.
+        for limit in (131_072, 10_000_000):
+            csv.field_size_limit(limit)
+            with pytest.raises(ValidationError):
+                schedule_import.read_rows(data)
+            assert csv.field_size_limit() == limit
+    finally:
+        csv.field_size_limit(previous)
+
+
+def test_an_unreadable_csv_carries_a_code_the_page_can_say() -> None:
+    data = ("Description,Power\n" + '"' + "x" * 200_000 + '",1\n').encode()
+    with pytest.raises(ValidationError) as caught:
+        schedule_import.read_rows(data)
+    assert caught.value.code in ("csv_unreadable", "csv_field_too_long")

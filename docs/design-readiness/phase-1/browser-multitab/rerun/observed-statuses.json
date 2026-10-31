@@ -1,0 +1,50 @@
+{
+  "commit": "ad859b8",
+  "db_revision": "b2e8d5f7c3a1",
+  "web": "http://127.0.0.1:3000 (Next.js dev server)",
+  "tabs": "one context; t0 = tab with unsaved design; t1..t5 = test tabs",
+  "notes": ["Cookie identities are the first 4 bytes of SHA-256 of the value; no token or cookie value was printed."],
+  "step1": {"state": "signed-in x6", "GET_design_projects_per_tab_load": 2},
+  "step2": {
+    "tabs2": {"a_simultaneous_reload": ["signed-in","signed-in"], "b_raw_refresh": [200,200], "projects": [200,200], "session_ended_seen": false},
+    "tabs3": {"a_simultaneous_reload": ["signed-in","signed-in","signed-in"], "b_raw_refresh": [200,200,200], "projects": [200,200,200], "session_ended_seen": false},
+    "tabs5": {"a_simultaneous_reload": ["signed-in","signed-in","signed-in","signed-in","signed-in"], "b_raw_refresh": [200,200,200,200,200], "projects": [200,200,200,200,200], "session_ended_seen": false}
+  },
+  "step3_all6_reloaded_at_once": {
+    "reload1": {"state": "signed-in x6", "refresh": [200,200,200,200,200,200], "projects": [200,200,200,200,200,200]},
+    "reload2": {"state": "signed-in x6", "refresh": [200,200,200,200,200,200], "projects": [200,200,200,200,200,200]}
+  },
+  "step4": {
+    "sequence": "raw cookie-only refresh from t1..t5 at once; t1 response held 5 s, t4 response held 3 s, t3 request held 2 s; all 5 returned 200; jar ends on the token the late t4/t1 answers carried (already spent by t3's rotation)",
+    "X_app_renew_first": {
+      "how": "15.5 s later, Save project in t0 with the first POST /design/projects answered 401 (injected) -> the app's 401-driven renew",
+      "renew_refresh": {"bearer_sent": true, "status": 200, "presented": "regressed cookie cb16976d"},
+      "app_state": "signed-in (notice: 'renewed. Try again.')",
+      "then_cookie_only_refresh_t2": {"status": 200, "presented": "6f308dd3 (live token restored by the renew)"},
+      "then_reload_t5": "signed-in",
+      "result": "PASS"
+    },
+    "Y_cookie_only_first": {
+      "cookie_only_refresh_t2_15s_later": "401 session_ended",
+      "then_refresh_t5": "401 session_ended",
+      "then_reload_t5": "signed-out",
+      "then_app_renew_in_t0_with_bearer": "401 -> 'session has ended', signed-out",
+      "result": "FAIL: whole session revoked"
+    },
+    "Z_reload_first": {
+      "reload_t5_15s_later": "signed-out (load-time refresh carries no bearer)",
+      "then_cookie_only_refresh_t2": "401 session_ended",
+      "ui_of_unreloaded_tabs": "t1..t4 still showed 'Signed in'",
+      "result": "FAIL: reload after regression ends the session"
+    }
+  },
+  "rate_limit_5_tab_reloads": {
+    "fresh_window_5_rounds": "no 429 in any of 5 rounds",
+    "api_calls_per_round_across_5_tabs": {"GET /design/projects": 10, "GET /design/company-settings": 10, "GET /design/markets": 10, "POST /auth/session/refresh": "2-3"},
+    "GET_design_projects_per_tab_load": 2,
+    "earlier_in_same_window": "after the step 1-3 reloads plus design/save calls, rounds 2-3 of a 3-round test hit 429 rate_limited (2 calls per tab, no retry storm)"
+  },
+  "step5_refresh_vs_logout": {"refresh": [200, 200, "401 session_ended"], "logout": 204, "race_tokens_projects": [401,401,"no-token"], "cookie_left": false, "refresh_each_tab_after": "401 x5", "reload_all": "signed-out x5", "result": "PASS"},
+  "step6_stale_replay": {"rotation": 200, "cookie_changed": true, "wait_s": 11, "replay_fresh_context": "401 session_ended", "ctx1_access_token": 401, "ctx1_refresh": "401 session_ended", "ctx1_reload": "signed-out", "ctx2_state": "signed-in", "ctx2_refresh": 200, "ctx2_projects": 200, "result": "PASS"},
+  "step7_unsaved_design": {"after_step2": "edit still in field", "after_each_simultaneous_reload": "beforeunload prompt, then 'Unsaved work was kept' banner", "restore": "Project name restored; Save project enabled", "result": "PASS"}
+}

@@ -26,6 +26,10 @@ def _user() -> CurrentUser:
     )
 
 
+#: The member ids the transfer route handed to the domain.
+transfers: list[object] = []
+
+
 class _Session:
     def commit(self) -> None:
         pass
@@ -33,6 +37,7 @@ class _Session:
 
 @pytest.fixture(name="client")
 def _client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    transfers.clear()
     app = FastAPI()
     app.include_router(team_route.router, prefix="/team")
     app.dependency_overrides[deps.get_current_user] = _user
@@ -43,6 +48,7 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         lambda **_kw: Team(
             members=[Member(id="u", email="e@example.com", owner=True)],
             owner=True,
+            owns=True,
             seats=None,
             seats_taken=1,
         ),
@@ -56,11 +62,17 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     )
     monkeypatch.setattr(team_domain, "invitations", lambda **_kw: [])
 
+    def _transfer(**kw: object) -> None:
+        transfers.append(kw["member_id"])
+        if kw["member_id"] == "not-mine":
+            raise AuthorizationError("only the owner", code="team_transfer_owner_only")
+
     def _refuse(**_kw: object) -> None:
         raise AuthorizationError("only the owner", code="team_owner_only")
 
     monkeypatch.setattr(team_domain, "revoke", lambda **_kw: None)
     monkeypatch.setattr(team_domain, "remove", _refuse)
+    monkeypatch.setattr(team_domain, "transfer_ownership", _transfer)
     install_exception_handlers(app)
     with TestClient(app) as test_client:
         yield test_client
@@ -79,3 +91,18 @@ def test_a_refused_removal_is_a_403(client: TestClient) -> None:
     response = client.delete("/team/members/m")
     assert response.status_code == 403
     assert response.json()["code"] == "team_owner_only"
+
+
+def test_a_transfer_is_handed_to_the_domain_and_returns_the_team(client: TestClient) -> None:
+    response = client.post("/team/owner", json={"member_id": "m"})
+    assert response.status_code == 200, response.text
+    assert response.json()["owns"] is True
+    assert transfers == ["m"]
+
+
+def test_a_refused_transfer_is_a_403_and_a_bad_body_a_422(client: TestClient) -> None:
+    refused = client.post("/team/owner", json={"member_id": "not-mine"})
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "team_transfer_owner_only"
+    assert client.post("/team/owner", json={}).status_code == 422
+    assert client.post("/team/owner", json={"member_id": ""}).status_code == 422

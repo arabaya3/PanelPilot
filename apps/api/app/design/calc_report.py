@@ -35,6 +35,7 @@ from reportlab.platypus import (
 
 from app.design import disconnection
 from app.design.drawing_text import Words
+from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
 from app.models.schemas.design import Board, CompanyProfile, DesignProject, Device, DeviceKind
@@ -76,8 +77,9 @@ PHRASES: tuple[str, ...] = (
     "Customer: {value}",
     "Consultant: {value}",
     "Revision {index}, {date}",
-    "Approved by {name}",
-    "NOT APPROVED: issued for review only.",
+    "Review approved by {name}: a study, not for execution.",
+    "Approval note: {value}",
+    "NOT APPROVED: for review only, not for execution.",
     "The design rules are this software's defaults; the company has not confirmed them.",
     "Basis of calculation",
     "Board",
@@ -88,7 +90,7 @@ PHRASES: tuple[str, ...] = (
     "not selected",
     "Prepared",
     "Checked",
-    "Approved",
+    "Review approved",
 )
 
 _HEAD = colors.HexColor("#e7eef4")
@@ -216,12 +218,16 @@ def _board_section(board: Board, words: Words, styles: dict[str, ParagraphStyle]
     return story
 
 
-def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> bytes:
+def render_calculations_pdf(
+    project: DesignProject, company: CompanyProfile, mark: ExportMark | None = None
+) -> bytes:
     """Draw a designed project's calculations report as a PDF.
 
     Args:
         project: The project, designed and designated.
         company: The company it is issued under, for its name and language.
+        mark: The export's status mark, drawn on every page, and its findings
+            section before the signatures; ``None`` for neither.
 
     Returns:
         The PDF file's bytes.
@@ -264,10 +270,17 @@ def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> 
     ]
     story.extend(_paragraph(d, styles["body"]) for d in details if d)
     if latest and latest.approved_by:
-        approved = words("Approved by {name}", name=latest.approved_by)
+        approved = words(
+            "Review approved by {name}: a study, not for execution.",
+            name=words.person(latest.approved_by),
+        )
         story.append(_paragraph(approved, styles["body"], bold=True))
+        if latest.approval_note:
+            # Labelled as a note, apart from the line naming the approver.
+            note = words("Approval note: {value}", value=latest.approval_note)
+            story.append(_paragraph(note, styles["body"]))
     else:
-        refused = words("NOT APPROVED: issued for review only.")
+        refused = words("NOT APPROVED: for review only, not for execution.")
         story.append(_paragraph(refused, styles["body"], bold=True))
     if not company.rules_confirmed_by:
         story.append(
@@ -289,12 +302,12 @@ def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> 
         [
             [
                 _paragraph(words(role), styles["head"])
-                for role in ("Prepared", "Checked", "Approved")
+                for role in ("Prepared", "Checked", "Review approved")
             ],
             [
                 _paragraph(name, styles["body"])
                 for name in (
-                    (latest.drawn_by, latest.checked_by, latest.approved_by)
+                    (latest.drawn_by, latest.checked_by, words.person(latest.approved_by))
                     if latest
                     else ("", "", "")
                 )
@@ -311,6 +324,12 @@ def render_calculations_pdf(project: DesignProject, company: CompanyProfile) -> 
             ]
         )
     )
+    if mark is not None:
+        story.extend(pdf_findings_section(mark, styles["h2"], styles["small"]))
     story.append(KeepTogether([signature]))
-    document.build(story)
+    if mark is None:
+        document.build(story)
+    else:
+        stamp = pdf_page_stamp(mark)
+        document.build(story, onFirstPage=stamp, onLaterPages=stamp)
     return buffer.getvalue()

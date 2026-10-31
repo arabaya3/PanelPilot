@@ -9,11 +9,39 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.tables.base import Base, TimestampMixin, UUIDPrimaryKey
 from app.models.tables.tenant import TenantScopedMixin
+
+
+class AuthSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
+    """One sign-in: what a login or signup starts and a logout ends.
+
+    Its id is the ``sid`` claim every access token of the sign-in carries, and
+    every refresh token rotated from it names it. Revoking this row is what
+    makes a logout effective at once: ``authenticate`` refuses an access token
+    whose session is revoked, and ``refresh`` refuses to rotate any of its
+    refresh tokens, so neither a copied access token nor a copied refresh
+    token outlives the logout.
+
+    Revoked rather than deleted, like refresh tokens, so a replay of anything
+    that belonged to it is recognised for what it is.
+    """
+
+    __tablename__ = "auth_sessions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Random, per session. With the server's key it derives each generation's
+    # refresh token (`security.derive_refresh_token`), so the live token can be
+    # handed again to a tab that raced its rotation without storing it. Alone
+    # it derives nothing: a leaked row is still not a credential. NULL for a
+    # session from before this was kept; its next rotation sets it.
+    token_salt: Mapped[str | None] = mapped_column(String(64))
 
 
 class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
@@ -34,6 +62,21 @@ class RefreshTokenRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The sign-in this token belongs to. Nullable only for tokens issued before
+    # sessions existed; those are refused (see ``auth.refresh``), never treated
+    # as a session of their own.
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("auth_sessions.id", ondelete="CASCADE"), index=True
+    )
+    # Its place in the session's chain: login mints 1, each rotation the next.
+    # Only the live token's immediate predecessor is answered inside the reuse
+    # window (`auth.refresh`). NULL for tokens minted before this was kept,
+    # which count as 0.
+    generation: Mapped[int | None] = mapped_column(Integer)
+    # Unused since tokens are derived. Kept so pods still running the
+    # once-only grace code keep working through a rolling deploy; a later
+    # contract migration drops it.
+    grace_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AnonymousSessionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base):

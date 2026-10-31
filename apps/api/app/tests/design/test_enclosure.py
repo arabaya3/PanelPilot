@@ -39,6 +39,8 @@ def test_the_smallest_enclosure_with_room_for_spares_is_named() -> None:
     assert named.params["order"] == chosen.order_number
     assert Decimal(named.params["free"]) >= 0
     assert "1SKC802027C0201" in named.params["source"]
+    # One product name, range and type, for a right-to-left page to keep whole.
+    assert named.params["product"] == f"ABB Mini Center compact {chosen.type_number}"
     # The notes_for result is what the board carries.
     assert enclosure.notes_for(board, profile.default_profile())[0].code == "enclosure_selected"
 

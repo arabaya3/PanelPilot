@@ -21,6 +21,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
 from app.design.pdf_fonts import font_for
 from app.models.schemas.design import DesignProject, Quotation
 
@@ -46,7 +47,11 @@ def _amount(value: Decimal) -> str:
 
 
 def render_quotation_pdf(
-    quotation: Quotation, project: DesignProject, *, company: str = ""
+    quotation: Quotation,
+    project: DesignProject,
+    *,
+    company: str = "",
+    mark: ExportMark | None = None,
 ) -> bytes:
     """Draw a quotation as a PDF.
 
@@ -54,6 +59,8 @@ def render_quotation_pdf(
         quotation: The priced quotation.
         project: The project it prices, for the heading.
         company: The issuing company's name.
+        mark: The export's status mark, drawn on every page, and its findings
+            section after the totals; ``None`` for neither.
 
     Returns:
         The PDF file's bytes.
@@ -69,7 +76,7 @@ def render_quotation_pdf(
         rightMargin=15 * mm,
         topMargin=15 * mm,
         bottomMargin=15 * mm,
-        title=f"Quotation - {project.info.name}",
+        title=f"Provisional estimate - {project.info.name}",
         author=company,
         creator="PanelPilot",
         invariant=True,
@@ -77,7 +84,14 @@ def render_quotation_pdf(
     story: list[object] = []
     if company:
         story.append(_paragraph(company, styles["Heading2"]))
-    story.append(_paragraph(f"Quotation: {project.info.name}", styles["Title"]))
+    story.append(_paragraph(f"Provisional estimate: {project.info.name}", styles["Title"]))
+    story.append(
+        _paragraph(
+            "Prices and rates are as supplied with this export. They are not reviewed or "
+            "approved, and no design review approval covers them.",
+            styles["BodyText"],
+        )
+    )
     details = [
         f"Job number: {project.info.number}" if project.info.number else "",
         f"Customer: {project.info.customer}" if project.info.customer else "",
@@ -149,5 +163,10 @@ def render_quotation_pdf(
         )
     )
     story.append(totals)
-    document.build(story)
+    if mark is None:
+        document.build(story)
+    else:
+        story.extend(pdf_findings_section(mark, styles["Heading3"], small))
+        stamp = pdf_page_stamp(mark)
+        document.build(story, onFirstPage=stamp, onLaterPages=stamp)
     return buffer.getvalue()

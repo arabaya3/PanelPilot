@@ -11,6 +11,7 @@ from http import HTTPStatus
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import (
     NotFoundError,
@@ -21,6 +22,11 @@ from app.core.errors import (
     install_exception_handlers,
     status_for,
 )
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(max_length=5)
 
 
 class _UnmappedError(PanelPilotError):
@@ -39,6 +45,10 @@ def client() -> Iterator[TestClient]:
     @app.get("/throttled-without-a-number")
     def throttled_bare() -> None:
         raise TooManyRequestsError("slow down")
+
+    @app.post("/strict")
+    def strict(body: _Strict) -> None:
+        del body
 
     @app.get("/stub")
     def stub() -> None:
@@ -127,3 +137,16 @@ def test_about_names_the_subject_and_keeps_the_code() -> None:
     assert str(said) == "Pump: too big"
     assert said.code == "x"
     assert said.params == {"current": "3", "subject": "Pump"}
+
+
+def test_a_refused_request_is_a_422_in_the_envelope_with_its_location(client: TestClient) -> None:
+    response = client.post("/strict", json={"name": "x" * 1000, "colour": "red"})
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    body = response.json()
+    assert body["error"] == "RequestValidationError"
+    assert body["code"] == "request_invalid"
+    assert body["params"] == {"count": 2}
+    found = {(tuple(item["loc"]), item["type"]) for item in body["detail"]}
+    assert found == {(("body", "name"), "string_too_long"), (("body", "colour"), "extra_forbidden")}
+    # The refused value is not echoed back.
+    assert all("input" not in item for item in body["detail"])

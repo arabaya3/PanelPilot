@@ -1,0 +1,72 @@
+seed 201 draft 201 blocked
+api approval of blocked revision 409 {"error":"ConflictError","detail":"revision 1 has 3 blocking finding(s); fix them and save a new revision","code":"revision_has_blocking_findings","params":{"revision":"1","count":"3","codes":"earth_fault_tt_no_rcd"}}
+downloaded draft.pdf P1F-clean-tower.pdf 34903
+downloaded draft.circuits.csv P1F-clean-tower.circuits.csv 533
+downloaded draft.dxf P1F-clean-tower.dxf 113818
+save message Saved as revision 2.
+findings rows 20
+steps 1Saved / Done / 2Validated / Done / 3Review approved / Not yet / 4Execution ready / Blocked
+jump label Go to row 2
+focused after go-to-row _R_15esnelb_-2-desc-4 = Duty pump (test)
+approve disabled on blocked true 3 blocking findings must be resolved, and a new revision saved, before approval.
+approval Revision 2 approved by Rana Haddad on 2026-10-23.
+steps after approval 1Saved / Done / 2Validated / Done / 3Review approved / Done / 4Execution ready / Blocked
+downloaded approved.pdf P1F-clean-tower.pdf 35590
+downloaded approved.calculations.pdf P1F-clean-tower.calculations.pdf 9162
+downloaded approved.circuits.csv P1F-clean-tower.circuits.csv 600
+downloaded approved.dxf P1F-clean-tower.dxf 115770
+blockers before export Execution export blocked
+
+No execution package was exported. Still needed:
+
+Wiring and terminal connectivity
+Control schematics
+Orderable parts with order numbers
+A dimensioned mechanical layout
+execution refused Execution export refused
+
+No execution package was exported. Still needed:
+
+Wiring and terminal connectivity
+Control schematics
+Orderable parts with order numbers
+A dimensioned mechanical layout
+steps after edit 1Saved / Out of date / 2Validated / Out of date / 3Review approved / Out of date / 4Execution ready / Blocked
+dirty notices The page has changes revision 2 does not hold. Its validation, findings and approval do not cover them; save a new revision. | Revision 2 does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.
+too-long field [] null
+19-review-arabic {"dir":"rtl","overflow":0} 1محفوظ / تم / 2متحقَّق منه / تم / 3معتمد للمراجعة / تم / 4جاهز للتنفيذ / ممنوع | تصدير التنفيذ محظور
+
+لم تُصدَّر حزمة تنفيذ. ما زال مطلوبًا:
+
+التوصيلات وربط أطراف التوصيل
+مخططات التحكم
+قطع قابلة للطلب بأرقام طلبها
+تخطيط ميكانيكي بالأبعاد
+19-review-arabic drawing ["rtl:not-wrapped:none","rtl:not-wrapped:none","rtl:not-wrapped:none"]
+20-review-hebrew {"dir":"rtl","overflow":0} 1נשמר / בוצע / 2נבדק / בוצע / 3אושר לסקירה / בוצע / 4מוכן לביצוע / חסום | ייצוא לביצוע חסום
+
+לא יוצאה חבילת ביצוע. עדיין נדרשים:
+
+חיווט וקישוריות מהדקים
+סכמות פיקוד
+חלקים להזמנה עם מקטים
+פריסה מכנית עם מידות
+20-review-hebrew drawing ["rtl:not-wrapped:none","rtl:not-wrapped:none","rtl:not-wrapped:none"]
+21-review-390px {"dir":"ltr","overflow":0} 1Saved / Done / 2Validated / Done / 3Review approved / Done / 4Execution ready / Blocked | Execution export blocked
+
+No execution package was exported. Still needed:
+
+Wiring and terminal connectivity
+Control schematics
+Orderable parts with order numbers
+A dimensioned mechanical layout
+21-review-390px drawing ["ltr:ltr-wrapped:none","ltr:ltr-wrapped:none","ltr:ltr-wrapped:none"]
+22-review-arabic-390px {"dir":"rtl","overflow":0} 1محفوظ / تم / 2متحقَّق منه / تم / 3معتمد للمراجعة / تم / 4جاهز للتنفيذ / ممنوع | تصدير التنفيذ محظور
+
+لم تُصدَّر حزمة تنفيذ. ما زال مطلوبًا:
+
+التوصيلات وربط أطراف التوصيل
+مخططات التحكم
+قطع قابلة للطلب بأرقام طلبها
+تخطيط ميكانيكي بالأبعاد
+22-review-arabic-390px drawing ["rtl:not-wrapped:none","rtl:not-wrapped:none","rtl:not-wrapped:none"]

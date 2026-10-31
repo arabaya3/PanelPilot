@@ -9,15 +9,22 @@ import {
   parseSettings,
   readList,
   readSetting,
+  refusedSetting,
   settingsText,
   toggled,
   writeList,
   writeSetting,
+  withListedSettings,
   type Settings,
 } from '@/components/design/company-settings-model';
 import { useOutcomeText } from '@/components/design/note-text';
 import { LOAD_KINDS } from '@/components/design/schedule';
-import { getCompanySettings, saveCompanySettings, type CompanySettings } from '@/lib/design';
+import {
+  getCompanySettings,
+  permits,
+  saveCompanySettings,
+  type CompanySettings,
+} from '@/lib/design';
 
 /** A setting the form edits: its path, label key, unit, and the default it shows. */
 type Setting = { path: string[]; label: string; unit?: string; placeholder?: string };
@@ -149,8 +156,24 @@ export function CompanySettingsPanel({
   const { load = getCompanySettings, save = saveCompanySettings } = impls;
   const [saved, setSaved] = useState<CompanySettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Why the last save was refused, and the setting it names (a dotted path)
+  // while that field is unchanged. What was typed is kept either way.
+  // `inJson`: the refusal names settings only the JSON text holds.
+  const [problem, setProblem] = useState<{
+    text: string;
+    path: string | null;
+    inJson?: boolean;
+  } | null>(null);
   const [working, setWorking] = useState(false);
+  // Bumped by each refused save, to move focus to where it can be fixed.
+  const [focusRequest, setFocusRequest] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const jsonDetails = useRef<HTMLDetailsElement>(null);
+  const jsonText = useRef<HTMLTextAreaElement>(null);
   const parsed = parseSettings(text);
+  // Every member reads the settings; only the owner saves them (the server
+  // refuses anyone else with `settings_not_permitted`).
+  const canSave = permits(saved, 'edit_company_settings');
   // Read once per session: the latest callback, without re-reading when it changes.
   const loaded = useRef(onLoaded);
   loaded.current = onLoaded;
@@ -168,32 +191,75 @@ export function CompanySettingsPanel({
     };
   }, [token, load]);
 
+  // After a refused save, focus the first field marked invalid; when the
+  // refusal names a setting no field shows, the JSON text, opened, where any
+  // setting can be fixed, as unknown settings are. A refusal naming no
+  // setting leaves focus alone.
+  useEffect(() => {
+    if (focusRequest === 0 || !problem || (problem.path === null && !problem.inJson)) return;
+    const field = root.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (field) {
+      field.focus();
+      return;
+    }
+    if (jsonDetails.current) jsonDetails.current.open = true;
+    jsonText.current?.focus();
+    // Only a new refusal moves focus, not later edits.
+  }, [focusRequest]);
+
   function change(path: string[], value: string) {
     if (parsed === 'invalid') return;
+    if (problem?.path === path.join('.')) setProblem({ ...problem, path: null });
     onText(settingsText(writeSetting(parsed, path, value)));
   }
 
   async function store() {
-    if (token === null || parsed === 'invalid') return;
+    if (token === null || parsed === 'invalid' || !canSave) return;
     setWorking(true);
     setMessage(null);
+    setProblem(null);
     const settings: Settings = { ...parsed, ...(language === 'en' ? {} : { language }) };
     const outcome = await save({ token, settings });
     setWorking(false);
     if (outcome.kind === 'settings') {
       setSaved(outcome.saved);
       setMessage(t('saved'));
+    } else if (outcome.kind === 'refused') {
+      setProblem({
+        text: say(withListedSettings(outcome)),
+        path: refusedSetting(outcome),
+        inJson: outcome.code === 'profile_unknown_settings',
+      });
+      setFocusRequest((count) => count + 1);
+      // No longer the owner: the form stops offering to save.
+      if (outcome.code === 'settings_not_permitted') {
+        setSaved((was) => (was ? { ...was, permissions: [] } : was));
+      }
     } else {
-      setMessage(say(outcome));
+      setProblem({ text: say(outcome), path: null });
     }
+  }
+
+  /** Whether the last refused save named the setting at `path`. */
+  function refused(path: string[]): boolean {
+    return problem?.path === path.join('.');
   }
 
   function input(setting: Setting, key: string) {
     const fieldId = `${id}-${key}`;
+    const error = refused(setting.path) ? problem?.text : undefined;
     return (
-      <Field key={key} id={fieldId} label={t(`field.${setting.label}`)} unit={setting.unit ?? ''}>
+      <Field
+        key={key}
+        id={fieldId}
+        label={t(`field.${setting.label}`)}
+        unit={setting.unit ?? ''}
+        error={error}
+      >
         <input
           id={fieldId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${fieldId}-error` : undefined}
           dir="auto"
           value={parsed === 'invalid' ? '' : readSetting(parsed, setting.path)}
           placeholder={setting.placeholder}
@@ -273,7 +339,7 @@ export function CompanySettingsPanel({
     );
   }
   return (
-    <div className="flex flex-col gap-4" data-testid="company-settings">
+    <div ref={root} className="flex flex-col gap-4" data-testid="company-settings">
       <p className="text-sm text-text-muted">{t('help')}</p>
       {parsed === 'invalid' && (
         <p role="alert" className="text-sm text-severity-critical">
@@ -301,6 +367,7 @@ export function CompanySettingsPanel({
             <input
               key={column}
               aria-label={`${label}: ${t(`col.${column}`)}`}
+              aria-invalid={refused(path) || undefined}
               dir="ltr"
               inputMode="decimal"
               value={readSetting(settings, path)}
@@ -357,6 +424,7 @@ export function CompanySettingsPanel({
               dir="ltr"
               maxLength={3}
               aria-label={`${t('letters')}: ${t(`device.${kind}`)}`}
+              aria-invalid={refused(['letters', kind]) || undefined}
               value={readSetting(settings, ['letters', kind])}
               placeholder={letter}
               disabled={parsed === 'invalid'}
@@ -370,13 +438,14 @@ export function CompanySettingsPanel({
       </div>
       {orderedList('title_fields', DEFAULT_TITLE_FIELDS, TITLE_FIELDS, 'titleFields', 'titleField')}
       {orderedList('page_order', DEFAULT_PAGES, DEFAULT_PAGES, 'pageOrder', 'page')}
-      <details>
+      <details ref={jsonDetails}>
         <summary className="cursor-pointer text-sm font-semibold">{t('json')}</summary>
         <p className="my-2 text-sm text-text-muted">{t('jsonHelp')}</p>
         <label htmlFor={`${id}-json`} className="sr-only">
           {t('json')}
         </label>
         <textarea
+          ref={jsonText}
           id={`${id}-json`}
           dir="ltr"
           rows={6}
@@ -391,7 +460,8 @@ export function CompanySettingsPanel({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={token === null || parsed === 'invalid' || working}
+          disabled={token === null || parsed === 'invalid' || working || !canSave}
+          aria-describedby={saved && !canSave ? `${id}-not-permitted` : undefined}
           onClick={() => {
             void store();
           }}
@@ -407,6 +477,20 @@ export function CompanySettingsPanel({
           </span>
         )}
       </div>
+      {saved && !canSave && (
+        <p
+          id={`${id}-not-permitted`}
+          className="text-sm text-text-muted"
+          data-testid="settings-not-permitted"
+        >
+          {t('notPermitted')}
+        </p>
+      )}
+      {problem && (
+        <p role="alert" className="text-sm text-severity-critical" data-testid="settings-message">
+          {problem.text}
+        </p>
+      )}
       {message && (
         <p role="status" className="text-sm" data-testid="settings-message">
           {message}

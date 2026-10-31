@@ -78,3 +78,23 @@ def test_an_unknown_market_is_refused() -> None:
     with pytest.raises(ValidationError) as caught:
         profile.load_profile({"key": "acme", "market": "ZZ"})
     assert caught.value.code == "market_unknown"
+
+
+def test_an_unknown_nested_setting_is_refused_by_its_path() -> None:
+    with pytest.raises(ValidationError) as caught:
+        profile.load_profile(
+            {"key": "acme", "circuit_rules": {"lighting": {"breaker_amps": 6, "breaker_a": 6}}}
+        )
+    assert caught.value.code == "profile_unknown_settings"
+    assert "circuit_rules.lighting.breaker_amps" in caught.value.params["settings"]
+    assert "circuit_rules.lighting.breaker_amps" in str(caught.value)
+
+
+def test_every_stored_shape_of_the_default_still_loads() -> None:
+    """The default, in full as stored, and every market laid over it, load strictly."""
+    from app.design import markets
+
+    full = profile.default_profile().model_dump(mode="json")
+    assert profile.load_profile(full) == profile.default_profile()
+    for code in markets.MARKETS:
+        assert profile.load_profile({"key": "acme", "market": code}).market == code

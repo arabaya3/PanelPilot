@@ -7,6 +7,7 @@ import type { components } from '@panelpilot/shared-types';
 import { AppShell } from '@/components/app-shell';
 import { LoadingState, Notice, PageHeader, tabId, tabPanelId, Tabs } from '@/components/ui';
 import { CheckCircleIcon } from '@/components/icons';
+import { useAccountSession } from '@/components/account-session';
 import { SignInForm } from '@/components/sign-in-form';
 import type { signIn } from '@/lib/auth';
 import { VerificationConsole, type VerificationLabels } from '@/components/verification';
@@ -69,6 +70,8 @@ export function ReviewScreen({
   const t = useTranslations('review');
   const tv = useTranslations('verification');
   const [phase, setPhase] = useState<Phase>({ kind: 'signed-out' });
+  // Shared with the other pages, so signing in here also signs in /design.
+  const account = useAccountSession();
   const [tab, setTab] = useState<'queue' | 'stale' | 'escalations'>('queue');
 
   // A decided flag leaves the open list, whichever way it was decided. The
@@ -179,6 +182,7 @@ export function ReviewScreen({
           <div className="flex w-full justify-center text-start">
             <SignInForm
               onSignedIn={(tokens) => {
+                account?.signedIn(tokens);
                 void load(tokens.accessToken);
               }}
               {...(signInImpl ? { signInImpl } : {})}

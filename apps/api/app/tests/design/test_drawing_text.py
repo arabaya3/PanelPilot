@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.design import drawing_text, notes, pages
+from app.design import drawing_text, markets, notes, pages
 
 _WEB = Path(__file__).resolve().parents[4] / "web" / "src" / "messages"
 _LOCALE = Path(drawing_text.__file__).parent / "locale"
@@ -105,5 +105,33 @@ def test_words_in_hebrew_with_its_plural() -> None:
 
 def test_every_drawing_phrase_has_an_arabic_one() -> None:
     drawing = json.loads((_LOCALE / "ar.json").read_text(encoding="utf-8"))["drawing"]
-    english = {*pages._TITLE_LABELS.values(), *pages._KIND_NAMES.values()}
+    english = {*pages._TITLE_LABELS.values(), *pages.KIND_NAMES.values()}
     assert english <= set(drawing)
+
+
+@pytest.mark.parametrize(
+    ("language", "name", "institution"),
+    [("ar", "فلسطين", "مؤسسة المواصفات والمقاييس الفلسطينية"), ("he", "פלסטין", "מכון התקנים")],
+)
+def test_the_market_note_names_the_market_in_the_drawing_language(
+    language: str, name: str, institution: str
+) -> None:
+    """D4: "Palestine" and "(adopted by the Palestine Standards Institution)" stayed English."""
+    chosen = markets.market("PS")
+    said = drawing_text.Words(language).note(
+        notes.note("market_rules", market=chosen.name, regulation=chosen.regulation)
+    )
+    assert name in said
+    assert institution in said
+    assert "Palestine" not in said
+    assert "adopted" not in said
+
+
+@pytest.mark.parametrize("language", ["ar", "he"])
+def test_every_market_name_and_regulation_has_a_translation(language: str) -> None:
+    drawing = json.loads((_LOCALE / f"{language}.json").read_text(encoding="utf-8"))["drawing"]
+    for found in markets.MARKETS.values():
+        assert found.name in drawing, found.code
+        # A bare standard's number ("IEC 60364", "BS 7671") is the same in every language.
+        if found.regulation not in ("IEC 60364", "BS 7671"):
+            assert found.regulation in drawing, found.code

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderApp } from './helpers';
 
+import { AccountSessionProvider, useAccountSession } from '@/components/account-session';
+
 import HomePage from '@/app/page';
 import * as auth from '@/lib/auth';
 import * as stream from '@/lib/diagnosis-stream';
@@ -228,7 +230,6 @@ describe('HomePage', () => {
     vi.spyOn(trial, 'signupClaimingTrial').mockResolvedValue({
       kind: 'signed-up',
       accessToken: 'acct-tok',
-      refreshToken: 'refresh-tok',
     });
     const list = spyHistory();
     renderApp(<HomePage />, { theme: 'light' });
@@ -258,7 +259,6 @@ describe('HomePage', () => {
     vi.spyOn(auth, 'signIn').mockResolvedValue({
       kind: 'signed-in',
       accessToken: 'acct-tok',
-      refreshToken: 'refresh-tok',
     });
     const list = spyHistory();
     renderApp(<HomePage />, { theme: 'light' });
@@ -267,6 +267,11 @@ describe('HomePage', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    // From a trial, it first says the trial's conversation will not come along.
+    expect(screen.getByTestId('landing-trial-sign-in').textContent).toContain(
+      'does not move this trial',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in anyway' }));
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'e@example.com' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
     fireEvent.submit(screen.getByTestId('sign-in-form'));
@@ -340,5 +345,108 @@ describe('HomePage', () => {
 
     const everything = JSON.stringify(window.localStorage);
     expect(everything).not.toContain('tok-1');
+  });
+});
+
+describe('HomePage under the shared account session', () => {
+  let held: ReturnType<typeof useAccountSession> = null;
+  function Probe() {
+    held = useAccountSession();
+    return null;
+  }
+  const SIGNED_IN = {
+    status: 'signed-in' as const,
+    tokens: { accessToken: 'acct-tok' },
+  };
+  function renderUnder(refreshImpl: typeof auth.refreshSession) {
+    renderApp(
+      <AccountSessionProvider initial={SIGNED_IN} refreshImpl={refreshImpl}>
+        <Probe />
+        <HomePage />
+      </AccountSessionProvider>,
+      { theme: 'light' },
+    );
+  }
+  function refuseQuestions() {
+    vi.spyOn(stream, 'streamDiagnosis').mockImplementation(async function* () {
+      await Promise.resolve();
+      yield { kind: 'interrupted', reason: 'unauthorized' } as const;
+    });
+  }
+  async function askAndBeRefused() {
+    await waitFor(() => {
+      expect(screen.getByTestId('chat')).toBeTruthy();
+    });
+    const input = document.getElementById('chat-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Why is it tripping?' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+  }
+
+  it('works under an account signed in on another page, without starting a trial', async () => {
+    const start = mockStart(STARTED);
+    const list = spyHistory();
+    renderUnder(vi.fn<typeof auth.refreshSession>());
+    await waitFor(() => {
+      expect(tokensSeen(list)).toContain('acct-tok');
+    });
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+  });
+
+  it('renews through the shared session, and the chat takes the new token', async () => {
+    mockStart(STARTED);
+    const list = spyHistory();
+    const refreshImpl = vi
+      .fn<typeof auth.refreshSession>()
+      .mockResolvedValue({ kind: 'refreshed', accessToken: 'acct-new' });
+    refuseQuestions();
+    renderUnder(refreshImpl);
+    await askAndBeRefused();
+    await waitFor(() => {
+      expect(tokensSeen(list)).toContain('acct-new');
+    });
+    expect(refreshImpl).toHaveBeenCalled();
+    expect(held?.state).toEqual({
+      status: 'signed-in',
+      tokens: { accessToken: 'acct-new' },
+    });
+  });
+
+  it('marks the shared session ended when it cannot renew, and never falls back to a trial', async () => {
+    const start = mockStart(STARTED);
+    const resume = vi.spyOn(trial, 'resumeTrial');
+    spyHistory();
+    const refreshImpl = vi.fn<typeof auth.refreshSession>().mockResolvedValue({ kind: 'failed' });
+    refuseQuestions();
+    renderUnder(refreshImpl);
+    await askAndBeRefused();
+    expect(await screen.findByTestId('landing-expired')).toBeTruthy();
+    expect(held?.state).toEqual({ status: 'expired' });
+    expect(start).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sign-in-form')).toBeTruthy();
+  });
+});
+
+describe('HomePage when the sign-in could not be restored in time', () => {
+  it('asks for the account with a notice, and starts no trial behind it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const start = mockStart(STARTED);
+    const resume = vi.spyOn(trial, 'resumeTrial');
+    renderApp(
+      <AccountSessionProvider
+        restore
+        refreshImpl={vi.fn<typeof auth.refreshSession>().mockResolvedValue({ kind: 'timed-out' })}
+      >
+        <HomePage />
+      </AccountSessionProvider>,
+      { theme: 'light' },
+    );
+    const notice = await screen.findByTestId('landing-expired');
+    expect(notice.textContent).toContain('could not be checked in time');
+    expect(screen.getByTestId('sign-in-form')).toBeTruthy();
+    expect(start).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

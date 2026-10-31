@@ -110,7 +110,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Login */
+    /**
+     * Login
+     * @description Sign in: the access token in the body, the refresh token in the session cookie.
+     */
     post: operations['login_api_v1_auth_login_post'];
     delete?: never;
     options?: never;
@@ -118,7 +121,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/auth/refresh': {
+  '/api/v1/auth/session/refresh': {
     parameters: {
       query?: never;
       header?: never;
@@ -127,8 +130,74 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Refresh */
-    post: operations['refresh_api_v1_auth_refresh_post'];
+    /**
+     * Refresh
+     * @description Exchange the refresh cookie for a new access token, rotating the cookie.
+     *
+     *     The page sends its access token too, when it holds one: proof that it is
+     *     the session's own holder, which lets a jar a late Set-Cookie moved back
+     *     one rotation recover (see `auth.refresh`). It is optional, and an
+     *     expired or foreign one is no proof rather than a refusal.
+     *
+     *     What a page calls on load to find out whether this browser is signed in,
+     *     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
+     *     clears the cookie, so the browser stops sending a dead credential.
+     *
+     *     The JSON-body refresh this replaced was used by the web app only; there
+     *     is no non-browser client, so it was removed rather than kept beside the
+     *     cookie.
+     */
+    post: operations['refresh_api_v1_auth_session_refresh_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout
+     * @description Sign out: end this sign-in on the server and clear the cookie.
+     *
+     *     Ends the session the access token names and the one the cookie belongs
+     *     to: their refresh tokens stop refreshing, and every access token of the
+     *     session is refused from the next request, not at its expiry. Other
+     *     sign-ins of the account are left alone. Works with only the cookie, since
+     *     the access token may already have expired. Always 204, so a retry never
+     *     fails and the answer says nothing about either credential.
+     */
+    post: operations['logout_api_v1_auth_session_logout_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/logout-everywhere': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout Everywhere
+     * @description End every sign-in of the caller's account, on every device, and clear the cookie.
+     *
+     *     Needs a live access token: ending other devices' sessions is a deliberate
+     *     act of the signed-in account, not something a cookie alone may ask for.
+     */
+    post: operations['logout_everywhere_api_v1_auth_session_logout_everywhere_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -465,7 +534,13 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Price Design */
+    /**
+     * Price Design
+     * @description Price an unsaved design as a provisional estimate, with its findings.
+     *
+     *     Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
+     *     revision (``POST /design/projects/{id}/revisions/{n}/export``).
+     */
     post: operations['price_design_api_v1_design_quotation_post'];
     delete?: never;
     options?: never;
@@ -595,6 +670,26 @@ export interface paths {
      * @description Approve one revision of a saved project, once; it then cannot be deleted.
      */
     post: operations['approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Export Revision
+     * @description Export a saved revision from the design the server stored and checked for it.
+     */
+    post: operations['export_revision_api_v1_design_projects__project_id__revisions__number__export_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -769,6 +864,26 @@ export interface paths {
      * @description Take a member out of the team.
      */
     delete: operations['remove_api_v1_team_members__member_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/owner': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer Ownership
+     * @description Hand the tenant's ownership to another active member; the owner only.
+     */
+    post: operations['transfer_ownership_api_v1_team_owner_post'];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -1080,6 +1195,25 @@ export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
     /**
+     * AccessToken
+     * @description The access token a sign-in, signup or refresh answers with.
+     *
+     *     The refresh token travels only in the HttpOnly session cookie (see
+     *     ``app.api.v1.routes.auth``). The access token is held in the page's memory
+     *     and nowhere else.
+     */
+    AccessToken: {
+      /** Access Token */
+      access_token: string;
+      /**
+       * Token Type
+       * @default bearer
+       */
+      token_type: string;
+      /** Expires In */
+      expires_in: number;
+    };
+    /**
      * AppliedFactor
      * @description A derating or correction factor, with the clause it came from.
      */
@@ -1094,12 +1228,20 @@ export interface components {
      * ApproveRevisionRequest
      * @description An engineer's approval of one revision.
      *
+     *     The approver is the signed-in account, never anything the request says: a
+     *     field naming one (``approver``) is refused with 422, as any other field
+     *     this model does not define.
+     *
      *     Attributes:
-     *         approver: Their name as the title block is to print it.
+     *         note: An optional note to the approval, printed labelled "Approval
+     *             note", never where the approver is named.
      */
     ApproveRevisionRequest: {
-      /** Approver */
-      approver: string;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
     };
     /**
      * Board
@@ -1745,6 +1887,8 @@ export interface components {
      *             profile; ``None`` while none are saved.
      *         updated_by: Who saved them last.
      *         updated_at: When, ISO 8601.
+     *         permissions: What the caller may do with them
+     *             (``edit_company_settings``, or nothing: every member reads them).
      */
     CompanySettings: {
       /** Settings */
@@ -1758,6 +1902,8 @@ export interface components {
       updated_by: string;
       /** Updated At */
       updated_at?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ConductorMaterial
@@ -1869,6 +2015,48 @@ export interface components {
       } | null;
       format: components['schemas']['ExportFormat'];
       pricing?: components['schemas']['PricingSettings'] | null;
+    };
+    /**
+     * DesignFinding
+     * @description One thing a check of a design found, with where to fix it.
+     *
+     *     Attributes:
+     *         code: Stable identifier: a ``DesignNote`` code, or an integrity
+     *             check's own (``app.design.integrity``).
+     *         severity: From ``app.design.findings_policy``.
+     *         board_id: The board it is on, where it is on one.
+     *         circuit_id: The circuit, where it is about one.
+     *         device_id: The device, where it is about one.
+     *         values: The values it names, as text.
+     *         message: In English; the page renders ``code`` in the reader's language.
+     *         requires_engineering_confirmation: Whether an engineer must confirm
+     *             it before the design is relied on.
+     *         source: The rule it comes from, or ``"policy"`` where the severity is
+     *             this service's classification rather than a cited rule's.
+     */
+    DesignFinding: {
+      /** Code */
+      code: string;
+      severity: components['schemas']['app__models__schemas__design__FindingSeverity'];
+      /** Board Id */
+      board_id?: string | null;
+      /** Circuit Id */
+      circuit_id?: string | null;
+      /** Device Id */
+      device_id?: string | null;
+      /** Values */
+      values?: {
+        [key: string]: string;
+      };
+      /** Message */
+      message: string;
+      /**
+       * Requires Engineering Confirmation
+       * @default false
+       */
+      requires_engineering_confirmation: boolean;
+      /** Source */
+      source: string;
     };
     /**
      * DesignNote
@@ -2501,6 +2689,18 @@ export interface components {
       | 'plc_io_csv'
       | 'json';
     /**
+     * ExportPurpose
+     * @description What a saved revision is exported for.
+     * @enum {string}
+     */
+    ExportPurpose: 'review' | 'execution';
+    /**
+     * ExportStatus
+     * @description What a saved revision can be exported as now.
+     * @enum {string}
+     */
+    ExportStatus: 'not_validated' | 'stale' | 'blocked' | 'draft' | 'review_approved';
+    /**
      * FaultRecognitionResult
      * @description What the model saw.
      *
@@ -2528,12 +2728,6 @@ export interface components {
      * @enum {string}
      */
     Feature: 'ecad_export' | 'company_settings' | 'approval_workflow' | 'quotation';
-    /**
-     * FindingSeverity
-     * @description How much a finding matters.
-     * @enum {string}
-     */
-    FindingSeverity: 'error' | 'warning';
     /**
      * FlagRequest
      * @description A user reporting an answer as wrong.
@@ -3188,7 +3382,7 @@ export interface components {
      *         id: The account.
      *         email: Its address.
      *         full_name: Its name, if given.
-     *         owner: Whether it manages the team.
+     *         owner: Whether it is the tenant's recorded owner.
      */
     Member: {
       /** Id */
@@ -3322,6 +3516,15 @@ export interface components {
       /** Width Mm */
       width_mm?: string | null;
     };
+    /**
+     * Permission
+     * @description An action the server checks the caller may take (``app.domain.permissions``).
+     *
+     *     Sent to the client so it can hide or disable what it may not do; the
+     *     server checks it again on every request regardless.
+     * @enum {string}
+     */
+    Permission: 'approve_revision' | 'delete_project' | 'edit_company_settings';
     /**
      * Phase
      * @description A line conductor, or all three.
@@ -3558,7 +3761,8 @@ export interface components {
      *             or a rating key ("circuit_breaker:1P:C16",
      *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
      *             metre) for a device whose article is not chosen yet.
-     *         description: The supplier's description, for the quotation.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
      *         unit_price: Price of one, or of one metre for a cable.
      */
     'PriceListEntry-Input': {
@@ -3581,7 +3785,8 @@ export interface components {
      *             or a rating key ("circuit_breaker:1P:C16",
      *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
      *             metre) for a device whose article is not chosen yet.
-     *         description: The supplier's description, for the quotation.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
      *         unit_price: Price of one, or of one metre for a cable.
      */
     'PriceListEntry-Output': {
@@ -3600,7 +3805,7 @@ export interface components {
      * @description How a company prices a board.
      *
      *     Attributes:
-     *         currency: Printed beside every amount.
+     *         currency: Printed beside every amount: an ISO 4217 code.
      *         price_list: The company's prices.
      *         cable_length_m: The length priced for an outgoing cable whose own
      *             length is not given; ``None`` leaves such cables unpriced.
@@ -3731,12 +3936,17 @@ export interface components {
      *     Attributes:
      *         projects: The page.
      *         next_cursor: Pass back for the next page; ``None`` on the last.
+     *         permissions: What the caller may do to a project
+     *             (``app.domain.permissions``), for the client to hide what it
+     *             may not; the server checks again on every request.
      */
     ProjectPage: {
       /** Projects */
       projects: components['schemas']['ProjectSummary'][];
       /** Next Cursor */
       next_cursor?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ProjectSummary
@@ -3827,21 +4037,22 @@ export interface components {
       questions_remaining: number;
     };
     /**
-     * Quotation
-     * @description A board's price, line by line, with what could not be priced.
+     * QuotationEstimate
+     * @description A provisional estimate: a project the client sent, priced and checked.
+     *
+     *     Nothing in it is persisted, approved or issued. The project is the
+     *     client's, so it is re-designated and integrity-checked on the server and
+     *     its findings are returned beside the prices: a tampered rating is a
+     *     blocking finding here, as on a draft export. It carries no revision,
+     *     checker or approver.
      *
      *     Attributes:
-     *         currency: Of every amount.
-     *         lines: Materials, then labour and enclosure.
-     *         materials: Sum of the priced material lines.
-     *         labour: Labour and enclosure.
-     *         markup: On materials and labour.
-     *         vat: On the marked-up total.
-     *         total: What the customer pays, for what was priced.
-     *         unpriced: The lines with no price, by key, for the price list's owner.
-     *         complete: Whether every line was priced.
+     *         status: Always ``"provisional_estimate"``.
+     *         label: In English; the page renders ``status`` in the reader's language.
+     *         findings: The integrity checks and notes on the project as sent.
+     *         blocking: Whether any finding is blocking.
      */
-    Quotation: {
+    QuotationEstimate: {
       /** Currency */
       currency: string;
       /** Lines */
@@ -3860,6 +4071,21 @@ export interface components {
       unpriced: string[];
       /** Complete */
       complete: boolean;
+      /**
+       * Status
+       * @default provisional_estimate
+       * @constant
+       */
+      status: 'provisional_estimate';
+      /**
+       * Label
+       * @default Provisional estimate: not a quotation, not for execution. Priced from an unsaved design sent by the browser; a quotation is exported from a saved revision.
+       */
+      label: string;
+      /** Findings */
+      findings: components['schemas']['DesignFinding'][];
+      /** Blocking */
+      blocking: boolean;
     };
     /**
      * QuotationLine
@@ -3932,14 +4158,6 @@ export interface components {
       confidence: number;
     };
     /**
-     * RefreshRequest
-     * @description Exchange a refresh token for a new pair.
-     */
-    RefreshRequest: {
-      /** Refresh Token */
-      refresh_token: string;
-    };
-    /**
      * ResolveEscalationRequest
      * @description A lead's resolution of one escalated item.
      *
@@ -4001,7 +4219,10 @@ export interface components {
      *         description: What changed.
      *         drawn_by: Initials or name.
      *         checked_by: Initials or name.
-     *         approved_by: Initials or name.
+     *         approved_by: Initials or name. On a saved revision, the approving
+     *             account's display name (or "a team member"), set by the server.
+     *         approval_note: The note added to that approval, set by the server;
+     *             never who approved.
      */
     Revision: {
       /** Index */
@@ -4028,6 +4249,26 @@ export interface components {
        * @default
        */
       approved_by: string;
+      /**
+       * Approval Note
+       * @default
+       */
+      approval_note: string;
+    };
+    /**
+     * RevisionExportRequest
+     * @description A saved revision to export, from the design the server stored for it.
+     *
+     *     Attributes:
+     *         format: The file to produce.
+     *         pricing: The company's prices, for a quotation export.
+     *         purpose: Review, or execution (always refused for now).
+     */
+    RevisionExportRequest: {
+      format: components['schemas']['ExportFormat'];
+      pricing?: components['schemas']['PricingSettings'] | null;
+      /** @default review */
+      purpose: components['schemas']['ExportPurpose'];
     };
     /**
      * RevisionSummary
@@ -4036,11 +4277,36 @@ export interface components {
      *     Attributes:
      *         number: 1 for the first save, then in order.
      *         note: What it is.
-     *         author: Who saved it.
+     *         author: The display name of the account that saved it, read from
+     *             the tenant's users when the response is built; ``""`` when that
+     *             account has no display name. Never its email.
      *         created_at: When, ISO 8601.
-     *         approved_by: The engineer who approved it, as the title block
-     *             prints them; ``None`` while it is not approved.
+     *         approved_by: The approver as every export prints it: the approving
+     *             account's display name, or "a team member" when it has none or
+     *             is not recorded (an approval made before accounts were). Never
+     *             a name typed at approval. ``None`` while it is not approved.
      *         approved_at: When, ISO 8601.
+     *         approver_account_recorded: Whether the server recorded the
+     *             signed-in account that approved it (from the approver's token,
+     *             never from the request). ``False`` while it is not approved, and
+     *             for an approval recorded before accounts were.
+     *         approver_name: That account's display name, read from the tenant's
+     *             users when the response is built; ``None`` when no account is
+     *             recorded or it has no display name, which a client shows as "a
+     *             team member". The account's email, kept in the database as the
+     *             audit identity, is never sent.
+     *         approval_note: The note added at approval, if any; never an identity.
+     *         validated: Whether the server designed it from its request when it
+     *             was saved, and holds that design; ``False`` for an older one.
+     *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
      */
     RevisionSummary: {
       /** Number */
@@ -4055,6 +4321,26 @@ export interface components {
       approved_by?: string | null;
       /** Approved At */
       approved_at?: string | null;
+      /**
+       * Approver Account Recorded
+       * @default false
+       */
+      approver_account_recorded: boolean;
+      /** Approver Name */
+      approver_name?: string | null;
+      /** Approval Note */
+      approval_note?: string | null;
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
     };
     /**
      * SaveCompanySettings
@@ -4098,6 +4384,32 @@ export interface components {
      *         revisions: Every revision, oldest first.
      *         revision: The number of the revision ``request`` is.
      *         request: That revision as entered.
+     *         findings: What the checks found in the design the server built for
+     *             that revision when it was saved; empty for an older revision.
+     *         validated: Whether that revision holds a server-built design.
+     *         snapshot_sha256: The SHA-256 of that design's canonical JSON.
+     *         rules_version: The calculation rules it was designed under.
+     *         approved_snapshot_sha256: The design its approval is bound to;
+     *             ``None`` while it is not approved (or approved before approvals
+     *             were bound to a design).
+     *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``.
+     *         execution_blockers: Why it cannot be exported for execution: the
+     *             parts of an execution package this service does not produce yet,
+     *             then ``approval`` and each blocking finding's code, as they apply.
+     *         approving_as: The signed-in caller's display name, as an approval
+     *             they made now would name them; ``None`` when they have none,
+     *             which a client shows as "a team member". Never their email.
+     *         permissions: What the caller may do to this project
+     *             (``app.domain.permissions``); the server checks again on every
+     *             request.
      */
     SavedProject: {
       /** Id */
@@ -4109,6 +4421,31 @@ export interface components {
       /** Revision */
       revision: number;
       request: components['schemas']['ProjectDesignRequest-Output'];
+      /** Findings */
+      findings?: components['schemas']['DesignFinding'][];
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** Snapshot Sha256 */
+      snapshot_sha256?: string | null;
+      /** Rules Version */
+      rules_version?: string | null;
+      /** Approved Snapshot Sha256 */
+      approved_snapshot_sha256?: string | null;
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
+      /** Execution Blockers */
+      execution_blockers?: string[];
+      /** Approving As */
+      approving_as?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
     };
     /**
      * ScheduleSuggestionRequest
@@ -4384,8 +4721,10 @@ export interface components {
      * @description The caller's team.
      *
      *     Attributes:
-     *         members: Its active accounts, owner first.
-     *         owner: Whether the caller manages it.
+     *         members: Its active accounts, the owner first.
+     *         owner: Whether the caller manages it: the owner, or an admin.
+     *         owns: Whether the caller is the recorded owner, the one account
+     *             that may transfer ownership.
      *         seats: The seats the plan holds; ``None`` while billing is not
      *             enforced.
      *         seats_taken: Members plus invitations still open.
@@ -4395,6 +4734,8 @@ export interface components {
       members: components['schemas']['Member'][];
       /** Owner */
       owner: boolean;
+      /** Owns */
+      owns: boolean;
       /** Seats */
       seats: number | null;
       /** Seats Taken */
@@ -4421,21 +4762,12 @@ export interface components {
       | 'date'
       | 'company';
     /**
-     * TokenPair
-     * @description A short-lived access token and the refresh token that renews it.
+     * TransferOwnershipRequest
+     * @description Hand the tenant's ownership to another active member.
      */
-    TokenPair: {
-      /** Access Token */
-      access_token: string;
-      /** Refresh Token */
-      refresh_token: string;
-      /**
-       * Token Type
-       * @default bearer
-       */
-      token_type: string;
-      /** Expires In */
-      expires_in: number;
+    TransferOwnershipRequest: {
+      /** Member Id */
+      member_id: string;
     };
     /**
      * TrialResumeRequest
@@ -4522,7 +4854,7 @@ export interface components {
       code: string;
       /** Message */
       message: string;
-      severity: components['schemas']['FindingSeverity'];
+      severity: components['schemas']['app__models__schemas__plc__FindingSeverity'];
       /** Line */
       line?: number | null;
     };
@@ -4636,6 +4968,18 @@ export interface components {
      * @enum {string}
      */
     WireNumbering: 'potential' | 'sequential' | 'source_target';
+    /**
+     * FindingSeverity
+     * @description How much a finding stands in the way of issuing a design.
+     * @enum {string}
+     */
+    app__models__schemas__design__FindingSeverity: 'blocking' | 'warning' | 'info';
+    /**
+     * FindingSeverity
+     * @description How much a finding matters.
+     * @enum {string}
+     */
+    app__models__schemas__plc__FindingSeverity: 'error' | 'warning';
   };
   responses: never;
   parameters: never;
@@ -4704,7 +5048,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
       /** @description Validation Error */
@@ -4790,7 +5134,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
       /** @description Validation Error */
@@ -4804,18 +5148,14 @@ export interface operations {
       };
     };
   };
-  refresh_api_v1_auth_refresh_post: {
+  refresh_api_v1_auth_session_refresh_post: {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RefreshRequest'];
-      };
-    };
+    requestBody?: never;
     responses: {
       /** @description Successful Response */
       200: {
@@ -4823,17 +5163,44 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['TokenPair'];
+          'application/json': components['schemas']['AccessToken'];
         };
       };
-      /** @description Validation Error */
-      422: {
+    };
+  };
+  logout_api_v1_auth_session_logout_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
+        content?: never;
+      };
+    };
+  };
+  logout_everywhere_api_v1_auth_session_logout_everywhere_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
         };
+        content?: never;
       };
     };
   };
@@ -5372,7 +5739,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['Quotation'];
+          'application/json': components['schemas']['QuotationEstimate'];
         };
       };
       /** @description Validation Error */
@@ -5650,6 +6017,56 @@ export interface operations {
       };
     };
   };
+  export_revision_api_v1_design_projects__project_id__revisions__number__export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RevisionExportRequest'];
+      };
+    };
+    responses: {
+      /** @description The exported file */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/octet-stream': unknown;
+        };
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `revision_stale`, or `execution_package_incomplete` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_markets_api_v1_design_markets_get: {
     parameters: {
       query?: never;
@@ -5908,6 +6325,39 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  transfer_ownership_api_v1_team_owner_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TransferOwnershipRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
       };
       /** @description Validation Error */
       422: {

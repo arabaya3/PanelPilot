@@ -11,7 +11,6 @@ import {
   fetchQuota,
   limitReached,
   readTrial,
-  refreshTokens,
   resumeTrial,
   signupClaimingTrial,
   startTrial,
@@ -304,28 +303,6 @@ describe('fetchQuota', () => {
   });
 });
 
-describe('refreshTokens', () => {
-  it('exchanges a refresh token for a new pair', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({ access_token: 'a2', refresh_token: 'r2' }),
-    });
-    expect(await refreshTokens({ refreshToken: 'r1', fetchImpl })).toEqual({
-      kind: 'refreshed',
-      accessToken: 'a2',
-      refreshToken: 'r2',
-    });
-    const init = fetchImpl.mock.calls[0]?.[1] as { body: string };
-    expect(JSON.parse(init.body)).toEqual({ refresh_token: 'r1' });
-  });
-
-  it('reports an expired refresh token as such', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 401 });
-    expect(await refreshTokens({ refreshToken: 'r1', fetchImpl })).toEqual({ kind: 'expired' });
-  });
-});
-
 // --- claiming it --------------------------------------------------------------
 
 describe('signupClaimingTrial', () => {
@@ -392,8 +369,9 @@ describe('signupClaimingTrial', () => {
     ).toEqual({ kind: 'email-taken' });
   });
 
-  it('refuses a success response with no tokens in it', async () => {
-    const fetchImpl = respond(201, { access_token: 'a' });
+  it('refuses a success response with no access token in it', async () => {
+    // The refresh token is the session cookie, so the body has only this one.
+    const fetchImpl = respond(201, { token_type: 'bearer' });
     expect(
       await signupClaimingTrial({
         email: 'e@example.com',
@@ -413,7 +391,6 @@ describe('the limit modal', () => {
     const signupImpl = vi.fn().mockResolvedValue({
       kind: 'signed-up',
       accessToken: 'a',
-      refreshToken: 'r',
     }) as unknown as typeof signupClaimingTrial;
     const onSignedUp = vi.fn();
 
@@ -431,7 +408,7 @@ describe('the limit modal', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
-      expect(onSignedUp).toHaveBeenCalledWith({ accessToken: 'a', refreshToken: 'r' });
+      expect(onSignedUp).toHaveBeenCalledWith({ accessToken: 'a' });
     });
     // And the trial went with the signup, not as a separate step.
     expect(vi.mocked(signupImpl).mock.calls[0]?.[0].trial).toEqual(TRIAL);

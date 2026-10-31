@@ -18,7 +18,7 @@ import type {
 
 import type * as DesignModule from '@/lib/design';
 
-import { renderApp } from './helpers';
+import { asSignedIn, renderApp } from './helpers';
 
 /**
  * Unsaved work and stale results on `/design`: what a save marks as saved,
@@ -85,13 +85,21 @@ function saved(name: string, revision = 1): SavedProject {
     id: 'p1',
     name,
     revision,
+    validated: false,
+    export_status: 'not_validated',
+    permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
       author: 'e',
+      approver_account_recorded: false,
       created_at: '2026-10-02T10:00:00Z',
+      validated: false,
+      export_status: 'not_validated' as const,
     })),
     request: { ...REQUEST, info: { ...REQUEST.info, name } },
+    // Saved since revisions are validated on saving (Phase 1), with nothing blocking.
+    ...({ validated: true, findings: [], snapshot_sha256: 'a'.repeat(64) } as object),
   };
 }
 
@@ -111,15 +119,19 @@ function renderScreen(
     designImpl?: typeof designProject;
     exportImpl?: typeof exportDesign;
     saveImpl?: (blob: Blob, filename: string) => void;
+    /** Render as a signed-in account (approving needs one), not a trial. */
+    account?: boolean;
   } = {},
 ) {
-  renderApp(
+  const { account = false, ...impls } = extra;
+  const screenUi = (
     <DesignScreen
       acquireImpl={vi.fn().mockResolvedValue(READY)}
       marketsImpl={vi.fn().mockResolvedValue(null)}
-      {...extra}
-    />,
+      {...impls}
+    />
   );
+  renderApp(account ? asSignedIn(screenUi) : screenUi);
 }
 
 /*
@@ -201,7 +213,10 @@ function deferred<T>() {
 beforeEach(() => {
   api.list.mockResolvedValue({
     kind: 'listed',
-    page: { projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }] },
+    page: {
+      permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
+      projects: [{ id: 'p1', name: 'Stored tower', revisions: 1, updated_at: 'now' }],
+    },
   });
   api.open.mockResolvedValue({ kind: 'saved', project: saved('Stored tower') });
 });
@@ -385,10 +400,23 @@ describe('a design the inputs have moved on from', () => {
 });
 
 describe('approval', () => {
-  it('cannot approve the stored revision while the page has unsaved changes', async () => {
+  it('is unavailable to a trial, which has no account, and says why', async () => {
     renderScreen();
     await openStored();
-    type(overviewField('Approving engineer'), 'A. Engineer');
+    const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
+    expect(approve.disabled).toBe(true);
+    expect(projects().getByTestId('approve-held-trial').textContent).toBe(
+      'Approving a revision needs a signed-in account. Sign in to approve; a trial cannot.',
+    );
+    expect(projects().queryByTestId('approving-as')).toBeNull();
+    fireEvent.click(approve);
+    expect(api.approve).not.toHaveBeenCalled();
+  });
+
+  it('cannot approve the stored revision while the page has unsaved changes', async () => {
+    renderScreen({ account: true });
+    await openStored();
+    type(overviewField('Approval note (optional)'), 'A. Engineer');
     const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
     expect(approve.disabled).toBe(false);
 
@@ -399,12 +427,13 @@ describe('approval', () => {
     expect(api.approve).not.toHaveBeenCalled();
   });
 
-  it('takes a design made before the approval as out of date, since its title block is', async () => {
-    const approved = saved('Stored tower');
-    approved.request = {
-      ...approved.request,
+  /** The stored revision, its title block row signed by `approver` (blank while not approved). */
+  function storedWithRow(approver: string): SavedProject {
+    const stored = saved('Stored tower');
+    stored.request = {
+      ...stored.request,
       info: {
-        ...approved.request.info,
+        ...stored.request.info,
         revisions: [
           {
             index: '01',
@@ -412,29 +441,157 @@ describe('approval', () => {
             description: 'Issue',
             drawn_by: '',
             checked_by: '',
-            approved_by: 'A. Engineer',
+            approved_by: approver,
+            approval_note: '',
           },
         ],
       },
     };
-    approved.revisions = approved.revisions.map((entry) => ({
-      ...entry,
-      approved_by: 'A. Engineer',
-      approved_at: '2026-10-03T10:00:00Z',
-    }));
-    api.approve.mockResolvedValue({ kind: 'saved', project: approved });
+    if (approver !== '') {
+      stored.revisions = stored.revisions.map((entry) => ({
+        ...entry,
+        approved_by: approver,
+        approver_name: approver,
+        approver_account_recorded: true,
+        approved_at: '2026-10-03T10:00:00Z',
+      }));
+    }
+    return stored;
+  }
+
+  it('keeps a design of the stored revision current through its approval (D1)', async () => {
+    api.open.mockResolvedValue({ kind: 'saved', project: storedWithRow('') });
+    api.approve.mockResolvedValue({ kind: 'saved', project: storedWithRow('A. Engineer') });
     const designImpl = vi
       .fn<typeof designProject>()
       .mockResolvedValue({ kind: 'designed', response: DESIGNED });
-    renderScreen({ designImpl });
+    renderScreen({ designImpl, account: true });
     await openStored();
     fireEvent.click(designButton());
     await screen.findByTestId('design-result');
     expect(screen.queryByTestId('design-stale')).toBeNull();
 
-    type(overviewField('Approving engineer'), 'A. Engineer');
+    type(overviewField('Approval note (optional)'), 'A. Engineer');
     fireEvent.click(projects().getByText('Approve revision 1'));
+    await waitFor(() => {
+      expect(api.approve).toHaveBeenCalledTimes(1);
+    });
+    await screen.findByText(/Revision 1 is approved/);
+    // Approval signs who approved; nothing the design was calculated from changed.
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
+
+    // A real edit still makes it stale.
+    type(loadRow().getByLabelText(/^Power.*kW/), '9');
     expect(await screen.findByTestId('design-stale')).toBeTruthy();
+  });
+});
+
+describe('switching language', () => {
+  /** The page's language control (the app shell may render more than one). */
+  function language(): HTMLSelectElement {
+    const select = document.querySelector<HTMLSelectElement>('select option[value="he"]')
+      ?.parentElement as HTMLSelectElement | null;
+    if (select === null) throw new Error('no language control');
+    return select;
+  }
+
+  it('keeps a current design current, in another language and back (D1)', async () => {
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderScreen({ designImpl });
+    await completeForm();
+    fireEvent.click(designButton());
+    await screen.findByTestId('design-result');
+
+    fireEvent.change(language(), { target: { value: 'ar' } });
+    await waitFor(() => {
+      expect(document.documentElement.lang === 'ar' || language().value === 'ar').toBe(true);
+    });
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    fireEvent.change(language(), { target: { value: 'en' } });
+    await waitFor(() => {
+      expect(language().value).toBe('en');
+    });
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
+  });
+
+  it('keeps the quotation rates typed through a redesign (D1)', async () => {
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderScreen({ designImpl });
+    await completeForm();
+    fireEvent.click(designButton());
+    await screen.findByTestId('design-result');
+    const materials = () => within(screen.getByTestId('view-materials'));
+    type(materials().getByLabelText('Labour per circuit'), '5');
+
+    fireEvent.change(language(), { target: { value: 'he' } });
+    fireEvent.change(language(), { target: { value: 'en' } });
+    fireEvent.click(designButton());
+    await waitFor(() => {
+      expect(designImpl).toHaveBeenCalledTimes(2);
+    });
+    await screen.findByTestId('quotation-panel');
+    expect(materials().getByLabelText<HTMLInputElement>('Labour per circuit').value).toBe('5');
+  });
+});
+
+describe('a save after designing', () => {
+  /** What the server answers a save with: the title block gains the revision saved. */
+  function savedWithTitleRow(): SavedProject {
+    const stored = saved('Tower');
+    stored.request = {
+      ...stored.request,
+      info: {
+        ...stored.request.info,
+        revisions: [
+          {
+            index: '01',
+            date: '2026-10-23',
+            description: 'issue A',
+            drawn_by: 'e',
+            checked_by: '',
+            approved_by: '',
+            approval_note: '',
+          },
+        ],
+      },
+    };
+    return stored;
+  }
+
+  async function designThenSave(editFirst: boolean) {
+    api.save.mockResolvedValue({ kind: 'saved', project: savedWithTitleRow() });
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderScreen({ designImpl });
+    await completeForm();
+    fireEvent.click(designButton());
+    await screen.findByTestId('design-result');
+    if (editFirst) type(overviewField('Customer'), 'Edited after designing');
+    type(overview().getByLabelText('Revision note'), 'issue A');
+    fireEvent.click(projects().getByText('Save project'));
+    expect(await screen.findByText('Saved as revision 1.')).toBeTruthy();
+  }
+
+  it('keeps a design of exactly what was saved current, and a later edit makes it stale', async () => {
+    await designThenSave(false);
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
+
+    type(overviewField('Customer'), 'Changed');
+    expect(await screen.findByTestId('design-stale')).toBeTruthy();
+    expect(screen.queryByTestId('design-export-pdf')).toBeNull();
+  });
+
+  it('keeps a design the inputs had moved on from stale through the save', async () => {
+    await designThenSave(true);
+    expect(screen.getByTestId('design-stale')).toBeTruthy();
     expect(screen.queryByTestId('design-export-pdf')).toBeNull();
   });
 });
