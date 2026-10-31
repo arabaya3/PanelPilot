@@ -372,7 +372,7 @@ Throughout: Phase 1 tests (hash binding, approval locking, tenant 404s, strict 4
 
 **Scope**
 
-1. A Pydantic `DesignModelV2` covering today's content only: assemblies, components (with `template_ref` set to a built-in `legacy/<device_kind>@1.0.0`), cables, power circuit views, notes, parts; plus empty-but-typed `nets`, `logic`, `layout`, `calc_records`, `assumptions`.
+1. A Pydantic `DesignModelV2` covering today's content only: assemblies, components (with `template_ref` set to a built-in `global/legacy-<device_kind>/v1` (refs hold no `@`, see the M2 document)), cables, power circuit views, notes, parts; plus empty-but-typed `nets`, `logic`, `layout`, `calc_records`, `assumptions`.
 2. `to_v2(DesignProject) -> DesignModelV2` and `to_v1(DesignModelV2) -> DesignProject`, both pure.
 3. A `schema` field in the stored snapshot envelope for **new** revisions; existing rows read as `pp-design/1`. Hashing rule documented: the hash covers the envelope including `schema`.
 4. A migration-on-read function used only for display and revise, never for exporting an old revision.

@@ -34,6 +34,7 @@ from app.core.errors import install_exception_handlers
 from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.tenant import TenantRow
 from app.tests import db_target
+from app.tests.design import stored_design
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -747,7 +748,7 @@ def test_tampered_snapshot_fails_integrity(client: TestClient, engine: Engine) -
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
     row = revision_row(engine, saved["id"], 1)
-    snapshot = tampered(row["design_snapshot"])
+    snapshot = stored_design.edited(row["design_snapshot"], tampered)
     update_row(engine, saved["id"], 1, design_snapshot=snapshot)
     for fmt in ("pdf", "dxf", "json"):
         response = revision_export(client, saved["id"], 1, fmt)
@@ -762,7 +763,7 @@ def test_a_float_written_into_a_stored_snapshot_is_altered_not_a_500(
     saved = save(client)
     row = revision_row(engine, saved["id"], 1)
     snapshot = json.loads(json.dumps(row["design_snapshot"]))
-    snapshot["info"]["injected"] = 1.5
+    stored_design.design_of(snapshot)["info"]["injected"] = 1.5
     update_row(engine, saved["id"], 1, design_snapshot=snapshot)
     opened = client.get(f"/design/projects/{saved['id']}")
     assert opened.status_code == 200
@@ -781,7 +782,7 @@ def test_rehashed_tampered_snapshot_loses_approval_and_blocks(
     saved = save(client)
     assert approve(client, saved["id"], 1).status_code == 200
     row = revision_row(engine, saved["id"], 1)
-    snapshot = tampered(row["design_snapshot"])
+    snapshot = stored_design.edited(row["design_snapshot"], tampered)
     update_row(
         engine, saved["id"], 1, design_snapshot=snapshot, snapshot_sha256=canonical_sha256(snapshot)
     )
@@ -872,7 +873,9 @@ def test_forced_oversized_breaker_blocks_approval(client: TestClient, engine: En
         assert exported.status_code in (409, 422)
         assert error(exported)["code"] == "revision_not_validated"
         return
-    _snap_circuit, snap_breaker, snap_cable = lighting_ids(row["design_snapshot"])
+    _snap_circuit, snap_breaker, snap_cable = lighting_ids(
+        stored_design.design_of(row["design_snapshot"])
+    )
     from decimal import Decimal
 
     if Decimal(str(snap_breaker["rated_current_a"])) > Decimal(40) and Decimal(

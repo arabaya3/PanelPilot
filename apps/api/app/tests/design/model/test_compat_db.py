@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import deps
 from app.api.v1.routes import design as design_route
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.errors import install_exception_handlers
 from app.design import CATALOGUE_VERSION, RULES_VERSION, snapshot
@@ -39,6 +40,7 @@ from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.tests import db_target
+from app.tests.design import stored_design
 from app.tests.design.model.compat_support import DESIGNED
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
@@ -171,14 +173,30 @@ def _row(engine: Engine, project_id: str) -> dict[str, Any]:
     return dict(found)
 
 
-def _write_snapshot(engine: Engine, project_id: str, stored: Any, sha256: str) -> None:
+def _write_snapshot(
+    engine: Engine,
+    project_id: str,
+    stored: Any,
+    sha256: str,
+    findings: list[dict[str, Any]] | None = None,
+) -> None:
+    """Write a snapshot and its hash into revision 1; with ``findings``, those too.
+
+    A whole fixture row is written with its own findings, so the row is the
+    fixture's whatever schema the save wrote: its v1 snapshot is never left
+    beside findings made for another design.
+    """
+    sets = "design_snapshot = CAST(:s AS JSONB), snapshot_sha256 = :h"
+    params: dict[str, Any] = {"s": json.dumps(stored), "h": sha256, "p": uuid.UUID(project_id)}
+    if findings is not None:
+        sets += ", findings = CAST(:f AS JSONB)"
+        params["f"] = json.dumps(findings)
     with engine.begin() as conn:
         conn.execute(
             text(
-                "UPDATE design_project_revisions SET design_snapshot = CAST(:s AS JSONB), "
-                "snapshot_sha256 = :h WHERE project_id = :p AND number = 1"
+                f"UPDATE design_project_revisions SET {sets} WHERE project_id = :p AND number = 1"
             ),
-            {"s": json.dumps(stored), "h": sha256, "p": uuid.UUID(project_id)},
+            params,
         )
 
 
@@ -219,7 +237,13 @@ def test_a_row_saved_by_phase1_code_opens_approves_and_exports(
 ) -> None:
     project_id = _save(client, DESIGNED["residential"]["request"])
     row = _row(engine, project_id)
-    assert "schema" not in row["design_snapshot"], "M1 writes v1 bare, as Phase 1 did"
+    # The written schema follows DESIGN_SNAPSHOT_SCHEMA: bare v1 by default, as
+    # Phase 1 wrote it; a v2 envelope when the switch is on.
+    if get_settings().design_snapshot_schema == "pp-design/2":
+        assert row["design_snapshot"]["schema"] == "pp-design/2"
+        assert set(row["design_snapshot"]) == {"schema", "model"}
+    else:
+        assert "schema" not in row["design_snapshot"], "v1 is written bare, as Phase 1 did"
     assert snapshot.sha256_of(row["design_snapshot"]) == row["snapshot_sha256"]
     opened = _summary(_open(client, project_id))
     assert opened["validated"] is True
@@ -248,8 +272,17 @@ def test_a_committed_fixture_row_exports_and_approves(
         pytest.skip("fixture predates the current rules: regenerate fixtures/generate.py")
     project_id = _save(client, body["request"])
     _write_snapshot(
-        engine, project_id, copy.deepcopy(stored["design_snapshot"]), stored["snapshot_sha256"]
+        engine,
+        project_id,
+        copy.deepcopy(stored["design_snapshot"]),
+        stored["snapshot_sha256"],
+        findings=copy.deepcopy(stored["findings"]),
     )
+    row = _row(engine, project_id)
+    assert row["design_snapshot"] == stored["design_snapshot"]
+    assert row["findings"] == stored["findings"]
+    # The row is the fixture's: the profile it was saved under is the fixture's too.
+    assert row["profile_sha256"] == stored["profile_sha256"]
     exported = _export(client, project_id, "json")
     assert exported.status_code == 200, exported.text[:500]
     approved = _approve(client, project_id)
@@ -369,10 +402,11 @@ def test_an_unknown_field_is_a_structured_refusal(
 ) -> None:
     project_id = _save(client, DESIGNED["residential"]["request"])
     stored = _row(engine, project_id)["design_snapshot"]
+    design = stored_design.design_of(stored)
     target = {
-        "root": stored,
-        "board": stored["boards"][0],
-        "device": stored["boards"][0]["devices"][0],
+        "root": design,
+        "board": design["boards"][0],
+        "device": design["boards"][0]["devices"][0],
     }[where]
     target["unexpected_field"] = "would be dropped"
     _write_snapshot(engine, project_id, stored, snapshot.sha256_of(stored))

@@ -29,6 +29,7 @@ from app.core.errors import ConflictError
 from app.design import marking, snapshot
 from app.design.model import versions
 from app.design.model.convert_v1 import from_v1
+from app.design.model.migrate_v2 import migrate_1_to_2
 from app.design.model.read import read_snapshot
 from app.domain import design as design_domain
 from app.domain import design_projects
@@ -64,17 +65,21 @@ def test_no_marker_reads_as_v1(case: str) -> None:
     assert read_snapshot(stored).schema == "pp-design/1"
 
 
-def test_v1_is_the_latest_and_only_known_schema() -> None:
-    """M1 ships no v2: nothing a test registers may leak into the shipped registry."""
+def test_v1_and_v2_are_read_and_v1_is_still_written() -> None:
+    """M2 reads v2, but writing follows WRITTEN_BY_DEFAULT, never the read order.
+
+    Nothing a test registers may leak into the shipped registry.
+    """
     assert versions.V1 == "pp-design/1"
-    assert frozenset({"pp-design/1"}) == versions.KNOWN
-    assert versions.LATEST == "pp-design/1"
-    assert versions.MIGRATIONS == {}
+    assert frozenset({"pp-design/1", "pp-design/2"}) == versions.KNOWN
+    assert versions.LATEST == "pp-design/2"
+    assert versions.WRITTEN_BY_DEFAULT == "pp-design/1"
+    assert set(versions.MIGRATIONS) == {("pp-design/1", "pp-design/2")}
 
 
 @pytest.mark.parametrize(
     "marker",
-    ["pp-design/2", "pp-design/999", "", "PP-DESIGN/1", "pp-design/1 ", "other/1"],
+    ["pp-design/3", "pp-design/999", "", "PP-DESIGN/1", "pp-design/1 ", "other/1"],
 )
 def test_unknown_marker_is_refused_with_its_schema(marker: str) -> None:
     stored = {"schema": marker, "model": _copy(RESIDENTIAL)}
@@ -103,7 +108,7 @@ def test_v1_in_an_envelope_is_unknown_not_a_second_form_of_v1() -> None:
 
 def test_a_marker_beside_v1_content_is_not_silently_read_as_v1() -> None:
     """A ``schema`` key added to bare v1 content is not stripped and read."""
-    stored = {**_copy(RESIDENTIAL), "schema": "pp-design/2"}
+    stored = {**_copy(RESIDENTIAL), "schema": "pp-design/3"}
     with pytest.raises(ConflictError) as raised:
         read_snapshot(stored)
     assert raised.value.code == "snapshot_schema_unknown"
@@ -212,7 +217,7 @@ def test_backwards_or_unknown_migrations_are_refused(source: str, target: str) -
 
 
 def test_the_default_registry_is_untouched_by_these_tests() -> None:
-    assert versions.MIGRATIONS == {}
+    assert {(versions.V1, versions.V2): migrate_1_to_2} == versions.MIGRATIONS
 
 
 # --------------------------------------------------------------------------- #
@@ -249,12 +254,12 @@ def test_a_phase1_row_passes_check_snapshot(case: str) -> None:
 
 def test_check_snapshot_refuses_an_unknown_schema_with_a_valid_hash() -> None:
     row = _row("residential")
-    row.design_snapshot = {"schema": "pp-design/2", "model": _copy(RESIDENTIAL)}
+    row.design_snapshot = {"schema": "pp-design/3", "model": _copy(RESIDENTIAL)}
     row.snapshot_sha256 = snapshot.sha256_of(row.design_snapshot)
     with pytest.raises(ConflictError) as raised:
         design_projects._check_snapshot(row, 1)
     assert raised.value.code == "snapshot_schema_unknown"
-    assert raised.value.params == {"schema": "pp-design/2"}
+    assert raised.value.params == {"schema": "pp-design/3"}
 
 
 def test_check_snapshot_checks_the_hash_before_the_schema() -> None:

@@ -42,6 +42,7 @@ from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 from app.tests.accounts import account
+from app.tests.design import stored_design
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -387,7 +388,7 @@ def test_saving_designs_on_the_server_and_stores_the_snapshot(tenants, as_tenant
         ).one()
     assert snapshot.sha256_of(stored) == digest == saved.snapshot_sha256
     # The snapshot carries no client revision rows.
-    assert stored["info"]["revisions"] == []
+    assert stored_design.design_of(stored)["info"]["revisions"] == []
 
 
 def test_approval_binds_the_snapshot_and_export_says_review_approved(tenants, as_tenant) -> None:  # type: ignore[no-untyped-def]

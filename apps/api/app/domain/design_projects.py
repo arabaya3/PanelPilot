@@ -19,6 +19,11 @@ hash, rules version and profile hash are checked again: a revision whose rules
 changed is refused as stale, never silently re-designed. Nothing is exported
 for execution: no execution package exists yet.
 
+What a new revision's snapshot is written in is ``DESIGN_SNAPSHOT_SCHEMA``
+(``pp-design/1`` unless set to ``pp-design/2``); every stored snapshot, of
+either schema, is read through ``read_snapshot`` after its hash is checked,
+and the renderers are given its v1 form. A stored row is never rewritten.
+
 The revisions up to the one opened are its title block's revision list, with
 who approved each. A project with an approved revision cannot be deleted: what
 was signed for stays reproducible. Every function binds the session to the
@@ -31,7 +36,7 @@ from __future__ import annotations
 
 import base64
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -42,6 +47,7 @@ from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
 from app.design import (
@@ -54,8 +60,9 @@ from app.design import (
     marking,
     snapshot,
 )
-from app.design.model import versions
+from app.design.model import entities, findings_v2, versions
 from app.design.model.read import VersionedModel, read_snapshot
+from app.design.model.write import snapshot_v2_from_v1
 from app.domain import billing, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
@@ -63,9 +70,11 @@ from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import (
     ApproveRevisionRequest,
     DesignFinding,
+    DesignProject,
     ExportPurpose,
     ExportStatus,
     FindingSeverity,
+    InstallationConditions,
     PricingSettings,
     ProjectDesignRequest,
     ProjectInfo,
@@ -214,7 +223,63 @@ def _current_classification(
     except PydanticValidationError:
         return None
     conditions = {board.name: board.conditions for board in request.boards}
-    return _classified(integrity.project_findings(read.project, conditions))
+    return _classified(_design_findings(read.project, conditions, read.v2))
+
+
+#: Which ``pp-design/2`` structural findings an engineer must confirm. Their
+#: severity is the findings module's own (``findings_v2``): an unreviewed
+#: template is a warning for design review (every legacy template is
+#: unreviewed) and an execution blocker; a rejected or restricted-scope
+#: template, or a required terminal in no net, blocks approval; a wire
+#: attribute with no value is a warning (decided by the integration owner, M2a).
+_V2_CONFIRM: frozenset[str] = frozenset(
+    {"template_unreviewed", "template_rejected", "out_of_execution_scope", "wire_attribute_unset"}
+)
+
+
+def _v2_findings(model: entities.DesignModelV2) -> list[DesignFinding]:
+    """A v2 model's structural findings as stored findings (source ``integrity``).
+
+    A code this mapping does not name is stored blocking: a new check is never
+    quietly weaker than its author meant.
+    """
+    out: list[DesignFinding] = []
+    for found in findings_v2.structural_findings(model):
+        # An unknown severity is stored blocking: never quietly weaker than meant.
+        severity = (
+            FindingSeverity(found.severity)
+            if found.severity in {item.value for item in FindingSeverity}
+            else FindingSeverity.BLOCKING
+        )
+        confirm = found.code in _V2_CONFIRM
+        out.append(
+            DesignFinding(
+                code=found.code,
+                severity=severity,
+                board_id=found.location.get("board_id"),
+                values={key: str(value) for key, value in sorted(found.location.items())},
+                message=found.message,
+                requires_engineering_confirmation=confirm,
+                source="integrity",
+            )
+        )
+    return out
+
+
+def _design_findings(
+    project: DesignProject,
+    conditions: Mapping[str, InstallationConditions],
+    v2: entities.DesignModelV2 | None,
+) -> list[DesignFinding]:
+    """Every finding of a stored design: the v1 checks, then a v2 model's structural ones.
+
+    A v1 snapshot (``v2`` is ``None``) gets exactly the findings it always
+    did, so no v1 revision's findings, fingerprint or staleness change.
+    """
+    found = integrity.project_findings(project, conditions)
+    if v2 is not None:
+        found = [*found, *_v2_findings(v2)]
+    return found
 
 
 @dataclass(frozen=True)
@@ -481,7 +546,29 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     if not checked.approval_bound:
         blockers.append("approval")
     blockers.extend(f"finding:{found.code}" for found in integrity.blocking(checked.findings))
+    # A v2 design on an unreviewed or out-of-scope template may not be
+    # executed, whatever else is resolved; named by code (v2 rows only).
+    blockers.extend(
+        sorted(
+            {
+                found.code
+                for found in checked.findings
+                if found.code in findings_v2.EXECUTION_BLOCKING
+            }
+        )
+    )
     return blockers
+
+
+def _printed(findings: Sequence[DesignFinding]) -> list[DesignFinding]:
+    """The findings a v1 renderer prints: all but a v2 model's structural ones."""
+    return [found for found in findings if found.code not in findings_v2.CODES]
+
+
+def _written_schema() -> str:
+    """The schema a new revision is written in: ``DESIGN_SNAPSHOT_SCHEMA`` (v1 by default)."""
+    # Only the switch: a save must not need the database URL or secrets.
+    return config.design_snapshot_schema()
 
 
 #: How an approval names its approver when the account has no display name,
@@ -679,8 +766,15 @@ def _validate(request: ProjectDesignRequest) -> dict[str, Any]:
     except ValidationError as exc:
         return {"findings": [_design_refused(exc).model_dump(mode="json")]}
     conditions = {board.name: board.conditions for board in request.boards}
-    findings = integrity.project_findings(designed, conditions)
     stored = designed.model_dump(mode="json")
+    v2: entities.DesignModelV2 | None = None
+    if _written_schema() == versions.V2:
+        # No configuration input yet (no API for one): the v1 devices become
+        # components on their legacy templates. Read back through the one
+        # reader, so what is stored is what every later read sees.
+        stored = snapshot_v2_from_v1(stored)
+        v2 = read_snapshot(stored).v2
+    findings = _design_findings(designed, conditions, v2)
     return {
         "design_snapshot": stored,
         "snapshot_sha256": snapshot.sha256_of(stored),
@@ -1305,7 +1399,11 @@ def export_revision(
         company=company,
         export_format=request.format,
         pricing=_revision_pricing(request.pricing),
-        mark=_revision_mark(project, row, findings, names, approval_counts),
+        # The v1 renderers print the v1 findings only: a v2 revision's
+        # structural findings are not drawn by them (RENDERER_VERSION is
+        # unchanged), so its export equals the v1 export of the same design.
+        # They are shown on open and named by the execution refusal.
+        mark=_revision_mark(project, row, _printed(findings), names, approval_counts),
         estimate_for=_estimate_subject(project, row, approval_counts),
     )
     logger.info(

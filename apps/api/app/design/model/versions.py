@@ -13,14 +13,15 @@ How a version is identified (ADR-2, M1):
 * v1 is never enveloped: an envelope naming ``pp-design/1`` would give one
   design two byte forms and two hashes, so it is refused as unknown.
 
-Only v1 exists. :data:`ENVELOPED` is empty and :data:`MIGRATIONS` holds no
-function; both are the extension points a later schema fills (see
-``docs/architecture/dynamic-design-engine.md``, "M1 as built"):
+Two schemas exist. ``pp-design/2`` (M2) is enveloped and adds templates,
+components, strips, nets, connections and wires to the v1 design, which it
+holds unchanged under ``design``. :data:`MIGRATIONS` holds the pure
+``migrate_1_to_2``.
 
-1. add ``"pp-design/2"`` to :data:`ENVELOPED` and set :data:`LATEST`;
-2. write a pure ``migrate_1_to_2(payload_v1) -> payload_v2`` on JSON values
-   and register it as ``MIGRATIONS[("pp-design/1", "pp-design/2")]``;
-3. give ``read`` a reader for the new payload.
+**Reading is decoupled from writing.** :data:`ORDER` and :data:`KNOWN` say what
+this software *reads*; :data:`WRITTEN_BY_DEFAULT` says what a new revision is
+*written* in, and stays ``pp-design/1`` until the owner turns v2 writing on
+(D-M2-3). Adding a schema to :data:`ORDER` never changes what is written.
 
 A migration is run on read only, to display or to derive a new revision;
 a stored snapshot is never rewritten, and an old revision is never exported
@@ -43,18 +44,27 @@ SCHEMA_KEY = "schema"
 #: The enveloped snapshot's payload key.
 MODEL_KEY = "model"
 
-#: Schemas stored in an envelope. None yet: v1 is the only schema.
-ENVELOPED: frozenset[str] = frozenset()
+#: The M2 schema: the v1 design plus components, terminals, nets and wires.
+V2 = "pp-design/2"
+
+#: Schemas stored in an envelope: every schema after v1.
+ENVELOPED: frozenset[str] = frozenset({V2})
 
 #: Every schema this software reads, oldest first: the declared migration order.
 #: Each adjacent pair has an entry in :data:`MIGRATIONS` (tested).
-ORDER: tuple[str, ...] = (V1,)
+ORDER: tuple[str, ...] = (V1, V2)
 
 #: Every schema this software reads.
 KNOWN: frozenset[str] = frozenset(ORDER)
 
-#: The schema new revisions are written in: the last in :data:`ORDER`.
+#: The newest schema this software reads: the last in :data:`ORDER`. It is
+#: *not* what new revisions are written in; see :data:`WRITTEN_BY_DEFAULT`.
 LATEST = ORDER[-1]
+
+#: The schema a new revision is written in unless the caller explicitly asks
+#: for another. v1, as in Phase 1 and M1: writing v2 is a separate, flagged
+#: decision (D-M2-3) and does not follow :data:`ORDER`.
+WRITTEN_BY_DEFAULT = V1
 
 #: The longest schema marker a message or error parameter echoes; a stored
 #: marker is untrusted and may be any length.
@@ -63,7 +73,7 @@ MAX_ECHOED_MARKER = 64
 #: A migration: a pure function from one schema's JSON payload to the next's.
 Migration = Callable[[dict[str, Any]], dict[str, Any]]
 
-#: Explicit migrations, by ``(from, to)``. Empty until a second schema exists.
+#: Explicit migrations, by ``(from, to)``. Filled at the end of this module.
 MIGRATIONS: dict[tuple[str, str], Migration] = {}
 
 
@@ -194,3 +204,10 @@ def migrate(
             raise KeyError(f"no migration from {before} to {after}")
         value = step(value)
     return value
+
+
+# Registered last: the migration module needs nothing from this one, and
+# importing it here keeps the registry complete whenever ``versions`` is imported.
+from app.design.model.migrate_v2 import migrate_1_to_2  # noqa: E402
+
+MIGRATIONS[(V1, V2)] = migrate_1_to_2

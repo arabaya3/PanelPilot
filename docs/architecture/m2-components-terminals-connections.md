@@ -89,7 +89,7 @@ Two layers, with different consequences:
 
 - **Pure and deterministic.** No registry lookup, clock, randomness or profile read. Ids are derived from v1 ids (for example `c:<device id>`), so the same input always gives the same bytes.
 - `design` = the v1 payload unchanged.
-- Each v1 device becomes a `Component` with `template_ref = legacy/<device kind>@1.0.0` and `legacy_device_id` set. The legacy templates are **frozen data shipped with the migration** (function = kind, no terminals). Their content is versioned with the migration, not with the live registry.
+- Each v1 device becomes a `Component` with `template_ref = legacy/<device kind>/v1` and `legacy_device_id` set. The legacy templates are **frozen data shipped with the migration** (function = kind, no terminals). Their content is versioned with the migration, not with the live registry.
 - `strips`, `nets`, `connections`, `wires` and `assumptions` are **empty**. The migration does not derive the `-X1` strip from `terminals.py`, because that module chooses articles (an engineering selection). Deriving it would be recalculating, which Phase 1 forbids on read.
 - Use: **display and deriving a new revision only.** An old revision is approved, exported and checked for staleness from its stored v1 bytes, through the v1 path. A migrated payload is never hashed as, or exported as, the old revision. Saving a revision from it re-runs the design and produces a new v2 snapshot with a new hash (Section 7.4 of the architecture).
 - Golden tests: every committed v1 fixture migrates. The result reads as strict v2. `project_v1(migrate(v1)) == v1`, byte for byte. The v1 stored hash still verifies. Migrating twice gives the same bytes.
@@ -116,10 +116,10 @@ The examples below are synthetic and invented for this document. Values marked `
 **Example A: single-phase outgoing circuits to a strip.**
 
 ```yaml
-templates: [ {ref: global/mcb-1p@1, function: circuit_breaker,
+templates: [ {ref: global/mcb-1p/v1, function: circuit_breaker,
               terminals: [{id: in1, marking: "1", kind: power_line, required: true},
                           {id: out1, marking: "2", kind: power_line, required: true}]} ]
-pattern: global/feeder-1p@1
+pattern: global/feeder-1p/v1
   roles: [line, neutral, pe]
   joins: {line: [mcb.out1, strip:+, core:1], neutral: [busbar:N, strip:+, core:2],
           pe: [busbar:PE, strip:+, core:3]}
@@ -131,18 +131,18 @@ wires: {number: null, cross_section_mm2: null, colour: null}   # awaiting rules
 ```yaml
 templates:
   [
-    contactor-3p-coil@1 (L1..L3,
+    contactor-3p-coil/v1 (L1..L3,
     T1..T3,
     A1/A2 coil group,
     13/14 contact_no in same group),
-    overload-3p@1,
-    psu-dc@1 (L,
+    overload-3p/v1,
+    psu-dc/v1 (L,
     N,
     PE,
     +,
     -),
   ]
-patterns: [global/motor-dol-power@1, global/coil-via-contact@1]
+patterns: [global/motor-dol-power/v1, global/coil-via-contact/v1]
 nets: power roles L1-L3 → T1-T3 → strip U/V/W/PE;  control roles "ctrl+", "ctrl-", "coil-cmd"
 ```
 
@@ -151,9 +151,9 @@ The coil and its contacts share a contact group, so cross-references come from d
 **Example C: a new configuration, I/O marshalling, added as data only.**
 
 ```yaml
-templates: [tenant/acme-io-8di@1 (8 × signal_di, required: false; 2 × supply, required: true),
-            tenant/strip-2level@1 (points with level 1/2)]
-pattern: tenant/di-marshal@1
+templates: [tenant/acme-io-8di/v1 (8 × signal_di, required: false; 2 × supply, required: true),
+            tenant/strip-2level/v1 (points with level 1/2)]
+pattern: tenant/di-marshal/v1
   per channel n: join io.DI[n] ↔ strip point (n, level 1); sensor supply ↔ (n, level 2)
 ```
 
@@ -235,6 +235,51 @@ The extra size is the cost of reproducibility, and approval integrity depends on
 5. **Turning it off.** Turning the flag off stops new v2 saves. Existing v2 rows stay readable, because the reader ships first. There is no down-migration of stored snapshots.
 
 **Approval of templates, patterns and rules.** No template, connection pattern or rule becomes usable in an approved design without the decision of a qualified engineer, recorded with who, when, the digest and the scope. Until the owner decides D-5 and D-M2-12, only `approved` global templates are usable. Tenant templates stay `draft`, and a design that uses a draft template gets a blocking finding.
+
+## 6b. As built (M2a)
+
+This section records what M2a actually delivers. Where it differs from the proposals above, this section describes the code; the proposals stay open for the owner.
+
+**Architecture decisions taken**
+
+- **Embedding and lock.** A `pp-design/2` snapshot holds the exact definitions of the templates it uses and a `registry_lock` with each template's digest (D-M2-2 as recommended). The reader checks every digest; a mismatch, a reference that does not resolve or an unknown key makes the snapshot unreadable.
+- **Read before write.** The v2 reader is always on, in every environment, whatever the switch says. Every path that reads a stored snapshot (open, approve, export, the execution refusal) checks the hash over the stored JSON first and then reads it through the single reader, `read_snapshot`.
+- **The write switch.** `DESIGN_SNAPSHOT_SCHEMA` (in `app/core/config.py` and `.env.example`) accepts exactly `pp-design/1`, the default, or `pp-design/2`. Any other value stops the process at startup. With `pp-design/2`, a new save or revision stores `snapshot_v2_from_v1` of the server's v1 design, and the recorded hash is the hash of that stored envelope. There is no configuration input yet, because there is no API for configurations: the v1 devices become components on their legacy templates, and there are no strips, nets, connections or wires. The switch is a per-environment setting. It is added before the v2 renderers, so Section 6a's ordering is not met yet: deployed environments should keep it at `pp-design/1` until the owner decides D-M2-3.
+- **History is never rewritten.** No stored row is rewritten, re-hashed or migrated in place. Revising a v1 project with the switch on adds a new v2 revision. Earlier revisions and their approvals are unchanged, and those approvals still count. Turning the switch off stops new v2 saves; existing v2 rows stay readable.
+- **Renderers.** The renderers are unchanged and are given the v1 design that a v2 snapshot holds. A v2 revision's PDF, calculations PDF, DXF and JSON exports therefore have the same content as the v1 exports of the same design; only the printed design hash differs. `RENDERER_VERSION` is unchanged. Per-schema renderer versions will come with the v2 renderers. The approval binding (snapshot hash, profile, rules and catalogue versions, renderer version, findings fingerprint) applies to a v2 revision exactly as to a v1 one.
+- **Findings mapping.** The integration owner decided how v2 structural findings are graded (`source: "integrity"`). The findings module (`findings_v2`) is the single source of each severity; the integration keeps it and adds the "needs engineering confirmation" flag:
+
+  | Code                                                                            | Severity                                 | Blocks design-review approval | Execution blocker |
+  | ------------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------- | ----------------- |
+  | `template_unreviewed` (no qualified engineer has reviewed the template)         | warning, needs engineering confirmation  | No                            | Yes               |
+  | `template_rejected` (a reviewer rejected the template)                          | blocking, needs engineering confirmation | Yes                           | Yes               |
+  | `out_of_execution_scope` (`restricted_scope`, such as fire-pump or life-safety) | blocking, needs engineering confirmation | Yes                           | Yes               |
+  | `unconnected_required_terminal`                                                 | blocking                                 | Yes                           | Through approval  |
+  | `wire_attribute_unset`                                                          | warning, needs engineering confirmation  | No                            | No                |
+  | a severity the store does not know                                              | blocking (a new check is never weaker)   | Yes                           | Through approval  |
+
+  The reason: every legacy template is unreviewed, so blocking approval on `template_unreviewed` would make every v2 revision unapprovable while telling the reviewer nothing about the design itself. A design review covers the design; execution is a separate gate, and that gate names the codes in the revision's `execution_blockers` and in the `execution_package_incomplete` refusal. A rejected template, or one restricted to a scope outside execution, does say something about the design, so it blocks approval as Sections 5 and 6a proposed. (An independent review found that the first mapping let those be approved too; fixed before the PR.) The composer also refuses a restricted-scope template outright, so `out_of_execution_scope` can arise only from data written another way. The owner may still decide otherwise.
+
+- **Printed exports.** A v2 revision's exports do not print the v2 structural findings, so their content equals the v1 export of the same design and needs no renderer-version change. They are shown when the revision is opened and are named in the execution refusal. Only `template_unreviewed` and `wire_attribute_unset` can be present on an approved v2 revision, since the others block approval. Printing them is an owner decision that needs a renderer-version bump.
+- **Slot binding.** A configuration slot that names no device takes the circuit's one device of the slot's kind; none is refused (`missing_binding`) and two or more are refused (`ambiguous_binding`). It never chooses among candidates.
+- **Ids.** Derived from the binding id, role and index (a SHA-256 of a JSON list, 96 bits kept), so they are stable for the same configuration. Reordering a pattern's connections renumbers connection and wire ids in **later** revisions; stored revisions never change.
+- **Write switch.** `DESIGN_SNAPSHOT_SCHEMA` decides what is written. A save reads it alone (`config.design_snapshot_schema()`, same environment and `.env` sources), so saving never needs the database URL or secrets; startup validates it with everything else in `Settings`. CI's database-free unit job caught the first version, which read the whole `Settings` on every save; `versions.WRITTEN_BY_DEFAULT` (v1) documents the default and must agree with the setting's default (two constants to keep in sync).
+
+- **No effect on v1 revisions.** v2 structural findings are added only when the stored snapshot is v2. A v1 revision gets exactly the findings it always did, so its findings fingerprint, its hash and its staleness are unchanged. `RULES_VERSION` is not bumped (D-M2-7), and tests prove that every committed v1 fixture still designs to its committed bytes.
+- **Printed findings.** The v1 renderers print the v1 findings only. A v2 revision's structural findings are shown when it is opened and named by the execution refusal, but they are not printed on its exports until there are v2 renderers.
+- **Ids.** Component, strip, net, connection and wire ids are opaque and derived from the ids they stand for (a collection prefix and 24 hex digits of a SHA-256), so migration and composition are deterministic and an id carries no meaning.
+
+**Restrictions that are unchanged.** An execution export is always refused with `execution_package_incomplete`, for v2 revisions too. CSV, QET, AML and PLC exports are still refused. A quotation is still a provisional estimate.
+
+**Not done in M2a**
+
+- No configuration API or UI: nothing yet supplies templates, patterns or bindings to a save.
+- No v2 renderers: terminal plans, wire lists and connection drawings are not produced, and there are no per-schema renderer versions.
+- No rules: nothing sets or checks a wire number, cross-section or colour, a terminal rating or a standards clause.
+- Connection patterns are not locked in the snapshot the way templates are.
+- The findings `net_unrealised`, `net_signal_conflict` and `wire_number_duplicate` are not implemented.
+
+**Templates and execution.** Every template in use today is an unreviewed legacy template. An unreviewed template cannot support any claim that a design is ready for execution. That stays true until the owner names the qualified engineers who may review templates and the standards that apply, and those engineers record their decisions. Fire-pump and life-safety designs stay outside execution scope. Nothing in M2a states or implies compliance with any standard.
 
 ## 7. Open decisions
 

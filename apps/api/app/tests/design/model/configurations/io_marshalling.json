@@ -1,0 +1,341 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+  "fixture": "plc",
+  "configuration": {
+    "name": "synthetic I/O marshalling",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-io-4di/v1",
+        "function": "io_module",
+        "terminals": [
+          {
+            "id": "di0",
+            "marking": "DI.0",
+            "kind": "signal_di",
+            "required": false,
+            "group": null
+          },
+          {
+            "id": "di1",
+            "marking": "DI.1",
+            "kind": "signal_di",
+            "required": false,
+            "group": null
+          },
+          {
+            "id": "di2",
+            "marking": "DI.2",
+            "kind": "signal_di",
+            "required": false,
+            "group": null
+          },
+          {
+            "id": "di3",
+            "marking": "DI.3",
+            "kind": "signal_di",
+            "required": false,
+            "group": null
+          },
+          {
+            "id": "lplus",
+            "marking": "L+",
+            "kind": "supply_plus",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m",
+            "marking": "M",
+            "kind": "supply_minus",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-strip-2level/v1",
+        "function": "terminal_type",
+        "terminals": [],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-di-marshal-4ch/v1",
+        "slots": [
+          {
+            "id": "io",
+            "template": "tenant/synth-io-4di/v1"
+          }
+        ],
+        "strips": [
+          "field"
+        ],
+        "points": [
+          {
+            "id": "ch0_sig",
+            "strip": "field",
+            "offset": 1,
+            "level": 1,
+            "kind": "signal_di"
+          },
+          {
+            "id": "ch0_sup",
+            "strip": "field",
+            "offset": 1,
+            "level": 2,
+            "kind": "supply_plus"
+          },
+          {
+            "id": "ch1_sig",
+            "strip": "field",
+            "offset": 2,
+            "level": 1,
+            "kind": "signal_di"
+          },
+          {
+            "id": "ch1_sup",
+            "strip": "field",
+            "offset": 2,
+            "level": 2,
+            "kind": "supply_plus"
+          },
+          {
+            "id": "ch2_sig",
+            "strip": "field",
+            "offset": 3,
+            "level": 1,
+            "kind": "signal_di"
+          },
+          {
+            "id": "ch2_sup",
+            "strip": "field",
+            "offset": 3,
+            "level": 2,
+            "kind": "supply_plus"
+          },
+          {
+            "id": "ch3_sig",
+            "strip": "field",
+            "offset": 4,
+            "level": 1,
+            "kind": "signal_di"
+          },
+          {
+            "id": "ch3_sup",
+            "strip": "field",
+            "offset": 4,
+            "level": 2,
+            "kind": "supply_plus"
+          }
+        ],
+        "nets": [
+          {
+            "role": "di0",
+            "signal": "DI.0",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "di0"
+              },
+              {
+                "point": "ch0_sig",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "di1",
+            "signal": "DI.1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "di1"
+              },
+              {
+                "point": "ch1_sig",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "di2",
+            "signal": "DI.2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "di2"
+              },
+              {
+                "point": "ch2_sig",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "supply",
+            "signal": "24V+",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "lplus"
+              },
+              {
+                "point": "ch0_sup",
+                "side": "inner"
+              },
+              {
+                "point": "ch1_sup",
+                "side": "inner"
+              },
+              {
+                "point": "ch2_sup",
+                "side": "inner"
+              },
+              {
+                "point": "ch3_sup",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 2,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 3,
+                "via": "wire"
+              },
+              {
+                "from": 0,
+                "to": 4,
+                "via": "wire"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "strips": [
+      {
+        "id": "X2",
+        "board": "CP-1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X2"
+        },
+        "template": "tenant/synth-strip-2level/v1"
+      }
+    ],
+    "components": [
+      {
+        "id": "io1",
+        "board": "CP-1",
+        "template": "tenant/synth-io-4di/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "A1"
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "id": "io1-di",
+        "pattern": "tenant/synth-di-marshal-4ch/v1",
+        "board": "CP-1",
+        "circuit": null,
+        "slots": {
+          "io": {
+            "component": "io1"
+          }
+        },
+        "strips": {
+          "field": "X2"
+        },
+        "markings": {
+          "ch0_sig": "1",
+          "ch0_sup": "1",
+          "ch1_sig": "2",
+          "ch1_sup": "2",
+          "ch2_sig": "3",
+          "ch2_sup": "3",
+          "ch3_sig": "4",
+          "ch3_sup": "4"
+        },
+        "cable": null,
+        "wires": {}
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 8,
+    "nets": 4,
+    "connections": 7,
+    "wires": 7,
+    "sha256": "c82f5e813c65a04eb9152982623f115d512bfd160e34fe081f0c61097c9e6943"
+  }
+}
