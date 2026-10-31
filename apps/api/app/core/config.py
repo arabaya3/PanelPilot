@@ -167,6 +167,14 @@ class Settings(BaseSettings):
     # adapter swap at the composition root rather than a domain change.
     image_storage_root: str = "./var/images"
 
+    # --- Design snapshots --------------------------------------------------
+    # The schema a newly saved design revision is written in. A closed set:
+    # "pp-design/1" (the default, as in Phase 1 and M1) or "pp-design/2" (M2's
+    # components, terminals, nets and wires, enveloped). Anything else is
+    # refused at startup. Both are always *read*; this decides only what a new
+    # save or revision writes. Existing revisions are never rewritten.
+    design_snapshot_schema: Literal["pp-design/1", "pp-design/2"] = "pp-design/1"
+
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
     # A closed set. Anything else is either asymmetric (needs a key pair this
