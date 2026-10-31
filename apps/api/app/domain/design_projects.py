@@ -1180,6 +1180,27 @@ def _revision_mark(
     return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
 
 
+def _estimate_subject(
+    project: DesignProjectRow, row: DesignRevisionRow, approval_counts: bool
+) -> str:
+    """The design a quotation of this revision prices, without approving its prices.
+
+    It names the revision, its design hash, rules and renderer, and whether
+    the design's review approval counts: not who approved it, nor any word
+    that a reader could take for an approval of the estimate.
+    """
+    digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
+    review = (
+        "design review approved (covers the design only)"
+        if approval_counts
+        else ("design not review approved")
+    )
+    return (
+        f"{project.name}, revision {row.number:02d}, design {digest}, rules {row.rules_version}, "
+        f"renderer {RENDERER_VERSION}; {review}"
+    )
+
+
 def export_revision(
     *,
     session: Session,
@@ -1270,6 +1291,7 @@ def export_revision(
         export_format=request.format,
         pricing=_revision_pricing(request.pricing),
         mark=_revision_mark(project, row, findings, names, approval_counts),
+        estimate_for=_estimate_subject(project, row, approval_counts),
     )
     logger.info(
         "design.revision_exported",

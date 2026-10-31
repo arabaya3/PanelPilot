@@ -42,7 +42,7 @@ def _user() -> CurrentUser:
     [
         (ExportFormat.PDF, "DBG-HALL"),
         (ExportFormat.CALCULATIONS_PDF, "Calculations report: Pocket"),
-        (ExportFormat.QUOTATION_PDF, "Quotation: Pocket"),
+        (ExportFormat.QUOTATION_PDF, "Provisional estimate: Pocket"),
     ],
 )
 def test_a_pdf_export_parses_and_embeds_no_raster_image(

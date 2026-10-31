@@ -157,7 +157,7 @@ def _require_manager(
     found = standing(session=session, user=user, lock=lock)
     if found is None or not found.manages:
         raise AuthorizationError(
-            "only the account's owner manages its team", code="team_owner_only"
+            "only the account's owner or an admin manages its team", code="team_owner_only"
         )
     return tenant
 

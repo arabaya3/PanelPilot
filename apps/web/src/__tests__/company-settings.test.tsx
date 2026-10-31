@@ -172,7 +172,7 @@ describe('company settings for a member who is not the owner', () => {
     const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save for the company' });
     expect(button.disabled).toBe(true);
     expect(screen.getByTestId('settings-not-permitted').textContent).toContain(
-      "Only the account's owner can save the company settings.",
+      "Only the account's owner or an administrator can save the company settings.",
     );
     fireEvent.click(button);
     expect(save).not.toHaveBeenCalled();
@@ -201,7 +201,7 @@ describe('company settings for a member who is not the owner', () => {
     fireEvent.click(button);
     await waitFor(() => {
       expect(screen.getByTestId('settings-message').textContent).toBe(
-        "Only the account's owner can change the company settings.",
+        "Only the account's owner or an administrator can change the company settings.",
       );
     });
     expect(button.disabled).toBe(true);

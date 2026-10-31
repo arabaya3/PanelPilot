@@ -367,7 +367,7 @@ describe('the projects panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete for good?' }));
     await waitFor(() => {
       expect(screen.getByTestId('projects-message').textContent).toBe(
-        "Only the account's owner can delete a project.",
+        "Only the account's owner or an administrator can delete a project.",
       );
     });
     await waitFor(() => {
@@ -393,7 +393,7 @@ describe('the projects panel', () => {
     expect(button.disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Approval note (optional)').disabled).toBe(true);
     expect(screen.getByTestId('approve-not-permitted').textContent).toContain(
-      "Only the account's owner or a reviewer can approve a revision.",
+      "Only the account's owner, an administrator or a reviewer can approve a revision.",
     );
     fireEvent.click(button);
     expect(approve).not.toHaveBeenCalled();

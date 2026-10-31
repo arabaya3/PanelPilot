@@ -193,11 +193,17 @@ def test_every_variant_exercises_its_own_content() -> None:
 
 
 def test_a_wording_change_is_material() -> None:
-    """The same design with its approval label reworded: every format says so."""
+    """The same design with its approval label reworded: every design format says so.
+
+    A quotation never prints the design's label (it is a provisional
+    estimate whatever the design's state), so it is the one format unchanged.
+    """
     reworded = "REVIEW APPROVED — STUDY ONLY, NOT FOR EXECUTION"
     for variant in ("basic", "hebrew"):
         before, after = _contents(variant), _contents(variant, reworded)
-        assert {name for name in before if before[name] != after[name]} == set(before)
+        assert {name for name in before if before[name] != after[name]} == set(before) - {
+            ExportFormat.QUOTATION_PDF.value
+        }
 
 
 def test_moved_drawing_geometry_is_material(monkeypatch: pytest.MonkeyPatch) -> None:

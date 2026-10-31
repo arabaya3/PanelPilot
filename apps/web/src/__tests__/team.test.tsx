@@ -298,7 +298,9 @@ describe('transferring ownership', () => {
     await waitFor(() => {
       expect(transferImpl).toHaveBeenCalledWith({ token: 'tok', memberId: 'm' });
     });
-    expect(await screen.findByText("Only the account's owner invites colleagues.")).toBeTruthy();
+    expect(
+      await screen.findByText("Only the account's owner or an administrator invites colleagues."),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Make owner' })).toBeNull();
   });
 

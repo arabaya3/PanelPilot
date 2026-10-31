@@ -1,0 +1,52 @@
+{
+ "approved-design.pdf": {
+  "sha256": "40dd5a4e2caad00a37dfc6dae48501face954261bf15c01396ab55e9f48f8a20",
+  "pages": 11,
+  "label": "REVIEW APPROVED — STUDY, NOT FOR EXECUTION",
+  "identity_top": "Estimate evidence, revision 01, approved by Synthetic Reviewer on 2026-10-31, design d3b7645bb418, rules 2026.10.23.1, renderer 2026.10.31.3",
+  "every_page_labelled": true,
+  "says_REVIEW_APPROVED": true,
+  "names_the_approver": true,
+  "total": ""
+ },
+ "approved-price-list-A.pdf": {
+  "sha256": "0cd3ecbcb3db21a8b2534d80b6d579efbd037a375b503b5982901336c25bf340",
+  "pages": 2,
+  "label": "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION",
+  "identity_top": "Estimate for Estimate evidence, revision 01, design d3b7645bb418, rules 2026.10.23.1, renderer 2026.10.31.3; design review approved (covers the design only). Prices supplied with this export (757099384de3), not reviewed or approved Provisional estimate: Estimate evidence",
+  "every_page_labelled": true,
+  "says_REVIEW_APPROVED": false,
+  "names_the_approver": false,
+  "total": "Total (JOD) 20.00 Fi"
+ },
+ "approved-price-list-B.pdf": {
+  "sha256": "c4bfa6c4b513c40c6b337be1c5828bbbfed693784f290795d47b12b9a9c7615e",
+  "pages": 2,
+  "label": "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION",
+  "identity_top": "Estimate for Estimate evidence, revision 01, design d3b7645bb418, rules 2026.10.23.1, renderer 2026.10.31.3; design review approved (covers the design only). Prices supplied with this export (3970057ce26a), not reviewed or approved Provisional estimate: Estimate evidence",
+  "every_page_labelled": true,
+  "says_REVIEW_APPROVED": false,
+  "names_the_approver": false,
+  "total": "Total (JOD) 264.48 F"
+ },
+ "draft-price-list-A.pdf": {
+  "sha256": "b562be8ec4725692da796a58420f497882a914409b3b2dc463738cb269271f1d",
+  "pages": 2,
+  "label": "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION",
+  "identity_top": "Estimate for an unsaved draft, not a saved, validated or approved revision. Prices supplied with this export (757099384de3), not reviewed or approved Provisional estimate: Estimate evidence Prices and rates are as supplied with this export. They are not reviewed or approved, and no design review",
+  "every_page_labelled": true,
+  "says_REVIEW_APPROVED": false,
+  "names_the_approver": false,
+  "total": "Total (JOD) 20.00 Fi"
+ },
+ "unapproved-price-list-A.pdf": {
+  "sha256": "efa5b8c25e3b40323d7d6b008debd609deb5a42be1e492957b1c481daf6baa74",
+  "pages": 2,
+  "label": "PROVISIONAL ESTIMATE — PRICES NOT APPROVED — NOT FOR EXECUTION",
+  "identity_top": "Estimate for Estimate evidence (unapproved), revision 01, design d3b7645bb418, rules 2026.10.23.1, renderer 2026.10.31.3; design not review approved. Prices supplied with this export (757099384de3), not reviewed or approved Provisional estimate: Estimate evidence",
+  "every_page_labelled": true,
+  "says_REVIEW_APPROVED": false,
+  "names_the_approver": false,
+  "total": "Total (JOD) 20.00 Fi"
+ }
+}
