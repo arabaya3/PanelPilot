@@ -1,0 +1,413 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+  "fixture": "residential",
+  "configuration": {
+    "name": "synthetic single-phase feeders",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "global/synth-mcb-1p@1",
+        "function": "circuit_breaker",
+        "terminals": [
+          {
+            "id": "in1",
+            "marking": "1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out1",
+            "marking": "2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-load-1ph@1",
+        "function": "load",
+        "terminals": [
+          {
+            "id": "l",
+            "marking": "L",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "n",
+            "marking": "N",
+            "kind": "neutral",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "pe",
+            "marking": "PE",
+            "kind": "protective_earth",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-bar@1",
+        "function": "busbar",
+        "terminals": [
+          {
+            "id": "bar",
+            "marking": "BAR",
+            "kind": "busbar",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "global/synth-feeder-1p@1",
+        "slots": [
+          {
+            "id": "breaker",
+            "template": "global/synth-mcb-1p@1",
+            "device_kind": "circuit_breaker"
+          },
+          {
+            "id": "load",
+            "template": "global/synth-load-1ph@1"
+          },
+          {
+            "id": "nbar",
+            "template": "global/synth-bar@1"
+          },
+          {
+            "id": "pebar",
+            "template": "global/synth-bar@1"
+          }
+        ],
+        "strips": [
+          "out"
+        ],
+        "points": [
+          {
+            "id": "l",
+            "strip": "out",
+            "offset": 1,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "n",
+            "strip": "out",
+            "offset": 2,
+            "level": 1,
+            "kind": "neutral"
+          },
+          {
+            "id": "pe",
+            "strip": "out",
+            "offset": 3,
+            "level": 1,
+            "kind": "protective_earth"
+          }
+        ],
+        "nets": [
+          {
+            "role": "line",
+            "signal": "L",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "breaker",
+                "terminal": "out1"
+              },
+              {
+                "point": "l",
+                "side": "inner"
+              },
+              {
+                "point": "l",
+                "side": "outer"
+              },
+              {
+                "slot": "load",
+                "terminal": "l"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 1
+              }
+            ]
+          },
+          {
+            "role": "neutral",
+            "signal": "N",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "nbar",
+                "terminal": "bar"
+              },
+              {
+                "point": "n",
+                "side": "inner"
+              },
+              {
+                "point": "n",
+                "side": "outer"
+              },
+              {
+                "slot": "load",
+                "terminal": "n"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 2
+              }
+            ]
+          },
+          {
+            "role": "pe",
+            "signal": "PE",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "pebar",
+                "terminal": "bar"
+              },
+              {
+                "point": "pe",
+                "side": "inner"
+              },
+              {
+                "point": "pe",
+                "side": "outer"
+              },
+              {
+                "slot": "load",
+                "terminal": "pe"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 3
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "strips": [
+      {
+        "id": "X1",
+        "board": "DB-V",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X1"
+        },
+        "template": null
+      }
+    ],
+    "components": [
+      {
+        "id": "load-c1",
+        "board": "DB-V",
+        "template": "global/synth-load-1ph@1",
+        "designation": null
+      },
+      {
+        "id": "load-c2",
+        "board": "DB-V",
+        "template": "global/synth-load-1ph@1",
+        "designation": null
+      },
+      {
+        "id": "load-c3",
+        "board": "DB-V",
+        "template": "global/synth-load-1ph@1",
+        "designation": null
+      },
+      {
+        "id": "nbar",
+        "board": "DB-V",
+        "template": "global/synth-bar@1",
+        "designation": null
+      },
+      {
+        "id": "pebar",
+        "board": "DB-V",
+        "template": "global/synth-bar@1",
+        "designation": null
+      }
+    ],
+    "bindings": [
+      {
+        "id": "feeder-c1",
+        "pattern": "global/synth-feeder-1p@1",
+        "board": "DB-V",
+        "circuit": "c1",
+        "slots": {
+          "load": {
+            "component": "load-c1"
+          },
+          "nbar": {
+            "component": "nbar"
+          },
+          "pebar": {
+            "component": "pebar"
+          }
+        },
+        "strips": {
+          "out": "X1"
+        },
+        "markings": {
+          "l": "1",
+          "n": "2",
+          "pe": "3"
+        },
+        "cable": "c1-cable",
+        "wires": {
+          "line/0": {
+            "number": "EX-101"
+          }
+        }
+      },
+      {
+        "id": "feeder-c2",
+        "pattern": "global/synth-feeder-1p@1",
+        "board": "DB-V",
+        "circuit": "c2",
+        "slots": {
+          "load": {
+            "component": "load-c2"
+          },
+          "nbar": {
+            "component": "nbar"
+          },
+          "pebar": {
+            "component": "pebar"
+          }
+        },
+        "strips": {
+          "out": "X1"
+        },
+        "markings": {
+          "l": "4",
+          "n": "5",
+          "pe": "6"
+        },
+        "cable": "c2-cable",
+        "wires": {}
+      },
+      {
+        "id": "feeder-c3",
+        "pattern": "global/synth-feeder-1p@1",
+        "board": "DB-V",
+        "circuit": "c3",
+        "slots": {
+          "load": {
+            "component": "load-c3"
+          },
+          "nbar": {
+            "component": "nbar"
+          },
+          "pebar": {
+            "component": "pebar"
+          }
+        },
+        "strips": {
+          "out": "X1"
+        },
+        "markings": {
+          "l": "7",
+          "n": "8",
+          "pe": "9"
+        },
+        "cable": "c3-cable",
+        "wires": {}
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 9,
+    "nets": 5,
+    "connections": 18,
+    "wires": 9,
+    "sha256": "c16f85d23763b35412803234bb88dfbbca547096f3193ec30c4e92de6124c17f"
+  }
+}

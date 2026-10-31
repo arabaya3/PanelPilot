@@ -1,0 +1,240 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+  "fixture": "multi_board",
+  "configuration": {
+    "name": "synthetic held-out radial",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-heldout-mcb@1",
+        "function": "circuit_breaker",
+        "terminals": [
+          {
+            "id": "a",
+            "marking": "IN",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "b",
+            "marking": "OUT",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-heldout-bar@1",
+        "function": "busbar",
+        "terminals": [
+          {
+            "id": "t1",
+            "marking": "T1",
+            "kind": "busbar",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "t2",
+            "marking": "T2",
+            "kind": "busbar",
+            "required": false,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-heldout-radial@1",
+        "slots": [
+          {
+            "id": "mcb",
+            "template": "tenant/synth-heldout-mcb@1"
+          },
+          {
+            "id": "bar",
+            "template": "tenant/synth-heldout-bar@1"
+          }
+        ],
+        "strips": [
+          "s"
+        ],
+        "points": [
+          {
+            "id": "out",
+            "strip": "s",
+            "offset": 1,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "bridge",
+            "strip": "s",
+            "offset": 2,
+            "level": 1,
+            "kind": "power_line"
+          }
+        ],
+        "nets": [
+          {
+            "role": "feed",
+            "signal": "LIVE",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "bar",
+                "terminal": "t1"
+              },
+              {
+                "slot": "mcb",
+                "terminal": "a"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "busbar"
+              }
+            ]
+          },
+          {
+            "role": "out",
+            "signal": "OUT",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "mcb",
+                "terminal": "b"
+              },
+              {
+                "point": "out",
+                "side": "inner"
+              },
+              {
+                "point": "bridge",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "jumper"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "strips": [
+      {
+        "id": "XS",
+        "board": "SMDB-1",
+        "designation": null,
+        "template": null
+      }
+    ],
+    "components": [
+      {
+        "id": "bar1",
+        "board": "SMDB-1",
+        "template": "tenant/synth-heldout-bar@1",
+        "designation": null
+      }
+    ],
+    "bindings": [
+      {
+        "id": "r-c1",
+        "pattern": "tenant/synth-heldout-radial@1",
+        "board": "SMDB-1",
+        "circuit": "c1",
+        "slots": {
+          "mcb": {
+            "device": "c1-breaker"
+          },
+          "bar": {
+            "component": "bar1"
+          }
+        },
+        "strips": {
+          "s": "XS"
+        },
+        "markings": {
+          "out": "C1a",
+          "bridge": "C1b"
+        },
+        "cable": null,
+        "wires": {}
+      },
+      {
+        "id": "r-c2",
+        "pattern": "tenant/synth-heldout-radial@1",
+        "board": "SMDB-1",
+        "circuit": "c2",
+        "slots": {
+          "mcb": {
+            "device": "c2-breaker"
+          },
+          "bar": {
+            "component": "bar1"
+          }
+        },
+        "strips": {
+          "s": "XS"
+        },
+        "markings": {
+          "out": "C2a",
+          "bridge": "C2b"
+        },
+        "cable": null,
+        "wires": {}
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 4,
+    "nets": 3,
+    "connections": 6,
+    "wires": 2,
+    "sha256": "349161beeb0c0db4afa24c28aad1d8e83e1d37f2d21dcef7fac5813b16ad3274"
+  }
+}

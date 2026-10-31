@@ -1,0 +1,845 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+  "fixture": "motors",
+  "configuration": {
+    "name": "synthetic motor feeder with control",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "global/synth-mcb-3p@1",
+        "function": "circuit_breaker",
+        "terminals": [
+          {
+            "id": "in1",
+            "marking": "1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "in2",
+            "marking": "3",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "in3",
+            "marking": "5",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out1",
+            "marking": "2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out2",
+            "marking": "4",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out3",
+            "marking": "6",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-contactor-3p@1",
+        "function": "contactor",
+        "terminals": [
+          {
+            "id": "a1",
+            "marking": "A1",
+            "kind": "coil",
+            "required": true,
+            "group": "k"
+          },
+          {
+            "id": "a2",
+            "marking": "A2",
+            "kind": "coil",
+            "required": true,
+            "group": "k"
+          },
+          {
+            "id": "l1",
+            "marking": "L1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "l2",
+            "marking": "L2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "l3",
+            "marking": "L3",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "no13",
+            "marking": "13",
+            "kind": "contact_no",
+            "required": false,
+            "group": "k"
+          },
+          {
+            "id": "no14",
+            "marking": "14",
+            "kind": "contact_no",
+            "required": false,
+            "group": "k"
+          },
+          {
+            "id": "t1",
+            "marking": "T1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "t2",
+            "marking": "T2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "t3",
+            "marking": "T3",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [
+          {
+            "id": "k",
+            "kind": "coil_and_contacts"
+          }
+        ],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-overload-3p@1",
+        "function": "overload_relay",
+        "terminals": [
+          {
+            "id": "in1",
+            "marking": "1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "in2",
+            "marking": "3",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "in3",
+            "marking": "5",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "nc95",
+            "marking": "95",
+            "kind": "contact_nc",
+            "required": true,
+            "group": "trip"
+          },
+          {
+            "id": "nc96",
+            "marking": "96",
+            "kind": "contact_nc",
+            "required": true,
+            "group": "trip"
+          },
+          {
+            "id": "out1",
+            "marking": "2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out2",
+            "marking": "4",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "out3",
+            "marking": "6",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [
+          {
+            "id": "trip",
+            "kind": "trip_contacts"
+          }
+        ],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-psu-dc@1",
+        "function": "power_supply",
+        "terminals": [
+          {
+            "id": "l",
+            "marking": "L",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "minus",
+            "marking": "-",
+            "kind": "dc_minus",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "n",
+            "marking": "N",
+            "kind": "neutral",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "pe",
+            "marking": "PE",
+            "kind": "protective_earth",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "plus",
+            "marking": "+",
+            "kind": "dc_plus",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "global/synth-motor-3ph@1",
+        "function": "motor",
+        "terminals": [
+          {
+            "id": "pe",
+            "marking": "PE",
+            "kind": "protective_earth",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "u",
+            "marking": "U",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "v",
+            "marking": "V",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "w",
+            "marking": "W",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-10-31"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "global/synth-motor-dol-power@1",
+        "slots": [
+          {
+            "id": "breaker",
+            "template": "global/synth-mcb-3p@1",
+            "device_kind": "circuit_breaker"
+          },
+          {
+            "id": "contactor",
+            "template": "global/synth-contactor-3p@1",
+            "device_kind": "contactor"
+          },
+          {
+            "id": "overload",
+            "template": "global/synth-overload-3p@1",
+            "device_kind": "overload_relay"
+          },
+          {
+            "id": "motor",
+            "template": "global/synth-motor-3ph@1"
+          }
+        ],
+        "strips": [
+          "out"
+        ],
+        "points": [
+          {
+            "id": "u",
+            "strip": "out",
+            "offset": 1,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "v",
+            "strip": "out",
+            "offset": 2,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "w",
+            "strip": "out",
+            "offset": 3,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "pe",
+            "strip": "out",
+            "offset": 4,
+            "level": 1,
+            "kind": "protective_earth"
+          }
+        ],
+        "nets": [
+          {
+            "role": "line1",
+            "signal": "L1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "breaker",
+                "terminal": "out1"
+              },
+              {
+                "slot": "contactor",
+                "terminal": "l1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "load1",
+            "signal": "T1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "contactor",
+                "terminal": "t1"
+              },
+              {
+                "slot": "overload",
+                "terminal": "in1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "motor1",
+            "signal": "U",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "overload",
+                "terminal": "out1"
+              },
+              {
+                "point": "u",
+                "side": "inner"
+              },
+              {
+                "point": "u",
+                "side": "outer"
+              },
+              {
+                "slot": "motor",
+                "terminal": "u"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 1
+              }
+            ]
+          },
+          {
+            "role": "line2",
+            "signal": "L2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "breaker",
+                "terminal": "out2"
+              },
+              {
+                "slot": "contactor",
+                "terminal": "l2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "load2",
+            "signal": "T2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "contactor",
+                "terminal": "t2"
+              },
+              {
+                "slot": "overload",
+                "terminal": "in2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "motor2",
+            "signal": "V",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "overload",
+                "terminal": "out2"
+              },
+              {
+                "point": "v",
+                "side": "inner"
+              },
+              {
+                "point": "v",
+                "side": "outer"
+              },
+              {
+                "slot": "motor",
+                "terminal": "v"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 2
+              }
+            ]
+          },
+          {
+            "role": "line3",
+            "signal": "L3",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "breaker",
+                "terminal": "out3"
+              },
+              {
+                "slot": "contactor",
+                "terminal": "l3"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "load3",
+            "signal": "T3",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "contactor",
+                "terminal": "t3"
+              },
+              {
+                "slot": "overload",
+                "terminal": "in3"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "motor3",
+            "signal": "W",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "overload",
+                "terminal": "out3"
+              },
+              {
+                "point": "w",
+                "side": "inner"
+              },
+              {
+                "point": "w",
+                "side": "outer"
+              },
+              {
+                "slot": "motor",
+                "terminal": "w"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "cable_core",
+                "core": 3
+              }
+            ]
+          },
+          {
+            "role": "pe",
+            "signal": "PE",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "pe",
+                "side": "inner"
+              },
+              {
+                "point": "pe",
+                "side": "outer"
+              },
+              {
+                "slot": "motor",
+                "terminal": "pe"
+              }
+            ],
+            "connections": [
+              {
+                "from": 1,
+                "to": 2,
+                "via": "cable_core",
+                "core": 4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "ref": "global/synth-coil-via-contact@1",
+        "slots": [
+          {
+            "id": "psu",
+            "template": "global/synth-psu-dc@1"
+          },
+          {
+            "id": "contactor",
+            "template": "global/synth-contactor-3p@1",
+            "device_kind": "contactor"
+          },
+          {
+            "id": "overload",
+            "template": "global/synth-overload-3p@1",
+            "device_kind": "overload_relay"
+          }
+        ],
+        "strips": [],
+        "points": [],
+        "nets": [
+          {
+            "role": "ctrl_plus",
+            "signal": "CTRL+",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "psu",
+                "terminal": "plus"
+              },
+              {
+                "slot": "overload",
+                "terminal": "nc95"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "coil_cmd",
+            "signal": "COIL",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "overload",
+                "terminal": "nc96"
+              },
+              {
+                "slot": "contactor",
+                "terminal": "a1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "ctrl_minus",
+            "signal": "CTRL-",
+            "scope": "board",
+            "members": [
+              {
+                "slot": "psu",
+                "terminal": "minus"
+              },
+              {
+                "slot": "contactor",
+                "terminal": "a2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "strips": [
+      {
+        "id": "X1",
+        "board": "MCC-1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X1"
+        },
+        "template": null
+      }
+    ],
+    "components": [
+      {
+        "id": "psu",
+        "board": "MCC-1",
+        "template": "global/synth-psu-dc@1",
+        "designation": null
+      },
+      {
+        "id": "motor-c1",
+        "board": "MCC-1",
+        "template": "global/synth-motor-3ph@1",
+        "designation": null
+      }
+    ],
+    "bindings": [
+      {
+        "id": "c1-power",
+        "pattern": "global/synth-motor-dol-power@1",
+        "board": "MCC-1",
+        "circuit": "c1",
+        "slots": {
+          "motor": {
+            "component": "motor-c1"
+          }
+        },
+        "strips": {
+          "out": "X1"
+        },
+        "markings": {
+          "u": "U1",
+          "v": "V1",
+          "w": "W1",
+          "pe": "PE1"
+        },
+        "cable": "c1-cable",
+        "wires": {}
+      },
+      {
+        "id": "c1-control",
+        "pattern": "global/synth-coil-via-contact@1",
+        "board": "MCC-1",
+        "circuit": "c1",
+        "slots": {
+          "psu": {
+            "component": "psu"
+          }
+        },
+        "strips": {},
+        "markings": {},
+        "cable": null,
+        "wires": {}
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 4,
+    "nets": 13,
+    "connections": 16,
+    "wires": 12,
+    "sha256": "44f1212972f6d283dfbc2e3612237805d5b4cc907438794bb601c4928cab5303"
+  }
+}
