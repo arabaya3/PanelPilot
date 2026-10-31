@@ -1002,6 +1002,19 @@ def parse_model(content: Any) -> entities.DesignModelV2:
         _bad("patterns", "a recorded pattern ref names no embedded pattern")
     if pattern_used != set(pattern_by_ref):
         _bad("patterns", "embeds a pattern the design does not use")
+    # A component a pattern's binding created or joined fills one of its
+    # slots, on that slot's template (the composer refuses any other): so
+    # each pattern it names declares a slot its template may fill. A stored
+    # component whose template was swapped for another embedded one, the
+    # lock left valid, is refused here rather than read as a slot it is not.
+    for component in components:
+        for ref in component.pattern_refs:
+            slot_templates = {s.template for s in pattern_by_ref[ref].slots}
+            if None not in slot_templates and component.template_ref not in slot_templates:
+                _bad(
+                    "components[].template_ref",
+                    "is not the template of any slot of a pattern it names",
+                )
 
     return entities.DesignModelV2(
         design=design,

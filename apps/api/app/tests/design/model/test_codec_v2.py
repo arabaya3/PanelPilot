@@ -513,3 +513,23 @@ def test_a_provenance_may_document_no_source() -> None:
     raw["provenance"]["source"] = ""
     with pytest.raises(versions.SnapshotUnreadableError):
         codec_v2.parse_template(raw)
+
+
+def test_a_component_on_a_template_no_slot_of_its_pattern_declares_is_unreadable() -> None:
+    """A stored invariant: a pattern-made component's template is one its pattern's slots name.
+
+    The composer refuses any other; a stored row whose component template was
+    swapped for another embedded one (the lock left valid) is refused on read.
+    """
+    from app.design.model import write
+    from app.tests.design.model.v2_support import config_case
+
+    v1, configuration = config_case("pe_n_distribution")
+    stored = write.snapshot_v2_from_v1(v1, configuration)
+    model = stored["model"]
+    made = next(c for c in model["components"] if c["pattern_refs"])
+    other = next(t["ref"] for t in model["templates"] if t["ref"] != made["template_ref"])
+    codec_v2.parse_model(model)
+    made["template_ref"] = other
+    with pytest.raises(versions.SnapshotUnreadableError):
+        codec_v2.parse_model(model)
