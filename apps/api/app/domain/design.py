@@ -453,9 +453,11 @@ def estimate_mark(
     prices = snapshot.sha256_of(pricing.model_dump(mode="json"))[:12]
     return marking.ExportMark(
         label=marking.PROVISIONAL_ESTIMATE_LABEL,
+        # The disclaimer first, so no length of what follows can push it off
+        # a page or out of the stamp's lines.
         identity=(
-            f"Estimate for {design}. Prices supplied with this export ({prices}), "
-            "not reviewed or approved"
+            f"Prices supplied with this export ({prices}), not reviewed or approved. "
+            f"Estimate for {design}"
         ),
         findings=mark.findings,
     )

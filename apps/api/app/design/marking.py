@@ -229,15 +229,23 @@ def _wrapped(text: str, room: float, *, bold: bool) -> list[str]:
     """``text`` split into lines of at most ``room`` points at 7 pt, by words.
 
     At most three lines, which the page margins hold; a longer text keeps
-    its first three. A word wider than the room stays whole on its line.
+    its first three, so what must survive goes first. A word wider than the
+    room is broken across lines, never drawn off the page.
     """
-    lines: list[str] = []
-    for word in text.split(" "):
-        candidate = f"{lines[-1]} {word}" if lines else word
+
+    def fits(candidate: str) -> bool:
         font, drawn = font_for(candidate, bold=bold, right_to_left=has_rtl(candidate))
-        if lines and stringWidth(drawn, font, 7) > room:
-            lines.append(word)
-        elif lines:
+        return bool(stringWidth(drawn, font, 7) <= room)
+
+    lines: list[str] = []
+    for whole in text.split(" "):
+        word = whole
+        while not fits(word):
+            cut = next((i for i in range(len(word) - 1, 0, -1) if fits(word[:i])), 1)
+            lines.append(word[:cut])
+            word = word[cut:]
+        candidate = f"{lines[-1]} {word}" if lines else word
+        if lines and fits(candidate):
             lines[-1] = candidate
         else:
             lines.append(word)
