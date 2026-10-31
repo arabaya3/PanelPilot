@@ -1,6 +1,6 @@
 # Merge plan: Phase 1 (#207) and M1 (#208) to `main`
 
-Status: plan only. This branch is based on `main`; the documents it cites are on #207 and #208. Nothing here has been merged or deployed. Every step needs the owner's go-ahead. Checked on 2026-10-31 against the heads below; re-check them before step 1 (see "Stop conditions").
+Status: plan only. This branch is based on `main`; the documents it cites are on #207 and #208. Nothing here has been merged or deployed. Every step needs the owner's go-ahead. Updated on 2026-10-31 for the final heads below; re-check them before step 1 (see "Stop conditions").
 
 ## Starting point (verified)
 
@@ -8,8 +8,8 @@ Status: plan only. This branch is based on `main`; the documents it cites are on
 | ------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `main`                                      | `48d2a75f03bb47f43a7ab71dc87e3e0f3e3960a1` | Alembic head `a7d1e3f5b2c8`                                                                                                                                                    |
 | `phase1-base`                               | `daeb143bfc3a93106dab178e5feaffa9287a02f1` | 19 commits ahead of `main`, 0 behind: a fast-forward of `main`. It merges #199 (`73ce76c`) and #202 (`6a96b74`), which already contains #200 (`dfc77dc`) and #201 (`7462755`). |
-| #207 `feat/phase1-trustworthy-export-clean` | `5069bc784ee81b3b7d99cc91f454b67a629ce1e9` | base `phase1-base`; contains #204 (`b4b9153`) and #205 (`f834e6e`) unchanged                                                                                                   |
-| #208 `feat/m1-versioned-design-model-clean` | `d5d840734e949721cf17dda62d8c35408cb7a7b3` | base #207's branch                                                                                                                                                             |
+| #207 `feat/phase1-trustworthy-export-clean` | `041ca1fdbccaaf2b14624137f854c169611e2082` | base `phase1-base`; contains #204 (`b4b9153`) and #205 (`f834e6e`) unchanged                                                                                                   |
+| #208 `feat/m1-versioned-design-model-clean` | `0c853572bda13f1a4fb8b0bccab6dd2ae2e69cd6` | base #207's branch                                                                                                                                                             |
 
 **No exposed history on this path.** The commits found only on the affected branches (`feat/phase1-trustworthy-export`, #203, and `feat/m1-versioned-design-model`, #206) are in none of: `main`, `phase1-base`, #207, #208, or the head branches of #199, #200, #201, #202, #204 and #205. This was checked by ancestry for every such commit. No commit on `phase1-base`, #207 or #208 touches `docs/design-readiness/assessment.md` or `docs/design-readiness/evidence/`.
 
@@ -19,11 +19,22 @@ Status: plan only. This branch is based on `main`; the documents it cites are on
 - `alembic upgrade` from `a7d1e3f5b2c8`, `downgrade` back and `upgrade` again, then `alembic check`, all clean;
 - black, ruff and mypy clean;
 - web typecheck clean, 1,074 tests passing, prettier clean;
-- backend suite on Python 3.12 against a disposable database: 4,833 passed, 60 skipped (OpenSearch and other environment-dependent tests), 0 failed.
+- backend suite on Python 3.12 against a disposable database: 4,833 passed, 60 skipped, 0 failed at `d5d8407`; on the final heads, #207 4,168 passed and #208 4,841 passed, 60 skipped each, 0 failed; web 1,072 (#207) and 1,074 (#208).
+
+## What CI does when a PR is retargeted (checked in `.github/workflows/ci.yml`)
+
+- The workflow triggers on `pull_request` with GitHub's default activity types: opened, synchronize and reopened. It also triggers on `push` to `main`.
+- **Changing a PR's base is an `edited` event, so it starts no run.** The checks shown after a retarget are the old ones, computed against the old base.
+- A `pull_request` run tests GitHub's merge ref, the head merged into the base as it was then. When the base is an ancestor of the head, that merge's tree is the head's tree. That holds here (`main` ⊂ `phase1-base` ⊂ #207 ⊂ #208, checked by ancestry and by a simulated merge that is tree-identical).
+- **That identity is a reason to expect the same result, not validation.** The plan therefore requires the full run on `main` after each merge (`push` event) before the next step, and stops if any of them fails.
+- No empty commits, close-and-reopen, or force-pushes to trigger runs. If a fresh pre-merge run on the new base is wanted, the clean ways are:
+  - push a real change;
+  - use "Update branch", only when the base has commits the head lacks;
+  - add `workflow_dispatch` (or the `edited` type) to the workflow in its own reviewed PR first.
 
 ## Order
 
-1. **Re-verify the starting point.** `main`, `phase1-base` and both PR heads must equal the SHAs above, and CI must be green on both PR heads ([#207 run 41155477744](https://github.com/arabaya3/PanelPilot/actions/runs/41155477744), [#208 run 41155489659](https://github.com/arabaya3/PanelPilot/actions/runs/41155489659), or later runs if fixes land).
+1. **Re-verify the starting point.** `main`, `phase1-base` and both PR heads must equal the SHAs above, and CI must be green on both PR heads (the runs on `041ca1f` and `0c85357`).
 2. **Bring #199 and #202 to `main` by fast-forwarding `main` to `phase1-base`** (`git push origin daeb143…:main`, a fast-forward only; or the GitHub UI if branch protection requires a PR).
    - Not by merging #199, #200, #201 or #202 one by one: that would create different merge commits, and #207 would then show `phase1-base`'s merge as an extra commit.
    - With their head commits in `main`, GitHub marks #199 and #202 as merged. #200 and #201 are contained in #202 and are marked merged too; if not, close them as superseded by #202.
@@ -86,3 +97,20 @@ A reviewer who wrote none of the code checked five areas: tenant ownership and a
 | The refusal messages say "only the account's owner" deletes projects or changes settings; admins may too.                                                                                                                                                 | note                   | Wording only; behaviour matches the permission table.                                                                                                                                                                                                                                         |
 | `POST /plc/generate` returns model-generated PLC text without a mark. It comes from a text description, not a design.                                                                                                                                     | note                   | Outside the export-mark path. To be documented as such.                                                                                                                                                                                                                                       |
 | The stamp's "approved by" is the approver's display name, frozen at approval; an account chooses its own display name.                                                                                                                                    | note                   | The account id and email are recorded for audit. Accepted for this phase.                                                                                                                                                                                                                     |
+
+## Second independent review (2026-10-31, on `fd4420b`)
+
+No blockers. Its should-fix findings:
+
+- a 200-character project name pushed the estimate's disclaimer and price hash out of the stamp's footer, and an unbroken name ran off the page;
+- a project name could pose as an approval.
+
+Both are fixed in #207 `041ca1f` (renderer `2026.10.31.4`), with tests.
+
+Notes:
+
+- the member-without-approval test's premise is now asserted;
+- `test_compat_db` builds its schema from the models, not the migrations; the migration tests cover migrations;
+- the estimate CSV button is relabelled.
+
+The reviewer did not exhaustively re-audit the whole `48d2a75..fd4420b` diff beyond the files and tests it named. The previous review (on `d5d8407`) covered tenant isolation, approval integrity, M1 and the execution-export restrictions.
