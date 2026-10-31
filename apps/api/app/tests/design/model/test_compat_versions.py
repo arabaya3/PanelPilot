@@ -245,6 +245,19 @@ def _row(case: str) -> DesignRevisionRow:
 @pytest.mark.parametrize("case", V1_CASES)
 def test_a_phase1_row_passes_check_snapshot(case: str) -> None:
     row = _row(case)
+    if case == "empty_lists":
+        # The fixture empties a residential design of every list and rehashes
+        # it, but keeps the residential findings: they are not the findings of
+        # the design it holds, so it is refused as an integrity failure
+        # (``findings_mismatch``), not read as an intact row (nor, as before
+        # the cause was told apart, as stale under a "findings_policy" change).
+        # The schema floor itself still reads.
+        assert read_snapshot(row.design_snapshot).schema == "pp-design/1"
+        with pytest.raises(ConflictError) as raised:
+            design_projects._check_snapshot(row, 1)
+        assert raised.value.code == "snapshot_integrity_failed"
+        assert raised.value.params["reason"] == "findings_mismatch"
+        return
     read = design_projects._check_snapshot(row, 1)
     assert read.schema == "pp-design/1"
     assert read.project.model_dump(mode="json") == DESIGNED[case]["stored"]["design_snapshot"]

@@ -217,7 +217,13 @@ def test_an_unconnected_required_terminal_blocks_approval(
     update_row(engine, saved["id"], 1, findings=findings)
     refused = approve(client, saved["id"], 1)
     assert refused.status_code == 409
-    assert error(refused)["code"] in ("revision_has_blocking_findings", "revision_stale")
+    # The finding is written into the row, not found in its design: the stored
+    # findings no longer belong to the stored design under the same rules,
+    # which is an integrity failure (it was accepted as ``revision_stale``,
+    # misleadingly called a rules change, before the cause was told apart).
+    body = error(refused)
+    assert body["code"] == "snapshot_integrity_failed"
+    assert body["params"]["reason"] == "findings_mismatch"
 
 
 # --------------------------------------------------------------------------- #
