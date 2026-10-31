@@ -714,7 +714,7 @@ Approvals that lack reliable renderer-version evidence must be granted again. Th
 **After deploy, per affected project.**
 
 1. Open the project. The approved revision says it no longer counts because the export renderer changed.
-2. Review the design as stored. If it is still what is wanted, save it as a new revision; if anything changed, edit and save.
+2. Review the design as stored. If it is still what is wanted, press **Save as new revision** without editing (allowed for a revision whose approval no longer counts, or which is stale or not validated); if anything should change, edit it first.
 3. A reviewer, owner or admin reviews the new revision's exports and approves it.
 4. Re-run the counts; `projects_outstanding` falls as projects are re-approved.
 

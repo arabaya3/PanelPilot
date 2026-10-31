@@ -175,8 +175,17 @@ export function ProjectsPanel({
   const notPermitted = !trial && opened !== null && !opened.canApprove;
   const held = trial || notPermitted || dirty || reasons.length > 0;
   const canDelete = permits(page, 'delete_project');
-  // The revision open, unchanged: saving it again would only store a copy.
-  const unchanged = opened !== null && !dirty;
+  // Saving the revision open again, unchanged, is how it is designed and
+  // approved under today's rules and renderer: when its approval no longer
+  // counts or covers it, or it is stale or not validated (the page tells the
+  // user to do exactly that). The old revision and its approval stay as they are.
+  const saveAgainHelps =
+    approvalOutdated.length > 0 ||
+    (opened?.approval != null && !approvalCovers) ||
+    reasons.includes('stale') ||
+    reasons.includes('notValidated');
+  // The revision open, unchanged and current: saving it again would only store a copy.
+  const unchanged = opened !== null && !dirty && !saveAgainHelps;
 
   // Read through refs: the page hands a new `onUnauthorized` (and the
   // translator a new `say`) on every render, and listing again on each one

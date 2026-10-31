@@ -335,6 +335,38 @@ describe('saving an unchanged revision', () => {
     expect(panel().queryByTestId('save-unchanged')).toBeNull();
   });
 
+  it.each([
+    [
+      'an approval that no longer counts (renderer changed)',
+      {
+        approved_snapshot_sha256: SHA,
+        approval_current: false,
+        approval_changed: ['renderer_version'],
+      },
+    ],
+    ['a revision saved before Phase 1 (not validated)', { validated: false, findings: [] }],
+  ])('allows saving again, unchanged, for %s', async (_case, fields) => {
+    const project = stored('p1', 'Stored tower', 1, fields);
+    project.revisions = project.revisions.map((entry) => ({
+      ...entry,
+      approved_by: 'A. Engineer',
+      approver_name: 'A. Engineer',
+      approver_account_recorded: true,
+      approved_at: '2026-10-03T10:00:00Z',
+    }));
+    api.open.mockResolvedValue({ kind: 'saved', project });
+    api.revise.mockResolvedValue({ kind: 'saved', project: stored('p1', 'Stored tower', 2) });
+    renderScreen();
+    await openRow('p1', 'Stored tower');
+    const save = panel().getByRole<HTMLButtonElement>('button', { name: 'Save as new revision' });
+    expect(save.disabled).toBe(false);
+    expect(panel().queryByTestId('save-unchanged')).toBeNull();
+    fireEvent.click(save);
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('lets a new project be saved', () => {
     renderApp(
       <ProjectsPanel
