@@ -4,18 +4,17 @@
 changes. This module reduces each available export to that content, so a test
 can tell a material change from a presentational one:
 
-* **PDF** (drawing, calculations, quotation): the page count and, per page,
-  the words printed on it, in reading order. Fonts, colours, line widths,
-  dash patterns and the file's metadata are left out.
-* **DXF**: every entity's layer, type, text and geometry (rounded to
-  0.001 mm), sorted. Handles, header variables, layer colours, line types and
-  text styles are left out.
+* **PDF** (drawing, calculations, quotation): per page, its size, every word
+  with its position and height (0.1 pt), and every line, rectangle and curve
+  with its points, stroke width and dash pattern. Font files, colours and the
+  file's metadata are left out.
+* **DXF**: every entity's layer, type, text and geometry, polyline vertices
+  included (0.001 mm), sorted. Handles, header variables, layer colours, line
+  types and text styles are left out (dashing is the ``DASHED`` layer).
 * **JSON**: the parsed document, canonically re-serialised.
 
-Classifications the code and documents do not settle (whether moving printed
-text or drawing geometry without changing it is material) are counted as
-material here, the stricter reading, and listed for an engineering decision in
-the Phase 1 record ("Renderer version").
+Anything that may carry meaning is content, by the owner's rule that an
+uncertain change is re-reviewed (the Phase 1 record, "Classification policy").
 """
 
 from __future__ import annotations
@@ -29,10 +28,53 @@ import pdfplumber
 from ezdxf import recover
 
 
-def pdf_content(content: bytes) -> list[list[str]]:
-    """Each page's words, in the order pdfplumber reads them."""
+def _round(value: Any, places: int = 1) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [_round(item, places) for item in value]
+    if isinstance(value, float | int):
+        return round(float(value), places)
+    return value
+
+
+def _stroke(obj: dict[str, Any]) -> list[Any]:
+    return [
+        _round(obj.get("pts", []), 1),
+        _round(obj.get("linewidth", 0.0), 2),
+        str(obj.get("dash")),
+        bool(obj.get("fill")),
+        bool(obj.get("stroke", True)),
+    ]
+
+
+def pdf_content(content: bytes) -> list[dict[str, Any]]:
+    """Each page's words with position and size, and every line, rect and curve.
+
+    Positions to 0.1 pt; stroke width and dash pattern are kept, since a
+    dashed line means something different from a solid one on a drawing.
+    """
+    pages: list[dict[str, Any]] = []
     with pdfplumber.open(io.BytesIO(content)) as pdf:
-        return [[word["text"] for word in page.extract_words()] for page in pdf.pages]
+        for page in pdf.pages:
+            words = [
+                [
+                    w["text"],
+                    _round(w["x0"]),
+                    _round(w["top"]),
+                    _round(w["bottom"] - w["top"]),
+                    bool(w.get("upright", True)),
+                ]
+                for w in page.extract_words(extra_attrs=["size"])
+            ]
+            pages.append(
+                {
+                    "size": _round([page.width, page.height]),
+                    "words": words,
+                    "lines": sorted(json.dumps(_stroke(o)) for o in page.lines),
+                    "rects": sorted(json.dumps(_stroke(o)) for o in page.rects),
+                    "curves": sorted(json.dumps(_stroke(o)) for o in page.curves),
+                }
+            )
+    return pages
 
 
 def _point(value: Any) -> list[float]:
@@ -53,6 +95,8 @@ def dxf_content(content: bytes) -> list[list[Any]]:
             item += [_point(entity.dxf.center), round(entity.dxf.radius, 3)]
             if kind == "ARC":
                 item += [round(entity.dxf.start_angle, 3), round(entity.dxf.end_angle, 3)]
+        elif kind == "POLYLINE":
+            item += [[_point(p) for p in entity.points()], bool(entity.is_closed)]
         elif kind == "LWPOLYLINE":
             item += [[_point(p) for p in entity.get_points("xy")], bool(entity.closed)]
         elif kind in ("TEXT", "MTEXT"):

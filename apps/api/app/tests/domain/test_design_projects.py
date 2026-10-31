@@ -1427,6 +1427,8 @@ def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  
     )
     with engine.connect() as conn:
         legacy = conn.execute(text(f"SELECT {columns} FROM design_project_revisions")).one()
+        # Every column of the old row, to compare once the recovery is done.
+        whole = dict(conn.execute(text("SELECT * FROM design_project_revisions")).mappings().one())
 
     opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
     assert opened.approval_changed == ["renderer_version"]
@@ -1472,6 +1474,13 @@ def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  
             text(f"SELECT {columns} FROM design_project_revisions ORDER BY number")
         ).all()
     assert tuple(rows[0]) == tuple(legacy)
+    with engine.connect() as conn:
+        after = dict(
+            conn.execute(text("SELECT * FROM design_project_revisions WHERE number = 1"))
+            .mappings()
+            .one()
+        )
+    assert after == whole
     # Same inputs, same rules: the same design, now approved under this renderer.
     assert rows[1].snapshot_sha256 == legacy.snapshot_sha256
     assert rows[1].approved_renderer_version == RENDERER_VERSION

@@ -2,31 +2,31 @@
   "renderer_version": "2026.10.31.2",
   "variants": {
     "basic": {
-      "pdf": "e7f9c815e739adf11a799dcbeb400fa2c46e573ca435333ad6c68a58e9e5c14c",
-      "calculations_pdf": "13386a41b77930787be6d7add536c25b2b90f7cef64f7ef4badbdc9f3dfa203b",
-      "quotation_pdf": "d58fe655067f8fa102a276a5cbefa9a2324320f114ddd0b29119f3caa3b2e6ff",
-      "dxf": "84607e265d7065b2e1180035598469bd84d9431fb5f7913a5fc94eed92a1dd11",
+      "pdf": "772eb7db3bb409eeb4686ea458b4703ddb2b2e957101dfa308f3398b9aae388a",
+      "calculations_pdf": "eee70ffd5c0ad9703bbc44aa438e37764b9f0ff8c9bece7866dd45b17db00945",
+      "quotation_pdf": "5373a1c5a1f1646f04b80462a6b14ca0090e8cf12382fc2dafb6dcd682339d65",
+      "dxf": "81c04e884b6ce8349ed87665c7bda3f4877c812aa01a52e338ffe2d5f88ae167",
       "json": "f932575a4ddd93bbfbe0caa5729ad45a6d843df8bf3c7a59006e0bc30e3859ad"
     },
     "motor": {
-      "pdf": "510527d1d80f830860985140b807d26e3e1c438f204a71008a9bcb720827ab7c",
-      "calculations_pdf": "8cf948b45d7f33aff7a34eab9ea42d6b6421b84edcf05cce15c97b039890bd88",
-      "quotation_pdf": "686a38de1dd3a229a81e5b047c14e9c34f33a37f46422c81f4262e945fc824e9",
-      "dxf": "9c6347fd4c0ad5234d86579847f492ce595b2b21eb311467310ef85726925bb9",
+      "pdf": "bab1acad7155a759834dca4ef6013149270ee5db9bba68e4c7752503a4f3aa73",
+      "calculations_pdf": "7a3ad18d9edb557a153fec2c59a6f9a5c65bce495fc297930bc361cc267be596",
+      "quotation_pdf": "49f975e29084a31a3a6ccb660e0578e87ef68dde5c64ae1a8180f6b1c3ff6194",
+      "dxf": "93ca42f56c19f13000d56bc050b370fed30c7bbb10ae228c749c3cee0a31e648",
       "json": "4ad2c29672ac66b509f996fcc73bb2d8ae42c08bc974cfcb06a9c0124d48ac10"
     },
     "arabic": {
-      "pdf": "34eea1f7bb9e58b6797c971c6634f5e0ad38ea70c3c8ba062741825f4d85c70e",
-      "calculations_pdf": "622ebb93d7f7df7203b54ff0aa1e28bf27253365c94bcece9cb656a1219cf441",
-      "quotation_pdf": "73c07f5713f15a996ef555535d22834158be95c521a6f42cc0dbc01709bacfb0",
-      "dxf": "ebff2a1ef3cb5a0bc81b11368a8dd201ae2535df8cda8e11c5b2d244a53f2dea",
+      "pdf": "6181ae94517c8542175ed02474bcd943ff76349a343e65881899add3ec822bed",
+      "calculations_pdf": "3114b883984cde6057ca008469774f4aa688a5cbd140e9f902e2f3f5b85414eb",
+      "quotation_pdf": "dee38521607fd752be33026203c829ec814ebeb1bb95e15ca1bb9909373ea081",
+      "dxf": "d9f8e808904f11334ff72719ff0da4d8daeee0c9c6ca61e64f22358ae16fbef7",
       "json": "dfdc8e547220309ff7c4e620637ffe8ccfd6aa60d1895bfd76c62edf5681f398"
     },
     "hebrew": {
-      "pdf": "a4cacf11b142567fc3ee75cdb58eb950668b77fca569231d3ff4b57b2d8fd4cf",
-      "calculations_pdf": "ed99ac496c249503c43dbca7e829969d43938e91c77b50cbfded8e9bdb580c6a",
-      "quotation_pdf": "662a7fccd87ec5e01ae154fd788460c4f7727f5b1e1991bf5f7cae0476432f3d",
-      "dxf": "b865d01991151076ec9f8308c4339b3f85a911037ce36a72c91b7ad670f71889",
+      "pdf": "90dc9ac3a0830cf2c194ece4213da58e564a8343c0726d13a495b018458f4bc2",
+      "calculations_pdf": "8a9cf4fe6f0c237952d097cd2c7637f44cc73d6fc5533cab06c4eb9d1ed2f170",
+      "quotation_pdf": "f6a173eca09dd0c10175125406e3c5d7085c8833fa2d06ba215e87fa1e676dd0",
+      "dxf": "16bc141844a09616dd889974142181cbdcd79f092cc6c9500445d9cc6de50d96",
       "json": "453210c03d71d31e9ded1008c2a6a66c1e9dbe1c5eb858593d48aac1d01f7b60"
     }
   }

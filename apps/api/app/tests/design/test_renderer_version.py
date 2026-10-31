@@ -19,12 +19,14 @@ same words and drawing are styled is not.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from reportlab.pdfgen.canvas import Canvas
 
 from app import design
 from app.design import export_dxf as export_dxf_module
@@ -154,6 +156,11 @@ def _all() -> dict[str, dict[str, str]]:
 def test_the_recorded_content_is_this_renderer_versions() -> None:
     found = _all()
     if os.environ.get("RECORD_RENDERER_FINGERPRINTS") == "1":
+        previous = json.loads(RECORDED.read_text(encoding="utf-8")) if RECORDED.exists() else {}
+        # Recording never hides a change: new content needs a new version first.
+        assert previous.get("renderer_version") != design.RENDERER_VERSION or (
+            previous.get("variants") == found
+        ), "the content changed: bump RENDERER_VERSION before re-recording"
         RECORDED.write_text(
             json.dumps({"renderer_version": design.RENDERER_VERSION, "variants": found}, indent=2)
             + "\n",
@@ -202,10 +209,37 @@ def test_moved_drawing_geometry_is_material(monkeypatch: pytest.MonkeyPatch) -> 
     assert {name for name in before if before[name] != after[name]} == {"dxf"}
 
 
-def test_a_styling_change_is_not_material(monkeypatch: pytest.MonkeyPatch) -> None:
-    before = _all()
+def test_moved_or_resized_boxes_are_material(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Device boxes and frames drawn 7 mm further right: both drawing formats say so."""
+    from app.design import pages, sheet
+
+    original = sheet.Rect
+
+    def shifted(*args: object, **kwargs: object) -> object:
+        made = original(*args, **kwargs)  # type: ignore[arg-type]
+        return dataclasses.replace(made, x=made.x + 7)
+
+    before = _contents("motor")
+    monkeypatch.setattr(pages, "Rect", shifted)
+    after = _contents("motor")
+    assert before["pdf"] != after["pdf"]
+    assert before["dxf"] != after["dxf"]
+
+
+def test_a_pdf_only_drawing_change_is_material(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lines dropped, or dashing changed, in the PDF writer alone."""
+    before = _contents("motor")
     monkeypatch.setattr(render_pdf, "_DASH", (3.0, 2.0))
-    monkeypatch.setattr(
-        export_dxf_module, "_LAYERS", dict.fromkeys(export_dxf_module._LAYERS, 3)
-    )
+    assert _contents("motor")["pdf"] != before["pdf"]
+    monkeypatch.undo()
+    monkeypatch.setattr(Canvas, "line", lambda *_args, **_kwargs: None)
+    assert _contents("motor")["pdf"] != before["pdf"]
+
+
+def test_a_demonstrably_cosmetic_change_is_not_material(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DXF layer colours and the PDF's creator property: same content everywhere."""
+    before = _all()
+    monkeypatch.setattr(export_dxf_module, "_LAYERS", dict.fromkeys(export_dxf_module._LAYERS, 3))
+    original = Canvas.setCreator
+    monkeypatch.setattr(Canvas, "setCreator", lambda self, _value: original(self, "Other"))
     assert _all() == before
