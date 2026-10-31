@@ -1406,6 +1406,84 @@ def test_an_unrelated_settings_change_leaves_the_approved_exports_unchanged(  # 
     assert after == before
 
 
+def test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history(  # type: ignore[no-untyped-def]
+    tenants, as_tenant, engine
+) -> None:
+    """The recovery path for an approval granted before renderer versions were recorded.
+
+    The legacy approval is never re-granted in place (that would overwrite the
+    only record of it): the stored request is saved again as a new revision,
+    designed now, and that one is approved. The old revision keeps its
+    snapshot and its approval record, shown as no longer counting, and its
+    exports stay refused.
+    """
+    a, _ = tenants
+    saved = _saved(as_tenant, a)
+    _approve(as_tenant, a, saved)
+    _set(engine, approved_renderer_version=None)
+    columns = (
+        "number, design_snapshot, snapshot_sha256, approved_at, approved_snapshot_sha256, "
+        "approved_display_name, approved_rules_version, approved_renderer_version"
+    )
+    with engine.connect() as conn:
+        legacy = conn.execute(text(f"SELECT {columns} FROM design_project_revisions")).one()
+
+    opened = design_projects.open_project(session=as_tenant(), user=_user(a), project_id=saved.id)
+    assert opened.approval_changed == ["renderer_version"]
+    with pytest.raises(ConflictError) as stale:
+        _export(as_tenant, a, saved, fmt="pdf")
+    assert stale.value.code == "revision_stale"
+    # Not re-approved in place.
+    with pytest.raises(ConflictError) as again:
+        _approve(as_tenant, a, saved)
+    assert again.value.code == "revision_already_approved"
+
+    # Recovery: save the stored request again, then approve the new revision.
+    revised = design_projects.revise_project(
+        session=as_tenant(),
+        user=_user(a),
+        project_id=saved.id,
+        request=ReviseProjectRequest(
+            request=opened.request, note="Re-approval under the current renderer"
+        ),
+    )
+    assert revised.revision == 2
+    design_projects.approve_revision(
+        session=as_tenant(),
+        user=_user(a),
+        project_id=saved.id,
+        number=2,
+        request=ApproveRevisionRequest(note="R. Engineer"),
+    )
+    exported = design_projects.export_revision(
+        session=as_tenant(),
+        user=_user(a),
+        project_id=saved.id,
+        number=2,
+        request=RevisionExportRequest.model_validate({"format": "json", "purpose": "review"}),
+    )
+    first = _first_line(exported)
+    assert "REVIEW APPROVED" in first
+    assert "revision 02" in first
+    assert f"renderer {RENDERER_VERSION}" in first
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(f"SELECT {columns} FROM design_project_revisions ORDER BY number")
+        ).all()
+    assert tuple(rows[0]) == tuple(legacy)
+    # Same inputs, same rules: the same design, now approved under this renderer.
+    assert rows[1].snapshot_sha256 == legacy.snapshot_sha256
+    assert rows[1].approved_renderer_version == RENDERER_VERSION
+    with pytest.raises(ConflictError):
+        _export(as_tenant, a, saved, fmt="pdf")
+    history = design_projects.open_project(
+        session=as_tenant(), user=_user(a), project_id=saved.id
+    ).revisions
+    assert [entry.number for entry in history] == [1, 2]
+    assert history[0].approved_at is not None
+
+
 # --- An approval of a snapshot that no longer reads; earlier revisions' approvals
 
 

@@ -1,10 +1,33 @@
 {
-  "renderer_version": "2026.10.31.1",
-  "formats": {
-    "pdf": "6fd94dde39e6c20834963c42061e7878aff5e2a9b11f9d10e35f268be14f928a",
-    "calculations_pdf": "36dd60ce39c5d1073b50b03596e5b4483c840fde1833c05787ffd1fbc8f27b2d",
-    "quotation_pdf": "aadcb5e236d8ce4ccebbc40e162a0c0aef6100d7b6eac3418c4b29dd60b8e0d6",
-    "dxf": "83d66b4603b8c89fb7e4a1415a6dbe6c159010e0cbc32071229bcb1f37d52234",
-    "json": "e89594b803651681780f928de752148a46d30b8373ef1c6cceef4b7e77bc8b8a"
+  "renderer_version": "2026.10.31.2",
+  "variants": {
+    "basic": {
+      "pdf": "e7f9c815e739adf11a799dcbeb400fa2c46e573ca435333ad6c68a58e9e5c14c",
+      "calculations_pdf": "13386a41b77930787be6d7add536c25b2b90f7cef64f7ef4badbdc9f3dfa203b",
+      "quotation_pdf": "d58fe655067f8fa102a276a5cbefa9a2324320f114ddd0b29119f3caa3b2e6ff",
+      "dxf": "84607e265d7065b2e1180035598469bd84d9431fb5f7913a5fc94eed92a1dd11",
+      "json": "f932575a4ddd93bbfbe0caa5729ad45a6d843df8bf3c7a59006e0bc30e3859ad"
+    },
+    "motor": {
+      "pdf": "510527d1d80f830860985140b807d26e3e1c438f204a71008a9bcb720827ab7c",
+      "calculations_pdf": "8cf948b45d7f33aff7a34eab9ea42d6b6421b84edcf05cce15c97b039890bd88",
+      "quotation_pdf": "686a38de1dd3a229a81e5b047c14e9c34f33a37f46422c81f4262e945fc824e9",
+      "dxf": "9c6347fd4c0ad5234d86579847f492ce595b2b21eb311467310ef85726925bb9",
+      "json": "4ad2c29672ac66b509f996fcc73bb2d8ae42c08bc974cfcb06a9c0124d48ac10"
+    },
+    "arabic": {
+      "pdf": "34eea1f7bb9e58b6797c971c6634f5e0ad38ea70c3c8ba062741825f4d85c70e",
+      "calculations_pdf": "622ebb93d7f7df7203b54ff0aa1e28bf27253365c94bcece9cb656a1219cf441",
+      "quotation_pdf": "73c07f5713f15a996ef555535d22834158be95c521a6f42cc0dbc01709bacfb0",
+      "dxf": "ebff2a1ef3cb5a0bc81b11368a8dd201ae2535df8cda8e11c5b2d244a53f2dea",
+      "json": "dfdc8e547220309ff7c4e620637ffe8ccfd6aa60d1895bfd76c62edf5681f398"
+    },
+    "hebrew": {
+      "pdf": "a4cacf11b142567fc3ee75cdb58eb950668b77fca569231d3ff4b57b2d8fd4cf",
+      "calculations_pdf": "ed99ac496c249503c43dbca7e829969d43938e91c77b50cbfded8e9bdb580c6a",
+      "quotation_pdf": "662a7fccd87ec5e01ae154fd788460c4f7727f5b1e1991bf5f7cae0476432f3d",
+      "dxf": "b865d01991151076ec9f8308c4339b3f85a911037ce36a72c91b7ad670f71889",
+      "json": "453210c03d71d31e9ded1008c2a6a66c1e9dbe1c5eb858593d48aac1d01f7b60"
+    }
   }
 }
