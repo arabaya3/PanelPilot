@@ -567,3 +567,79 @@ def test_a_second_case_saves_and_schedules_too(
         exported = revision_export(client, project_id, 2, fmt)
         assert exported.status_code == 200, exported.text[:300]
         assert all(marking.DRAFT_LABEL in page for page in pdf_pages(exported.content))
+
+
+#: Every review format a configured revision exports in.
+_REVIEW_FORMATS = (
+    "pdf",
+    "calculations_pdf",
+    "dxf",
+    "json",
+    "quotation_pdf",
+    "terminal_schedule_pdf",
+    "wire_schedule_pdf",
+)
+
+
+@pytest.mark.parametrize("findings_too", [False, True])
+def test_a_forged_review_status_is_refused_even_when_lock_hash_and_findings_match(
+    client: TestClient, engine: Engine, switch: Switch, findings_too: bool
+) -> None:
+    """A row rewritten outside the application to claim engineering review.
+
+    Every embedded template and pattern is marked approved by a made-up
+    reviewer, the registry lock and the snapshot hash are recomputed, and (in
+    one case) the stored findings too, so every fingerprint matches. No review
+    can be issued by this server yet, so the design is refused like an altered
+    one: opened as not validated, never approved or exported, and its review
+    summary never shown. Found by the final independent review.
+    """
+    from app.design.model import codec_v2
+    from app.design.model.read import read_snapshot
+    from app.domain.design_projects import _design_findings
+    from app.models.schemas.design import ProjectDesignRequest
+
+    project_id = _configured(client, switch)
+    row = revision_row(engine, project_id, 2)
+    stored = copy.deepcopy(row["design_snapshot"])
+    model = stored["model"]
+    forged = {
+        "status": "approved",
+        "reviewer": "Synthetic forged reviewer",
+        "reviewed_at": "2026-01-01",
+    }
+    for definition in (*model["templates"], *model["patterns"]):
+        if definition["ref"].startswith("tenant/"):
+            definition["review"].update(forged)
+    model["registry_lock"]["templates"] = [
+        {"ref": t["ref"], "digest": codec_v2.template_digest(codec_v2.parse_template(t))}
+        for t in model["templates"]
+    ]
+    model["registry_lock"]["patterns"] = [
+        {"ref": p["ref"], "digest": codec_v2.pattern_digest(codec_v2.parse_pattern(p))}
+        for p in model["patterns"]
+    ]
+    values: dict[str, Any] = {
+        "design_snapshot": stored,
+        "snapshot_sha256": snapshot.sha256_of(stored),
+    }
+    if findings_too:
+        read = read_snapshot(stored)
+        request = ProjectDesignRequest.model_validate(row["request"])
+        conditions = {board.name: board.conditions for board in request.boards}
+        values["findings"] = [
+            f.model_dump(mode="json") for f in _design_findings(read.project, conditions, read.v2)
+        ]
+    update_row(engine, project_id, 2, **values)
+
+    opened = _open(client, project_id, 2)
+    assert opened["export_status"] == "not_validated"
+    assert opened["model_v2"] is None
+    assert "snapshot_integrity_failed" in {f["code"] for f in opened["findings"]}
+    refused = approve(client, project_id, 2)
+    assert refused.status_code == 409
+    assert revision_row(engine, project_id, 2)["approved_at"] is None
+    for fmt in _REVIEW_FORMATS:
+        response = revision_export(client, project_id, 2, fmt)
+        assert response.status_code == 409, fmt
+        assert error(response)["code"] == "snapshot_integrity_failed", fmt

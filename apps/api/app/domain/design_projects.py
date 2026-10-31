@@ -521,11 +521,33 @@ def _read_stored(row: DesignRevisionRow) -> VersionedModel | DesignFinding:
     if not _snapshot_matches(row):
         return _integrity_finding("hash_mismatch")
     try:
-        return read_snapshot(row.design_snapshot)
+        read = read_snapshot(row.design_snapshot)
     except versions.SnapshotSchemaUnknownError as exc:
         return _schema_finding(exc)
     except versions.SnapshotUnreadableError:
         return _integrity_finding("unreadable")
+    if _review_not_issued(read):
+        return _integrity_finding("review_not_issued")
+    return read
+
+
+def _review_not_issued(read: VersionedModel) -> bool:
+    """Whether a stored v2 design holds a review status this server never issued.
+
+    No review of templates or connection patterns can be recorded yet: that
+    waits on the qualified electrical engineer the owner designates and a
+    server-side record of their decisions. Every definition a save writes is
+    therefore ``unreviewed``, so any other stored status (with a reviewer,
+    date or standards) was written outside the application, even if the row's
+    lock and hash were recomputed to match. Such a design is refused like an
+    altered one, never approved or exported. An independent review showed a
+    consistently rewritten row was otherwise accepted.
+    """
+    if read.v2 is None:
+        return False
+    return any(t.review.status != "unreviewed" for t in read.v2.templates) or any(
+        p.review.status != "unreviewed" for p in read.v2.patterns
+    )
 
 
 def _integrity_finding(reason: str) -> DesignFinding:
@@ -951,9 +973,13 @@ def _opened(
         approval_changed=list(checked.approval_changed),
         export_status=checked.status,
         execution_blockers=_execution_blockers(checked),
+        # Not for a stale revision: what it shows no longer holds, and a review
+        # page must not present it as the revision's current content.
         model_v2=(
             design_configuration.summary(checked.read.v2, _V2_CONFIRM)
-            if checked.read is not None and checked.read.v2 is not None
+            if checked.read is not None
+            and checked.read.v2 is not None
+            and checked.status is not ExportStatus.STALE
             else None
         ),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
@@ -1142,13 +1168,20 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             params={"revision": number},
         )
     try:
-        return read_snapshot(row.design_snapshot)
+        read = read_snapshot(row.design_snapshot)
     except versions.SnapshotUnreadableError as exc:
         raise ConflictError(
             f"revision {number}'s stored design no longer reads as a design",
             code="snapshot_integrity_failed",
             params={"revision": number},
         ) from exc
+    if _review_not_issued(read):
+        raise ConflictError(
+            f"revision {number}'s stored design holds a review status this server never issued",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "review_not_issued"},
+        )
+    return read
 
 
 def _recorded_rules_version(row: DesignRevisionRow, applicable: _Applicable) -> str:
