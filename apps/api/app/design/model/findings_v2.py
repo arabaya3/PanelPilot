@@ -313,6 +313,7 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
                     _finding(
                         "wire_attribute_unset",
                         f"wire {wire.id} has no {name}; no rule sets it yet",
+                        board_id=board_id,
                         wire=wire.id,
                         attribute=name,
                     )
@@ -323,6 +324,7 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
                         "wire_attribute_assumed",
                         f"wire {wire.id}'s {name} is an assumption ({attribute.assumption}); "
                         "confirm it",
+                        board_id=board_id,
                         wire=wire.id,
                         attribute=name,
                         assumption=str(attribute.assumption),

@@ -333,6 +333,26 @@ def test_an_assumed_wire_value_is_a_warning_naming_its_record() -> None:
     assert record.statement
 
 
+def test_wire_value_findings_name_the_board_of_the_wire() -> None:
+    """A wire finding carries its wire's board, from its connection's net.
+
+    An export then lists it under that board rather than under a blank one.
+    """
+    for name in (PE_N, "feeder_1p"):
+        model = _composed(name)
+        net_board = {n.id: n.board_id for n in model.nets}
+        wire_board = {
+            w.id: net_board[c.net_id]
+            for w in model.wires
+            for c in model.connections
+            if c.id == w.connection_id
+        }
+        found = _codes(model, "wire_attribute_unset") + _codes(model, "wire_attribute_assumed")
+        assert found
+        for finding in found:
+            assert finding.location["board_id"] == wire_board[finding.location["wire"]]
+
+
 # --------------------------------------------------------------------------- #
 # Patterns are reviewed like templates
 # --------------------------------------------------------------------------- #
