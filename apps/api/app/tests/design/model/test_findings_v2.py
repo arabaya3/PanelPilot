@@ -228,7 +228,8 @@ def test_required_without_a_documented_source_is_unresolved() -> None:
     model = _composed(PE_N, _feed(True, source=None))
     assert _codes(model, "unconnected_required_terminal") == []
     found = _codes(model, "terminal_requiredness_unresolved")
-    assert {f.location["terminal"] for f in found} == {"feed"}
+    # With no documented source, t3's "not required" settles nothing either.
+    assert {f.location["terminal"] for f in found} == {"feed", "t3"}
     assert all("documents no source" in f.message for f in found)
 
 
@@ -386,3 +387,38 @@ def test_an_approved_pattern_is_no_finding() -> None:
 
     model = _composed(PE_N, approve)
     assert _codes(model, "pattern_unreviewed") == _codes(model, "pattern_rejected") == []
+
+
+def test_an_undocumented_not_required_is_unresolved_not_settled() -> None:
+    """``required: false`` settles nothing unless the template documents a source.
+
+    An independent review found that a client-written template with no source
+    could mark every terminal "not required" and so silence the unresolved
+    warning. Now "not required" counts only when documented, like "required".
+    """
+    from app.design.model import schedules
+
+    documented = _composed(PE_N)
+    settled = [
+        f
+        for f in _codes(documented, "terminal_requiredness_unresolved")
+        if f.location["terminal"] == "t3"
+    ]
+    assert not settled  # documented "not required": no finding
+
+    def undocument(configuration: dict[str, Any]) -> None:
+        for template in configuration["templates"]:
+            template["provenance"]["source"] = None
+
+    model = _composed(PE_N, undocument)
+    unresolved = [
+        f
+        for f in _codes(model, "terminal_requiredness_unresolved")
+        if f.location["terminal"] == "t3"
+    ]
+    assert unresolved
+    assert all(f.unresolved and f.severity == "warning" for f in unresolved)
+    assert not _codes(model, "unconnected_required_terminal")
+    rows = [r for r in schedules.terminal_schedule(model) if r.terminal_id in ("t1", "t3")]
+    assert rows
+    assert all(r.required is None for r in rows)

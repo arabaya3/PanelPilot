@@ -48,7 +48,7 @@ class TerminalRow:
         position: For a strip point, its position; else ``None``.
         level: For a strip point, its level; else ``None``.
         kind: The terminal's or point's kind (open vocabulary, from data).
-        required: For a component terminal, the template's ``required``
+        required: For a component terminal, its requiredness as the template documents it (``entities.documented_requiredness``): ``None`` when unresolved.
             (``True``, ``False`` or ``None``); else ``None``.
         net_id: The net it is a member of, or ``None``.
         signal: That net's signal label, or ``None``.
@@ -241,7 +241,8 @@ def terminal_schedule(model: entities.DesignModelV2) -> tuple[TerminalRow, ...]:
                         position=None,
                         level=None,
                         kind=terminal.kind,
-                        required=terminal.required,
+                        # As documented: an undocumented value reads unresolved.
+                        required=entities.documented_requiredness(template, terminal),
                         net_id=net.id if net else None,
                         signal=net.signal if net else None,
                         connected_to=tuple(sorted(index.peers.get(ref.key, ()))),

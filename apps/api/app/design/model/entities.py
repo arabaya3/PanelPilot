@@ -180,6 +180,26 @@ def explicitly_required(template: ComponentTemplate, terminal: TerminalDef) -> b
     return terminal.required is True and documents_a_source(template.provenance)
 
 
+def documented_requiredness(template: ComponentTemplate, terminal: TerminalDef) -> bool | None:
+    """A terminal's requiredness as a documented template states it; ``None`` if unresolved.
+
+    ``True`` or ``False`` count only when the template's provenance documents
+    a source (:func:`documents_a_source`), whichever way they point: an
+    undocumented ``required: false`` is no more settled than an undocumented
+    ``required: true``. Anything else is ``None``: unresolved, never guessed.
+
+    Args:
+        template: The template holding the terminal.
+        terminal: One of its terminals.
+
+    Returns:
+        ``True``, ``False``, or ``None`` for unresolved.
+    """
+    if terminal.required is None or not documents_a_source(template.provenance):
+        return None
+    return terminal.required
+
+
 @dataclass(frozen=True)
 class PatternSlot:
     """A component a pattern joins: its template (or ``None``) and, optionally, a v1 device kind."""

@@ -35,10 +35,10 @@ Codes (inputs are model data only):
     approval; a draft may hold it.
 ``terminal_requiredness_unresolved``
     A terminal of a component is in no net, and whether it must be connected
-    is not documented: ``required`` is ``null``, or ``true`` in a template
-    whose provenance names no source. A warning that stays unresolved; it is
-    never guessed either way and never blocks. ``required: false`` gives no
-    finding.
+    is not documented: ``required`` is ``null``, or ``true`` or ``false`` in
+    a template whose provenance names no source. A warning that stays
+    unresolved; it is never guessed either way and never blocks. Only a
+    documented ``required: false`` gives no finding.
 ``net_unrealised``
     A net has two or more members, and the net's own connections (every
     connection whose ``net_id`` is the net, any ``via``) do not join all of
@@ -209,7 +209,12 @@ def _terminal_findings(
         template = templates[component.template_ref]
         for terminal in template.terminals:
             ref = entities.TerminalRef(component=component.id, terminal=terminal.id)
-            if ref.key in connected or terminal.required is False:
+            # Only a documented "not required" settles it; an undocumented one
+            # is as unresolved as an undocumented "required".
+            if (
+                ref.key in connected
+                or entities.documented_requiredness(template, terminal) is False
+            ):
                 continue
             where = {
                 "board_id": component.board_id,
@@ -229,7 +234,7 @@ def _terminal_findings(
                 why = (
                     "its template does not say whether it must be connected"
                     if terminal.required is None
-                    else "its template documents no source for requiring it"
+                    else "its template documents no source for whether it must be connected"
                 )
                 out.append(
                     _finding(
