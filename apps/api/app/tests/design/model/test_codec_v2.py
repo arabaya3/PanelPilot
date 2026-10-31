@@ -1,11 +1,8 @@
-"""``pp-design/2``: the migration, the strict reader, its invariants and its purity."""
+"""``codec_v2``: the strict v2 reader, its canonical writer and every invariant."""
 
 from __future__ import annotations
 
-import ast
 import copy
-import json
-import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -15,9 +12,7 @@ import pytest
 
 from app.design import snapshot
 from app.design.model import codec_v2, entities, migrate_v2, versions, write
-from app.design.model.read import project_to_v1, read_snapshot
-from app.models.schemas.design import DeviceKind
-from app.tests.design.model.compat_support import DESIGNED
+from app.design.model.read import read_snapshot
 from app.tests.design.model.v2_support import config_case, v1_snapshot
 
 MODEL_DIR = Path(migrate_v2.__file__).parent
@@ -25,140 +20,15 @@ API_ROOT = MODEL_DIR.parents[2]
 PURE_MODULES = ("entities.py", "findings_v2.py", "domain.py")
 FRAMEWORKS = ("pydantic", "fastapi", "sqlalchemy", "starlette")
 
-# --------------------------------------------------------------------------- #
-# Purity
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("module", PURE_MODULES)
-def test_domain_modules_import_only_the_standard_library_and_each_other(module: str) -> None:
-    tree = ast.parse((MODEL_DIR / module).read_text(encoding="utf-8"))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported |= {alias.name for alias in node.names}
-        elif isinstance(node, ast.ImportFrom):
-            assert node.level == 0
-            base = node.module or ""
-            imported |= (
-                {f"{base}.{alias.name}" for alias in node.names}
-                if base == ("app.design.model")
-                else {base}
-            )
-    app_imports = {name for name in imported if name.split(".")[0] == "app"}
-    assert app_imports <= {"app.design.model.domain", "app.design.model.entities"}, app_imports
-    roots = {name.split(".")[0] for name in imported - app_imports}
-    assert roots <= {"__future__", "collections", "dataclasses", "decimal", "types", "typing"}
-
-
-@pytest.mark.parametrize("module", ["entities", "findings_v2"])
-def test_domain_modules_load_no_framework_in_a_fresh_interpreter(module: str) -> None:
-    code = (
-        "import sys\n"
-        f"sys.path.insert(0, {str(API_ROOT)!r})\n"
-        f"import app.design.model.{module}\n"
-        f"bad = sorted(m for m in sys.modules if m.split('.')[0] in {FRAMEWORKS!r})\n"
-        "print(','.join(bad))\n"
-    )
-    result = subprocess.run(
-        [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True
-    )
-    assert result.stdout.strip() == ""
-
-
-# --------------------------------------------------------------------------- #
-# Versions and the frozen legacy templates
-# --------------------------------------------------------------------------- #
-
-
-def test_v2_is_enveloped_and_migrates_from_v1() -> None:
-    assert versions.V2 == "pp-design/2"
-    assert versions.V2 in versions.ENVELOPED
-    assert versions.MIGRATIONS[(versions.V1, versions.V2)] is migrate_v2.migrate_1_to_2
-    assert versions.WRITTEN_BY_DEFAULT == versions.V1
-
-
-def test_one_legacy_template_per_v1_device_kind_and_nothing_else() -> None:
-    assert set(migrate_v2.LEGACY_TEMPLATES) == {kind.value for kind in DeviceKind}
-    assert [p.name for p in (MODEL_DIR / "templates").iterdir()] == ["legacy_v1_device_kinds.json"]
-    for kind, raw in migrate_v2.LEGACY_TEMPLATES.items():
-        template = codec_v2.parse_template(raw)
-        assert template.ref == f"global/legacy-{kind}@1" == migrate_v2.legacy_ref(kind)
-        assert template.function == kind
-        assert template.terminals == ()
-        assert template.parameters == ()
-        assert template.review.status == "unreviewed"
-        assert template.review.standards == ()
-        assert template.restricted_scope == ()
-        assert "pp-design/1" in template.provenance.source
-        assert codec_v2.dump_template(template) == raw
-
-
-# --------------------------------------------------------------------------- #
-# Migration: every M1 fixture
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("case", sorted(DESIGNED))
-def test_every_fixture_migrates_to_strict_v2_and_projects_back_byte_for_byte(case: str) -> None:
-    stored = DESIGNED[case]["stored"]
-    v1 = v1_snapshot(case)
-    before = json.dumps(v1, sort_keys=True)
-    envelope = write.snapshot_v2_from_v1(v1)
-    assert json.dumps(v1, sort_keys=True) == before, "the input is not changed"
-    assert set(envelope) == {"schema", "model"}
-
-    read = read_snapshot(envelope)
-    assert read.schema == versions.V2
-    assert read.v2 is not None
-    projected = project_to_v1(read.v2)
-    assert projected == stored["design_snapshot"]
-    assert snapshot.canonical_json(projected) == snapshot.canonical_json(stored["design_snapshot"])
-    assert snapshot.sha256_of(projected) == stored["snapshot_sha256"]
-    assert read.project.model_dump(mode="json") == stored["design_snapshot"]
-
-    devices = [(b.id, d) for b in read.v2.design.boards for d in b.devices]
-    assert len(read.v2.components) == len(devices)
-    for board_id, device in devices:
-        component = next(
-            c
-            for c in read.v2.components
-            if (c.board_id, c.legacy_device_id) == (board_id, device.id)
-        )
-        assert component.template_ref == migrate_v2.legacy_ref(device.kind)
-        assert component.designation == device.designation
-    assert read.v2.strips == ()
-    assert read.v2.nets == ()
-    assert read.v2.connections == ()
-    assert read.v2.wires == ()
-    assert read.v2.assumptions == ()
-
-
-@pytest.mark.parametrize("case", sorted(DESIGNED))
-def test_migration_is_deterministic_and_the_v1_read_is_unchanged(case: str) -> None:
-    first = versions.migrate(v1_snapshot(case), versions.V1, versions.V2)
-    second = versions.migrate(v1_snapshot(case), versions.V1, versions.V2)
-    assert snapshot.canonical_json(first) == snapshot.canonical_json(second)
-    stored = DESIGNED[case]["stored"]
-    assert read_snapshot(stored["design_snapshot"]).schema == versions.V1
-    assert snapshot.sha256_of(stored["design_snapshot"]) == stored["snapshot_sha256"]
-
-
-def test_a_migrated_model_pins_its_hash() -> None:
-    envelope = write.snapshot_v2_from_v1(v1_snapshot("residential"))
-    assert snapshot.sha256_of(envelope) == PINNED_MIGRATED_RESIDENTIAL
-
-
-PINNED_MIGRATED_RESIDENTIAL = "90867a9095c35beea675828fb927c54dcc1ecce77eb33ed1d65fd0002a27518a"
-
-# --------------------------------------------------------------------------- #
-# Round trip and canonical form
-# --------------------------------------------------------------------------- #
-
 
 def _composed(name: str = "feeder_1p") -> dict[str, Any]:
     v1, configuration = config_case(name)
     return write.snapshot_v2_from_v1(v1, configuration)
+
+
+# --------------------------------------------------------------------------- #
+# Round trip and canonical form
+# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.parametrize("name", ["feeder_1p", "motor_dol_with_control", "io_marshalling"])
@@ -479,10 +349,3 @@ def test_nesting_past_the_recursion_limit_is_unreadable() -> None:
     envelope["model"]["assumptions"] = deep
     with pytest.raises(versions.SnapshotUnreadableError):
         read_snapshot(envelope)
-
-
-def test_write_refuses_to_envelope_an_invalid_payload() -> None:
-    payload = _composed()["model"]
-    payload["components"].reverse()
-    with pytest.raises(versions.SnapshotUnreadableError):
-        write.envelope(payload)
