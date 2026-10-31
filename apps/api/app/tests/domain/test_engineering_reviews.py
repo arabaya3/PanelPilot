@@ -14,8 +14,9 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
@@ -281,7 +282,7 @@ def test_a_global_decision_applies_in_every_tenant_and_a_rejection_wins(
     engine: Engine, team: dict[str, CurrentUser]
 ) -> None:
     # A rule ref no other test uses: global rows touch every tenant.
-    rule = echo_rule(ref=f"synthetic/m3-{uuid.uuid4().hex[:12]}/v1")
+    rule = _rule()
     _global(engine, rule.ref, "approved", rule.digest)
     tenants = [uuid.UUID(team["owner"].tenant_id), uuid.UUID(new_tenant(engine))]
     for tenant in tenants:
@@ -310,10 +311,19 @@ def test_a_global_decision_applies_in_every_tenant_and_a_rejection_wins(
         there = reviews.anchor_for(session=session, tenant_id=tenants[1])
     assert reviews.rule_status(there, rule) == "withdrawn"
     # A changed rule (another digest) has no decision.
-    changed = echo_rule(ref=rule.ref, title="Synthetic echo, changed")
+    changed = echo_rule(ref=rule.ref, title="Synthetic echo, changed", synthetic=False)
     assert reviews.rule_status(there, changed) == "draft"
     listed = _list_rule(engine, team["owner"], rule.ref)
     assert {d.scope for d in listed} == {"tenant", "global"}
+
+
+def _rule() -> Any:
+    """A test-only rule outside the synthetic scope (decisions refuse that scope).
+
+    Its content is the synthetic echo's: inert, of no engineering meaning; the
+    ref is new, as global rows touch every tenant.
+    """
+    return echo_rule(ref=f"global/m3-test-{uuid.uuid4().hex[:12]}/v1", synthetic=False)
 
 
 def _list_rule(engine: Engine, user: CurrentUser, ref: str) -> Any:
@@ -335,7 +345,7 @@ def _list_rule(engine: Engine, user: CurrentUser, ref: str) -> Any:
 def test_a_malformed_global_decision_is_refused(engine: Engine, overrides: dict[str, Any]) -> None:
     fields: dict[str, Any] = {
         "subject_kind": "rule",
-        "subject_ref": "synthetic/m3-never/v1",
+        "subject_ref": "global/m3-never/v1",
         "subject_digest": DIGEST_A,
         "decision": "approved",
         "reviewer_label": "Synthetic",
@@ -354,3 +364,161 @@ def test_draft_rules_stay_draft_without_a_record(engine: Engine) -> None:
         anchor = reviews.anchor_for(session=session, tenant_id=uuid.UUID(new_tenant(engine)))
     assert reviews.rule_status(anchor, echo_rule()) == "draft"
     assert anchor == anchoring.ReviewAnchor(tenant={}, global_=anchor.global_)
+
+
+# --------------------------------------------------------------------------- #
+# Scopes, standing, independence, append-only (review fixes)
+# --------------------------------------------------------------------------- #
+
+
+def _global_any(engine: Engine, kind: str, ref: str) -> Any:
+    with _session(engine) as session:
+        return reviews.record_global_decision(
+            session=session,
+            subject_kind=kind,
+            subject_ref=ref,
+            subject_digest=DIGEST_A,
+            decision="approved",
+            reviewer_label="Synthetic global reviewer",
+            qualification_statement=SYNTHETIC_QUALIFICATION,
+            standards=[],
+            reason="Synthetic global decision",
+            recorded_by="synthetic-operator",
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "ref", "reason"),
+    [
+        ("template", "tenant/m3-synthetic-template/v1", "not_global"),
+        ("pattern", "tenant/m3-synthetic-pattern/v1", "not_global"),
+        ("rule", "tenant/m3-synthetic-rule/v1", "not_global"),
+        ("rule", "synthetic/m3-synthetic-rule/v1", "synthetic_scope"),
+    ],
+)
+def test_a_global_decision_takes_a_global_ref_only(
+    engine: Engine, kind: str, ref: str, reason: str
+) -> None:
+    """A global approval never reaches a tenant's own definition that shares its ref."""
+    with pytest.raises(ValidationError) as refused:
+        _global_any(engine, kind, ref)
+    assert refused.value.code == "review_subject_invalid"
+    assert refused.value.params["reason"] == reason
+
+
+def test_the_synthetic_scope_is_refused_for_tenant_decisions(
+    engine: Engine, team: dict[str, CurrentUser]
+) -> None:
+    _designate(engine, team["owner"], team["engineer"])
+    with pytest.raises(ValidationError) as refused:
+        _record(
+            engine,
+            team["engineer"],
+            subject_kind="rule",
+            subject_ref="synthetic/echo/v1",
+            subject_digest=echo_rule().digest,
+        )
+    assert refused.value.params["reason"] == "synthetic_scope"
+
+
+def _anchor(engine: Engine, user: CurrentUser) -> anchoring.ReviewAnchor:
+    with _session(engine) as session:
+        return reviews.anchor_for(session=session, tenant_id=uuid.UUID(user.tenant_id))
+
+
+def test_a_revoked_or_deactivated_reviewers_decisions_stop_counting(
+    engine: Engine, team: dict[str, CurrentUser]
+) -> None:
+    ref = "tenant/m3-synthetic-template/v1"
+    _designate(engine, team["owner"], team["engineer"])
+    recorded = _record(engine, team["engineer"])
+    assert recorded.reviewer_standing == "designated"
+    assert _anchor(engine, team["owner"]).status("template", ref, DIGEST_A) == "approved"
+
+    with _session(engine) as session:
+        reviews.revoke(session=session, user=team["owner"], member_id=team["engineer"].id)
+        session.commit()
+    assert _anchor(engine, team["owner"]).status("template", ref, DIGEST_A) == "unreviewed"
+    (listed,) = _list(engine, team["owner"])
+    assert (listed.id, listed.reviewer_standing, listed.current) == (
+        recorded.id,
+        "revoked",
+        False,
+    )
+
+    # Designated again: what they recorded counts again; deactivated: it does not.
+    _designate(engine, team["owner"], team["engineer"])
+    assert _anchor(engine, team["owner"]).status("template", ref, DIGEST_A) == "approved"
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET is_active = false WHERE id = :u"),
+            {"u": uuid.UUID(team["engineer"].id)},
+        )
+    assert _anchor(engine, team["owner"]).status("template", ref, DIGEST_A) == "unreviewed"
+    (listed,) = _list(engine, team["owner"])
+    assert (listed.reviewer_standing, listed.current) == ("inactive", False)
+
+
+def test_independence_is_stated_plainly_where_no_author_is_known(
+    engine: Engine, team: dict[str, CurrentUser]
+) -> None:
+    """A tenant ref no saved revision holds: the author is unknown, and the output says so."""
+    _designate(engine, team["owner"], team["engineer"])
+    recorded = _record(engine, team["engineer"])
+    assert recorded.independence_checked is False
+    assert recorded.independence == reviews.INDEPENDENCE_NOT_CHECKED
+    assert "not checked" in recorded.independence
+    rule = _rule()
+    _global(engine, rule.ref, "approved", rule.digest)
+    listed = _list_rule(engine, team["owner"], rule.ref)
+    assert [(d.independence_checked, d.reviewer_standing) for d in listed] == [(False, "operator")]
+
+
+def test_decisions_in_one_transaction_list_newest_first(
+    engine: Engine, team: dict[str, CurrentUser]
+) -> None:
+    """Rows of one transaction share ``created_at``; ``seq`` orders them."""
+    _designate(engine, team["owner"], team["engineer"])
+    with _session(engine) as session:
+        first = reviews.record_decision(session=session, user=team["engineer"], request=_request())
+        second = reviews.record_decision(
+            session=session,
+            user=team["engineer"],
+            request=_request(decision="rejected", reason="Synthetic, later"),
+        )
+        session.commit()
+    assert first.recorded_at == second.recorded_at
+    assert [d.id for d in _list(engine, team["owner"])] == [second.id, first.id]
+
+
+@pytest.mark.parametrize(
+    "table",
+    [
+        "engineering_reviewer_grants",
+        "engineering_review_decisions",
+        "global_engineering_review_decisions",
+    ],
+)
+def test_the_review_tables_refuse_truncate(engine: Engine, table: str) -> None:
+    with pytest.raises(DBAPIError, match="append-only"), engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {table} CASCADE"))
+
+
+def test_a_grant_names_a_granting_account_of_the_tenant(
+    engine: Engine, team: dict[str, CurrentUser]
+) -> None:
+    stranger = new_account(engine, new_tenant(engine), owner=True)
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO engineering_reviewer_grants (id, tenant_id, user_id, action, "
+                "qualification_statement, granted_by_user_id) VALUES (:i, :t, :u, 'grant', :q, :g)"
+            ),
+            {
+                "i": uuid.uuid4(),
+                "t": uuid.UUID(team["owner"].tenant_id),
+                "u": uuid.UUID(team["engineer"].id),
+                "q": SYNTHETIC_QUALIFICATION,
+                "g": uuid.UUID(stranger.id),
+            },
+        )

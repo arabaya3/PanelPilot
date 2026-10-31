@@ -41,6 +41,11 @@ class DecisionRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+#: A tenant reviewer's standing now: their decisions count only while
+#: ``designated``; ``operator`` for a global decision (no account).
+ReviewerStanding = Literal["designated", "revoked", "inactive", "operator"]
+
+
 class DecisionOut(BaseModel):
     """One recorded decision.
 
@@ -57,7 +62,15 @@ class DecisionOut(BaseModel):
         standards: As the reviewer named them.
         reason: Why.
         recorded_at: When.
-        current: Whether it is the newest decision for its scope and digest.
+        current: Whether it is the decision that applies for its scope and
+            digest: the newest one whose reviewer still counts.
+        reviewer_standing: ``designated``, ``revoked`` (the owner revoked the
+            designation) or ``inactive`` (the account is deactivated): a
+            decision counts only while ``designated``; ``operator`` for a
+            global decision.
+        independence_checked: Whether the server checked that the reviewer
+            is not the definition's author; ``False`` where it knows none.
+        independence: That, said plainly.
     """
 
     id: str
@@ -72,6 +85,9 @@ class DecisionOut(BaseModel):
     reason: str
     recorded_at: datetime
     current: bool
+    reviewer_standing: ReviewerStanding
+    independence_checked: bool
+    independence: str
 
 
 class DesignateRequest(BaseModel):

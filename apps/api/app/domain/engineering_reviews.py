@@ -18,7 +18,24 @@ older ones, which stay.
 
 **Effect.** ``anchor_for`` gives the decisions that apply in a tenant, which
 ``app.design.model.anchoring`` uses to anchor a stored design's review
-statuses. No decision makes anything ready for execution.
+statuses. A tenant decision counts only while its reviewer still holds a
+designation and an active account: a revocation or deactivation stops their
+decisions counting (they stay recorded, and ``decisions`` shows them as
+such). No decision makes anything ready for execution.
+
+**Scopes.** A global decision is for a ``global/`` ref only, so it never
+reaches a tenant's own definition that happens to share a ref; the
+``synthetic/`` rule scope (tests only) is refused for every recorded
+decision.
+
+**Independence.** A reviewer may not decide on a tenant definition they
+authored. The server knows a tenant template's or pattern's authors as the
+accounts that saved a revision of the tenant holding that exact definition
+(ref and digest): such a reviewer is refused (``engineering_review_self_review``).
+Where no author is known (a global definition, a rule, a definition in no
+saved revision, and every global decision) the decision is recorded with
+``independence_checked`` false and says so; nothing there implies an
+independent review. Whether an owner may review at all is open (O-10).
 
 Every function scoped to a caller binds the session to its tenant first
 (ADR 0003); an account of another tenant is "not found".
@@ -35,15 +52,18 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AuthorizationError, NotFoundError, ValidationError
 from app.core.tenancy import bind_tenant
-from app.design.model import anchoring, codec_v2
-from app.design.rules import registry
+from app.design.model import anchoring, codec_v2, versions
+from app.design.model.read import read_snapshot
+from app.design.rules import evaluation, registry
 from app.domain import permissions, team
 from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.engineering_reviews import (
     DecisionOut,
     DecisionRequest,
     ReviewerOut,
+    ReviewerStanding,
 )
+from app.models.tables.design_projects import DesignRevisionRow
 from app.models.tables.engineering_reviews import (
     EngineeringReviewDecisionRow,
     EngineeringReviewerGrantRow,
@@ -75,11 +95,19 @@ def _account(value: str) -> uuid.UUID:
         raise NotFoundError("no such member") from exc
 
 
-def check_subject(kind: str, ref: str) -> None:
+def check_subject(kind: str, ref: str, *, scope: str | None = None) -> None:
     """Refuse a subject that is not a well-formed ref of its kind.
 
     Templates and patterns use M2's ref form (``global|tenant/<id>/v<n>``),
     rules the registry's (``<scope>/<id>/v<n>``); neither holds ``@``.
+
+    Args:
+        kind: ``template``, ``pattern`` or ``rule``.
+        ref: The ref.
+        scope: For a decision being recorded, ``tenant`` or ``global``: the
+            ``synthetic/`` scope is refused (it is for tests only), and a
+            global decision takes a ``global/`` ref only. ``None`` (a
+            listing) checks the form alone.
 
     Raises:
         ValidationError: ``review_subject_invalid``.
@@ -88,6 +116,20 @@ def check_subject(kind: str, ref: str) -> None:
     if kind not in SUBJECT_KINDS or "@" in ref or not pattern.fullmatch(ref):
         raise ValidationError(
             f"{ref!r} is not a {kind} ref", code="review_subject_invalid", params={"kind": kind}
+        )
+    if scope is None:
+        return
+    if ref.startswith(f"{registry.SYNTHETIC_SCOPE}/"):
+        raise ValidationError(
+            "synthetic rules are for tests only; no decision is recorded on one",
+            code="review_subject_invalid",
+            params={"kind": kind, "reason": "synthetic_scope"},
+        )
+    if scope == "global" and not ref.startswith("global/"):
+        raise ValidationError(
+            "a global decision is for a global/ ref only",
+            code="review_subject_invalid",
+            params={"kind": kind, "reason": "not_global"},
         )
 
 
@@ -298,7 +340,7 @@ def record_decision(
     """
     tenant = _tenant(user)
     bind_tenant(session, tenant)
-    check_subject(request.subject_kind, request.subject_ref)
+    check_subject(request.subject_kind, request.subject_ref, scope="tenant")
     standards = _standards(request.standards)
     reason = _plain(request.reason, "reason")
     permissions.require(
@@ -308,6 +350,19 @@ def record_decision(
     grant = _current_grant(session, account)
     if grant is None or grant.qualification_statement is None:  # pragma: no cover - require
         raise AuthorizationError("not designated", code="engineering_review_not_permitted")
+    authors = definition_authors(
+        session=session,
+        tenant_id=tenant,
+        kind=request.subject_kind,
+        ref=request.subject_ref,
+        digest=request.subject_digest,
+    )
+    if authors is not None and user.email.strip().lower() in authors:
+        raise AuthorizationError(
+            "a reviewer may not decide on a definition they saved; "
+            "another designated reviewer must review it",
+            code="engineering_review_self_review",
+        )
     row = EngineeringReviewDecisionRow(
         tenant_id=tenant,
         subject_kind=request.subject_kind,
@@ -318,6 +373,7 @@ def record_decision(
         qualification_statement=grant.qualification_statement,
         standards=standards,
         reason=reason,
+        independence_checked=authors is not None,
     )
     session.add(row)
     session.flush()
@@ -329,7 +385,49 @@ def record_decision(
         ref=row.subject_ref,
         decision=row.decision,
     )
-    return _tenant_out(row, current=True)
+    return _tenant_out(row, current=True, standing="designated")
+
+
+def definition_authors(
+    *, session: Session, tenant_id: uuid.UUID, kind: str, ref: str, digest: str
+) -> frozenset[str] | None:
+    """The accounts (emails, lower case) known to have authored a tenant definition.
+
+    A tenant template's or pattern's authors are the accounts that saved a
+    revision of the tenant whose stored design holds that exact definition
+    (ref, and digest with its review unset). ``None`` when the server knows
+    no author: a rule, a ``global/`` definition (the software's), or one no
+    saved revision of the tenant holds (independence is then not checked).
+
+    Args:
+        session: Open database session, bound to ``tenant_id``.
+        tenant_id: The tenant.
+        kind: ``template``, ``pattern`` or ``rule``.
+        ref: The definition's ref.
+        digest: Its digest (``anchoring.definition_digest``).
+    """
+    if kind not in ("template", "pattern") or not ref.startswith("tenant/"):
+        return None
+    key = "templates" if kind == "template" else "patterns"
+    rows = session.execute(
+        select(DesignRevisionRow.author, DesignRevisionRow.design_snapshot).where(
+            DesignRevisionRow.tenant_id == tenant_id,
+            DesignRevisionRow.design_snapshot.contains({"model": {key: [{"ref": ref}]}}),
+        )
+    ).all()
+    authors: set[str] = set()
+    for author, stored in rows:
+        try:
+            model = read_snapshot(stored).v2
+        except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+            continue
+        if model is None:
+            continue
+        held = model.templates if kind == "template" else model.patterns
+        if any(d.ref == ref and anchoring.definition_digest(d) == digest for d in held):
+            authors.add((author or "").strip().lower())
+    authors.discard("")
+    return frozenset(authors) if authors else None
 
 
 def record_global_decision(
@@ -353,7 +451,7 @@ def record_global_decision(
     Raises:
         ValidationError: ``review_subject_invalid``, ``review_field_invalid``.
     """
-    check_subject(subject_kind, subject_ref)
+    check_subject(subject_kind, subject_ref, scope="global")
     if not registry.is_digest(subject_digest):
         raise ValidationError(
             "not a digest", code="review_field_invalid", params={"field": "subject_digest"}
@@ -372,6 +470,8 @@ def record_global_decision(
         standards=_standards(standards),
         reason=_plain(reason, "reason"),
         recorded_by=_plain(recorded_by, "recorded_by", 200),
+        # The server knows no author of a global definition.
+        independence_checked=False,
     )
     session.add(row)
     session.flush()
@@ -379,7 +479,24 @@ def record_global_decision(
     return row
 
 
-def _tenant_out(row: EngineeringReviewDecisionRow, *, current: bool) -> DecisionOut:
+#: What a decision says about independence, as every output states it.
+INDEPENDENCE_CHECKED = (
+    "Checked only that the reviewer saved no revision of this tenant holding this "
+    "definition; nothing else about their independence is checked"
+)
+INDEPENDENCE_NOT_CHECKED = (
+    "Independence was not checked: the server knows no author of this definition, "
+    "so the reviewer may have authored it"
+)
+
+
+def _independence(checked: bool) -> str:
+    return INDEPENDENCE_CHECKED if checked else INDEPENDENCE_NOT_CHECKED
+
+
+def _tenant_out(
+    row: EngineeringReviewDecisionRow, *, current: bool, standing: ReviewerStanding
+) -> DecisionOut:
     return DecisionOut(
         id=str(row.id),
         scope="tenant",
@@ -393,6 +510,9 @@ def _tenant_out(row: EngineeringReviewDecisionRow, *, current: bool) -> Decision
         reason=row.reason,
         recorded_at=row.created_at,
         current=current,
+        reviewer_standing=standing,
+        independence_checked=row.independence_checked,
+        independence=_independence(row.independence_checked),
     )
 
 
@@ -410,7 +530,42 @@ def _global_out(row: GlobalEngineeringReviewDecisionRow, *, current: bool) -> De
         reason=row.reason,
         recorded_at=row.created_at,
         current=current,
+        reviewer_standing="operator",
+        independence_checked=row.independence_checked,
+        independence=_independence(row.independence_checked),
     )
+
+
+def _standings(session: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, ReviewerStanding]:
+    """Each account of the tenant that ever held a designation: its standing now.
+
+    ``designated`` while its newest grant row is a grant and the account is
+    active; ``revoked`` when that row is a revocation; ``inactive`` when the
+    account is deactivated (or gone).
+    """
+    latest: dict[uuid.UUID, str] = {}
+    for grant in session.scalars(
+        select(EngineeringReviewerGrantRow)
+        .where(EngineeringReviewerGrantRow.tenant_id == tenant_id)
+        .order_by(EngineeringReviewerGrantRow.seq)
+    ):
+        latest[grant.user_id] = grant.action
+    active = set(
+        session.scalars(
+            select(User.id).where(
+                User.id.in_(list(latest)), User.tenant_id == tenant_id, User.is_active.is_(True)
+            )
+        )
+    )
+    out: dict[uuid.UUID, ReviewerStanding] = {}
+    for account, action in latest.items():
+        if action != "grant":
+            out[account] = "revoked"
+        elif account not in active:
+            out[account] = "inactive"
+        else:
+            out[account] = "designated"
+    return out
 
 
 def decisions(
@@ -448,16 +603,31 @@ def decisions(
         )
         .order_by(GlobalEngineeringReviewDecisionRow.seq.desc())
     ).all()
-    out: list[DecisionOut] = []
+    standings = _standings(session, _tenant(user))
+    out: list[tuple[DecisionOut, int]] = []
     seen: set[str] = set()
     for row in local:
-        out.append(_tenant_out(row, current=row.subject_digest not in seen))
-        seen.add(row.subject_digest)
+        standing = standings.get(row.reviewer_user_id, "inactive")
+        counts = standing == "designated"
+        out.append(
+            (
+                _tenant_out(
+                    row,
+                    current=counts and row.subject_digest not in seen,
+                    standing=standing,
+                ),
+                row.seq,
+            )
+        )
+        if counts:
+            seen.add(row.subject_digest)
     seen = set()
     for grow in shared:
-        out.append(_global_out(grow, current=grow.subject_digest not in seen))
+        out.append((_global_out(grow, current=grow.subject_digest not in seen), grow.seq))
         seen.add(grow.subject_digest)
-    return sorted(out, key=lambda d: d.recorded_at, reverse=True)
+    return [
+        d for d, _ in sorted(out, key=lambda pair: (pair[0].recorded_at, pair[1]), reverse=True)
+    ]
 
 
 def anchor_for(*, session: Session, tenant_id: uuid.UUID) -> anchoring.ReviewAnchor:
@@ -468,13 +638,18 @@ def anchor_for(*, session: Session, tenant_id: uuid.UUID) -> anchoring.ReviewAnc
         tenant_id: The tenant.
 
     Returns:
-        The newest decision per kind, ref and digest, in the tenant and globally.
+        The newest decision per kind, ref and digest, in the tenant and
+        globally; a tenant decision only while its reviewer is designated
+        and active (``_standings``).
     """
     bind_tenant(session, tenant_id)
+    standings = _standings(session, tenant_id)
     local: dict[tuple[str, str, str], anchoring.Decided] = {}
     for row in session.scalars(
         select(EngineeringReviewDecisionRow).order_by(EngineeringReviewDecisionRow.seq)
     ):
+        if standings.get(row.reviewer_user_id) != "designated":
+            continue
         local[(row.subject_kind, row.subject_ref, row.subject_digest)] = anchoring.Decided(
             decision=row.decision,
             scope="tenant",
@@ -496,14 +671,22 @@ def anchor_for(*, session: Session, tenant_id: uuid.UUID) -> anchoring.ReviewAnc
     return anchoring.ReviewAnchor(tenant=local, global_=shared)
 
 
-def rule_status(anchor: anchoring.ReviewAnchor, rule: registry.RuleVersion) -> str:
-    """A rule's effective status in a tenant: its decision, else its declared status."""
-    decided = anchor.deciding("rule", rule.ref, rule.digest)
-    if decided is None:
-        key = ("rule", rule.ref, rule.digest)
-        withdrawn = any(
-            d is not None and d.decision == "withdrawn"
-            for d in (anchor.tenant.get(key), anchor.global_.get(key))
-        )
-        return "withdrawn" if withdrawn else rule.declared_status
-    return registry.effective_status(rule, decided.decision)
+def ever_decided(*, session: Session, tenant_id: uuid.UUID) -> frozenset[tuple[str, str, str, str]]:
+    """Every ``(kind, ref, digest, decision)`` ever recorded in the tenant or globally.
+
+    Whoever recorded it and whether it still counts: what a stored design's
+    findings may have been anchored to when it was saved
+    (``design_projects._reviews_explained``).
+    """
+    bind_tenant(session, tenant_id)
+    found: set[tuple[str, str, str, str]] = set()
+    for table in (EngineeringReviewDecisionRow, GlobalEngineeringReviewDecisionRow):
+        for kind, ref, digest, decision in session.execute(
+            select(table.subject_kind, table.subject_ref, table.subject_digest, table.decision)
+        ):
+            found.add((kind, ref, digest, decision))
+    return frozenset(found)
+
+
+#: A rule's effective status in a tenant (``evaluation.rule_status``).
+rule_status = evaluation.rule_status

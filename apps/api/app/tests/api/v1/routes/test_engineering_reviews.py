@@ -454,8 +454,7 @@ def test_changing_a_definition_after_approval_makes_it_unreviewed(
     assert not {"template_unreviewed"} & _codes(_open(client, project_id, number))
 
     # Edit one template's content outside the application, locks and hash
-    # recomputed: its approval was for another digest, so it is unreviewed,
-    # and the revision's findings no longer hold.
+    # recomputed: its approval was for another digest, so it is unreviewed.
     stored = copy.deepcopy(revision_row(engine, project_id, number)["design_snapshot"])
     target = next(t for t in stored["model"]["templates"] if t["ref"].startswith("tenant/"))
     target["function"] = target["function"] + "-edited"
@@ -467,9 +466,13 @@ def test_changing_a_definition_after_approval_makes_it_unreviewed(
         design_snapshot=edited,
         snapshot_sha256=snapshot.sha256_of(edited),
     )
+    # No decision was ever recorded for the edited digest, so stored findings
+    # without its review finding cannot have been written by a save: an
+    # integrity failure, not a review change.
     opened = _open(client, project_id, number)
-    assert opened["export_status"] == "stale"
-    assert "snapshot_integrity_failed" not in _codes(opened)
+    assert opened["export_status"] == "not_validated"
+    integrity = [f for f in opened["findings"] if f["code"] == "snapshot_integrity_failed"]
+    assert [f["values"]["reason"] for f in integrity] == ["findings_mismatch"]
     # Its anchored review is unreviewed: the decision was for the old digest.
     from app.domain import engineering_reviews
 
@@ -650,3 +653,111 @@ def test_a_tampered_findings_row_is_still_an_integrity_failure(
     assert error(refused)["code"] == "snapshot_integrity_failed"
     assert error(refused)["params"]["reason"] == "findings_mismatch"
     assert revision_row(engine, project_id, unapproved)["approved_at"] is None
+
+
+def _drop_template(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every ``template_unreviewed`` finding of one tenant template removed."""
+    ref = next(
+        f["values"]["template"]
+        for f in findings
+        if f["code"] == "template_unreviewed" and f["values"]["template"].startswith("tenant/")
+    )
+    return [
+        f
+        for f in findings
+        if not (f["code"] == "template_unreviewed" and f["values"]["template"] == ref)
+    ]
+
+
+def test_dropping_a_templates_review_findings_with_no_decision_is_an_integrity_failure(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    """Stored findings that say "approved" need an approval the server recorded."""
+    who.user = team["owner"]
+    project_id, number = _configured(client)
+    unapproved = _revise(client, project_id)
+    for target in (number, unapproved):
+        findings = _drop_template(
+            copy.deepcopy(revision_row(engine, project_id, target)["findings"])
+        )
+        update_row(engine, project_id, target, findings=findings)
+    opened = _open(client, project_id, number)
+    assert opened["export_status"] == "not_validated"
+    integrity = [f for f in opened["findings"] if f["code"] == "snapshot_integrity_failed"]
+    assert [f["values"]["reason"] for f in integrity] == ["findings_mismatch"]
+    assert _listed(client, project_id, number)["validated"] is False
+    for fmt in _REVIEW_FORMATS:
+        refused = revision_export(client, project_id, number, fmt)
+        assert error(refused)["params"]["reason"] == "findings_mismatch", fmt
+    refused = approve(client, project_id, unapproved)
+    assert error(refused)["code"] == "snapshot_integrity_failed"
+    assert error(refused)["params"]["reason"] == "findings_mismatch"
+
+
+def test_a_revocation_makes_revisions_saved_under_the_reviewers_decisions_stale(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    who.user = team["owner"]
+    project_id, first = _configured(client)
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    subjects = _subjects(engine, project_id, first)
+    for kind, ref, digest in subjects:
+        assert _decide(client, kind, ref, digest).status_code == 201
+    who.user = team["owner"]
+    saved = _revise(client, project_id)
+    assert approve(client, project_id, saved).status_code == 200
+    pending = _revise(client, project_id)
+    assert _open(client, project_id, saved)["export_status"] == "review_approved"
+
+    revoked = client.delete(f"/engineering-reviews/reviewers/{team['engineer'].id}")
+    assert revoked.status_code in (200, 204), revoked.text
+
+    opened = _open(client, project_id, saved)
+    assert opened["export_status"] == "stale"
+    assert opened["validated"] is True
+    assert "review_decisions" in opened["approval_changed"]
+    assert _listed(client, project_id, saved)["export_status"] == "stale"
+    refused = revision_export(client, project_id, saved, "pdf")
+    assert error(refused)["code"] == "revision_stale"
+    assert "review_decisions" in error(refused)["params"]["changed"].split(",")
+    refused = approve(client, project_id, pending)
+    assert error(refused)["code"] == "revision_stale"
+    assert error(refused)["params"]["changed"].split(",") == ["review_decisions"]
+    # The decisions stay recorded, shown as the revoked reviewer's.
+    kind, ref, _digest = subjects[0]
+    listed = client.get(
+        "/engineering-reviews/decisions", params={"subject_kind": kind, "subject_ref": ref}
+    )
+    assert listed.status_code == 200, listed.text
+    assert {(d["reviewer_standing"], d["current"]) for d in listed.json()} == {("revoked", False)}
+
+
+def test_a_reviewer_may_not_decide_on_a_definition_they_saved(
+    client: TestClient, who: _As, team: dict[str, CurrentUser], engine: Engine, v2: None
+) -> None:
+    """The owner designates themselves and saved the tenant template: refused (O-10 open)."""
+    who.user = team["owner"]
+    project_id, number = _configured(client)
+    response = client.post(
+        "/engineering-reviews/reviewers",
+        json={"member_id": team["owner"].id, "qualification_statement": SYNTHETIC_QUALIFICATION},
+    )
+    assert response.status_code == 201, response.text
+    subjects = _subjects(engine, project_id, number)
+    own = next(s for s in subjects if s[0] == "template" and s[1].startswith("tenant/"))
+    refused = _decide(client, *own)
+    assert refused.status_code == 403
+    assert error(refused)["code"] == "engineering_review_self_review"
+    # A global definition has no author the server knows: recorded, and says so.
+    shipped = next(s for s in subjects if s[1].startswith("global/"))
+    recorded = _decide(client, *shipped)
+    assert recorded.status_code == 201, recorded.text
+    assert recorded.json()["independence_checked"] is False
+    assert "not checked" in recorded.json()["independence"]
+    # Another designated reviewer, who saved no revision holding it: checked.
+    _designate(client, who, team)
+    who.user = team["engineer"]
+    other = _decide(client, *own)
+    assert other.status_code == 201, other.text
+    assert other.json()["independence_checked"] is True

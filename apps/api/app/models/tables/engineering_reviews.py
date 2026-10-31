@@ -2,7 +2,8 @@
 
 Three append-only tables. Nothing here is ever updated or deleted: the ORM
 refuses it (``before_update`` / ``before_delete``) and so does the database
-(trigger ``pp_refuse_append_only_change``, installed by migration
+(trigger ``pp_refuse_append_only_change``, per row on ``UPDATE`` and
+``DELETE`` and per statement on ``TRUNCATE``, installed by migration
 ``d9e4b7c2a5f1`` and, for tests that build the schema from the metadata, on
 ``create_all``). A newer row supersedes an older one; both stay.
 
@@ -26,6 +27,7 @@ from typing import Any
 from sqlalchemy import (
     DDL,
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
@@ -36,6 +38,9 @@ from sqlalchemy import (
     Uuid,
     event,
     func,
+)
+from sqlalchemy import (
+    false as sa_false,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Mapper, mapped_column
@@ -70,6 +75,11 @@ class EngineeringReviewerGrantRow(TenantScopedMixin, UUIDPrimaryKey, Base):
     __table_args__ = (
         ForeignKeyConstraint(
             ["user_id", "tenant_id"], ["users.id", "users.tenant_id"], ondelete="RESTRICT"
+        ),
+        ForeignKeyConstraint(
+            ["granted_by_user_id", "tenant_id"],
+            ["users.id", "users.tenant_id"],
+            ondelete="RESTRICT",
         ),
         CheckConstraint("action IN ('grant', 'revoke')", name="action"),
         CheckConstraint(
@@ -116,6 +126,12 @@ class EngineeringReviewDecisionRow(TenantScopedMixin, UUIDPrimaryKey, Base):
     qualification_statement: Mapped[str] = mapped_column(Text, nullable=False)
     standards: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Whether the server checked that the reviewer is not the definition's
+    #: author (``engineering_reviews.record_decision``); ``False`` where the
+    #: author is not known to the server.
+    independence_checked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa_false()
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -146,6 +162,10 @@ class GlobalEngineeringReviewDecisionRow(UUIDPrimaryKey, Base):
     standards: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     recorded_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: Always ``False``: the server knows no author of a global definition.
+    independence_checked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa_false()
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -186,5 +206,13 @@ for _model in APPEND_ONLY:
         DDL(  # type: ignore[no-untyped-call]
             f"CREATE TRIGGER {_table}_append_only BEFORE UPDATE OR DELETE ON {_table} "
             f"FOR EACH ROW EXECUTE FUNCTION {REFUSE_FUNCTION}()"
+        ).execute_if(dialect="postgresql"),
+    )
+    event.listen(
+        _model.__table__,
+        "after_create",
+        DDL(  # type: ignore[no-untyped-call]
+            f"CREATE TRIGGER {_table}_no_truncate BEFORE TRUNCATE ON {_table} "
+            f"FOR EACH STATEMENT EXECUTE FUNCTION {REFUSE_FUNCTION}()"
         ).execute_if(dialect="postgresql"),
     )

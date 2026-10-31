@@ -2,8 +2,8 @@
 
 Creates ``engineering_reviewer_grants``, ``engineering_review_decisions``
 (both tenant-scoped) and ``global_engineering_review_decisions`` (no tenant;
-written by an operator), with a trigger function that refuses ``UPDATE`` and
-``DELETE`` on all three. No existing row is changed, and nothing is
+written by an operator), with a trigger function that refuses ``UPDATE``,
+``DELETE`` (per row) and ``TRUNCATE`` (per statement) on all three. No existing row is changed, and nothing is
 inserted: no reviewer is designated and no decision is recorded.
 
 Downgrade drops the triggers, the function and the tables. Any recorded
@@ -81,6 +81,12 @@ def upgrade() -> None:
             ondelete="RESTRICT",
             name="fk_engineering_reviewer_grants_user_id_users",
         ),
+        sa.ForeignKeyConstraint(
+            ["granted_by_user_id", "tenant_id"],
+            ["users.id", "users.tenant_id"],
+            ondelete="RESTRICT",
+            name="fk_engineering_reviewer_grants_granted_by_user_id_users",
+        ),
         sa.PrimaryKeyConstraint("id", name="pk_engineering_reviewer_grants"),
         sa.UniqueConstraint("seq", name="uq_engineering_reviewer_grants_seq"),
     )
@@ -106,6 +112,7 @@ def upgrade() -> None:
         sa.Column("qualification_statement", sa.Text(), nullable=False),
         sa.Column("standards", postgresql.JSONB(), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
+        sa.Column("independence_checked", sa.Boolean(), server_default=sa.false(), nullable=False),
         _now(),
         sa.CheckConstraint(_KINDS, name=op.f("ck_engineering_review_decisions_subject_kind")),
         sa.CheckConstraint(_DECISIONS, name=op.f("ck_engineering_review_decisions_decision")),
@@ -147,6 +154,7 @@ def upgrade() -> None:
         sa.Column("standards", postgresql.JSONB(), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("recorded_by", sa.String(200), nullable=False),
+        sa.Column("independence_checked", sa.Boolean(), server_default=sa.false(), nullable=False),
         _now(),
         sa.CheckConstraint(
             _KINDS, name=op.f("ck_global_engineering_review_decisions_subject_kind")
@@ -179,11 +187,16 @@ def upgrade() -> None:
             f"CREATE TRIGGER {table}_append_only BEFORE UPDATE OR DELETE ON {table} "
             f"FOR EACH ROW EXECUTE FUNCTION {_FUNCTION}()"
         )
+        op.execute(
+            f"CREATE TRIGGER {table}_no_truncate BEFORE TRUNCATE ON {table} "
+            f"FOR EACH STATEMENT EXECUTE FUNCTION {_FUNCTION}()"
+        )
 
 
 def downgrade() -> None:
     """Drop the triggers, the function and the tables."""
     for table in reversed(_TABLES):
+        op.execute(f"DROP TRIGGER IF EXISTS {table}_no_truncate ON {table}")
         op.execute(f"DROP TRIGGER IF EXISTS {table}_append_only ON {table}")
         op.drop_table(table)
     op.execute(f"DROP FUNCTION IF EXISTS {_FUNCTION}()")

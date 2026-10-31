@@ -153,11 +153,11 @@ def _metadata_url() -> Iterator[str]:
     yield from _scratch("review_meta")
 
 
-def _triggers(engine: Engine) -> set[str]:
+def _triggers(engine: Engine, suffix: str = "_append_only") -> set[str]:
     with engine.connect() as conn:
         return set(
             conn.execute(
-                text("SELECT tgname FROM pg_trigger WHERE tgname LIKE '%_append_only'")
+                text("SELECT tgname FROM pg_trigger WHERE tgname LIKE :s"), {"s": f"%{suffix}"}
             ).scalars()
         )
 
@@ -170,6 +170,7 @@ def test_the_migration_runs_up_and_down(migration_url: str) -> None:
         _alembic(migration_url, "upgrade", HEAD)
         assert set(TABLES) <= set(inspect(engine).get_table_names())
         assert _triggers(engine) == {f"{t}_append_only" for t in TABLES}
+        assert _triggers(engine, "_no_truncate") == {f"{t}_no_truncate" for t in TABLES}
         with engine.begin() as conn:
             conn.execute(
                 text(

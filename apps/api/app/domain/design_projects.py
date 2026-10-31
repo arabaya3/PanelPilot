@@ -499,8 +499,11 @@ def _reviews_explained(row: DesignRevisionRow, read: VersionedModel) -> bool:
     finding at each place it is used, all of the one status. So the stored
     review findings must name, for each definition, exactly the places an
     unreviewed definition is found at, with a single status, or none of
-    them. Anything else was not written by a save (whatever decisions stood
-    then) and is an integrity failure.
+    them. A definition without review findings (approved) or with
+    ``*_rejected`` ones must also have had such a decision recorded for its
+    exact digest, at some time, in the tenant or globally
+    (``engineering_reviews.ever_decided``). Anything else was not written by
+    a save (whatever decisions stood then) and is an integrity failure.
     """
     stored = _review_groups(_stored_findings(row))
     if stored is None:
@@ -519,6 +522,26 @@ def _reviews_explained(row: DesignRevisionRow, read: VersionedModel) -> bool:
     expected = _review_groups(_v2_findings(bare)) or {}
     for key, (statuses, places) in stored.items():
         if key not in expected or len(statuses) != 1 or places != expected[key][1]:
+            return False
+    # A status other than unreviewed is explained only by a decision the
+    # server recorded for that exact definition, at any time and by anyone,
+    # in the tenant or globally: one the save may have been anchored to.
+    claimed = {
+        key: (next(iter(stored[key][0])) if key in stored else "approved") for key in expected
+    }
+    if all(status == "unreviewed" for status in claimed.values()):
+        return True
+    session = object_session(row)
+    if session is None:  # pragma: no cover - every row read here is loaded
+        return False
+    recorded = engineering_reviews.ever_decided(session=session, tenant_id=row.tenant_id)
+    digests = {("template", t.ref): anchoring.definition_digest(t) for t in bare.templates}
+    digests.update({("pattern", p.ref): anchoring.definition_digest(p) for p in bare.patterns})
+    for (kind, ref), status in claimed.items():
+        if status == "unreviewed":
+            continue
+        digest = digests.get((kind, ref))
+        if digest is None or (kind, ref, digest, status) not in recorded:
             return False
     return True
 

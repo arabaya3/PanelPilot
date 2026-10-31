@@ -930,7 +930,7 @@ def test_assign_owner_commits_or_reports_the_refusal(
 
 _GLOBAL_ARGS = [
     "--kind", "rule",
-    "--ref", "synthetic/m3-job/v1",
+    "--ref", "global/m3-test-job/v1",
     "--digest", "a" * 64,
     "--decision", "approved",
     "--reviewer", "Synthetic reviewer label",
@@ -951,7 +951,7 @@ def test_record_global_review_commits_or_reports_the_refusal(
     class _Row:
         id = uuid.uuid4()
         decision = "approved"
-        subject_ref = "synthetic/m3-job/v1"
+        subject_ref = "global/m3-test-job/v1"
 
     def record(**kw: Any) -> _Row:
         seen.update(kw)
