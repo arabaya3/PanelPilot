@@ -1154,6 +1154,7 @@
       "draftBody": "Exported from the design on this page, not from a saved and validated revision. Every file is marked DRAFT — NOT FOR EXECUTION, lists the unresolved findings and carries no approval.",
       "revisionTitle": "Revision {revision} export",
       "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
+      "englishOnly": "Exported documents (drawing set, calculations, schedules and quotation) are in English.",
       "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
       "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
       "execution": "Request execution export",

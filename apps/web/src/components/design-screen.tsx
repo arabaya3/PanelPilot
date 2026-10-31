@@ -21,6 +21,7 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
+import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
 import { ConfigurationPanel } from '@/components/design/configuration-panel';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
@@ -2183,6 +2184,7 @@ function DesignWorkspace({
                       <p className="text-sm text-text-muted">
                         {t('exports.revisionBody', { revision: opened.revision })}
                       </p>
+                      <EnglishExportsNote testId="revision-export-english" />
                       <ExportPanel
                         onExport={(format) => downloadRevision(format)}
                         exportError={revisionError}
@@ -2264,6 +2266,7 @@ function DesignWorkspace({
                   <Notice tone="warning" live={false} title={t('exports.draftMark')}>
                     {t('exports.draftBody')}
                   </Notice>
+                  <EnglishExportsNote testId="draft-export-english" />
                   <ExportPanel onExport={download} exportError={exportError} busy={exporting} />
                 </div>
               ) : stale ? (

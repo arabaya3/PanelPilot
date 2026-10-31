@@ -19,7 +19,9 @@ import type {
   V2ModelSummary,
   validateConfiguration,
 } from '@/lib/design';
+import ar from '@/messages/ar.json';
 import en from '@/messages/en.json';
+import he from '@/messages/he.json';
 
 import { renderApp } from './helpers';
 
@@ -586,7 +588,10 @@ const READY = {
   conversationId: null,
 };
 
-function renderScreen(exportRevisionImpl = vi.fn<typeof exportRevision>()) {
+function renderScreen(
+  exportRevisionImpl = vi.fn<typeof exportRevision>(),
+  locale?: 'en' | 'ar' | 'he',
+) {
   renderApp(
     <DesignScreen
       acquireImpl={vi.fn().mockResolvedValue(READY)}
@@ -594,6 +599,7 @@ function renderScreen(exportRevisionImpl = vi.fn<typeof exportRevision>()) {
       exportRevisionImpl={exportRevisionImpl}
       saveImpl={vi.fn()}
     />,
+    locale ? { locale } : {},
   );
   return exportRevisionImpl;
 }
@@ -641,6 +647,8 @@ describe('the configuration view and review schedules of a revision', () => {
     const schedules = within(review().getByTestId('revision-schedules'));
     expect(schedules.getByText(en.design.exports.schedulesTitle)).toBeTruthy();
     expect(review().getByTestId('revision-schedules').textContent).toContain('NOT FOR EXECUTION');
+    // In English the exports need no note that they are in English (ar and he do).
+    expect(review().queryByTestId('revision-export-english')).toBeNull();
     fireEvent.click(schedules.getByTestId('revision-export-terminal_schedule_pdf'));
     await waitFor(() => {
       expect(exportRevisionImpl).toHaveBeenCalledWith(
@@ -657,6 +665,22 @@ describe('the configuration view and review schedules of a revision', () => {
     expect(opened.queryByTestId('configuration-json')).toBeNull();
     expect(configuration().getByTestId('configuration-panel')).toBeTruthy();
   });
+
+  it.each(['ar', 'he'] as const)(
+    'tells a %s user, next to the revision exports, that the documents are in English',
+    async (locale) => {
+      const messages = { ar, he }[locale];
+      api.open.mockResolvedValue({ kind: 'saved', project: saved(MODEL) });
+      renderScreen(undefined, locale);
+      const row = await screen.findByTestId('project-p1');
+      fireEvent.click(within(row).getByText(messages.design.projects.open));
+      const note = await review().findByTestId('revision-export-english');
+      expect(note.textContent).toBe(messages.design.exports.englishOnly);
+      // Beside the drawing, calculations and schedule exports of the revision.
+      expect(review().getByTestId('revision-export').contains(note)).toBe(true);
+      expect(review().getByTestId('revision-schedules')).toBeTruthy();
+    },
+  );
 
   it('offers no schedules for a v1 revision, and says why', async () => {
     api.open.mockResolvedValue({ kind: 'saved', project: saved(null) });
