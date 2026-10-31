@@ -5,6 +5,7 @@ Synthetic, inert rules only (``synthetic.py``).
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -12,15 +13,16 @@ from typing import Any
 
 import pytest
 
+from app.design.model import anchoring
 from app.design.rules import evaluation, registry
-from app.tests.design.rules.synthetic import EVALUATORS, echo_rule
+from app.tests.design.rules.synthetic import EVALUATORS, decided, echo_rule
 
 INPUTS = {"amount": {"value": "1.50", "unit": "synthetic-unit"}}
 
 
 def _draft() -> evaluation.DraftEvaluation:
     result = evaluation.evaluate(
-        echo_rule(), INPUTS, status="draft", mode="draft", evaluators=EVALUATORS
+        echo_rule(), INPUTS, anchor=anchoring.EMPTY, mode="draft", evaluators=EVALUATORS
     )
     assert isinstance(result, evaluation.DraftEvaluation)
     return result
@@ -38,7 +40,7 @@ def test_the_same_inputs_give_the_same_output_digest() -> None:
     other = evaluation.evaluate(
         echo_rule(),
         {"amount": {"value": "1.5000", "unit": "synthetic-unit"}},
-        status="draft",
+        anchor=anchoring.EMPTY,
         mode="draft",
         evaluators=EVALUATORS,
     )
@@ -46,10 +48,11 @@ def test_the_same_inputs_give_the_same_output_digest() -> None:
 
 
 _SCRIPT = """
+from app.design.model import anchoring
 from app.design.rules import evaluation
 from app.tests.design.rules.synthetic import EVALUATORS, echo_rule
 r = evaluation.evaluate(echo_rule(), {"amount": {"value": "1.50", "unit": "synthetic-unit"}},
-                        status="draft", mode="draft", evaluators=EVALUATORS)
+                        anchor=anchoring.EMPTY, mode="draft", evaluators=EVALUATORS)
 print(r.record.rule_digest, r.record.input_digest, r.record.output_digest)
 """
 
@@ -73,25 +76,32 @@ def test_the_output_digest_is_the_same_across_runs() -> None:
 def test_a_record_reproduces() -> None:
     rules = registry.Registry([echo_rule()])
     record = _draft().record
-    assert evaluation.reproduce(record, INPUTS, rules=rules, evaluators=EVALUATORS)
+    assert evaluation.reproduce(
+        record, INPUTS, rules=rules, anchor=anchoring.EMPTY, evaluators=EVALUATORS
+    )
     other = {"amount": {"value": "2", "unit": "synthetic-unit"}}
-    assert not evaluation.reproduce(record, other, rules=rules, evaluators=EVALUATORS)
-    changed = registry.Registry([echo_rule(title="Synthetic echo, changed")])
-    assert not evaluation.reproduce(record, INPUTS, rules=changed, evaluators=EVALUATORS)
     assert not evaluation.reproduce(
-        record, INPUTS, rules=registry.Registry(), evaluators=EVALUATORS
+        record, other, rules=rules, anchor=anchoring.EMPTY, evaluators=EVALUATORS
+    )
+    changed = registry.Registry([echo_rule(title="Synthetic echo, changed")])
+    assert not evaluation.reproduce(
+        record, INPUTS, rules=changed, anchor=anchoring.EMPTY, evaluators=EVALUATORS
+    )
+    assert not evaluation.reproduce(
+        record, INPUTS, rules=registry.Registry(), anchor=anchoring.EMPTY, evaluators=EVALUATORS
     )
 
 
 @pytest.mark.parametrize("status", ["draft", "unreviewed"])
 def test_a_rule_not_approved_is_evaluated_only_as_a_draft(status: str) -> None:
+    rule = echo_rule(declared_status=status)
     with pytest.raises(evaluation.EvaluationRefusedError) as refused:
         evaluation.evaluate(
-            echo_rule(), INPUTS, status=status, mode="reviewed", evaluators=EVALUATORS
+            rule, INPUTS, anchor=anchoring.EMPTY, mode="reviewed", evaluators=EVALUATORS
         )
     assert refused.value.code == "rule_not_approved"
     draft = evaluation.evaluate(
-        echo_rule(), INPUTS, status=status, mode="draft", evaluators=EVALUATORS
+        rule, INPUTS, anchor=anchoring.EMPTY, mode="draft", evaluators=EVALUATORS
     )
     assert isinstance(draft, evaluation.DraftEvaluation)
 
@@ -134,15 +144,23 @@ def test_a_rejected_or_withdrawn_rule_is_not_evaluated(status: str) -> None:
     for mode in modes:
         with pytest.raises(evaluation.EvaluationRefusedError) as refused:
             evaluation.evaluate(
-                echo_rule(), INPUTS, status=status, mode=mode, evaluators=EVALUATORS
+                echo_rule(),
+                INPUTS,
+                anchor=decided(echo_rule(), status),
+                mode=mode,
+                evaluators=EVALUATORS,
             )
         assert refused.value.code == "rule_not_evaluable"
 
 
 def test_an_approved_rule_is_evaluated_in_reviewed_mode() -> None:
-    """Synthetic: 'approved' stands in for a server-recorded decision."""
+    """Synthetic: the anchor stands in for a server-recorded decision."""
     result = evaluation.evaluate(
-        echo_rule(), INPUTS, status="approved", mode="reviewed", evaluators=EVALUATORS
+        echo_rule(),
+        INPUTS,
+        anchor=decided(echo_rule(), "approved"),
+        mode="reviewed",
+        evaluators=EVALUATORS,
     )
     assert isinstance(result, evaluation.Evaluation)
     assert result.record.rule_status == "approved"
@@ -165,7 +183,7 @@ def test_an_approved_rule_is_evaluated_in_reviewed_mode() -> None:
 def test_inputs_are_typed_strictly(inputs: Mapping[str, Any], code: str) -> None:
     with pytest.raises(evaluation.EvaluationRefusedError) as refused:
         evaluation.evaluate(
-            echo_rule(), inputs, status="draft", mode="draft", evaluators=EVALUATORS
+            echo_rule(), inputs, anchor=anchoring.EMPTY, mode="draft", evaluators=EVALUATORS
         )
     assert refused.value.code == code
 
@@ -177,7 +195,7 @@ def test_outputs_are_checked_against_the_rule() -> None:
     evaluators = evaluation.Evaluators((evaluation.Evaluator("synthetic.echo", "1", wrong),))
     with pytest.raises(evaluation.EvaluationRefusedError) as refused:
         evaluation.evaluate(
-            echo_rule(), INPUTS, status="draft", mode="draft", evaluators=evaluators
+            echo_rule(), INPUTS, anchor=anchoring.EMPTY, mode="draft", evaluators=evaluators
         )
     assert refused.value.code == "evaluation_unit_mismatch"
 
@@ -187,17 +205,52 @@ def test_an_unknown_evaluator_or_mode_is_refused() -> None:
         evaluation.evaluate(
             echo_rule(evaluator_version="9"),
             INPUTS,
-            status="draft",
+            anchor=anchoring.EMPTY,
             mode="draft",
             evaluators=EVALUATORS,
         )
     assert refused.value.code == "evaluator_unknown"
     with pytest.raises(evaluation.EvaluationRefusedError) as refused:
         evaluation.evaluate(
-            echo_rule(), INPUTS, status="draft", mode="final", evaluators=EVALUATORS  # type: ignore[arg-type]
+            echo_rule(), INPUTS, anchor=anchoring.EMPTY, mode="final", evaluators=EVALUATORS  # type: ignore[arg-type]
         )
     assert refused.value.code == "evaluation_mode_unknown"
     with pytest.raises(ValueError, match="registered already"):
         evaluation.Evaluators(
             (EVALUATORS.get("synthetic.echo", "1"),) * 2  # type: ignore[arg-type]
         )
+
+
+def test_the_status_comes_from_the_decisions_and_a_changed_one_is_refused() -> None:
+    """No caller hands in a status: it is the anchor's, and must still be the record's."""
+    rule = echo_rule()
+    rules = registry.Registry([rule])
+    approved = decided(rule, "approved")
+    # Without a decision a draft rule is never evaluated as reviewed.
+    with pytest.raises(evaluation.EvaluationRefusedError) as refused:
+        evaluation.evaluate(
+            rule, INPUTS, anchor=anchoring.EMPTY, mode="reviewed", evaluators=EVALUATORS
+        )
+    assert refused.value.code == "rule_not_approved"
+    # A decision on another digest does not count for this rule.
+    other = decided(echo_rule(title="Synthetic echo, other"), "approved")
+    assert evaluation.rule_status(other, rule) == "draft"
+    record = evaluation.evaluate(
+        rule, INPUTS, anchor=approved, mode="reviewed", evaluators=EVALUATORS
+    ).record
+    assert record.rule_status == "approved"
+    assert evaluation.reproduce(record, INPUTS, rules=rules, anchor=approved, evaluators=EVALUATORS)
+    for now in (None, "rejected", "withdrawn"):
+        with pytest.raises(evaluation.EvaluationRefusedError) as refused:
+            evaluation.reproduce(
+                record, INPUTS, rules=rules, anchor=decided(rule, now), evaluators=EVALUATORS
+            )
+        assert refused.value.code == "rule_status_changed", now
+    # A draft record claimed as approved is refused under the real (empty) decisions.
+    draft = _draft().record
+    claimed = dataclasses.replace(draft, rule_status="approved", mode="reviewed")
+    with pytest.raises(evaluation.EvaluationRefusedError) as refused:
+        evaluation.reproduce(
+            claimed, INPUTS, rules=rules, anchor=anchoring.EMPTY, evaluators=EVALUATORS
+        )
+    assert refused.value.code == "rule_status_changed"

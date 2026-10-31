@@ -8,12 +8,18 @@ floats), checked against the rule's declared ports and units, and digested,
 so an :class:`EvaluationRecord` names exactly what went in and came out and
 :func:`reproduce` can check it.
 
+**Status.** Never taken on trust: :func:`evaluate` and :func:`reproduce`
+derive a rule's effective status from the server's decisions handed in as a
+``ReviewAnchor`` (:func:`rule_status`), and :func:`reproduce` refuses a record
+whose recorded status is not the status the decisions give now
+(``rule_status_changed``).
+
 **Modes.** ``reviewed`` is allowed only for a rule whose effective status is
 ``approved`` (a decision recorded on the server). ``draft`` is allowed for a
 ``draft`` or ``unreviewed`` rule and gives a :class:`DraftEvaluation`:
 labelled, flagged, never a value for a design (:meth:`DraftEvaluation.as_design_value`
 refuses), and never described as approved. A ``rejected`` or ``withdrawn``
-rule is not evaluated.
+rule is not evaluated in either mode: not even as a draft.
 
 No evaluator is shipped: :func:`shipped_evaluators` is empty.
 """
@@ -26,6 +32,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from app.design import snapshot
+from app.design.model import anchoring
 from app.design.rules import registry
 
 Mode = Literal["reviewed", "draft"]
@@ -218,11 +225,28 @@ class DraftEvaluation:
         )
 
 
+def rule_status(anchor: anchoring.ReviewAnchor, rule: registry.RuleVersion) -> str:
+    """A rule's effective status under the server's decisions: its decision, else its declared one.
+
+    ``withdrawn`` when the newest decision in a scope withdrew it and no
+    other decides it.
+    """
+    decided = anchor.deciding("rule", rule.ref, rule.digest)
+    if decided is None:
+        key = ("rule", rule.ref, rule.digest)
+        withdrawn = any(
+            d is not None and d.decision == "withdrawn"
+            for d in (anchor.tenant.get(key), anchor.global_.get(key))
+        )
+        return "withdrawn" if withdrawn else rule.declared_status
+    return registry.effective_status(rule, decided.decision)
+
+
 def evaluate(
     rule: registry.RuleVersion,
     inputs: Mapping[str, Any],
     *,
-    status: str,
+    anchor: anchoring.ReviewAnchor,
     mode: Mode,
     evaluators: Evaluators,
 ) -> Evaluation | DraftEvaluation:
@@ -231,7 +255,8 @@ def evaluate(
     Args:
         rule: The rule version.
         inputs: By port name, ``{"value": ..., "unit": ...}``.
-        status: The rule's effective status (``registry.effective_status``).
+        anchor: The server's decisions that apply (``engineering_reviews.anchor_for``);
+            the rule's status is derived from them (:func:`rule_status`).
         mode: ``reviewed`` or ``draft``.
         evaluators: Where its evaluator is registered.
 
@@ -246,6 +271,7 @@ def evaluate(
     """
     if mode not in ("reviewed", "draft"):
         raise EvaluationRefusedError(f"unknown mode {mode!r}", "evaluation_mode_unknown")
+    status = rule_status(anchor, rule)
     if status not in registry.RULE_STATUSES:
         raise EvaluationRefusedError(f"unknown status {status!r}", "rule_not_evaluable")
     if status in ("rejected", "withdrawn"):
@@ -285,22 +311,30 @@ def reproduce(
     inputs: Mapping[str, Any],
     *,
     rules: registry.Registry,
+    anchor: anchoring.ReviewAnchor,
     evaluators: Evaluators,
 ) -> bool:
     """Whether re-running a recorded evaluation gives the same output digest.
 
     The rule must still be registered under the recorded ref with the
     recorded digest, and the inputs must digest to the recorded input digest.
-    Re-run in the recorded mode, under the recorded status.
+    Re-run in the recorded mode, under the status the server's decisions
+    give the rule now, which must be the recorded one.
 
     Args:
         record: The record.
         inputs: The inputs, as given to :func:`evaluate`.
         rules: Where the rule is registered.
+        anchor: The server's decisions that apply now.
         evaluators: Where its evaluator is.
 
     Returns:
         ``True`` exactly when the rule, inputs and outputs all match.
+
+    Raises:
+        EvaluationRefusedError: ``rule_status_changed`` when the recorded
+            status is not the one the decisions give now; or any refusal of
+            :func:`evaluate`.
     """
     rule = rules.get(record.rule_ref)
     if rule is None or rule.digest != record.rule_digest:
@@ -310,9 +344,14 @@ def reproduce(
         record.evaluator_version,
     ):
         return False
-    again = evaluate(
-        rule, inputs, status=record.rule_status, mode=record.mode, evaluators=evaluators
-    )
+    status = rule_status(anchor, rule)
+    if status != record.rule_status:
+        raise EvaluationRefusedError(
+            f"{rule.ref} was evaluated as {record.rule_status}; the server's decisions "
+            f"now make it {status}",
+            "rule_status_changed",
+        )
+    again = evaluate(rule, inputs, anchor=anchor, mode=record.mode, evaluators=evaluators)
     return (
         again.record.input_digest == record.input_digest
         and again.record.output_digest == record.output_digest

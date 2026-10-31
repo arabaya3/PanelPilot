@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from app.design.model import anchoring
 from app.design.rules import evaluation, registry
 
 PROVENANCE = registry.Provenance(
@@ -43,3 +44,20 @@ def _echo(values: Mapping[str, evaluation.Value]) -> Mapping[str, Any]:
 
 
 EVALUATORS = evaluation.Evaluators((evaluation.Evaluator("synthetic.echo", "1", _echo),))
+
+
+def decided(rule: registry.RuleVersion, decision: str | None) -> anchoring.ReviewAnchor:
+    """A synthetic anchor in which ``decision`` is recorded on ``rule`` (none: empty).
+
+    Stands in for decisions recorded on the server; no review is implied.
+    """
+    if decision is None:
+        return anchoring.EMPTY
+    record = anchoring.Decided(
+        decision=decision,
+        scope="global",
+        record_id="synthetic-record",
+        decided_at="2026-01-01T00:00:00+00:00",
+        standards=(),
+    )
+    return anchoring.ReviewAnchor(global_={("rule", rule.ref, rule.digest): record})
