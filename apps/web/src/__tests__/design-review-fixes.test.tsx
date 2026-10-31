@@ -333,7 +333,9 @@ describe('saving an unchanged revision', () => {
     fireEvent.change(customerField(), { target: { value: 'Changed' } });
     // The changed state settles after the form's effects run; under CI load
     // that can be a tick after the change event.
-    await waitFor(() => expect(save.disabled).toBe(false));
+    await waitFor(() => {
+      expect(save.disabled).toBe(false);
+    });
     expect(panel().queryByTestId('save-unchanged')).toBeNull();
   });
 
