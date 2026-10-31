@@ -22,6 +22,8 @@ import { AppShell } from '@/components/app-shell';
 import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
+import { ConfigurationPanel } from '@/components/design/configuration-panel';
+import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -85,7 +87,7 @@ import {
   VIEWS,
   type View,
 } from '@/components/design/workspace';
-import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
+import { DownloadIcon, FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
 import { SignInForm } from '@/components/sign-in-form';
 import { QuotationPanel, type QuoteRates } from '@/components/quotation-panel';
@@ -120,6 +122,8 @@ import {
   type ExportPurpose,
   type Refusal,
   type TooLong,
+  type V2ModelSummary,
+  SCHEDULE_FORMATS,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import type { signIn } from '@/lib/auth';
@@ -371,6 +375,7 @@ function DesignWorkspace({
 }) {
   const t = useIsolatingTranslations('design');
   const tw = useIsolatingTranslations('workspace');
+  const tc = useIsolatingTranslations('configuration');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
@@ -418,6 +423,8 @@ function DesignWorkspace({
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedProject | null>(null);
+  /** The opened revision's `pp-design/2` model, or null for a v1 revision. */
+  const [openedModel, setOpenedModel] = useState<V2ModelSummary | null>(null);
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
@@ -836,6 +843,7 @@ function DesignWorkspace({
       canApprove: permits(project, 'approve_revision'),
     });
     setHistory(project.revisions);
+    setOpenedModel(project.model_v2 ?? null);
     // A save, an approval or an opening each answer with the revision as now
     // stored: its validation replaces whatever was known of the last one.
     setValidation(validationOf(project));
@@ -2009,6 +2017,59 @@ function DesignWorkspace({
         )}
 
         {viewPanel(
+          'configuration',
+          <>
+            {opened && (
+              <Panel
+                title={tc('openedTitle', { revision: opened.revision })}
+                testId="opened-configuration"
+              >
+                {openedModel ? (
+                  <div className="flex flex-col gap-4">
+                    <ValidationScopeNote />
+                    <ModelReview model={openedModel} />
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-v1">
+                    {tc('openedV1', { revision: opened.revision, schema: 'pp-design/1' })}
+                  </p>
+                )}
+              </Panel>
+            )}
+            <Panel title={tc('newTitle')}>
+              {opened && token !== null ? (
+                <ConfigurationPanel
+                  key={`${ownerKey}|${opened.id}`}
+                  token={token}
+                  projectId={opened.id}
+                  latestRevision={Math.max(opened.revision, ...opened.revisions)}
+                  request={
+                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
+                  }
+                  note={revisionNote}
+                  dirty={dirty}
+                  onSaved={forOwner((project: SavedProject) => {
+                    onOpened(project, false);
+                  })}
+                  onUnauthorized={forOwner(() => {
+                    void reauthorize();
+                  })}
+                />
+              ) : (
+                <Notice
+                  tone="info"
+                  live={false}
+                  action={goTo('overview', tw('review.saveAction'))}
+                  testId="configuration-not-saved"
+                >
+                  {tc('notSaved')}
+                </Notice>
+              )}
+            </Panel>
+          </>,
+        )}
+
+        {viewPanel(
           'review',
           <>
             <Panel title={t('readiness.title')}>
@@ -2111,6 +2172,44 @@ function DesignWorkspace({
                         busy={exporting}
                         testIdPrefix="revision-export"
                       />
+                      <div
+                        className="flex flex-col gap-2 border-t border-border-subtle pt-3"
+                        data-testid="revision-schedules"
+                      >
+                        <p className="text-sm font-semibold">{t('exports.schedulesTitle')}</p>
+                        {openedModel ? (
+                          <>
+                            <p className="text-sm text-text-muted">
+                              {t('exports.schedulesBody', { revision: opened.revision })}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {SCHEDULE_FORMATS.map((format) => (
+                                <button
+                                  key={format}
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  data-testid={`revision-export-${format}`}
+                                  disabled={exporting}
+                                  aria-busy={exporting || undefined}
+                                  onClick={() => {
+                                    void downloadRevision(format);
+                                  }}
+                                >
+                                  <DownloadIcon width="16" height="16" aria-hidden="true" />
+                                  {t(`format.${format}`)}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <p
+                            className="text-sm text-text-muted"
+                            data-testid="revision-schedules-v1"
+                          >
+                            {t('errors.schedule_requires_v2')}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
                         <p className="text-sm text-text-muted">{t('exports.executionBody')}</p>
                         <div>
