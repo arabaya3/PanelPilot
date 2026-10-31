@@ -71,13 +71,13 @@ API answers seen by the seed (each locale's project):
 
 Browser results, 21 of 21 passed:
 
-| Check | en | ar | he |
-|---|---|---|---|
-| `html` `lang`/`dir` | en/ltr | ar/rtl | he/rtl |
-| Unknown schema said in the overview on open, naming `pp-design/9` | pass | pass | pass |
-| The notice is in the visible overview | pass | pass | pass |
-| An approval with no recorded renderer: "no longer counts" names the export renderer | pass | pass | pass |
-| A refused settings save (`max_circuits_per_rcd: "many"`) focuses that field, `aria-invalid=true` | pass | pass | pass |
-| An unknown setting opens the JSON section and focuses its text | pass | pass | pass |
+| Check                                                                                            | en     | ar     | he     |
+| ------------------------------------------------------------------------------------------------ | ------ | ------ | ------ |
+| `html` `lang`/`dir`                                                                              | en/ltr | ar/rtl | he/rtl |
+| Unknown schema said in the overview on open, naming `pp-design/9`                                | pass   | pass   | pass   |
+| The notice is in the visible overview                                                            | pass   | pass   | pass   |
+| An approval with no recorded renderer: "no longer counts" names the export renderer              | pass   | pass   | pass   |
+| A refused settings save (`max_circuits_per_rcd: "many"`) focuses that field, `aria-invalid=true` | pass   | pass   | pass   |
+| An unknown setting opens the JSON section and focuses its text                                   | pass   | pass   | pass   |
 
 The Arabic and Hebrew strings were checked for presence, direction and placement only. They are AI-written and **still need a native-speaker review**. One point for that reviewer: the Hebrew unknown-schema sentence uses גרסה both for the revision and for the PanelPilot version.
