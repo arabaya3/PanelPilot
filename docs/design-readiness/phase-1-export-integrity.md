@@ -659,11 +659,11 @@ An approval now also records `approved_renderer_version` (migration `c5d1e8a3f7b
 
 **What is frozen and what is regenerated.**
 
-| Frozen when saved or approved, never rewritten | Regenerated on every export |
-|---|---|
-| The design snapshot and its SHA-256; the stored request and findings; rules, catalogue and profile hash of the revision | The file bytes, rendered from the snapshot by the current renderer |
+| Frozen when saved or approved, never rewritten                                                                                       | Regenerated on every export                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| The design snapshot and its SHA-256; the stored request and findings; rules, catalogue and profile hash of the revision              | The file bytes, rendered from the snapshot by the current renderer                      |
 | The approval: snapshot hash, profile hash, rules, catalogue and renderer versions, findings fingerprint, approver display name, date | The status mark (label, identity line, findings sheet), from the frozen approval record |
-| | The title-block revision table, from the frozen rows of the project's revisions |
+|                                                                                                                                      | The title-block revision table, from the frozen rows of the project's revisions         |
 
 Nothing is recalculated on export. A renderer change therefore cannot alter a frozen snapshot, but it can alter the file printed from it; that is what the renderer version guards.
 
