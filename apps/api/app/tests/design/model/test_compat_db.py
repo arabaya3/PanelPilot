@@ -36,7 +36,9 @@ from app.core.db import get_session
 from app.core.errors import install_exception_handlers
 from app.design import CATALOGUE_VERSION, RULES_VERSION, snapshot
 from app.models.schemas.auth import CurrentUser, Role
+from app.models.tables.base import Base
 from app.models.tables.tenant import TenantRow
+from app.tests import db_target
 from app.tests.design.model.compat_support import DESIGNED
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
@@ -56,10 +58,16 @@ ROW_CASES = ("residential", "multi_board", "motors", "plc", "arabic", "hebrew", 
 
 @pytest.fixture(scope="module", name="engine")
 def _engine() -> Iterator[Engine]:
-    in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
-    if not in_ci and not DATABASE_URL.rsplit("/", 1)[-1].startswith("panelpilot_phase1_"):
-        pytest.fail(f"refusing to run against a non-disposable database: {DATABASE_URL}")
+    # Only a disposable database, in CI too (app.tests.db_target).
+    try:
+        db_target.require_disposable(DATABASE_URL)
+    except db_target.UnsafeDatabaseTargetError as exc:
+        pytest.fail(str(exc))
     engine = create_engine(DATABASE_URL)
+    # The schema this module writes into, as the other database tests create
+    # it: run alone against a new database, every test errored with
+    # "relation tenants does not exist".
+    Base.metadata.create_all(engine)
     yield engine
     engine.dispose()
 
