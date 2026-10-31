@@ -9,13 +9,16 @@ registered rules (M3).
 Codes:
 
 ``template_unreviewed``
-    A component or strip uses a template whose review status is not
-    ``approved`` (``unreviewed`` or ``rejected``). Blocking, and an
-    execution blocker: nothing designed on an unreviewed template may be
+    A component or strip uses a template no qualified engineer has reviewed.
+    A warning for design review (every legacy template is unreviewed), and
+    an execution blocker: nothing designed on an unreviewed template may be
     executed.
+``template_rejected``
+    A component or strip uses a template a reviewer rejected. Blocking for
+    approval, and an execution blocker.
 ``out_of_execution_scope``
     A template carries a ``restricted_scope`` (e.g. ``fire_pump``,
-    ``life_safety``). Blocking, and an execution blocker.
+    ``life_safety``). Blocking for approval, and an execution blocker.
 ``unconnected_required_terminal``
     A ``required`` terminal of a component is in no net. Blocking for
     approval (the proposed D-M2-6 default); a draft may hold it.
@@ -35,13 +38,16 @@ from app.design.model import entities
 #: Every code this module produces.
 CODES = (
     "template_unreviewed",
+    "template_rejected",
     "out_of_execution_scope",
     "unconnected_required_terminal",
     "wire_attribute_unset",
 )
 
 #: The codes that make execution impossible, whatever else is resolved.
-EXECUTION_BLOCKING = frozenset({"template_unreviewed", "out_of_execution_scope"})
+EXECUTION_BLOCKING = frozenset(
+    {"template_unreviewed", "template_rejected", "out_of_execution_scope"}
+)
 
 
 @dataclass(frozen=True)
@@ -79,13 +85,24 @@ def _template_findings(
     template: entities.ComponentTemplate, **location: str
 ) -> list[StructuralFinding]:
     out: list[StructuralFinding] = []
-    if template.review.status != "approved":
+    if template.review.status == "rejected":
+        out.append(
+            _finding(
+                "template_rejected",
+                "blocking",
+                f"uses template {template.ref}, which a reviewer rejected; "
+                "it may not be approved or executed",
+                template=template.ref,
+                **location,
+            )
+        )
+    elif template.review.status != "approved":
         out.append(
             _finding(
                 "template_unreviewed",
-                "blocking",
-                f"uses template {template.ref}, whose review status is "
-                f"{template.review.status}; it may not be executed",
+                "warning",
+                f"uses template {template.ref}, which no qualified engineer has reviewed; "
+                "it may not be executed",
                 template=template.ref,
                 **location,
             )

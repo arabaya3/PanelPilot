@@ -99,10 +99,10 @@ def test_a_v1_read_is_classified_as_before(case: str) -> None:
     ) == integrity.project_findings(read.project, conditions)
 
 
-def _structural(code: str) -> findings_v2.StructuralFinding:
+def _structural(code: str, severity: str) -> findings_v2.StructuralFinding:
     return findings_v2.StructuralFinding(
         code=code,
-        severity="blocking",
+        severity=severity,
         message=f"{code} here",
         location=MappingProxyType({"board_id": "DB1", "component": "c-1"}),
         blocks_execution=code in findings_v2.EXECUTION_BLOCKING,
@@ -110,19 +110,28 @@ def _structural(code: str) -> findings_v2.StructuralFinding:
 
 
 @pytest.mark.parametrize(
-    ("code", "severity", "confirm"),
+    ("code", "emitted", "severity", "confirm"),
     [
-        ("template_unreviewed", FindingSeverity.WARNING, True),
-        ("out_of_execution_scope", FindingSeverity.WARNING, True),
-        ("unconnected_required_terminal", FindingSeverity.BLOCKING, False),
-        ("wire_attribute_unset", FindingSeverity.WARNING, True),
-        ("a_code_not_yet_mapped", FindingSeverity.BLOCKING, False),
+        # The findings module's severity is kept; confirmation is the policy's.
+        ("template_unreviewed", "warning", FindingSeverity.WARNING, True),
+        ("template_rejected", "blocking", FindingSeverity.BLOCKING, True),
+        ("out_of_execution_scope", "blocking", FindingSeverity.BLOCKING, True),
+        ("unconnected_required_terminal", "blocking", FindingSeverity.BLOCKING, False),
+        ("wire_attribute_unset", "warning", FindingSeverity.WARNING, True),
+        # A severity the store does not know is stored blocking.
+        ("a_code_not_yet_mapped", "fatal", FindingSeverity.BLOCKING, False),
     ],
 )
 def test_v2_findings_are_stored_as_decided(
-    monkeypatch: pytest.MonkeyPatch, code: str, severity: FindingSeverity, confirm: bool
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    emitted: str,
+    severity: FindingSeverity,
+    confirm: bool,
 ) -> None:
-    monkeypatch.setattr(findings_v2, "structural_findings", lambda _model: (_structural(code),))
+    monkeypatch.setattr(
+        findings_v2, "structural_findings", lambda _model: (_structural(code, emitted),)
+    )
     (found,) = design_projects._v2_findings(None)  # type: ignore[arg-type]
     assert found.code == code
     assert found.severity is severity
@@ -130,6 +139,15 @@ def test_v2_findings_are_stored_as_decided(
     assert found.source == "integrity"
     assert found.board_id == "DB1"
     assert found.values == {"board_id": "DB1", "component": "c-1"}
+
+
+def test_the_findings_module_grades_the_codes_as_decided() -> None:
+    """Rejected or restricted templates block approval; unreviewed ones do not."""
+    assert {
+        "template_unreviewed",
+        "template_rejected",
+        "out_of_execution_scope",
+    } == findings_v2.EXECUTION_BLOCKING
 
 
 def test_execution_blockers_name_the_v2_execution_codes() -> None:
@@ -159,3 +177,11 @@ def test_printed_findings_leave_out_the_v2_structural_ones() -> None:
         code="template_unreviewed", severity=FindingSeverity.WARNING, message="m", source="x"
     )
     assert design_projects._printed([kept, dropped]) == [kept]
+
+
+def test_the_written_schema_default_agrees_in_both_places() -> None:
+    """The setting's default and the model's documented default never drift apart."""
+    from app.core.config import Settings
+    from app.design.model import versions
+
+    assert Settings.model_fields["design_snapshot_schema"].default == versions.WRITTEN_BY_DEFAULT

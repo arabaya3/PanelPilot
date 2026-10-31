@@ -226,19 +226,15 @@ def _current_classification(
     return _classified(_design_findings(read.project, conditions, read.v2))
 
 
-#: How a ``pp-design/2`` structural finding is stored, by code: its severity and
-#: whether an engineer must confirm it. Decided by the integration owner (M2a):
-#: an unreviewed or out-of-scope template does not block design-review
-#: approval (every legacy template is unreviewed, so blocking would make every
-#: v2 revision unapprovable); it is a warning to confirm, and an execution
-#: blocker (``_execution_blockers``). A required terminal in no net blocks
-#: approval; a wire attribute with no value is a warning.
-_V2_FINDING_POLICY: dict[str, tuple[FindingSeverity, bool]] = {
-    "template_unreviewed": (FindingSeverity.WARNING, True),
-    "out_of_execution_scope": (FindingSeverity.WARNING, True),
-    "unconnected_required_terminal": (FindingSeverity.BLOCKING, False),
-    "wire_attribute_unset": (FindingSeverity.WARNING, True),
-}
+#: Which ``pp-design/2`` structural findings an engineer must confirm. Their
+#: severity is the findings module's own (``findings_v2``): an unreviewed
+#: template is a warning for design review (every legacy template is
+#: unreviewed) and an execution blocker; a rejected or restricted-scope
+#: template, or a required terminal in no net, blocks approval; a wire
+#: attribute with no value is a warning (decided by the integration owner, M2a).
+_V2_CONFIRM: frozenset[str] = frozenset(
+    {"template_unreviewed", "template_rejected", "out_of_execution_scope", "wire_attribute_unset"}
+)
 
 
 def _v2_findings(model: entities.DesignModelV2) -> list[DesignFinding]:
@@ -249,7 +245,13 @@ def _v2_findings(model: entities.DesignModelV2) -> list[DesignFinding]:
     """
     out: list[DesignFinding] = []
     for found in findings_v2.structural_findings(model):
-        severity, confirm = _V2_FINDING_POLICY.get(found.code, (FindingSeverity.BLOCKING, False))
+        # An unknown severity is stored blocking: never quietly weaker than meant.
+        severity = (
+            FindingSeverity(found.severity)
+            if found.severity in {item.value for item in FindingSeverity}
+            else FindingSeverity.BLOCKING
+        )
+        confirm = found.code in _V2_CONFIRM
         out.append(
             DesignFinding(
                 code=found.code,

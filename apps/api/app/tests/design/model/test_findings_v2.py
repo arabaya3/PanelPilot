@@ -75,11 +75,17 @@ def test_a_rejected_template_is_a_finding() -> None:
     model = _composed("feeder_1p", reject)
     rejected = [
         f
-        for f in _codes(model, "template_unreviewed")
+        for f in _codes(model, "template_rejected")
         if f.location["template"] == "global/synth-bar/v1"
     ]
     assert rejected
-    assert all(f.blocks_execution for f in rejected)
+    # Blocking for approval, not merely unreviewed, and never executable.
+    assert all(f.severity == "blocking" and f.blocks_execution for f in rejected)
+    assert not [
+        f
+        for f in _codes(model, "template_unreviewed")
+        if f.location["template"] == "global/synth-bar/v1"
+    ]
 
 
 def test_a_restricted_template_is_out_of_execution_scope() -> None:
