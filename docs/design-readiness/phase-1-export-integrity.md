@@ -645,7 +645,7 @@ Decided by the integration owner: an approval binds the policy that applied when
 
 ### Limitations
 
-- **Renderer wording is versioned since `c5d1e8a3f7b2`** (see "Renderer version" below). The version is only as good as its upkeep; a test of reference exports enforces it for the content it reads.
+- **Renderer wording is versioned since `c5d1e8a3f7b2`** (see "Renderer version" below). A test of reference exports enforces it for the content it reads, across four variants.
 - **Strict by design:** any change to the default profile that the revision's settings inherit changes the resolved profile hash, including purely presentational defaults (a title-block field, a page order). Such a change makes approved revisions not current and their exports refused until saved again.
 - The cheap check (below) misses a findings-policy reclassification and a snapshot that no longer reads; such an approval shows as not current once that revision is opened, approved or exported.
 
@@ -667,22 +667,70 @@ An approval now also records `approved_renderer_version` (migration `c5d1e8a3f7b
 
 Nothing is recalculated on export. A renderer change therefore cannot alter a frozen snapshot, but it can alter the file printed from it; that is what the renderer version guards.
 
-**What counts as material.** The documents settle the principle (`docs/architecture/dynamic-design-engine.md`: every artifact is a function of snapshot, profile hash and renderer version, and renderer versions must make a renderer change detectable), not a list. From the code, the content a reader acts on is:
+**Classification policy (owner decision, 2026-10-31).** A change that can affect the interpretation, dimensions, connections, instructions, findings or approval meaning of a review export is **material** and requires re-review: bump `RENDERER_VERSION`, so every approval granted under the old version stops counting. Only a **demonstrably cosmetic** change keeps approvals counting, and "demonstrably" means the reference-export test shows the content unchanged. **When in doubt, it is material.**
 
-- **PDFs:** the page count and the words on each page, in reading order: figures, units, designations, titles, notes, the status label and identity, findings.
-- **DXF:** every entity's layer, type, text and geometry (to 0.001 mm).
-- **JSON:** the whole document, with its `export_status`.
+What the test reads as content (`app/tests/design/render_content.py`):
 
-Fonts, colours, line widths, dash patterns, DXF layer colours, line types, text styles, handles and file metadata are treated as presentation. `app/tests/design/test_renderer_version.py` renders a fixed synthetic project in the five formats and compares that content with fingerprints recorded for the current version (`renderer_fingerprints.json`): a content change without a version bump fails. Its own tests show a reworded approval label changes all five, and a changed PDF dash pattern and DXF layer colours change none.
+- **PDFs** (drawing, calculations, quotation): per page, its size; every word with its position and height (0.1 pt), which covers figures, units, designations, titles, notes, the status label and identity line, and the findings sheet; and every line, rectangle and curve with its points, stroke width and dash pattern.
+- **DXF:** every entity's layer, type, text and geometry, polyline vertices included, to 0.001 mm. Dashing is the `DASHED` layer, so it is content.
+- **JSON:** the whole document, including `export_status`.
 
-**Needs an engineering decision** (counted as material until decided, the strict reading):
+Only these are presentation: PDF font files and colours, PDF file properties (title, author, creator), DXF layer colours, line types, text styles, handles and header variables.
 
-1. Whether moving printed text or drawing geometry without changing it (a layout change) is material.
-2. Whether a change to the findings sheet's wording alone, with the same codes and severities, is material.
-3. Whether a correction of a typographical error in a label is material.
-4. Whether the quotation PDF (a provisional estimate, never an approved price) should bind approvals at all.
+| Change                                                                                         | Material?           | Why                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Drawing geometry moves or is resized (lines, boxes, frames, slots, sheet placement), same text | **Yes**             | Geometry carries dimensions and connections; the test cannot tell a harmless shift from a moved connection. `test_moved_drawing_geometry_is_material` and `test_moved_or_resized_boxes_are_material` show it is caught in the PDF and the DXF. |
+| Printed text moves, even with the same words in the same order                                 | **Yes**             | A rating beside another breaker can keep its reading order; position is content.                                                                                                                                                               |
+| Line weight or dash pattern changes (solid becomes dashed, a line is dropped)                  | **Yes**             | A dashed slot means "no width", and a dashed line a mechanical link; `test_a_pdf_only_drawing_change_is_material` shows a PDF-only change is caught.                                                                                           |
+| Findings wording, same codes and severities                                                    | **Yes**             | The findings sheet tells the reviewer what to check and why; its wording is part of the approval's meaning.                                                                                                                                    |
+| A typo fixed in a label or note                                                                | **Yes**, by default | A spelling change can change a reading (a designation, a unit, a negation); the test sees it, so the version is bumped. A team may later agree a narrower rule; until then, re-review.                                                         |
+| Quotation PDF content                                                                          | **Yes**             | It is exported from an approved revision under the same approval, and prices and quantities affect interpretation, even though it is labelled a provisional estimate.                                                                          |
+| Status label, identity line, title-block revision table                                        | **Yes**             | They state what was approved, by whom, and under which design, rules and renderer.                                                                                                                                                             |
+| PDF font files or colours, PDF file properties, DXF layer colours                              | No                  | Demonstrably cosmetic: `test_a_demonstrably_cosmetic_change_is_not_material` shows the content is unchanged. Nothing in the drawings is colour-coded today; if colour ever carries meaning, it becomes content.                                |
 
-**Limits.** The reference project covers one board with two loads; a renderer change confined to content it does not exercise (a motor circuit, a PLC page, Arabic or Hebrew text) is not caught by the test and depends on the developer bumping the version. Every bump makes every approval stop counting.
+**Enforcement.** `app/tests/design/test_renderer_version.py` renders every review format (drawing PDF, calculations PDF, quotation PDF, DXF, JSON) from four synthetic projects with their real findings on the findings sheet: basic (sockets, lighting), motors (star-delta, direct-on-line and drive starters), Arabic and Hebrew (right-to-left drawing language, motor circuit). It fails when any of the 20 contents changes under the same `RENDERER_VERSION`, and checks that the four variants differ in every format, so each exercises its own content. Re-recording the fingerprints (`RECORD_RENDERER_FINGERPRINTS=1`) refuses to write changed content under an unchanged version. Only a change to the extraction itself (`render_content.py`) is re-recorded from scratch, by deleting the file; every fingerprint then changes in the diff, and the reviewer checks that no renderer file changed with it. CSV, QET, AML and PLC are not review formats: they stay refused.
+
+**Identifying what was approved.** The approval record (snapshot hash, profile hash, rules, catalogue and renderer versions, findings fingerprint, approver name, date) is frozen in the database. Every export is generated anew from the frozen snapshot; no exported file is stored. Since renderer `2026.10.31.2` each file's identity line ends with `rules <version>, renderer <version>` next to the short design hash, so a file printed by another renderer, or for another design, says so on its face. Two files with the same design hash and renderer version are the same rendering of the same inputs; what else feeds a file (the approval state, the title block's rows for the project's other revisions, the pricing sent for a quotation) is printed on it too.
+
+**Not a compliance claim.** This mechanism detects that an export's content changed since a review. It says nothing about whether a design or a document is correct, compliant with any standard, or ready for execution; execution export stays refused.
+
+**Limits.** The four variants do not exercise every page type (a PLC page, a multi-board set, every market); a change confined to one of those relies on the developer bumping the version, and on review of the change.
+
+### Legacy approvals: re-approval runbook (owner decision, 2026-10-31)
+
+Approvals that lack reliable renderer-version evidence must be granted again. That is every approval made before migration `c5d1e8a3f7b2`: the pre-Phase 1 ones (never bound to a stored design) and Phase 1 ones made before the renderer was recorded.
+
+**Same revision or new revision.** Re-approval happens on a **new revision**. Approving the same revision again is refused (`revision_already_approved`), and must stay so. A revision holds one approval record, so granting it again would overwrite the only record of the original approval. The old revision is never recalculated or rewritten. Saving its stored request again designs a new revision under the current rules; with the same inputs and rules it has the same design hash.
+
+**What stays visible in the history.** Each old revision keeps its snapshot and hash, its approver's frozen name, the approval date, its note and the policy recorded with it. It is listed as approved but "no longer counts", with the reason (the export renderer). Its exports are refused with `revision_stale`. The new revision carries its own author, note ("Re-approval under the current renderer" is suggested), approver and date.
+
+**Before release.**
+
+1. Count, read-only, on each environment you are authorised to read (a restored backup is best): `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f apps/api/scripts/legacy-approval-counts.sql`. It runs in a read-only transaction, prints counts only, and works before or after the migrations. `projects_outstanding` is the number of projects that need a re-approval.
+2. Tell affected tenants (guidance below) before deploying.
+
+**Deploy.** Follow "Deployment steps"; no extra step is needed for approvals. No data is changed: `approved_renderer_version` is added empty, and an empty value reads as `unversioned`.
+
+**After deploy, per affected project.**
+
+1. Open the project. The approved revision says it no longer counts because the export renderer changed.
+2. Review the design as stored. If it is still what is wanted, save it as a new revision; if anything changed, edit and save.
+3. A reviewer, owner or admin reviews the new revision's exports and approves it.
+4. Re-run the counts; `projects_outstanding` falls as projects are re-approved.
+
+**User-facing guidance (suggested text).** "PanelPilot now records which version of its document generator produced an approved review export. Approvals granted before this update did not record it, so they no longer count, and their exports are refused rather than printed differently under the same approval. Your approved revisions and their approval history are kept unchanged. To approve again: open the project, save the revision as a new revision, review its exports, and approve it. Execution exports remain unavailable."
+
+**Tested on representative legacy data** (synthetic, disposable database; see `phase-1/cloud-closure/log.md`, "Production-like dataset"):
+
+- 300 tenants in six owner cases, 1,234 revisions and 484 pre-Phase 1 approvals at `main`'s schema, upgraded to head;
+- 11 Phase 1-era approvals, with the renderer cleared to their pre-`c5d1e8a3f7b2` state, `c5d1e8a3f7b2` downgraded and upgraded with the data in place;
+- the recovery above on 31 projects: in every case the old export was refused, re-approving the same revision was refused, the new revision was approved and exported with its renderer in the identity line, execution stayed refused, and the old revision's row was byte-for-byte unchanged.
+
+The database test `test_a_legacy_approval_is_recovered_on_a_new_revision_and_kept_in_history` checks the same path.
+
+### Reviewer role (owner decision, 2026-10-31)
+
+For this phase, `reviewer` stays one role, for both operator review of library content and design approval, and the owner, admin and tenant boundaries stay as described in "Permissions". One account may save a revision and approve it; there is no four-eyes rule yet. These are different responsibilities: one judges sourced library passages, the other approves a tenant's design for review. A later phase may need to separate them (for example, a design approver who cannot verify library content, or the reverse); any split must keep approval within the tenant and keep an approval's recorded account.
 
 ### Database targets for destructive tests
 

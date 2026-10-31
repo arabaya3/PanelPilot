@@ -1168,11 +1168,14 @@ def _revision_mark(
         approver = names.printed_approver(row)
         identity = (
             f"{where}, approved by {approver} on {row.approved_at.date().isoformat()}, "
-            f"design {digest}, rules {row.rules_version}"
+            f"design {digest}, rules {row.rules_version}, renderer {RENDERER_VERSION}"
         )
         label = marking.REVIEW_APPROVED_LABEL
     else:
-        identity = f"{where}, not approved, design {digest}, rules {row.rules_version}"
+        identity = (
+            f"{where}, not approved, design {digest}, rules {row.rules_version}, "
+            f"renderer {RENDERER_VERSION}"
+        )
         label = marking.DRAFT_LABEL
     return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
 

@@ -81,3 +81,46 @@ Browser results, 21 of 21 passed:
 | An unknown setting opens the JSON section and focuses its text                                   | pass   | pass   | pass   |
 
 The Arabic and Hebrew strings were checked for presence, direction and placement only. They are AI-written and **still need a native-speaker review**. One point for that reviewer: the Hebrew unknown-schema sentence uses גרסה both for the revision and for the PanelPilot version.
+
+## The local `test_robots` failure (2026-10-31)
+
+`app/tests/ingestion/test_robots.py::test_an_end_anchor_matches_only_at_the_end` fails under this container's Python 3.13.17 and passes under Python 3.12, on the base and on the candidates alike:
+
+| Ref                       | Python 3.13.17 | Python 3.12.3                                              |
+| ------------------------- | -------------- | ---------------------------------------------------------- |
+| `phase1-base` (`daeb143`) | fails          | passes (32/32 in the file)                                 |
+| #207 `c8f2fa4`            | fails          | not run separately; its full suite passed under 3.12 later |
+| #208 `de534c3`            | fails          | passes (32/32 in the file)                                 |
+
+**Cause.** Python 3.13.17's `urllib.robotparser.RuleLine` now handles `*` and `$` itself: it strips the trailing `$` from `path` and keeps it as `fullmatch`. Python 3.12's leaves them percent-encoded (`/%2A.pdf%24`). PanelPilot's wildcard shim (`app/ingestion/robots.py`, `_original_pattern`) restores `*` and `$` from the encoded `path`, so under 3.13.17 it gets `/*.pdf` without the anchor, and `/a/manual.pdf.html` is wrongly disallowed.
+
+**Impact.** None for the current deployment: CI (`PYTHON_VERSION: '3.12'`) and the API image (`python:3.12-slim`) use 3.12. It passed in CI's `api (test)` job, for example [#207 job 124381785550](https://github.com/arabaya3/PanelPilot/actions/runs/41149320400/job/124381785550) and [#208 job 124381862905](https://github.com/arabaya3/PanelPilot/actions/runs/41149344371/job/124381862905). **It must be fixed before the runtime moves to a Python with the new `robotparser`**: the shim would then over-block crawls. Not part of Phase 1; not fixed here.
+
+## Production-like dataset (2026-10-31)
+
+Synthetic data only, on a disposable database `panelpilot_phase1_prodlike`. The scripts are in `prodlike/`.
+
+- **Seed at `main`'s schema** (`a7d1e3f5b2c8`), with `prodlike/seed_prodlike.py`:
+  - 300 tenants, 50 in each owner case: normal; tied oldest accounts; oldest account inactive, with an admin; oldest inactive, no admin; deactivated tenant; single account without a role;
+  - 2–6 accounts each;
+  - 600 projects, 1,234 revisions, 484 approvals with typed names (pre-Phase 1).
+- **Backup** with `pg_dump -Fc` (310 kB) before migrating.
+- **Read-only counts before** (`apps/api/scripts/legacy-approval-counts.sql`): 484 approved, 484 unbound, 0 without renderer, in 365 projects and 257 tenants.
+- **Upgrade `a7d1e3f5b2c8` → head** in 0.92 s, exit 0; `alembic check` clean. The migration reported:
+  - owners set for 150 tenants;
+  - 50 created-time ties and 100 inactive-first-account tenants left without an owner, 50 of them with no active admin;
+  - 484 approval policies backfilled; 391 approver names, 93 "a team member".
+- **Gate.** `owner-report` exited 1: 150 tenants without an active owner, 50 needing `assign-owner`. `assign-owner` on each tenant's oldest active account succeeded 50/50, and `owner-report` then exited 0.
+- **Phase 1-era approvals.** 11 projects (all that matched the selection) were saved again and approved by the current code, then had their renderer cleared, as if approved before `c5d1e8a3f7b2`. With that data in place, `c5d1e8a3f7b2` was downgraded to `b4e8d2f6a9c1` and upgraded again; counts then showed 11 approvals without renderer.
+- **Recovery** (`prodlike/recovery.py`) on 20 pre-Phase 1 projects and those 11:
+
+| Check                                                        | Pre-Phase 1 (20)                        | Phase 1-era (11)                        |
+| ------------------------------------------------------------ | --------------------------------------- | --------------------------------------- |
+| Old revision's export                                        | refused, `revision_not_validated`       | refused, `revision_stale`               |
+| Approving the same revision again                            | refused, `revision_already_approved`    | refused, `revision_already_approved`    |
+| New revision saved and approved; its export                  | REVIEW APPROVED                         | REVIEW APPROVED                         |
+| Renderer named in the identity line                          | yes                                     | yes                                     |
+| Execution export                                             | refused, `execution_package_incomplete` | refused, `execution_package_incomplete` |
+| Old revision's row unchanged (every column but `updated_at`) | 20/20                                   | 11/11                                   |
+
+A first run stopped part-way because the script leaked database sessions (my script, not the application), after recovering 15 projects; those stayed correctly recovered. Counts after: `projects_outstanding` 319, the 365 affected projects less the 46 recovered.
