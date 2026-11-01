@@ -98,8 +98,9 @@ LEGEND = (
     "first part only.",
     "Thick bar beside two points: a bridge between a strip point's two sides.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
-    f"Text is never smaller than {layout.BODY_PT:g} pt ({layout.SECONDARY_PT:g} pt for grey "
-    "detail lines and pin markings at a symbol) on the cross-reference sheets, and "
+    f"Text is never smaller than {layout.BODY_PT:g} pt on the cross-reference sheets (grey "
+    f"wire and net detail lines {layout.DETAIL_PT:g} pt; pin markings and a symbol's own text "
+    f"at a symbol {layout.SECONDARY_PT:g} pt), and "
     f"{routing.BODY_PT:g} pt ({routing.SECONDARY_PT:g} pt grey) on the routed sheets: a "
     "product readability target at A3, not a drawing standard.",
 )

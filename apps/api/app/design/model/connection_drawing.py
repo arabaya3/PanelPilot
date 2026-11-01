@@ -65,6 +65,9 @@ BODY_PT = 6.0
 #: Secondary text only: the grey wire-detail and net lines under a
 #: cross-reference or a marking, and pin markings repeated at a symbol.
 SECONDARY_PT = 5.0
+#: Grey detail lines under a row: wire id and values, the net (M5: raised from 5 pt
+#: after the print-size review; pin markings at a symbol stay at SECONDARY_PT).
+DETAIL_PT = 6.0
 #: Block titles.
 TITLE_PT = 7.5
 
@@ -458,6 +461,9 @@ class DrawingSet:
     pins_off: frozenset[tuple[str, str]] = frozenset()
     #: The routed sheets (``connection_routing.RoutedSet``), drawn after these sheets.
     routed: Any = None
+    #: The sheet each row end's line is printed on, by (row index, end index):
+    #: a row continued on another sheet reads its references from there.
+    line_sheets: dict[tuple[int, int], int] = field(default_factory=dict)
 
     def terminal_keys(self) -> set[tuple[str, str, str]]:
         """The ``TerminalRef.key`` of every drawn terminal row."""
@@ -1083,11 +1089,16 @@ def drawing_set(
     # A cross-reference's text depends on where its far end is drawn, and
     # where things are drawn depends on how long the texts are: lay out
     # again with the places found until they no longer change.
+    line_sheets: dict[tuple[int, int], int] = {}
     for _round in range(8):
-        result = _lay_out(model, places, boards_share_sheets, pins_off)
-        if result.places == places and result.pins_off == pins_off:
+        result = _lay_out(model, places, boards_share_sheets, pins_off, line_sheets)
+        if (
+            result.places == places
+            and result.pins_off == pins_off
+            and result.line_sheets == line_sheets
+        ):
             break
-        places, pins_off = result.places, result.pins_off
+        places, pins_off, line_sheets = result.places, result.pins_off, result.line_sheets
     assert result is not None
     from app.design.model import connection_routing  # the routing reads this module
 
@@ -1130,6 +1141,7 @@ def _lay_out(
     previous: dict[Key, Place] | None,
     share: bool,
     pins_off: frozenset[tuple[str, str]] = frozenset(),
+    line_sheets: dict[tuple[int, int], int] | None = None,
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1180,7 +1192,9 @@ def _lay_out(
         for index, row in enumerate(terminal_rows)
     }
 
-    blocks = _blocks(model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts)
+    blocks = _blocks(
+        model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts, line_sheets or {}
+    )
     for block in blocks:
         off = frozenset(t for owner, t in pins_off if owner == block.owner_id)
         if off and block.kind == "component":
@@ -1200,7 +1214,13 @@ def _lay_out(
     dropped = {
         (p.owner_id, t) for sheet in drawn.sheets for p in sheet.parts for t in p.pins_dropped
     }
-    return dataclasses.replace(drawn, pins_off=pins_off | dropped)
+    printed_on = {
+        (spec.rows[0], spec.index): p.sheet
+        for p in placed
+        for spec, _slot, _span in p.lines
+        if spec.kind == "end"
+    }
+    return dataclasses.replace(drawn, pins_off=pins_off | dropped, line_sheets=printed_on)
 
 
 def _blocks(
@@ -1212,6 +1232,7 @@ def _blocks(
     templates: dict[str, entities.ComponentTemplate],
     known: dict[Key, Place],
     cuts: FullTexts,
+    line_sheets: dict[tuple[int, int], int],
 ) -> list[_Block]:
     # Owners in schedule order, each with its rows' indexes.
     owners: list[tuple[str, str, str, list[int]]] = []
@@ -1245,12 +1266,14 @@ def _blocks(
     ) -> list[_Half]:
         return [(line, size, bold, tone, role, n) for line in wrap(text, room, size, bold, cuts)]
 
-    def here_of(index: int) -> int:
+    def here_of(index: int, n: int = -1) -> int:
+        if (index, n) in line_sheets:
+            return line_sheets[(index, n)]
         return known[keys[index]].sheet if keys[index] in known else -1
 
     def end_spec(index: int, n: int, first: bool, text_room: float) -> _Spec:
         end = all_ends[index][n]
-        a, b = end_texts(end, here_of(index))
+        a, b = end_texts(end, here_of(index, n))
         loud = end.wire_missing
         return _Spec(
             (index,),
@@ -1259,7 +1282,7 @@ def _blocks(
             first,
             halves(a, BODY_PT, text_room, tone="plain", role="far", n=n)
             + halves(
-                b, SECONDARY_PT, text_room, bold=loud, tone="loud" if loud else "grey",
+                b, DETAIL_PT, text_room, bold=loud, tone="loud" if loud else "grey",
                 role="detail", n=n,
             ),
         )  # fmt: skip
@@ -1312,7 +1335,7 @@ def _blocks(
             )
         block = _Block(board_id, kind, owner_id, name, notes, template_ref, symbol)
         _widen(block, [terminal_rows[i] for i in indexes], [
-            end_texts(end, here_of(i))[0] for i in indexes for end in all_ends[i]
+            end_texts(end, here_of(i, n))[0] for i in indexes for n, end in enumerate(all_ends[i])
         ])  # fmt: skip
         text_room = block.text_right - block.text_left
         ordered = list(indexes)
@@ -1427,8 +1450,8 @@ def _mark_lines(row: schedules.TerminalRow, cont: bool, room: float) -> list[_Ha
     ]
     if True:  # the net is repeated on a continued row
         out += [
-            (t, SECONDARY_PT, False, "grey", "net", 0)
-            for t in wrap(row_net(row), room, SECONDARY_PT, False, cuts)
+            (t, DETAIL_PT, False, "grey", "net", 0)
+            for t in wrap(row_net(row), room, DETAIL_PT, False, cuts)
         ]
     return out
 
