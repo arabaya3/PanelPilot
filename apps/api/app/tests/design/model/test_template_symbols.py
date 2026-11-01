@@ -19,7 +19,7 @@ def _template() -> dict[str, Any]:
     """The synthetic relay template of the control-relay drawing case (it has a symbol)."""
     body = CONFIGS["drawing_control_relay"]["configuration"]
     found = next(t for t in body["templates"] if t["ref"] == "tenant/synth-drw-relay/v1")
-    template = copy.deepcopy(found)
+    template: dict[str, Any] = copy.deepcopy(found)
     shapes = template["symbol"]["shapes"]
     template["symbol"]["shapes"] = sorted(
         shapes, key=lambda s: (s["kind"], tuple(s["points"]), s["text"] or "")
