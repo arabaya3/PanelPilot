@@ -49,14 +49,18 @@ from app.tests.design.test_drawing_geometry import (
     EPS,
     PRIMARY_MIN_PT,
     SECONDARY_MIN_PT,
+    TRUNCATION_MARKER,
+    BlockRead,
     Box,
     P,
     Page,
+    Run,
     Seg,
     _ink,
     _rect,
     _symbol,
     _v1,
+    has_note,
     is_secondary,
     meet,
     read_pdf,
@@ -159,6 +163,7 @@ class Spec:
     strips: list[tuple[str, str, int]] = field(default_factory=list)  # key, board, points
     nets: list[NetSpec] = field(default_factory=list)
     boards: list[str] = field(default_factory=list)  # extra boards to add to the v1 snapshot
+    names: dict[str, str] = field(default_factory=dict)  # component key -> designation
 
 
 def _right_symbol(count: int) -> dict[str, Any]:
@@ -197,7 +202,11 @@ def _configuration(spec: Spec) -> dict[str, Any]:
                 "id": f"c{key}",
                 "board": board,
                 "template": f"tenant/synth-route-{key}/v1",
-                "designation": {"function": None, "location": None, "product": f"K{key}"},
+                "designation": {
+                    "function": None,
+                    "location": None,
+                    "product": spec.names.get(key, f"K{key}"),
+                },
             }
         )
     for key, board, _count in spec.strips:
@@ -438,6 +447,26 @@ def spec_split_symbol() -> Spec:
     return spec
 
 
+def spec_long_designations() -> Spec:
+    """Thirty components with 70-character designations, chained and with long jumps.
+
+    Wrapped titles and markings, and continuation flags naming long labels across sheets.
+    """
+    n = 30
+    keys = [f"ld{i:02d}" for i in range(n)]
+    spec = Spec(comps=[(k, B, 3) for k in keys])
+    spec.names = {
+        k: f"KLONG-SYNTHETIC-DESIGNATION-{i:02d}-WITH-NO-SPACES-0123456789-ABCDEFGHIJKLMNOPQRS"
+        for i, k in enumerate(keys)
+    }
+    for i in range(n - 1):
+        spec.nets.append(_pair(B, f"SYN-LD{i:02d}", ("c", keys[i], 1), ("c", keys[i + 1], 0)))
+    # Long jumps too, so continuations are needed whatever the placement.
+    for i in range(0, n - 15, 5):
+        spec.nets.append(_pair(B, f"SYN-LDJ{i:02d}", ("c", keys[i], 2), ("c", keys[i + 15], 2)))
+    return spec
+
+
 STRESS: dict[str, Callable[[], Spec]] = {
     "dense_grid": spec_dense_grid,
     "hub": spec_hub,
@@ -448,10 +477,13 @@ STRESS: dict[str, Callable[[], Spec]] = {
     "many_boards": spec_many_boards,
     "oversize": spec_oversize,
     "split_symbol": spec_split_symbol,
+    "long_designations": spec_long_designations,
 }
 
 STRESS_CASES = [f"route:{name}" for name in STRESS]
-ALL_CASES = [*CONFIG_CASES, *STRESS_CASES]
+#: The geometry module's long-names sample (geometry_cases/long_names_sample.json).
+SAMPLE_CASES = ["sample:long_names"]
+ALL_CASES = [*CONFIG_CASES, *SAMPLE_CASES, *STRESS_CASES]
 
 
 @functools.cache
@@ -815,27 +847,73 @@ def _block_at(page: Page, p: P) -> Any:
     return max(owners, key=lambda b: b.header.x0) if owners else None
 
 
+def _stacked(upper: Run, lower: Run) -> bool:
+    return (
+        (abs(upper.x0 - lower.x0) < 0.6 or abs(upper.x1 - lower.x1) < 0.6)  # left / right aligned
+        and abs(upper.size - lower.size) < 0.01
+        and -0.1 <= lower.top - upper.bottom < 1.3 * upper.size
+    )
+
+
+def _stacks(runs: Sequence[Run], depth: int = 3) -> list[tuple[str, list[Run]]]:
+    """Each run, and each chain of runs stacked at one left edge, with its joined text.
+
+    Chains of up to ``depth`` runs printed one under the next at one left edge (a wrapped value), with its joined text.
+    """
+    ordered = sorted(runs, key=lambda r: r.top)
+    out: list[tuple[str, list[Run]]] = []
+    for run in ordered:
+        chain = [run]
+        out.append((run.text, list(chain)))
+        while len(chain) < depth:
+            below = [o for o in ordered if o is not chain[-1] and _stacked(chain[-1], o)]
+            if len(below) != 1:
+                break
+            chain.append(below[0])
+            out.append((" ".join(r.text for r in chain), list(chain)))
+    return out
+
+
+def header_text(page: Page, block: BlockRead) -> str:
+    """A block title wrapped over several lines, re-joined up to its "(component)" line."""
+    lines = [block.header]
+    while len(lines) < 5:
+        above = [r for r in page.runs if r is not lines[0] and _stacked(r, lines[0])]
+        if not above:
+            break
+        lines.insert(0, max(above, key=lambda r: r.top))
+    return "".join(r.text for r in lines[:-1]) + (" " if len(lines) > 1 else "") + lines[-1].text
+
+
 def terminal_at(page: Page, p: P, index: ModelIndex) -> Key | None:
     """The terminal a dot is: its block's owner, and the marking printed on its row."""
     block = _block_at(page, p)
     if block is None:
         return None
-    owner = index.owner_of_header(block.header.text)
+    owner = index.owner_of_header(header_text(page, block))
     if owner is None:
         return None
     _name, printed = owner
     found: list[tuple[float, Key]] = []
-    for run in page.runs:
-        if not (block.header.bottom < run.yc < block.bottom and abs(run.yc - p[1]) < MARKING_ROW):
+    inside = [
+        r
+        for r in page.runs
+        if block.header.bottom < r.yc < block.bottom
+        and r.x0 >= block.header.x0 - 3 * mm
+        and r.x1 <= block.right
+    ]
+    for text, stack in _stacks(inside):
+        if not any(abs(r.yc - p[1]) < MARKING_ROW for r in stack):
             continue
-        if run.x0 < block.header.x0 - 3 * mm or run.x1 > block.right:
-            continue
-        gap = max(p[0] - run.x1, run.x0 - p[0], 0.0)
+        gap = min(max(p[0] - r.x1, r.x0 - p[0], 0.0) for r in stack)
         if gap > MARKING_REACH:
             continue
-        key = printed.get(squash(run.text))
+        printed_as = squash(text)
+        printed_as = printed_as.removesuffix("(cont.)")  # a continued block's row
+        key = printed.get(printed_as)
         if key is not None:
-            found.append((gap + abs(run.yc - p[1]), key))
+            off = min(abs(r.yc - p[1]) for r in stack)
+            found.append((gap + off + 0.01 * len(stack), key))
     if not found:
         return None
     return min(found)[1]
@@ -989,6 +1067,8 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
                 ends.append(end)
             line = Line(n, path, (ends[0], ends[1]))
             if not any(e.dot for e in ends):
+                if path.width == route_width and route_width is not None:
+                    raw.lines.append(line)  # an orphan: reported, never skipped
                 continue
             if _is_lead(raw, line, route_width, lead_anchors):
                 continue  # a symbol lead, not a connection line
@@ -1404,6 +1484,13 @@ def test_every_continuation_pairs_with_its_other_end(case: str) -> None:
     _need_lines(d, problems)
     conts = [ln for ln in d.lines if ln.kind == "continued"]
     pages = {raw.page.number: raw for raw in d.pages}
+    # Never vacuous: every flag-like text must be among the continuations paired here.
+    flagged = sum(len(flag_texts(raw.page)) for raw in d.pages if raw.page.is_drawing)
+    if flagged > len(conts):
+        problems.append(
+            f"{flagged} continuation-like texts on the sheets, only {len(conts)} read as "
+            "continuations: the pairing below would be vacuous for the rest"
+        )
     for line in conts:
         here = next(e for e in line.ends if e.dot is not None)
         marker = next(e.marker for e in line.ends if e.marker is not None)
@@ -1446,6 +1533,127 @@ def test_every_continuation_pairs_with_its_other_end(case: str) -> None:
                 f"{where}: the other end's marker {back_marker[0]!r} does not point back to "
                 f"sheet {line.page}, zone {mine}"
             )
+    assert not problems, _report(problems)
+
+
+_FLAG_START = re.compile(r"^to [^\s/()]+/")
+_SHEET_ZONE = re.compile(r"\((?:sheet \d+|this sheet), zone \d+[A-Z]\)")
+#: How close to the inner frame a flag-like text sits.
+FLAG_EDGE = 20 * mm
+
+
+def flag_texts(page: Page) -> list[tuple[str, Any]]:
+    """Board-qualified "to <board>/..." texts near the frame edge.
+
+    Wrapped lines are re-joined (a following line continues it unless it starts a new "to ...", and only until a ")").
+    """
+    if page.inner is None:
+        return []
+    ix0, it, ix1, ib = page.inner
+    out = []
+    joined = {id(run): text for text, run in continued_texts(page)}
+    for run in page.runs:
+        if not _FLAG_START.match(run.text):
+            continue
+        near = (
+            run.x0 - ix0 < FLAG_EDGE
+            or ix1 - run.x1 < FLAG_EDGE
+            or run.top - it < FLAG_EDGE
+            or ib - run.bottom < FLAG_EDGE
+        )
+        if near:
+            out.append((joined.get(id(run), run.text), run))
+    return out
+
+
+def flag_problems(case: str) -> list[str]:
+    problems: list[str] = []
+    everything = "\n".join(raw.page.text for raw in doc(case).pages)
+    for raw in doc(case).pages:
+        if not raw.page.is_drawing:
+            continue
+        for text, run in flag_texts(raw.page):
+            where = f"sheet {raw.page.number} at ({run.x0:.0f},{run.top:.0f})"
+            if CONTINUATION.match(text):
+                continue
+            cut = TRUNCATION_MARKER.search(text)
+            if cut is not None and _SHEET_ZONE.search(text[cut.end() :]):
+                if not has_note(everything, cut.group(1)):
+                    problems.append(f"{where}: flag marker {cut.group(1)} has no full text")
+                continue
+            problems.append(
+                f"{where}: incomplete continuation flag {text[:120]!r}: neither a whole "
+                "'to <board>/<label> (sheet n, zone XY)' nor a resolvable …[n] marker with its "
+                "(sheet n, zone XY) intact"
+            )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_every_continuation_flag_is_complete(case: str) -> None:
+    problems = flag_problems(case)
+    assert not problems, _report(problems)
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_continuations_are_read_wherever_a_connection_leaves_its_sheet(case: str) -> None:
+    """Non-vacuity: a connection that leaves its sheet has readable flags.
+
+    Every connection not drawn as one line (and not unrouted) must have two readable continued ends, and every flag-like text must be read as a continuation.
+    """
+    d, index = doc(case), model_index(case)
+    problems: list[str] = []
+    drawn = {ln.conn for ln in d.lines if ln.kind == "drawn" and ln.conn}
+    unrouted = unrouted_items(case)
+    ends: dict[str, int] = defaultdict(int)
+    for ln in d.lines:
+        if ln.kind == "continued" and ln.conn:
+            ends[ln.conn] += 1
+    for cid in sorted(index.connections):
+        if cid in drawn or cid in unrouted:
+            continue
+        if ends[cid] != 2:
+            x = index.connections[cid]
+            problems.append(
+                f"connection {cid} ({index.label[x.start.key]} - {index.label[x.end.key]}) is "
+                f"neither drawn nor unrouted, and {ends[cid]} of its 2 ends carry a readable "
+                "continuation flag"
+            )
+    for raw in d.pages:
+        if not raw.page.is_drawing:
+            continue
+        flags = len(flag_texts(raw.page))
+        read = sum(1 for ln in raw.lines if ln.kind == "continued" and ln.conn)
+        if flags > read:
+            problems.append(
+                f"sheet {raw.page.number}: {flags} continuation-like texts, {read} read as "
+                "identified continuations"
+            )
+    assert not problems, _report(problems)
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_every_model_connection_is_accounted_for(case: str) -> None:
+    """Bijection completeness, loudly: every model connection is accounted for.
+
+    Drawn + continued + unrouted covers every connection, and no routed-width path is left unidentified.
+    """
+    d, index = doc(case), model_index(case)
+    problems: list[str] = []
+    _need_lines(d, problems)
+    unidentified = [ln for ln in d.lines if ln.conn is None]
+    for ln in unidentified:
+        problems.append(
+            f"sheet {ln.page}: {ln.kind} line {_fmt(ln.ends[0].p)}-{_fmt(ln.ends[1].p)} "
+            "cannot be identified with a model connection"
+        )
+    accounted = {ln.conn for ln in d.lines if ln.conn} | set(unrouted_items(case))
+    missing = sorted(set(index.connections) - accounted)
+    if missing:
+        problems.append(
+            f"{len(missing)} of {len(index.connections)} model connections are neither drawn, "
+            f"continued nor unrouted: {missing[:8]}"
+        )
     assert not problems, _report(problems)
 
 
@@ -1709,3 +1917,35 @@ def test_label_tokens_resolve_by_unique_prefix() -> None:
     wire = index.wire_of[cid]
     assert index.resolve(wire) == cid
     assert index.resolve("x-") is None
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_every_dot_is_identified_even_under_wrapped_titles_and_markings(case: str) -> None:
+    """Every dot on a drawing sheet resolves to one model terminal.
+
+    Header and marking are read however many lines they wrap over; an
+    unidentifiable dot fails loudly.
+    """
+    d, index = doc(case), model_index(case)
+    problems = [
+        f"sheet {raw.page.number}: dot {_fmt(dot.c)} is no identifiable terminal"
+        for raw in d.pages
+        if raw.page.is_drawing
+        for dot in raw.dots
+        if terminal_at(raw.page, dot.c, index) is None
+    ]
+    assert not problems, _report(problems)
+
+
+def test_wrapped_titles_are_rejoined() -> None:
+    build("sample:long_names")
+    names = {o[1] for o in model_index("sample:long_names").owners}
+    longest = max(names, key=len)
+    headers = [
+        header_text(raw.page, b)
+        for raw in doc("sample:long_names").pages
+        if raw.page.is_drawing
+        for b in raw.page.blocks
+    ]
+    assert any(squash(longest) in squash(h) for h in headers), headers[:5]
+    assert any(len(h) > 60 and h.count(" ") >= 1 for h in headers)
