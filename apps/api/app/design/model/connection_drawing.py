@@ -110,9 +110,11 @@ TITLE_LEFT = 2 * MM
 #: Room kept right of a block title for "continues on sheet n, zone 1A".
 CONTINUES_ROOM = 42 * MM
 
-#: Clearance kept round a symbol, and the distance between parallel leads.
+#: Clearance kept round a symbol, and the distance between parallel leads
+#: (never less: a symbol whose leads would need closer lanes is drawn with
+#: no leads).
 CLEAR = 1.5 * MM
-LANE = 1.0 * MM
+LANE = 2.0 * MM
 #: The smallest room a symbol with leads is given, and its largest grid unit.
 SYMBOL_MIN = 6 * MM
 SYMBOL_UNIT_MAX = 3 * MM
@@ -362,7 +364,7 @@ class BlockPart:
     bottom: float = 0.0
     left: float = 0.0
     right: float = 0.0
-    pins_dropped: bool = False
+    pins_dropped: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -427,8 +429,9 @@ class DrawingSet:
         owners: Each component's and strip's printed name
             (``<board>/<designation>``) and header place, by ``(kind, id)``.
         boards_share_sheets: Whether boards could share a sheet (D-9).
-        pins_off: Blocks whose pin markings do not fit at their symbol, so
-            they are printed at the rows only (the header says so).
+        pins_off: ``(owner id, terminal id)`` of each pin marking that does not
+            fit at its symbol, so it is printed at its row only (the header
+            names it).
     """
 
     sheets: tuple[Sheet, ...]
@@ -442,7 +445,7 @@ class DrawingSet:
     full_texts: tuple[str, ...] = ()
     owners: dict[tuple[str, str], tuple[str, Place]] = field(default_factory=dict)
     boards_share_sheets: bool = BOARDS_SHARE_SHEETS
-    pins_off: frozenset[str] = frozenset()
+    pins_off: frozenset[tuple[str, str]] = frozenset()
 
     def terminal_keys(self) -> set[tuple[str, str, str]]:
         """The ``TerminalRef.key`` of every drawn terminal row."""
@@ -1015,7 +1018,7 @@ class _Block:
     anchored: frozenset[str] = frozenset()
     members: tuple[str, ...] = ()
     min_body: int = 1
-    pins_off: bool = False
+    pins_off: frozenset[str] = frozenset()
     cols: int = 1
     mark_w: float = MARK_RIGHT - MARK_LEFT
 
@@ -1063,7 +1066,7 @@ def drawing_set(
         The drawing set: see the module docstring.
     """
     places: dict[Key, Place] | None = None
-    pins_off: frozenset[str] = frozenset()
+    pins_off: frozenset[tuple[str, str]] = frozenset()
     result: DrawingSet | None = None
     # A cross-reference's text depends on where its far end is drawn, and
     # where things are drawn depends on how long the texts are: lay out
@@ -1099,7 +1102,7 @@ def _lay_out(
     model: entities.DesignModelV2,
     previous: dict[Key, Place] | None,
     share: bool,
-    pins_off: frozenset[str] = frozenset(),
+    pins_off: frozenset[tuple[str, str]] = frozenset(),
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1152,17 +1155,24 @@ def _lay_out(
 
     blocks = _blocks(model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts)
     for block in blocks:
-        if block.owner_id in pins_off and block.kind == "component":
-            block.pins_off = True
+        off = frozenset(t for owner, t in pins_off if owner == block.owner_id)
+        if off and block.kind == "component":
+            block.pins_off = off
+            terminals = {
+                r.terminal_id: r.marking for r in terminal_rows if r.owner_id == block.owner_id
+            }
+            names = ", ".join(sorted(terminals.get(t, t) for t in off))
             block.notes.append(
-                "pin markings are printed at the rows only: they do not fit at the symbol"
+                f"pin markings {names} shown at the rows only (no room at the symbol)"
             )
     placed, sheet_boards = _place(blocks, terminal_rows, share, cuts)
     drawn = _finish(
         model, placed, terminal_rows, wire_rows, keys, labels, all_ends, row_notes, groups, cuts,
         sheet_boards, share,
     )  # fmt: skip
-    dropped = {p.owner_id for sheet in drawn.sheets for p in sheet.parts if p.pins_dropped}
+    dropped = {
+        (p.owner_id, t) for sheet in drawn.sheets for p in sheet.parts for t in p.pins_dropped
+    }
     return dataclasses.replace(drawn, pins_off=pins_off | dropped)
 
 
@@ -1305,10 +1315,15 @@ def _blocks(
                         ordered = [by_terminal[t] for t in pins] + rest
                     need = 2 * CLEAR + (len(ups) + len(downs)) * LANE + SYMBOL_MIN
                     block.min_body = max(3, math.ceil(need / SLOT))
-                else:
+                elif len(points) != len(set(points)):
                     block.notes.append(
                         "leads not drawn: no crossing-free route; "
                         "pin markings are shown at the symbol where they fit"
+                    )
+                else:
+                    block.notes.append(
+                        "no leads drawn: they would need lanes closer than 2 mm; "
+                        "each terminal's row carries its marking"
                     )
         for index in ordered:
             notes_here = row_notes[index]
@@ -1729,7 +1744,7 @@ def _draw(
     frame: SymbolFrame | None = None
     leads: list[Lead] = []
     placeholder: tuple[float, float, float, float] | None = None
-    pins_dropped = False
+    pins_dropped: tuple[str, ...] = ()
     if block.kind == "no_terminals":
         pass
     elif block.symbol is None:
@@ -1749,13 +1764,7 @@ def _draw(
         anchored = {t: y for t, y in rows_y.items() if t in block.anchored}
         routed = None
         if block.routed and anchored:
-            # The widest lead spacing that fits: 2 mm where there is room.
-            for spacing in (2.0 * MM, 1.5 * MM, LANE):
-                routed = route(
-                    symbol, block.cut, left, lines_top, bottom, anchored, point_x, spacing
-                )
-                if routed is not None:
-                    break
+            routed = route(symbol, block.cut, left, lines_top, bottom, anchored, point_x, LANE)
         if routed is not None:
             frame, leads = routed
         else:
@@ -1768,11 +1777,11 @@ def _draw(
                 for r in rows
                 if r.terminal.owner_id == block.owner_id and r.terminal.owner_kind == "component"
             }
-            pins = _pin_texts(symbol, frame, rows_y, markings, {lead.terminal for lead in leads})
-            if pins is None or block.pins_off:
-                pins_dropped = bool(rows_y)
-            else:
-                texts += pins
+            pins, omitted = _pin_texts(
+                symbol, frame, rows_y, markings, {lead.terminal for lead in leads}, block.pins_off
+            )
+            texts += pins
+            pins_dropped = tuple(omitted)
     return BlockPart(
         owner_kind=block.kind,
         owner_id=block.owner_id,
@@ -1888,7 +1897,8 @@ def _pin_texts(
     rows_y: Mapping[str, float],
     markings: Mapping[str, str],
     with_lead: set[str],
-) -> list[Text] | None:
+    off: frozenset[str] = frozenset(),
+) -> tuple[list[Text], list[str]]:
     """Each drawn terminal's marking at its anchor, or ``None`` when they do not all fit.
 
     A marking at an anchor must lie inside the symbol's box (so no lead,
@@ -1916,8 +1926,12 @@ def _pin_texts(
             )
             taken.append(_text_box(sx, sy, shape.text or "", SECONDARY_PT, False))
     out: list[Text] = []
+    omitted: list[str] = []
     for anchor in symbol.anchors:
         if anchor.terminal not in rows_y:
+            continue
+        if anchor.terminal in off:
+            omitted.append(anchor.terminal)
             continue
         pin = markings.get(anchor.terminal, "")
         ax, ay = frame.x0 + anchor.x * frame.scale, frame.y1 - anchor.y * frame.scale
@@ -1939,13 +1953,14 @@ def _pin_texts(
         )  # fmt: skip
         crossed = any(_meets(stroke, box) for stroke in strokes)
         if not inside or not clear or crossed:
-            return None
+            omitted.append(anchor.terminal)
+            continue
         taken.append(box)
         out.append(
             Text(tx, ty, pin, SECONDARY_PT, tone="grey", right=right, role="pin",
                  index=1 if anchor.terminal in with_lead else 0)
         )  # fmt: skip
-    return out
+    return out, omitted
 
 
 def _open_items(

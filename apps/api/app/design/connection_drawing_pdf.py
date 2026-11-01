@@ -66,8 +66,13 @@ LEGEND = (
     "Bar joining a strip point's two sides, 'bridge between the sides: <via> per "
     "connection pattern <ref>' (or 'per model' where no pattern declared it): a connection "
     "the model records between the point's sides; nothing more is asserted.",
-    "Leads run from a symbol's pins to their points without crossing; where that is not "
-    "possible the pins are marked at the symbol and no lead is drawn, and the block says so.",
+    "Leads (thin solid lines, all one width) run from a symbol's pins to their points without "
+    "crossing, at least 2 mm apart; where that is not possible no lead is drawn and the block "
+    "says so. A pin's marking is repeated at the symbol where it fits; the block names any "
+    "shown at the rows only.",
+    "Dotted lead: the terminal has no pin on the symbol (or no symbol is defined); its row "
+    "carries its marking.",
+    "Thick bar beside two points: a bridge between a strip point's two sides.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
     f"Text is never smaller than {layout.BODY_PT:g} pt ({layout.SECONDARY_PT:g} pt for grey "
     "detail lines and pin markings at a symbol): a product readability target, not a "
