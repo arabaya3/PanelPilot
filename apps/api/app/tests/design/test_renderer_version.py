@@ -259,8 +259,14 @@ def test_a_demonstrably_cosmetic_change_is_not_material(monkeypatch: pytest.Monk
 RECORDED_V2 = Path(__file__).with_name("renderer_fingerprints_v2.json")
 
 #: The configured synthetic cases a v2 revision's exports are rendered from:
-#: the data-only PE/N distribution and the I/O marshalling strip.
-V2_CASES = ("pe_n_distribution", "io_marshalling")
+#: the data-only PE/N distribution, the I/O marshalling strip, and the two
+#: connection drawing cases with symbol data (M4).
+V2_CASES = (
+    "pe_n_distribution",
+    "io_marshalling",
+    "drawing_control_relay",
+    "drawing_heldout_feeder",
+)
 
 #: What a v2 revision exports for review: the v1 formats (printing the v2
 #: structural findings too), the two review-only schedules and the

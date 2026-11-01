@@ -68,11 +68,22 @@ class Place:
         letter = ZONE_LETTERS[self.slot * ZONE_ROWS // SLOTS]
         return f"{number}{letter}"
 
-    def reference(self, here: int) -> str:
-        """How a cross-reference to this place reads from sheet ``here``."""
+    @property
+    def header_zone(self) -> str:
+        """The zone of a block header in this slot: its column's first zone, e.g. ``"1B"``."""
+        number = self.column * (ZONE_COLUMNS // COLUMNS) + 1
+        letter = ZONE_LETTERS[self.slot * ZONE_ROWS // SLOTS]
+        return f"{number}{letter}"
+
+    def reference(self, here: int, *, header: bool = False) -> str:
+        """How a cross-reference to this place reads from sheet ``here``.
+
+        ``header`` names a block header's zone (a continuation), not a point's.
+        """
+        zone = self.header_zone if header else self.zone
         if self.sheet == here:
-            return f"this sheet, zone {self.zone}"
-        return f"sheet {self.sheet}, zone {self.zone}"
+            return f"this sheet, zone {zone}"
+        return f"sheet {self.sheet}, zone {zone}"
 
 
 @dataclass(frozen=True)
@@ -282,7 +293,7 @@ def end_texts(end: End, here: int) -> tuple[str, str]:
     The first names the far end and where it is; the second the wire (or the
     cable core, or that the connection has no wire because of its ``via``).
     """
-    first = f"→ {end.far_label} ({end.far_place.reference(here)}) via {end.via}"
+    first = f"to {end.far_label} ({end.far_place.reference(here)}) via {end.via}"
     if end.wire is not None:
         second = wire_text(end.wire)
     elif end.wire_missing:
@@ -550,7 +561,11 @@ def drawing_set(model: entities.DesignModelV2) -> DrawingSet:
                 break
             part += 1
             new_column(force_sheet=False)
-        first_header = next(p.header for p in pending if p.owner_id == owner_id and p.part == 1)
+        first_header = next(
+            p.header
+            for p in pending
+            if p.owner_kind == kind and p.owner_id == owner_id and p.part == 1
+        )
         if designation is None:
             open_items.append(
                 OpenItem(
@@ -662,7 +677,7 @@ def drawing_set(model: entities.DesignModelV2) -> DrawingSet:
                         "wire_attribute_unset",
                         wire_row.board_id,
                         wire_row.wire_id,
-                        f"wire {wire_row.wire_id} ({wire_row.start} → {wire_row.end}): "
+                        f"wire {wire_row.wire_id} ({wire_row.start} to {wire_row.end}): "
                         f"{name} {NOT_SET}",
                         start,
                     )
@@ -673,7 +688,7 @@ def drawing_set(model: entities.DesignModelV2) -> DrawingSet:
                         "wire_attribute_assumed",
                         wire_row.board_id,
                         wire_row.wire_id,
-                        f"wire {wire_row.wire_id} ({wire_row.start} → {wire_row.end}): "
+                        f"wire {wire_row.wire_id} ({wire_row.start} to {wire_row.end}): "
                         f"{name} {cell_text(cell)}: {cell.assumption_statement or NOT_SET}",
                         start,
                     )
@@ -686,7 +701,7 @@ def drawing_set(model: entities.DesignModelV2) -> DrawingSet:
                         "wire_record_missing",
                         drawn.terminal.board_id,
                         end.connection_id,
-                        f"connection {end.connection_id} ({drawn.label} → {end.far_label}) is "
+                        f"connection {end.connection_id} ({drawn.label} to {end.far_label}) is "
                         "via wire but holds no wire record",
                         drawn.place,
                     )

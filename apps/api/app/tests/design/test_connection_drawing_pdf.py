@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import itertools
 import re
 from pathlib import Path
 
@@ -144,3 +145,56 @@ def test_a_cross_reference_names_the_far_sheet_and_zone(case: str) -> None:
     text = " ".join(_pages(content))
     row, end = across[0]
     assert connection_drawing.end_texts(end, row.place.sheet)[0] in text
+
+
+def _interior(
+    box: tuple[float, float, float, float], a: tuple[float, float], b: tuple[float, float]
+) -> bool:
+    """Whether an axis-parallel segment passes through a box's open interior."""
+    x0, y0, x1, y1 = box
+    if a[0] == b[0]:
+        low, high = sorted((a[1], b[1]))
+        return x0 < a[0] < x1 and low < y1 and high > y0
+    low, high = sorted((a[0], b[0]))
+    return y0 < a[1] < y1 and low < x1 and high > x0
+
+
+@pytest.mark.parametrize("case", CASES)
+def test_no_lead_crosses_its_symbol(case: str) -> None:
+    """Leads are orthogonal and stay out of their symbol's box (S1)."""
+    model, _ = _model(case)
+    drawing = connection_drawing.drawing_set(model)
+    seen = 0
+    for sheet in drawing.sheets:
+        for part in sheet.parts:
+            if part.symbol is None or part.owner_kind != "component":
+                continue
+            left = connection_drawing_pdf._column_x(part.place.column)
+            top = connection_drawing_pdf._slot_y(part.place.slot) - connection_drawing_pdf._SLOT
+            lines = connection_drawing_pdf._first_lines(part, top)
+            bottom = top - max(len(part.lines), 1) * connection_drawing_pdf._SLOT
+            rows_y = {line.row.terminal.terminal_id: y for line, y in lines}
+            point_x = left + connection_drawing_pdf._POINT
+            for lead in connection_drawing_pdf.leads(
+                part.symbol, left, top, bottom, rows_y, point_x
+            ):
+                seen += 1
+                for a, b in itertools.pairwise(lead.points):
+                    assert a[0] == b[0] or a[1] == b[1], (lead.terminal, a, b)
+                    assert not _interior(lead.box, a, b), (lead.terminal, a, b)
+                assert lead.points[-1] == (point_x, rows_y[lead.terminal])
+    if case in ("drawing_control_relay", "drawing_heldout_feeder"):
+        assert seen >= 4
+
+
+def test_text_too_long_for_its_room_is_cut_with_an_ellipsis() -> None:
+    from reportlab.pdfgen.canvas import Canvas
+
+    buffer = io.BytesIO()
+    canvas = Canvas(buffer)
+    connection_drawing_pdf._text(canvas, 0, 0, "x" * 400, 5, room=20)
+    canvas.save()
+    with pdfplumber.open(io.BytesIO(buffer.getvalue())) as pdf:
+        text = pdf.pages[0].extract_text() or ""
+    assert text.endswith("…")
+    assert len(text) < 400

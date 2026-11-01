@@ -34,6 +34,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from app.design.marking import ExportMark, finding_lines, pdf_page_stamp
 from app.design.model import connection_drawing as layout
+from app.design.model.entities import SymbolDef
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
 from app.models.schemas.design import V2Finding
@@ -53,7 +54,7 @@ DISCLAIMER = (
 
 #: The legend printed on the cover.
 LEGEND = (
-    "→ X:1 (sheet n, zone 3B) via wire: the far end of a connection and where it is drawn.",
+    "to X:1 (sheet n, zone 3B) via wire: the far end of a connection and where it is drawn.",
     "wire <id>: no. / mm² / colour: each value with its source [user] [data], "
     "'<value> assumed (<assumption>)', or 'not set' where the saved design holds none.",
     "UNCONNECTED: a terminal in no net (required, requiredness unresolved, or a strip point).",
@@ -112,9 +113,14 @@ def _text(
 ) -> None:
     font, drawn = font_for(text, bold=bold, right_to_left=has_rtl(text))
     if room is not None:
-        # Shrunk to fit its room (never cut): every character stays printed.
+        # Shrunk to fit its room, down to 3.5 pt; past that it is cut with an
+        # ellipsis. Every value cut here is printed in full elsewhere: in the
+        # open items or the terminal and wire schedules of the same revision.
         while size > 3.5 and stringWidth(drawn, font, size) > room:
             size -= 0.25
+        while len(text) > 1 and stringWidth(drawn, font, size) > room:
+            text = text[:-2] + "…"
+            font, drawn = font_for(text, bold=bold, right_to_left=has_rtl(text))
     canvas.setFont(font, size)
     if right:
         canvas.drawRightString(x, y, drawn)
@@ -203,6 +209,78 @@ def _column_x(column: int) -> float:
     return _AREA_LEFT + column * _COLUMN
 
 
+#: The widest a symbol is drawn; the rest of its band is the gutter its leads run in.
+_SYMBOL_DRAWN = 22 * mm
+#: The gap kept round a symbol, and between leads in the gutter.
+_CLEAR = 1.2 * mm
+_LANE = 0.8 * mm
+
+
+@dataclass(frozen=True)
+class Lead:
+    """An orthogonal lead from a symbol anchor to its row: points, and the symbol's box."""
+
+    terminal: str
+    points: tuple[tuple[float, float], ...]
+    box: tuple[float, float, float, float]  # x0, y0 (bottom), x1, y1 (top)
+
+
+def symbol_box(
+    symbol: SymbolDef, left: float, top: float, bottom: float
+) -> tuple[float, float, float]:
+    """Where a symbol is drawn: its left, top and scale (points per grid unit).
+
+    It keeps :data:`_CLEAR` free above and below, so a lead can pass round it.
+    """
+    height = max(top - bottom - 2 * _CLEAR, 1.0)
+    scale = min(_SYMBOL_DRAWN / symbol.width, height / symbol.height, 3 * mm)
+    return left + _SYMBOL_LEFT + _CLEAR, top - _CLEAR, scale
+
+
+def leads(
+    symbol: SymbolDef,
+    left: float,
+    top: float,
+    bottom: float,
+    rows_y: dict[str, float],
+    point_x: float,
+) -> list[Lead]:
+    """Each anchored terminal's lead, routed orthogonally round the symbol's box.
+
+    A lead leaves its anchor perpendicular to the edge it sits on (anchors are
+    on the edge: ``codec_v2``), clears the box, runs to its own lane in the
+    gutter right of the box, along the lane to its row, and into the row's
+    point. Lanes are given in row order, nearest the box first for the top row,
+    which keeps leads from crossing each other where it can; each terminal's
+    marking is also printed at its anchor.
+    """
+    x0, y1, scale = symbol_box(symbol, left, top, bottom)
+    x1, y0 = x0 + symbol.width * scale, y1 - symbol.height * scale
+    box = (x0, y0, x1, y1)
+    anchors = [a for a in symbol.anchors if a.terminal in rows_y]
+    anchors.sort(key=lambda a: -rows_y[a.terminal])
+    room = max(point_x - 6 * mm - x1 - _CLEAR, _LANE)
+    lane = min(_LANE, room / max(len(anchors), 1))
+    out: list[Lead] = []
+    for n, anchor in enumerate(anchors):
+        ax, ay = x0 + anchor.x * scale, y1 - anchor.y * scale
+        row = rows_y[anchor.terminal]
+        gutter = x1 + _CLEAR + n * lane
+        step = _CLEAR * (0.5 + 0.5 * n / max(len(anchors), 1))
+        points: list[tuple[float, float]] = [(ax, ay)]
+        if anchor.x == symbol.width:
+            points.append((gutter, ay))
+        elif anchor.y == 0:
+            points += [(ax, y1 + step), (gutter, y1 + step)]
+        elif anchor.y == symbol.height:
+            points += [(ax, y0 - step), (gutter, y0 - step)]
+        else:  # the left edge: out left, round the top
+            points += [(x0 - step, ay), (x0 - step, y1 + step), (gutter, y1 + step)]
+        points += [(gutter, row), (point_x, row)]
+        out.append(Lead(anchor.terminal, tuple(points), box))
+    return out
+
+
 def _symbol(
     canvas: Canvas,
     part: layout.BlockPart,
@@ -210,56 +288,73 @@ def _symbol(
     top: float,
     bottom: float,
     rows_y: dict[str, float],
+    markings: dict[str, str],
 ) -> None:
     """The part's symbol from data, or a labelled placeholder; leads to its rows."""
     box_left = left + _SYMBOL_LEFT
     box_height = max(top - bottom, _SLOT)
     point_x = left + _POINT
+    edge = box_left + _SYMBOL_WIDTH
     if part.symbol is None:
         canvas.saveState()
         canvas.setDash(2, 2)
         canvas.rect(box_left, top - box_height, _SYMBOL_WIDTH, box_height)
         canvas.restoreState()
         _text(canvas, box_left + 1.5 * mm, top - 3 * mm, layout.SYMBOL_NOT_DEFINED, 5.5, bold=True)
+        canvas.saveState()
+        canvas.setDash(1, 1.5)
         for y in rows_y.values():
-            canvas.line(box_left + _SYMBOL_WIDTH, y, point_x, y)
+            canvas.line(edge, y, point_x, y)
+        canvas.restoreState()
         return
     symbol = part.symbol
-    scale = min(_SYMBOL_WIDTH / symbol.width, box_height / symbol.height, 3 * mm)
+    x0, y1, scale = symbol_box(symbol, left, top, bottom)
 
     def at(x: int, y: int) -> tuple[float, float]:
-        return box_left + x * scale, top - y * scale
+        return x0 + x * scale, y1 - y * scale
 
+    canvas.saveState()
+    # Clipped to its own box: whatever its data, a symbol stays in its block.
+    clip = canvas.beginPath()
+    clip.rect(x0, y1 - symbol.height * scale, symbol.width * scale, symbol.height * scale)
+    canvas.clipPath(clip, stroke=0, fill=0)
     canvas.setLineWidth(0.5)
     for shape in symbol.shapes:
         p = shape.points
         if shape.kind == "line":
-            (x1, y1), (x2, y2) = at(p[0], p[1]), at(p[2], p[3])
-            canvas.line(x1, y1, x2, y2)
+            (lx1, ly1), (lx2, ly2) = at(p[0], p[1]), at(p[2], p[3])
+            canvas.line(lx1, ly1, lx2, ly2)
         elif shape.kind == "rect":
-            x1, y1 = at(p[0], p[1] + p[3])
-            canvas.rect(x1, y1, p[2] * scale, p[3] * scale)
+            rx, ry = at(p[0], p[1] + p[3])
+            canvas.rect(rx, ry, p[2] * scale, p[3] * scale)
         elif shape.kind == "circle":
             cx, cy = at(p[0], p[1])
             canvas.circle(cx, cy, p[2] * scale)
         else:
             tx, ty = at(p[0], p[1])
-            _text(canvas, tx, ty, shape.text or "", 5)
+            _text(canvas, tx, ty, shape.text or "", 5, room=x0 + symbol.width * scale - tx)
+    canvas.restoreState()
     canvas.setLineWidth(0.3)
-    anchors = {a.terminal: a for a in symbol.anchors} if part.owner_kind == "component" else {}
+    anchored = leads(
+        symbol, left, top, bottom, rows_y if part.owner_kind == "component" else {}, point_x
+    )
+    for lead in anchored:
+        path = canvas.beginPath()
+        path.moveTo(*lead.points[0])
+        for point in lead.points[1:]:
+            path.lineTo(*point)
+        canvas.drawPath(path, stroke=1, fill=0)
+        ax, ay = lead.points[0]
+        _text(canvas, ax + 0.4 * mm, ay + 0.4 * mm, markings.get(lead.terminal, ""), 3.5)
+    done = {lead.terminal for lead in anchored}
+    canvas.saveState()
+    canvas.setDash(1, 1.5)
     for terminal_id, y in rows_y.items():
-        anchor = anchors.get(terminal_id)
-        if anchor is None:
-            # No anchor for this terminal in the symbol data: joined to the
-            # symbol's edge, so the row is still drawn, not guessed onto a pin.
-            canvas.saveState()
-            canvas.setDash(1, 1.5)
-            canvas.line(box_left + _SYMBOL_WIDTH, y, point_x, y)
-            canvas.restoreState()
-            continue
-        ax, ay = at(anchor.x, anchor.y)
-        canvas.line(ax, ay, box_left + _SYMBOL_WIDTH + 1 * mm, y)
-        canvas.line(box_left + _SYMBOL_WIDTH + 1 * mm, y, point_x, y)
+        if terminal_id not in done:
+            # No anchor for this terminal: a dotted lead from the band's edge,
+            # never guessed onto a pin.
+            canvas.line(edge, y, point_x, y)
+    canvas.restoreState()
 
 
 def _part(canvas: Canvas, part: layout.BlockPart, here: int) -> None:
@@ -269,14 +364,14 @@ def _part(canvas: Canvas, part: layout.BlockPart, here: int) -> None:
     _text(canvas, left + 2 * mm, top - 2.6 * mm, part.title, 7, bold=True, room=_COLUMN * 0.45)
     notes = "; ".join(part.notes)
     if part.continued_from is not None:
-        notes = f"continued from {part.continued_from.reference(here)}; " + notes
+        notes = f"continued from {part.continued_from.reference(here, header=True)}; " + notes
     _text(canvas, left + 2 * mm, top - 5.2 * mm, notes, 5, room=_COLUMN - 4 * mm)
     if part.continues_on is not None:
         _text(
             canvas,
             right,
             top - 2.6 * mm,
-            f"continues on {part.continues_on.reference(here)}",
+            f"continues on {part.continues_on.reference(here, header=True)}",
             5.5,
             bold=True,
             right=True,
@@ -343,7 +438,11 @@ def _part(canvas: Canvas, part: layout.BlockPart, here: int) -> None:
         + ("" if part.owner_kind == "component" else f"/{line.row.terminal.side}"): y
         for line, y in _first_lines(part, lines_top)
     }
-    _symbol(canvas, part, left, lines_top, bottom, rows_y)
+    markings = {
+        line.row.terminal.terminal_id: line.row.terminal.marking
+        for line, _y in _first_lines(part, lines_top)
+    }
+    _symbol(canvas, part, left, lines_top, bottom, rows_y, markings)
 
 
 def _first_lines(part: layout.BlockPart, lines_top: float) -> list[tuple[layout.Line, float]]:
