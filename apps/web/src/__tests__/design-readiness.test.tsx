@@ -1249,3 +1249,132 @@ describe('a revision whose stored design failed its integrity check', () => {
     expect(refusal.notValidated).toBe(true);
   });
 });
+
+describe('a market detected as a revision opens', () => {
+  // The market detection and the opened revision's fill answer in the same
+  // batch, in either order. An untouched opened revision stays clean; an
+  // edit queued with them stays unsaved.
+  const SA = {
+    code: 'SA',
+    name: 'Saudi Arabia',
+    voltage_v: 400,
+    frequency_hz: 60,
+    earthing: 'TN-S',
+    regulation: 'SBC 401',
+    currency: 'SAR',
+  };
+
+  function leave(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  function renderDetecting() {
+    let answer: ((listed: (typeof SA)[]) => void) | null = null;
+    const marketsImpl = vi.fn(() => ({
+      then(resolve: (listed: (typeof SA)[]) => void) {
+        answer = resolve;
+      },
+    }));
+    renderApp(
+      asSignedIn(
+        <DesignScreen
+          acquireImpl={vi.fn().mockResolvedValue(READY)}
+          marketsImpl={marketsImpl as never}
+          readMarketImpl={() => 'SA'}
+        />,
+      ),
+    );
+    return () => answer?.([SA]);
+  }
+
+  /**
+   * An opening whose answer lands the market in the same batch: `first`
+   * before the fill (synchronously, as the panel reads the answer), else
+   * after it (in the microtask straight after the fill, before React renders).
+   */
+  function openingWith(
+    project: SavedProject,
+    land: () => void,
+    first: boolean,
+    alsoAfter?: () => void,
+  ) {
+    const outcome = { kind: 'saved' as const } as { kind: 'saved'; project: SavedProject };
+    Object.defineProperty(outcome, 'project', {
+      get() {
+        if (first) land();
+        else queueMicrotask(land);
+        if (alsoAfter) queueMicrotask(alsoAfter);
+        return project;
+      },
+    });
+    return outcome;
+  }
+
+  function twoRevisions(): SavedProject {
+    const project = approved({ findings: [WARNING] });
+    project.revisions = project.revisions.flatMap((entry) => [entry, { ...entry, number: 2 }]);
+    project.revision = 2;
+    return project;
+  }
+
+  for (const first of [true, false]) {
+    const order = first ? 'before' : 'after';
+
+    it(`leaves an untouched opened revision clean, the market landing ${order} its fill`, async () => {
+      const land = renderDetecting();
+      api.open.mockResolvedValue(openingWith(approved({ findings: [WARNING] }), land, first));
+      await openStored();
+      await screen.findByTestId('market-basis');
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(leave()).toBe(false);
+      expect(stepState('saved')).toBe('done');
+      expect(stepState('approved')).toBe('done');
+    });
+
+    it(`leaves a switched-to revision clean, the market landing ${order} its fill`, async () => {
+      const land = renderDetecting();
+      api.open.mockResolvedValue({ kind: 'saved', project: twoRevisions() });
+      await openStored();
+      const revision1 = approved({ findings: [WARNING] });
+      revision1.revisions = twoRevisions().revisions;
+      // Revision 1 differs from revision 2, so a baseline built from the
+      // form before the switch cannot pass for it.
+      revision1.request = { ...REQUEST, info: { ...REQUEST.info, customer: 'Earlier' } };
+      api.open.mockResolvedValue(openingWith(revision1, land, first));
+      const opened = within(screen.getByTestId('project-opened'));
+      fireEvent.change(opened.getByRole('combobox'), { target: { value: '1' } });
+      await screen.findByTestId('market-basis');
+      await waitFor(() => {
+        expect(screen.getByTestId('project-opened-name').textContent).toContain('1');
+      });
+      expect(screen.queryByText('Unsaved changes')).toBeNull();
+      expect(leave()).toBe(false);
+      expect(stepState('approved')).toBe('done');
+    });
+
+    it(`keeps an edit queued with the market and the fill unsaved (market ${order})`, async () => {
+      const land = renderDetecting();
+      const typed = () => {
+        fireEvent.change(overview().getByLabelText('Customer'), { target: { value: 'Changed' } });
+      };
+      api.open.mockResolvedValue(
+        openingWith(approved({ findings: [WARNING] }), land, first, typed),
+      );
+      await openStored();
+      await screen.findByTestId('market-basis');
+      expect(overview().getByLabelText<HTMLInputElement>('Customer').value).toBe('Changed');
+      expect(screen.getByText('Unsaved changes')).toBeTruthy();
+      expect(leave()).toBe(true);
+      expect(stepState('approved')).toBe('stale');
+      // Undoing the edit leaves the opened revision with the market: clean.
+      fireEvent.change(overview().getByLabelText('Customer'), { target: { value: '' } });
+      await waitFor(() => {
+        expect(screen.queryByText('Unsaved changes')).toBeNull();
+      });
+      expect(leave()).toBe(false);
+      expect(stepState('approved')).toBe('done');
+    });
+  }
+});

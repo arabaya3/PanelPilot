@@ -232,6 +232,20 @@ export function snapshotOf(
 }
 
 /**
+ * A clean form (a `snapshotOf`) with a market applied: its supply on every
+ * board and its code. A form that is unsaved whatever it holds stays so.
+ */
+function cleanWithMarket(clean: string, defaults: SupplyDefaults, code: string): string {
+  if (clean === '') return clean;
+  const form = JSON.parse(clean) as { boards: Record<string, unknown>[]; market: string };
+  return JSON.stringify({
+    ...form,
+    boards: form.boards.map((board) => ({ ...board, ...defaults })),
+    market: code,
+  });
+}
+
+/**
  * The title block's revisions as a design depends on them. Who approved a
  * revision, and the note to that approval, are left out: an approval signs the stored revision without
  * changing anything it was calculated from, so it does not make a design of
@@ -459,11 +473,9 @@ function DesignWorkspace({
   const [clean, setClean] = useState(snapshot);
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
-  // The form as last committed, for a callback that outlives the render. A
-  // change that is not the engineer's (the detected market) is applied to
-  // this, never to the next render's state, which may already hold a
-  // keystroke queued in the same batch.
-  const committed = useRef({ info, boards, profileText, chosenLanguage });
+  // The market as last set, including by a handler earlier in the batch that
+  // has not rendered yet: an opened revision's clean form takes this one.
+  const latestMarket = useRef(market);
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
@@ -472,7 +484,7 @@ function DesignWorkspace({
   // read the state from before it.
   useLayoutEffect(() => {
     pristine.current = !dirty;
-    committed.current = { info, boards, profileText, chosenLanguage };
+    latestMarket.current = market;
   });
   const unsaved = useUnsavedChangesGuard(dirty, leaveImpl);
 
@@ -545,20 +557,14 @@ function DesignWorkspace({
   function chooseMarket(code: string, listed: MarketInfo[], chosen: boolean) {
     const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
     // A detected market is not an edit: an untouched form stays untouched.
-    // The clean form is the committed one with only the market applied, so a
-    // keystroke queued alongside it is still unsaved.
+    // The market is applied to the clean form as it stands when React runs
+    // the update, never rebuilt from the form: a keystroke queued alongside it
+    // is still unsaved, and a revision opened just before it in the same
+    // batch stays the clean form.
     if (!chosen && pristine.current) {
-      const base = committed.current;
-      setClean(
-        snapshotOf(
-          base.info,
-          base.boards.map((board) => ({ ...board, ...defaults })),
-          base.profileText,
-          base.chosenLanguage,
-          code,
-        ),
-      );
+      setClean((current) => cleanWithMarket(current, defaults, code));
     }
+    latestMarket.current = code;
     setMarket(code);
     if (chosen) storeMarket(code);
     setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
@@ -762,6 +768,7 @@ function DesignWorkspace({
     setProfileText(draft.profileText);
     setDrawingLanguage(draft.language);
     setMarket(draft.market);
+    latestMarket.current = draft.market;
     setClean(draft.clean);
     setLastSave(null);
     setResult({ kind: 'idle' });
@@ -906,7 +913,20 @@ function DesignWorkspace({
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
     setDrawingLanguage(settings.language);
-    setClean(snapshotOf(loaded.info, loaded.boards, settings.text, settings.language, market));
+    // The market as last set, not as last rendered: one detected earlier in
+    // the same batch is part of the form the revision opens into.
+    setClean(
+      snapshotOf(
+        loaded.info,
+        loaded.boards,
+        settings.text,
+        settings.language,
+        latestMarket.current,
+      ),
+    );
+    // The opened revision replaces the form: untouched, until an edit renders,
+    // so a market detected later in the same batch is applied to it as clean.
+    pristine.current = true;
     setLastSave(null);
     setResult({ kind: 'idle' });
     setExportError(null);
