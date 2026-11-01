@@ -425,6 +425,19 @@ def spec_oversize() -> Spec:
     return spec
 
 
+def spec_split_symbol() -> Spec:
+    """One 48-pin component, each pin wired to a strip point.
+
+    Its block splits into parts, so pins on a later part keep a stub (the
+    dash-dot style) instead of a lead.
+    """
+    n = 48
+    spec = Spec(comps=[("big", B, n)], strips=[("big", B, n)])
+    for k in range(n):
+        spec.nets.append(_pair(B, f"SYN-BIG{k:02d}", ("c", "big", k), ("p", "big", k, "inner")))
+    return spec
+
+
 STRESS: dict[str, Callable[[], Spec]] = {
     "dense_grid": spec_dense_grid,
     "hub": spec_hub,
@@ -434,6 +447,7 @@ STRESS: dict[str, Callable[[], Spec]] = {
     "strip_links": spec_strip_links,
     "many_boards": spec_many_boards,
     "oversize": spec_oversize,
+    "split_symbol": spec_split_symbol,
 }
 
 STRESS_CASES = [f"route:{name}" for name in STRESS]
@@ -571,7 +585,7 @@ class ModelIndex:
             or text.startswith(squash(f"{o[2]}/{o[1]}") + "(")
         ]
         if len(hits) > 1:
-            hits = [o for o in hits if squash(o[2]) in text]
+            hits = [o for o in hits if _names_board(header, o[2])]
         if len(hits) != 1:
             return None
         return hits[0][1], hits[0][3]
@@ -582,6 +596,11 @@ def _find(parent: dict[Key, Key], k: Key) -> Key:
     while parent[k] != k:
         k = parent[k]
     return k
+
+
+def _names_board(header: str, board: str) -> bool:
+    """Whether a header names ``board`` as a whole token (not "MDB" inside "SMDB-1")."""
+    return re.search(rf"(?<![\w-]){re.escape(board)}(?![\w-])", header) is not None
 
 
 def unrealised_nets(model: entities.DesignModelV2) -> list[tuple[entities.Net, list[set[Key]]]]:
@@ -837,12 +856,42 @@ def _samples(a: P, b: P, step: float = 1.0) -> list[P]:
     return [(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n) for i in range(n + 1)]
 
 
+def continued_texts(page: Page) -> list[tuple[str, Any]]:
+    """Wrapped texts re-joined, without merging stacked references.
+
+    A run continues the one above it only when it shares its left edge, sits on the next line, does not start a new "to ..." reference, and the
+    line above does not end a reference with ")".
+    """
+    out: list[tuple[str, Any]] = []
+    pending = sorted(page.runs, key=lambda r: (round(r.x0), r.top))
+    used: set[int] = set()
+    for n, run in enumerate(pending):
+        if n in used:
+            continue
+        text, last = run.text, run
+        for m in range(n + 1, len(pending)):
+            other = pending[m]
+            if m in used or abs(other.x0 - run.x0) > 0.6:
+                continue
+            if other.top - last.bottom >= 1.2 * last.size:
+                break
+            if other.top < last.bottom - 0.1:
+                continue
+            if other.text.startswith("to ") or last.text.rstrip().endswith(")"):
+                break
+            text += " " + other.text
+            used.add(m)
+            last = other
+        out.append((text, run))
+    return out
+
+
 def _continuations(page: Page) -> list[tuple[re.Match[str], Box]]:
     out = []
     for run in page.runs:
         for m in CONTINUATION.finditer(run.text):
             out.append((m, (run.x0, run.top, run.x1, run.bottom)))
-    for text, run in page.paragraphs_at:
+    for text, run in continued_texts(page):
         if text == run.text:
             continue
         for m in CONTINUATION.finditer(text):
@@ -905,14 +954,10 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
             raw.paths = _join_gaps(raw.paths)
             raws.append(raw)
     symbol_widths: set[float] = set()
-    lead_anchors: set[tuple[int, int]] = set()
     for raw in raws:
         if raw.page.is_drawing:
             raw.symbol_boxes, widths = _symbol_extent(raw.page)
             symbol_widths |= widths
-            for block in raw.page.blocks:
-                for lead in block.leads:
-                    lead_anchors.add((round(lead.anchor[0]), round(lead.anchor[1])))
     # The routed width: the most common width of open paths joining two dots.
     counts: dict[float, int] = defaultdict(int)
     for raw in raws:
@@ -927,6 +972,12 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
         if not raw.page.is_drawing:
             continue
         conts = _continuations(raw.page)
+        # Lead ends, per page: where the geometry reader's leads meet their symbol.
+        lead_anchors = {
+            (round(lead.anchor[0]), round(lead.anchor[1]))
+            for block in raw.page.blocks
+            for lead in block.leads
+        }
         for path in raw.paths:
             ends = []
             for p in (path.pts[0], path.pts[-1]):
@@ -939,12 +990,8 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
             line = Line(n, path, (ends[0], ends[1]))
             if not any(e.dot for e in ends):
                 continue
-            if any((round(e.p[0]), round(e.p[1])) in lead_anchors for e in ends):
+            if _is_lead(raw, line, route_width, lead_anchors):
                 continue  # a symbol lead, not a connection line
-            first = path.pts[1] if ends[0].dot else path.pts[-2]
-            dot = (ends[0].dot or ends[1].dot).c  # type: ignore[union-attr]
-            if first[0] < dot[0] - EPS and line.kind == "stub":
-                continue  # heads left, into the symbol: a lead
             if line.kind == "stub":
                 raw.stubs.append(line)
             if path.width != route_width:
@@ -960,6 +1007,29 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
             raw.lines.append(line)
         _assign(raw.lines, index)
     return Doc(raws, route_width, symbol_widths)
+
+
+def _is_lead(
+    raw: RawPage, line: Line, route_width: float | None, anchors: set[tuple[int, int]]
+) -> bool:
+    """Whether a one-dot path is a symbol lead rather than a stub or line.
+
+    Never the routed width, never a dotted / dash-dot stub style; a one-dot path whose far end meets a symbol (a lead anchor or a symbol box edge), or
+    that heads left into the symbol drawn solid.
+    """
+    path = line.path
+    if path.width == route_width or line.kind != "stub":
+        return False
+    if path.dash is not None and _dash_kind(path.dash, path.width) in ("dotted", "dash-dot"):
+        return False
+    far = next(e for e in line.ends if e.dot is None).p
+    if (round(far[0]), round(far[1])) in anchors:
+        return True
+    if any(_box_gap(b, (far[0], far[1], far[0], far[1])) <= EPS for b in raw.symbol_boxes):
+        return True
+    first = path.pts[1] if line.ends[0].dot else path.pts[-2]
+    dot = next(e.dot for e in line.ends if e.dot is not None)
+    return first[0] < dot.c[0] - EPS and path.dash is None
 
 
 def _assign(lines: list[Line], index: ModelIndex) -> None:
