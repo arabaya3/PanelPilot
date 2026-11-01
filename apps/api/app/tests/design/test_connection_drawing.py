@@ -205,8 +205,8 @@ def test_symbols_come_from_data_and_a_missing_one_is_a_labelled_placeholder() ->
 
 
 def _held_out() -> None:
-    if HELD_OUT_DRAWING not in CONFIGS:
-        pytest.skip("the held-out case is added as data, in a commit of its own")
+    # Added as data in a commit of its own; it must stay, so its absence fails.
+    assert HELD_OUT_DRAWING in CONFIGS
 
 
 @pytest.mark.parametrize("case", ["motor_dol_with_control", HELD_OUT_DRAWING])
