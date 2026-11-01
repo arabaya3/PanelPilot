@@ -2123,6 +2123,10 @@ function DesignWorkspace({
                   note={revisionNote}
                   dirty={dirty}
                   onSaved={forOwner((project: SavedProject) => {
+                    // A configured save stores the form as it stands (it is
+                    // held while dirty), so it rebaselines a design made from
+                    // it exactly as a plain save does.
+                    rebaseOnSave.current = true;
                     onOpened(project, false);
                   })}
                   onUnauthorized={forOwner(() => {
