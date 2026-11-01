@@ -625,7 +625,8 @@
       "layout": "Panel layout",
       "materials": "Materials",
       "revisions": "Revisions",
-      "review": "Review & export"
+      "review": "Review & export",
+      "configuration": "Configuration"
     },
     "context": {
       "label": "Current project",
@@ -815,7 +816,9 @@
       "calculations_pdf": "Calculations report (PDF)",
       "eplan_devices_csv": "EPLAN device import (CSV)",
       "ace_components_csv": "AutoCAD Electrical components (CSV)",
-      "ace_terminals_csv": "AutoCAD Electrical terminals (CSV)"
+      "ace_terminals_csv": "AutoCAD Electrical terminals (CSV)",
+      "terminal_schedule_pdf": "Terminal schedule (PDF, review only)",
+      "wire_schedule_pdf": "Wire schedule (PDF, review only)"
     },
     "import": {
       "label": "Import a load schedule",
@@ -1036,6 +1039,9 @@
       "plan_projects": "Your plan keeps {limit} projects; delete one or change plan.",
       "market_unknown": "There is no market {market}.",
       "revision_stale": "The rules or company profile changed since this revision — save a new revision.",
+      "configuration_refused": "The configuration cannot be applied as sent. Check the templates, patterns and bindings it names.",
+      "configuration_requires_v2": "This deployment cannot save a configuration with a revision yet.",
+      "schedule_requires_v2": "Terminal and wire schedules exist only for a saved revision with terminals, nets and wires.",
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
       "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
@@ -1122,6 +1128,7 @@
       },
       "dirty": "The page has changes revision {revision} does not hold. Its validation, findings and approval do not cover them; save a new revision.",
       "notValidated": "Revision {revision} was saved before validation: save again to validate it.",
+      "integrityFailed": "Revision {revision}'s stored design failed its integrity check ({reason}), so it is not validated and cannot be approved or exported. Save the design again as a new revision.",
       "executionBlocked": "Execution ready is not available yet: PanelPilot does not produce wiring and terminal connectivity, control schematics, orderable parts or a mechanical layout, so nothing is exported for execution."
     },
     "findings": {
@@ -1148,6 +1155,7 @@
       "draftBody": "Exported from the design on this page, not from a saved and validated revision. Every file is marked DRAFT — NOT FOR EXECUTION, lists the unresolved findings and carries no approval.",
       "revisionTitle": "Revision {revision} export",
       "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
+      "englishOnly": "The drawing set and calculations are in the company profile's drawing language, with their status marks and findings in English. The quotation, the terminal and wire schedules and the DXF drawing are in English; the JSON project file holds the data as entered. Names you typed are kept as typed.",
       "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
       "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
       "execution": "Request execution export",
@@ -1163,7 +1171,16 @@
       "gapApproval": "Review approval of this revision",
       "executionBlockedTitle": "Execution export blocked",
       "gapNotValidated": "A validated revision (save again to validate)",
-      "gapStale": "A revision saved under the current rules and company settings"
+      "gapStale": "A revision saved under the current rules and company settings",
+      "schedulesTitle": "Review schedules — NOT FOR EXECUTION",
+      "schedulesBody": "Terminal and wire schedules of revision {revision}, from its saved terminals, nets and wires. They are review documents, NOT FOR EXECUTION: they state or check no rating, cross-section, colour, numbering convention or standard.",
+      "gapDefinitions": {
+        "template_unreviewed": "Every template reviewed by a qualified electrical engineer designated by the owner (some are unreviewed)",
+        "template_rejected": "No rejected template in the design",
+        "pattern_unreviewed": "Every connection pattern reviewed by a qualified electrical engineer designated by the owner (some are unreviewed)",
+        "pattern_rejected": "No rejected connection pattern in the design",
+        "out_of_execution_scope": "No fire-pump or life-safety definitions: they are outside execution scope"
+      }
     },
     "finding": {
       "integrity_unknown_device": "Device {device} is not on this board.",
@@ -1455,5 +1472,135 @@
     "signIn": "Sign in",
     "emailTaken": "That email already has an account; sign in instead.",
     "failed": "The account could not be created; try again."
+  },
+  "configuration": {
+    "notSaved": "Save the project first: a configuration is validated against a saved revision.",
+    "newTitle": "Try a configuration",
+    "openedTitle": "Configuration of revision {revision} (read-only)",
+    "openedV1": "Revision {revision} is stored as {schema}: it holds no components, terminals, nets or wires to review.",
+    "tableName": "{context}: {label}",
+    "contextSaved": "Saved revision {revision}",
+    "contextValidation": "Validation result",
+    "openedUnread": "Revision {revision}'s stored design could not be read or failed its integrity check, so its configuration is not shown. Nothing in it can be approved or exported; save the design again as a new revision.",
+    "openedStale": "Revision {revision} is stale: the rules or company profile changed since it was saved, so its configuration is not shown. Save it again as a new revision.",
+    "intro": "Paste or load a configuration (JSON). Validate composes it on the server with the project's latest saved revision ({revision}); nothing is saved.",
+    "file": "Configuration file (.json)",
+    "fileHelp": "The file is read into the box below; nothing is sent until you validate or save.",
+    "json": "Configuration (JSON)",
+    "invalid": "This is not a JSON object.",
+    "validate": "Validate",
+    "validateHelp": "Validate shows what the configuration would compose to and saves nothing. Save as configured revision stores it as a new revision where this environment allows it.",
+    "save": "Save as configured revision",
+    "working": "Working…",
+    "dirty": "The form has changes since revision {revision}. Validation uses the saved revision; save or discard the changes before saving a configured revision.",
+    "saved": "Saved as revision {revision}, a configured revision.",
+    "failed": "The request did not complete. Try again.",
+    "unauthorized": "Your session ended. Sign in again and retry.",
+    "reviewOutdated": "The configuration has changed since this review. Validate again.",
+    "reviewedAgainst": "Composed against revision {revision}, as",
+    "awaitReview": "Templates, patterns and rules await review by a qualified electrical engineer designated by the owner. No status shown here is an engineering approval.",
+    "scope": {
+      "title": "What validation checks, and what it does not",
+      "proves": "Validation checks that the data is complete and consistent with itself: references resolve, definitions match their recorded digests, values have a stated source, requiredness is documented or reported as unresolved, and nets are realised by their own connections.",
+      "doesNot": "None of this establishes electrical correctness: it does not decide whether joined terminals may be joined, whether a terminal, wire, cross-section or colour is adequate or rated, whether a numbering or colour scheme is followed, whether any standard is met, or whether a design is ready for execution. A design with no findings is consistent data, not a correct or approved design.",
+      "review": "Those questions need registered rules with sources and the decision of a qualified electrical engineer designated by the owner."
+    },
+    "source": {
+      "user": "User-entered",
+      "configuration": "User-entered (configuration)",
+      "data": "Data (from definitions)",
+      "assumption": "Assumption",
+      "unresolved": "Unresolved (not given)"
+    },
+    "noValue": "No value",
+    "assumptionStatement": "Assumption",
+    "noStatement": "(no statement)",
+    "required": {
+      "required": "Required",
+      "notRequired": "Not required",
+      "notApplicable": "Not applicable (strip point)",
+      "unresolved": "Unresolved: the template does not say"
+    },
+    "review": {
+      "unreviewed": "Unreviewed",
+      "rejected": "Rejected",
+      "approved": "Status in the data: approved (not confirmed by this page)",
+      "unknown": "Unknown status"
+    },
+    "provenanceMissing": "Unresolved: no source documented",
+    "kind": {
+      "template": "Template",
+      "pattern": "Connection pattern"
+    },
+    "tables": {
+      "definitions": "Definitions (templates and patterns)",
+      "components": "Components",
+      "strips": "Terminal strips and points",
+      "terminals": "Terminals",
+      "nets": "Nets",
+      "connections": "Connections",
+      "wires": "Wires",
+      "findings": "Structural findings",
+      "designFindings": "Other design findings"
+    },
+    "emptyTable": "None.",
+    "column": {
+      "ref": "Ref",
+      "kind": "Kind",
+      "reviewStatus": "Review status",
+      "provenance": "Provenance source",
+      "restrictedScope": "Restricted scope",
+      "id": "Id",
+      "board": "Board",
+      "designation": "Designation",
+      "template": "Template",
+      "patterns": "Patterns",
+      "source": "Source",
+      "strip": "Strip",
+      "marking": "Marking",
+      "position": "Position",
+      "level": "Level",
+      "owner": "Owner",
+      "side": "Side",
+      "required": "Requiredness",
+      "net": "Net",
+      "connectedTo": "Connected to",
+      "flags": "Findings",
+      "signal": "Signal",
+      "origin": "Origin",
+      "members": "Members",
+      "start": "From",
+      "end": "To",
+      "via": "Via",
+      "cableCore": "Cable core",
+      "wire": "Wire",
+      "number": "Number",
+      "crossSection": "Cross-section (mm²)",
+      "colour": "Colour"
+    },
+    "findings": {
+      "none": "No structural findings.",
+      "blocksApproval": "Blocks approval ({count})",
+      "blocksExecution": "Blocks execution ({count})",
+      "unresolved": "Unresolved items ({count})",
+      "needsConfirmation": "Warnings needing engineering confirmation ({count})",
+      "other": "Other warnings ({count})",
+      "confirmFlag": "Needs engineering confirmation",
+      "location": "Where:"
+    },
+    "severity": {
+      "blocking": "Blocking",
+      "warning": "Warning",
+      "info": "Information"
+    },
+    "refusal": {
+      "configuration_requires_v2": "Configured revisions are disabled in this environment: it writes {schema}. You can still validate and review a configuration; nothing is saved.",
+      "configuration_claims_review": "The configuration claims a review for {ref} ({fields}). A submitted template or pattern must be unreviewed: a review is recorded only by a qualified engineer the owner designates.",
+      "configuration_ref_reserved": "The definition {ref} uses a reserved ref. A submitted template or pattern needs a tenant ref; global refs belong to the software and can only be referenced.",
+      "configuration_refused": "The configuration cannot be composed as sent ({refusal}). Check the templates, patterns and bindings it names.",
+      "configuration_too_large": "The configuration is too large: {limitOf} is over its limit of {limit}.",
+      "revision_not_validated": "The latest revision no longer validates, so the configuration cannot be composed with it. Save a new revision first.",
+      "other": "Refused: {detail}"
+    }
   }
 }

@@ -21,7 +21,10 @@ import {
 import { AppShell } from '@/components/app-shell';
 import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
+import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
+import { ConfigurationPanel } from '@/components/design/configuration-panel';
+import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
 import { useIsolatingTranslations } from '@/components/design/bidi';
@@ -85,7 +88,7 @@ import {
   VIEWS,
   type View,
 } from '@/components/design/workspace';
-import { FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
+import { DownloadIcon, FolderIcon, LayersIcon, PlusIcon } from '@/components/icons';
 import { PlcPanel } from '@/components/plc-panel';
 import { SignInForm } from '@/components/sign-in-form';
 import { QuotationPanel, type QuoteRates } from '@/components/quotation-panel';
@@ -120,6 +123,8 @@ import {
   type ExportPurpose,
   type Refusal,
   type TooLong,
+  type V2ModelSummary,
+  SCHEDULE_FORMATS,
 } from '@/lib/design';
 import { fetchMarkets, readMarket, storeMarket, withMarket, type MarketInfo } from '@/lib/market';
 import type { signIn } from '@/lib/auth';
@@ -224,6 +229,27 @@ export function snapshotOf(
   return JSON.stringify({ info, boards, profileText, language, market }, (key, value: unknown) =>
     key === 'key' ? undefined : value,
   );
+}
+
+/**
+ * A clean form (a `snapshotOf`) with a market applied: its supply on every
+ * board and its code. A form that is unsaved whatever it holds stays so.
+ */
+function cleanWithMarket(clean: string, defaults: SupplyDefaults, code: string): string {
+  if (clean === '') return clean;
+  let form: { boards: Record<string, unknown>[]; market: string };
+  try {
+    form = JSON.parse(clean) as typeof form;
+  } catch {
+    // Not a form this page wrote: leave it, so the form stays as unsaved as it was.
+    return clean;
+  }
+  if (!Array.isArray(form.boards)) return clean;
+  return JSON.stringify({
+    ...form,
+    boards: form.boards.map((board) => ({ ...board, ...defaults })),
+    market: code,
+  });
 }
 
 /**
@@ -371,6 +397,7 @@ function DesignWorkspace({
 }) {
   const t = useIsolatingTranslations('design');
   const tw = useIsolatingTranslations('workspace');
+  const tc = useIsolatingTranslations('configuration');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
   const id = useId();
@@ -418,6 +445,13 @@ function DesignWorkspace({
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const [exportError, setExportError] = useState<string | null>(null);
   const [opened, setOpened] = useState<OpenedProject | null>(null);
+  /** The opened revision's `pp-design/2` model, or null for a v1 revision. */
+  const [openedModel, setOpenedModel] = useState<V2ModelSummary | null>(null);
+  /**
+   * The schema the opened revision's stored design names (from its marker,
+   * not a read of it): null when unknown, undefined from an older server.
+   */
+  const [openedSchema, setOpenedSchema] = useState<string | null | undefined>(undefined);
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
@@ -444,16 +478,11 @@ function DesignWorkspace({
   // What the work looked like when last saved or opened (or when the page
   // started); anything else is unsaved.
   const [clean, setClean] = useState(snapshot);
-  // Set when a change that is not the engineer's (the detected market) lands
-  // on an untouched form, so that form is still untouched afterwards. Applied
-  // during render, so the form never flashes as unsaved in between.
-  const [rebaseline, setRebaseline] = useState(false);
-  if (rebaseline) {
-    setRebaseline(false);
-    setClean(snapshot);
-  }
   // Whether the work is untouched, for a callback that outlives the render.
   const pristine = useRef(true);
+  // The market as last set, including by a handler earlier in the batch that
+  // has not rendered yet: an opened revision's clean form takes this one.
+  const latestMarket = useRef(market);
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
@@ -462,6 +491,7 @@ function DesignWorkspace({
   // read the state from before it.
   useLayoutEffect(() => {
     pristine.current = !dirty;
+    latestMarket.current = market;
   });
   const unsaved = useUnsavedChangesGuard(dirty, leaveImpl);
 
@@ -532,11 +562,18 @@ function DesignWorkspace({
 
   /** Use a market: its supply on every board, remembered when the engineer chose it. */
   function chooseMarket(code: string, listed: MarketInfo[], chosen: boolean) {
+    const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
     // A detected market is not an edit: an untouched form stays untouched.
-    if (!chosen && pristine.current) setRebaseline(true);
+    // The market is applied to the clean form as it stands when React runs
+    // the update, never rebuilt from the form: a keystroke queued alongside it
+    // is still unsaved, and a revision opened just before it in the same
+    // batch stays the clean form.
+    if (!chosen && pristine.current) {
+      setClean((current) => cleanWithMarket(current, defaults, code));
+    }
+    latestMarket.current = code;
     setMarket(code);
     if (chosen) storeMarket(code);
-    const defaults = supplyOf(listed.find((entry) => entry.code === code) ?? null);
     setBoards((current) => current.map((board) => ({ ...board, ...defaults })));
   }
 
@@ -738,6 +775,7 @@ function DesignWorkspace({
     setProfileText(draft.profileText);
     setDrawingLanguage(draft.language);
     setMarket(draft.market);
+    latestMarket.current = draft.market;
     setClean(draft.clean);
     setLastSave(null);
     setResult({ kind: 'idle' });
@@ -836,6 +874,8 @@ function DesignWorkspace({
       canApprove: permits(project, 'approve_revision'),
     });
     setHistory(project.revisions);
+    setOpenedModel(project.model_v2 ?? null);
+    setOpenedSchema(project.snapshot_schema);
     // A save, an approval or an opening each answer with the revision as now
     // stored: its validation replaces whatever was known of the last one.
     setValidation(validationOf(project));
@@ -880,7 +920,20 @@ function DesignWorkspace({
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
     setDrawingLanguage(settings.language);
-    setClean(snapshotOf(loaded.info, loaded.boards, settings.text, settings.language, market));
+    // The market as last set, not as last rendered: one detected earlier in
+    // the same batch is part of the form the revision opens into.
+    setClean(
+      snapshotOf(
+        loaded.info,
+        loaded.boards,
+        settings.text,
+        settings.language,
+        latestMarket.current,
+      ),
+    );
+    // The opened revision replaces the form: untouched, until an edit renders,
+    // so a market detected later in the same batch is applied to it as clean.
+    pristine.current = true;
     setLastSave(null);
     setResult({ kind: 'idle' });
     setExportError(null);
@@ -1025,7 +1078,10 @@ function DesignWorkspace({
           dir={ltr ? 'ltr' : undefined}
           value={info[key]}
           onChange={(event) => {
-            setInfo((current) => ({ ...current, [key]: event.target.value }));
+            // Read now: React may run the updater after the event, once it
+            // has put the controlled input back to its rendered value.
+            const { value } = event.target;
+            setInfo((current) => ({ ...current, [key]: value }));
           }}
           className="input w-full"
         />
@@ -1068,6 +1124,21 @@ function DesignWorkspace({
     return typeof schema === 'string' ? schema : '?';
   })();
   const readiness = readinessOf({ opened, validation, dirty, stale: revisionStale });
+  // Why the opened revision is not validated: its stored design failed its
+  // integrity check, is in a format this version does not read, or (else) it
+  // was saved before validation.
+  const notValidatedText = (revision: number): string => {
+    if (schemaUnknown) return t('errors.snapshot_schema_unknown', { schema: schemaUnknown });
+    const failed = validation?.findings.find((item) => item.code === 'snapshot_integrity_failed');
+    if (failed) {
+      const reason = failed.values?.reason;
+      return t('readiness.integrityFailed', {
+        revision,
+        reason: typeof reason === 'string' ? reason : '?',
+      });
+    }
+    return t('readiness.notValidated', { revision });
+  };
   const sheetCount = designed?.boards?.length ?? 0;
   // The PLC drives every contactor and every drive.
   const hasPlcOutputs = (designed?.boards ?? []).some((board) =>
@@ -2009,6 +2080,74 @@ function DesignWorkspace({
         )}
 
         {viewPanel(
+          'configuration',
+          <>
+            {opened && (
+              <Panel
+                title={tc('openedTitle', { revision: opened.revision })}
+                testId="opened-configuration"
+              >
+                {openedModel ? (
+                  <div className="flex flex-col gap-4">
+                    <ValidationScopeNote />
+                    <ModelReview
+                      model={openedModel}
+                      context={tc('contextSaved', { revision: opened.revision })}
+                    />
+                  </div>
+                ) : openedSchema === 'pp-design/1' || openedSchema === undefined ? (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-v1">
+                    {tc('openedV1', { revision: opened.revision, schema: 'pp-design/1' })}
+                  </p>
+                ) : validation?.exportStatus === 'stale' ? (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-stale">
+                    {tc('openedStale', { revision: opened.revision })}
+                  </p>
+                ) : (
+                  <p className="text-sm text-text-muted" data-testid="opened-configuration-unread">
+                    {tc('openedUnread', { revision: opened.revision })}
+                  </p>
+                )}
+              </Panel>
+            )}
+            <Panel title={tc('newTitle')}>
+              {opened && token !== null ? (
+                <ConfigurationPanel
+                  key={`${ownerKey}|${opened.id}`}
+                  token={token}
+                  projectId={opened.id}
+                  latestRevision={Math.max(opened.revision, ...opened.revisions)}
+                  request={
+                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
+                  }
+                  note={revisionNote}
+                  dirty={dirty}
+                  onSaved={forOwner((project: SavedProject) => {
+                    // A configured save stores the form as it stands (it is
+                    // held while dirty), so it rebaselines a design made from
+                    // it exactly as a plain save does.
+                    rebaseOnSave.current = true;
+                    onOpened(project, false);
+                  })}
+                  onUnauthorized={forOwner(() => {
+                    void reauthorize();
+                  })}
+                />
+              ) : (
+                <Notice
+                  tone="info"
+                  live={false}
+                  action={goTo('overview', tw('review.saveAction'))}
+                  testId="configuration-not-saved"
+                >
+                  {tc('notSaved')}
+                </Notice>
+              )}
+            </Panel>
+          </>,
+        )}
+
+        {viewPanel(
           'review',
           <>
             <Panel title={t('readiness.title')}>
@@ -2026,7 +2165,7 @@ function DesignWorkspace({
                 )}
                 {opened && validation !== null && !validation.validated && (
                   <Notice tone="warning" live={false} testId="readiness-not-validated">
-                    {t('readiness.notValidated', { revision: opened.revision })}
+                    {notValidatedText(opened.revision)}
                   </Notice>
                 )}
                 <p className="text-sm text-text-muted" data-testid="readiness-execution-note">
@@ -2098,19 +2237,58 @@ function DesignWorkspace({
                     </Notice>
                   ) : validation !== null && !validation.validated ? (
                     <Notice tone="warning" live={false} testId="revision-export-not-validated">
-                      {t('readiness.notValidated', { revision: opened.revision })}
+                      {notValidatedText(opened.revision)}
                     </Notice>
                   ) : (
                     <>
                       <p className="text-sm text-text-muted">
                         {t('exports.revisionBody', { revision: opened.revision })}
                       </p>
+                      <EnglishExportsNote testId="revision-export-english" />
                       <ExportPanel
                         onExport={(format) => downloadRevision(format)}
                         exportError={revisionError}
                         busy={exporting}
                         testIdPrefix="revision-export"
                       />
+                      <div
+                        className="flex flex-col gap-2 border-t border-border-subtle pt-3"
+                        data-testid="revision-schedules"
+                      >
+                        <p className="text-sm font-semibold">{t('exports.schedulesTitle')}</p>
+                        {openedModel ? (
+                          <>
+                            <p className="text-sm text-text-muted">
+                              {t('exports.schedulesBody', { revision: opened.revision })}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {SCHEDULE_FORMATS.map((format) => (
+                                <button
+                                  key={format}
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  data-testid={`revision-export-${format}`}
+                                  disabled={exporting}
+                                  aria-busy={exporting || undefined}
+                                  onClick={() => {
+                                    void downloadRevision(format);
+                                  }}
+                                >
+                                  <DownloadIcon width="16" height="16" aria-hidden="true" />
+                                  {t(`format.${format}`)}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <p
+                            className="text-sm text-text-muted"
+                            data-testid="revision-schedules-v1"
+                          >
+                            {t('errors.schedule_requires_v2')}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex flex-col gap-2 border-t border-border-subtle pt-3">
                         <p className="text-sm text-text-muted">{t('exports.executionBody')}</p>
                         <div>
@@ -2148,6 +2326,7 @@ function DesignWorkspace({
                   <Notice tone="warning" live={false} title={t('exports.draftMark')}>
                     {t('exports.draftBody')}
                   </Notice>
+                  <EnglishExportsNote testId="draft-export-english" />
                   <ExportPanel onExport={download} exportError={exportError} busy={exporting} />
                 </div>
               ) : stale ? (

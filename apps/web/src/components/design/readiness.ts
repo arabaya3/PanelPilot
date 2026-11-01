@@ -198,7 +198,22 @@ export type ExecutionRefusal = {
   notValidated: boolean;
   /** The rules or the company settings changed since it was saved. */
   stale: boolean;
+  /**
+   * Definitions (templates, connection patterns) that keep a configured
+   * revision from execution: unreviewed, rejected or out of execution scope.
+   */
+  definitions: string[];
 };
+
+/** The definition codes the API lists among a configured revision's execution blockers. */
+export const DEFINITION_BLOCKERS = [
+  'template_unreviewed',
+  'template_rejected',
+  'pattern_unreviewed',
+  'pattern_rejected',
+  'out_of_execution_scope',
+] as const;
+const DEFINITION_SET = new Set<string>(DEFINITION_BLOCKERS);
 
 /** A comma-separated param (the error envelope's params are strings) as its entries. */
 function list(value: string | undefined): string[] {
@@ -218,6 +233,7 @@ export function executionRefusalOf(refusal: Refusal): ExecutionRefusal {
     approvalMissing: params.approval === 'missing',
     notValidated: blockers.includes('not_validated'),
     stale: blockers.includes('stale'),
+    definitions: blockers.filter((entry) => DEFINITION_SET.has(entry)),
   };
 }
 
@@ -233,7 +249,10 @@ export function executionBlockersOf(validation: RevisionValidation): ExecutionRe
   const blockers = validation.executionBlockers;
   return {
     missing: blockers.filter(
-      (entry) => !FLAG_BLOCKERS.has(entry) && !entry.startsWith(FINDING_BLOCKER),
+      (entry) =>
+        !FLAG_BLOCKERS.has(entry) &&
+        !DEFINITION_SET.has(entry) &&
+        !entry.startsWith(FINDING_BLOCKER),
     ),
     blockingFindings: blockers
       .filter((entry) => entry.startsWith(FINDING_BLOCKER))
@@ -241,6 +260,7 @@ export function executionBlockersOf(validation: RevisionValidation): ExecutionRe
     approvalMissing: blockers.includes('approval'),
     notValidated: blockers.includes('not_validated'),
     stale: blockers.includes('stale'),
+    definitions: blockers.filter((entry) => DEFINITION_SET.has(entry)),
   };
 }
 

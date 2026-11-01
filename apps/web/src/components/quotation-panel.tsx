@@ -5,6 +5,7 @@ import { useId, useState } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { FilePicker } from '@/components/file-picker';
+import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { useOutcomeText } from '@/components/design/note-text';
 import { DEFAULT_PROFILE_KEY } from '@/components/design/schedule';
 import { useFindingText } from '@/components/design/revision-status';
@@ -257,6 +258,7 @@ export function QuotationPanel({
       >
         {tDesign('errors.export_format_unprotected')}
       </p>
+      <EnglishExportsNote testId="quote-english" />
 
       {message && (
         <p role="status" className="text-sm" data-testid="quote-message">

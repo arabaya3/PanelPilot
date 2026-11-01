@@ -23,6 +23,8 @@ from app.models.schemas.design import (
     BoardDesignRequest,
     BoardDesignResponse,
     CompanySettings,
+    ConfigurationReview,
+    ConfigurationValidateRequest,
     DesignExportRequest,
     LoadScheduleImport,
     LoadScheduleSuggestion,
@@ -205,6 +207,32 @@ def revise_project(
     )
 
 
+@router.post(
+    "/projects/{project_id}/configuration/validate",
+    response_model=ConfigurationReview,
+    responses={
+        404: {"description": "No such project is the caller's (`project_not_found`)"},
+        409: {"description": "`revision_not_validated`"},
+        422: {
+            "description": (
+                "`configuration_too_large`, `configuration_claims_review`, "
+                "`configuration_ref_reserved` or `configuration_refused`"
+            )
+        },
+    },
+)
+def validate_configuration(
+    project_id: str,
+    payload: ConfigurationValidateRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> ConfigurationReview:
+    """Compose a configuration with the latest revision, designed now; nothing is saved."""
+    return design_projects.validate_configuration(
+        session=session, user=user, project_id=project_id, request=payload
+    )
+
+
 @router.post("/projects/{project_id}/revisions/{number}/approval", response_model=SavedProject)
 def approve_revision(
     project_id: str,
@@ -228,7 +256,7 @@ def approve_revision(
         409: {
             "description": (
                 "`revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, "
-                "`revision_stale`, `export_format_unprotected`, "
+                "`revision_stale`, `export_format_unprotected`, `schedule_requires_v2`, "
                 "or `execution_package_incomplete`"
             )
         },

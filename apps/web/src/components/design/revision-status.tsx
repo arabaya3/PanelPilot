@@ -211,6 +211,9 @@ export function ExecutionRefused({
         {refusal.blockingFindings.length > 0 && (
           <li>{t('gapBlocking', { count: refusal.blockingFindings.length })}</li>
         )}
+        {refusal.definitions.map((code) => (
+          <li key={code}>{t(`gapDefinitions.${code}`)}</li>
+        ))}
         {refusal.notValidated && <li>{t('gapNotValidated')}</li>}
         {refusal.stale && <li>{t('gapStale')}</li>}
         {refusal.approvalMissing && <li>{t('gapApproval')}</li>}

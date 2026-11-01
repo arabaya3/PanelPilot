@@ -252,6 +252,26 @@ describe('saving', () => {
     });
   });
 
+  it('keeps a keystroke typed in the same batch as the save answer unsaved', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof saveProject>>>();
+    api.save.mockReturnValue(pending.promise);
+    renderScreen();
+    await completeForm();
+    fireEvent.click(projects().getByText('Save project'));
+    expect(await screen.findByText('Saving…')).toBeTruthy();
+
+    // The answer and the keystroke land together: the save adopts only what
+    // it sent, never the keystroke.
+    await act(async () => {
+      pending.resolve({ kind: 'saved', project: saved('Tower') });
+      type(overviewField('Customer'), 'Typed as it answered');
+      await pending.promise;
+    });
+    expect(await screen.findByText('Saved as revision 1.')).toBeTruthy();
+    expect(overviewField('Customer').value).toBe('Typed as it answered');
+    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  });
+
   it('keeps every input when a save fails', async () => {
     api.save.mockResolvedValue({ kind: 'failed' });
     renderScreen();
@@ -478,6 +498,55 @@ describe('approval', () => {
     });
     await screen.findByText(/Revision 1 is approved/);
     // Approval signs who approved; nothing the design was calculated from changed.
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+    expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
+
+    // A real edit still makes it stale.
+    type(loadRow().getByLabelText(/^Power.*kW/), '9');
+    expect(await screen.findByTestId('design-stale')).toBeTruthy();
+  });
+
+  it('keeps a design current through a configured save of the same inputs', async () => {
+    api.open.mockResolvedValue({ kind: 'saved', project: storedWithRow('') });
+    // The stored revision 2 gains its own title block row, as a save does.
+    const next = storedWithRow('');
+    next.revision = 2;
+    next.request = {
+      ...next.request,
+      info: {
+        ...next.request.info,
+        revisions: [
+          ...(next.request.info.revisions ?? []),
+          {
+            index: '02',
+            date: '2026-10-04',
+            description: 'Configured',
+            drawn_by: '',
+            checked_by: '',
+            approved_by: '',
+            approval_note: '',
+          },
+        ],
+      },
+    };
+    api.revise.mockResolvedValue({ kind: 'saved', project: next });
+    const designImpl = vi
+      .fn<typeof designProject>()
+      .mockResolvedValue({ kind: 'designed', response: DESIGNED });
+    renderScreen({ designImpl, account: true });
+    await openStored();
+    fireEvent.click(designButton());
+    await screen.findByTestId('design-result');
+    expect(screen.queryByTestId('design-stale')).toBeNull();
+
+    fireEvent.click(viewTab('Configuration'));
+    const panel = within(screen.getByTestId('configuration-panel'));
+    fireEvent.change(panel.getByTestId('configuration-json'), {
+      target: { value: '{"templates": []}' },
+    });
+    fireEvent.click(panel.getByTestId('configuration-save'));
+    await panel.findByTestId('configuration-saved');
+    expect(api.revise).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('design-stale')).toBeNull();
     expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
 
