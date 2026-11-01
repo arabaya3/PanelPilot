@@ -127,10 +127,14 @@ export type V2Finding = components['schemas']['V2Finding'];
 export type V2Value = components['schemas']['V2Value'];
 export type ConfigurationOutcome = { kind: 'reviewed'; review: ConfigurationReview } | Failure;
 
-/** The review-only schedules a `pp-design/2` revision exports (PDF, NOT FOR EXECUTION). */
+/**
+ * The review-only documents a `pp-design/2` revision exports (PDF, NOT FOR EXECUTION):
+ * the terminal and wire schedules and the connection drawing.
+ */
 export const SCHEDULE_FORMATS = [
   'terminal_schedule_pdf',
   'wire_schedule_pdf',
+  'connection_drawing_pdf',
 ] as const satisfies readonly ExportFormat[];
 
 /** Statuses whose body is a refusal to say, not a fault. */

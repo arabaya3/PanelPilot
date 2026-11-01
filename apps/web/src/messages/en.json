@@ -818,7 +818,8 @@
       "ace_components_csv": "AutoCAD Electrical components (CSV)",
       "ace_terminals_csv": "AutoCAD Electrical terminals (CSV)",
       "terminal_schedule_pdf": "Terminal schedule (PDF, review only)",
-      "wire_schedule_pdf": "Wire schedule (PDF, review only)"
+      "wire_schedule_pdf": "Wire schedule (PDF, review only)",
+      "connection_drawing_pdf": "Connection drawing (PDF, review only)"
     },
     "import": {
       "label": "Import a load schedule",
@@ -1041,7 +1042,7 @@
       "revision_stale": "The rules or company profile changed since this revision — save a new revision.",
       "configuration_refused": "The configuration cannot be applied as sent. Check the templates, patterns and bindings it names.",
       "configuration_requires_v2": "This deployment cannot save a configuration with a revision yet.",
-      "schedule_requires_v2": "Terminal and wire schedules exist only for a saved revision with terminals, nets and wires.",
+      "schedule_requires_v2": "Terminal and wire schedules and the connection drawing exist only for a saved revision with terminals, nets and wires.",
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
       "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
@@ -1155,7 +1156,7 @@
       "draftBody": "Exported from the design on this page, not from a saved and validated revision. Every file is marked DRAFT — NOT FOR EXECUTION, lists the unresolved findings and carries no approval.",
       "revisionTitle": "Revision {revision} export",
       "revisionBody": "Exported from revision {revision} as the server stored and validated it. Not approved, it is marked DRAFT — NOT FOR EXECUTION; review-approved, REVIEW APPROVED — STUDY, NOT FOR EXECUTION.",
-      "englishOnly": "The drawing set and calculations are in the company profile's drawing language, with their status marks and findings in English. The quotation, the terminal and wire schedules and the DXF drawing are in English; the JSON project file holds the data as entered. Names you typed are kept as typed.",
+      "englishOnly": "The drawing set and calculations are in the company profile's drawing language, with their status marks and findings in English. The quotation, the terminal and wire schedules, the connection drawing and the DXF drawing are in English; the JSON project file holds the data as entered. Names you typed are kept as typed.",
       "revisionDirty": "Revision {revision} does not hold the changes on this page. Save a new revision to export them as a revision, or use the draft export.",
       "executionBody": "An execution export needs a complete execution package; the server checks it before exporting anything.",
       "execution": "Request execution export",
@@ -1172,8 +1173,8 @@
       "executionBlockedTitle": "Execution export blocked",
       "gapNotValidated": "A validated revision (save again to validate)",
       "gapStale": "A revision saved under the current rules and company settings",
-      "schedulesTitle": "Review schedules — NOT FOR EXECUTION",
-      "schedulesBody": "Terminal and wire schedules of revision {revision}, from its saved terminals, nets and wires. They are review documents, NOT FOR EXECUTION: they state or check no rating, cross-section, colour, numbering convention or standard.",
+      "schedulesTitle": "Review schedules and connection drawing — NOT FOR EXECUTION",
+      "schedulesBody": "Terminal and wire schedules and a connection drawing of revision {revision}, from its saved terminals, nets and wires. They are review documents, NOT FOR EXECUTION: they state or check no rating, cross-section, colour, numbering convention or standard, and show what is not set or not connected.",
       "gapDefinitions": {
         "template_unreviewed": "Every template reviewed by a qualified electrical engineer designated by the owner (some are unreviewed)",
         "template_rejected": "No rejected template in the design",
