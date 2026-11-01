@@ -85,6 +85,10 @@ export function ConfigurationPanel({
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
   const [disabledHere, setDisabledHere] = useState<string | null>(null);
   const parsed = parseConfiguration(text);
+  // The latest answer said this deployment stores no configured revision
+  // (a review that is not saveable, or a save refused for it): saving again
+  // could only be refused the same way.
+  const unsaveable = disabledHere !== null;
   const working = outcome.kind === 'working';
   // Validate and Save are disabled while they work, which drops keyboard
   // focus to the page: once answered, focus moves to the answer instead.
@@ -150,7 +154,7 @@ export function ConfigurationPanel({
   }
 
   async function save() {
-    if (typeof parsed !== 'object' || request === null || working || dirty) return;
+    if (typeof parsed !== 'object' || request === null || working || dirty || unsaveable) return;
     focusResult.current = true;
     setOutcome({ kind: 'working' });
     const result = await reviseImpl({
@@ -224,7 +228,9 @@ export function ConfigurationPanel({
         <button
           type="button"
           className="btn btn-sm btn-secondary"
-          disabled={typeof parsed !== 'object' || working || request === null || dirty}
+          disabled={
+            typeof parsed !== 'object' || working || request === null || dirty || unsaveable
+          }
           onClick={() => {
             void save();
           }}

@@ -487,6 +487,41 @@ describe('saving a configured revision', () => {
     expect(screen.getByTestId<HTMLButtonElement>('configuration-validate').disabled).toBe(false);
   });
 
+  it('is held once validation says configured revisions are disabled here', async () => {
+    api.validate.mockResolvedValue({
+      kind: 'reviewed',
+      review: { ...REVIEW, saveable: false, written_schema: 'pp-design/1' },
+    });
+    renderPanel();
+    enter();
+    const save = screen.getByTestId<HTMLButtonElement>('configuration-save');
+    expect(save.disabled).toBe(false);
+    fireEvent.click(screen.getByTestId('configuration-validate'));
+    await screen.findByTestId('configuration-review');
+    // The reason stays in view, and the save it explains cannot be sent.
+    expect(screen.getByTestId('configuration-disabled').textContent).toContain(
+      'Configured revisions are disabled in this environment',
+    );
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(api.revise).not.toHaveBeenCalled();
+    expect(screen.getByTestId<HTMLButtonElement>('configuration-validate').disabled).toBe(false);
+  });
+
+  it('is held after a save refused because configured revisions are disabled', async () => {
+    api.revise.mockResolvedValue({
+      kind: 'refused',
+      detail: 'v1',
+      code: 'configuration_requires_v2',
+      params: { written_schema: 'pp-design/1' },
+    });
+    renderPanel();
+    enter();
+    fireEvent.click(screen.getByTestId('configuration-save'));
+    await screen.findByTestId('configuration-disabled');
+    expect(screen.getByTestId<HTMLButtonElement>('configuration-save').disabled).toBe(true);
+  });
+
   it('is held while the form differs from the saved revision', () => {
     renderPanel({ dirty: true });
     enter();
