@@ -140,9 +140,10 @@ def test_a_cross_reference_names_the_far_sheet_and_zone(case: str) -> None:
         across = [(row, end) for row in drawing.rows for end in row.ends]
         assert across
         row, end = across[0]
-        assert f"(this sheet, zone {end.far_place.zone})" in connection_drawing.end_texts(
-            end, row.place.sheet
-        )[0]
+        assert (
+            f"(this sheet, zone {end.far_place.zone})"
+            in connection_drawing.end_texts(end, row.place.sheet)[0]
+        )
     for row, end in across:
         if end.far_place.sheet == row.place.sheet:
             continue

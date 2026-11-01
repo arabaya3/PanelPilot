@@ -376,6 +376,8 @@ def second_line(model: entities.DesignModelV2, c: entities.Connection) -> str:
         )
     if c.via == "wire":
         return "WIRE RECORD MISSING (connection listed in the open items)"
+    if c.start.point is not None and c.start.point == c.end.point:
+        return bridge_line(c)
     if c.core is not None:
         label = c.core.label if c.core.label is not None else "not set"
         return f"cable {c.core.cable_id} core {c.core.index}, core label {label}"
@@ -384,8 +386,8 @@ def second_line(model: entities.DesignModelV2, c: entities.Connection) -> str:
 
 def bridge_line(c: entities.Connection) -> str:
     """The line beside a strip point's bridge mark: its via, and who declared it."""
-    source = "per template" if c.pattern_ref is not None else "per model"
-    return f"bridge between the point's sides: {c.via} {source}"
+    source = f"per connection pattern {c.pattern_ref}" if c.pattern_ref else "per model"
+    return f"bridge between the sides: {c.via} {source}"
 
 
 def far_label(expected: dict[Key, Expected], here: Key, far: Key) -> str:
@@ -590,12 +592,6 @@ def read_back(case: str) -> Read:
                     joined("placeholder"),
                 )
             )
-            inner_of: dict[Key, Key] = {}
-            pending: Key | None = None
-            for line in part.lines:
-                if line.kind == "bridge":
-                    inner_of[line.row.key] = pending or line.row.key
-                    pending = None if pending else line.row.key
             seen: set[Key] = set()
             for line in part.lines:
                 key = line.row.key
@@ -623,11 +619,6 @@ def read_back(case: str) -> Read:
                             joined("detail", key, line.index),
                             "end",
                         )
-                    )
-                else:
-                    lower = joined("bridge", inner_of[key], 0)
-                    out.texts[key].append(
-                        (sheet.number, joined("far", key, line.index), lower, "bridge")
                     )
         frames = []
         for part in sheet.parts:
@@ -796,7 +787,7 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
         matched: Counter[tuple[str, str]] = Counter()
         # Each printed line is one note or one end; an end's reference reads
         # from the sheet the line is on. A text cut to fit ends in an ellipsis.
-        for sheet, upper, lower, kind in printed:
+        for sheet, upper, lower, _kind in printed:
             options = [("note", n) for n in notes if not upper and fits(lower, n)]
             options += [
                 ("end", c.id)
@@ -804,7 +795,7 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
                 if fits(
                     upper, far_line(far_label(expected, key, far), got.printed[far], sheet, c.via)
                 )
-                and fits(lower, bridge_line(c) if kind == "bridge" else second_line(model, c))
+                and fits(lower, second_line(model, c))
             ]
             assert options, (key, sheet, upper, lower)
             matched[options[0]] += 1
@@ -1089,12 +1080,16 @@ def test_cross_references_are_symmetric_and_name_where_the_far_end_is_drawn(case
             assert following.place == part.continues_on
             assert following.continued_from == part.place
             _p, upper, _lower = headers[(part.owner_id, part.part)]
-            assert (
-                f"continues on {reference(header_at(following.place), part.place.sheet)}" in upper
+            listing = part.owner_kind == "no_terminals"
+            onward, back_word = (
+                ("list goes on at", "list started on")
+                if listing
+                else ("continues on", "continued from")
             )
+            assert f"{onward} {reference(header_at(following.place), part.place.sheet)}" in upper
             _p, _upper, lower = headers[(following.owner_id, following.part)]
             assert lower.startswith(
-                f"continued from {reference(header_at(part.place), following.place.sheet)};"
+                f"{back_word} {reference(header_at(part.place), following.place.sheet)};"
             )
 
 

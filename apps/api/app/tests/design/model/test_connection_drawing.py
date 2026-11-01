@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -111,7 +110,7 @@ def test_the_drawing_is_the_schedules_terminals_nets_and_wires(case: str) -> Non
                 next((s.board_id for s in model.strips if s.id == p.owner_id), p.board_id),
             )
             assert held == p.board_id
-            assert p.title.endswith(f"board {p.board_id}") or f"board {p.board_id}" in p.title
+            assert f"board {p.board_id}".lower() in p.title.lower()
         assert boards == set(sheet.boards)
         assert sheet.board_id == sheet.boards[0]
 
@@ -240,7 +239,7 @@ def test_boards_share_sheets_only_when_allowed_and_every_block_names_its_board(s
         if not share:
             assert len(sheet.boards) == 1
         for part in sheet.parts:
-            assert f"board {part.board_id}" in part.title
+            assert f"board {part.board_id}".lower() in part.title.lower()
     if share:
         assert any(len(sheet.boards) > 1 for sheet in drawing.sheets)
     assert drawing.terminal_keys() == connection_drawing.drawing_set(model).terminal_keys()
@@ -283,19 +282,26 @@ def test_a_finding_location_is_named_by_board_designation_marking_sheet_and_zone
     assert drawing.locate({"template": "anything"}) is None
 
 
-def test_a_strip_points_bridge_is_one_mark_and_asserts_only_its_via() -> None:
+def test_every_strip_point_bridge_gets_one_mark_and_asserts_only_its_via() -> None:
+    """One rule for every connection between a point's two sides, whatever its via."""
     _held_out()
     model, _ = _model(HELD_OUT_DRAWING)
     drawing = connection_drawing.drawing_set(model)
-    bridged = [p for s in drawing.sheets for p in s.parts if p.bridges]
-    assert bridged
-    for part in bridged:
-        lines = [t.text for t in part.texts if t.role == "bridge"]
-        assert lines
-        assert all(
-            re.fullmatch(
-                r"bridge between the point's sides: (jumper|internal) per (template|model)", t
-            )
-            for t in lines
-        ), lines
-        assert len(part.bridges) == len(lines)
+    bridges = [(row, end) for row in drawing.rows for end in row.ends if end.bridge]
+    assert {end.via for _row, end in bridges} >= {"internal", "jumper"}
+    for row, end in bridges:
+        assert row.key[0] == "point"
+        assert end.far_key[:2] == row.key[:2]
+        second = connection_drawing.end_texts(end, row.place.sheet)[1]
+        if end.wire is None:
+            source = f"per connection pattern {end.pattern_ref}" if end.pattern_ref else "per model"
+            assert second == f"bridge between the sides: {end.via} {source}"
+    for part in (p for s in drawing.sheets for p in s.parts):
+        seen = Counter(
+            line.row.ends[line.index].connection_id
+            for line in part.lines
+            if line.kind == "end" and line.row.ends[line.index].bridge
+        )
+        assert len(part.bridges) == sum(1 for n in seen.values() if n == 2)
+    for part in (p for s in drawing.sheets for p in s.parts):
+        assert not [t for t in part.texts if "per template" in t.text]

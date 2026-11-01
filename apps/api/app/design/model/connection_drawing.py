@@ -32,6 +32,7 @@ wrapping decided here is the wrapping printed.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -188,6 +189,8 @@ class End:
         qualified: Whether the far end is on another board, so its label is
             printed with its board (``<board>/<label>``).
         pattern_ref: The pattern that declared the connection, or ``None``.
+        bridge: Whether it joins a strip point's two sides (drawn with a
+            bridge mark).
     """
 
     connection_id: str
@@ -203,6 +206,7 @@ class End:
     far_board: str = ""
     qualified: bool = False
     pattern_ref: str | None = None
+    bridge: bool = False
 
 
 @dataclass(frozen=True)
@@ -227,7 +231,7 @@ class Text:
 
     ``x``/``y`` is the baseline start (its end when ``right``). ``role`` says
     what it is (``title``, ``header``, ``continues``, ``marking``, ``net``,
-    ``far``, ``detail``, ``note``, ``bridge``, ``member``, ``pin``,
+    ``far``, ``detail``, ``note``, ``member``, ``pin``,
     ``placeholder``); ``key`` and ``index`` say which row and which end or
     note. A value wrapped over several lines is several texts with the same
     role, key and index, in reading order. ``tone`` is ``plain``, ``grey`` or
@@ -253,14 +257,14 @@ class Text:
 
 @dataclass(frozen=True)
 class Line:
-    """One line of a block part: a row's note, a row's end, or a strip point's bridge.
+    """One line of a block part: a row's note or one of its ends.
 
     ``slot`` is its first slot in its column and ``span`` how many it takes
-    (0 for the second side of a compact bridge, which shares the first's slot).
+    (a wrapped text takes more than one).
     """
 
     row: Row
-    kind: str  # "note", "end", "bridge"
+    kind: str  # "note", "end"
     index: int
     first: bool
     slot: int = 0
@@ -322,7 +326,8 @@ class BlockPart:
         points: Each terminal's connection point.
         stubs: Each end's stub, from the point to its text.
         buses: Vertical joins of one terminal's several ends.
-        bridges: Compact bridge marks joining a strip point's two sides.
+        bridges: Bridge marks: a bar joining the stubs of a strip point's two
+            sides where a connection joins them.
         dotted: Dotted stubs of terminals drawn with no lead.
         leads: Routed leads from the symbol's anchors.
         frame: Where the symbol is drawn, or ``None``.
@@ -357,6 +362,7 @@ class BlockPart:
     bottom: float = 0.0
     left: float = 0.0
     right: float = 0.0
+    pins_dropped: bool = False
 
 
 @dataclass(frozen=True)
@@ -421,6 +427,8 @@ class DrawingSet:
         owners: Each component's and strip's printed name
             (``<board>/<designation>``) and header place, by ``(kind, id)``.
         boards_share_sheets: Whether boards could share a sheet (D-9).
+        pins_off: Blocks whose pin markings do not fit at their symbol, so
+            they are printed at the rows only (the header says so).
     """
 
     sheets: tuple[Sheet, ...]
@@ -434,6 +442,7 @@ class DrawingSet:
     full_texts: tuple[str, ...] = ()
     owners: dict[tuple[str, str], tuple[str, Place]] = field(default_factory=dict)
     boards_share_sheets: bool = BOARDS_SHARE_SHEETS
+    pins_off: frozenset[str] = frozenset()
 
     def terminal_keys(self) -> set[tuple[str, str, str]]:
         """The ``TerminalRef.key`` of every drawn terminal row."""
@@ -538,6 +547,8 @@ def end_texts(end: End, here: int) -> tuple[str, str]:
         second = wire_text(end.wire)
     elif end.wire_missing:
         second = "WIRE RECORD MISSING (connection listed in the open items)"
+    elif end.bridge:
+        second = bridge_text(end)
     elif end.core is not None:
         label = end.core.label if end.core.label is not None else NOT_SET
         second = f"cable {end.core.cable_id} core {end.core.index}, core label {label}"
@@ -550,11 +561,13 @@ def bridge_text(end: End) -> str:
     """A strip point's bridge between its two sides, printed beside its bridge mark.
 
     It asserts only what the model records: the connection's ``via``, and
-    whether a template's pattern declared it (``per template``) or the model
-    alone (``per model``).
+    the connection pattern that declared it (``per connection pattern <ref>``),
+    or ``per model`` when none did.
     """
-    source = "per template" if end.pattern_ref is not None else "per model"
-    return f"bridge between the point's sides: {end.via} {source}"
+    source = (
+        f"per connection pattern {end.pattern_ref}" if end.pattern_ref is not None else "per model"
+    )
+    return f"bridge between the sides: {end.via} {source}"
 
 
 def row_marking(row: schedules.TerminalRow) -> str:
@@ -824,34 +837,42 @@ def _sides(
 
 
 def _lanes(
-    order: Sequence[str], exits: Mapping[str, float], rows_y: Mapping[str, float]
+    order: Sequence[str], exits: Mapping[str, float], rows_y: Mapping[str, float], lane: float
 ) -> dict[str, int]:
     """A lane per lead such that no two leads cross (see :func:`route`)."""
 
     def span(t: str) -> tuple[float, float]:
         low, high = sorted((exits[t], rows_y[t]))
-        return low - LANE, high + LANE
+        return low - lane, high + lane
 
     def overlap(a: str, b: str) -> bool:
         (a0, a1), (b0, b1) = span(a), span(b)
         return a0 < b1 and b0 < a1
 
-    lane: dict[str, int] = {}
+    lanes: dict[str, int] = {}
     descending = [t for t in order if rows_y[t] <= exits[t]]
     ascending = [t for t in order if rows_y[t] > exits[t]]
     done: list[str] = []
     for t in reversed(descending):  # bottom to top: an upper lead lies right of a lower one
-        lane[t] = 1 + max((lane[o] for o in done if overlap(o, t)), default=-1)
+        lanes[t] = 1 + max((lanes[o] for o in done if overlap(o, t)), default=-1)
         done.append(t)
     done = []
     for t in ascending:  # top to bottom: a lower lead lies right of an upper one
-        lane[t] = 1 + max((lane[o] for o in done if overlap(o, t)), default=-1)
+        lanes[t] = 1 + max((lanes[o] for o in done if overlap(o, t)), default=-1)
         done.append(t)
+
+    # A lead running down and one running up never overlap where both are in
+    # the gutter (their spans are disjoint), so they may share a lane; only a
+    # true overlap (no spacing margin) would need another lane.
+    def touch(a: str, b: str) -> bool:
+        (a0, a1), (b0, b1) = sorted((exits[a], rows_y[a])), sorted((exits[b], rows_y[b]))
+        return a0 <= b1 + 0.5 and b0 <= a1 + 0.5
+
     for a in descending:
         for b in ascending:
-            if lane[a] == lane[b] and overlap(a, b):
-                lane[b] = max(lane.values()) + 1
-    return lane
+            if lanes[a] == lanes[b] and touch(a, b):
+                lanes[b] = max(lanes.values()) + 1
+    return lanes
 
 
 def route(
@@ -862,6 +883,7 @@ def route(
     bottom: float,
     rows_y: Mapping[str, float],
     point_x: float,
+    spacing: float = LANE,
 ) -> tuple[SymbolFrame, list[Lead]] | None:
     """The symbol's frame in a block body, and a lead per anchored row that crosses none.
 
@@ -885,16 +907,16 @@ def route(
     edges = {a.terminal: anchor_edge(a, symbol) for a in anchors}
     by_terminal = {a.terminal: a for a in anchors}
     ups, downs, up_left, down_left = _sides(symbol, anchors, cut)
-    x0 = left + SYMBOL_LEFT + max(len(up_left), len(down_left)) * LANE + CLEAR
-    band_top = top - CLEAR - len(ups) * LANE
-    band_bottom = bottom + CLEAR + len(downs) * LANE
+    x0 = left + SYMBOL_LEFT + max(len(up_left), len(down_left)) * spacing + CLEAR
+    band_top = top - CLEAR - len(ups) * spacing
+    band_bottom = bottom + CLEAR + len(downs) * spacing
     if band_top <= band_bottom:
         return None
 
     def attempt(
         lanes_room: int,
     ) -> tuple[float, float, float, dict[str, float], dict[str, int]] | None:
-        width_room = left + GUTTER_END - CLEAR - lanes_room * LANE - x0
+        width_room = left + GUTTER_END - CLEAR - lanes_room * spacing - x0
         if width_room <= 0:
             return None
         scale = min(
@@ -904,13 +926,13 @@ def route(
         y0 = y1 - symbol.height * scale
         exits: dict[str, float] = {}
         for n, t in enumerate(ups):
-            exits[t] = y1 + CLEAR + (len(ups) - 1 - n) * LANE
+            exits[t] = y1 + CLEAR + (len(ups) - 1 - n) * spacing
         for n, t in enumerate(downs):
-            exits[t] = y0 - CLEAR - n * LANE
+            exits[t] = y0 - CLEAR - n * spacing
         for t in order:
             if edges[t] == "right":
                 exits[t] = y1 - by_terminal[t].y * scale
-        lane = _lanes(order, exits, rows_y)
+        lane = _lanes(order, exits, rows_y, spacing)
         if max(lane.values(), default=-1) + 1 > lanes_room:
             return None
         return scale, y1, y0, exits, lane
@@ -927,7 +949,7 @@ def route(
     for t in order:
         anchor = by_terminal[t]
         ax, ay = x0 + anchor.x * scale, y1 - anchor.y * scale
-        lx = gutter + lane[t] * LANE
+        lx = gutter + lane[t] * spacing
         e = exits[t]
         points: list[Point] = [(ax, ay)]
         edge = edges[t]
@@ -937,9 +959,9 @@ def route(
             points += [(ax, e), (lx, e)]
         else:
             if t in up_left:
-                out = CLEAR + (len(up_left) - 1 - up_left.index(t)) * LANE
+                out = CLEAR + (len(up_left) - 1 - up_left.index(t)) * spacing
             else:
-                out = CLEAR + down_left.index(t) * LANE
+                out = CLEAR + down_left.index(t) * spacing
             points += [(x0 - out, ay), (x0 - out, e), (lx, e)]
         points += [(lx, rows_y[t]), (point_x, rows_y[t])]
         cleaned: list[Point] = []
@@ -971,7 +993,7 @@ _Half = tuple[str, float, bool, str, str, int]
 class _Spec:
     """One line of a block before placement, with its texts by half-slot."""
 
-    rows: tuple[int, ...]  # row indexes: one, two for a compact bridge, none for a list member
+    rows: tuple[int, ...]  # the row's index; none for a list member
     kind: str
     index: int
     first: bool  # holds the first line of its (first) row
@@ -993,6 +1015,7 @@ class _Block:
     anchored: frozenset[str] = frozenset()
     members: tuple[str, ...] = ()
     min_body: int = 1
+    pins_off: bool = False
     cols: int = 1
     mark_w: float = MARK_RIGHT - MARK_LEFT
 
@@ -1000,8 +1023,8 @@ class _Block:
     def title(self) -> str:
         if self.kind == "no_terminals":
             return (
-                f"Components with no terminals (component), board {self.board}: "
-                f"{len(self.members)} whose templates define no terminals and no symbol"
+                f"Board {self.board} — {len(self.members)} components with no terminals "
+                "and no symbol"
             )
         return f"{self.name} ({self.kind}), board {self.board}"
 
@@ -1040,15 +1063,16 @@ def drawing_set(
         The drawing set: see the module docstring.
     """
     places: dict[Key, Place] | None = None
+    pins_off: frozenset[str] = frozenset()
     result: DrawingSet | None = None
     # A cross-reference's text depends on where its far end is drawn, and
     # where things are drawn depends on how long the texts are: lay out
     # again with the places found until they no longer change.
     for _round in range(8):
-        result = _lay_out(model, places, boards_share_sheets)
-        if result.places == places:
+        result = _lay_out(model, places, boards_share_sheets, pins_off)
+        if result.places == places and result.pins_off == pins_off:
             break
-        places = result.places
+        places, pins_off = result.places, result.pins_off
     assert result is not None
     return result
 
@@ -1072,7 +1096,10 @@ def _header_point(column: int, slot: int) -> Point:
 
 
 def _lay_out(
-    model: entities.DesignModelV2, previous: dict[Key, Place] | None, share: bool
+    model: entities.DesignModelV2,
+    previous: dict[Key, Place] | None,
+    share: bool,
+    pins_off: frozenset[str] = frozenset(),
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1114,6 +1141,7 @@ def _lay_out(
                     far_board=far_board,
                     qualified=far_board != terminal_rows[index].board_id,
                     pattern_ref=connection.pattern_ref,
+                    bridge=key[0] == "point" and far.key[0] == "point" and far.key[1] == key[1],
                 )
             )
         all_ends.append(found)
@@ -1123,11 +1151,19 @@ def _lay_out(
     }
 
     blocks = _blocks(model, terminal_rows, keys, all_ends, row_notes, templates, known, cuts)
+    for block in blocks:
+        if block.owner_id in pins_off and block.kind == "component":
+            block.pins_off = True
+            block.notes.append(
+                "pin markings are printed at the rows only: they do not fit at the symbol"
+            )
     placed, sheet_boards = _place(blocks, terminal_rows, share, cuts)
-    return _finish(
+    drawn = _finish(
         model, placed, terminal_rows, wire_rows, keys, labels, all_ends, row_notes, groups, cuts,
         sheet_boards, share,
     )  # fmt: skip
+    dropped = {p.owner_id for sheet in drawn.sheets for p in sheet.parts if p.pins_dropped}
+    return dataclasses.replace(drawn, pins_off=pins_off | dropped)
 
 
 def _blocks(
@@ -1191,16 +1227,6 @@ def _blocks(
             ),
         )  # fmt: skip
 
-    def bridge_of(index: int) -> int | None:
-        """The end joining a strip point's side to the point's other side."""
-        if terminal_rows[index].owner_kind != "strip":
-            return None
-        key = keys[index]
-        for n, end in enumerate(all_ends[index]):
-            if end.far_key[0] == "point" and end.far_key[1] == key[1] and end.far_key[2] != key[2]:
-                return n
-        return None
-
     blocks: list[_Block] = []
     summaries: dict[str, _Block] = {}
     for board_id, kind, owner_id, indexes in owners:
@@ -1221,7 +1247,8 @@ def _blocks(
                     board_id, "no_terminals", f"no-terminals:{board_id}", "", [], None, None
                 )
                 summary.notes.append(
-                    "each listed here once and in the open items (no terminals defined)"
+                    "their templates define no terminals and no symbol, so they have no rows; "
+                    "each is listed here and in the open items"
                 )
                 summaries[board_id] = summary
                 blocks.append(summary)
@@ -1281,74 +1308,41 @@ def _blocks(
                 else:
                     block.notes.append(
                         "leads not drawn: no crossing-free route; "
-                        "pin markings are shown at the symbol"
+                        "pin markings are shown at the symbol where they fit"
                     )
-        skip: set[int] = set()
-        for position, index in enumerate(ordered):
-            if index in skip:
-                continue
+        for index in ordered:
             notes_here = row_notes[index]
             ends = all_ends[index]
-            bridge = bridge_of(index)
-            following = ordered[position + 1] if position + 1 < len(ordered) else None
-            compact = (
-                bridge is not None
-                and following is not None
-                and not notes_here
-                and len(ends) == 1
-                and keys[following] == ends[bridge].far_key
-                and not row_notes[following]
-                and len(all_ends[following]) == 1
-            )
-            if compact:
-                assert bridge is not None
-                assert following is not None
-                end = ends[bridge]
-                inner = halves(
-                    end_texts(end, here_of(index))[0],
-                    BODY_PT,
-                    text_room,
-                    tone="plain",
-                    role="far",
-                    n=bridge,
-                )
-                remark = halves(
-                    bridge_text(end), SECONDARY_PT, text_room, tone="grey", role="bridge", n=0
-                )
-                outer = halves(
-                    end_texts(all_ends[following][0], here_of(following))[0],
-                    BODY_PT,
-                    text_room,
-                    tone="plain",
-                    role="far",
-                    n=0,
-                )
-                rows_fit = all(
-                    len(_mark_lines(terminal_rows[i], False, block.mark_w)) <= 2
-                    for i in (index, following)
-                )
-                if len(inner) + len(remark) <= 2 and len(outer) <= 2 and rows_fit:
-                    pad: list[_Half] = [("", BODY_PT, False, "plain", "", -1)] * (
-                        2 - len(inner) - len(remark)
-                    )
-                    block.specs.append(
-                        _Spec(
-                            (index, following), "bridge", bridge, True, inner + remark + pad + outer
-                        )
-                    )
-                    skip.add(following)
-                    continue
+            # A strip point's bridge (a connection between its two sides) is
+            # its inner side's last line and its outer side's first, so the
+            # two lines sit together and the bridge mark joins them.
+            bridged = [n for n, end in enumerate(ends) if end.bridge]
+            others = [n for n in range(len(ends)) if n not in bridged]
+            outer = terminal_rows[index].side == "outer"
+            order_ends = (bridged + others) if outer else (others + bridged)
             first = True
+            if outer:
+                for n in bridged:
+                    block.specs.append(end_spec(index, n, first, text_room))
+                    first = False
             for n, (_kind, note) in enumerate(notes_here):
                 loud = note.startswith(("UNCONNECTED", "UNREALISED"))
-                block.specs.append(
-                    _Spec(
-                        (index,), "note", n, first,
-                        halves(note, BODY_PT, text_room, bold=loud, tone="loud" if loud else "plain", role="note", n=n),
-                    )
-                )  # fmt: skip
+                lines = halves(
+                    note,
+                    BODY_PT,
+                    text_room,
+                    bold=loud,
+                    tone="loud" if loud else "plain",
+                    role="note",
+                    n=n,
+                )
+                if loud:
+                    lines = [("", BODY_PT, False, "plain", "", -1), *lines]  # room above a red line
+                block.specs.append(_Spec((index,), "note", n, first, lines))
                 first = False
-            for n in range(len(ends)):
+            for n in order_ends:
+                if outer and n in bridged:
+                    continue
                 block.specs.append(end_spec(index, n, first, text_room))
                 first = False
         blocks.append(block)
@@ -1402,7 +1396,8 @@ def _header(
     notes = "; ".join(block.notes)
     if continued_from is not None and sheet is not None:
         before = Place(sheet, 0, 0, *continued_from)
-        notes = f"continued from {before.reference(here)}; {notes}"
+        lead = "list started on" if block.kind == "no_terminals" else "continued from"
+        notes = f"{lead} {before.reference(here)}; {notes}"
     out: list[_Half] = [
         (line, TITLE_PT, True, "plain", "title", 0)
         for line in wrap(block.title, room - CONTINUES_ROOM, TITLE_PT, True, cuts)
@@ -1444,8 +1439,6 @@ def _place(
 
     def span_of(spec: _Spec, segment_first: bool) -> int:
         need = len(spec.halves)
-        if spec.kind == "bridge":
-            return 2
         if spec.kind != "member" and segment_first:
             block = owner_of[id(spec)]
             need = max(
@@ -1554,13 +1547,7 @@ def _finish(
         )
         for spec, slot, _span in p.lines:
             top = _slot_top(slot)
-            if spec.kind == "bridge":
-                for n, index in enumerate(spec.rows):
-                    places.setdefault(
-                        keys[index],
-                        Place(p.sheet, p.column, slot + n, left + POINT, top - HALF - n * SLOT),
-                    )
-            elif spec.rows:
+            if spec.rows:
                 places.setdefault(
                     keys[spec.rows[0]], Place(p.sheet, p.column, slot, left + POINT, top - HALF)
                 )
@@ -1653,7 +1640,8 @@ def _draw(
             Text(
                 left + block.text_right,
                 _baseline(top, 0),
-                f"continues on {following.reference(p.sheet)}",
+                ("list goes on at" if block.kind == "no_terminals" else "continues on")
+                + f" {following.reference(p.sheet)}",
                 BODY_PT,
                 True,
                 right=True,
@@ -1669,6 +1657,7 @@ def _draw(
     dotted: list[Path] = []
     lines: list[Line] = []
     end_ys: dict[int, list[float]] = defaultdict(list)
+    bridge_ys: dict[str, list[float]] = defaultdict(list)
     point_y: dict[int, float] = {}
     rows_y: dict[str, float] = {}
     for n, (spec, slot, span) in enumerate(p.lines):
@@ -1689,37 +1678,9 @@ def _draw(
                 for k, (text, size, bold, tone, role, i) in enumerate(spec.halves)
             ]
             continue
-        for m, index in enumerate(spec.rows):
-            if spec.kind == "bridge":
-                lines.append(
-                    Line(rows[index], "bridge", spec.index if m == 0 else 0, True, slot + m, 1)
-                )
-            else:
-                lines.append(Line(rows[index], spec.kind, spec.index, spec.first, slot, span))
+        for index in spec.rows:
+            lines.append(Line(rows[index], spec.kind, spec.index, spec.first, slot, span))
         key = rows[spec.rows[0]].key
-        if spec.kind == "bridge":
-            ys = [mid, mid - SLOT]
-            for m, index in enumerate(spec.rows):
-                row = rows[index]
-                points.append((point_x, ys[m]))
-                texts += [
-                    Text(left + MARK_LEFT, _baseline(line_top - m * SLOT, k), text, size, bold, tone,
-                         role=role, key=row.key)
-                    for k, (text, size, bold, tone, role, _i) in enumerate(
-                        _mark_lines(row.terminal, False, block.mark_w)
-                    )
-                ]  # fmt: skip
-                stubs.append(((point_x, ys[m]), (text_x - 1 * MM, ys[m])))
-            # The bridge mark: a bar right of the two points, joining their stubs.
-            bar = point_x + 1.3 * MM
-            bridges.append(((bar, ys[0]), (bar, ys[1])))
-            for k, (text, size, bold, tone, role, i) in enumerate(spec.halves):
-                if text:
-                    texts.append(
-                        Text(text_x, _baseline(line_top, k), text, size, bold, tone, role=role,
-                             key=rows[spec.rows[0 if k < 2 else 1]].key, index=i)
-                    )  # fmt: skip
-            continue
         index = spec.rows[0]
         row = rows[index]
         segment_first = n == 0 or p.lines[n - 1][0].rows[-1:] != spec.rows[:1]
@@ -1748,10 +1709,19 @@ def _draw(
                 text_x, _baseline(line_top, k), text, size, bold, tone, role=role, key=key, index=i
             )
             for k, (text, size, bold, tone, role, i) in enumerate(spec.halves)
+            if text
         ]
         if spec.kind == "end":
             end_ys[index].append(mid)
             stubs.append(((point_x, mid), (text_x - 1 * MM, mid)))
+            end = row.ends[spec.index]
+            if end.bridge:
+                bridge_ys[end.connection_id].append(mid)
+    # A strip point's bridge: a bar right of the points joining the two sides' stubs.
+    bar = point_x + 1.3 * MM
+    for ys in bridge_ys.values():
+        if len(ys) == 2:
+            bridges.append(((bar, max(ys)), (bar, min(ys))))
     for index, ys in end_ys.items():
         if min(ys) < point_y[index]:
             buses.append(((point_x, point_y[index]), (point_x, min(ys))))
@@ -1759,6 +1729,7 @@ def _draw(
     frame: SymbolFrame | None = None
     leads: list[Lead] = []
     placeholder: tuple[float, float, float, float] | None = None
+    pins_dropped = False
     if block.kind == "no_terminals":
         pass
     elif block.symbol is None:
@@ -1776,16 +1747,19 @@ def _draw(
     else:
         symbol = block.symbol
         anchored = {t: y for t, y in rows_y.items() if t in block.anchored}
-        routed = (
-            route(symbol, block.cut, left, lines_top, bottom, anchored, point_x)
-            if block.routed and anchored
-            else None
-        )
+        routed = None
+        if block.routed and anchored:
+            # The widest lead spacing that fits: 2 mm where there is room.
+            for spacing in (2.0 * MM, 1.5 * MM, LANE):
+                routed = route(
+                    symbol, block.cut, left, lines_top, bottom, anchored, point_x, spacing
+                )
+                if routed is not None:
+                    break
         if routed is not None:
             frame, leads = routed
         else:
             frame = _plain_frame(symbol, left, lines_top, bottom)
-        with_lead = {lead.terminal for lead in leads}
         lead_ys = {lead.points[-1][1] for lead in leads}
         dotted += [((point_x - 3 * MM, y), (point_x, y)) for _x, y in points if y not in lead_ys]
         if block.kind == "component":
@@ -1794,22 +1768,11 @@ def _draw(
                 for r in rows
                 if r.terminal.owner_id == block.owner_id and r.terminal.owner_kind == "component"
             }
-            for anchor in symbol.anchors:
-                if anchor.terminal not in rows_y:
-                    continue
-                ax, ay = frame.x0 + anchor.x * frame.scale, frame.y1 - anchor.y * frame.scale
-                edge = anchor_edge(anchor, symbol)
-                pin = markings.get(anchor.terminal, "")
-                x0, _y0, x1, _y1 = frame.box(symbol)
-                if text_width(pin, SECONDARY_PT) > x1 - x0 - 1 * MM:
-                    continue  # too wide for the symbol: the marking is at the point
-                right = edge == "right"
-                tx = ax - 0.5 * MM if right else ax + 0.5 * MM
-                ty = {"top": ay - 2.0 * MM, "bottom": ay + 0.6 * MM}.get(edge, ay - 0.7 * MM)
-                texts.append(
-                    Text(tx, ty, pin, SECONDARY_PT, tone="grey", right=right,
-                         role="pin", index=1 if anchor.terminal in with_lead else 0)
-                )  # fmt: skip
+            pins = _pin_texts(symbol, frame, rows_y, markings, {lead.terminal for lead in leads})
+            if pins is None or block.pins_off:
+                pins_dropped = bool(rows_y)
+            else:
+                texts += pins
     return BlockPart(
         owner_kind=block.kind,
         owner_id=block.owner_id,
@@ -1837,7 +1800,70 @@ def _draw(
         bottom=bottom,
         left=left,
         right=left + block.cols * COLUMN,
+        pins_dropped=pins_dropped,
     )
+
+
+def _text_box(x: float, y: float, text: str, size: float, right: bool) -> tuple[float, ...]:
+    width = text_width(text, size)
+    x0 = x - width if right else x
+    return (x0, y - 0.25 * size, x0 + width, y + 0.75 * size)
+
+
+def _pin_texts(
+    symbol: entities.SymbolDef,
+    frame: SymbolFrame,
+    rows_y: Mapping[str, float],
+    markings: Mapping[str, str],
+    with_lead: set[str],
+) -> list[Text] | None:
+    """Each drawn terminal's marking at its anchor, or ``None`` when they do not all fit.
+
+    A marking at an anchor must lie inside the symbol's box (so no lead,
+    which stays outside it, can meet it) and clear of every other marking
+    and of the symbol's own text; otherwise none is printed at the symbol
+    (the rows carry every marking) and the block's header says so.
+    """
+    bx0, by0, bx1, by1 = frame.box(symbol)
+    edge_gap = 0.3
+    taken: list[tuple[float, ...]] = []
+    for shape in symbol.shapes:
+        if shape.kind == "text":
+            sx, sy = (
+                frame.x0 + shape.points[0] * frame.scale,
+                frame.y1 - shape.points[1] * frame.scale,
+            )
+            taken.append(_text_box(sx, sy, shape.text or "", SECONDARY_PT, False))
+    out: list[Text] = []
+    for anchor in symbol.anchors:
+        if anchor.terminal not in rows_y:
+            continue
+        pin = markings.get(anchor.terminal, "")
+        ax, ay = frame.x0 + anchor.x * frame.scale, frame.y1 - anchor.y * frame.scale
+        edge = anchor_edge(anchor, symbol)
+        right = edge == "right"
+        tx = ax - 0.5 * MM if right else ax + 0.5 * MM
+        ty = {"top": ay - 2.0 * MM, "bottom": ay + 0.6 * MM}.get(edge, ay - 0.7 * MM)
+        box = _text_box(tx, ty, pin, SECONDARY_PT, right)
+        inside = (
+            box[0] >= bx0 + edge_gap
+            and box[2] <= bx1 - edge_gap
+            and box[1] >= by0 + edge_gap
+            and box[3] <= by1 - edge_gap
+        )
+        clear = all(
+            box[2] + edge_gap <= o[0] or o[2] + edge_gap <= box[0]
+            or box[3] + edge_gap <= o[1] or o[3] + edge_gap <= box[1]
+            for o in taken
+        )  # fmt: skip
+        if not inside or not clear:
+            return None
+        taken.append(box)
+        out.append(
+            Text(tx, ty, pin, SECONDARY_PT, tone="grey", right=right, role="pin",
+                 index=1 if anchor.terminal in with_lead else 0)
+        )  # fmt: skip
+    return out
 
 
 def _open_items(

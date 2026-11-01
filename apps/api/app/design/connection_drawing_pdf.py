@@ -63,9 +63,9 @@ LEGEND = (
     "Zones: columns 1-8 across, rows A-F down; a terminal's zone is read where its point is "
     "drawn, a block's where its title starts.",
     "B1/X:1: a far end on another board is named with its board.",
-    "Bar joining a strip point's two sides, 'bridge between the point's sides: <via> per "
-    "model' (or 'per template'): a connection the model records between the point's sides; "
-    "nothing more is asserted.",
+    "Bar joining a strip point's two sides, 'bridge between the sides: <via> per "
+    "connection pattern <ref>' (or 'per model' where no pattern declared it): a connection "
+    "the model records between the point's sides; nothing more is asserted.",
     "Leads run from a symbol's pins to their points without crossing; where that is not "
     "possible the pins are marked at the symbol and no lead is drawn, and the block says so.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
@@ -96,6 +96,8 @@ _TEXT_LAST = _AREA_BOTTOM + _TEXT_MARGIN
 _TEXT_LINES = int((_TEXT_FIRST - _TEXT_LAST) // _TEXT_LINE) + 1
 _TEXT_ROOM = _AREA_RIGHT - _AREA_LEFT - 2 * _TEXT_MARGIN
 _INDENT = 4 * mm
+#: Text-sheet entries printed bold.
+_LOUD = ("[BLOCKING]", "UNREALISED", "UNCONNECTED")
 
 
 @dataclass(frozen=True)
@@ -307,7 +309,9 @@ def _items(texts: Sequence[str]) -> list[list[str]]:
         if not text:
             out.append([""])
             continue
-        first = layout.wrap(text, _TEXT_ROOM, layout.BODY_PT)
+        # A loud entry's first line is printed bold, so it is measured bold.
+        loud = text.startswith(_LOUD)
+        first = layout.wrap(text, _TEXT_ROOM, layout.BODY_PT, bold=loud)
         head, rest = first[0], " ".join(first[1:])
         lines = [head]
         if rest:
@@ -396,7 +400,7 @@ def _draw_text_page(canvas: Canvas, title: str, lines: Sequence[str]) -> None:
     _text(canvas, x, _AREA_TOP - 6 * mm, title, 10, bold=True)
     y = _TEXT_FIRST
     for line in lines:
-        loud = line.startswith(("[BLOCKING]", "UNREALISED", "UNCONNECTED"))
+        loud = line.startswith(_LOUD)
         _text(canvas, x, y, line, layout.BODY_PT, bold=loud)
         y -= _TEXT_LINE
 
