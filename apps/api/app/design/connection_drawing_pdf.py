@@ -63,9 +63,9 @@ LEGEND = (
     "Zones: columns 1-8 across, rows A-F down; a terminal's zone is read where its point is "
     "drawn, a block's where its title starts.",
     "B1/X:1: a far end on another board is named with its board.",
-    "Bracket joining a strip point's two sides, 'bridge to ...: <via> per model' (or 'per "
-    "template'): a connection the model records between the point's sides; nothing more is "
-    "asserted.",
+    "Bar joining a strip point's two sides, 'bridge between the point's sides: <via> per "
+    "model' (or 'per template'): a connection the model records between the point's sides; "
+    "nothing more is asserted.",
     "Leads run from a symbol's pins to their points without crossing; where that is not "
     "possible the pins are marked at the symbol and no lead is drawn, and the block says so.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
@@ -334,7 +334,7 @@ def _structural_items(structural: Sequence[V2Finding], drawing: layout.DrawingSe
         ]
         items.append(
             f"[{found.severity.upper()}] {found.code}: {found.message}"
-            + (f" At {at}." if at else "")
+            + (f" — drawn at {at}" if at else "")
             + f" (ids: {ids}; "
             + "; ".join(e for e in effects if e)
             + ")"

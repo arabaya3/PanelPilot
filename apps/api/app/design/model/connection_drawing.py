@@ -1422,18 +1422,25 @@ def _place(
 ) -> tuple[list[_Placed], dict[int, list[str]]]:
     placed: list[_Placed] = []
     owner_of = {id(spec): block for block in blocks for spec in block.specs}
-    sheet, column, slot = FIRST_SHEET - 1, COLUMNS, SLOTS
+    # Each column of the current sheet is filled down to ``fill[column]``; a
+    # block taking several columns starts below the lowest of them, and the
+    # next block goes on below it in the same column.
+    sheet, column = FIRST_SHEET - 1, 0
+    fill = [SLOTS] * COLUMNS
     sheet_boards: dict[int, list[str]] = defaultdict(list)
     board: str | None = None
 
     def new_column(force_sheet: bool, width: int = 1) -> None:
-        nonlocal sheet, column, slot
+        nonlocal sheet, column, fill
         if force_sheet or column + 1 + width > COLUMNS:
             sheet += 1
             column = 0
+            fill = [0] * COLUMNS
         else:
             column += 1
-        slot = 0
+
+    def start(width: int) -> int:
+        return max(fill[column : column + width])
 
     def span_of(spec: _Spec, segment_first: bool) -> int:
         need = len(spec.halves)
@@ -1458,8 +1465,8 @@ def _place(
             board = block.board
             if not share or sheet < FIRST_SHEET:
                 new_column(force_sheet=True)
-            elif slot > 0:
-                slot = min(slot + 1, SLOTS)  # a blank slot between boards
+            elif fill[column] > 0:
+                fill[column] = min(fill[column] + 1, SLOTS)  # a blank slot between boards
         part = 1
         position = 0
         previous: _Placed | None = None
@@ -1476,10 +1483,14 @@ def _place(
             rest = spans(block.specs[position:])
             total = h + max(sum(rest), block.min_body)
             least = h + max(rest[0] if rest else 1, block.min_body)
-            if block.cols > 1 and (slot > 0 or column + block.cols > COLUMNS):
+            if column + block.cols > COLUMNS:
+                new_column(force_sheet=True)
+            while (
+                start(block.cols) > 0
+                and start(block.cols) + (total if total <= SLOTS else least) > SLOTS
+            ):
                 new_column(force_sheet=False, width=block.cols)
-            if slot > 0 and slot + (total if total <= SLOTS else least) > SLOTS:
-                new_column(force_sheet=False, width=block.cols)
+            slot = start(block.cols)
             header = _header(
                 block,
                 _header_point(previous.column, previous.header_slot) if previous else None,
@@ -1509,7 +1520,8 @@ def _place(
             slot = max(slot, min(SLOTS, body_start + block.min_body))
             here.body_end = slot
             placed.append(here)
-            column += block.cols - 1
+            for taken in range(column, column + block.cols):
+                fill[taken] = slot
             if position >= len(block.specs):
                 break
             previous = here
