@@ -84,9 +84,6 @@ PITCH = 2.5 * MM
 HOP_R = 0.9 * MM
 #: Fan-out offsets inside a junction dot.
 FAN_DX = 0.35 * MM
-#: A right-column dot sits this far above its middle slot, so every line leaves
-#: it vertically first (a line never leaves a dot towards its own box).
-LIFT = U / 4
 #: Continuation tracks in the band at the sheet's foot.
 TRACK = 4.5 * MM
 #: The most lines one terminal's dot can fan out to (three up, three down, one straight).
@@ -562,13 +559,22 @@ class _Terminal:
     slots: list[_Slot]
     overflow: list[cd.End]
     overflow_y: float = 0.0
+    nudge: float = 0.0  # how far the dot sits above its rows' centre (off a zone line)
+
+
+def _off_zone_line(y: float) -> float:
+    """How far to raise a dot that would sit on a zone row's edge, where its zone is ambiguous."""
+    edge = (cd.AREA_TOP - y) / cd.ZONE_ROW
+    if abs(edge - round(edge)) * cd.ZONE_ROW < 0.5 * MM:
+        return 0.6 * MM
+    return 0.0
 
 
 def _fan(t: _Terminal, ys: list[float]) -> None:
     """Fan-out offsets: highest-going up line and lowest-going down line nearest the dot."""
     n = len(ys)
     sign = 1.0 if t.side == "L" else -1.0
-    middle = (n - 1) / 2 - (0.5 if t.side == "R" and n % 2 else 0.0)
+    middle = (n - 1) / 2
     ups = [j for j in range(n) if j < middle]
     downs = [j for j in range(n) if j > middle]
     for j, end in enumerate(t.row.ends[:n]):
@@ -578,7 +584,7 @@ def _fan(t: _Terminal, ys: list[float]) -> None:
             dx = (len(downs) - 1 - downs.index(j)) * FAN_DX
         else:
             dx = 0.0
-        t.slots.append(_Slot(end, ys[j], sign * dx, j == middle))
+        t.slots.append(_Slot(end, ys[j], sign * dx, j == middle and not t.nudge))
 
 
 # --------------------------------------------------------------------------- #
@@ -621,10 +627,10 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
                 ys = [_unit_top(p.side, unit + j) - U / 2 for j in range(k)]
                 drawn = min(len(r.ends), MAX_FAN)
                 dot_y = sum(ys[:drawn]) / drawn if drawn else ys[0]
-                if p.side == "R" and drawn % 2:
-                    dot_y += LIFT
+                nudge = _off_zone_line(dot_y)
+                dot_y += nudge
                 dot_x = L_DOT if p.side == "L" else R_DOT
-                t = _Terminal(r, number, p.side, (dot_x, dot_y), [], [])
+                t = _Terminal(r, number, p.side, (dot_x, dot_y), [], [], nudge=nudge)
                 terminals[r.row.key] = t
                 places[r.row.key] = cd.Place(number, 0, unit, dot_x, dot_y)
                 t.overflow_y = ys[drawn] if len(r.ends) > MAX_FAN else 0.0
@@ -641,7 +647,7 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
 
         r.ends.sort(key=order)
         drawn = min(len(r.ends), MAX_FAN)
-        top = t.dot[1] + (drawn - 1) / 2 * U - (LIFT if t.side == "R" and drawn % 2 else 0.0)
+        top = t.dot[1] - t.nudge + (drawn - 1) / 2 * U
         ys = [top - j * U for j in range(drawn)]
         _fan(t, ys)
         t.overflow = r.ends[MAX_FAN:]
@@ -938,8 +944,7 @@ def _route_sheet(
                 if cd.text_width(text, BODY_PT) > room
                 else text
             )
-            # Alternate tracks' texts start 0.4 mm apart, so no two read as one paragraph.
-            shift = 1.0 * MM + (run.track % 2) * 0.4 * MM
+            shift = 1.0 * MM
             if run.group == "Lc":
                 texts.append(cd.Text(end[0] + shift, end[1] + 0.6 * MM, text, BODY_PT, role="far"))
             else:
