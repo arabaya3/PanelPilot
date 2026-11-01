@@ -1135,6 +1135,21 @@ def model_values(model: entities.DesignModelV2) -> dict[str, set[str]]:
     return values
 
 
+def without_markers(text: str) -> str:
+    """The text with every reference marker right after an ellipsis removed."""
+    return TRUNCATION_MARKER.sub("…", text)
+
+
+def has_note(text: str, marker: str) -> bool:
+    """Whether a marker also appears as a note: not right after an ellipsis, followed by text."""
+    for found in re.finditer(re.escape(marker), text):
+        before = text[: found.start()].rstrip()
+        after = text[found.end() :].lstrip()
+        if not before.endswith("…") and after[:1] not in ("", "\n") and after[:1].strip():
+            return True
+    return False
+
+
 @functools.cache
 def _haystacks(case: str) -> tuple[str, ...]:
     pages = sheets_of(case)
@@ -1154,9 +1169,9 @@ def test_every_ellipsis_carries_a_marker_and_every_value_is_printed_in_full(case
                 found = TRUNCATION_MARKER.match(text, n)
                 if found is None:
                     problems.append(f"sheet {page.number}: cut with no marker: {text[:120]!r}")
-                elif everything.count(found.group(1)) < 2:
+                elif not has_note(everything, found.group(1)):
                     problems.append(
-                        f"sheet {page.number}: marker {found.group(1)!r} is not resolved"
+                        f"sheet {page.number}: marker {found.group(1)!r} has no full-text note"
                     )
     hay = _haystacks(case)
     for kind, values in model_values(model).items():
@@ -1164,6 +1179,13 @@ def test_every_ellipsis_carries_a_marker_and_every_value_is_printed_in_full(case
             if not any(squash(value) in h for h in hay):
                 problems.insert(0, f"{kind} never printed in full: {value!r}")
     assert not problems, f"{len(problems)} problems:\n" + "\n".join(problems[:40])
+
+
+def test_markers_are_stripped_and_notes_are_required() -> None:
+    assert without_markers("id abc…[F1] rest") == "id abc… rest"
+    assert without_markers(squash("id abc… [F1] rest")) == "idabc…rest"
+    assert has_note("value abc…[F1]\n[F1] abcdef full", "[F1]")
+    assert not has_note("value abc…[F1] and abc…[F1]", "[F1]")
 
 
 def test_the_long_cases_exercise_long_values() -> None:
@@ -1254,7 +1276,9 @@ def test_no_open_item_or_finding_continues_on_the_next_sheet(case: str) -> None:
         if not any(squash(first).startswith(squash(s)) for s in allowed):
             problems.append(f"sheet {page.number} ({title}) starts mid-entry: {first[:140]!r}")
     # Every structural finding, whole, on one sheet.
-    texts = [squash(p.text) for p in pages]
+    # A finding message may itself shorten a value with "…"; the page prints
+    # that "…" with its reference marker, which is dropped before comparing.
+    texts = [without_markers(squash(p.text)) for p in pages]
     for f in findings_v2.structural_findings(model):
         whole = squash(f"[{f.severity.upper()}] {f.code}: {f.message}")
         if not any(whole in t for t in texts):
