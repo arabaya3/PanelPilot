@@ -1799,7 +1799,7 @@ def _draw(
                 )
             ]
             points.append((point_x, mid))
-            if spec.first and len(row.ends) >= 2:
+            if len(row.ends) >= 2:
                 junctions.append((point_x, mid))
             point_rows.append(row)
             point_y[index] = mid

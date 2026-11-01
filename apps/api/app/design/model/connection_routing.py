@@ -323,19 +323,6 @@ def _marking_lines(owner: _Owner, cuts: cd.FullTexts) -> None:
         r.marking = cd.wrap(cd.row_marking(r.row.terminal), room, BODY_PT, True, cuts)
 
 
-def _fit_head(
-    head: str, tail: str, room: float, size: float, bold: bool, cuts: cd.FullTexts
-) -> str:
-    """``head + tail`` on one line; a head too long is cut with ``…[n]``, the tail never."""
-    if cd.text_width(head + tail, size, bold) <= room:
-        return head + tail
-    marker = f"{cd.ELLIPSIS}[{cuts.number(head)}]"
-    cut = head
-    while cut and cd.text_width(cut + marker + tail, size, bold) > room:
-        cut = cut[:-1]
-    return cut + marker + tail
-
-
 def _info(owner: _Owner) -> str:
     bits = [f"template {owner.template_ref}" if owner.template_ref else "no template"]
     if owner.has_symbol:
@@ -351,18 +338,10 @@ _ROOM = BOX_W - 2 * PAD_X
 def _head_lines(
     owner: _Owner, part: _Part, cuts: cd.FullTexts, refs: str
 ) -> list[tuple[str, float, bool, str, str]]:
-    # One line: the name with its kind, so the block is always identifiable; a
-    # name too long for the box is cut with "…[n]" and printed in full on the full-text list.
+    # The name with its kind: wrapped in full, its kind always on the last line.
     kind = f" ({owner.kind})" + (" continued" if part.number > 1 else "")
-    out = [
-        (
-            _fit_head(f"{owner.board}/{owner.name}", kind, _ROOM, TITLE_PT, True, cuts),
-            TITLE_PT,
-            True,
-            "plain",
-            "title",
-        )
-    ]
+    title = f"{owner.board}/{owner.name}{kind}"
+    out = [(t, TITLE_PT, True, "plain", "title") for t in cd.wrap(title, _ROOM, TITLE_PT, True)]
     out += [
         (t, SECONDARY_PT, False, "grey", "header")
         for t in cd.wrap(_info(owner), _ROOM, SECONDARY_PT, False, cuts)
@@ -398,24 +377,51 @@ def _column_top(side: str) -> float:
     return CONTENT_TOP - (U / 2 if side == "R" else 0.0)
 
 
-def _band_top(tracks: int) -> float:
-    if tracks == 0:
+def _band_top(height: float) -> float:
+    """The band's top for tracks ``height`` high (the sum of :func:`_track_height`)."""
+    if height <= 0:
         return cd.AREA_BOTTOM + 2 * MM
-    return BAND_BASE + (tracks - 1) * TRACK + 5.5 * MM
+    return BAND_BASE + height + 1.0 * MM
+
+
+#: Room for a continuation flag's text, and its line pitch when wrapped.
+FLAG_ROOM = (
+    (cd.AREA_RIGHT - 3.2 * MM) - (cd.AREA_RIGHT - 4 * MM - BOX_W - DOT_OUT - ESCAPE) - 7 * MM
+)
+FLAG_LINE = 3.0 * MM
+
+
+def _flag_text(end: cd.End, reference: str) -> str:
+    """A continuation flag's whole text: never cut, wrapped when long."""
+    side = _side_of(end)
+    return f"to {end.far_board}/{_far_label(end)} ({reference})" + (
+        f", {side} side" if side else ""
+    )
+
+
+def _flag_lines(text: str) -> list[str]:
+    return cd.wrap(text, FLAG_ROOM, BODY_PT)
+
+
+def _track_height(lines: int) -> float:
+    """A track and the flag text above it."""
+    return TRACK + (lines - 1) * FLAG_LINE
 
 
 def _sheet_keys(state: _SheetState) -> set[Key]:
     return {r.row.key for p in state.parts for r in p.rows}
 
 
-def _tracks(state: _SheetState) -> dict[str, int]:
+def _tracks(state: _SheetState) -> dict[str, float]:
+    """Each side's band height, with the longest reference a flag can name."""
     keys = _sheet_keys(state)
-    out = {"L": 0, "R": 0}
+    out = {"L": 0.0, "R": 0.0}
     for p in state.parts:
         for r in p.rows:
-            out[p.side] += sum(
-                1 for e in r.ends[:MAX_FAN] if e.far_key not in keys or e.far_board != state.board
-            )
+            for e in r.ends[:MAX_FAN]:
+                if e.far_key not in keys or e.far_board != state.board:
+                    text = _flag_text(e, "sheet 9999, zone 8F")
+                    out[p.side] += _track_height(len(_flag_lines(text)))
     return out
 
 
@@ -937,6 +943,16 @@ def _route_sheet(
     stubs: list[RoutedStub] = []
     routed_ids: list[str] = []
     continued_ids: list[str] = []
+    # Tracks, bottom up per side, each as high as its flag's wrapped text.
+    flags: dict[str, list[str]] = {}
+    track_y: dict[str, float] = {}
+    for group in ("Lc", "Rc"):
+        y = BAND_BASE
+        for run in sorted((r for r in live if r.group == group), key=lambda r: r.track):
+            reference = places[run.a.end.far_key].reference(-1)
+            flags[run.cid] = _flag_lines(_flag_text(run.a.end, reference))
+            track_y[run.cid] = y
+            y += _track_height(len(flags[run.cid]))
     geoms: dict[str, list[Point]] = {}
     for run in sorted(live, key=lambda r: r.cid):
         x = lane_x[run.lane]
@@ -946,7 +962,7 @@ def _route_sheet(
             pts = pts + list(reversed(back))
             routed_ids.append(run.cid)
         else:
-            y = BAND_BASE + run.track * TRACK
+            y = track_y[run.cid]
             edge = cd.AREA_LEFT + 3.2 * MM if run.group == "Lc" else cd.AREA_RIGHT - 3.2 * MM
             pts = [*pts, (x, y), (edge, y)]
             continued_ids.append(run.cid)
@@ -971,37 +987,19 @@ def _route_sheet(
         marker: tuple[Point, ...] = ()
         if run.b is None:
             end = pts[-1]
-            far_place = places[run.a.end.far_key]
             s = -1 if run.group == "Lc" else 1
             marker = (
                 (end[0], end[1] + 0.9 * MM),
                 (end[0] + s * 2 * MM, end[1]),
                 (end[0], end[1] - 0.9 * MM),
             )
-            side = _side_of(run.a.end)
-            tail = f" ({far_place.reference(-1)})" + (f", {side} side" if side else "")
-            room = (
-                (CH_X0 if run.group == "Lc" else cd.AREA_RIGHT - 3.2 * MM)
-                - (cd.AREA_LEFT + 3.2 * MM if run.group == "Lc" else CH_X1)
-                - 6 * MM
-            )
-            # Never cut: where the other end is. Cut first the far end's name,
-            # keeping its marking, then (if still too long) the marking too.
-            name, _, marking = _far_label(run.a.end).rpartition(":")
-            to = f"to {run.a.end.far_board}/{name}"
-            if cd.text_width(f"{to[:12]}…[99]:{marking}{tail}", BODY_PT) <= room:
-                text = _fit_head(to, f":{marking}{tail}", room, BODY_PT, False, cuts)
-            else:
-                text = _fit_head(f"{to}:{marking}", tail, room, BODY_PT, False, cuts)
-            shift = 1.0 * MM
-            if run.group == "Lc":
-                texts.append(cd.Text(end[0] + shift, end[1] + 0.6 * MM, text, BODY_PT, role="far"))
-            else:
-                texts.append(
-                    cd.Text(
-                        end[0] - shift, end[1] + 0.6 * MM, text, BODY_PT, right=True, role="far"
-                    )
-                )
+            # The whole text, wrapped above the track; its lines share a left edge.
+            wrapped = flags[run.cid]
+            width = max(cd.text_width(t, BODY_PT) for t in wrapped)
+            x0 = end[0] + 1.0 * MM if run.group == "Lc" else end[0] - 1.0 * MM - width
+            for k, line in enumerate(wrapped):
+                y = end[1] + 0.6 * MM + (len(wrapped) - 1 - k) * FLAG_LINE
+                texts.append(cd.Text(x0, y, line, BODY_PT, role="far"))
         lines.append(
             RoutedLine(
                 run.cid,
