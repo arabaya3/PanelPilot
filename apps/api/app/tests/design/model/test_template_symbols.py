@@ -68,6 +68,16 @@ def _refused(raw: dict[str, Any]) -> None:
         lambda s: s.__setitem__("width", 0),
         lambda s: s.__setitem__("height", 101),
         lambda s: s.__setitem__("rating", "x"),
+        # Every shape's extent stays within the symbol's own width and height.
+        lambda s: s["shapes"].append({"kind": "line", "points": [0, 0, 11, 1], "text": None}),
+        lambda s: s["shapes"].append({"kind": "line", "points": [0, 0, 1, 13], "text": None}),
+        lambda s: s["shapes"].append({"kind": "circle", "points": [1, 5, 2], "text": None}),
+        lambda s: s["shapes"].append({"kind": "circle", "points": [5, 11, 2], "text": None}),
+        lambda s: s["shapes"].append({"kind": "rect", "points": [8, 0, 3, 1], "text": None}),
+        lambda s: s["shapes"].append({"kind": "text", "points": [11, 0], "text": "x"}),
+        lambda s: s["shapes"].append({"kind": "text", "points": [0, 0], "text": "x" * 9}),
+        # An anchor sits on the symbol's edge.
+        lambda s: s["anchors"].__setitem__(0, {**s["anchors"][0], "x": 3, "y": 3}),
         lambda s: s["shapes"].extend(
             {"kind": "line", "points": [0, 0, 1, n], "text": None} for n in range(65)
         ),
@@ -89,3 +99,28 @@ def test_every_configured_symbol_names_only_its_templates_terminals() -> None:
             terminals = {t["id"] for t in raw["terminals"]}
             assert {a["terminal"] for a in raw["symbol"]["anchors"]} <= terminals
     assert seen >= 2
+
+
+def test_a_one_unit_symbol_cannot_draw_a_hundred_units() -> None:
+    raw = _template()
+    raw["symbol"] = {
+        "width": 1,
+        "height": 1,
+        "shapes": [{"kind": "line", "points": [0, 0, 100, 100], "text": None}],
+        "anchors": [],
+    }
+    _refused(raw)
+    raw["symbol"]["shapes"] = [{"kind": "circle", "points": [0, 0, 100], "text": None}]
+    _refused(raw)
+
+
+def test_deeply_nested_symbol_data_is_refused_cleanly() -> None:
+    raw = _template()
+    deep: list[Any] = []
+    for _ in range(100_000):
+        deep = [deep]
+    raw["symbol"]["shapes"].append({"kind": "line", "points": deep, "text": None})
+    _refused(raw)
+    model = {"design": {"nested": deep}}
+    with pytest.raises(versions.SnapshotUnreadableError):
+        codec_v2.parse_model(model)

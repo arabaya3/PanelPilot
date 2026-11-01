@@ -125,15 +125,25 @@ def _sorted_texts(value: Any, where: str) -> tuple[str, ...]:
     return _strictly_sorted(texts, lambda t: t, where)
 
 
+#: The deepest nesting a v2 payload may hold; deeper is refused, never recursed into.
+MAX_DEPTH = 64
+
+
 def _refuse_floats(value: Any, where: str) -> None:
-    if isinstance(value, float):
-        _bad(where, "holds a float; Decimals are strings")
-    if isinstance(value, dict):
-        for item in value.values():
-            _refuse_floats(item, where)
-    elif isinstance(value, list):
-        for item in value:
-            _refuse_floats(item, where)
+    """Refuse a float anywhere in ``value``, and nesting deeper than :data:`MAX_DEPTH`.
+
+    Iterative, so a deeply nested value is refused cleanly (never a RecursionError).
+    """
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, float):
+            _bad(where, "holds a float; Decimals are strings")
+        if isinstance(item, dict | list):
+            if depth >= MAX_DEPTH:
+                _bad(where, f"is nested deeper than {MAX_DEPTH}")
+            children = item.values() if isinstance(item, dict) else item
+            stack.extend((child, depth + 1) for child in children)
 
 
 # --------------------------------------------------------------------------- #
@@ -159,6 +169,9 @@ _OPTIONAL_TEMPLATE_KEYS = ("symbol",)
 SYMBOL_MAX_SIDE = 100
 SYMBOL_MAX_SHAPES = 64
 
+#: The longest text a symbol's text shape holds (it is drawn inside the symbol).
+SYMBOL_MAX_TEXT = 8
+
 
 def _symbol(
     value: Any, terminals: Sequence[entities.TerminalDef], where: str
@@ -181,9 +194,9 @@ def _symbol(
         ]
         if len(points) != entities.SYMBOL_SHAPES[kind]:
             _bad(f"{where}.shapes[].points", f"a {kind} takes {entities.SYMBOL_SHAPES[kind]}")
-        if any(p > SYMBOL_MAX_SIDE for p in points):
-            _bad(f"{where}.shapes[].points", "lies outside the symbol grid")
-        text = _opt_text(shape["text"], f"{where}.shapes[].text")
+        if not _inside(kind, points, width, height):
+            _bad(f"{where}.shapes[].points", "lies outside the symbol's width and height")
+        text = _opt_text(shape["text"], f"{where}.shapes[].text", limit=SYMBOL_MAX_TEXT)
         if (kind == "text") != (text is not None):
             _bad(f"{where}.shapes[].text", "is set exactly for a text shape")
         shapes.append(entities.SymbolShape(kind=kind, points=tuple(points), text=text))
@@ -200,6 +213,9 @@ def _symbol(
         y = _int(anchor["y"], f"{where}.anchors[].y", minimum=0)
         if x > width or y > height:
             _bad(f"{where}.anchors[]", "lies outside the symbol grid")
+        if x not in (0, width) and y not in (0, height):
+            # A terminal joins the symbol at its edge, so its lead never crosses it.
+            _bad(f"{where}.anchors[]", "is not on the symbol's edge")
         anchors.append(entities.SymbolAnchor(terminal=terminal, x=x, y=y))
     return entities.SymbolDef(
         width=width,
@@ -207,6 +223,21 @@ def _symbol(
         shapes=tuple(shapes),
         anchors=_strictly_sorted(anchors, lambda a: a.terminal, f"{where}.anchors"),
     )
+
+
+def _inside(kind: str, p: Sequence[int], width: int, height: int) -> bool:
+    """Whether a shape's whole extent lies within ``0..width`` by ``0..height``."""
+    xs: tuple[int, ...]
+    ys: tuple[int, ...]
+    if kind == "line":
+        xs, ys = (p[0], p[2]), (p[1], p[3])
+    elif kind == "rect":
+        xs, ys = (p[0], p[0] + p[2]), (p[1], p[1] + p[3])
+    elif kind == "circle":
+        xs, ys = (p[0] - p[2], p[0] + p[2]), (p[1] - p[2], p[1] + p[2])
+    else:
+        xs, ys = (p[0],), (p[1],)
+    return min(xs) >= 0 and max(xs) <= width and min(ys) >= 0 and max(ys) <= height
 
 
 def _shape_key(shape: entities.SymbolShape) -> tuple[str, tuple[int, ...], str]:
