@@ -1,0 +1,2304 @@
+{
+ "name": "synthetic long names variant LONGNAME-LONGNAME-LONGNAME-LONGNAME-LONGNAME-LONGNAME-LONGNAME-LONGNAME-",
+ "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+ "templates": [
+  {
+   "ref": "tenant/synth-drw-relay/v1",
+   "function": "relay",
+   "terminals": [
+    {
+     "id": "a1",
+     "marking": "A1",
+     "kind": "coil",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "a2",
+     "marking": "A2",
+     "kind": "coil",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "c11",
+     "marking": "11",
+     "kind": "contact",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "c12",
+     "marking": "12",
+     "kind": "contact",
+     "required": null,
+     "group": null
+    },
+    {
+     "id": "c14",
+     "marking": "14",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    }
+   ],
+   "contact_groups": [],
+   "parameters": [],
+   "provenance": {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   },
+   "restricted_scope": [],
+   "symbol": {
+    "width": 10,
+    "height": 12,
+    "shapes": [
+     {
+      "kind": "rect",
+      "points": [
+       1,
+       1,
+       3,
+       4
+      ],
+      "text": null
+     },
+     {
+      "kind": "line",
+      "points": [
+       2,
+       0,
+       2,
+       1
+      ],
+      "text": null
+     },
+     {
+      "kind": "line",
+      "points": [
+       2,
+       5,
+       2,
+       12
+      ],
+      "text": null
+     },
+     {
+      "kind": "line",
+      "points": [
+       7,
+       0,
+       7,
+       8
+      ],
+      "text": null
+     },
+     {
+      "kind": "line",
+      "points": [
+       7,
+       8,
+       9,
+       10
+      ],
+      "text": null
+     },
+     {
+      "kind": "line",
+      "points": [
+       7,
+       10,
+       7,
+       12
+      ],
+      "text": null
+     },
+     {
+      "kind": "text",
+      "points": [
+       1,
+       11
+      ],
+      "text": "K"
+     }
+    ],
+    "anchors": [
+     {
+      "terminal": "a1",
+      "x": 2,
+      "y": 0
+     },
+     {
+      "terminal": "a2",
+      "x": 2,
+      "y": 12
+     },
+     {
+      "terminal": "c11",
+      "x": 7,
+      "y": 12
+     },
+     {
+      "terminal": "c14",
+      "x": 7,
+      "y": 0
+     }
+    ]
+   }
+  },
+  {
+   "ref": "tenant/synth-drw-psu/v1",
+   "function": "power_supply",
+   "terminals": [
+    {
+     "id": "p",
+     "marking": "+",
+     "kind": "dc_out",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "n",
+     "marking": "-",
+     "kind": "dc_out",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "l",
+     "marking": "L",
+     "kind": "ac_in",
+     "required": null,
+     "group": null
+    }
+   ],
+   "contact_groups": [],
+   "parameters": [],
+   "provenance": {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   },
+   "restricted_scope": [],
+   "symbol": {
+    "width": 8,
+    "height": 8,
+    "shapes": [
+     {
+      "kind": "circle",
+      "points": [
+       4,
+       4,
+       3
+      ],
+      "text": null
+     },
+     {
+      "kind": "text",
+      "points": [
+       3,
+       5
+      ],
+      "text": "="
+     }
+    ],
+    "anchors": [
+     {
+      "terminal": "n",
+      "x": 8,
+      "y": 6
+     },
+     {
+      "terminal": "p",
+      "x": 8,
+      "y": 2
+     }
+    ]
+   }
+  },
+  {
+   "ref": "tenant/synth-drw-lamp/v1",
+   "function": "indicator",
+   "terminals": [
+    {
+     "id": "x1",
+     "marking": "X1",
+     "kind": "signal",
+     "required": true,
+     "group": null
+    },
+    {
+     "id": "x2",
+     "marking": "X2",
+     "kind": "signal",
+     "required": true,
+     "group": null
+    }
+   ],
+   "contact_groups": [],
+   "parameters": [],
+   "provenance": {
+    "source": null,
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   },
+   "restricted_scope": []
+  },
+  {
+   "ref": "tenant/synth-drw-strip/v1",
+   "function": "terminal_type",
+   "terminals": [],
+   "contact_groups": [],
+   "parameters": [],
+   "provenance": {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   },
+   "restricted_scope": [],
+   "symbol": {
+    "width": 4,
+    "height": 10,
+    "shapes": [
+     {
+      "kind": "rect",
+      "points": [
+       1,
+       0,
+       2,
+       10
+      ],
+      "text": null
+     }
+    ],
+    "anchors": []
+   }
+  },
+  {
+   "ref": "tenant/synth-very-long-template-reference-name-for-drawing-layout-stress-testing-of-labels-abcdefgh/v1",
+   "function": "relay",
+   "terminals": [
+    {
+     "id": "t00",
+     "marking": "SYN-LONG-TERMINAL-MARK-00",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t01",
+     "marking": "SYN-LONG-TERMINAL-MARK-01",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t02",
+     "marking": "SYN-LONG-TERMINAL-MARK-02",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t03",
+     "marking": "SYN-LONG-TERMINAL-MARK-03",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t04",
+     "marking": "SYN-LONG-TERMINAL-MARK-04",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t05",
+     "marking": "SYN-LONG-TERMINAL-MARK-05",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t06",
+     "marking": "SYN-LONG-TERMINAL-MARK-06",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t07",
+     "marking": "SYN-LONG-TERMINAL-MARK-07",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t08",
+     "marking": "SYN-LONG-TERMINAL-MARK-08",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t09",
+     "marking": "SYN-LONG-TERMINAL-MARK-09",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t10",
+     "marking": "SYN-LONG-TERMINAL-MARK-10",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t11",
+     "marking": "SYN-LONG-TERMINAL-MARK-11",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t12",
+     "marking": "SYN-LONG-TERMINAL-MARK-12",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t13",
+     "marking": "SYN-LONG-TERMINAL-MARK-13",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t14",
+     "marking": "SYN-LONG-TERMINAL-MARK-14",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t15",
+     "marking": "SYN-LONG-TERMINAL-MARK-15",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t16",
+     "marking": "SYN-LONG-TERMINAL-MARK-16",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t17",
+     "marking": "SYN-LONG-TERMINAL-MARK-17",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t18",
+     "marking": "SYN-LONG-TERMINAL-MARK-18",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t19",
+     "marking": "SYN-LONG-TERMINAL-MARK-19",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t20",
+     "marking": "SYN-LONG-TERMINAL-MARK-20",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t21",
+     "marking": "SYN-LONG-TERMINAL-MARK-21",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t22",
+     "marking": "SYN-LONG-TERMINAL-MARK-22",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t23",
+     "marking": "SYN-LONG-TERMINAL-MARK-23",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t24",
+     "marking": "SYN-LONG-TERMINAL-MARK-24",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t25",
+     "marking": "SYN-LONG-TERMINAL-MARK-25",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t26",
+     "marking": "SYN-LONG-TERMINAL-MARK-26",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t27",
+     "marking": "SYN-LONG-TERMINAL-MARK-27",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t28",
+     "marking": "SYN-LONG-TERMINAL-MARK-28",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t29",
+     "marking": "SYN-LONG-TERMINAL-MARK-29",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t30",
+     "marking": "SYN-LONG-TERMINAL-MARK-30",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t31",
+     "marking": "SYN-LONG-TERMINAL-MARK-31",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t32",
+     "marking": "SYN-LONG-TERMINAL-MARK-32",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t33",
+     "marking": "SYN-LONG-TERMINAL-MARK-33",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t34",
+     "marking": "SYN-LONG-TERMINAL-MARK-34",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t35",
+     "marking": "SYN-LONG-TERMINAL-MARK-35",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t36",
+     "marking": "SYN-LONG-TERMINAL-MARK-36",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t37",
+     "marking": "SYN-LONG-TERMINAL-MARK-37",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t38",
+     "marking": "SYN-LONG-TERMINAL-MARK-38",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    },
+    {
+     "id": "t39",
+     "marking": "SYN-LONG-TERMINAL-MARK-39",
+     "kind": "contact",
+     "required": false,
+     "group": null
+    }
+   ],
+   "contact_groups": [],
+   "parameters": [],
+   "provenance": {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   },
+   "restricted_scope": []
+  }
+ ],
+ "patterns": [
+  {
+   "ref": "tenant/synth-drw-control/v1",
+   "slots": [
+    {
+     "id": "k",
+     "template": "tenant/synth-drw-relay/v1"
+    },
+    {
+     "id": "psu",
+     "template": "tenant/synth-drw-psu/v1"
+    },
+    {
+     "id": "h",
+     "template": "tenant/synth-drw-lamp/v1"
+    },
+    {
+     "id": "big",
+     "template": "tenant/synth-very-long-template-reference-name-for-drawing-layout-stress-testing-of-labels-abcdefgh/v1"
+    }
+   ],
+   "strips": [
+    "x"
+   ],
+   "points": [
+    {
+     "id": "c1",
+     "strip": "x",
+     "offset": 1,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "c2",
+     "strip": "x",
+     "offset": 2,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q00",
+     "strip": "x",
+     "offset": 10,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q01",
+     "strip": "x",
+     "offset": 11,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q02",
+     "strip": "x",
+     "offset": 12,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q03",
+     "strip": "x",
+     "offset": 13,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q04",
+     "strip": "x",
+     "offset": 14,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q05",
+     "strip": "x",
+     "offset": 15,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q06",
+     "strip": "x",
+     "offset": 16,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q07",
+     "strip": "x",
+     "offset": 17,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q08",
+     "strip": "x",
+     "offset": 18,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q09",
+     "strip": "x",
+     "offset": 19,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q10",
+     "strip": "x",
+     "offset": 20,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q11",
+     "strip": "x",
+     "offset": 21,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q12",
+     "strip": "x",
+     "offset": 22,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q13",
+     "strip": "x",
+     "offset": 23,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q14",
+     "strip": "x",
+     "offset": 24,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q15",
+     "strip": "x",
+     "offset": 25,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q16",
+     "strip": "x",
+     "offset": 26,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q17",
+     "strip": "x",
+     "offset": 27,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q18",
+     "strip": "x",
+     "offset": 28,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q19",
+     "strip": "x",
+     "offset": 29,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q20",
+     "strip": "x",
+     "offset": 30,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q21",
+     "strip": "x",
+     "offset": 31,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q22",
+     "strip": "x",
+     "offset": 32,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q23",
+     "strip": "x",
+     "offset": 33,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q24",
+     "strip": "x",
+     "offset": 34,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q25",
+     "strip": "x",
+     "offset": 35,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q26",
+     "strip": "x",
+     "offset": 36,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q27",
+     "strip": "x",
+     "offset": 37,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q28",
+     "strip": "x",
+     "offset": 38,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q29",
+     "strip": "x",
+     "offset": 39,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q30",
+     "strip": "x",
+     "offset": 40,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q31",
+     "strip": "x",
+     "offset": 41,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q32",
+     "strip": "x",
+     "offset": 42,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q33",
+     "strip": "x",
+     "offset": 43,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q34",
+     "strip": "x",
+     "offset": 44,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q35",
+     "strip": "x",
+     "offset": 45,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q36",
+     "strip": "x",
+     "offset": 46,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q37",
+     "strip": "x",
+     "offset": 47,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q38",
+     "strip": "x",
+     "offset": 48,
+     "level": 1,
+     "kind": "signal"
+    },
+    {
+     "id": "q39",
+     "strip": "x",
+     "offset": 49,
+     "level": 1,
+     "kind": "signal"
+    }
+   ],
+   "nets": [
+    {
+     "role": "plus",
+     "signal": "SYN-LONG-SYN-24V-SIGNAL-WITH-A-VERY-LONG-DESCRIPTIVE-SUFFIX-TO-OVERFLOW",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "psu",
+       "terminal": "p"
+      },
+      {
+       "slot": "k",
+       "terminal": "c11"
+      },
+      {
+       "point": "c1",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      },
+      {
+       "from": 1,
+       "to": 2,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "minus",
+     "signal": "SYN-LONG-SYN-0V-SIGNAL-WITH-A-VERY-LONG-DESCRIPTIVE-SUFFIX-TO-OVERFLOW",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "psu",
+       "terminal": "n"
+      },
+      {
+       "slot": "k",
+       "terminal": "a2"
+      },
+      {
+       "slot": "h",
+       "terminal": "x2"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "lamp",
+     "signal": "SYN-LONG-SYN-H-SIGNAL-WITH-A-VERY-LONG-DESCRIPTIVE-SUFFIX-TO-OVERFLOW",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "k",
+       "terminal": "c14"
+      },
+      {
+       "slot": "h",
+       "terminal": "x1"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "coil",
+     "signal": "SYN-LONG-SYN-COIL-SIGNAL-WITH-A-VERY-LONG-DESCRIPTIVE-SUFFIX-TO-OVERFLOW",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "k",
+       "terminal": "a1"
+      },
+      {
+       "point": "c2",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole00",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-00-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t00"
+      },
+      {
+       "point": "q00",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole01",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-01-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t01"
+      },
+      {
+       "point": "q01",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole02",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-02-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t02"
+      },
+      {
+       "point": "q02",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole03",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-03-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t03"
+      },
+      {
+       "point": "q03",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole04",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-04-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t04"
+      },
+      {
+       "point": "q04",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole05",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-05-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t05"
+      },
+      {
+       "point": "q05",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole06",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-06-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t06"
+      },
+      {
+       "point": "q06",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole07",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-07-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t07"
+      },
+      {
+       "point": "q07",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole08",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-08-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t08"
+      },
+      {
+       "point": "q08",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole09",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-09-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t09"
+      },
+      {
+       "point": "q09",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole10",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-10-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t10"
+      },
+      {
+       "point": "q10",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole11",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-11-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t11"
+      },
+      {
+       "point": "q11",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole12",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-12-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t12"
+      },
+      {
+       "point": "q12",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole13",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-13-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t13"
+      },
+      {
+       "point": "q13",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole14",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-14-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t14"
+      },
+      {
+       "point": "q14",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole15",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-15-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t15"
+      },
+      {
+       "point": "q15",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole16",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-16-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t16"
+      },
+      {
+       "point": "q16",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole17",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-17-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t17"
+      },
+      {
+       "point": "q17",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole18",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-18-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t18"
+      },
+      {
+       "point": "q18",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole19",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-19-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t19"
+      },
+      {
+       "point": "q19",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole20",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-20-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t20"
+      },
+      {
+       "point": "q20",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole21",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-21-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t21"
+      },
+      {
+       "point": "q21",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole22",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-22-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t22"
+      },
+      {
+       "point": "q22",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole23",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-23-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t23"
+      },
+      {
+       "point": "q23",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole24",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-24-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t24"
+      },
+      {
+       "point": "q24",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole25",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-25-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t25"
+      },
+      {
+       "point": "q25",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole26",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-26-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t26"
+      },
+      {
+       "point": "q26",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole27",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-27-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t27"
+      },
+      {
+       "point": "q27",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole28",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-28-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t28"
+      },
+      {
+       "point": "q28",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole29",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-29-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t29"
+      },
+      {
+       "point": "q29",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole30",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-30-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t30"
+      },
+      {
+       "point": "q30",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole31",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-31-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t31"
+      },
+      {
+       "point": "q31",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole32",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-32-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t32"
+      },
+      {
+       "point": "q32",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole33",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-33-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t33"
+      },
+      {
+       "point": "q33",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole34",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-34-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t34"
+      },
+      {
+       "point": "q34",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole35",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-35-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t35"
+      },
+      {
+       "point": "q35",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole36",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-36-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t36"
+      },
+      {
+       "point": "q36",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole37",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-37-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t37"
+      },
+      {
+       "point": "q37",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole38",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-38-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t38"
+      },
+      {
+       "point": "q38",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    },
+    {
+     "role": "longrole39",
+     "signal": "SYN-EXTREMELY-LONG-NET-SIGNAL-NAME-FOR-LABEL-OVERFLOW-TESTING-NUMBER-39-END",
+     "scope": "binding",
+     "members": [
+      {
+       "slot": "big",
+       "terminal": "t39"
+      },
+      {
+       "point": "q39",
+       "side": "inner"
+      }
+     ],
+     "connections": [
+      {
+       "from": 0,
+       "to": 1,
+       "via": "wire"
+      }
+     ]
+    }
+   ],
+   "provenance": {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01"
+   },
+   "review": {
+    "status": "unreviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "standards": [],
+    "scope_note": null
+   }
+  }
+ ],
+ "strips": [
+  {
+   "id": "XC",
+   "board": "DB-V",
+   "designation": {
+    "function": null,
+    "location": null,
+    "product": "XC-SYNTHETIC-VERY-LONG-STRIP-DESIGNATION-0123456789-ABCDEFGHIJ"
+   },
+   "template": "tenant/synth-drw-strip/v1"
+  }
+ ],
+ "components": [
+  {
+   "id": "k1",
+   "board": "DB-V",
+   "template": "tenant/synth-drw-relay/v1",
+   "designation": {
+    "function": null,
+    "location": null,
+    "product": "K1-SYNTHETIC-EXTREMELY-LONG-RELAY-DESIGNATION-0123456789-ABCDEFGHIJKLMNOP"
+   }
+  },
+  {
+   "id": "psu1",
+   "board": "DB-V",
+   "template": "tenant/synth-drw-psu/v1",
+   "designation": {
+    "function": null,
+    "location": null,
+    "product": "G1-SYNTHETIC-EXTREMELY-LONG-POWER-SUPPLY-DESIGNATION-0123456789-QRSTUV"
+   }
+  },
+  {
+   "id": "h1",
+   "board": "DB-V",
+   "template": "tenant/synth-drw-lamp/v1",
+   "designation": null
+  },
+  {
+   "id": "big1",
+   "board": "DB-V",
+   "template": "tenant/synth-very-long-template-reference-name-for-drawing-layout-stress-testing-of-labels-abcdefgh/v1",
+   "designation": {
+    "function": null,
+    "location": null,
+    "product": "KBIG-SYNTHETIC-MANY-TERMINALS-COMPONENT-WITH-A-LONG-DESIGNATION-0123456789"
+   }
+  }
+ ],
+ "bindings": [
+  {
+   "id": "ctl-1",
+   "pattern": "tenant/synth-drw-control/v1",
+   "board": "DB-V",
+   "circuit": null,
+   "slots": {
+    "k": {
+     "component": "k1"
+    },
+    "psu": {
+     "component": "psu1"
+    },
+    "h": {
+     "component": "h1"
+    },
+    "big": {
+     "component": "big1"
+    }
+   },
+   "strips": {
+    "x": "XC"
+   },
+   "markings": {
+    "c1": "SYN-STRIP-POINT-NAME-LONG-0001-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "c2": "SYN-STRIP-POINT-NAME-LONG-0002-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q00": "SYN-LONG-STRIP-POINT-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q01": "SYN-LONG-STRIP-POINT-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q02": "SYN-LONG-STRIP-POINT-02-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q03": "SYN-LONG-STRIP-POINT-03-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q04": "SYN-LONG-STRIP-POINT-04-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q05": "SYN-LONG-STRIP-POINT-05-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q06": "SYN-LONG-STRIP-POINT-06-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q07": "SYN-LONG-STRIP-POINT-07-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q08": "SYN-LONG-STRIP-POINT-08-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q09": "SYN-LONG-STRIP-POINT-09-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q10": "SYN-LONG-STRIP-POINT-10-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q11": "SYN-LONG-STRIP-POINT-11-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q12": "SYN-LONG-STRIP-POINT-12-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q13": "SYN-LONG-STRIP-POINT-13-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q14": "SYN-LONG-STRIP-POINT-14-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q15": "SYN-LONG-STRIP-POINT-15-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q16": "SYN-LONG-STRIP-POINT-16-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q17": "SYN-LONG-STRIP-POINT-17-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q18": "SYN-LONG-STRIP-POINT-18-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q19": "SYN-LONG-STRIP-POINT-19-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q20": "SYN-LONG-STRIP-POINT-20-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q21": "SYN-LONG-STRIP-POINT-21-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q22": "SYN-LONG-STRIP-POINT-22-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q23": "SYN-LONG-STRIP-POINT-23-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q24": "SYN-LONG-STRIP-POINT-24-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q25": "SYN-LONG-STRIP-POINT-25-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q26": "SYN-LONG-STRIP-POINT-26-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q27": "SYN-LONG-STRIP-POINT-27-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q28": "SYN-LONG-STRIP-POINT-28-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q29": "SYN-LONG-STRIP-POINT-29-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q30": "SYN-LONG-STRIP-POINT-30-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q31": "SYN-LONG-STRIP-POINT-31-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q32": "SYN-LONG-STRIP-POINT-32-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q33": "SYN-LONG-STRIP-POINT-33-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q34": "SYN-LONG-STRIP-POINT-34-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q35": "SYN-LONG-STRIP-POINT-35-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q36": "SYN-LONG-STRIP-POINT-36-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q37": "SYN-LONG-STRIP-POINT-37-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q38": "SYN-LONG-STRIP-POINT-38-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "q39": "SYN-LONG-STRIP-POINT-39-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+   },
+   "cable": null,
+   "wires": {
+    "plus/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-EXTREMELY-LONG-0101-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     },
+     "cross_section_mm2": {
+      "value": "0.75",
+      "source": "assumption",
+      "statement": "Synthetic illustrative assumption for the drawing test only."
+     }
+    },
+    "lamp/0": {
+     "colour": {
+      "value": "SYN-COLOUR-B",
+      "source": "user"
+     }
+    },
+    "longrole00/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-00-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole01/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-01-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole02/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-02-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole03/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-03-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole04/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-04-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole05/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-05-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole06/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-06-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole07/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-07-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole08/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-08-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole09/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-09-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole10/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-10-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole11/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-11-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole12/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-12-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole13/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-13-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole14/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-14-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole15/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-15-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole16/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-16-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole17/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-17-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole18/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-18-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole19/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-19-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole20/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-20-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole21/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-21-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole22/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-22-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole23/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-23-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole24/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-24-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole25/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-25-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole26/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-26-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole27/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-27-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole28/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-28-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole29/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-29-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole30/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-30-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole31/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-31-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole32/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-32-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole33/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-33-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole34/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-34-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole35/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-35-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole36/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-36-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole37/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-37-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole38/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-38-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    },
+    "longrole39/0": {
+     "number": {
+      "value": "SYN-WIRE-NUMBER-LONG-39-ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789",
+      "source": "user"
+     }
+    }
+   }
+  }
+ ]
+}

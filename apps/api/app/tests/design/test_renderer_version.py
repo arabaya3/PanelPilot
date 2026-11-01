@@ -259,15 +259,23 @@ def test_a_demonstrably_cosmetic_change_is_not_material(monkeypatch: pytest.Monk
 RECORDED_V2 = Path(__file__).with_name("renderer_fingerprints_v2.json")
 
 #: The configured synthetic cases a v2 revision's exports are rendered from:
-#: the data-only PE/N distribution and the I/O marshalling strip.
-V2_CASES = ("pe_n_distribution", "io_marshalling")
+#: the data-only PE/N distribution, the I/O marshalling strip, and the two
+#: connection drawing cases with symbol data (M4).
+V2_CASES = (
+    "pe_n_distribution",
+    "io_marshalling",
+    "drawing_control_relay",
+    "drawing_heldout_feeder",
+)
 
 #: What a v2 revision exports for review: the v1 formats (printing the v2
-#: structural findings too) and the two review-only schedules.
+#: structural findings too), the two review-only schedules and the
+#: review-only connection drawing (M4).
 AVAILABLE_V2: dict[ExportFormat, Callable[[bytes], object]] = {
     **AVAILABLE,
     ExportFormat.TERMINAL_SCHEDULE_PDF: render_content.pdf_content,
     ExportFormat.WIRE_SCHEDULE_PDF: render_content.pdf_content,
+    ExportFormat.CONNECTION_DRAWING_PDF: render_content.pdf_content,
 }
 
 
@@ -281,8 +289,8 @@ def v2_exports(
     The mark prints every finding (v1 checks and the structural ones), as a
     v2 revision's export does; the schedules come from the saved model alone.
     """
-    from app.design import schedule_pdf, snapshot
-    from app.design.model import findings_v2, schedules, versions, write
+    from app.design import connection_drawing_pdf, schedule_pdf, snapshot
+    from app.design.model import connection_drawing, findings_v2, schedules, versions, write
     from app.design.model.read import read_snapshot
     from app.domain import design_configuration, design_projects
     from app.tests.design.model.compat_support import DESIGNED
@@ -337,6 +345,14 @@ def v2_exports(
     )
     found[ExportFormat.WIRE_SCHEDULE_PDF.value] = schedule_pdf.render_wire_schedule(
         schedules.wire_schedule(v2), header, plain, structural
+    )
+    found[ExportFormat.CONNECTION_DRAWING_PDF.value] = (
+        connection_drawing_pdf.render_connection_drawing(
+            connection_drawing.drawing_set(v2),
+            connection_drawing_pdf.DrawingHeader(**dataclasses.asdict(header)),
+            plain,
+            structural,
+        )
     )
     return found
 
@@ -412,7 +428,13 @@ def test_v2_exports_print_the_structural_findings() -> None:
     import pdfplumber
 
     exported = v2_exports("pe_n_distribution")
-    for name in ("pdf", "calculations_pdf", "terminal_schedule_pdf", "wire_schedule_pdf"):
+    for name in (
+        "pdf",
+        "calculations_pdf",
+        "terminal_schedule_pdf",
+        "wire_schedule_pdf",
+        "connection_drawing_pdf",
+    ):
         with pdfplumber.open(io.BytesIO(exported[name])) as pdf:
             pages = [page.extract_text() or "" for page in pdf.pages]
         text = " ".join(" ".join(pages).split())

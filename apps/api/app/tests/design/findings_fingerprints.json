@@ -56,6 +56,8 @@
     "configuration heldout_radial": "74f2adaeab8fddd4915c6ee598306af171d5f6d47d355e5a64a6383009e5bbe1",
     "configuration io_marshalling": "1436778e169d3eabd2a4b4b73e23b41778dffd500c4087b74d21ec8543ea0708",
     "configuration motor_dol_with_control": "2da9f0a7a8875428346339469f7389beac9905c51697237b8c12c94de093dff3",
-    "configuration pe_n_distribution": "7293434fc70f1053db6f4976855b10e8876d7c3636d3fdd461f3695c6af9756c"
+    "configuration pe_n_distribution": "7293434fc70f1053db6f4976855b10e8876d7c3636d3fdd461f3695c6af9756c",
+    "configuration drawing_control_relay": "c770a1b5d37224bb1bdd2ab72f736aab0ec451c8a0de0e070f9e4bf8e748c8d9",
+    "configuration drawing_heldout_feeder": "16874d1c75254cf4ab31238e8fbbcdef2965791ec2b2fe012e7dede58a65087a"
   }
 }

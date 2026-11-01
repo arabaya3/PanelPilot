@@ -155,6 +155,16 @@ def _ordered(raw: Any) -> Any:
                 out[name] = sorted(out[name], key=operator.itemgetter(key))
         if isinstance(out.get("restricted_scope"), list):
             out["restricted_scope"] = sorted(out["restricted_scope"])
+        symbol = out.get("symbol")
+        if isinstance(symbol, Mapping) and isinstance(symbol.get("anchors"), list):
+            out["symbol"] = {
+                **symbol,
+                "anchors": sorted(symbol["anchors"], key=operator.itemgetter("terminal")),
+                "shapes": sorted(
+                    symbol["shapes"],
+                    key=lambda s: (s["kind"], tuple(s["points"]), s["text"] or ""),
+                ),
+            }
         review = out.get("review")
         if isinstance(review, Mapping) and isinstance(review.get("standards"), list):
             out["review"] = {**review, "standards": sorted(review["standards"])}

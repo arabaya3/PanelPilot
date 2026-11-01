@@ -1,0 +1,557 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+  "fixture": "residential",
+  "configuration": {
+    "name": "synthetic control relay drawing",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-drw-relay/v1",
+        "function": "relay",
+        "terminals": [
+          {
+            "id": "a1",
+            "marking": "A1",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "a2",
+            "marking": "A2",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "c11",
+            "marking": "11",
+            "kind": "contact",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "c12",
+            "marking": "12",
+            "kind": "contact",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "c14",
+            "marking": "14",
+            "kind": "contact",
+            "required": false,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 10,
+          "height": 12,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                1,
+                3,
+                4
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                0,
+                2,
+                1
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                5,
+                2,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                0,
+                7,
+                8
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                8,
+                9,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                10,
+                7,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                1,
+                11
+              ],
+              "text": "K"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "a1",
+              "x": 2,
+              "y": 0
+            },
+            {
+              "terminal": "a2",
+              "x": 2,
+              "y": 12
+            },
+            {
+              "terminal": "c11",
+              "x": 7,
+              "y": 12
+            },
+            {
+              "terminal": "c14",
+              "x": 7,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-drw-psu/v1",
+        "function": "power_supply",
+        "terminals": [
+          {
+            "id": "p",
+            "marking": "+",
+            "kind": "dc_out",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "n",
+            "marking": "-",
+            "kind": "dc_out",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "l",
+            "marking": "L",
+            "kind": "ac_in",
+            "required": null,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 8,
+          "height": 8,
+          "shapes": [
+            {
+              "kind": "circle",
+              "points": [
+                4,
+                4,
+                3
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                3,
+                5
+              ],
+              "text": "="
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "n",
+              "x": 8,
+              "y": 6
+            },
+            {
+              "terminal": "p",
+              "x": 8,
+              "y": 2
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-drw-lamp/v1",
+        "function": "indicator",
+        "terminals": [
+          {
+            "id": "x1",
+            "marking": "X1",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x2",
+            "marking": "X2",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": null,
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-drw-strip/v1",
+        "function": "terminal_type",
+        "terminals": [],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 4,
+          "height": 10,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                0,
+                2,
+                10
+              ],
+              "text": null
+            }
+          ],
+          "anchors": []
+        }
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-drw-control/v1",
+        "slots": [
+          {
+            "id": "k",
+            "template": "tenant/synth-drw-relay/v1"
+          },
+          {
+            "id": "psu",
+            "template": "tenant/synth-drw-psu/v1"
+          },
+          {
+            "id": "h",
+            "template": "tenant/synth-drw-lamp/v1"
+          }
+        ],
+        "strips": [
+          "x"
+        ],
+        "points": [
+          {
+            "id": "c1",
+            "strip": "x",
+            "offset": 1,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "c2",
+            "strip": "x",
+            "offset": 2,
+            "level": 1,
+            "kind": "signal"
+          }
+        ],
+        "nets": [
+          {
+            "role": "plus",
+            "signal": "SYN-24V",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "psu",
+                "terminal": "p"
+              },
+              {
+                "slot": "k",
+                "terminal": "c11"
+              },
+              {
+                "point": "c1",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "minus",
+            "signal": "SYN-0V",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "psu",
+                "terminal": "n"
+              },
+              {
+                "slot": "k",
+                "terminal": "a2"
+              },
+              {
+                "slot": "h",
+                "terminal": "x2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "lamp",
+            "signal": "SYN-H",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "k",
+                "terminal": "c14"
+              },
+              {
+                "slot": "h",
+                "terminal": "x1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "coil",
+            "signal": "SYN-COIL",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "k",
+                "terminal": "a1"
+              },
+              {
+                "point": "c2",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          }
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
+      }
+    ],
+    "strips": [
+      {
+        "id": "XC",
+        "board": "DB-V",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "XC"
+        },
+        "template": "tenant/synth-drw-strip/v1"
+      }
+    ],
+    "components": [
+      {
+        "id": "k1",
+        "board": "DB-V",
+        "template": "tenant/synth-drw-relay/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "K1"
+        }
+      },
+      {
+        "id": "psu1",
+        "board": "DB-V",
+        "template": "tenant/synth-drw-psu/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "G1"
+        }
+      },
+      {
+        "id": "h1",
+        "board": "DB-V",
+        "template": "tenant/synth-drw-lamp/v1",
+        "designation": null
+      }
+    ],
+    "bindings": [
+      {
+        "id": "ctl-1",
+        "pattern": "tenant/synth-drw-control/v1",
+        "board": "DB-V",
+        "circuit": null,
+        "slots": {
+          "k": {
+            "component": "k1"
+          },
+          "psu": {
+            "component": "psu1"
+          },
+          "h": {
+            "component": "h1"
+          }
+        },
+        "strips": {
+          "x": "XC"
+        },
+        "markings": {
+          "c1": "1",
+          "c2": "2"
+        },
+        "cable": null,
+        "wires": {
+          "plus/0": {
+            "number": {
+              "value": "SYN-101",
+              "source": "user"
+            },
+            "cross_section_mm2": {
+              "value": "0.75",
+              "source": "assumption",
+              "statement": "Synthetic illustrative assumption for the drawing test only."
+            }
+          },
+          "lamp/0": {
+            "colour": {
+              "value": "SYN-COLOUR-B",
+              "source": "user"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 2,
+    "nets": 4,
+    "connections": 5,
+    "wires": 5,
+    "sha256": "b08ab3967595fe43091e7dedd1177909e15b94240e3d2496941110ec7d5e2e65"
+  }
+}

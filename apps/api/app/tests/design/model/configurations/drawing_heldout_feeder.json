@@ -1,0 +1,1351 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+  "fixture": "multi_board",
+  "configuration": {
+    "name": "synthetic held-out feeder drawing",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-hx-isolator/v1",
+        "function": "switch_disconnector",
+        "terminals": [
+          {
+            "id": "i1",
+            "marking": "1",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "i2",
+            "marking": "3",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "i3",
+            "marking": "5",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "o1",
+            "marking": "2",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "o2",
+            "marking": "4",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "o3",
+            "marking": "6",
+            "kind": "power_line",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 12,
+          "height": 10,
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                2,
+                0,
+                2,
+                3
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                3,
+                4,
+                7
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                7,
+                2,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                6,
+                0,
+                6,
+                3
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                6,
+                3,
+                8,
+                7
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                6,
+                7,
+                6,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                10,
+                0,
+                10,
+                3
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                10,
+                3,
+                12,
+                7
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                10,
+                7,
+                10,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                3,
+                5,
+                11,
+                5
+              ],
+              "text": null
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "i1",
+              "x": 2,
+              "y": 0
+            },
+            {
+              "terminal": "i2",
+              "x": 6,
+              "y": 0
+            },
+            {
+              "terminal": "i3",
+              "x": 10,
+              "y": 0
+            },
+            {
+              "terminal": "o1",
+              "x": 2,
+              "y": 10
+            },
+            {
+              "terminal": "o2",
+              "x": 6,
+              "y": 10
+            },
+            {
+              "terminal": "o3",
+              "x": 10,
+              "y": 10
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-hx-meter/v1",
+        "function": "meter",
+        "terminals": [
+          {
+            "id": "s1",
+            "marking": "S1",
+            "kind": "sense",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "s2",
+            "marking": "S2",
+            "kind": "sense",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "aux",
+            "marking": "AUX",
+            "kind": "signal",
+            "required": false,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 6,
+          "height": 6,
+          "shapes": [
+            {
+              "kind": "circle",
+              "points": [
+                3,
+                3,
+                3
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                2,
+                4
+              ],
+              "text": "M"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "s1",
+              "x": 0,
+              "y": 3
+            },
+            {
+              "terminal": "s2",
+              "x": 6,
+              "y": 3
+            }
+          ]
+        }
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-hx-feeder/v1",
+        "slots": [
+          {
+            "id": "pm",
+            "template": "tenant/synth-hx-meter/v1"
+          },
+          {
+            "id": "q",
+            "template": "tenant/synth-hx-isolator/v1"
+          }
+        ],
+        "strips": [
+          "f"
+        ],
+        "points": [
+          {
+            "id": "p1",
+            "strip": "f",
+            "offset": 1,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p2",
+            "strip": "f",
+            "offset": 2,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p3",
+            "strip": "f",
+            "offset": 3,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p4",
+            "strip": "f",
+            "offset": 4,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p5",
+            "strip": "f",
+            "offset": 5,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p6",
+            "strip": "f",
+            "offset": 6,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p7",
+            "strip": "f",
+            "offset": 7,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p8",
+            "strip": "f",
+            "offset": 8,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p9",
+            "strip": "f",
+            "offset": 9,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p10",
+            "strip": "f",
+            "offset": 10,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p11",
+            "strip": "f",
+            "offset": 11,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p12",
+            "strip": "f",
+            "offset": 12,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p13",
+            "strip": "f",
+            "offset": 13,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p14",
+            "strip": "f",
+            "offset": 14,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p15",
+            "strip": "f",
+            "offset": 15,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p16",
+            "strip": "f",
+            "offset": 16,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p17",
+            "strip": "f",
+            "offset": 17,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p18",
+            "strip": "f",
+            "offset": 18,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p19",
+            "strip": "f",
+            "offset": 19,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p20",
+            "strip": "f",
+            "offset": 20,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p21",
+            "strip": "f",
+            "offset": 21,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p22",
+            "strip": "f",
+            "offset": 22,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p23",
+            "strip": "f",
+            "offset": 23,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p24",
+            "strip": "f",
+            "offset": 24,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p25",
+            "strip": "f",
+            "offset": 25,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p26",
+            "strip": "f",
+            "offset": 26,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p27",
+            "strip": "f",
+            "offset": 27,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p28",
+            "strip": "f",
+            "offset": 28,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p29",
+            "strip": "f",
+            "offset": 29,
+            "level": 1,
+            "kind": "power_line"
+          },
+          {
+            "id": "p30",
+            "strip": "f",
+            "offset": 30,
+            "level": 1,
+            "kind": "power_line"
+          }
+        ],
+        "nets": [
+          {
+            "role": "out1",
+            "signal": "SYN-O1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "q",
+                "terminal": "o1"
+              },
+              {
+                "point": "p1",
+                "side": "inner"
+              },
+              {
+                "point": "p1",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              }
+            ]
+          },
+          {
+            "role": "out2",
+            "signal": "SYN-O2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "q",
+                "terminal": "o2"
+              },
+              {
+                "point": "p2",
+                "side": "inner"
+              },
+              {
+                "point": "p2",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              }
+            ]
+          },
+          {
+            "role": "out3",
+            "signal": "SYN-O3",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "q",
+                "terminal": "o3"
+              },
+              {
+                "point": "p3",
+                "side": "inner"
+              },
+              {
+                "point": "p3",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              }
+            ]
+          },
+          {
+            "role": "sense",
+            "signal": "SYN-S",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "q",
+                "terminal": "i1"
+              },
+              {
+                "slot": "pm",
+                "terminal": "s1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "aux",
+            "signal": "SYN-AUX",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p30",
+                "side": "inner"
+              },
+              {
+                "point": "p30",
+                "side": "outer"
+              },
+              {
+                "slot": "pm",
+                "terminal": "aux"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              },
+              {
+                "from": 0,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "spare04",
+            "signal": "SYN-SP04",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p4",
+                "side": "inner"
+              },
+              {
+                "point": "p4",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare05",
+            "signal": "SYN-SP05",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p5",
+                "side": "inner"
+              },
+              {
+                "point": "p5",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare06",
+            "signal": "SYN-SP06",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p6",
+                "side": "inner"
+              },
+              {
+                "point": "p6",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare07",
+            "signal": "SYN-SP07",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p7",
+                "side": "inner"
+              },
+              {
+                "point": "p7",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare08",
+            "signal": "SYN-SP08",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p8",
+                "side": "inner"
+              },
+              {
+                "point": "p8",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare09",
+            "signal": "SYN-SP09",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p9",
+                "side": "inner"
+              },
+              {
+                "point": "p9",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare10",
+            "signal": "SYN-SP10",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p10",
+                "side": "inner"
+              },
+              {
+                "point": "p10",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare11",
+            "signal": "SYN-SP11",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p11",
+                "side": "inner"
+              },
+              {
+                "point": "p11",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare12",
+            "signal": "SYN-SP12",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p12",
+                "side": "inner"
+              },
+              {
+                "point": "p12",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare13",
+            "signal": "SYN-SP13",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p13",
+                "side": "inner"
+              },
+              {
+                "point": "p13",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare14",
+            "signal": "SYN-SP14",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p14",
+                "side": "inner"
+              },
+              {
+                "point": "p14",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare15",
+            "signal": "SYN-SP15",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p15",
+                "side": "inner"
+              },
+              {
+                "point": "p15",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare16",
+            "signal": "SYN-SP16",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p16",
+                "side": "inner"
+              },
+              {
+                "point": "p16",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare17",
+            "signal": "SYN-SP17",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p17",
+                "side": "inner"
+              },
+              {
+                "point": "p17",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare18",
+            "signal": "SYN-SP18",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p18",
+                "side": "inner"
+              },
+              {
+                "point": "p18",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare19",
+            "signal": "SYN-SP19",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p19",
+                "side": "inner"
+              },
+              {
+                "point": "p19",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare20",
+            "signal": "SYN-SP20",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p20",
+                "side": "inner"
+              },
+              {
+                "point": "p20",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare21",
+            "signal": "SYN-SP21",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p21",
+                "side": "inner"
+              },
+              {
+                "point": "p21",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare22",
+            "signal": "SYN-SP22",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p22",
+                "side": "inner"
+              },
+              {
+                "point": "p22",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare23",
+            "signal": "SYN-SP23",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p23",
+                "side": "inner"
+              },
+              {
+                "point": "p23",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare24",
+            "signal": "SYN-SP24",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p24",
+                "side": "inner"
+              },
+              {
+                "point": "p24",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare25",
+            "signal": "SYN-SP25",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p25",
+                "side": "inner"
+              },
+              {
+                "point": "p25",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare26",
+            "signal": "SYN-SP26",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p26",
+                "side": "inner"
+              },
+              {
+                "point": "p26",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare27",
+            "signal": "SYN-SP27",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p27",
+                "side": "inner"
+              },
+              {
+                "point": "p27",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare28",
+            "signal": "SYN-SP28",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p28",
+                "side": "inner"
+              },
+              {
+                "point": "p28",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          },
+          {
+            "role": "spare29",
+            "signal": "SYN-SP29",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p29",
+                "side": "inner"
+              },
+              {
+                "point": "p29",
+                "side": "outer"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "jumper"
+              }
+            ]
+          }
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-01"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
+      }
+    ],
+    "strips": [
+      {
+        "id": "XF",
+        "board": "SMDB-1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "XF"
+        },
+        "template": null
+      }
+    ],
+    "components": [
+      {
+        "id": "q1",
+        "board": "SMDB-1",
+        "template": "tenant/synth-hx-isolator/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "Q10"
+        }
+      },
+      {
+        "id": "pm1",
+        "board": "SMDB-1",
+        "template": "tenant/synth-hx-meter/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "P1"
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "id": "fd-1",
+        "pattern": "tenant/synth-hx-feeder/v1",
+        "board": "SMDB-1",
+        "circuit": null,
+        "slots": {
+          "q": {
+            "component": "q1"
+          },
+          "pm": {
+            "component": "pm1"
+          }
+        },
+        "strips": {
+          "f": "XF"
+        },
+        "markings": {
+          "p1": "1",
+          "p2": "2",
+          "p3": "3",
+          "p4": "4",
+          "p5": "5",
+          "p6": "6",
+          "p7": "7",
+          "p8": "8",
+          "p9": "9",
+          "p10": "10",
+          "p11": "11",
+          "p12": "12",
+          "p13": "13",
+          "p14": "14",
+          "p15": "15",
+          "p16": "16",
+          "p17": "17",
+          "p18": "18",
+          "p19": "19",
+          "p20": "20",
+          "p21": "21",
+          "p22": "22",
+          "p23": "23",
+          "p24": "24",
+          "p25": "25",
+          "p26": "26",
+          "p27": "27",
+          "p28": "28",
+          "p29": "29",
+          "p30": "30"
+        },
+        "cable": null,
+        "wires": {
+          "out1/0": {
+            "number": {
+              "value": "SYN-H1",
+              "source": "user"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 30,
+    "nets": 31,
+    "connections": 35,
+    "wires": 5,
+    "sha256": "795fc38d0acc300bf86b23b35029c35b348d26b3ce1df1be239c9c903b1f2002"
+  }
+}
