@@ -69,7 +69,7 @@ CSV_FORMATS = (
 OTHER_FORMATS = ("dxf", "qet", "aml", "json", "plc_st")
 #: Review-only schedules of a saved pp-design/2 revision: refused for a draft
 #: and a v1 revision (``schedule_requires_v2``); covered by the v2 suite.
-SCHEDULE_FORMATS = ("terminal_schedule_pdf", "wire_schedule_pdf")
+SCHEDULE_FORMATS = ("terminal_schedule_pdf", "wire_schedule_pdf", "connection_drawing_pdf")
 ALL_FORMATS = PDF_FORMATS + CSV_FORMATS + OTHER_FORMATS + SCHEDULE_FORMATS
 #: The formats whose draft mark would only be a comment a normal import strips:
 #: refused on every export path (``export_format_unprotected``) until a mark

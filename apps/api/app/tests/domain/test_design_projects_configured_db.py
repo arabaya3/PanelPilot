@@ -273,6 +273,48 @@ def test_a_configured_revision_approves_under_the_v2_renderer_and_exports_its_sc
     )
     assert "pattern_unreviewed" in drawing
     assert design.renderer_version(versions.V2) in drawing
+
+
+def test_the_connection_drawing_and_schedules_of_a_revision_agree(
+    client: TestClient, engine: Engine, switch: Switch
+) -> None:
+    """One saved snapshot: the drawing names every terminal, net and wire the schedules do."""
+    from app.design.model import connection_drawing, schedules
+    from app.design.model.read import read_snapshot
+
+    project_id = _configured(client, switch)
+    assert approve(client, project_id, 2).status_code == 200
+    row = revision_row(engine, project_id, 2)
+    exported = revision_export(client, project_id, 2, "connection_drawing_pdf")
+    assert exported.status_code == 200, exported.text[:300]
+    assert exported.headers["content-type"] == "application/pdf"
+    assert "connection-drawing.pdf" in exported.headers["content-disposition"]
+    pages = [" ".join(p.split()) for p in pdf_pages(exported.content)]
+    for number, page in enumerate(pages, start=1):
+        assert marking.REVIEW_APPROVED_LABEL in page
+        assert "CONNECTION DRAWING — REVIEW ONLY — NOT FOR EXECUTION" in page
+        assert f"Snapshot SHA-256: {row['snapshot_sha256']}" in page
+        assert f"Sheet {number} of {len(pages)}" in page
+    text = " ".join(pages)
+    assert design.renderer_version(versions.V2) in text
+    model = read_snapshot(row["design_snapshot"]).v2
+    assert model is not None
+    drawn = connection_drawing.drawing_set(model)
+    assert drawn.terminal_rows == schedules.terminal_schedule(model)
+    assert drawn.wire_rows == schedules.wire_schedule(model)
+    wires = " ".join(
+        " ".join(p.split())
+        for p in pdf_pages(revision_export(client, project_id, 2, "wire_schedule_pdf").content)
+    )
+    for wire in model.wires:
+        assert f"wire {wire.id}:" in text
+        assert wire.id in wires
+    for net in model.nets:
+        assert f"net {net.signal}" in text
+    # Purpose execution stays refused for the drawing, whatever its state.
+    refused = revision_export(client, project_id, 2, "connection_drawing_pdf", purpose="execution")
+    assert refused.status_code == 409
+    assert error(refused)["code"] == "execution_package_incomplete"
     as_json = revision_export(client, project_id, 2, "json").json()
     assert "wire_attribute_assumed" in {f["code"] for f in as_json["findings"]}
     # Execution: always refused, naming the template and pattern review codes.
@@ -327,8 +369,9 @@ def test_a_legacy_v1_approval_keeps_counting_beside_configured_revisions(
     assert marking.REVIEW_APPROVED_LABEL in text
     assert f"renderer {design.RENDERER_VERSION}" in " ".join(text.split())
     # A schedule of the v1 revision: nothing to schedule.
-    refused = revision_export(client, project_id, 1, "wire_schedule_pdf")
-    assert error(refused)["code"] == "schedule_requires_v2"
+    for fmt in ("wire_schedule_pdf", "connection_drawing_pdf"):
+        refused = revision_export(client, project_id, 1, fmt)
+        assert error(refused)["code"] == "schedule_requires_v2"
     # A v1 revision saved with the switch on approves as before.
     plain = _save(client)
     assert approve(client, plain, 1).status_code == 200
@@ -417,7 +460,7 @@ def test_another_tenant_cannot_validate_save_open_or_export(
     assert _revise(client, project_id, _configuration()).status_code == 404
     assert client.get(f"/design/projects/{project_id}").status_code == 404
     assert client.get(f"/design/projects/{project_id}", params={"revision": 2}).status_code == 404
-    for fmt in ("pdf", "terminal_schedule_pdf", "wire_schedule_pdf"):
+    for fmt in ("pdf", "terminal_schedule_pdf", "wire_schedule_pdf", "connection_drawing_pdf"):
         assert revision_export(client, project_id, 2, fmt).status_code == 404
     assert approve(client, project_id, 2).status_code == 404
 
@@ -466,7 +509,13 @@ def test_an_altered_configured_row_is_never_approved_or_exported(
     assert opened["validated"] is False
     assert "snapshot_integrity_failed" in {f["code"] for f in opened["findings"]}
     assert opened["model_v2"] is None
-    for fmt in ("pdf", "json", "terminal_schedule_pdf", "wire_schedule_pdf"):
+    for fmt in (
+        "pdf",
+        "json",
+        "terminal_schedule_pdf",
+        "wire_schedule_pdf",
+        "connection_drawing_pdf",
+    ):
         refused = revision_export(client, project_id, 2, fmt)
         assert refused.status_code == 409, (fmt, refused.text[:200])
         assert error(refused)["code"] == "snapshot_integrity_failed"
@@ -487,7 +536,7 @@ def test_an_unknown_schema_is_never_opened_validated_approved_or_exported(
     opened = _open(client, project_id, 2)
     assert opened["export_status"] == "not_validated"
     assert "snapshot_schema_unknown" in {f["code"] for f in opened["findings"]}
-    for fmt in ("pdf", "wire_schedule_pdf"):
+    for fmt in ("pdf", "wire_schedule_pdf", "connection_drawing_pdf"):
         assert error(revision_export(client, project_id, 2, fmt))["code"] == (
             "snapshot_schema_unknown"
         )
@@ -562,7 +611,7 @@ def test_a_second_case_saves_and_schedules_too(
     client: TestClient, engine: Engine, switch: Switch
 ) -> None:
     project_id = _configured(client, switch, OTHER_CASE)
-    for fmt in ("terminal_schedule_pdf", "wire_schedule_pdf"):
+    for fmt in ("terminal_schedule_pdf", "wire_schedule_pdf", "connection_drawing_pdf"):
         exported = revision_export(client, project_id, 2, fmt)
         assert exported.status_code == 200, exported.text[:300]
         assert all(marking.DRAFT_LABEL in page for page in pdf_pages(exported.content))
@@ -577,6 +626,7 @@ _REVIEW_FORMATS = (
     "quotation_pdf",
     "terminal_schedule_pdf",
     "wire_schedule_pdf",
+    "connection_drawing_pdf",
 )
 
 

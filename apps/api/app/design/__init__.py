@@ -26,13 +26,14 @@ RENDERER_VERSION = "2026.10.31.4"
 #: approval of a revision stored in that schema records and is compared with.
 #: ``pp-design/1`` keeps :data:`RENDERER_VERSION`, so no v1 approval is
 #: touched by a v2 renderer change. ``pp-design/2`` exports print the v2
-#: structural findings and add the review schedules, so their content differs
+#: structural findings and add the review schedules and (M4) the connection
+#: drawing, so their content differs
 #: from the v1 export of the same design and has its own version. Bump the v2
 #: entry for any change of what a v2 export says
 #: (``tests/design/test_renderer_version.py`` holds both to their fingerprints).
 RENDERER_VERSIONS: dict[str, str] = {
     "pp-design/1": RENDERER_VERSION,
-    "pp-design/2": "2026.10.31.v2-3",
+    "pp-design/2": "2026.11.01.v2-4",
 }
 
 

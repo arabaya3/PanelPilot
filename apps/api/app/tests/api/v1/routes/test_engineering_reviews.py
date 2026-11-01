@@ -493,7 +493,13 @@ def test_changing_a_definition_after_approval_makes_it_unreviewed(
 # --------------------------------------------------------------------------- #
 
 #: The review formats every refusal below is checked on.
-_REVIEW_FORMATS = ("pdf", "json", "terminal_schedule_pdf", "wire_schedule_pdf")
+_REVIEW_FORMATS = (
+    "pdf",
+    "json",
+    "terminal_schedule_pdf",
+    "wire_schedule_pdf",
+    "connection_drawing_pdf",
+)
 
 
 def _listed(client: TestClient, project_id: str, number: int) -> dict[str, Any]:

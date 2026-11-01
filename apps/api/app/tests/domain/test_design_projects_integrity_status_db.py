@@ -66,8 +66,9 @@ FORMATS = (
     "quotation_pdf",
     "terminal_schedule_pdf",
     "wire_schedule_pdf",
+    "connection_drawing_pdf",
 )
-SCHEDULES = {"terminal_schedule_pdf", "wire_schedule_pdf"}
+SCHEDULES = {"terminal_schedule_pdf", "wire_schedule_pdf", "connection_drawing_pdf"}
 
 
 def _net_signal(stored: dict[str, Any]) -> None:
