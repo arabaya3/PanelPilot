@@ -1810,6 +1810,78 @@ def _text_box(x: float, y: float, text: str, size: float, right: bool) -> tuple[
     return (x0, y - 0.25 * size, x0 + width, y + 0.75 * size)
 
 
+Stroke = tuple[str, tuple[float, ...]]
+
+
+def _strokes(
+    symbol: entities.SymbolDef, frame: SymbolFrame
+) -> tuple[list[Stroke], tuple[float, float, float, float]]:
+    """A symbol's drawn strokes (lines, and circles as centre and radius) and their extent."""
+    out: list[Stroke] = []
+
+    def at(x: int, y: int) -> Point:
+        return frame.x0 + x * frame.scale, frame.y1 - y * frame.scale
+
+    xs: list[float] = []
+    ys: list[float] = []
+    for shape in symbol.shapes:
+        p = shape.points
+        if shape.kind == "line":
+            (x1, y1), (x2, y2) = at(p[0], p[1]), at(p[2], p[3])
+            out.append(("line", (x1, y1, x2, y2)))
+            xs += [x1, x2]
+            ys += [y1, y2]
+        elif shape.kind == "rect":
+            (x1, y1), (x2, y2) = at(p[0], p[1]), at(p[0] + p[2], p[1] + p[3])
+            for seg in ((x1, y1, x2, y1), (x2, y1, x2, y2), (x2, y2, x1, y2), (x1, y2, x1, y1)):
+                out.append(("line", seg))
+            xs += [x1, x2]
+            ys += [y1, y2]
+        elif shape.kind == "circle":
+            cx, cy = at(p[0], p[1])
+            r = p[2] * frame.scale
+            out.append(("circle", (cx, cy, r)))
+            xs += [cx - r, cx + r]
+            ys += [cy - r, cy + r]
+        else:
+            tx, ty = at(p[0], p[1])
+            box = _text_box(tx, ty, shape.text or "", SECONDARY_PT, False)
+            xs += [box[0], box[2]]
+            ys += [box[1], box[3]]
+    if not xs:
+        x0, y0, x1, y1 = frame.box(symbol)
+        return out, (x0, y0, x1, y1)
+    return out, (min(xs), min(ys), max(xs), max(ys))
+
+
+def _meets(stroke: Stroke, box: tuple[float, ...]) -> bool:
+    """Whether a stroke passes through (or within 0.5 pt of) a text's box."""
+    x0, y0, x1, y1 = box[0] - 0.5, box[1] - 0.5, box[2] + 0.5, box[3] + 0.5
+    kind, v = stroke
+    if kind == "circle":
+        cx, cy, r = v
+        nearest = math.hypot(max(x0 - cx, 0, cx - x1), max(y0 - cy, 0, cy - y1))
+        farthest = max(math.hypot(x - cx, y - cy) for x in (x0, x1) for y in (y0, y1))
+        return nearest <= r <= farthest
+    ax, ay, bx, by = v
+    # Clip the segment to the box (Liang-Barsky).
+    t0, t1 = 0.0, 1.0
+    dx, dy = bx - ax, by - ay
+    for p, q in ((-dx, ax - x0), (dx, x1 - ax), (-dy, ay - y0), (dy, y1 - ay)):
+        if p == 0:
+            if q < 0:
+                return False
+            continue
+        t = q / p
+        if p < 0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+        if t0 > t1:
+            return False
+    return True
+
+
 def _pin_texts(
     symbol: entities.SymbolDef,
     frame: SymbolFrame,
@@ -1826,6 +1898,15 @@ def _pin_texts(
     """
     bx0, by0, bx1, by1 = frame.box(symbol)
     edge_gap = 0.3
+    strokes, (sx0, sy0, sx1, sy1) = _strokes(symbol, frame)
+    if with_lead:  # a drawn lead's anchor is part of what is drawn
+        for anchor in symbol.anchors:
+            if anchor.terminal in with_lead:
+                ax, ay = frame.x0 + anchor.x * frame.scale, frame.y1 - anchor.y * frame.scale
+                sx0, sy0, sx1, sy1 = min(sx0, ax), min(sy0, ay), max(sx1, ax), max(sy1, ay)
+    reach = 2.5 * MM  # a marking stays this close to what is drawn
+    bx0, by0 = max(bx0, sx0 - reach), max(by0, sy0 - reach)
+    bx1, by1 = min(bx1, sx1 + reach), min(by1, sy1 + reach)
     taken: list[tuple[float, ...]] = []
     for shape in symbol.shapes:
         if shape.kind == "text":
@@ -1856,7 +1937,8 @@ def _pin_texts(
             or box[3] + edge_gap <= o[1] or o[3] + edge_gap <= box[1]
             for o in taken
         )  # fmt: skip
-        if not inside or not clear:
+        crossed = any(_meets(stroke, box) for stroke in strokes)
+        if not inside or not clear or crossed:
             return None
         taken.append(box)
         out.append(
