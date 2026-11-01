@@ -237,7 +237,14 @@ export function snapshotOf(
  */
 function cleanWithMarket(clean: string, defaults: SupplyDefaults, code: string): string {
   if (clean === '') return clean;
-  const form = JSON.parse(clean) as { boards: Record<string, unknown>[]; market: string };
+  let form: { boards: Record<string, unknown>[]; market: string };
+  try {
+    form = JSON.parse(clean) as typeof form;
+  } catch {
+    // Not a form this page wrote: leave it, so the form stays as unsaved as it was.
+    return clean;
+  }
+  if (!Array.isArray(form.boards)) return clean;
   return JSON.stringify({
     ...form,
     boards: form.boards.map((board) => ({ ...board, ...defaults })),
