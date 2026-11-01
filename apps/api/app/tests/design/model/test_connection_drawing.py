@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -93,19 +94,26 @@ def test_the_drawing_is_the_schedules_terminals_nets_and_wires(case: str) -> Non
     drawn = {line.row.key for s in drawing.sheets for p in s.parts for line in p.lines}
     assert drawn == drawing.terminal_keys()
     owners = {(p.owner_kind, p.owner_id) for s in drawing.sheets for p in s.parts}
+    # Components whose templates define no terminals and no symbol are listed
+    # once per board, by name, in one block (M5-0).
+    listed = [p for s in drawing.sheets for p in s.parts if p.owner_kind == "no_terminals"]
+    owners = {o for o in owners if o[0] != "no_terminals"}
+    owners |= {("component", m) for p in listed for m in p.members}
     assert owners == {("component", c.id) for c in model.components} | {
         ("strip", s.id) for s in model.strips
     }
     for sheet in drawing.sheets:
         assert {p.owner_id for p in sheet.parts}
-        boards = {
-            next(
+        boards = {p.board_id for p in sheet.parts}
+        for p in sheet.parts:
+            held = next(
                 (c.board_id for c in model.components if c.id == p.owner_id),
-                next((s.board_id for s in model.strips if s.id == p.owner_id), None),
+                next((s.board_id for s in model.strips if s.id == p.owner_id), p.board_id),
             )
-            for p in sheet.parts
-        }
-        assert boards == {sheet.board_id}
+            assert held == p.board_id
+            assert p.title.endswith(f"board {p.board_id}") or f"board {p.board_id}" in p.title
+        assert boards == set(sheet.boards)
+        assert sheet.board_id == sheet.boards[0]
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -113,6 +121,12 @@ def test_everything_unresolved_is_shown_and_listed(case: str) -> None:
     model, _digest = _model(case)
     drawing = connection_drawing.drawing_set(model)
     listed = {(item.kind, item.subject) for item in drawing.open_items}
+    listed |= {
+        ("symbol_not_defined", member)
+        for item in drawing.open_items
+        if item.kind == "no_terminals_defined"
+        for member in item.members
+    }
     for row in drawing.rows:
         if row.terminal.net_id is None:
             assert row.notes, row.label
@@ -211,3 +225,77 @@ def test_the_held_out_configuration_is_data_only() -> None:
         assert name not in code, name
     for word in ("synth", "relay", "contactor", "isolator", "breaker", "motor", "busbar"):
         assert word not in code.lower(), word
+
+
+@pytest.mark.parametrize("share", [True, False])
+def test_boards_share_sheets_only_when_allowed_and_every_block_names_its_board(share: bool) -> None:
+    """D-9 is open: sharing is the default, behind one switch."""
+    _held_out()
+    model, _ = _model(HELD_OUT_DRAWING)
+    drawing = connection_drawing.drawing_set(model, boards_share_sheets=share)
+    assert drawing.boards_share_sheets is share
+    boards = {c.board_id for c in model.components} | {s.board_id for s in model.strips}
+    assert len(boards) > 1
+    for sheet in drawing.sheets:
+        if not share:
+            assert len(sheet.boards) == 1
+        for part in sheet.parts:
+            assert f"board {part.board_id}" in part.title
+    if share:
+        assert any(len(sheet.boards) > 1 for sheet in drawing.sheets)
+    assert drawing.terminal_keys() == connection_drawing.drawing_set(model).terminal_keys()
+
+
+def test_components_with_no_terminals_are_listed_once_per_board_and_each_is_an_open_item() -> None:
+    _held_out()
+    model, _ = _model(HELD_OUT_DRAWING)
+    drawing = connection_drawing.drawing_set(model)
+    templates = {t.ref: t for t in model.templates}
+    legacy = {
+        c.id
+        for c in model.components
+        if not templates[c.template_ref].terminals and templates[c.template_ref].symbol is None
+    }
+    assert legacy
+    lists = [p for s in drawing.sheets for p in s.parts if p.owner_kind == "no_terminals"]
+    assert {m for p in lists if p.part == 1 for m in p.members} == legacy
+    grouped = [i for i in drawing.open_items if i.kind == "no_terminals_defined"]
+    assert {m for i in grouped for m in i.members} == legacy
+    for item in grouped:
+        assert f"{len(item.members)} component(s)" in item.text
+        for member in item.members:
+            assert f"component {member}," in item.text
+    assert not [
+        i for i in drawing.open_items if i.kind == "symbol_not_defined" and i.subject in legacy
+    ]
+
+
+def test_a_finding_location_is_named_by_board_designation_marking_sheet_and_zone() -> None:
+    model, _ = _model("drawing_control_relay")
+    drawing = connection_drawing.drawing_set(model)
+    row = next(r for r in drawing.rows if r.terminal.owner_kind == "component")
+    said = drawing.locate(
+        {"component": row.terminal.owner_id, "terminal": row.terminal.terminal_id}
+    )
+    assert said == (
+        f"{row.terminal.board_id}/{row.label} (sheet {row.place.sheet}, zone {row.place.zone})"
+    )
+    assert drawing.locate({"template": "anything"}) is None
+
+
+def test_a_strip_points_bridge_is_one_mark_and_asserts_only_its_via() -> None:
+    _held_out()
+    model, _ = _model(HELD_OUT_DRAWING)
+    drawing = connection_drawing.drawing_set(model)
+    bridged = [p for s in drawing.sheets for p in s.parts if p.bridges]
+    assert bridged
+    for part in bridged:
+        lines = [t.text for t in part.texts if t.role == "bridge"]
+        assert lines
+        assert all(
+            re.fullmatch(
+                r"bridge between the point's sides: (jumper|internal) per (template|model)", t
+            )
+            for t in lines
+        ), lines
+        assert len(part.bridges) == len(lines)

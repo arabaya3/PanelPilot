@@ -8,7 +8,9 @@ template's symbol data; where there is none, a dashed placeholder box says
 "symbol not defined".
 
 A3 landscape. Sheet 1 is the cover; the drawing sheets follow, then the
-open-items, sheet-index and findings sheets. Every sheet has a frame, a zone
+open-items, full-text, sheet-index and findings sheets. Every text, point,
+stub and lead of a drawing sheet is drawn exactly where the layout put it;
+nothing is shrunk or cut here. Every sheet has a frame, a zone
 grid, a title block naming the project, revision, sheet "n of N", board and
 the full snapshot hash, and the export's mark at its top and foot with
 :data:`DRAWING_LABEL` beside it, in the schedules' red.
@@ -20,16 +22,13 @@ numbering convention, electrical compatibility or standard.
 
 from __future__ import annotations
 
-import textwrap
 from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from types import SimpleNamespace
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A3, landscape
 from reportlab.lib.units import mm
-from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from app.design.marking import ExportMark, finding_lines, pdf_page_stamp
@@ -61,31 +60,42 @@ LEGEND = (
     "UNREALISED: a net whose own connections do not join all its members.",
     "WIRE RECORD MISSING: a connection via wire with no wire record.",
     f"Dashed box '{layout.SYMBOL_NOT_DEFINED}': the template defines no symbol data.",
-    "Zones: columns 1-8 across, rows A-F down; a terminal's zone is that of its point.",
+    "Zones: columns 1-8 across, rows A-F down; a terminal's zone is read where its point is "
+    "drawn, a block's where its title starts.",
+    "B1/X:1: a far end on another board is named with its board.",
+    "Bracket joining a strip point's two sides, 'bridge to ...: <via> per model' (or 'per "
+    "template'): a connection the model records between the point's sides; nothing more is "
+    "asserted.",
+    "Leads run from a symbol's pins to their points without crossing; where that is not "
+    "possible the pins are marked at the symbol and no lead is drawn, and the block says so.",
+    "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
+    f"Text is never smaller than {layout.BODY_PT:g} pt ({layout.SECONDARY_PT:g} pt for grey "
+    "detail lines and pin markings at a symbol): a product readability target, not a "
+    "drawing standard.",
 )
 
 _RED = colors.HexColor("#b00020")
 _GREY = colors.HexColor("#555555")
 
-_PAGE: tuple[float, float] = landscape(A3)
-_MARGIN = 12 * mm
-_BAND = 4 * mm
-_AREA_LEFT: float = _MARGIN + _BAND
-_AREA_RIGHT = _PAGE[0] - _MARGIN - _BAND
-_AREA_TOP: float = _PAGE[1] - 24 * mm
-_SLOT: float = 6.3 * mm
-_AREA_BOTTOM = _AREA_TOP - layout.SLOTS * _SLOT
-_COLUMN: float = (_AREA_RIGHT - _AREA_LEFT) / layout.COLUMNS
-_ZONE = (_AREA_RIGHT - _AREA_LEFT) / layout.ZONE_COLUMNS
-_POINT = _ZONE * layout.POINT_ZONE_OFFSET + 3 * mm
-_SYMBOL_LEFT = 3 * mm
-_SYMBOL_WIDTH = 30 * mm
+_PAGE: tuple[float, float] = layout.PAGE
+_MARGIN = layout.MARGIN
+_BAND = layout.BAND
+_AREA_LEFT = layout.AREA_LEFT
+_AREA_RIGHT = layout.AREA_RIGHT
+_AREA_TOP = layout.AREA_TOP
+_AREA_BOTTOM = layout.AREA_BOTTOM
+_ZONE = layout.ZONE
 _TITLE_LEFT = _PAGE[0] - _MARGIN - 180 * mm
 _TITLE_BOTTOM = 15 * mm
 _TITLE_TOP = _AREA_BOTTOM - _BAND - 1 * mm
+#: Text sheets: lines at the body size, kept inside the inner frame with a margin.
+_TEXT_MARGIN = 4 * mm
 _TEXT_LINE = 3.2 * mm
-_TEXT_LINES = int((_AREA_TOP - _AREA_BOTTOM - 8 * mm) / _TEXT_LINE)
-_TEXT_CHARS = 250
+_TEXT_FIRST = _AREA_TOP - 12 * mm
+_TEXT_LAST = _AREA_BOTTOM + _TEXT_MARGIN
+_TEXT_LINES = int((_TEXT_FIRST - _TEXT_LAST) // _TEXT_LINE) + 1
+_TEXT_ROOM = _AREA_RIGHT - _AREA_LEFT - 2 * _TEXT_MARGIN
+_INDENT = 4 * mm
 
 
 @dataclass(frozen=True)
@@ -105,27 +115,28 @@ def _text(
     x: float,
     y: float,
     text: str,
-    size: float = 5.5,
+    size: float = layout.BODY_PT,
     *,
     bold: bool = False,
     right: bool = False,
-    room: float | None = None,
 ) -> None:
+    """Draws a text as given: never shrunk, never cut (the layout wraps it)."""
     font, drawn = font_for(text, bold=bold, right_to_left=has_rtl(text))
-    if room is not None:
-        # Shrunk to fit its room, down to 3.5 pt; past that it is cut with an
-        # ellipsis. Every value cut here is printed in full elsewhere: in the
-        # open items or the terminal and wire schedules of the same revision.
-        while size > 3.5 and stringWidth(drawn, font, size) > room:
-            size -= 0.25
-        while len(text) > 1 and stringWidth(drawn, font, size) > room:
-            text = text[:-2] + "…"
-            font, drawn = font_for(text, bold=bold, right_to_left=has_rtl(text))
     canvas.setFont(font, size)
     if right:
         canvas.drawRightString(x, y, drawn)
     else:
         canvas.drawString(x, y, drawn)
+
+
+def _fit(text: str, room: float, size: float, bold: bool, note: str) -> str:
+    """``text`` if it fits; otherwise cut with an ellipsis and ``note`` saying where it is in full."""
+    if layout.text_width(text, size, bold) <= room:
+        return text
+    tail = f"{layout.ELLIPSIS} {note}"
+    while text and layout.text_width(text + tail, size, bold) > room:
+        text = text[:-1]
+    return text + tail
 
 
 def _sheet_frame(
@@ -161,9 +172,8 @@ def _sheet_frame(
                 canvas.line(x, _AREA_BOTTOM, x, bottom)
             for y in (_AREA_TOP + 1.2 * mm, bottom + 1.2 * mm):
                 _text(canvas, x + _ZONE / 2, y, str(n + 1), 6)
-        rows = layout.ZONE_ROWS
-        step = (_AREA_TOP - _AREA_BOTTOM) / rows
-        for n in range(rows):
+        step = layout.ZONE_ROW
+        for n in range(layout.ZONE_ROWS):
             y = _AREA_TOP - n * step
             if n:
                 canvas.line(_MARGIN, y, _AREA_LEFT, y)
@@ -171,152 +181,64 @@ def _sheet_frame(
             letter = layout.ZONE_LETTERS[n]
             _text(canvas, _MARGIN + 1.2 * mm, y - step / 2, letter, 6)
             _text(canvas, _AREA_RIGHT + 1.2 * mm, y - step / 2, letter, 6)
-    # Title block.
+    # Title block: every line at the body size or larger.
     canvas.setLineWidth(0.6)
-    canvas.rect(
-        _TITLE_LEFT, _TITLE_BOTTOM, width - _MARGIN - _TITLE_LEFT, _TITLE_TOP - _TITLE_BOTTOM
-    )
+    right_edge = width - _MARGIN
+    canvas.rect(_TITLE_LEFT, _TITLE_BOTTOM, right_edge - _TITLE_LEFT, _TITLE_TOP - _TITLE_BOTTOM)
     x = _TITLE_LEFT + 2 * mm
-    room = width - _MARGIN - x - 2 * mm
-    lines = (
-        ("Connection drawing (review only)", 8, True),
-        (f"Project: {header.project}", 6.5, False),
-        (
-            f"Revision {header.revision}; schema {header.schema}; rules {header.rules_version}",
-            5.5,
-            False,
-        ),
-        (f"Renderer {header.renderer_version}; board {board or '-'}", 5.5, False),
-        (f"Snapshot SHA-256: {header.design_sha256 or layout.NOT_SET}", 5.5, False),
-        (f"Sheet {number} of {total}", 7, True),
-    )
+    room = right_edge - x - 2 * mm
     y = _TITLE_TOP - 4 * mm
-    for text, size, bold in lines:
-        _text(canvas, x, y, text, size, bold=bold, room=room)
-        y -= 3.4 * mm if size < 7 else 4 * mm
+    _text(canvas, x, y, "Connection drawing (review only)", 8, bold=True)
+    _text(canvas, right_edge - 2 * mm, y, f"Sheet {number} of {total}", 8, bold=True, right=True)
+    y -= 4 * mm
+    project = layout.wrap(f"Project: {header.project}", room, 6.5)
+    if len(project) > 2:
+        project = [
+            project[0],
+            _fit(" ".join(project[1:]), room, 6.5, False, "(in full on the cover)"),
+        ]
+    lines = [*project]
+    lines.append(
+        f"Revision {header.revision}; schema {header.schema}; rules {header.rules_version}"
+    )
+    lines.append(
+        _fit(
+            f"Renderer {header.renderer_version}; board {board or '-'}",
+            room,
+            layout.BODY_PT,
+            False,
+            "(see the sheet index)",
+        )
+    )
+    lines.append(f"Snapshot SHA-256: {header.design_sha256 or layout.NOT_SET}")
+    for n, text in enumerate(lines):
+        _text(canvas, x, y, text, 6.5 if n < len(project) else layout.BODY_PT)
+        y -= 3.4 * mm
     canvas.saveState()
     canvas.setFillColor(_RED)
     _text(canvas, x, _TITLE_BOTTOM + 1.6 * mm, "REVIEW ONLY — NOT FOR EXECUTION", 7, bold=True)
     canvas.restoreState()
 
 
-def _slot_y(slot: int) -> float:
-    """The top of a slot."""
-    return _AREA_TOP - slot * _SLOT
+def _path(canvas: Canvas, points: Sequence[tuple[float, float]]) -> None:
+    path = canvas.beginPath()
+    path.moveTo(*points[0])
+    for point in points[1:]:
+        path.lineTo(*point)
+    canvas.drawPath(path, stroke=1, fill=0)
 
 
-def _column_x(column: int) -> float:
-    return _AREA_LEFT + column * _COLUMN
-
-
-#: The widest a symbol is drawn; the rest of its band is the gutter its leads run in.
-_SYMBOL_DRAWN = 22 * mm
-#: The gap kept round a symbol, and between leads in the gutter.
-_CLEAR = 1.2 * mm
-_LANE = 0.8 * mm
-
-
-@dataclass(frozen=True)
-class Lead:
-    """An orthogonal lead from a symbol anchor to its row: points, and the symbol's box."""
-
-    terminal: str
-    points: tuple[tuple[float, float], ...]
-    box: tuple[float, float, float, float]  # x0, y0 (bottom), x1, y1 (top)
-
-
-def symbol_box(
-    symbol: SymbolDef, left: float, top: float, bottom: float
-) -> tuple[float, float, float]:
-    """Where a symbol is drawn: its left, top and scale (points per grid unit).
-
-    It keeps :data:`_CLEAR` free above and below, so a lead can pass round it.
-    """
-    height = max(top - bottom - 2 * _CLEAR, 1.0)
-    scale = min(_SYMBOL_DRAWN / symbol.width, height / symbol.height, 3 * mm)
-    return left + _SYMBOL_LEFT + _CLEAR, top - _CLEAR, scale
-
-
-def leads(
-    symbol: SymbolDef,
-    left: float,
-    top: float,
-    bottom: float,
-    rows_y: dict[str, float],
-    point_x: float,
-) -> list[Lead]:
-    """Each anchored terminal's lead, routed orthogonally round the symbol's box.
-
-    A lead leaves its anchor perpendicular to the edge it sits on (anchors are
-    on the edge: ``codec_v2``), clears the box, runs to its own lane in the
-    gutter right of the box, along the lane to its row, and into the row's
-    point. Lanes are given in row order, nearest the box first for the top row,
-    which keeps leads from crossing each other where it can; each terminal's
-    marking is also printed at its anchor.
-    """
-    x0, y1, scale = symbol_box(symbol, left, top, bottom)
-    x1, y0 = x0 + symbol.width * scale, y1 - symbol.height * scale
-    box = (x0, y0, x1, y1)
-    anchors = [a for a in symbol.anchors if a.terminal in rows_y]
-    anchors.sort(key=lambda a: -rows_y[a.terminal])
-    room = max(point_x - 6 * mm - x1 - _CLEAR, _LANE)
-    lane = min(_LANE, room / max(len(anchors), 1))
-    out: list[Lead] = []
-    for n, anchor in enumerate(anchors):
-        ax, ay = x0 + anchor.x * scale, y1 - anchor.y * scale
-        row = rows_y[anchor.terminal]
-        gutter = x1 + _CLEAR + n * lane
-        step = _CLEAR * (0.5 + 0.5 * n / max(len(anchors), 1))
-        points: list[tuple[float, float]] = [(ax, ay)]
-        if anchor.x == symbol.width:
-            points.append((gutter, ay))
-        elif anchor.y == 0:
-            points += [(ax, y1 + step), (gutter, y1 + step)]
-        elif anchor.y == symbol.height:
-            points += [(ax, y0 - step), (gutter, y0 - step)]
-        else:  # the left edge: out left, round the top
-            points += [(x0 - step, ay), (x0 - step, y1 + step), (gutter, y1 + step)]
-        points += [(gutter, row), (point_x, row)]
-        out.append(Lead(anchor.terminal, tuple(points), box))
-    return out
-
-
-def _symbol(
-    canvas: Canvas,
-    part: layout.BlockPart,
-    left: float,
-    top: float,
-    bottom: float,
-    rows_y: dict[str, float],
-    markings: dict[str, str],
-) -> None:
-    """The part's symbol from data, or a labelled placeholder; leads to its rows."""
-    box_left = left + _SYMBOL_LEFT
-    box_height = max(top - bottom, _SLOT)
-    point_x = left + _POINT
-    edge = box_left + _SYMBOL_WIDTH
-    if part.symbol is None:
-        canvas.saveState()
-        canvas.setDash(2, 2)
-        canvas.rect(box_left, top - box_height, _SYMBOL_WIDTH, box_height)
-        canvas.restoreState()
-        _text(canvas, box_left + 1.5 * mm, top - 3 * mm, layout.SYMBOL_NOT_DEFINED, 5.5, bold=True)
-        canvas.saveState()
-        canvas.setDash(1, 1.5)
-        for y in rows_y.values():
-            canvas.line(edge, y, point_x, y)
-        canvas.restoreState()
-        return
-    symbol = part.symbol
-    x0, y1, scale = symbol_box(symbol, left, top, bottom)
+def _symbol(canvas: Canvas, symbol: SymbolDef, frame: layout.SymbolFrame) -> None:
+    """A symbol from its data, clipped to its own box."""
+    x0, y0, x1, y1 = frame.box(symbol)
+    scale = frame.scale
 
     def at(x: int, y: int) -> tuple[float, float]:
         return x0 + x * scale, y1 - y * scale
 
     canvas.saveState()
-    # Clipped to its own box: whatever its data, a symbol stays in its block.
     clip = canvas.beginPath()
-    clip.rect(x0, y1 - symbol.height * scale, symbol.width * scale, symbol.height * scale)
+    clip.rect(x0, y0, x1 - x0, y1 - y0)
     canvas.clipPath(clip, stroke=0, fill=0)
     canvas.setLineWidth(0.5)
     for shape in symbol.shapes:
@@ -332,176 +254,150 @@ def _symbol(
             canvas.circle(cx, cy, p[2] * scale)
         else:
             tx, ty = at(p[0], p[1])
-            _text(canvas, tx, ty, shape.text or "", 5, room=x0 + symbol.width * scale - tx)
+            canvas.setFillColor(_GREY)  # symbol text is secondary detail
+            _text(canvas, tx, ty, shape.text or "", layout.SECONDARY_PT)
     canvas.restoreState()
+
+
+def _part(canvas: Canvas, part: layout.BlockPart) -> None:
+    """A block part, exactly as laid out."""
     canvas.setLineWidth(0.3)
-    anchored = leads(
-        symbol, left, top, bottom, rows_y if part.owner_kind == "component" else {}, point_x
-    )
-    for lead in anchored:
-        path = canvas.beginPath()
-        path.moveTo(*lead.points[0])
-        for point in lead.points[1:]:
-            path.lineTo(*point)
-        canvas.drawPath(path, stroke=1, fill=0)
-        ax, ay = lead.points[0]
-        _text(canvas, ax + 0.4 * mm, ay + 0.4 * mm, markings.get(lead.terminal, ""), 3.5)
-    done = {lead.terminal for lead in anchored}
+    if part.placeholder is not None:
+        canvas.saveState()
+        canvas.setDash(2, 2)
+        canvas.rect(*part.placeholder)
+        canvas.restoreState()
+    if part.symbol is not None and part.frame is not None:
+        _symbol(canvas, part.symbol, part.frame)
+    canvas.setLineWidth(0.3)
+    for lead in part.leads:
+        _path(canvas, lead.points)
+    for stub in part.stubs:
+        _path(canvas, stub)
+        x, y = stub[-1]
+        canvas.line(x - 1.5 * mm, y + 0.8 * mm, x, y)
+        canvas.line(x - 1.5 * mm, y - 0.8 * mm, x, y)
+    for bus in part.buses:
+        _path(canvas, bus)
+    canvas.setLineWidth(1.0)
+    for bridge in part.bridges:
+        _path(canvas, bridge)
+    canvas.setLineWidth(0.3)
     canvas.saveState()
     canvas.setDash(1, 1.5)
-    for terminal_id, y in rows_y.items():
-        if terminal_id not in done:
-            # No anchor for this terminal: a dotted lead from the band's edge,
-            # never guessed onto a pin.
-            canvas.line(edge, y, point_x, y)
+    for dotted in part.dotted:
+        _path(canvas, dotted)
     canvas.restoreState()
-
-
-def _part(canvas: Canvas, part: layout.BlockPart, here: int) -> None:
-    left = _column_x(part.place.column)
-    right = left + _COLUMN - 2 * mm
-    top = _slot_y(part.place.slot)
-    _text(canvas, left + 2 * mm, top - 2.6 * mm, part.title, 7, bold=True, room=_COLUMN * 0.45)
-    notes = "; ".join(part.notes)
-    if part.continued_from is not None:
-        notes = f"continued from {part.continued_from.reference(here, header=True)}; " + notes
-    _text(canvas, left + 2 * mm, top - 5.2 * mm, notes, 5, room=_COLUMN - 4 * mm)
-    if part.continues_on is not None:
-        _text(
-            canvas,
-            right,
-            top - 2.6 * mm,
-            f"continues on {part.continues_on.reference(here, header=True)}",
-            5.5,
-            bold=True,
-            right=True,
-        )
-    lines_top = top - _SLOT
-    bottom = lines_top - max(len(part.lines), 1) * _SLOT
-    point_x = left + _POINT
-    text_x = point_x + 10 * mm
-    room = right - text_x
-    spans: dict[tuple[str, str, str], list[float]] = {}
-    for n, line in enumerate(part.lines):
-        y_top = lines_top - n * _SLOT
-        y_mid = y_top - _SLOT / 2
-        row = line.row
-        spans.setdefault(row.key, []).append(y_mid)
-        starts = n == 0 or part.lines[n - 1].row.key != row.key
-        if starts:
-            marking = layout.row_marking(row.terminal) + ("" if line.first else " (cont.)")
-            _text(
-                canvas,
-                point_x - 2 * mm,
-                y_mid + 0.4 * mm,
-                marking,
-                6,
-                bold=True,
-                right=True,
-                room=_POINT - _SYMBOL_LEFT - _SYMBOL_WIDTH - 3 * mm,
-            )
-            _text(
-                canvas,
-                point_x - 2 * mm,
-                y_mid - 2.2 * mm,
-                layout.row_net(row.terminal),
-                4.5,
-                right=True,
-                room=_POINT - _SYMBOL_LEFT - _SYMBOL_WIDTH - 3 * mm,
-            )
-            canvas.circle(point_x, y_mid, 0.7 * mm, stroke=1, fill=1)
-        if line.kind == "note":
-            text = row.notes[line.index]
-            loud = text.startswith(("UNCONNECTED", "UNREALISED"))
-            canvas.saveState()
-            if loud:
-                canvas.setFillColor(_RED)
-            _text(canvas, text_x, y_mid - 1 * mm, text, 6, bold=loud, room=room)
-            canvas.restoreState()
-            continue
-        end = row.ends[line.index]
-        first, second = layout.end_texts(end, here)
-        canvas.line(point_x, y_mid, text_x - 1.5 * mm, y_mid)
-        canvas.line(text_x - 3 * mm, y_mid + 0.8 * mm, text_x - 1.5 * mm, y_mid)
-        canvas.line(text_x - 3 * mm, y_mid - 0.8 * mm, text_x - 1.5 * mm, y_mid)
-        _text(canvas, text_x, y_mid + 0.5 * mm, first, 5.5, room=room)
-        loud = end.wire_missing
+    for x, y in part.points:
+        canvas.circle(x, y, 0.7 * mm, stroke=1, fill=1)
+    for text in part.texts:
         canvas.saveState()
-        canvas.setFillColor(_RED if loud else _GREY)
-        _text(canvas, text_x, y_mid - 2.1 * mm, second, 5, bold=loud, room=room)
+        if text.tone == "loud":
+            canvas.setFillColor(_RED)
+        elif text.tone == "grey":
+            canvas.setFillColor(_GREY)
+        _text(canvas, text.x, text.y, text.text, text.size, bold=text.bold, right=text.right)
         canvas.restoreState()
-    for ys in spans.values():
-        if len(ys) > 1:
-            canvas.line(point_x, max(ys), point_x, min(ys))
-    rows_y = {
-        line.row.terminal.terminal_id
-        + ("" if part.owner_kind == "component" else f"/{line.row.terminal.side}"): y
-        for line, y in _first_lines(part, lines_top)
-    }
-    markings = {
-        line.row.terminal.terminal_id: line.row.terminal.marking
-        for line, _y in _first_lines(part, lines_top)
-    }
-    _symbol(canvas, part, left, lines_top, bottom, rows_y, markings)
 
 
-def _first_lines(part: layout.BlockPart, lines_top: float) -> list[tuple[layout.Line, float]]:
-    return [
-        (line, lines_top - n * _SLOT - _SLOT / 2)
-        for n, line in enumerate(part.lines)
-        if n == 0 or part.lines[n - 1].row.key != line.row.key
-    ]
-
-
-def _wrapped(lines: Sequence[str]) -> list[str]:
-    out: list[str] = []
-    for line in lines:
-        out.extend(textwrap.wrap(line, _TEXT_CHARS, subsequent_indent="    ") or [""])
+def _items(texts: Sequence[str]) -> list[list[str]]:
+    """Each item wrapped, whole, to the text sheets' width; continuation lines indented."""
+    out: list[list[str]] = []
+    for text in texts:
+        if not text:
+            out.append([""])
+            continue
+        first = layout.wrap(text, _TEXT_ROOM, layout.BODY_PT)
+        head, rest = first[0], " ".join(first[1:])
+        lines = [head]
+        if rest:
+            lines += [
+                "    " + line for line in layout.wrap(rest, _TEXT_ROOM - _INDENT, layout.BODY_PT)
+            ]
+        out.append(lines)
     return out
 
 
-def _structural_lines(structural: Sequence[V2Finding]) -> list[str]:
+def _structural_items(structural: Sequence[V2Finding], drawing: layout.DrawingSet) -> list[str]:
     if not structural:
         return ["No structural findings."]
     order = {"blocking": 0, "warning": 1}
-    lines = []
+    items = []
     for found in sorted(structural, key=lambda f: (order.get(f.severity, 2), f.code)):
-        where = ", ".join(f"{k}={v}" for k, v in sorted(found.location.items()))
+        ids = ", ".join(f"{k}={v}" for k, v in sorted(found.location.items()))
+        at = drawing.locate(found.location)
         effects = [
             "blocks approval" if found.blocks_approval else "does not block approval",
             "blocks execution" if found.blocks_execution else "",
             "unresolved" if found.unresolved else "",
             "engineering confirmation required" if found.requires_engineering_confirmation else "",
         ]
-        lines.append(
-            f"[{found.severity.upper()}] {found.code}: {found.message} ({where}; "
+        items.append(
+            f"[{found.severity.upper()}] {found.code}: {found.message}"
+            + (f" At {at}." if at else "")
+            + f" (ids: {ids}; "
             + "; ".join(e for e in effects if e)
             + ")"
         )
-    return lines
+    return items
 
 
-def _text_pages(title: str, lines: Sequence[str]) -> list[tuple[str, list[str]]]:
-    wrapped = _wrapped(lines) or ["(none)"]
-    pages = [wrapped[i : i + _TEXT_LINES] for i in range(0, len(wrapped), _TEXT_LINES)]
+def _other_findings(mark: ExportMark) -> list[str]:
+    items: list[str] = []
+    for line in finding_lines(mark):
+        if line.startswith("    ") and items:
+            items[-1] += " " + line.strip()
+        else:
+            items.append(line)
+    return items
+
+
+def _marked_cuts(items: Sequence[str]) -> list[str]:
+    """Each finding a message of which quotes a shortened value ("…"), marked ``[Fn]``.
+
+    A finding's message shortens a long id or value; the marker refers to a
+    line under it saying where the value is in full (its ids, and the
+    drawing sheets), so nothing is cut silently.
+    """
+    out: list[str] = []
+    n = 0
+    for item in items:
+        if layout.ELLIPSIS not in item:
+            out.append(item)
+            continue
+        n += 1
+        out.append(item.replace(layout.ELLIPSIS, f"{layout.ELLIPSIS}[F{n}]"))
+        out.append(
+            f"[F{n}] a value this finding's message shortens is printed in full in its ids "
+            "above and on the drawing sheets."
+        )
+    return out
+
+
+def _text_pages(title: str, items: Sequence[str]) -> list[tuple[str, list[str]]]:
+    """Text sheets holding whole items: an item never splits across sheets.
+
+    Only an item taller than a whole sheet continues, and says so.
+    """
+    pages: list[list[str]] = [[]]
+    for lines in _items(items or ["(none)"]):
+        if pages[-1] and len(pages[-1]) + len(lines) > _TEXT_LINES:
+            pages.append([])
+        while len(lines) > _TEXT_LINES:
+            pages[-1] = [*lines[: _TEXT_LINES - 1], "    (this item continues on the next sheet)"]
+            lines = lines[_TEXT_LINES - 1 :]
+            pages.append([])
+        pages[-1].extend(lines)
     return [(title if n == 0 else f"{title} (continued)", page) for n, page in enumerate(pages)]
 
 
 def _draw_text_page(canvas: Canvas, title: str, lines: Sequence[str]) -> None:
-    y = _AREA_TOP - 6 * mm
-    _text(canvas, _AREA_LEFT + 3 * mm, y, title, 10, bold=True)
-    y -= 6 * mm
+    x = _AREA_LEFT + _TEXT_MARGIN
+    _text(canvas, x, _AREA_TOP - 6 * mm, title, 10, bold=True)
+    y = _TEXT_FIRST
     for line in lines:
         loud = line.startswith(("[BLOCKING]", "UNREALISED", "UNCONNECTED"))
-        _text(
-            canvas,
-            _AREA_LEFT + 3 * mm,
-            y,
-            line,
-            6,
-            bold=loud,
-            room=_AREA_RIGHT - _AREA_LEFT - 6 * mm,
-        )
+        _text(canvas, x, y, line, layout.BODY_PT, bold=loud)
         y -= _TEXT_LINE
 
 
@@ -523,30 +419,32 @@ def render_connection_drawing(
         The PDF's bytes.
     """
     last_drawing = drawing.sheets[-1].number if drawing.sheets else layout.FIRST_SHEET - 1
-    open_lines = [
-        f"{item.kind}: {item.text}"
-        + (f" (sheet {item.place.sheet}, zone {item.place.zone})" if item.place else "")
+    open_items = [
+        f"{item.kind}: {item.text}" + (f" ({layout.where(item.place)})" if item.place else "")
         for item in drawing.open_items
     ] or ["No open items."]
-    index_lines = [
-        f"Sheet {sheet.number}: board {sheet.board_id}: "
+    full_texts = [f"[{n}] {text}" for n, text in enumerate(drawing.full_texts, start=1)]
+    index_items = [
+        f"Sheet {sheet.number}: board{'s' if len(sheet.boards) > 1 else ''} "
+        f"{', '.join(sheet.boards)}: "
         + ", ".join(
             part.title + (f" (part {part.part})" if part.part > 1 else "") for part in sheet.parts
         )
         for sheet in drawing.sheets
     ] or ["No drawing sheets: the saved design holds no component or terminal strip."]
-    finding_text = [
-        "Structural findings of the saved model:",
-        *_structural_lines(structural),
-        "",
-        "The design's other findings:",
-        *finding_lines(mark),
-    ]
-    text_pages = (
-        _text_pages("Open items: shown on the sheets and listed here", open_lines)
-        + _text_pages("Sheet index", index_lines)
-        + _text_pages("Findings", finding_text)
+    finding_items = _marked_cuts(
+        [
+            "Structural findings of the saved model:",
+            *_structural_items(structural, drawing),
+            "",
+            "The design's other findings:",
+            *_other_findings(mark),
+        ]
     )
+    text_pages = _text_pages("Open items: shown on the sheets and listed here", open_items)
+    if full_texts:
+        text_pages += _text_pages("Full texts of values cut on the drawing sheets", full_texts)
+    text_pages += _text_pages("Sheet index", index_items) + _text_pages("Findings", finding_items)
     total = last_drawing + len(text_pages)
     buffer = BytesIO()
     canvas = Canvas(buffer, pagesize=_PAGE, invariant=1)
@@ -574,15 +472,21 @@ def render_connection_drawing(
         f"Terminals: {len(drawing.rows)}; nets: {len(drawing.nets)}; "
         f"connections: {len(drawing.connections)}; wires: {len(drawing.wire_rows)}; "
         f"open items: {len(drawing.open_items)}",
-        f"Open items, sheet index and findings: sheets {first_text} to {total}",
+        f"Open items, full texts, sheet index and findings: sheets {first_text} to {total}",
+        (
+            "Boards may share a drawing sheet (open decision D-9); each block's title names its board."
+            if drawing.boards_share_sheets
+            else "Each board starts a new drawing sheet (open decision D-9)."
+        ),
     ]
-    _draw_text_page(canvas, "Connection drawing (review only)", _wrapped(cover))
+    _draw_text_page(
+        canvas, "Connection drawing (review only)", [ln for item in _items(cover) for ln in item]
+    )
     canvas.showPage()
     for sheet in drawing.sheets:
-        _sheet_frame(canvas, header, mark, sheet.number, total, sheet.board_id, grid=True)
-        canvas.setLineWidth(0.3)
+        _sheet_frame(canvas, header, mark, sheet.number, total, ", ".join(sheet.boards), grid=True)
         for part in sheet.parts:
-            _part(canvas, part, sheet.number)
+            _part(canvas, part)
         canvas.showPage()
     for n, (title, lines) in enumerate(text_pages):
         _sheet_frame(canvas, header, mark, first_text + n, total, "", grid=False)

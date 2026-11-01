@@ -136,15 +136,24 @@ def test_a_cross_reference_names_the_far_sheet_and_zone(case: str) -> None:
         for end in row.ends
         if end.far_place.sheet != row.place.sheet
     ]
-    assert across, "the case spans sheets"
+    if not across:  # boards share sheets (D-9): every reference reads "this sheet"
+        across = [(row, end) for row in drawing.rows for end in row.ends]
+        assert across
+        row, end = across[0]
+        assert f"(this sheet, zone {end.far_place.zone})" in connection_drawing.end_texts(
+            end, row.place.sheet
+        )[0]
     for row, end in across:
+        if end.far_place.sheet == row.place.sheet:
+            continue
         first, _second = connection_drawing.end_texts(end, row.place.sheet)
         assert f"(sheet {end.far_place.sheet}, zone {end.far_place.zone})" in first
         assert re.fullmatch(r"[1-8][A-F]", end.far_place.zone)
     content, _ = _pdf(case)
     text = " ".join(_pages(content))
     row, end = across[0]
-    assert connection_drawing.end_texts(end, row.place.sheet)[0] in text
+    squashed = "".join(text.split())
+    assert "".join(connection_drawing.end_texts(end, row.place.sheet)[0].split()) in squashed
 
 
 def _interior(
@@ -159,42 +168,107 @@ def _interior(
     return y0 < a[1] < y1 and low < x1 and high > x0
 
 
+def _segments(
+    points: tuple[tuple[float, float], ...],
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    return list(itertools.pairwise(points))
+
+
+def _meet(
+    a: tuple[tuple[float, float], tuple[float, float]],
+    b: tuple[tuple[float, float], tuple[float, float]],
+) -> bool:
+    """Whether two axis-parallel segments share any point."""
+    (ax0, ax1), (ay0, ay1) = sorted((a[0][0], a[1][0])), sorted((a[0][1], a[1][1]))
+    (bx0, bx1), (by0, by1) = sorted((b[0][0], b[1][0])), sorted((b[0][1], b[1][1]))
+    return ax0 <= bx1 + 0.01 and bx0 <= ax1 + 0.01 and ay0 <= by1 + 0.01 and by0 <= ay1 + 0.01
+
+
 @pytest.mark.parametrize("case", CASES)
-def test_no_lead_crosses_its_symbol(case: str) -> None:
-    """Leads are orthogonal and stay out of their symbol's box (S1)."""
+def test_no_lead_crosses_another_or_enters_its_symbol(case: str) -> None:
+    """Leads are orthogonal, end at their row's point, stay out of the symbol's box and never meet."""
     model, _ = _model(case)
     drawing = connection_drawing.drawing_set(model)
     seen = 0
     for sheet in drawing.sheets:
         for part in sheet.parts:
-            if part.symbol is None or part.owner_kind != "component":
-                continue
-            left = connection_drawing_pdf._column_x(part.place.column)
-            top = connection_drawing_pdf._slot_y(part.place.slot) - connection_drawing_pdf._SLOT
-            lines = connection_drawing_pdf._first_lines(part, top)
-            bottom = top - max(len(part.lines), 1) * connection_drawing_pdf._SLOT
-            rows_y = {line.row.terminal.terminal_id: y for line, y in lines}
-            point_x = left + connection_drawing_pdf._POINT
-            for lead in connection_drawing_pdf.leads(
-                part.symbol, left, top, bottom, rows_y, point_x
-            ):
+            points = {(round(x, 3), round(y, 3)) for x, y in part.points}
+            for lead in part.leads:
                 seen += 1
-                for a, b in itertools.pairwise(lead.points):
+                end = lead.points[-1]
+                assert (round(end[0], 3), round(end[1], 3)) in points
+                for a, b in _segments(lead.points):
                     assert a[0] == b[0] or a[1] == b[1], (lead.terminal, a, b)
                     assert not _interior(lead.box, a, b), (lead.terminal, a, b)
-                assert lead.points[-1] == (point_x, rows_y[lead.terminal])
+            for one, two in itertools.combinations(part.leads, 2):
+                for s1 in _segments(one.points):
+                    for s2 in _segments(two.points):
+                        assert not _meet(s1, s2), (part.title, one.terminal, two.terminal)
     if case in ("drawing_control_relay", "drawing_heldout_feeder"):
         assert seen >= 4
 
 
-def test_text_too_long_for_its_room_is_cut_with_an_ellipsis() -> None:
-    from reportlab.pdfgen.canvas import Canvas
+def test_a_symbol_whose_pins_interleave_its_rows_is_drawn_in_pin_order() -> None:
+    """Rows are reordered within the block so leads from opposite edges never cross."""
+    model, _ = _model(HELD_OUT_DRAWING)
+    drawing = connection_drawing.drawing_set(model)
+    parts = [
+        p for s in drawing.sheets for p in s.parts if p.symbol is not None and len(p.leads) >= 6
+    ]
+    assert parts
+    for part in parts:
+        assert part.symbol is not None
+        assert "rows in the symbol's pin order, so no leads cross" in part.notes
+        ys = sorted(((lead.points[-1][1], lead.terminal) for lead in part.leads), reverse=True)
+        anchors = [a for a in part.symbol.anchors if a.terminal in {t for _y, t in ys}]
+        orders = [
+            connection_drawing.exit_order(anchors, part.symbol, cut)
+            for cut in range(len(anchors) + 1)
+        ]
+        assert [t for _y, t in ys] in orders
 
-    buffer = io.BytesIO()
-    canvas = Canvas(buffer)
-    connection_drawing_pdf._text(canvas, 0, 0, "x" * 400, 5, room=20)
-    canvas.save()
-    with pdfplumber.open(io.BytesIO(buffer.getvalue())) as pdf:
-        text = pdf.pages[0].extract_text() or ""
-    assert text.endswith("…")
-    assert len(text) < 400
+
+def test_long_text_wraps_in_full_and_a_token_too_wide_is_cut_with_a_reference() -> None:
+    cuts = connection_drawing.FullTexts()
+    words = "alpha beta gamma delta epsilon " * 6
+    lines = connection_drawing.wrap(words, 60, 6, cuts=cuts)
+    assert len(lines) > 1
+    assert " ".join(lines).split() == words.split()
+    assert not cuts.texts
+    hyphenated = "SYN-" + "-".join(f"PART{n}" for n in range(20))
+    lines = connection_drawing.wrap(hyphenated, 60, 6, cuts=cuts)
+    assert "".join(lines) == hyphenated
+    token = "X" * 200
+    lines = connection_drawing.wrap(f"to {token} here", 60, 6, cuts=cuts)
+    assert any(line.endswith("…[1]") for line in lines)
+    assert cuts.texts == [f"to {token} here"]
+    for line in lines:
+        assert connection_drawing.text_width(line, 6) <= 60
+
+
+@pytest.mark.parametrize("case", CASES)
+def test_no_drawing_text_is_below_the_readability_minimum(case: str) -> None:
+    content, _ = _pdf(case)
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for page in pdf.pages:
+            for char in page.chars:
+                grey = char["non_stroking_color"] not in ((0,), (0, 0, 0), [0], [0, 0, 0], 0)
+                least = connection_drawing.SECONDARY_PT if grey else connection_drawing.BODY_PT
+                assert char["size"] >= least - 1e-6, (char["text"], char["size"])
+
+
+@pytest.mark.parametrize("case", CASES)
+def test_zones_are_read_where_the_point_is_drawn(case: str) -> None:
+    model, _ = _model(case)
+    drawing = connection_drawing.drawing_set(model)
+    for row in drawing.rows:
+        place = row.place
+        assert place.zone == connection_drawing.zone_at(place.x, place.y)
+        part = next(
+            p
+            for s in drawing.sheets
+            if s.number == place.sheet
+            for p in s.parts
+            if (place.x, place.y) in p.points
+        )
+        assert part.left <= place.x <= part.right

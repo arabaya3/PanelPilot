@@ -375,11 +375,25 @@ def second_line(model: entities.DesignModelV2, c: entities.Connection) -> str:
             f"mm² {cell(model, wire.cross_section_mm2)}; colour {cell(model, wire.colour)}"
         )
     if c.via == "wire":
-        return f"connection {c.id}: WIRE RECORD MISSING"
+        return "WIRE RECORD MISSING (connection listed in the open items)"
     if c.core is not None:
         label = c.core.label if c.core.label is not None else "not set"
         return f"cable {c.core.cable_id} core {c.core.index}, core label {label}"
-    return f"connection {c.id}: no wire ({c.via})"
+    return f"no wire record (via {c.via})"
+
+
+def bridge_line(c: entities.Connection) -> str:
+    """The line beside a strip point's bridge mark: its via, and who declared it."""
+    source = "per template" if c.pattern_ref is not None else "per model"
+    return f"bridge between the point's sides: {c.via} {source}"
+
+
+def far_label(expected: dict[Key, Expected], here: Key, far: Key) -> str:
+    """A far end's label as printed: with its board when it is on another board."""
+    row = expected[far]
+    if row.board_id != expected[here].board_id:
+        return f"{row.board_id}/{row.label}"
+    return row.label
 
 
 def row_notes(
@@ -412,8 +426,7 @@ def row_notes(
 # The PDF, read back by position
 # --------------------------------------------------------------------------- #
 
-LEFT_REGION = pdf_module._SYMBOL_LEFT + pdf_module._SYMBOL_WIDTH
-ROW_STEP = (pdf_module._AREA_TOP - pdf_module._AREA_BOTTOM) / connection_drawing.ZONE_ROWS
+ROW_STEP = connection_drawing.ZONE_ROW
 
 
 @dataclass(frozen=True)
@@ -438,42 +451,11 @@ def _join(chars: Iterable[Char]) -> str:
 
 
 @dataclass
-class Slot:
-    """What is printed in one slot of one block column, by region and half."""
-
-    chars: dict[tuple[str, str], list[Char]]
-
-    def text(self, region: str, half: str) -> str:
-        return _join(self.chars.get((region, half), []))
-
-
-@dataclass
 class Page:
     text: str  # whole page, whitespace normalised
     area_lines: list[str]  # the drawing area's text lines (text sheets)
     chars: list[Char]  # in the drawing area
-    slots: dict[tuple[int, int], Slot]
-
-
-def _slots(chars: list[Char]) -> dict[tuple[int, int], Slot]:
-    out: dict[tuple[int, int], Slot] = {}
-    for ch in chars:
-        column = int((ch.xc - pdf_module._AREA_LEFT) // pdf_module._COLUMN)
-        slot = int((pdf_module._AREA_TOP - ch.yc) // pdf_module._SLOT)
-        left = pdf_module._AREA_LEFT + column * pdf_module._COLUMN
-        mid = pdf_module._AREA_TOP - (slot + 0.5) * pdf_module._SLOT
-        half = "upper" if ch.yc > mid else "lower"
-        offset = ch.xc - left
-        if offset < LEFT_REGION:
-            region = "left"
-        elif offset < pdf_module._POINT:
-            region = "mark"
-        else:
-            region = "text"
-        found = out.setdefault((column, slot), Slot(defaultdict(list)))
-        found.chars[(region, half)].append(ch)
-        found.chars[("all", half)].append(ch)
-    return out
+    dots: list[tuple[float, float]]  # filled terminal points (PDF coordinates)
 
 
 @functools.cache
@@ -481,13 +463,15 @@ def pdf_pages(case: str) -> tuple[Page, ...]:
     pages: list[Page] = []
     with pdfplumber.open(io.BytesIO(render(case))) as pdf:
         for page in pdf.pages:
+            height = float(page.height)
             chars = [
-                Char(c["text"], c["x0"], c["x1"], c["y0"], c["y1"])
+                Char(c["text"], c["x0"], c["x1"], height - c["bottom"], height - c["top"])
                 for c in page.chars
                 if pdf_module._AREA_LEFT < (c["x0"] + c["x1"]) / 2 < pdf_module._AREA_RIGHT
-                and pdf_module._AREA_BOTTOM < (c["y0"] + c["y1"]) / 2 < pdf_module._AREA_TOP
+                and pdf_module._AREA_BOTTOM
+                < height - (c["top"] + c["bottom"]) / 2
+                < pdf_module._AREA_TOP
             ]
-            height = float(page.height)
             area = page.crop(
                 (
                     pdf_module._AREA_LEFT,
@@ -496,6 +480,11 @@ def pdf_pages(case: str) -> tuple[Page, ...]:
                     height - pdf_module._AREA_BOTTOM,
                 )
             )
+            dots = [
+                ((c["x0"] + c["x1"]) / 2, height - (c["top"] + c["bottom"]) / 2)
+                for c in page.curves
+                if c.get("fill") and c["x1"] - c["x0"] < 3 * mm
+            ]
             pages.append(
                 Page(
                     text=" ".join((page.extract_text() or "").split()),
@@ -505,7 +494,7 @@ def pdf_pages(case: str) -> tuple[Page, ...]:
                         if line.strip()
                     ],
                     chars=chars,
-                    slots=_slots(chars),
+                    dots=dots,
                 )
             )
     return tuple(pages)
@@ -523,7 +512,7 @@ def drawing_of(case: str) -> connection_drawing.DrawingSet:
 
 @dataclass(frozen=True)
 class Printed:
-    """Where a terminal's first marking is printed, read from the PDF."""
+    """Where a terminal's point is drawn, read from the PDF."""
 
     sheet: int
     zone: str
@@ -538,75 +527,121 @@ def _zone_of(x: float, y: float) -> str:
 
 @dataclass
 class Read:
-    """A drawing read back: each row's printed slots, place and the slots unaccounted for."""
+    """A drawing read back: each row's printed lines, place and what is unaccounted for."""
 
     printed: dict[Key, Printed]
-    texts: dict[Key, list[tuple[int, str, str]]]  # (sheet, upper, lower) per line
+    texts: dict[Key, list[tuple[int, str, str, str]]]  # (sheet, upper, lower, kind) per line
     markings: dict[Key, list[str]]  # marking texts printed, first and continued
     nets: dict[Key, list[str]]
     headers: list[tuple[connection_drawing.BlockPart, str, str, str]]  # part, upper, lower, left
-    stray: list[tuple[int, int, int, str]]  # sheet, column, slot, text
+    stray: list[tuple[int, str]]  # sheet, text
+
+
+def _found(page: Page, text: connection_drawing.Text, used: set[int]) -> list[Char]:
+    """The characters printed where the layout put a text."""
+    width = text.width
+    x0, x1 = (text.x - width, text.x) if text.right else (text.x, text.x + width)
+    out = []
+    for n, ch in enumerate(page.chars):
+        if (
+            x0 - 0.5 <= ch.xc <= x1 + 0.5
+            and text.y - 0.3 * text.size <= ch.yc <= text.y + 0.8 * text.size
+        ):
+            out.append(ch)
+            used.add(n)
+    return out
 
 
 @functools.cache
 def read_back(case: str) -> Read:
-    """Every drawing sheet's slots, read and assigned to the rows the layout put there.
+    """Every drawing sheet's texts, read where the layout says they are and assigned to rows.
 
-    The layout says only *where* to look (each part's header slot and its
-    lines' slots); what is found there is checked against the model by the
-    tests, and any slot with print the layout does not account for is stray.
+    The layout says only *where* to look (each text's page point); what is
+    found there is checked against the model by the tests, and any printed
+    character the layout does not account for (outside a symbol's own box)
+    is stray.
     """
     drawing = drawing_of(case)
     pages = pdf_pages(case)
     out = Read({}, defaultdict(list), defaultdict(list), defaultdict(list), [], [])
     for sheet in drawing.sheets:
         page = pages[sheet.number - 1]
-        used: set[tuple[int, int]] = set()
+        used: set[int] = set()
         for part in sheet.parts:
-            column, top = part.place.column, part.place.slot
-            header = page.slots.get((column, top), Slot({}))
-            used.add((column, top))
+            got: dict[tuple[str, Key | None, int], list[str]] = defaultdict(list)
+            for text in part.texts:
+                found = _join(_found(page, text, used))
+                if found:
+                    got[(text.role, text.key, text.index)].append(found)
+
+            def joined(
+                role: str,
+                key: Key | None = None,
+                index: int = -1,
+                got: dict[tuple[str, Key | None, int], list[str]] = got,
+            ) -> str:
+                return " ".join(got.get((role, key, index), []))
+
             out.headers.append(
                 (
                     part,
-                    header.text("all", "upper"),
-                    header.text("all", "lower"),
-                    _join(
-                        page.slots.get((column, top + 1), Slot({})).chars.get(("left", "upper"), [])
-                    ),
+                    " ".join([joined("title"), joined("continues")]).strip(),
+                    joined("header"),
+                    joined("placeholder"),
                 )
             )
-            for n, line in enumerate(part.lines):
-                place = (column, top + 1 + n)
-                used.add(place)
-                found = page.slots.get(place, Slot({}))
+            inner_of: dict[Key, Key] = {}
+            pending: Key | None = None
+            for line in part.lines:
+                if line.kind == "bridge":
+                    inner_of[line.row.key] = pending or line.row.key
+                    pending = None if pending else line.row.key
+            seen: set[Key] = set()
+            for line in part.lines:
                 key = line.row.key
-                mark = found.text("mark", "upper")
-                if mark:
+                if key not in seen:
+                    seen.add(key)
+                    mark = joined("marking", key)
                     out.markings[key].append(mark)
+                    out.nets[key].append(joined("net", key))
                     if not mark.endswith("(cont.)") and key not in out.printed:
-                        chars = found.chars[("mark", "upper")]
-                        x = max(c.x1 for c in chars) + 2 * mm
-                        y = pdf_module._AREA_TOP - (place[1] + 0.5) * pdf_module._SLOT
-                        out.printed[key] = Printed(sheet.number, _zone_of(x, y))
-                net = found.text("mark", "lower")
-                if net:
-                    out.nets[key].append(net)
-                out.texts[key].append(
-                    (sheet.number, found.text("text", "upper"), found.text("text", "lower"))
-                )
-            if not part.lines:
-                used.add((column, top + 1))
-        for place, found in page.slots.items():
-            if place in used:
+                        markers = [t for t in part.texts if t.role == "marking" and t.key == key]
+                        tx, ty = markers[0].x, markers[0].y
+                        dot = min(page.dots, key=lambda d: abs(d[0] - tx) + abs(d[1] - ty))
+                        assert abs(dot[1] - ty) < 3 * mm, (key, dot)
+                        assert 0 < tx - dot[0] < 4 * mm, (key, dot)
+                        out.printed[key] = Printed(sheet.number, _zone_of(*dot))
+                if line.kind == "note":
+                    out.texts[key].append(
+                        (sheet.number, "", joined("note", key, line.index), "note")
+                    )
+                elif line.kind == "end":
+                    out.texts[key].append(
+                        (
+                            sheet.number,
+                            joined("far", key, line.index),
+                            joined("detail", key, line.index),
+                            "end",
+                        )
+                    )
+                else:
+                    lower = joined("bridge", inner_of[key], 0)
+                    out.texts[key].append(
+                        (sheet.number, joined("far", key, line.index), lower, "bridge")
+                    )
+        frames = []
+        for part in sheet.parts:
+            if part.symbol is not None and part.frame is not None:
+                frames.append(part.frame.box(part.symbol))
+        for n, ch in enumerate(page.chars):
+            if n in used or not ch.text.strip():
                 continue
-            text = " ".join(
-                t
-                for t in (found.text("mark", h) + found.text("text", h) for h in ("upper", "lower"))
-                if t
-            )
-            if text:
-                out.stray.append((sheet.number, place[0], place[1], text))
+            if any(
+                x0 - 0.5 <= ch.xc <= x1 + 0.5 and y0 - 0.5 <= ch.yc <= y1 + 0.5
+                for x0, y0, x1, y1 in frames
+            ):
+                continue
+            out.stray.append((sheet.number, ch.text))
     return out
 
 
@@ -614,20 +649,19 @@ ELLIPSIS = "…"
 
 
 def fits(printed: str, full: str) -> bool:
-    """Printed in full, or cut to fit: a prefix of the full text then an ellipsis."""
-    if printed == full:
+    """Printed in full (wrapped lines rejoined), or cut with a reference to its full text."""
+    if squash(printed) == squash(full):
         return True
-    if not printed.endswith(ELLIPSIS):
+    found = re.search(r"…\[(\d+)\]", printed)
+    if not found:
         return False
-    head = printed[: -len(ELLIPSIS)].rstrip()
+    head = printed[: found.start()].rstrip()
     return bool(head) and squash(full).startswith(squash(head))
 
 
 def header_at(place: connection_drawing.Place) -> Printed:
-    """Where a block part's header is printed: its title's start, by the zone grid."""
-    x = pdf_module._AREA_LEFT + place.column * pdf_module._COLUMN + 2 * mm
-    y = pdf_module._AREA_TOP - (place.slot + 0.5) * pdf_module._SLOT
-    return Printed(place.sheet, _zone_of(x, y))
+    """Where a block part's header is: its place (the geometry tests read it from the PDF)."""
+    return Printed(place.sheet, place.zone)
 
 
 def far_line(label: str, target: Printed, here: int, via: str) -> str:
@@ -735,15 +769,18 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
     assert set(got.printed) == set(expected)
     owners: dict[str, Any] = {o.id: o for o in _owners(model)}
     for part, upper, _lower, _left in got.headers:
+        if part.owner_kind == "no_terminals":
+            assert all(m in owners for m in part.members)
+            continue
         owner = owners[part.owner_id]
         name = owner.designation.product if owner.designation else owner.id
-        assert upper.startswith(f"{name} ({part.owner_kind})"), (upper, name)
+        assert squash(upper).startswith(squash(f"{name} ({part.owner_kind})")), (upper, name)
     for key, row in expected.items():
-        marks = got.markings[key]
-        assert marks[0] == row.marking, (marks, row.marking)
-        assert all(m == f"{row.marking} (cont.)" for m in marks[1:]), marks
+        marks = [squash(m) for m in got.markings[key]]
+        assert marks[0] == squash(row.marking), (marks, row.marking)
+        assert all(m == squash(f"{row.marking} (cont.)") for m in marks[1:]), marks
         net_text = f"net {row.net.signal}" if row.net else "net: none"
-        assert got.nets[key] == [net_text] * len(marks)
+        assert [squash(n) for n in got.nets[key]] == [squash(net_text)] * len(marks)
     # Every row's lines: its notes, then one pair of lines per connection end,
     # each naming the far end where it is actually printed.
     by_end: dict[Key, list[entities.Connection]] = defaultdict(list)
@@ -759,46 +796,33 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
         matched: Counter[tuple[str, str]] = Counter()
         # Each printed line is one note or one end; an end's reference reads
         # from the sheet the line is on. A text cut to fit ends in an ellipsis.
-        for sheet, upper, lower in printed:
+        for sheet, upper, lower, kind in printed:
             options = [("note", n) for n in notes if not upper and fits(lower, n)]
             options += [
                 ("end", c.id)
                 for far, c in ends
-                if fits(upper, far_line(expected[far].label, got.printed[far], sheet, c.via))
-                and fits(lower, second_line(model, c))
+                if fits(
+                    upper, far_line(far_label(expected, key, far), got.printed[far], sheet, c.via)
+                )
+                and fits(lower, bridge_line(c) if kind == "bridge" else second_line(model, c))
             ]
             assert options, (key, sheet, upper, lower)
             matched[options[0]] += 1
             for text in (upper, lower):
-                if text.endswith(ELLIPSIS):
+                if ELLIPSIS in text:
                     cut.append((key, options[0], text))
         assert matched == needed, (key, matched, needed)
-    # A text cut to fit is printed in full elsewhere: the open items or the schedules.
-    listed = squash(" ".join(open_item_lines(case)))
-    wire_rows = {w.connection_id: w for w in schedules.wire_schedule(model)}
-    connections = {c.id: c for c in model.connections}
-    for key, (kind, subject), text in cut:
-        row = expected[key]
-        if kind == "note":
-            assert squash(f"{row.label}:") in listed or (
-                row.net is not None and squash(f"({row.net.id})") in listed
-            ), (key, text)
-            continue
-        made = connections[subject]
-        held = wire_rows.get(subject)
-        if held is not None:
-            assert second_line(model, made) == (
-                f"wire {held.wire_id}: no. {connection_drawing.cell_text(held.number)}; "
-                f"mm² {connection_drawing.cell_text(held.cross_section_mm2)}; "
-                f"colour {connection_drawing.cell_text(held.colour)}"
-            ), (key, text)
-        if held is not None:
-            assert (held.start_ref.key, held.end_ref.key) == (made.start.key, made.end.key)
+    # A text cut to fit names its full text, printed on the full-text sheets.
+    whole = squash(" ".join(p.text for p in pdf_pages(case)))
+    for _key, _option, text in cut:
+        for number in re.findall(r"…\[(\d+)\]", text):
+            full = drawing_of(case).full_texts[int(number) - 1]
+            assert squash(f"[{number}] {full}") in whole, (text, full)
     # The wire numbers printed: each wire at both ends of its connection, no others.
     printed_wires = Counter(
         m.group(1)
         for lines in got.texts.values()
-        for _s, _u, low in lines
+        for _s, _u, low, _k in lines
         if (m := re.match(r"^wire (\S+): no\. ", low))
     )
     assert printed_wires == Counter({w.id: 2 for w in model.wires})
@@ -853,11 +877,23 @@ def expected_open_items(model: entities.DesignModelV2) -> Counter[tuple[str, str
                 want[("wire_attribute_assumed", f"wire {w.id} ")] += 1
     owners: list[tuple[str, Any]] = [("component", c) for c in model.components]
     owners += [("strip", s) for s in model.strips]
+    listed_boards: set[str] = set()
     for kind, owner in owners:
         name = owner.designation.product if owner.designation else owner.id
         if owner.designation is None:
             want[("designation_not_set", f"{kind} {owner.id}: designation not set")] += 1
         template = model.template(owner.template_ref) if owner.template_ref else None
+        if (
+            kind == "component"
+            and template is not None
+            and not template.terminals
+            and template.symbol is None
+        ):
+            # Listed once per board, each named in the item (M5-0).
+            if owner.board_id not in listed_boards:
+                listed_boards.add(owner.board_id)
+                want[("no_terminals_defined", f"board {owner.board_id}: ")] += 1
+            continue
         if template is None or template.symbol is None:
             want[("symbol_not_defined", f"{name} ({kind}): symbol not defined")] += 1
         if kind == "component":
@@ -899,13 +935,18 @@ def test_every_open_item_is_shown_on_its_row_and_listed(case: str) -> None:
         if row.net is None:
             where = got.printed[row.key]
             assert any(
-                item.startswith(squash(f"{row.label}: "))
+                item.startswith(squash(f"{row.board_id}/{row.label}: "))
                 and item.endswith(squash(f"(sheet {where.sheet}, zone {where.zone})"))
                 for items in by_kind.values()
                 for item in items
             ), row.label
     # Designation not set and symbol not defined are shown on the block too.
     for part, _upper, lower, left in got.headers:
+        if part.owner_kind == "no_terminals":
+            listed_members = " ".join(by_kind["no_terminals_defined"])
+            for member in part.members:
+                assert squash(f"component {member},") in listed_members, member
+            continue
         owner: Any = next((o for o in _owners(model) if o.id == part.owner_id), None)
         assert owner is not None
         if owner.designation is None:
@@ -966,7 +1007,7 @@ def test_every_printed_value_is_in_the_snapshot_or_reads_not_set(case: str) -> N
             assert mark.removesuffix(" (cont.)") in markings, mark
         for net in got.nets[key]:
             assert net in signals, net
-        for _sheet, upper, lower in got.texts[key]:
+        for _sheet, upper, lower, _kind in got.texts[key]:
             if upper:
                 far = _FAR.match(upper)
                 assert far, upper
@@ -1135,7 +1176,7 @@ def test_a_large_generated_model_paginates_without_overflow_and_lists_every_term
         for part in sheet.parts:
             assert part.place.sheet == sheet.number
             assert 0 <= part.place.column < connection_drawing.COLUMNS
-            assert part.place.slot + len(part.lines) < connection_drawing.SLOTS
+            assert all(line.slot + line.span <= connection_drawing.SLOTS for line in part.lines)
     assert set(drawing.places) == set(rows)
     got = read_back("scale")
     assert set(got.printed) == set(rows)
@@ -1150,10 +1191,13 @@ def test_nothing_printed_crosses_its_column_or_the_drawing_area(case: str) -> No
         for ch in pages[sheet.number - 1].chars:
             if not ch.text.strip():
                 continue
-            column = int((ch.xc - pdf_module._AREA_LEFT) // pdf_module._COLUMN)
-            left = pdf_module._AREA_LEFT + column * pdf_module._COLUMN
-            assert ch.x0 >= left - 0.5, (sheet.number, ch)
-            assert ch.x1 <= left + pdf_module._COLUMN + 0.5, (sheet.number, ch)
+            # Inside the block part it belongs to (a block may take several columns).
+            assert any(
+                part.left - 0.5 <= ch.x0
+                and ch.x1 <= part.right + 0.5
+                and part.bottom - 0.5 <= ch.yc <= part.top + 0.5
+                for part in sheet.parts
+            ), (sheet.number, ch)
             assert ch.y0 >= pdf_module._AREA_BOTTOM - 0.5, (sheet.number, ch)
             assert ch.y1 <= pdf_module._AREA_TOP + 0.5, (sheet.number, ch)
 
@@ -1164,13 +1208,13 @@ def test_no_two_printed_characters_overlap(case: str) -> None:
     drawing = drawing_of(case)
     pages = pdf_pages(case)
     for sheet in drawing.sheets:
-        for place, slot in pages[sheet.number - 1].slots.items():
-            chars = slot.chars[("all", "upper")] + slot.chars[("all", "lower")]
-            chars = sorted((c for c in chars if c.text.strip()), key=lambda c: c.x0)
-            for n, a in enumerate(chars):
-                for b in chars[n + 1 :]:
-                    if b.x0 >= a.x1:
-                        break
-                    vertical = min(a.y1, b.y1) - max(a.y0, b.y0)
-                    horizontal = min(a.x1, b.x1) - max(a.x0, b.x0)
-                    assert vertical < 1.0 or horizontal < 0.6, (sheet.number, place, a, b)
+        chars = sorted(
+            (c for c in pages[sheet.number - 1].chars if c.text.strip()), key=lambda c: c.x0
+        )
+        for n, a in enumerate(chars):
+            for b in chars[n + 1 :]:
+                if b.x0 >= a.x1:
+                    break
+                vertical = min(a.y1, b.y1) - max(a.y0, b.y0)
+                horizontal = min(a.x1, b.x1) - max(a.x0, b.x0)
+                assert vertical < 1.0 or horizontal < 0.6, (sheet.number, a, b)
