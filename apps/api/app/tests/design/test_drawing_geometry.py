@@ -652,6 +652,16 @@ class Page:
     def is_drawing(self) -> bool:
         return len(self.columns) >= 2 and len(self.rows) >= 2
 
+    @property
+    def is_routed(self) -> bool:
+        """A routed sheet (M5): its lines join terminal points, it has no symbol leads."""
+        return self.is_drawing and "ROUTEDCONNECTIONSHEET" in squash(self.text)
+
+    @property
+    def is_cross_reference(self) -> bool:
+        """A cross-reference sheet (M4): blocks, leads, stubs and per-row cross-references."""
+        return self.is_drawing and not self.is_routed
+
     def zone_of(self, x: float, y: float) -> str | None:
         number = next((n for right, n in self.columns if x < right), None)
         letter = next((n for bottom, n in self.rows if y < bottom), None)
@@ -1082,7 +1092,7 @@ def _zone_name(page: Page, p: P) -> str:
 def lead_problems(pages: Sequence[Page]) -> list[str]:
     problems: list[str] = []
     for page in pages:
-        if not page.is_drawing:
+        if not page.is_cross_reference:
             continue
         for dot in page.dots:
             if not any(dot in b.dots for b in page.blocks):
@@ -1160,7 +1170,7 @@ def test_the_lead_reader_finds_the_leads_it_must() -> None:
         for c in model.components
         if (t := model.template(c.template_ref)) is not None and t.symbol is not None
     )
-    pages = [p for p in sheets_of("config:drawing_control_relay") if p.is_drawing]
+    pages = [p for p in sheets_of("config:drawing_control_relay") if p.is_cross_reference]
     solid = [
         lead
         for p in pages
@@ -1441,7 +1451,7 @@ def test_every_zone_reference_points_where_the_far_end_is_printed(case: str) -> 
     problems: list[str] = []
     found = 0
     for page in pages:
-        if not page.is_drawing:
+        if not page.is_cross_reference:
             continue
         for text in page.paragraphs:
             for ref in _REF.finditer(text):

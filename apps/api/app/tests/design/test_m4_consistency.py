@@ -901,15 +901,23 @@ def test_every_open_item_is_shown_on_its_row_and_listed(case: str) -> None:
     model = model_of(case)
     drawing = drawing_of(case)
     want = expected_open_items(model)
-    # The layout's list.
+    # The layout's list. ``unrouted`` items (M5) are a routing outcome, not a
+    # model fact the oracle can derive: each names a connection of the model
+    # the routed sheets list as not routed, once.
     layout_kinds = Counter(item.kind for item in drawing.open_items)
-    assert layout_kinds == sum((Counter({kind: n}) for (kind, _t), n in want.items()), Counter()), (
+    unrouted = [item for item in drawing.open_items if item.kind == "unrouted"]
+    assert sorted(item.subject for item in unrouted) == sorted(
+        u.connection_id for u in drawing.routed.unrouted
+    )
+    assert {item.subject for item in unrouted} <= {c.id for c in model.connections}
+    model_kinds = layout_kinds - Counter({"unrouted": len(unrouted)})
+    assert model_kinds == sum((Counter({kind: n}) for (kind, _t), n in want.items()), Counter()), (
         layout_kinds,
         want,
     )
     # The printed list: one item per open item, each with its subject.
     listed = open_item_lines(case)
-    if not want:
+    if not want and not unrouted:
         assert listed == ["No open items."]
         return
     by_kind: dict[str, list[str]] = defaultdict(list)

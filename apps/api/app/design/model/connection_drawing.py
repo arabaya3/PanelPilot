@@ -37,6 +37,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
@@ -100,8 +101,11 @@ ZONE_ROW = (AREA_TOP - AREA_BOTTOM) / ZONE_ROWS
 #: gutter of lead lanes, the terminals' points, their marking column and the
 #: cross-reference text.
 SYMBOL_LEFT = 2 * MM
-POINT = 36 * MM
-GUTTER_END = POINT - 4 * MM
+POINT = 41 * MM
+#: The lead lanes end here; a terminal's dotted or dash-dot stub fills the 9 mm
+#: from here to its point (M5: at least 8 mm, so the two patterns tell apart).
+GUTTER_END = POINT - 9 * MM
+STUB = 8 * MM
 MARK_LEFT = POINT + 2 * MM
 MARK_RIGHT = POINT + 21 * MM
 TEXT_LEFT = MARK_RIGHT + 4 * MM
@@ -368,6 +372,8 @@ class BlockPart:
     left: float = 0.0
     right: float = 0.0
     pins_dropped: tuple[str, ...] = ()
+    #: The points of terminals with two or more connections: drawn as junction dots.
+    junctions: tuple[Point, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -411,6 +417,7 @@ OPEN_KINDS = (
     "symbol_not_defined",
     "leads_not_drawn",
     "no_terminals_defined",
+    "unrouted",
 )
 
 
@@ -449,6 +456,8 @@ class DrawingSet:
     owners: dict[tuple[str, str], tuple[str, Place]] = field(default_factory=dict)
     boards_share_sheets: bool = BOARDS_SHARE_SHEETS
     pins_off: frozenset[tuple[str, str]] = frozenset()
+    #: The routed sheets (``connection_routing.RoutedSet``), drawn after these sheets.
+    routed: Any = None
 
     def terminal_keys(self) -> set[tuple[str, str, str]]:
         """The ``TerminalRef.key`` of every drawn terminal row."""
@@ -1080,7 +1089,22 @@ def drawing_set(
             break
         places, pins_off = result.places, result.pins_off
     assert result is not None
-    return result
+    from app.design.model import connection_routing  # the routing reads this module
+
+    routed = connection_routing.routed_set(model, result)
+    rank = {kind: n for n, kind in enumerate(OPEN_KINDS)}
+    items = sorted(
+        (*result.open_items, *routed.open_items),
+        key=lambda item: (
+            rank[item.kind],
+            item.board_id,
+            (item.place.sheet, item.place.column, item.place.slot) if item.place else (0, 0, 0),
+            item.text,
+        ),
+    )
+    return dataclasses.replace(
+        result, routed=routed, open_items=tuple(items), full_texts=routed.full_texts
+    )
 
 
 def _column_left(column: int) -> float:
@@ -1280,6 +1304,8 @@ def _blocks(
         notes: list[str] = [f"template {template_ref}" if template_ref else "no template"]
         if designation is None:
             notes.append(f"designation {NOT_SET} (id {owner_id})")
+        if symbol is not None:
+            notes.append(symbol_status(template))
         if not indexes:
             notes.append(
                 "no terminals defined in its template" if kind == "component" else "no points"
@@ -1433,7 +1459,22 @@ def _header(
 
 
 #: Header notes about a block's symbol, printed on its first part only.
-_SYMBOL_NOTES = ("pin markings", "rows in the symbol", "no leads drawn", "leads not drawn")
+_SYMBOL_NOTES = (
+    "symbol ",
+    "pin markings",
+    "rows in the symbol",
+    "no leads drawn",
+    "leads not drawn",
+)
+
+
+def symbol_status(template: entities.ComponentTemplate | None) -> str:
+    """A symbol's review status as printed at its block: never implies a reviewed meaning."""
+    if template is None or template.symbol is None:
+        return SYMBOL_NOT_DEFINED
+    if template.review.status == "approved":
+        return "symbol reviewed (template approved)"
+    return f"symbol {template.review.status}: its drawing asserts nothing"
 
 
 def _continued_title(block: _Block) -> str:
@@ -1693,6 +1734,7 @@ def _draw(
     point_y: dict[int, float] = {}
     rows_y: dict[str, float] = {}
     point_rows: list[Row] = []
+    junctions: list[Point] = []
     for n, (spec, slot, span) in enumerate(p.lines):
         line_top = _slot_top(slot)
         mid = line_top - HALF
@@ -1734,6 +1776,8 @@ def _draw(
                 )
             ]
             points.append((point_x, mid))
+            if spec.first and len(row.ends) >= 2:
+                junctions.append((point_x, mid))
             point_rows.append(row)
             point_y[index] = mid
             if spec.first and row.terminal.owner_kind == "component":
@@ -1770,7 +1814,7 @@ def _draw(
         # The symbol (or placeholder) is drawn on the block's first part only.
         pinned_ids = {a.terminal for a in block.symbol.anchors} if block.symbol else set()
         for (_x, y), row in zip(points, point_rows, strict=False):
-            stub = ((point_x - 3 * MM, y), (point_x, y))
+            stub = ((point_x - STUB, y), (point_x, y))
             if row.terminal.owner_kind == "component" and row.terminal.terminal_id in pinned_ids:
                 pinned.append(stub)
             else:
@@ -1802,7 +1846,7 @@ def _draw(
         for (_x, y), row in zip(points, point_rows, strict=False):
             if y in lead_ys:
                 continue
-            stub = ((point_x - 3 * MM, y), (point_x, y))
+            stub = ((point_x - STUB, y), (point_x, y))
             if row.terminal.terminal_id in pinned_ids:
                 pinned.append(stub)  # a pin on the symbol, but no lead drawn
             else:
@@ -1849,6 +1893,7 @@ def _draw(
         left=left,
         right=left + block.cols * COLUMN,
         pins_dropped=pins_dropped,
+        junctions=tuple(junctions),
     )
 
 

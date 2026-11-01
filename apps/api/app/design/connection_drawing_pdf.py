@@ -33,6 +33,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from app.design.marking import ExportMark, finding_lines, pdf_page_stamp
 from app.design.model import connection_drawing as layout
+from app.design.model import connection_routing as routing
 from app.design.model.entities import SymbolDef
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
@@ -70,18 +71,44 @@ LEGEND = (
     "crossing, at least 2 mm apart; where that is not possible no lead is drawn and the block "
     "says so. A pin's marking is repeated at the symbol where it fits; the block names any "
     "shown at the rows only.",
-    "Dotted stub: the terminal has no pin on the symbol (or no symbol is defined); its row "
-    "carries its marking.",
-    "Dash-dot stub: the terminal has a pin on the symbol, but no lead is drawn (the block's "
-    "first part says why); its row carries its marking.",
+    "Dotted stub (8 mm, round dots): the terminal has no pin on the symbol (or no symbol is "
+    "defined); its row carries its marking.",
+    "Dash-dot stub (8 mm, long dash and dot): the terminal has a pin on the symbol, but no lead "
+    "is drawn (the block's first part says why); its row carries its marking.",
+    "Filled dot: a terminal point; larger filled dot: a junction, a terminal with two or more "
+    "connections (lines meet only there).",
+    "Routed sheets (after the cross-reference sheets): line paths are schematic. Each line is "
+    "exactly one saved connection between its two terminal points; it is not the physical cable "
+    "path, routing, length or landing order, and no line is drawn for a net membership alone.",
+    f"Routed lines: solid {routing.LINE_WIDTH:g} pt for {' and '.join(routing.SOLID_VIAS)} "
+    f"connections; dashed {routing.LINE_WIDTH:g} pt for {', '.join(routing.DASHED_VIAS)} "
+    "connections.",
+    "w-xxxxxx / x-xxxxxx beside a line: its wire id (or, with no wire record, its connection id), "
+    "shortened to a prefix no other id shares; the cross-reference sheets give it in full.",
+    "Hop: where two lines cross without a connection, the horizontal one bridges the vertical "
+    "one; a crossing never has a dot.",
+    "Flag at the frame edge, 'to <board>/<label> (sheet n, zone XY)': the line continues on "
+    "that sheet, which has the matching flag.",
+    "Short stub with an arrowhead and '<label> not routed' on a routed sheet: no route was found "
+    "within the fixed limits; its cross-references stay and it is listed as an unrouted open "
+    "item with the reason.",
+    "'symbol unreviewed: its drawing asserts nothing': a symbol is only data until its template "
+    "is reviewed.",
     "A block continued in another column or on another sheet is drawn with its symbol on its "
     "first part only.",
     "Thick bar beside two points: a bridge between a strip point's two sides.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
     f"Text is never smaller than {layout.BODY_PT:g} pt ({layout.SECONDARY_PT:g} pt for grey "
-    "detail lines and pin markings at a symbol): a product readability target, not a "
-    "drawing standard.",
+    "detail lines and pin markings at a symbol) on the cross-reference sheets, and "
+    f"{routing.BODY_PT:g} pt ({routing.SECONDARY_PT:g} pt grey) on the routed sheets: a "
+    "product readability target at A3, not a drawing standard.",
 )
+
+#: Stub patterns (PDF dash arrays, in points): clearly different when printed.
+DOTTED = (0.6, 2.4)
+DASH_DOT = (6.0, 2.0, 0.6, 2.0)
+#: Routed lines of the dashed vias (connection_routing.DASHED_VIAS).
+LINK_DASH = (5.0, 2.0)
 
 _RED = colors.HexColor("#b00020")
 _GREY = colors.HexColor("#555555")
@@ -295,16 +322,73 @@ def _part(canvas: Canvas, part: layout.BlockPart) -> None:
         _path(canvas, bridge)
     canvas.setLineWidth(0.3)
     canvas.saveState()
-    canvas.setDash(1, 1.5)
+    canvas.setDash(list(DOTTED))
     for dotted in part.dotted:
         _path(canvas, dotted)
-    canvas.setDash([3, 1, 0.6, 1])
+    canvas.setDash(list(DASH_DOT))
     for pinned in part.pinned:
         _path(canvas, pinned)
     canvas.restoreState()
+    junctions = set(part.junctions)
     for x, y in part.points:
-        canvas.circle(x, y, 0.7 * mm, stroke=1, fill=1)
+        r = routing.JUNCTION_R if (x, y) in junctions else routing.DOT_R
+        canvas.circle(x, y, r, stroke=0, fill=1)
     for text in part.texts:
+        canvas.saveState()
+        if text.tone == "loud":
+            canvas.setFillColor(_RED)
+        elif text.tone == "grey":
+            canvas.setFillColor(_GREY)
+        _text(canvas, text.x, text.y, text.text, text.size, bold=text.bold, right=text.right)
+        canvas.restoreState()
+
+
+def _routed(canvas: Canvas, sheet: routing.RoutedSheet) -> None:
+    """A routed sheet, exactly as laid out: boxes, lines, stubs, dots, then texts."""
+    canvas.saveState()
+    canvas.setLineWidth(0.5)
+    for box in sheet.boxes:
+        canvas.rect(*box.rect)
+        if box.placeholder is not None:
+            canvas.saveState()
+            canvas.setLineWidth(0.3)
+            canvas.setDash(2, 2)
+            canvas.rect(*box.placeholder)
+            canvas.restoreState()
+    canvas.setLineWidth(routing.LINE_WIDTH)
+    canvas.setLineCap(0)
+    for line in sheet.lines:
+        canvas.saveState()
+        if line.dashed:
+            canvas.setDash(list(LINK_DASH))
+        path = canvas.beginPath()
+        path.moveTo(*line.start)
+        x, y = line.start
+        for op, nx, ny in line.path:
+            if op == "L":
+                path.lineTo(nx, ny)
+            else:
+                rise = 1.0 * mm
+                path.curveTo(x, y + rise, nx, ny + rise, nx, ny)
+            x, y = nx, ny
+        canvas.drawPath(path, stroke=1, fill=0)
+        canvas.restoreState()
+        if line.marker:
+            flag = canvas.beginPath()
+            flag.moveTo(*line.marker[0])
+            for point in line.marker[1:]:
+                flag.lineTo(*point)
+            flag.close()
+            canvas.drawPath(flag, stroke=0, fill=1)
+    canvas.setLineWidth(0.3)
+    for stub in sheet.stubs:
+        _path(canvas, stub.points)
+        for a, b in stub.arrow:
+            canvas.line(*a, *b)
+    for (x, y), r in sheet.dots:
+        canvas.circle(x, y, r, stroke=0, fill=1)
+    canvas.restoreState()
+    for text in sheet.texts:
         canvas.saveState()
         if text.tone == "loud":
             canvas.setFillColor(_RED)
@@ -417,6 +501,19 @@ def _draw_text_page(canvas: Canvas, title: str, lines: Sequence[str]) -> None:
         y -= _TEXT_LINE
 
 
+def _routed_counts(routed: routing.RoutedSet) -> list[str]:
+    reasons: dict[str, int] = {}
+    for item in routed.unrouted:
+        reasons[item.reason] = reasons.get(item.reason, 0) + 1
+    by = "; ".join(f"{n}: {reason}" for reason, n in sorted(reasons.items()))
+    return [
+        f"Connections drawn as lines on one sheet: {len(routed.routed)}; continued across "
+        f"sheets with matching flags: {len(routed.continued)}; not routed: "
+        f"{len(routed.unrouted)}" + (f" ({by})" if by else ""),
+        routing.SCHEMATIC_NOTE,
+    ]
+
+
 def render_connection_drawing(
     drawing: layout.DrawingSet,
     header: DrawingHeader,
@@ -434,7 +531,12 @@ def render_connection_drawing(
     Returns:
         The PDF's bytes.
     """
+    routed = drawing.routed
+    routed_sheets = routed.sheets if routed is not None else ()
     last_drawing = drawing.sheets[-1].number if drawing.sheets else layout.FIRST_SHEET - 1
+    last_m4 = last_drawing
+    if routed_sheets:
+        last_drawing = routed_sheets[-1].number
     open_items = [
         f"{item.kind}: {item.text}" + (f" ({layout.where(item.place)})" if item.place else "")
         for item in drawing.open_items
@@ -448,6 +550,10 @@ def render_connection_drawing(
         )
         for sheet in drawing.sheets
     ] or ["No drawing sheets: the saved design holds no component or terminal strip."]
+    index_items += [
+        f"Sheet {sheet.number}: routed sheet, board {sheet.board_id}: {len(sheet.lines)} line(s)"
+        for sheet in routed_sheets
+    ]
     finding_items = _marked_cuts(
         [
             "Structural findings of the saved model:",
@@ -481,10 +587,16 @@ def render_connection_drawing(
         *(f"  {item}" for item in LEGEND),
         "",
         (
-            f"Drawing sheets: {layout.FIRST_SHEET} to {last_drawing}"
+            f"Cross-reference sheets: {layout.FIRST_SHEET} to {last_m4}"
             if drawing.sheets
             else "Drawing sheets: none"
         ),
+        (
+            f"Routed sheets: {routed_sheets[0].number} to {last_drawing}"
+            if routed_sheets
+            else "Routed sheets: none"
+        ),
+        *(_routed_counts(routed) if routed is not None else []),
         f"Terminals: {len(drawing.rows)}; nets: {len(drawing.nets)}; "
         f"connections: {len(drawing.connections)}; wires: {len(drawing.wire_rows)}; "
         f"open items: {len(drawing.open_items)}",
@@ -503,6 +615,10 @@ def render_connection_drawing(
         _sheet_frame(canvas, header, mark, sheet.number, total, ", ".join(sheet.boards), grid=True)
         for part in sheet.parts:
             _part(canvas, part)
+        canvas.showPage()
+    for sheet in routed_sheets:
+        _sheet_frame(canvas, header, mark, sheet.number, total, sheet.board_id, grid=True)
+        _routed(canvas, sheet)
         canvas.showPage()
     for n, (title, lines) in enumerate(text_pages):
         _sheet_frame(canvas, header, mark, first_text + n, total, "", grid=False)
