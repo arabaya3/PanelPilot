@@ -1594,7 +1594,7 @@ def test_the_lead_checker_finds_crossings_and_leads_through_a_symbol() -> None:
 # --------------------------------------------------------------------------- #
 
 #: How far past a symbol's drawn extent a pin marking may sit.
-PIN_MARGIN = 1 * mm
+PIN_MARGIN = 3 * mm
 #: How far from a symbol's shapes a lead's end still counts as one of its anchors.
 ANCHOR_REACH = 5 * mm
 #: The part of a lead next to its anchor that the pin's own marking may touch.
@@ -1820,8 +1820,9 @@ def pin_markings_outside(pages: Sequence[Page], model: entities.DesignModelV2) -
                 continue
             boxes = [_stroke_box(s) for s in block.strokes]
             # The drawn shapes and the anchors on the symbol's edge.
-            # Plus the anchors at the symbol: a lead's end on a stroke or near the shapes
-            # (a lead with no anchor ends at the band's edge, further off).
+            # Plus the anchors at the symbol: a lead's end on a stroke, near the shapes, or
+            # the start of a routed lead (a lead with no anchor is one straight run from
+            # the band's edge, further off).
             drawn = (
                 min(b[0] for b in boxes) - ANCHOR_REACH,
                 min(b[1] for b in boxes) - ANCHOR_REACH,
@@ -1833,6 +1834,7 @@ def pin_markings_outside(pages: Sequence[Page], model: entities.DesignModelV2) -
                 for lead in block.leads
                 if _on_stroke(lead.anchor, block.strokes)
                 or _contains(drawn, (lead.anchor[0], lead.anchor[1]) * 2, tol=0)
+                or len(lead.segs) > 1  # routed round the symbol: it starts at a pin
             ]
             extent = (
                 min(b[0] for b in boxes) - PIN_MARGIN,
