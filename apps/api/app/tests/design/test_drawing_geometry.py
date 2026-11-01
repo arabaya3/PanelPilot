@@ -49,10 +49,12 @@ import copy
 import functools
 import io
 import itertools
+import json
 import math
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pdfplumber
@@ -400,6 +402,95 @@ def stress_legacy_devices() -> tuple[dict[str, Any], dict[str, Any] | None]:
     return v1, None
 
 
+def sample_long_names() -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The renderer's long-names sample: the control relay case with every name 60-100 long."""
+    configuration: dict[str, Any] = json.loads(
+        (Path(__file__).parent / "geometry_cases" / "long_names_sample.json").read_text("utf-8")
+    )
+    return _v1(), configuration
+
+
+def sample_many_io() -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The renderer's many-terminals sample: a 64-terminal "IO" box added to the relay case.
+
+    Sixteen anchors, four on each edge, with the symbol's own text in the middle.
+    """
+    _fixture, configuration = config_case("drawing_control_relay")
+    count = 64
+    base = configuration["templates"][0]
+    ref = "tenant/synth-many-io/v1"
+    anchors = [
+        {
+            "terminal": f"t{4 * k + s:02d}",
+            "x": [0, 20, 3 + 5 * k, 3 + 5 * k][s],
+            "y": [4 + 8 * k, 4 + 8 * k, 0, 40][s],
+        }
+        for k in range(4)
+        for s in range(4)
+    ]
+    configuration["templates"].append(
+        {
+            "ref": ref,
+            "function": "relay",
+            "terminals": [
+                {
+                    "id": f"t{i:02d}",
+                    "marking": f"{i:02d}",
+                    "kind": "contact",
+                    "required": i % 7 != 3,
+                    "group": None,
+                }
+                for i in range(count)
+            ],
+            "contact_groups": [],
+            "parameters": [],
+            "provenance": base["provenance"],
+            "review": base["review"],
+            "restricted_scope": [],
+            "symbol": _symbol(
+                20,
+                40,
+                [_rect(0, 0, 20, 40), {"kind": "text", "points": [4, 20], "text": "IO"}],
+                anchors,
+            ),
+        }
+    )
+    pattern = configuration["patterns"][0]
+    pattern["slots"].append({"id": "io", "template": ref})
+    binding = configuration["bindings"][0]
+    binding["slots"]["io"] = {"component": "io1"}
+    for i in range(count):
+        pattern["points"].append(
+            {"id": f"m{i:02d}", "strip": "x", "offset": 10 + i, "level": 1, "kind": "signal"}
+        )
+        binding["markings"][f"m{i:02d}"] = str(10 + i)
+        if i % 7 == 3:
+            continue
+        members = [{"slot": "io", "terminal": f"t{i:02d}"}, {"point": f"m{i:02d}", "side": "inner"}]
+        connections = [{"from": 0, "to": 1, "via": "wire"}]
+        if i % 2 == 0:
+            members.append({"point": f"m{i:02d}", "side": "outer"})
+            connections.append({"from": 1, "to": 2, "via": "internal" if i % 4 == 0 else "jumper"})
+        pattern["nets"].append(
+            {
+                "role": f"io{i:02d}",
+                "signal": f"SYN-IO-{i:02d}",
+                "scope": "binding",
+                "members": members,
+                "connections": connections,
+            }
+        )
+    configuration["components"].append(
+        {
+            "id": "io1",
+            "board": "DB-V",
+            "template": ref,
+            "designation": {"function": None, "location": None, "product": "A5"},
+        }
+    )
+    return _v1(), configuration
+
+
 STRESS: dict[str, Callable[[], tuple[dict[str, Any], dict[str, Any] | None]]] = {
     "many_terminals": stress_many_terminals,
     "four_edges": stress_four_edges,
@@ -409,10 +500,17 @@ STRESS: dict[str, Callable[[], tuple[dict[str, Any], dict[str, Any] | None]]] = 
     "legacy_devices": stress_legacy_devices,
 }
 
+#: The renderer's own review samples, kept as cases here.
+SAMPLES: dict[str, Callable[[], tuple[dict[str, Any], dict[str, Any] | None]]] = {
+    "long_names": sample_long_names,
+    "many_io": sample_many_io,
+}
+
 CONFIG_CASES = [f"config:{name}" for name in sorted(CONFIGS)]
 STRESS_CASES = [f"stress:{name}" for name in STRESS]
-ALL_CASES = CONFIG_CASES + STRESS_CASES
-LONG_CASES = ["stress:long_names", "stress:long_tokens"]
+SAMPLE_CASES = [f"sample:{name}" for name in SAMPLES]
+ALL_CASES = CONFIG_CASES + STRESS_CASES + SAMPLE_CASES
+LONG_CASES = ["stress:long_names", "stress:long_tokens", "sample:long_names"]
 
 
 @functools.cache
@@ -421,6 +519,8 @@ def build(case: str) -> tuple[entities.DesignModelV2, str]:
     configuration: dict[str, Any] | None
     if kind == "config":
         v1, configuration = config_case(name)
+    elif kind == "sample":
+        v1, configuration = SAMPLES[name]()
     else:
         v1, configuration = STRESS[name]()
     stored = write.snapshot_v2_from_v1(v1, configuration)
@@ -1190,6 +1290,8 @@ def test_markers_are_stripped_and_notes_are_required() -> None:
 
 def test_the_long_cases_exercise_long_values() -> None:
     for case in LONG_CASES:
+        if not case.startswith("stress:"):
+            continue  # the renderer's sample is kept as it is
         values = model_values(build(case)[0])
         assert max(len(v) for v in values["signal"]) >= 60
         assert max(len(v) for v in values["designation"]) >= 60
@@ -1215,8 +1317,8 @@ def test_all_text_is_inside_the_inner_frame_with_clearance(case: str) -> None:
             box = (ch["x0"], ch["top"], ch["x1"], ch["bottom"])
             if any(_contains(t, box) for t in page.titles):
                 continue
-            if not _overlap(page.outer, box):
-                continue  # the page margin's export marks
+            if box[3] <= page.outer[1] or box[1] >= page.outer[3]:
+                continue  # the export marks above and below the frame; never beside it
             if any(_contains((r.x0, r.top, r.x1, r.bottom), box) for r in labels):
                 continue
             if not (
@@ -1426,7 +1528,9 @@ def test_every_sheet_is_marked_hashed_and_numbered(case: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _hand_drawn(leads: Sequence[Sequence[P]]) -> bytes:
+def _hand_drawn(
+    leads: Sequence[Sequence[P]], texts: Sequence[tuple[float, float, str]] = ()
+) -> bytes:
     """A frame, a zone grid, one block and the given leads (bottom-up points, dot last)."""
     from reportlab.pdfgen.canvas import Canvas
 
@@ -1457,6 +1561,9 @@ def _hand_drawn(leads: Sequence[Sequence[P]]) -> bytes:
             path.lineTo(*point)
         canvas.drawPath(path, stroke=1, fill=0)
         canvas.circle(*points[-1], 2, stroke=1, fill=1)
+    canvas.setFont("Helvetica", 6)
+    for x, y, text in texts:
+        canvas.drawString(x, y, text)
     canvas.showPage()
     canvas.save()
     return buffer.getvalue()
@@ -1480,3 +1587,306 @@ def test_the_lead_checker_finds_crossings_and_leads_through_a_symbol() -> None:
     overlapping = [[(110, 490), (130, 490), (130, 450), (200, 450)]]
     problems = lead_problems(read_pdf(_hand_drawn(clean + overlapping)))
     assert any("overlaps lead" in p for p in problems), problems
+
+
+# --------------------------------------------------------------------------- #
+# 8. No text collides with other text, a lead or a symbol stroke
+# --------------------------------------------------------------------------- #
+
+#: How far past a symbol's drawn extent a pin marking may sit.
+PIN_MARGIN = 3 * mm
+#: How far from a symbol's shapes a lead's end still counts as one of its anchors.
+ANCHOR_REACH = 5 * mm
+#: The part of a lead next to its anchor that the pin's own marking may touch.
+ANCHOR_TICK = 2 * mm
+
+
+def _ink(ch: dict[str, Any]) -> Box:
+    """A char's box less the font's em padding: where its ink can be."""
+    size = float(ch["size"])
+    w = ch["x1"] - ch["x0"]
+    return (
+        ch["x0"] + 0.1 * w,
+        ch["top"] + 0.25 * size,
+        ch["x1"] - 0.1 * w,
+        ch["bottom"] - 0.15 * size,
+    )
+
+
+@dataclass
+class Word:
+    """A printed word: a run, or one pin marking of a run printed edge to edge with others."""
+
+    text: str
+    chars: list[dict[str, Any]]
+    block: BlockRead | None
+
+    @property
+    def box(self) -> Box:
+        return _box_of(
+            [(c["x0"], c["top"]) for c in self.chars] + [(c["x1"], c["bottom"]) for c in self.chars]
+        )
+
+    @property
+    def centre(self) -> P:
+        b = self.box
+        return (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+
+
+def _split(text: str, tokens: set[str]) -> list[str] | None:
+    """``text`` as a sequence of ``tokens``, if it is one (longest first)."""
+    if not text:
+        return []
+    for token in sorted(tokens, key=len, reverse=True):
+        if token and text.startswith(token):
+            rest = _split(text[len(token) :], tokens)
+            if rest is not None:
+                return [token, *rest]
+    return None
+
+
+def _block_at(page: Page, p: P) -> BlockRead | None:
+    owners = [
+        b
+        for b in page.blocks
+        if b.header.x0 - 3 * mm <= p[0] < b.right and b.header.top <= p[1] < b.bottom
+    ]
+    return max(owners, key=lambda b: b.header.x0) if owners else None
+
+
+def _pins(model: entities.DesignModelV2) -> dict[str, set[str]]:
+    """Each symbol-bearing component's name (squashed) and its anchored pins' markings."""
+    out: dict[str, set[str]] = {}
+    for comp in model.components:
+        template = model.template(comp.template_ref)
+        if template is None or template.symbol is None or not template.symbol.anchors:
+            continue
+        name = comp.designation.product if comp.designation else comp.id
+        markings = {t.id: t.marking for t in template.terminals}
+        out[squash(name)] = {squash(markings[a.terminal]) for a in template.symbol.anchors}
+    return out
+
+
+def _block_pins(block: BlockRead | None, pins: dict[str, set[str]]) -> set[str]:
+    if block is None:
+        return set()
+    return pins.get(squash(_HEADER.split(block.header.text)[0]), set())
+
+
+def words(page: Page, pins: dict[str, set[str]]) -> list[Word]:
+    out: list[Word] = []
+    for run in page.runs:
+        chars = sorted(
+            (
+                c
+                for c in page.chars
+                if abs(c["top"] - run.top) < 0.6
+                and run.x0 - 0.5 <= c["x0"]
+                and c["x1"] <= run.x1 + 0.5
+                and abs(c["size"] - run.size) < 0.01
+            ),
+            key=lambda c: c["x0"],
+        )
+        if not chars:
+            continue
+        block = _block_at(page, (run.xc, run.yc))
+        parts = _split(squash(run.text), _block_pins(block, pins))
+        if parts and len(parts) > 1 and sum(map(len, parts)) == len(chars):
+            n = 0
+            for part in parts:
+                out.append(Word(part, chars[n : n + len(part)], block))
+                n += len(part)
+        else:
+            out.append(Word(run.text, chars, block))
+    return out
+
+
+def text_collisions(pages: Sequence[Page], pins: dict[str, set[str]] | None = None) -> list[str]:
+    problems: list[str] = []
+    for page in pages:
+        if not page.is_drawing:
+            continue
+        found = words(page, pins or {})
+        inks = sorted(
+            ((w, c, _ink(c)) for w in found for c in w.chars), key=lambda item: item[2][0]
+        )
+        for i, (w, c, a) in enumerate(inks):
+            for v, d, b in inks[i + 1 :]:
+                if b[0] >= a[2]:
+                    break
+                if v is w or not _overlap(a, b):
+                    continue
+                problems.append(
+                    f"sheet {page.number} zone {_zone_name(page, (a[0], a[1]))}: {w.text!r} "
+                    f"overprints {v.text!r} ({c['text']!r} on {d['text']!r} at "
+                    f"{c['x0']:.1f},{c['top']:.1f})"
+                )
+        for block in page.blocks:
+            mine = [w for w in found if w.block is block]
+            # A lead's terminal is the one marked beside its point; the word with that
+            # marking nearest the lead's anchor is the pin's own marking, which may touch
+            # its own anchor tick.
+            own: dict[P, int] = {}
+            for lead in block.leads:
+                row = [
+                    w
+                    for w in mine
+                    if w.box[2] <= lead.dot[0]
+                    and lead.dot[0] - w.box[2] < MARKING_REACH
+                    and abs(w.centre[1] - lead.dot[1]) < MARKING_ROW
+                ]
+                if not row:
+                    continue
+                beside = max(row, key=lambda w: w.box[2])
+                same = [
+                    w for w in mine if w is not beside and squash(w.text) == squash(beside.text)
+                ]
+                if same:
+                    near = min(same, key=lambda w: math.dist(w.centre, lead.anchor))
+                    if math.dist(near.centre, lead.anchor) < ANCHOR_TICK + 2 * float(
+                        near.chars[0]["size"]
+                    ):
+                        own[lead.anchor] = id(near)
+            strokes: list[tuple[Seg | Circle, P | None]] = [(s, None) for s in block.strokes]
+            strokes += [(s, lead.anchor) for lead in block.leads for s in lead.segs]
+            for w in mine:
+                for c in w.chars:
+                    box = _ink(c)
+                    for stroke, anchor in strokes:
+                        if isinstance(stroke, Circle):
+                            far = max(
+                                math.dist(q, stroke.c)
+                                for q in (
+                                    (box[0], box[1]),
+                                    (box[2], box[1]),
+                                    (box[2], box[3]),
+                                    (box[0], box[3]),
+                                )
+                            )
+                            near_p = (
+                                max(box[0], min(stroke.c[0], box[2])),
+                                max(box[1], min(stroke.c[1], box[3])),
+                            )
+                            if math.dist(near_p, stroke.c) <= stroke.r <= far:
+                                problems.append(
+                                    f"sheet {page.number}: {w.text!r} ({c['text']!r}) is "
+                                    f"crossed by the circle at {_fmt(stroke.c)}"
+                                )
+                            continue
+                        if through_box(stroke.a, stroke.b, box) <= 0:
+                            continue
+                        if (
+                            anchor is not None
+                            and own.get(anchor) == id(w)
+                            and min(math.dist(anchor, stroke.a), math.dist(anchor, stroke.b)) < EPS
+                        ):
+                            continue  # the pin's own marking at its own anchor tick
+                        what = "lead" if anchor is not None else "symbol stroke"
+                        problems.append(
+                            f"sheet {page.number} zone {_zone_name(page, (box[0], box[1]))}: "
+                            f"{w.text!r} ({c['text']!r} at {c['x0']:.1f},{c['top']:.1f}) is "
+                            f"crossed by a {what} {_fmt(stroke.a)}-{_fmt(stroke.b)}"
+                        )
+    return problems
+
+
+def _on_stroke(p: P, strokes: Sequence[Seg | Circle]) -> bool:
+    """Whether a point lies on one of the strokes: a lead's anchor on its symbol."""
+    for s in strokes:
+        if isinstance(s, Circle):
+            if abs(math.dist(p, s.c) - s.r) < EPS:
+                return True
+            continue
+        dx, dy = s.b[0] - s.a[0], s.b[1] - s.a[1]
+        length = dx * dx + dy * dy
+        t = 0.0 if length == 0 else ((p[0] - s.a[0]) * dx + (p[1] - s.a[1]) * dy) / length
+        t = max(0.0, min(1.0, t))
+        if math.dist(p, (s.a[0] + t * dx, s.a[1] + t * dy)) < EPS:
+            return True
+    return False
+
+
+def pin_markings_outside(pages: Sequence[Page], model: entities.DesignModelV2) -> list[str]:
+    """Pin markings printed at a symbol, but beyond its drawn extent plus a margin."""
+    problems: list[str] = []
+    pins = _pins(model)
+    for page in pages:
+        if not page.is_drawing:
+            continue
+        found = words(page, pins)
+        for block in page.blocks:
+            mine = _block_pins(block, pins)
+            if not mine or not block.strokes or not block.dots:
+                continue
+            boxes = [_stroke_box(s) for s in block.strokes]
+            # The drawn shapes and the anchors on the symbol's edge.
+            # Plus the anchors at the symbol: a lead's end on a stroke, near the shapes, or
+            # the start of a routed lead (a lead with no anchor is one straight run from
+            # the band's edge, further off).
+            drawn = (
+                min(b[0] for b in boxes) - ANCHOR_REACH,
+                min(b[1] for b in boxes) - ANCHOR_REACH,
+                max(b[2] for b in boxes) + ANCHOR_REACH,
+                max(b[3] for b in boxes) + ANCHOR_REACH,
+            )
+            boxes += [
+                (lead.anchor[0], lead.anchor[1]) * 2
+                for lead in block.leads
+                if _on_stroke(lead.anchor, block.strokes)
+                or _contains(drawn, (lead.anchor[0], lead.anchor[1]) * 2, tol=0)
+                or len(lead.segs) > 1  # routed round the symbol: it starts at a pin
+            ]
+            extent = (
+                min(b[0] for b in boxes) - PIN_MARGIN,
+                min(b[1] for b in boxes) - PIN_MARGIN,
+                max(b[2] for b in boxes) + PIN_MARGIN,
+                max(b[3] for b in boxes) + PIN_MARGIN,
+            )
+            point_x = min(d[0] for d in block.dots)
+            candidates = [
+                w
+                for w in found
+                if w.block is block
+                and squash(w.text) in mine
+                and w.box[2] < point_x
+                and w.box[1] > block.header.bottom
+            ]
+            # The marking beside each point is the word nearest it on its row: not a pin marking.
+            beside: set[int] = set()
+            for dot in block.dots:
+                row = [
+                    w
+                    for w in candidates
+                    if abs(w.centre[1] - dot[1]) < MARKING_ROW and dot[0] - w.box[2] < MARKING_REACH
+                ]
+                if row:
+                    beside.add(id(max(row, key=lambda w: w.box[2])))
+            for w in candidates:
+                if id(w) not in beside and not _contains(extent, w.box, tol=0):
+                    b = w.box
+                    problems.append(
+                        f"sheet {page.number} {block.header.text}: pin marking {w.text!r} at "
+                        f"({b[0]:.1f},{b[1]:.1f})-({b[2]:.1f},{b[3]:.1f}) is outside the "
+                        f"symbol's extent plus {PIN_MARGIN:.1f} pt"
+                    )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_no_text_collides_with_text_or_strokes_and_pin_markings_stay_at_their_symbol(
+    case: str,
+) -> None:
+    model, _ = build(case)
+    pages = sheets_of(case)
+    problems = text_collisions(pages, _pins(model)) + pin_markings_outside(pages, model)
+    assert not problems, f"{len(problems)} problems:\n" + "\n".join(problems[:40])
+
+
+def test_the_collision_checker_finds_overprinting_and_text_on_a_lead() -> None:
+    clean = [[(110, 470), (200, 470)]]
+    assert text_collisions(read_pdf(_hand_drawn(clean))) == []
+    # A lead drawn through a printed word, and two words printed over each other.
+    pages = read_pdf(_hand_drawn(clean, texts=[(130, 468, "14"), (80, 520, "IO"), (82, 520, "08")]))
+    problems = text_collisions(pages)
+    assert any("crossed by a lead" in p for p in problems), problems
+    assert any("overprints" in p for p in problems), problems
