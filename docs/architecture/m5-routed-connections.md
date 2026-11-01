@@ -58,3 +58,8 @@ M4 tests changed, with reasons: the geometry tests' lead, lead-reader and zone-r
 ## 8. Decisions for the owner and a qualified engineer
 
 M5-1 (lines acceptable, with the schematic wording), M5-3 (junction dots, hop crossings, dashed links: neutral, no standard claimed), M5-9 (one board per routed sheet run, lines continue across sheets by flags), M5-11 (budgets: seven per terminal, the channel's lanes) and M5-12 (unrouted is informational) are taken at the proposal's defaults and remain open.
+
+## 9. Notes on decisions taken
+
+- Continuation text for a strip point: the label is `<board>/<designation>:<marking>` without the side and level (the PDF contract's label has none); the side follows the parenthesis, `to XR:8 (sheet 4, zone 7E), inner side`.
+- The `symbol reviewed (template approved)` rendering is untested by data: a submitted configuration may not claim a review, so no fixture has an approved template.
