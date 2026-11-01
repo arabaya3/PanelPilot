@@ -43,7 +43,7 @@ Invariants a consistency test can hold the layout to:
 3. Every terminal in no net is drawn with an `UNCONNECTED`/`unconnected` note and listed as an open item; every member of a net its connections do not join carries an `UNREALISED` note and the net is listed.
 4. Every sheet's text holds the export's label, `CONNECTION DRAWING — REVIEW ONLY — NOT FOR EXECUTION`, `Snapshot SHA-256: <hash>` and `Sheet n of N`.
 
-`model/test_connection_drawing.py` and `test_connection_drawing_pdf.py` (DB-free, every configuration) and `test_the_connection_drawing_and_schedules_of_a_revision_agree` (DB, through the export route) hold these today. 4. The PDF carries the snapshot hash (`DrawingHeader.design_sha256`) on every sheet's title block.
+`model/test_connection_drawing.py` and `test_connection_drawing_pdf.py` (DB-free, every configuration) and `test_the_connection_drawing_and_schedules_of_a_revision_agree` (DB, through the export route) hold these today. The hash printed is `DrawingHeader.design_sha256`, the revision row's `snapshot_sha256`.
 
 The export path is one function call: `design_projects._schedule_export(project, row, read, format, mark, applicable)` for all three formats, with `read` from one `_check_snapshot` call.
 
