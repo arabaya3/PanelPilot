@@ -80,8 +80,8 @@ DOT_OUT = 1.6 * MM
 #: Room between a dot and the channel, for the line labels.
 ESCAPE = 46 * MM
 #: Lanes in the channel, and the hop over a crossed line.
-PITCH = 2.5 * MM
-HOP_R = 0.9 * MM
+PITCH = 3.5 * MM
+HOP_R = 0.7 * MM
 #: Fan-out offsets inside a junction dot.
 FAN_DX = 0.35 * MM
 #: Continuation tracks in the band at the sheet's foot.
@@ -239,7 +239,10 @@ class _Row:
 
     @property
     def units(self) -> int:
-        fan = min(len(self.ends), MAX_FAN) + (1 if len(self.ends) > MAX_FAN else 0)
+        over = len(self.ends) - MAX_FAN
+        # Each connection beyond the fan gets a row naming it, and one row more points
+        # to the open items.
+        fan = min(len(self.ends), MAX_FAN) + (over + 1 if over > 0 else 0)
         return max(1, fan, len(self.marking))
 
 
@@ -320,10 +323,17 @@ def _marking_lines(owner: _Owner, cuts: cd.FullTexts) -> None:
         r.marking = cd.wrap(cd.row_marking(r.row.terminal), room, BODY_PT, True, cuts)
 
 
-def _title(owner: _Owner, part: _Part) -> str:
-    if part.number > 1:
-        return f"{owner.board}/{owner.name} ({owner.kind}) continued"
-    return f"{owner.board}/{owner.name} ({owner.kind})"
+def _fit_head(
+    head: str, tail: str, room: float, size: float, bold: bool, cuts: cd.FullTexts
+) -> str:
+    """``head + tail`` on one line; a head too long is cut with ``…[n]``, the tail never."""
+    if cd.text_width(head + tail, size, bold) <= room:
+        return head + tail
+    marker = f"{cd.ELLIPSIS}[{cuts.number(head)}]"
+    cut = head
+    while cut and cd.text_width(cut + marker + tail, size, bold) > room:
+        cut = cut[:-1]
+    return cut + marker + tail
 
 
 def _info(owner: _Owner) -> str:
@@ -341,9 +351,17 @@ _ROOM = BOX_W - 2 * PAD_X
 def _head_lines(
     owner: _Owner, part: _Part, cuts: cd.FullTexts, refs: str
 ) -> list[tuple[str, float, bool, str, str]]:
+    # One line: the name with its kind, so the block is always identifiable; a
+    # name too long for the box is cut with "…[n]" and printed in full on the full-text list.
+    kind = f" ({owner.kind})" + (" continued" if part.number > 1 else "")
     out = [
-        (t, TITLE_PT, True, "plain", "title")
-        for t in cd.wrap(_title(owner, part), _ROOM, TITLE_PT, True, cuts)
+        (
+            _fit_head(f"{owner.board}/{owner.name}", kind, _ROOM, TITLE_PT, True, cuts),
+            TITLE_PT,
+            True,
+            "plain",
+            "title",
+        )
     ]
     out += [
         (t, SECONDARY_PT, False, "grey", "header")
@@ -401,7 +419,14 @@ def _tracks(state: _SheetState) -> dict[str, int]:
     return out
 
 
+def _lanes_needed(state: _SheetState) -> int:
+    """At most one lane per connection touching the sheet: never more than the channel holds."""
+    return len({e.connection_id for p in state.parts for r in p.rows for e in r.ends[:MAX_FAN]})
+
+
 def _fits(state: _SheetState) -> bool:
+    if _lanes_needed(state) > LANES and len(state.parts) > 1:
+        return False
     band = _band_top(max(_tracks(state).values()))
     for side in ("L", "R"):
         room = int((_column_top(side) - band) // U)
@@ -558,25 +583,42 @@ class _Terminal:
     dot: Point
     slots: list[_Slot]
     overflow: list[cd.End]
-    overflow_y: float = 0.0
-    nudge: float = 0.0  # how far the dot sits above its rows' centre (off a zone line)
+    overflow_ys: list[float] = field(default_factory=list)
+    nudge: float = 0.0  # how far the dot is moved off a zone line
+    slot_ys: list[float] = field(default_factory=list)  # its lines' rows
 
 
-def _off_zone_line(y: float) -> float:
-    """How far to raise a dot that would sit on a zone row's edge, where its zone is ambiguous."""
-    edge = (cd.AREA_TOP - y) / cd.ZONE_ROW
-    if abs(edge - round(edge)) * cd.ZONE_ROW < 0.5 * MM:
-        return 0.6 * MM
-    return 0.0
+#: A dot (and the marking centred on it) stays this far from a zone row's edge.
+ZONE_CLEAR = 1.5 * MM
+
+
+def _off_zone_line(y: float, lo: float, hi: float, lines: int) -> float:
+    """How far to move a dot near a zone row's edge, so it and its marking sit in one zone.
+
+    The marking (``lines`` lines, centred on the dot) stays inside its row
+    (``lo``..``hi``): the nearer side of the edge is tried first, then the other.
+    """
+    edge_y = cd.AREA_TOP - round((cd.AREA_TOP - y) / cd.ZONE_ROW) * cd.ZONE_ROW
+    d = y - edge_y
+    if abs(d) >= ZONE_CLEAR:
+        return 0.0
+    up = ((lines - 1) / 2 * 3.0 + 0.95) * MM
+    down = ((lines - 1) / 2 * 3.0 + 1.4) * MM
+    near = (ZONE_CLEAR if d >= 0 else -ZONE_CLEAR) - d
+    far = (-ZONE_CLEAR if d >= 0 else ZONE_CLEAR) - d
+    for move in (near, far):
+        if y + move + up <= hi - 0.2 * MM and y + move - down >= lo + 0.2 * MM:
+            return move
+    return near
 
 
 def _fan(t: _Terminal, ys: list[float]) -> None:
     """Fan-out offsets: highest-going up line and lowest-going down line nearest the dot."""
     n = len(ys)
     sign = 1.0 if t.side == "L" else -1.0
-    middle = (n - 1) / 2
-    ups = [j for j in range(n) if j < middle]
-    downs = [j for j in range(n) if j > middle]
+    y = t.dot[1]
+    ups = [j for j in range(n) if ys[j] > y + 1e-6]
+    downs = [j for j in range(n) if ys[j] < y - 1e-6]
     for j, end in enumerate(t.row.ends[:n]):
         if j in ups:
             dx = ups.index(j) * FAN_DX
@@ -584,7 +626,7 @@ def _fan(t: _Terminal, ys: list[float]) -> None:
             dx = (len(downs) - 1 - downs.index(j)) * FAN_DX
         else:
             dx = 0.0
-        t.slots.append(_Slot(end, ys[j], sign * dx, j == middle and not t.nudge))
+        t.slots.append(_Slot(end, ys[j], sign * dx, j not in ups and j not in downs))
 
 
 # --------------------------------------------------------------------------- #
@@ -626,14 +668,19 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
                 k = r.units
                 ys = [_unit_top(p.side, unit + j) - U / 2 for j in range(k)]
                 drawn = min(len(r.ends), MAX_FAN)
-                dot_y = sum(ys[:drawn]) / drawn if drawn else ys[0]
-                nudge = _off_zone_line(dot_y)
+                # The dot (and its marking) sits at the middle of its lines' rows, or
+                # of the whole row when the marking takes more rows than the lines.
+                span = ys if len(r.marking) > drawn else ys[: max(drawn, 1)]
+                dot_y = sum(span) / len(span)
+                nudge = _off_zone_line(dot_y, ys[-1] - U / 2, ys[0] + U / 2, len(r.marking))
                 dot_y += nudge
                 dot_x = L_DOT if p.side == "L" else R_DOT
-                t = _Terminal(r, number, p.side, (dot_x, dot_y), [], [], nudge=nudge)
+                t = _Terminal(
+                    r, number, p.side, (dot_x, dot_y), [], [], nudge=nudge, slot_ys=ys[:drawn]
+                )
                 terminals[r.row.key] = t
                 places[r.row.key] = cd.Place(number, 0, unit, dot_x, dot_y)
-                t.overflow_y = ys[drawn] if len(r.ends) > MAX_FAN else 0.0
+                t.overflow_ys = ys[drawn:] if len(r.ends) > MAX_FAN else []
                 unit += k
     # Fan order: by far end's place (same sheet first, higher first), then id.
     for t in terminals.values():
@@ -647,9 +694,7 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
 
         r.ends.sort(key=order)
         drawn = min(len(r.ends), MAX_FAN)
-        top = t.dot[1] - t.nudge + (drawn - 1) / 2 * U
-        ys = [top - j * U for j in range(drawn)]
-        _fan(t, ys)
+        _fan(t, t.slot_ys)
         t.overflow = r.ends[MAX_FAN:]
 
     # Every connection: routed on a sheet, continued, or not routed.
@@ -844,9 +889,12 @@ def _route_sheet(
                             key=r.row.key,
                         )
                     )
+            for n, over in enumerate(t.overflow):
+                slot = _Slot(over, t.overflow_ys[n], 0.0, False)
+                texts.append(_escape_text(t, slot, f"{labels[over.connection_id]} not routed"))
             if t.overflow:
-                slot = _Slot(t.overflow[0], t.overflow_y, 0.0, False)
-                texts.append(_escape_text(t, slot, f"+{len(t.overflow)} more: not routed"))
+                slot = _Slot(t.overflow[0], t.overflow_ys[len(t.overflow)], 0.0, False)
+                texts.append(_escape_text(t, slot, "(see the open items)"))
 
     # Runs.
     keys = {t.row.row.key for t in here}
@@ -930,20 +978,21 @@ def _route_sheet(
                 (end[0] + s * 2 * MM, end[1]),
                 (end[0], end[1] - 0.9 * MM),
             )
-            text = f"to {run.a.end.far_board}/{_far_label(run.a.end)} ({far_place.reference(-1)})"
             side = _side_of(run.a.end)
-            if side:
-                text += f", {side} side"
+            tail = f" ({far_place.reference(-1)})" + (f", {side} side" if side else "")
             room = (
                 (CH_X0 if run.group == "Lc" else cd.AREA_RIGHT - 3.2 * MM)
                 - (cd.AREA_LEFT + 3.2 * MM if run.group == "Lc" else CH_X1)
                 - 6 * MM
             )
-            text = (
-                cd.wrap(text, room, BODY_PT, False, cuts)[0]
-                if cd.text_width(text, BODY_PT) > room
-                else text
-            )
+            # Never cut: where the other end is. Cut first the far end's name,
+            # keeping its marking, then (if still too long) the marking too.
+            name, _, marking = _far_label(run.a.end).rpartition(":")
+            to = f"to {run.a.end.far_board}/{name}"
+            if cd.text_width(f"{to[:12]}…[99]:{marking}{tail}", BODY_PT) <= room:
+                text = _fit_head(to, f":{marking}{tail}", room, BODY_PT, False, cuts)
+            else:
+                text = _fit_head(f"{to}:{marking}", tail, room, BODY_PT, False, cuts)
             shift = 1.0 * MM
             if run.group == "Lc":
                 texts.append(cd.Text(end[0] + shift, end[1] + 0.6 * MM, text, BODY_PT, role="far"))
@@ -1066,7 +1115,7 @@ def _assign_lanes(runs: list[_Run]) -> int | None:
     ll = sorted(by["LL"], key=lambda r: (r.high - r.low, r.low, r.cid))
     order += pack(ll)
     lr = sorted(by["LR"], key=lambda r: (r.low, r.high, r.cid))
-    order += pack(lr)
+    order += _fewest_crossings([[r] for r in lr])  # one lane each: lanes reorder freely
     rr = sorted(by["RR"], key=lambda r: (r.high - r.low, r.low, r.cid))
     order += list(reversed(pack(rr)))
     # Right continuations: the highest escape leftmost; the rightmost lane takes the highest track.
@@ -1080,6 +1129,39 @@ def _assign_lanes(runs: list[_Run]) -> int | None:
         for run in lane:
             run.lane = n
     return len(order)
+
+
+def _sides_y(run: _Run) -> tuple[float, float]:
+    """A left-right run's escape heights: (left, right)."""
+    assert run.b is not None
+    return (run.a.y, run.b.y) if run.ta.side == "L" else (run.b.y, run.a.y)
+
+
+def _crossings(left: list[_Run], right: list[_Run]) -> int:
+    """Crossings when lane ``left`` lies left of lane ``right`` (left-right runs)."""
+    n = 0
+    for p in left:
+        for q in right:
+            _pl, pr = _sides_y(p)
+            ql, _qr = _sides_y(q)
+            n += q.low < pr < q.high  # p's right escape crosses q's lane
+            n += p.low < ql < p.high  # q's left escape crosses p's lane
+    return n
+
+
+def _fewest_crossings(lanes: list[list[_Run]]) -> list[list[_Run]]:
+    """The lanes ordered by insertion, each where it adds the fewest crossings (ties: earliest)."""
+    out: list[list[_Run]] = []
+    for lane in lanes:
+        best, where = None, 0
+        for i in range(len(out) + 1):
+            cost = sum(_crossings(o, lane) for o in out[:i]) + sum(
+                _crossings(lane, o) for o in out[i:]
+            )
+            if best is None or cost < best:
+                best, where = cost, i
+        out.insert(where, lane)
+    return out
 
 
 def _lane_xs(runs: list[_Run], count: int) -> dict[int, float]:
