@@ -96,7 +96,7 @@ New `OPEN_KINDS`, each printed at the place it occurs and listed on the open-ite
 - `unrouted`: no line drawn (budget, no channel room, split across sheets, `route: reference`, or an end without a port). The stub and cross-reference are drawn exactly as M4, with `not routed: <reason>`. A connection cut by sheet splitting is listed with reason `other sheet`, as information rather than a defect.
 - `unplaced`: a block the placement could not fit; drawn in an overflow area/sheet with its rows and stubs, never dropped.
 - `symbol not defined` (M4, unchanged) and `pin side unknown`: a placeholder or edge-ambiguous anchor; dotted lead, no guessed side.
-- `ambiguous`: conflicting hints (two `order` values equal in a group, a bus requested for a net that does not form a chain), or a terminal in two symbol parts (refused at read time instead, if decided so).
+- `ambiguous`: conflicting hints (two `order` values equal in a group, a shared channel requested for a net with an `UNREALISED` member), or a terminal in two symbol parts (refused at read time instead, if decided so).
 
 Invariant: every connection is either drawn as a line between both its ends or listed as unrouted with both stubs present. Nothing is silently omitted. The cover sheet gives counts: connections routed, unrouted (by reason), blocks unplaced.
 
@@ -127,7 +127,7 @@ Review gates: the export is gated exactly as M4 (`SCHEDULE_FORMATS` path, v2 onl
 | --- | --- |
 | A line is read as the physical wire path, length or routing in the enclosure | Cover and legend state that lines show which terminals a connection joins, not where a wire runs. Line style identical for all vias except a label; no duct or bundle geometry. Proposed note on every sheet (M5-1) |
 | A tidy drawing implies a complete or checked design | Open-item counts on the cover and per sheet; unrouted and unconnected stay red as in M4; the review-only label unchanged on every sheet |
-| A bus or bridge implies a busbar/jumper exists | A bus is drawn only on explicit `display: bus` and only through held connections; its label is the net's signal; `via` printed on every segment |
+| A shared channel or bridge implies a busbar/jumper exists | Drawn only on an explicit hint or a held `via: jumper` connection, one line per connection; `via` printed on every line |
 | A crossing read as a joint, or a joint missed | Junction dots only at model nodes; crossings never dotted; property test 2 |
 | Cable grouping implies cores in one cable are a real cable spec | Only `cable_id`, `index`, `label` printed as held; no type, size or count invented |
 | Symbol shape implies a device type or standard symbol | Symbols are data; template ref printed under each block; no standard named; review status of the template printed |
@@ -174,7 +174,7 @@ D-5, D-6, D-8 and O-3..O-6, O-8, O-12 are unchanged: printed only as held, life-
 | M5a: schema | Optional pin `side`/`order`, symbol `parts`, strip anchors, design `layout` hints, net `display`; strict codec; size limits | Every existing fixture's canonical JSON, `registry_lock`, subject digests and snapshot hashes unchanged; malformed additions refused with named errors; round-trip property tests; no renderer change |
 | M5b: ports and same-column routing | Routing module, ports from data, channel routing within a sheet for both ends in adjacent columns; unrouted open item; `layout_sha256` | Invariants 1 to 5 hold on all fixtures; no-hint fixtures equal M4 layout; deterministic across runs; renderer version bumped with fingerprints |
 | M5c: full sheet routing and crossing reduction | Placement reorder, grid fallback, nudging, crossing counts, budgets | Property tests for overlap/crossing; budgets enforced by counts; stress configuration finishes within budget or reports unrouted; crossing ratchet recorded |
-| M5d: buses, jumpers, cable groups | `display: bus`, bridge drawing for adjacent jumpers, cable bundle labels | Bus taps equal joined members; nothing drawn for an unjoined member; no value printed not in the snapshot |
+| M5d: shared channels, cable groups | `display: shared_channel`, cable bundle labels by `cable_id` | One track per connection; no trunk; nothing drawn for an unjoined member; no value printed not in the snapshot |
 | M5e: multi-sheet and held-out | Sheet partition by connected components, cut connections as cross-references; one new held-out configuration added as data only | Held-out commit adds only JSON and fingerprint entries; data-only name test passes; every cut connection listed with both cross-references |
 | M5f: reviewer wording | Cover counts, legend notes per M5-1..M5-3 once decided | Owner/QE sign-off of the wording recorded; review-only label and execution refusal tests unchanged |
 
