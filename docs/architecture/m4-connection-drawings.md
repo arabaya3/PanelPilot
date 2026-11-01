@@ -76,7 +76,7 @@ A template may carry `symbol: {width, height, shapes, anchors}`: whole numbers i
 
 ## 6. Renderer version
 
-The v2 renderer version is bumped (now `2026.11.01.v2-6`, for the M5-0 layout; it was `2026.11.01.v2-5`), the two M4 configurations with symbol data are fingerprint cases too, and the drawing of each fingerprint case is recorded in `renderer_fingerprints_v2.json`, held by `test_renderer_version.py` like the schedules: content changed without a version bump fails.
+The v2 renderer version is bumped (`2026.11.01.v2-6` for the M5-0 layout, it was `2026.11.01.v2-5`; M5 routed sheets made it `2026.11.01.v2-7`, see `m5-routed-connections.md`), the two M4 configurations with symbol data are fingerprint cases too, and the drawing of each fingerprint case is recorded in `renderer_fingerprints_v2.json`, held by `test_renderer_version.py` like the schedules: content changed without a version bump fails.
 
 ## 7. Test data
 
