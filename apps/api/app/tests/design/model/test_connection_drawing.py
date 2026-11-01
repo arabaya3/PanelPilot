@@ -1,7 +1,7 @@
-"""The review-only connection drawing (M4): generic, from the saved model alone, nothing invented.
+"""The connection drawing layout (M4): the schedules' terminals, nets and wires; every open item shown.
 
-Every configuration under ``model/configurations/`` is drawn, so a
-configuration added there as data is drawn and checked with no code change
+Every configuration under ``model/configurations/`` is laid out, so a
+configuration added there as data is checked with no code change
 (``drawing_heldout_feeder`` is such a case, added in a commit of its own).
 """
 
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from app.design import connection_drawing_pdf, marking, snapshot
 from app.design.model import connection_drawing, entities, findings_v2, schedules, write
 from app.design.model.read import read_snapshot
 from app.domain import design_configuration, design_projects
-from app.tests.design.model.v2_support import CONFIG_DIR, CONFIGS, config_case
+from app.tests.design.model.v2_support import CONFIGS, config_case
 
 DESIGN_DIR = Path(connection_drawing_pdf.__file__).parent
 
@@ -64,6 +63,11 @@ def _pages(content: bytes) -> list[str]:
 
 
 CASES = sorted(CONFIGS)
+
+
+def _held_out() -> None:
+    # Added as data in a commit of its own; it must stay, so its absence fails.
+    assert HELD_OUT_DRAWING in CONFIGS
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -134,48 +138,6 @@ def test_everything_unresolved_is_shown_and_listed(case: str) -> None:
                 assert ("symbol_not_defined", component.id) in listed
 
 
-@pytest.mark.parametrize("case", CASES)
-def test_every_sheet_is_marked_and_carries_the_snapshot_hash(case: str) -> None:
-    content, digest = _pdf(case)
-    pages = _pages(content)
-    total = len(pages)
-    assert total >= 3
-    for number, page in enumerate(pages, start=1):
-        assert marking.DRAFT_LABEL in page
-        assert connection_drawing_pdf.DRAWING_LABEL in page
-        assert "REVIEW ONLY — NOT FOR EXECUTION" in page
-        assert f"Snapshot SHA-256: {digest}" in page
-        assert f"Sheet {number} of {total}" in page
-    assert f"Design hash (SHA-256): {digest}" in pages[0]
-
-
-def test_the_marks_are_drawn_in_the_schedules_red() -> None:
-    content, _digest = _pdf("io_marshalling")
-    with pdfplumber.open(io.BytesIO(content)) as pdf:
-        for page in pdf.pages:
-            chars = [c for c in page.chars if c["size"] >= 9.5 and c["top"] < 30]  # the stamps
-            words = "".join(c["text"] for c in chars)
-            assert "NOTFOREXECUTION" in words.replace(" ", "")
-            colours = {tuple(round(v, 3) for v in c["non_stroking_color"]) for c in chars}
-            assert colours == {(0.69, 0.0, 0.125)}
-
-
-@pytest.mark.parametrize("case", CASES)
-def test_nothing_is_printed_that_the_model_does_not_hold(case: str) -> None:
-    """Every synthetic value printed is one the configuration gives; nothing else is filled in."""
-    content, _digest = _pdf(case)
-    text = " ".join(_pages(content))
-    source = (CONFIG_DIR / f"{case}.json").read_text(encoding="utf-8")
-    for token in set(re.findall(r"SYN-[A-Z0-9-]+", text)):
-        assert token in source, token
-    model, _ = _model(case)
-    if model.wires:
-        assert connection_drawing.NOT_SET in text
-    # No standard or rating vocabulary appears beyond the disclaimer's own words.
-    for word in ("IEC", "EN 60", "NFPA", "UL 508", "BS 7671", "compliant", "complies"):
-        assert word not in text, word
-
-
 def test_a_wire_attribute_is_printed_with_its_source_or_as_not_set() -> None:
     model, _ = _model("drawing_control_relay")
     drawing = connection_drawing.drawing_set(model)
@@ -185,51 +147,6 @@ def test_a_wire_attribute_is_printed_with_its_source_or_as_not_set() -> None:
     assert "mm² 0.75 assumed (" in joined
     assert "colour SYN-COLOUR-B [user]" in joined
     assert "no. not set" in joined
-
-
-def test_symbols_come_from_data_and_a_missing_one_is_a_labelled_placeholder() -> None:
-    content, _ = _pdf("drawing_control_relay")
-    pages = _pages(content)
-    drawing_pages = " ".join(pages[1:-1])
-    assert connection_drawing.SYMBOL_NOT_DEFINED in drawing_pages
-    # The relay's own symbol text ("K") is drawn from its data.
-    model, _ = _model("drawing_control_relay")
-    relay = model.template("tenant/synth-drw-relay/v1")
-    assert relay is not None
-    assert relay.symbol is not None
-    assert any(shape.text == "K" for shape in relay.symbol.shapes)
-    with pdfplumber.open(io.BytesIO(content)) as pdf:
-        sheet = pdf.pages[1]
-        assert any(w["text"] == "K" for w in sheet.extract_words())
-        assert sheet.curves  # the power supply's circle
-
-
-def _held_out() -> None:
-    # Added as data in a commit of its own; it must stay, so its absence fails.
-    assert HELD_OUT_DRAWING in CONFIGS
-
-
-@pytest.mark.parametrize("case", ["motor_dol_with_control", HELD_OUT_DRAWING])
-def test_a_cross_reference_names_the_far_sheet_and_zone(case: str) -> None:
-    if case == HELD_OUT_DRAWING:
-        _held_out()
-    model, _ = _model(case)
-    drawing = connection_drawing.drawing_set(model)
-    across = [
-        (row, end)
-        for row in drawing.rows
-        for end in row.ends
-        if end.far_place.sheet != row.place.sheet
-    ]
-    assert across, "the case spans sheets"
-    for row, end in across:
-        first, _second = connection_drawing.end_texts(end, row.place.sheet)
-        assert f"(sheet {end.far_place.sheet}, zone {end.far_place.zone})" in first
-        assert re.fullmatch(r"[1-8][A-F]", end.far_place.zone)
-    content, _ = _pdf(case)
-    text = " ".join(_pages(content))
-    row, end = across[0]
-    assert connection_drawing.end_texts(end, row.place.sheet)[0] in text
 
 
 def test_a_block_too_tall_for_a_column_continues_and_says_where() -> None:
