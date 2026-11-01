@@ -610,6 +610,30 @@ def read_back(case: str) -> Read:
     return out
 
 
+ELLIPSIS = "…"
+
+
+def fits(printed: str, full: str) -> bool:
+    """Printed in full, or cut to fit: a prefix of the full text then an ellipsis."""
+    if printed == full:
+        return True
+    if not printed.endswith(ELLIPSIS):
+        return False
+    head = printed[: -len(ELLIPSIS)].rstrip()
+    return bool(head) and squash(full).startswith(squash(head))
+
+
+def header_at(place: connection_drawing.Place) -> Printed:
+    """Where a block part's header is printed: its title's start, by the zone grid."""
+    x = pdf_module._AREA_LEFT + place.column * pdf_module._COLUMN + 2 * mm
+    y = pdf_module._AREA_TOP - (place.slot + 0.5) * pdf_module._SLOT
+    return Printed(place.sheet, _zone_of(x, y))
+
+
+def far_line(label: str, target: Printed, here: int, via: str) -> str:
+    return f"to {label} ({reference(target, here)}) via {via}"
+
+
 def reference(target: Printed, here: int) -> str:
     if target.sheet == here:
         return f"this sheet, zone {target.zone}"
@@ -726,35 +750,50 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
     for c in model.connections:
         by_end[c.start.key].append(c)
         by_end[c.end.key].append(c)
+    cut: list[tuple[Key, tuple[str, str], str]] = []
     for key, row in expected.items():
         printed = got.texts[key]
-        sheet_of_line = [sheet for sheet, _u, _l in printed]
-        want: Counter[tuple[str, str]] = Counter()
-        for note in row_notes(row, groups, bool(by_end[key])):
-            want[("", note)] += 1
-        ends: list[tuple[Key, entities.Connection]] = []
-        for c in by_end[key]:
-            ends.append((c.end.key if c.start.key == key else c.start.key, c))
-        found = Counter((u, low) for _s, u, low in printed)
-        # Lines are matched with the sheet they are on: a reference reads from there.
-        for far, c in ends:
-            matches = [
-                sheet
-                for sheet in set(sheet_of_line)
-                if (
-                    f"→ {expected[far].label} ({reference(got.printed[far], sheet)}) via {c.via}",
-                    second_line(model, c),
-                )
-                in found
+        notes = row_notes(row, groups, bool(by_end[key]))
+        ends = [(c.end.key if c.start.key == key else c.start.key, c) for c in by_end[key]]
+        needed = Counter(("note", n) for n in notes) + Counter(("end", c.id) for _f, c in ends)
+        matched: Counter[tuple[str, str]] = Counter()
+        # Each printed line is one note or one end; an end's reference reads
+        # from the sheet the line is on. A text cut to fit ends in an ellipsis.
+        for sheet, upper, lower in printed:
+            options = [("note", n) for n in notes if not upper and fits(lower, n)]
+            options += [
+                ("end", c.id)
+                for far, c in ends
+                if fits(upper, far_line(expected[far].label, got.printed[far], sheet, c.via))
+                and fits(lower, second_line(model, c))
             ]
-            assert matches, (key, c.id, found)
-            want[
-                (
-                    f"→ {expected[far].label} ({reference(got.printed[far], matches[0])}) via {c.via}",
-                    second_line(model, c),
-                )
-            ] += 1
-        assert found == want, (key, found, want)
+            assert options, (key, sheet, upper, lower)
+            matched[options[0]] += 1
+            for text in (upper, lower):
+                if text.endswith(ELLIPSIS):
+                    cut.append((key, options[0], text))
+        assert matched == needed, (key, matched, needed)
+    # A text cut to fit is printed in full elsewhere: the open items or the schedules.
+    listed = squash(" ".join(open_item_lines(case)))
+    wire_rows = {w.connection_id: w for w in schedules.wire_schedule(model)}
+    connections = {c.id: c for c in model.connections}
+    for key, (kind, subject), text in cut:
+        row = expected[key]
+        if kind == "note":
+            assert squash(f"{row.label}:") in listed or (
+                row.net is not None and squash(f"({row.net.id})") in listed
+            ), (key, text)
+            continue
+        made = connections[subject]
+        held = wire_rows.get(subject)
+        if held is not None:
+            assert second_line(model, made) == (
+                f"wire {held.wire_id}: no. {connection_drawing.cell_text(held.number)}; "
+                f"mm² {connection_drawing.cell_text(held.cross_section_mm2)}; "
+                f"colour {connection_drawing.cell_text(held.colour)}"
+            ), (key, text)
+        if held is not None:
+            assert (held.start_ref.key, held.end_ref.key) == (made.start.key, made.end.key)
     # The wire numbers printed: each wire at both ends of its connection, no others.
     printed_wires = Counter(
         m.group(1)
@@ -901,7 +940,7 @@ def test_the_open_cases_exercise_every_kind_of_open_item() -> None:
 # --------------------------------------------------------------------------- #
 
 _WIRE = re.compile(r"^wire (\S+): no\. (.+); mm² (.+); colour (.+)$")
-_FAR = re.compile(r"^→ (.+) \((?:this sheet|sheet \d+), zone \d+[A-F]\) via (\S+)$")
+_FAR = re.compile(r"^to (.+) \((?:this sheet|sheet \d+), zone \d+[A-F]\) via (\S+)$")
 _CORE = re.compile(r"^cable (\S+) core (\d+), core label (.+)$")
 _VALUE = re.compile(r"^(?:not set|(.+) \[(user|data|unresolved)\]|(.+) assumed \((\S+)\))$")
 
@@ -1009,10 +1048,12 @@ def test_cross_references_are_symmetric_and_name_where_the_far_end_is_drawn(case
             assert following.place == part.continues_on
             assert following.continued_from == part.place
             _p, upper, _lower = headers[(part.owner_id, part.part)]
-            assert f"continues on {part.continues_on.reference(part.place.sheet)}" in upper
+            assert (
+                f"continues on {reference(header_at(following.place), part.place.sheet)}" in upper
+            )
             _p, _upper, lower = headers[(following.owner_id, following.part)]
             assert lower.startswith(
-                f"continued from {part.place.reference(following.place.sheet)};"
+                f"continued from {reference(header_at(part.place), following.place.sheet)};"
             )
 
 
@@ -1115,3 +1156,21 @@ def test_nothing_printed_crosses_its_column_or_the_drawing_area(case: str) -> No
             assert ch.x1 <= left + pdf_module._COLUMN + 0.5, (sheet.number, ch)
             assert ch.y0 >= pdf_module._AREA_BOTTOM - 0.5, (sheet.number, ch)
             assert ch.y1 <= pdf_module._AREA_TOP + 0.5, (sheet.number, ch)
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_no_two_printed_characters_overlap(case: str) -> None:
+    """Notes, cross-references and markings never share a baseline over each other."""
+    drawing = drawing_of(case)
+    pages = pdf_pages(case)
+    for sheet in drawing.sheets:
+        for place, slot in pages[sheet.number - 1].slots.items():
+            chars = slot.chars[("all", "upper")] + slot.chars[("all", "lower")]
+            chars = sorted((c for c in chars if c.text.strip()), key=lambda c: c.x0)
+            for n, a in enumerate(chars):
+                for b in chars[n + 1 :]:
+                    if b.x0 >= a.x1:
+                        break
+                    vertical = min(a.y1, b.y1) - max(a.y0, b.y0)
+                    horizontal = min(a.x1, b.x1) - max(a.x0, b.x0)
+                    assert vertical < 1.0 or horizontal < 0.6, (sheet.number, place, a, b)
