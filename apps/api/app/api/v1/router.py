@@ -14,6 +14,7 @@ from app.api.v1.routes import (
     calculations,
     design,
     diagnostics,
+    engineering_reviews,
     feedback,
     health,
     images,
@@ -52,6 +53,9 @@ api_router.include_router(calculations.router, prefix="/calculations", tags=["ca
 api_router.include_router(design.router, prefix="/design", tags=["design"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(team.router, prefix="/team", tags=["team"])
+api_router.include_router(
+    engineering_reviews.router, prefix="/engineering-reviews", tags=["engineering-reviews"]
+)
 api_router.include_router(ingestion.router, prefix="/ingestion", tags=["ingestion"])
 api_router.include_router(verification.router, prefix="/verification", tags=["verification"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])

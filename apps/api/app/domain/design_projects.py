@@ -35,6 +35,7 @@ existed.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -45,7 +46,7 @@ import structlog
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.core import config
 from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
@@ -61,10 +62,10 @@ from app.design import (
     schedule_pdf,
     snapshot,
 )
-from app.design.model import entities, findings_v2, schedules, versions
+from app.design.model import anchoring, entities, findings_v2, schedules, versions
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
-from app.domain import billing, design_configuration, permissions
+from app.domain import billing, design_configuration, engineering_reviews, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
@@ -420,18 +421,147 @@ def _changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]
         changed.append("catalogue_version")
     if applicable.thorough and row.profile_sha256 != applicable.profile_sha256:
         changed.append("profile")
-    stored = _classified(_stored_findings(row))
-    # The same findings classified differently: the policy changed. Other
-    # findings altogether are not a policy change: under other rules they are
-    # explained by the version named above; under the same rules the stored
-    # findings no longer belong to the design (``_findings_mismatch``).
-    if (
-        applicable.findings is not None
-        and applicable.findings != stored
-        and _codes(applicable.findings) == _codes(stored)
-    ):
-        changed.append("findings_policy")
+    if applicable.findings is not None:
+        changed += _findings_parts(_classified(_stored_findings(row)), applicable.findings)
     return tuple(changed)
+
+
+def _findings_parts(
+    stored: Sequence[tuple[str, str, bool]], current: Sequence[tuple[str, str, bool]]
+) -> list[str]:
+    """What changed between a stored and today's classification of the same design.
+
+    ``findings_policy``: the same findings (codes, review findings aside)
+    classified differently. ``review_decisions``: the review findings differ
+    (a review decision recorded, superseded or withdrawn since, M3) while
+    every other finding code is the same. Other findings altogether are
+    neither: under other rules they are explained by the version the stale
+    check names; under the same rules the stored findings no longer belong
+    to the design (``_findings_mismatch``).
+    """
+    parts: list[str] = []
+    plain_stored, plain_current = _without_reviews(stored), _without_reviews(current)
+    if _codes(plain_stored) != _codes(plain_current):
+        return parts
+    if plain_stored != plain_current:
+        parts.append("findings_policy")
+    if _only_reviews(stored) != _only_reviews(current):
+        parts.append("review_decisions")
+    return parts
+
+
+#: The finding codes a template's or pattern's review status alone decides
+#: (``findings_v2._review_findings``): what a server-side review decision
+#: legitimately changes in a stored design's findings (M3).
+_REVIEW_CODES: frozenset[str] = frozenset(
+    {"template_unreviewed", "template_rejected", "pattern_unreviewed", "pattern_rejected"}
+)
+
+
+def _without_reviews(
+    classified: Sequence[tuple[str, str, bool]],
+) -> list[tuple[str, str, bool]]:
+    return [item for item in classified if item[0] not in _REVIEW_CODES]
+
+
+def _only_reviews(classified: Sequence[tuple[str, str, bool]]) -> list[tuple[str, str, bool]]:
+    return [item for item in classified if item[0] in _REVIEW_CODES]
+
+
+def _review_groups(
+    findings: Sequence[DesignFinding],
+) -> dict[tuple[str, str], tuple[set[str], list[str]]] | None:
+    """The review findings by ``(kind, ref)``: their statuses and sorted locations.
+
+    ``None`` if one does not name its definition (it was not written here).
+    """
+    groups: dict[tuple[str, str], tuple[set[str], list[str]]] = {}
+    for found in findings:
+        if found.code not in _REVIEW_CODES:
+            continue
+        kind, status = found.code.split("_", 1)
+        ref = found.values.get(kind)
+        if ref is None:
+            return None
+        statuses, places = groups.setdefault((kind, ref), (set(), []))
+        statuses.add(status)
+        places.append(snapshot.sha256_of(dict(sorted(found.values.items()))))
+    for _, places in groups.values():
+        places.sort()
+    return groups
+
+
+def _reviews_explained(row: DesignRevisionRow, read: VersionedModel) -> bool:
+    """Whether the stored review findings are those of the stored design under some decisions.
+
+    Each definition the design uses gives, under any set of decisions, either
+    no review finding (approved) or one ``*_unreviewed`` or ``*_rejected``
+    finding at each place it is used, all of the one status. So the stored
+    review findings must name, for each definition, exactly the places an
+    unreviewed definition is found at, with a single status, or none of
+    them. A definition without review findings (approved) or with
+    ``*_rejected`` ones must also have had such a decision recorded for its
+    exact digest, at some time, in the tenant or globally
+    (``engineering_reviews.ever_decided``). Anything else was not written by
+    a save (whatever decisions stood then) and is an integrity failure.
+    """
+    stored = _review_groups(_stored_findings(row))
+    if stored is None:
+        return False
+    if read.v2 is None:
+        return not stored
+    bare = dataclasses.replace(
+        read.v2,
+        templates=tuple(
+            dataclasses.replace(t, review=anchoring.UNREVIEWED) for t in read.v2.templates
+        ),
+        patterns=tuple(
+            dataclasses.replace(p, review=anchoring.UNREVIEWED) for p in read.v2.patterns
+        ),
+    )
+    expected = _review_groups(_v2_findings(bare)) or {}
+    for key, (statuses, places) in stored.items():
+        if key not in expected or len(statuses) != 1 or places != expected[key][1]:
+            return False
+    # A status other than unreviewed is explained only by a decision the
+    # server recorded for that exact definition, at any time and by anyone,
+    # in the tenant or globally: one the save may have been anchored to.
+    claimed = {
+        key: (next(iter(stored[key][0])) if key in stored else "approved") for key in expected
+    }
+    if all(status == "unreviewed" for status in claimed.values()):
+        return True
+    session = object_session(row)
+    if session is None:  # pragma: no cover - every row read here is loaded
+        return False
+    recorded = engineering_reviews.ever_decided(session=session, tenant_id=row.tenant_id)
+    digests = {("template", t.ref): anchoring.definition_digest(t) for t in bare.templates}
+    digests.update({("pattern", p.ref): anchoring.definition_digest(p) for p in bare.patterns})
+    for (kind, ref), status in claimed.items():
+        if status == "unreviewed":
+            continue
+        digest = digests.get((kind, ref))
+        if digest is None or (kind, ref, digest, status) not in recorded:
+            return False
+    return True
+
+
+def _explained(
+    row: DesignRevisionRow, read: VersionedModel, current: list[tuple[str, str, bool]]
+) -> bool:
+    """Whether today's findings of the stored design account for its stored findings.
+
+    The same codes; or the same codes but for the review findings, which
+    are then those of the stored design under some set of review decisions
+    (``_reviews_explained``): a decision recorded since the save (M3),
+    which makes the revision stale (``review_decisions``), not altered.
+    """
+    stored = _stored_findings(row)
+    if _codes(current) == _codes(stored):
+        return True
+    if _codes(_without_reviews(current)) != _codes(_without_reviews(_classified(stored))):
+        return False
+    return _reviews_explained(row, read)
 
 
 def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
@@ -479,7 +609,15 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
             _classified(_stored_findings(row))
         )
         if approved != _findings_fingerprint(applicable.findings):
-            changed.append("findings_policy")
+            stored = _classified(_stored_findings(row))
+            # An approval of the stored findings: name what moved since, a
+            # review decision included; else (or nothing named) the policy.
+            parts = (
+                _findings_parts(stored, applicable.findings)
+                if approved == _findings_fingerprint(stored)
+                else []
+            )
+            changed += parts or ["findings_policy"]
     return tuple(changed)
 
 
@@ -553,12 +691,13 @@ def _read_classified(
         return _schema_finding(exc), None
     except versions.SnapshotUnreadableError:
         return _integrity_finding("unreadable"), None
-    if _review_not_issued(read):
+    anchored = _anchored(read, row)
+    if anchored is None:
         return _integrity_finding("review_not_issued"), None
-    current = _current_classification(row, read) if _versions_current(row) else None
-    if _findings_mismatch(row, read, current):
+    current = _current_classification(row, anchored) if _versions_current(row) else None
+    if _findings_mismatch(row, anchored, current):
         return _integrity_finding("findings_mismatch"), None
-    return read, current
+    return anchored, current
 
 
 #: The codes of the findings a revision is refused with when its stored
@@ -610,26 +749,39 @@ def _findings_mismatch(
     current = current if current is not None else _current_classification(row, read)
     if current is None:
         return False
-    return _codes(current) != _codes(_stored_findings(row))
+    return not _explained(row, read, current)
 
 
-def _review_not_issued(read: VersionedModel) -> bool:
-    """Whether a stored v2 design holds a review status this server never issued.
+def _anchor_of(row: DesignRevisionRow) -> anchoring.ReviewAnchor:
+    """The server's review decisions that apply in the revision's tenant (M3)."""
+    session = object_session(row)
+    if session is None:  # pragma: no cover - every row read here is loaded
+        return anchoring.EMPTY
+    return engineering_reviews.anchor_for(session=session, tenant_id=row.tenant_id)
 
-    No review of templates or connection patterns can be recorded yet: that
-    waits on the qualified electrical engineer the owner designates and a
-    server-side record of their decisions. Every definition a save writes is
-    therefore ``unreviewed``, so any other stored status (with a reviewer,
-    date or standards) was written outside the application, even if the row's
-    lock and hash were recomputed to match. Such a design is refused like an
-    altered one, never approved or exported. An independent review showed a
-    consistently rewritten row was otherwise accepted.
+
+def _anchored(read: VersionedModel, row: DesignRevisionRow) -> VersionedModel | None:
+    """The stored design with its review statuses anchored to the server's decisions.
+
+    Each template's and pattern's review is replaced, in memory only, by the
+    one the server's decisions give for its exact definition digest in the
+    revision's tenant or the global scope (``anchoring.anchor_model``):
+    approved or rejected only with a matching record, else unreviewed.
+    ``None`` when a stored review claims anything else: it was written
+    outside the application, even if the row's lock and hash were recomputed
+    to match, and the design is refused like an altered one
+    (``review_not_issued``). With no decisions recorded this is M2's rule:
+    any stored status other than ``unreviewed`` is refused.
     """
     if read.v2 is None:
-        return False
-    return any(t.review.status != "unreviewed" for t in read.v2.templates) or any(
-        p.review.status != "unreviewed" for p in read.v2.patterns
-    )
+        return read
+    try:
+        model = anchoring.anchor_model(read.v2, _anchor_of(row))
+    except anchoring.ReviewClaimUnmatchedError:
+        return None
+    if model is read.v2:
+        return read
+    return VersionedModel(schema=read.schema, project=read.project, v2=model)
 
 
 #: Why a stored design failed its integrity check, as a finding says it.
@@ -942,7 +1094,9 @@ def _design_refused(exc: ValidationError) -> DesignFinding:
 
 
 def _validate(
-    request: ProjectDesignRequest, configuration: Mapping[str, Any] | None = None
+    request: ProjectDesignRequest,
+    configuration: Mapping[str, Any] | None = None,
+    anchor: anchoring.ReviewAnchor = anchoring.EMPTY,
 ) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
@@ -986,6 +1140,11 @@ def _validate(
         # what every later read sees.
         stored = snapshot_v2_from_v1(stored)
         v2 = read_snapshot(stored).v2
+    # The findings of what every later read sees: its reviews anchored to the
+    # server's decisions (a save writes only ``unreviewed``), so a revision
+    # saved after a decision does not read as stale.
+    if v2 is not None:
+        v2 = anchoring.anchor_model(v2, anchor)
     findings = _design_findings(designed, conditions, v2)
     return {
         "design_snapshot": stored,
@@ -1033,7 +1192,11 @@ def _add_revision(
             note=note,
             author=user.email,
             request=request.model_dump(mode="json"),
-            **_validate(request, configuration),
+            **_validate(
+                request,
+                configuration,
+                engineering_reviews.anchor_for(session=session, tenant_id=tenant),
+            ),
         )
     )
 
@@ -1305,20 +1468,21 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "unreadable"},
         ) from exc
-    if _review_not_issued(read):
+    anchored = _anchored(read, row)
+    if anchored is None:
         raise ConflictError(
             f"revision {number}'s stored design holds a review status this server never issued",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "review_not_issued"},
         )
-    if _findings_mismatch(row, read):
+    if _findings_mismatch(row, anchored):
         raise ConflictError(
             f"revision {number}'s stored findings are not the findings of its stored design "
             "under the rules it records; save it again as a new revision",
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "findings_mismatch"},
         )
-    return read
+    return anchored
 
 
 def _recorded_rules_version(row: DesignRevisionRow, applicable: _Applicable) -> str:
@@ -1805,6 +1969,9 @@ def validate_configuration(
     model = read.v2
     if model is None:  # pragma: no cover - compose always writes v2
         raise ValidationError("the configuration did not compose", code="configuration_refused")
+    model = anchoring.anchor_model(
+        model, engineering_reviews.anchor_for(session=session, tenant_id=project.tenant_id)
+    )
     conditions = {board.name: board.conditions for board in entered.boards}
     written = _written_schema()
     return ConfigurationReview(

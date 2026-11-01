@@ -33,7 +33,9 @@ needs_postgres = pytest.mark.skipif(
     reason="needs Postgres: ownership is read from the tenant's accounts",
 )
 
-EVERYTHING = sorted(Permission)
+#: What the owner and an admin hold: everything but the engineering review
+#: permission, which only the owner's designation grants (M3).
+EVERYTHING = sorted(set(Permission) - {Permission.REVIEW_ENGINEERING_DEFINITIONS})
 
 
 def test_a_trial_holds_nothing_and_the_database_is_not_asked() -> None:
@@ -61,6 +63,7 @@ def test_a_caller_without_an_account_id_holds_nothing() -> None:
         (Permission.APPROVE_REVISION, "approval_not_permitted"),
         (Permission.DELETE_PROJECT, "project_delete_not_permitted"),
         (Permission.EDIT_COMPANY_SETTINGS, "settings_not_permitted"),
+        (Permission.REVIEW_ENGINEERING_DEFINITIONS, "engineering_review_not_permitted"),
     ],
 )
 def test_each_refusal_has_its_own_code(permission: Permission, code: str) -> None:

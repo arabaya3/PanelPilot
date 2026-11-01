@@ -924,3 +924,55 @@ def test_assign_owner_commits_or_reports_the_refusal(
     assert "active owner" in capsys.readouterr().err
     assert jobs.run_assign_owner([]) == 2
     assert jobs.get_job("assign-owner").handler is jobs.run_assign_owner
+
+
+# --- record-global-review ------------------------------------------------------
+
+_GLOBAL_ARGS = [
+    "--kind", "rule",
+    "--ref", "global/m3-test-job/v1",
+    "--digest", "a" * 64,
+    "--decision", "approved",
+    "--reviewer", "Synthetic reviewer label",
+    "--qualification", "SYNTHETIC TEST STATEMENT",
+    "--reason", "Synthetic",
+    "--recorded-by", "synthetic-operator",
+    "--standard", "SYNTHETIC-STANDARD-REF",
+]  # fmt: skip
+
+
+def test_record_global_review_commits_or_reports_the_refusal(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.domain import engineering_reviews
+
+    seen: dict[str, Any] = {}
+
+    class _Row:
+        id = uuid.uuid4()
+        decision = "approved"
+        subject_ref = "global/m3-test-job/v1"
+
+    def record(**kw: Any) -> _Row:
+        seen.update(kw)
+        return _Row()
+
+    session_class = _patch_owner_session(monkeypatch)
+    monkeypatch.setattr(engineering_reviews, "record_global_decision", record)
+    assert jobs.run_record_global_review(_GLOBAL_ARGS) == 0
+    assert session_class.committed
+    assert session_class.closed
+    assert seen["standards"] == ["SYNTHETIC-STANDARD-REF"]
+    assert seen["recorded_by"] == "synthetic-operator"
+    assert str(_Row.id) in capsys.readouterr().out
+
+    def refuse(**_kw: Any) -> _Row:
+        raise ValidationError("not a digest", code="review_field_invalid")
+
+    refused_class = _patch_owner_session(monkeypatch)
+    monkeypatch.setattr(engineering_reviews, "record_global_decision", refuse)
+    assert jobs.run_record_global_review(_GLOBAL_ARGS) == 1
+    assert not refused_class.committed
+    assert jobs.run_record_global_review([]) == 2
+    assert jobs.run_record_global_review(_GLOBAL_ARGS[:4]) == 2
+    assert jobs.get_job("record-global-review").handler is jobs.run_record_global_review

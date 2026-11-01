@@ -1391,7 +1391,8 @@ class V2Definition(BaseModel):
     Attributes:
         ref: Its ref.
         kind: ``template`` or ``pattern``.
-        review_status: ``unreviewed``, ``approved`` or ``rejected``, as embedded.
+        review_status: ``unreviewed``, ``approved`` or ``rejected``, as the server's
+            recorded decisions for its exact digest give it (M3); never more.
         provenance_source: The source its provenance documents, or ``None``.
         restricted_scope: For a template, the uses it may not be executed for.
     """
@@ -1619,7 +1620,8 @@ class RevisionSummary(BaseModel):
             approved. The tenant's company settings are not part of it.
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
-            ``catalogue_version``, ``findings_policy``.
+            ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``review_decisions`` (a review decision recorded since, M3).
     """
 
     number: int
@@ -1713,7 +1715,8 @@ class SavedProject(BaseModel):
             approved. The tenant's company settings are not part of it.
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
-            ``catalogue_version``, ``findings_policy``.
+            ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``review_decisions`` (a review decision recorded since, M3).
         execution_blockers: Why it cannot be exported for execution: the
             parts of an execution package this service does not produce yet,
             then ``approval`` and each blocking finding's code, as they apply.

@@ -43,6 +43,10 @@ TENANT_SCOPED = {
     "subscriptions",
     # Who a customer invited into its team.
     "invitations",
+    # Who the owner designated as an engineering reviewer, and the decisions
+    # those reviewers recorded in the tenant (M3).
+    "engineering_reviewer_grants",
+    "engineering_review_decisions",
 }
 
 # Shared corpus and audit infrastructure. Adding a tenant column to these would
@@ -65,6 +69,9 @@ DELIBERATELY_UNSCOPED = {
     # How a lead settled an escalated item: an audit of the shared corpus's
     # review, like the queue it resolves.
     "escalation_resolutions",
+    # Review decisions in the global scope, recorded by an operator and the
+    # same for every customer (M3); no tenant's data is in them.
+    "global_engineering_review_decisions",
 }
 
 
