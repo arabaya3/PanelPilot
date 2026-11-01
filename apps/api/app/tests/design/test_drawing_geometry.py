@@ -79,6 +79,9 @@ SECONDARY_MIN_PT = 5.0
 FRAME_CLEARANCE = 0.5 * mm
 #: What must follow a visible ellipsis: a reference to where the full value is.
 TRUNCATION_MARKER = re.compile(r"…\s*(\[[^\]\s]{1,8}\]|[*†‡]\d{0,4}|\^\d{1,4})")
+#: How far a terminal's marking may be printed from its point, and off its row.
+MARKING_REACH = 10 * mm
+MARKING_ROW = 3 * mm
 #: Below this, two drawn points are the same point.
 EPS = 0.3
 
@@ -1283,19 +1286,25 @@ def _blocks_named(page: Page, name: str) -> list[BlockRead]:
 
 
 def _marking_at(page: Page, name: str, marking_text: str) -> tuple[Run, P] | None:
-    """The run printing a terminal's marking beside its point, in a block of that owner."""
+    """The marking run nearest its point on the same row, in a block of that owner, and the point."""
     want = squash(marking_text)
+    found: list[tuple[float, Run, P]] = []
     for block in _blocks_named(page, name):
         for dot in block.dots:
             for run in page.runs:
                 if (
                     squash(run.text) == want
-                    and run.x1 <= dot[0]
                     and run.x0 >= block.header.x0 - 3 * mm
-                    and abs(run.yc - dot[1]) < 3 * mm
+                    and run.x1 <= block.right
+                    and block.header.bottom < run.yc < block.bottom
+                    and abs(run.yc - dot[1]) < MARKING_ROW
                 ):
-                    return run, dot
-    return None
+                    gap = max(dot[0] - run.x1, run.x0 - dot[0], 0.0)
+                    found.append((gap + abs(run.yc - dot[1]), run, dot))
+    if not found:
+        return None
+    _gap, run, dot = min(found, key=lambda f: f[0])
+    return run, dot
 
 
 @pytest.mark.parametrize("case", ALL_CASES)
@@ -1325,12 +1334,17 @@ def test_every_zone_reference_points_where_the_far_end_is_printed(case: str) -> 
                     )
                     continue
                 run, dot = at
-                got = target.zone_of(run.xc, run.yc)
+                got = target.zone_of(*dot)
                 if got != zone:
                     problems.append(
-                        f"sheet {page.number}: {ref[0]!r}: marking printed in zone {got} "
-                        f"at x {run.x0:.0f}-{run.x1:.0f}, y {run.yc:.0f} of sheet {sheet} "
-                        f"(its point is in zone {_zone_name(target, dot)})"
+                        f"sheet {page.number}: {ref[0]!r}: its point is drawn in zone {got} "
+                        f"at {_fmt(dot)} of sheet {sheet}"
+                    )
+                gap = max(dot[0] - run.x1, run.x0 - dot[0], 0.0)
+                if gap > MARKING_REACH or abs(run.yc - dot[1]) > MARKING_ROW:
+                    problems.append(
+                        f"sheet {page.number}: {ref[0]!r}: marking at x {run.x0:.0f}-"
+                        f"{run.x1:.0f}, y {run.yc:.0f} is {gap:.1f} pt from its point {_fmt(dot)}"
                     )
         for text, first in page.paragraphs_at:
             for cont in _CONT.finditer(text):
