@@ -151,6 +151,90 @@ _TEMPLATE_KEYS = (
     "restricted_scope",
 )
 
+#: A template key that may be absent: written only when the template has one,
+#: so a template without it keeps its canonical JSON and digests.
+_OPTIONAL_TEMPLATE_KEYS = ("symbol",)
+
+#: The largest symbol grid side, and the most shapes a symbol holds.
+SYMBOL_MAX_SIDE = 100
+SYMBOL_MAX_SHAPES = 64
+
+
+def _symbol(
+    value: Any, terminals: Sequence[entities.TerminalDef], where: str
+) -> entities.SymbolDef:
+    raw = _obj(value, ("width", "height", "shapes", "anchors"), where)
+    width = _int(raw["width"], f"{where}.width")
+    height = _int(raw["height"], f"{where}.height")
+    if width > SYMBOL_MAX_SIDE or height > SYMBOL_MAX_SIDE:
+        _bad(where, f"a side is larger than {SYMBOL_MAX_SIDE}")
+    shapes: list[entities.SymbolShape] = []
+    items = _list(raw["shapes"], f"{where}.shapes")
+    if len(items) > SYMBOL_MAX_SHAPES:
+        _bad(f"{where}.shapes", f"holds more than {SYMBOL_MAX_SHAPES} shapes")
+    for item in items:
+        shape = _obj(item, ("kind", "points", "text"), f"{where}.shapes[]")
+        kind = _choice(shape["kind"], tuple(entities.SYMBOL_SHAPES), f"{where}.shapes[].kind")
+        points = [
+            _int(p, f"{where}.shapes[].points[]", minimum=0)
+            for p in _list(shape["points"], f"{where}.shapes[].points")
+        ]
+        if len(points) != entities.SYMBOL_SHAPES[kind]:
+            _bad(f"{where}.shapes[].points", f"a {kind} takes {entities.SYMBOL_SHAPES[kind]}")
+        if any(p > SYMBOL_MAX_SIDE for p in points):
+            _bad(f"{where}.shapes[].points", "lies outside the symbol grid")
+        text = _opt_text(shape["text"], f"{where}.shapes[].text")
+        if (kind == "text") != (text is not None):
+            _bad(f"{where}.shapes[].text", "is set exactly for a text shape")
+        shapes.append(entities.SymbolShape(kind=kind, points=tuple(points), text=text))
+    # A set of shapes, all drawn alike: canonical by content, never by input order.
+    _strictly_sorted(shapes, _shape_key, f"{where}.shapes")
+    known = {t.id for t in terminals}
+    anchors: list[entities.SymbolAnchor] = []
+    for item in _list(raw["anchors"], f"{where}.anchors"):
+        anchor = _obj(item, ("terminal", "x", "y"), f"{where}.anchors[]")
+        terminal = _text(anchor["terminal"], f"{where}.anchors[].terminal")
+        if terminal not in known:
+            _bad(f"{where}.anchors[].terminal", "names no terminal of the template")
+        x = _int(anchor["x"], f"{where}.anchors[].x", minimum=0)
+        y = _int(anchor["y"], f"{where}.anchors[].y", minimum=0)
+        if x > width or y > height:
+            _bad(f"{where}.anchors[]", "lies outside the symbol grid")
+        anchors.append(entities.SymbolAnchor(terminal=terminal, x=x, y=y))
+    return entities.SymbolDef(
+        width=width,
+        height=height,
+        shapes=tuple(shapes),
+        anchors=_strictly_sorted(anchors, lambda a: a.terminal, f"{where}.anchors"),
+    )
+
+
+def _shape_key(shape: entities.SymbolShape) -> tuple[str, tuple[int, ...], str]:
+    return (shape.kind, shape.points, shape.text or "")
+
+
+def dump_symbol(symbol: entities.SymbolDef) -> dict[str, Any]:
+    """The canonical JSON of a symbol: shapes by kind, points and text; anchors by terminal.
+
+    Args:
+        symbol: The symbol.
+
+    Returns:
+        Its JSON.
+    """
+    return {
+        "width": symbol.width,
+        "height": symbol.height,
+        "shapes": [
+            {"kind": shape.kind, "points": list(shape.points), "text": shape.text}
+            for shape in sorted(symbol.shapes, key=_shape_key)
+        ],
+        "anchors": [
+            {"terminal": a.terminal, "x": a.x, "y": a.y}
+            for a in sorted(symbol.anchors, key=lambda a: a.terminal)
+        ],
+    }
+
 
 def parse_template(value: Any, where: str = "template") -> entities.ComponentTemplate:
     """A template definition, checked strictly.
@@ -166,7 +250,8 @@ def parse_template(value: Any, where: str = "template") -> entities.ComponentTem
         SnapshotUnreadableError: If it is not exactly a template definition.
     """
     _refuse_floats(value, where)
-    raw = _obj(value, _TEMPLATE_KEYS, where)
+    present = [key for key in _OPTIONAL_TEMPLATE_KEYS if isinstance(value, dict) and key in value]
+    raw = _obj(value, (*_TEMPLATE_KEYS, *present), where)
     ref = _ref(raw["ref"], f"{where}.ref")
     groups = _strictly_sorted(
         [
@@ -228,6 +313,9 @@ def parse_template(value: Any, where: str = "template") -> entities.ComponentTem
         provenance=_provenance(raw["provenance"], f"{where}.provenance"),
         review=_review(raw["review"], f"{where}.review"),
         restricted_scope=_sorted_texts(raw["restricted_scope"], f"{where}.restricted_scope"),
+        symbol=(
+            _symbol(raw["symbol"], terminals, f"{where}.symbol") if "symbol" in present else None
+        ),
     )
 
 
@@ -316,6 +404,9 @@ def dump_template(template: entities.ComponentTemplate) -> dict[str, Any]:
         "provenance": _dump_provenance(template.provenance),
         "review": _dump_review(template.review),
         "restricted_scope": sorted(template.restricted_scope),
+        # Written only when present: a template without a symbol keeps the
+        # canonical JSON (and digests) it had before symbols existed.
+        **({"symbol": dump_symbol(template.symbol)} if template.symbol is not None else {}),
     }
 
 
