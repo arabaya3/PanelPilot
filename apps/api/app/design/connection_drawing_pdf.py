@@ -70,8 +70,12 @@ LEGEND = (
     "crossing, at least 2 mm apart; where that is not possible no lead is drawn and the block "
     "says so. A pin's marking is repeated at the symbol where it fits; the block names any "
     "shown at the rows only.",
-    "Dotted lead: the terminal has no pin on the symbol (or no symbol is defined); its row "
+    "Dotted stub: the terminal has no pin on the symbol (or no symbol is defined); its row "
     "carries its marking.",
+    "Dash-dot stub: the terminal has a pin on the symbol, but no lead is drawn (the block's "
+    "first part says why); its row carries its marking.",
+    "A block continued in another column or on another sheet is drawn with its symbol on its "
+    "first part only.",
     "Thick bar beside two points: a bridge between a strip point's two sides.",
     "...[n]: a value too long for its room, printed in full as [n] on the full-text sheets.",
     f"Text is never smaller than {layout.BODY_PT:g} pt ({layout.SECONDARY_PT:g} pt for grey "
@@ -294,6 +298,9 @@ def _part(canvas: Canvas, part: layout.BlockPart) -> None:
     canvas.setDash(1, 1.5)
     for dotted in part.dotted:
         _path(canvas, dotted)
+    canvas.setDash([3, 1, 0.6, 1])
+    for pinned in part.pinned:
+        _path(canvas, pinned)
     canvas.restoreState()
     for x, y in part.points:
         canvas.circle(x, y, 0.7 * mm, stroke=1, fill=1)

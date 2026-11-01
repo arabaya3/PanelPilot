@@ -330,7 +330,9 @@ class BlockPart:
         buses: Vertical joins of one terminal's several ends.
         bridges: Bridge marks: a bar joining the stubs of a strip point's two
             sides where a connection joins them.
-        dotted: Dotted stubs of terminals drawn with no lead.
+        dotted: Dotted stubs of terminals with no pin on the symbol.
+        pinned: Dash-dot stubs of terminals with a pin on the symbol but no
+            lead drawn (the block's first part says why).
         leads: Routed leads from the symbol's anchors.
         frame: Where the symbol is drawn, or ``None``.
         placeholder: The dashed "symbol not defined" box (x, y, w, h), or ``None``.
@@ -357,6 +359,7 @@ class BlockPart:
     buses: tuple[Path, ...] = ()
     bridges: tuple[Path, ...] = ()
     dotted: tuple[Path, ...] = ()
+    pinned: tuple[Path, ...] = ()
     leads: tuple[Lead, ...] = ()
     frame: SymbolFrame | None = None
     placeholder: tuple[float, float, float, float] | None = None
@@ -1409,19 +1412,32 @@ def _header(
 ) -> list[_Half]:
     room = block.cols * COLUMN - TITLE_LEFT - 2 * MM
     notes = "; ".join(block.notes)
+    title = block.title
+    if continued_from is not None and block.kind != "no_terminals":
+        # A continuation shows no symbol: its notes about the symbol are on the first part.
+        notes = "; ".join(n for n in block.notes if not n.startswith(_SYMBOL_NOTES))
+        title = _continued_title(block)
     if continued_from is not None and sheet is not None:
         before = Place(sheet, 0, 0, *continued_from)
         lead = "list started on" if block.kind == "no_terminals" else "continued from"
         notes = f"{lead} {before.reference(here)}; {notes}"
     out: list[_Half] = [
         (line, TITLE_PT, True, "plain", "title", 0)
-        for line in wrap(block.title, room - CONTINUES_ROOM, TITLE_PT, True, cuts)
+        for line in wrap(title, room - CONTINUES_ROOM, TITLE_PT, True, cuts)
     ]
     out += [
         (line, BODY_PT, False, "plain", "header", 0)
         for line in wrap(notes, room, BODY_PT, False, cuts)
     ]
     return out
+
+
+#: Header notes about a block's symbol, printed on its first part only.
+_SYMBOL_NOTES = ("pin markings", "rows in the symbol", "no leads drawn", "leads not drawn")
+
+
+def _continued_title(block: _Block) -> str:
+    return f"{block.name} ({block.kind}) continued, board {block.board}"
 
 
 def _place(
@@ -1670,11 +1686,13 @@ def _draw(
     buses: list[Path] = []
     bridges: list[Path] = []
     dotted: list[Path] = []
+    pinned: list[Path] = []
     lines: list[Line] = []
     end_ys: dict[int, list[float]] = defaultdict(list)
     bridge_ys: dict[str, list[float]] = defaultdict(list)
     point_y: dict[int, float] = {}
     rows_y: dict[str, float] = {}
+    point_rows: list[Row] = []
     for n, (spec, slot, span) in enumerate(p.lines):
         line_top = _slot_top(slot)
         mid = line_top - HALF
@@ -1716,6 +1734,7 @@ def _draw(
                 )
             ]
             points.append((point_x, mid))
+            point_rows.append(row)
             point_y[index] = mid
             if spec.first and row.terminal.owner_kind == "component":
                 rows_y[row.terminal.terminal_id] = mid
@@ -1747,6 +1766,15 @@ def _draw(
     pins_dropped: tuple[str, ...] = ()
     if block.kind == "no_terminals":
         pass
+    elif p.part > 1:
+        # The symbol (or placeholder) is drawn on the block's first part only.
+        pinned_ids = {a.terminal for a in block.symbol.anchors} if block.symbol else set()
+        for (_x, y), row in zip(points, point_rows, strict=False):
+            stub = ((point_x - 3 * MM, y), (point_x, y))
+            if row.terminal.owner_kind == "component" and row.terminal.terminal_id in pinned_ids:
+                pinned.append(stub)
+            else:
+                dotted.append(stub)
     elif block.symbol is None:
         placeholder = (
             left + SYMBOL_LEFT,
@@ -1770,7 +1798,15 @@ def _draw(
         else:
             frame = _plain_frame(symbol, left, lines_top, bottom)
         lead_ys = {lead.points[-1][1] for lead in leads}
-        dotted += [((point_x - 3 * MM, y), (point_x, y)) for _x, y in points if y not in lead_ys]
+        pinned_ids = {a.terminal for a in symbol.anchors} if block.kind == "component" else set()
+        for (_x, y), row in zip(points, point_rows, strict=False):
+            if y in lead_ys:
+                continue
+            stub = ((point_x - 3 * MM, y), (point_x, y))
+            if row.terminal.terminal_id in pinned_ids:
+                pinned.append(stub)  # a pin on the symbol, but no lead drawn
+            else:
+                dotted.append(stub)  # no pin on the symbol
         if block.kind == "component":
             markings = {
                 r.terminal.terminal_id: r.terminal.marking
@@ -1785,7 +1821,9 @@ def _draw(
     return BlockPart(
         owner_kind=block.kind,
         owner_id=block.owner_id,
-        title=block.title,
+        title=(
+            block.title if p.part == 1 or block.kind == "no_terminals" else _continued_title(block)
+        ),
         notes=tuple(block.notes),
         template_ref=block.template_ref,
         symbol=block.symbol,
@@ -1802,6 +1840,7 @@ def _draw(
         buses=tuple(buses),
         bridges=tuple(bridges),
         dotted=tuple(dotted),
+        pinned=tuple(pinned),
         leads=tuple(leads),
         frame=frame,
         placeholder=placeholder,
