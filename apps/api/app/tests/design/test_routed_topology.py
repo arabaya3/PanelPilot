@@ -2757,3 +2757,123 @@ def test_regression_continuation_flags_are_never_cut(case: str) -> None:
     if not texts:
         problems.append("no continuation flag to check")
     assert not problems, _report(problems)
+
+
+# --- 11h. Lines arrive on their dot's row; labels keep apart --------------- #
+
+#: A line's last horizontal run may sit this far off its end dot's row.
+ARRIVAL_ROW_TOL = 0.5 * mm
+#: The longest final vertical jog into a dot from a horizontal off the dot's row.
+ARRIVAL_JOG_MAX = 1 * mm
+#: The least vertical gap between two line labels / stub texts whose x-ranges overlap.
+LABEL_GAP_MIN = 1.5 * mm
+_NOT_ROUTED = re.compile(r"not routed")
+
+
+def arrival_problems(raw: RawPage) -> list[str]:
+    """Each routed line reaches its end dot along the dot's own row.
+
+    From each dot end, the final vertical pieces (the jog into the dot) are summed up
+    to the first horizontal piece; that horizontal must be within ARRIVAL_ROW_TOL of
+    the dot's y, or the jog no longer than ARRIVAL_JOG_MAX. Otherwise the horizontal
+    points at the gap between two rows.
+    """
+    problems = []
+    for line in raw.lines:
+        pts = [p for n, p in enumerate(line.path.pts) if n == 0 or p != line.path.pts[n - 1]]
+        for end, seq in ((line.ends[0], pts), (line.ends[1], pts[::-1])):
+            if end.dot is None:
+                continue
+            jog = 0.0
+            for a, b in itertools.pairwise(seq):
+                axis = _axis(a, b)
+                if axis == "v":
+                    jog += math.dist(a, b)
+                    continue
+                if axis == "h":
+                    off = abs(a[1] - end.dot.c[1])
+                    if off > ARRIVAL_ROW_TOL and jog > ARRIVAL_JOG_MAX:
+                        problems.append(
+                            f"sheet {raw.page.number}: line {line.conn} reaches its dot at "
+                            f"{_fmt(end.dot.c)} by a {jog / mm:.1f} mm vertical from a horizontal "
+                            f"{off / mm:.1f} mm off the dot's row"
+                        )
+                break  # a hop or diagonal: not a plain arrival, left to the other checks
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_every_line_arrives_on_its_dots_row(case: str) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        if raw.page.is_drawing:
+            problems += arrival_problems(raw)
+    assert not problems, _report(problems)
+
+
+def test_the_arrival_checker_finds_a_jog_between_rows() -> None:
+    def at(points: list[P]) -> RawPage:
+        line = _line(points, "x-a")
+        line.ends = (End(points[0], dot=Dot(points[0], 1.0)), End(points[-1]))
+        page = RawPage(read_pdf(_blank_pdf())[0], [], [], [])
+        page.lines = [line]
+        return page
+
+    assert not arrival_problems(at([(0, 0), (50, 0), (50, 40)]))
+    assert not arrival_problems(at([(0, 0), (0, 2), (50, 2)]))  # a 0.7 mm jog
+    assert arrival_problems(at([(0, 0), (0, 8), (50, 8)]))  # a 2.8 mm jog
+
+
+@functools.cache
+def _blank_pdf() -> bytes:
+    from reportlab.pdfgen.canvas import Canvas
+
+    buf = io.BytesIO()
+    canvas = Canvas(buf, pagesize=(100, 100))
+    canvas.drawString(10, 10, "x")
+    canvas.save()
+    return buf.getvalue()
+
+
+def label_runs(page: Page) -> list[Run]:
+    """Line labels (w-…, x-…) and stub texts ("… not routed") as printed runs."""
+    return [r for r in page.runs if LINE_LABEL.search(r.text) or _NOT_ROUTED.search(r.text)]
+
+
+def label_gap_problems(page: Page, minimum: float) -> list[str]:
+    problems = []
+    runs = sorted(label_runs(page), key=lambda r: r.top)
+    for a, b in itertools.combinations(runs, 2):
+        if min(a.x1, b.x1) <= max(a.x0, b.x0):
+            continue  # x-ranges do not overlap
+        gap = max(b.top - a.bottom, a.top - b.bottom)
+        if gap < minimum - 0.01:
+            problems.append(
+                f"sheet {page.number}: {a.text[:30]!r} at ({a.x0:.0f},{a.top:.0f}) and "
+                f"{b.text[:30]!r} at ({b.x0:.0f},{b.top:.0f}) are {gap / mm:.2f} mm apart "
+                f"vertically, under {minimum / mm:.1f} mm"
+            )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+@pytest.mark.parametrize("minimum", [LABEL_GAP_MIN])
+def test_line_labels_and_stub_texts_keep_apart(case: str, minimum: float) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        if raw.page.is_drawing:
+            problems += label_gap_problems(raw.page, minimum)
+    assert not problems, _report(problems)
+
+
+def test_labels_are_found() -> None:
+    """Non-vacuity: routed sheets carry line labels and stub texts to check."""
+    labels = stubs = 0
+    for case in ALL_CASES:
+        for raw in doc(case).pages:
+            if raw.page.is_routed:
+                runs = label_runs(raw.page)
+                labels += len(runs)
+                stubs += sum(bool(_NOT_ROUTED.search(r.text)) for r in runs)
+    assert labels
+    assert stubs
