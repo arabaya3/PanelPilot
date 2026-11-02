@@ -63,7 +63,8 @@ LEGEND = (
     f"Dashed box '{layout.SYMBOL_NOT_DEFINED}': the template defines no symbol data.",
     "Zones: columns 1-8 across, rows A-F down; a terminal's zone is read where its point is "
     "drawn, a block's where its title starts.",
-    "B1/X:1: a far end on another board is named with its board.",
+    "B1/X:1: a far end on another board, and every far end on a sheet showing more than one "
+    "board, is named with its board.",
     "Bar joining a strip point's two sides, 'bridge between the sides: <via> per "
     "connection pattern <ref>' (or 'per model' where no pattern declared it): a connection "
     "the model records between the point's sides; nothing more is asserted.",

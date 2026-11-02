@@ -195,7 +195,8 @@ class End:
         wire_missing: ``True`` for a ``via: wire`` connection with no wire record.
         core: The cable core, for ``via: cable_core``.
         far_board: The other end's board.
-        qualified: Whether the far end is on another board, so its label is
+        qualified: Whether the far end is named with its board: it is on another
+            board, or the end's sheet shows more than one board; its label is
             printed with its board (``<board>/<label>``).
         pattern_ref: The pattern that declared the connection, or ``None``.
         bridge: Whether it joins a strip point's two sides (drawn with a
@@ -552,7 +553,10 @@ def wire_text(wire: schedules.WireRow) -> str:
 
 
 def far_name(end: End) -> str:
-    """The far end's label as printed: with its board when that is another board."""
+    """The far end's label as printed, with its board where that is needed.
+
+    That is when it is on another board, or when the sheet shows more than one board.
+    """
     return f"{end.far_board}/{end.far_label}" if end.qualified else end.far_label
 
 
@@ -1090,15 +1094,21 @@ def drawing_set(
     # where things are drawn depends on how long the texts are: lay out
     # again with the places found until they no longer change.
     line_sheets: dict[tuple[int, int], int] = {}
+    shown: dict[int, frozenset[str]] | None = None
     for _round in range(8):
-        result = _lay_out(model, places, boards_share_sheets, pins_off, line_sheets)
+        result = _lay_out(model, places, boards_share_sheets, pins_off, line_sheets, shown)
+        found = {
+            sheet.number: frozenset((sheet.board_id, *sheet.boards)) for sheet in result.sheets
+        }
         if (
             result.places == places
             and result.pins_off == pins_off
             and result.line_sheets == line_sheets
+            and found == shown
         ):
             break
         places, pins_off, line_sheets = result.places, result.pins_off, result.line_sheets
+        shown = found
     assert result is not None
     from app.design.model import connection_routing  # the routing reads this module
 
@@ -1142,6 +1152,7 @@ def _lay_out(
     share: bool,
     pins_off: frozenset[tuple[str, str]] = frozenset(),
     line_sheets: dict[tuple[int, int], int] | None = None,
+    shown: dict[int, frozenset[str]] | None = None,
 ) -> DrawingSet:
     terminal_rows = schedules.terminal_schedule(model)
     wire_rows = schedules.wire_schedule(model)
@@ -1160,6 +1171,15 @@ def _lay_out(
     # Before any place is known, a far end is taken to be on a far sheet.
     estimate = Place(10**3, 0, 0, AREA_RIGHT - 1, AREA_BOTTOM + 1)
     known = previous or {}
+    # On a sheet showing more than one board (as the last round laid it out),
+    # every far end is named with its board.
+    several = share and len(set(boards.values())) > 1
+
+    def mixed(key: Key) -> bool:
+        place = known.get(key)
+        if place is None or shown is None:
+            return several  # before any place is known
+        return len(shown.get(place.sheet, frozenset())) > 1
 
     all_ends: list[list[End]] = []
     for index, key in enumerate(keys):
@@ -1181,7 +1201,7 @@ def _lay_out(
                     wire_missing=connection.via == "wire" and wire is None,
                     core=connection.core,
                     far_board=far_board,
-                    qualified=far_board != terminal_rows[index].board_id,
+                    qualified=far_board != terminal_rows[index].board_id or mixed(key),
                     pattern_ref=connection.pattern_ref,
                     bridge=key[0] == "point" and far.key[0] == "point" and far.key[1] == key[1],
                 )
