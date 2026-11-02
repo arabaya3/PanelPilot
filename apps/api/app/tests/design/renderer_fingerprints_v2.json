@@ -1,5 +1,5 @@
 {
-  "renderer_version": "2026.11.02.v2-10",
+  "renderer_version": "2026.11.02.v2-11",
   "variants": {
     "pe_n_distribution": {
       "pdf": "156fee306ae473be4701190eb739de51b7b59899c437ff19e95cfd53b6e4d881",
@@ -49,7 +49,7 @@
       "json": "49929935029716a0d69aa426a28d3a89212d695c25e15b040afc1b8dec5f1c58",
       "terminal_schedule_pdf": "238281b092e87251b351ee0263e85c2e28fc3ba8c1c2d508e1d5de9ee2768666",
       "wire_schedule_pdf": "5f3a2f18fe13b0973d0168b18cd99dd13cee4c955ebd486cac01aa7f656b383e",
-      "connection_drawing_pdf": "6bab2b9f5ab87bf3fdf09dc9dd45558041210d1cbc538a7c0e34cfd825597cb2"
+      "connection_drawing_pdf": "1bf1ba435b703c79b950f3c3a24e1dccd4ca6dd3ed143eb47a6e4845f6655315"
     }
   }
 }
