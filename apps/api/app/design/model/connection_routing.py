@@ -42,6 +42,7 @@ Determinism: every order is by schedule index or id, every limit a count.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections import defaultdict
 from collections.abc import Sequence
@@ -84,6 +85,11 @@ PITCH = 3.5 * MM
 HOP_R = 0.7 * MM
 #: Fan-out offsets inside a junction dot.
 FAN_DX = 0.35 * MM
+#: Fan-out: lines start within this of the dot's centre (all on its row), and
+#: turn to their rows from FAN_TURN outside it, FAN_STEP apart.
+FAN_DY = 0.4 * MM
+FAN_TURN = 1.3 * MM
+FAN_STEP = 0.5 * MM
 #: Continuation tracks in the band at the sheet's foot.
 TRACK = 4.5 * MM
 #: The most lines one terminal's dot can fan out to (three up, three down, one straight).
@@ -108,10 +114,15 @@ HEAD_LINE = 3.4 * MM
 PAD_X = 1.5 * MM
 
 #: Printed at the top of every routed sheet, and on the cover.
+#: The print-size guidance, on the cover and every routed sheet (a product target, not a standard).
+PRINT_NOTE = (
+    "Intended for A3 printing at 100%. Printing fit-to-page on A4 reduces text below the "
+    "readability target."
+)
 SCHEMATIC_NOTE = (
     "ROUTED CONNECTION SHEET: line paths are schematic. Each line is one saved connection "
     "between two terminal points; it does not show the physical cable path, routing, length "
-    "or landing order."
+    "or landing order. " + PRINT_NOTE
 )
 
 #: Links drawn dashed: every via but a wire or a cable core (from the model's vocabulary).
@@ -243,6 +254,10 @@ class _Row:
         # Each connection beyond the fan gets a row naming it, and one row more points
         # to the open items.
         fan = min(len(self.ends), MAX_FAN) + (over + 1 if over > 0 else 0)
+        # A junction of two lines takes three rows: its lines leave just above
+        # and below its dot, their labels outside them, clear of the next rows.
+        if fan == 2:
+            fan = 3
         return max(1, fan, len(self.marking))
 
 
@@ -583,8 +598,10 @@ def _unit_top(side: str, unit: int) -> float:
 class _Slot:
     end: cd.End
     y: float
-    dx: float  # fan-out offset from the dot's centre
+    dx: float  # where it turns from the dot's height to its row, from the dot's centre
     straight: bool
+    below: bool = False  # its label goes below its escape (a pair's lower line)
+    dy: float = 0.0  # its height inside the dot, off the dot's centre
 
 
 @dataclass
@@ -627,7 +644,11 @@ def _off_zone_line(y: float, lo: float, hi: float, lines: int) -> float:
 
 
 #: The least distance between two adjacent dots (rows) of one block.
-ROW_PITCH = 3.6 * MM
+ROW_PITCH = 3.85 * MM
+#: ... at the least, in a block with no room for ROW_PITCH.
+ROW_PITCH_MIN = 3.6 * MM
+#: ... and next to a two-line junction (its label beyond its lower line, 1.5 mm, the next label).
+PAIR_PITCH = 7.7 * MM
 
 
 def _extent(t: _Terminal) -> tuple[float, float]:
@@ -663,45 +684,97 @@ def _space_rows(column: list[_Terminal], bottom: float) -> None:
     n = len(column)
     if n < 2:
         return
-    ys = [t.dot[1] for t in column]
+    # The least distance from each row's dot up to the one above it: wider
+    # next to a two-line junction, whose lines leave above and below its dot
+    # with a label beyond each (labels then stay 1.5 mm apart).
+    pitch = [0.0] + [
+        max(
+            ROW_PITCH,
+            PAIR_PITCH if len(column[i - 1].slot_ys) == 2 else 0.0,
+            PAIR_PITCH if len(column[i].slot_ys) == 2 else 0.0,
+        )
+        for i in range(1, n)
+    ]
     low = bottom + _extent(column[-1])[1] + 0.3 * MM
     high = column[0].row_top - _extent(column[0])[0]
-    # Down from the top: each row at least ROW_PITCH below the one above, and
-    # a row pushed near a zone line goes on past it.
-    for i in range(1, n):
-        if ys[i] > ys[i - 1] - ROW_PITCH:
-            ys[i] = ys[i - 1] - ROW_PITCH
-            ys[i] += _zone_clear(ys[i], -1.0)
-    # Up from the foot where the box's foot stops that, the same way upwards.
-    if ys[-1] < low:
-        ys[-1] = low + _zone_clear(low, 1.0)
-        for i in range(n - 2, -1, -1):
-            if ys[i] < ys[i + 1] + ROW_PITCH:
-                ys[i] = ys[i + 1] + ROW_PITCH
-                ys[i] += _zone_clear(ys[i], 1.0)
-    if ys[0] > high + 1e-6:
-        return  # no room: keep the places as they were
+
+    def fit(pitch: list[float], zones: bool) -> list[float] | None:
+        ys = [t.dot[1] for t in column]
+        # Down from the top: each row at least its pitch below the one above,
+        # and a row pushed near a zone line goes on past it.
+        for i in range(1, n):
+            if ys[i] > ys[i - 1] - pitch[i]:
+                ys[i] = ys[i - 1] - pitch[i]
+                if zones:
+                    ys[i] += _zone_clear(ys[i], -1.0)
+        # Up from the foot where the box's foot stops that, the same way upwards.
+        if ys[-1] < low:
+            ys[-1] = low + (_zone_clear(low, 1.0) if zones else 0.0)
+            for i in range(n - 2, -1, -1):
+                if ys[i] < ys[i + 1] + pitch[i + 1]:
+                    ys[i] = ys[i + 1] + pitch[i + 1]
+                    if zones:
+                        ys[i] += _zone_clear(ys[i], 1.0)
+        return ys if ys[0] <= high + 1e-6 else None
+
+    # Where a block has no room, the pitch falls back to ROW_PITCH_MIN, then
+    # rows pushed may sit near a zone line; else the rows keep their places.
+    tight = [min(p, ROW_PITCH_MIN) if p <= ROW_PITCH else p for p in pitch]
+    found = fit(pitch, True) or fit(tight, True) or fit(tight, False)
+    if found is None:
+        return
+    ys = found
     for t, y in zip(column, ys, strict=True):
         if abs(y - t.dot[1]) > 1e-9:
             t.nudge += y - t.dot[1]
             t.dot = (t.dot[0], y)
 
 
+#: A two-line junction's lines leave this far above and below its dot.
+PAIR_DY = 0.9 * MM
+
+
+def _slot_ys(dot_y: float, drawn: int) -> list[float]:
+    """Where a terminal's lines leave, around its (final) dot.
+
+    One line leaves straight; two leave PAIR_DY above and below it (inside a
+    junction dot, so with no jog outside it); more are spread a row apart,
+    centred on it.
+    """
+    if drawn <= 1:
+        return [dot_y] * drawn
+    if drawn == 2:
+        return [dot_y + PAIR_DY, dot_y - PAIR_DY]
+    mid = (drawn - 1) / 2
+    return [dot_y + (mid - j) * U for j in range(drawn)]
+
+
 def _fan(t: _Terminal, ys: list[float]) -> None:
-    """Fan-out offsets: highest-going up line and lowest-going down line nearest the dot."""
+    """Fan-out: every line leaves its dot horizontally, at the dot's own height.
+
+    Each line starts inside the dot, within FAN_DY of its centre (higher rows
+    higher), runs out horizontally, then turns to its row: the line going
+    farthest up (or down) turns nearest the dot, so the fan's pieces never
+    cross. One line on the dot's own height runs straight.
+    """
     n = len(ys)
     sign = 1.0 if t.side == "L" else -1.0
     y = t.dot[1]
-    ups = [j for j in range(n) if ys[j] > y + 1e-6]
-    downs = [j for j in range(n) if ys[j] < y - 1e-6]
+    ups = sorted((j for j in range(n) if ys[j] > y + 1e-6), key=lambda j: -ys[j])
+    downs = sorted((j for j in range(n) if ys[j] < y - 1e-6), key=lambda j: ys[j])
+    rank = sorted(range(n), key=lambda j: -ys[j])
+    step = 2 * FAN_DY / (n - 1) if n > 1 else 0.0
     for j, end in enumerate(t.row.ends[:n]):
         if j in ups:
-            dx = ups.index(j) * FAN_DX
+            dx = FAN_TURN + ups.index(j) * FAN_STEP
         elif j in downs:
-            dx = (len(downs) - 1 - downs.index(j)) * FAN_DX
+            dx = FAN_TURN + downs.index(j) * FAN_STEP
         else:
             dx = 0.0
-        t.slots.append(_Slot(end, ys[j], sign * dx, j not in ups and j not in downs))
+        dy = FAN_DY - rank.index(j) * step if n > 1 else 0.0
+        below = n == 2 and j in downs
+        straight = j not in ups and j not in downs
+        t.slots.append(_Slot(end, ys[j], sign * dx, straight, below, 0.0 if straight else dy))
 
 
 # --------------------------------------------------------------------------- #
@@ -746,7 +819,7 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
                 drawn = min(len(r.ends), MAX_FAN)
                 # The dot (and its marking) sits at the middle of its lines' rows, or
                 # of the whole row when the marking takes more rows than the lines.
-                span = ys if len(r.marking) > drawn else ys[: max(drawn, 1)]
+                span = ys if len(r.marking) > drawn or drawn == 2 else ys[: max(drawn, 1)]
                 dot_y = sum(span) / len(span)
                 nudge = _off_zone_line(dot_y, ys[-1] - U / 2, ys[0] + U / 2, len(r.marking))
                 dot_y += nudge
@@ -763,6 +836,7 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
             _space_rows(column, bottom)
             for t in column:
                 places[t.row.row.key] = cd.Place(number, 0, t.unit, t.dot[0], t.dot[1])
+                t.slot_ys = _slot_ys(t.dot[1], len(t.slot_ys))
     # Fan order: by far end's place (same sheet first, higher first), then id.
     for t in terminals.values():
         r = t.row
@@ -865,9 +939,11 @@ class _Run:
 
 
 def _escape_text(t: _Terminal, slot: _Slot, text: str) -> cd.Text:
+    # Above its escape, or (a pair's lower line) below it.
+    y = slot.y - 2.45 * MM if slot.below else slot.y + 0.55 * MM
     if t.side == "L":
-        return cd.Text(t.dot[0] + 2.6 * MM, slot.y + 0.55 * MM, text, BODY_PT, role="label")
-    return cd.Text(t.dot[0] - 2.6 * MM, slot.y + 0.55 * MM, text, BODY_PT, right=True, role="label")
+        return cd.Text(t.dot[0] + 2.6 * MM, y, text, BODY_PT, role="label")
+    return cd.Text(t.dot[0] - 2.6 * MM, y, text, BODY_PT, right=True, role="label")
 
 
 def _route_sheet(
@@ -1097,26 +1173,26 @@ def _route_sheet(
             if cid not in unrouted:
                 continue
             s = 1 if t.side == "L" else -1
-            start = (t.dot[0] + slot.dx, t.dot[1])
-            pts = [start] if slot.straight else [start, (start[0], slot.y)]
             tip = (t.dot[0] + s * 8 * MM, slot.y)
-            pts.append(tip)
+            pts = _escape(t, slot, tip[0])
             arrow = (
                 ((tip[0] - s * 1.5 * MM, slot.y + 0.8 * MM), tip),
                 ((tip[0] - s * 1.5 * MM, slot.y - 0.8 * MM), tip),
             )
             stubs.append(RoutedStub(cid, tuple(_clean(pts)), arrow))
-            # The text follows the arrowhead on the stub's own line, clear of it.
+            # The text follows the arrowhead, clear of it, above the stub (below
+            # for a pair's lower line), as a line's label is.
             texts.append(
                 cd.Text(
                     tip[0] + s * 1.2 * MM,
-                    slot.y - 0.9 * MM,
+                    slot.y - 2.45 * MM if slot.below else slot.y + 0.55 * MM,
                     f"{labels[cid]} not routed",
                     BODY_PT,
                     right=t.side == "R",
                     role="label",
                 )
             )
+    texts = _stagger_labels(texts)
     sheet = RoutedSheet(
         number=number,
         board_id=state.board,
@@ -1130,6 +1206,43 @@ def _route_sheet(
         ),
     )
     return sheet, routed_ids, continued_ids
+
+
+#: The least vertical clear space between two labels whose extents overlap across.
+LABEL_GAP = 1.6 * MM
+#: A 7 pt label's printed height (font box) and how far below its baseline it starts.
+LABEL_HIGH = 2.85 * MM
+LABEL_DROP = 0.65 * MM
+
+
+def _stagger_labels(texts: list[cd.Text]) -> list[cd.Text]:
+    """Labels (and stub texts) of rows too close for one above the other move along their line.
+
+    Going down each side, a label within LABEL_GAP (vertically) of one already
+    placed whose extent it overlaps moves on along its own escape, past the
+    other's end and 1.5 mm more, so the two read side by side. Deterministic:
+    by side, height (top first) and text.
+    """
+    out = list(texts)
+    labels = [n for n, t in enumerate(out) if t.role == "label"]
+    placed: list[tuple[bool, float, float, float]] = []  # right, x0, x1, baseline
+    for n in sorted(labels, key=lambda n: (out[n].right, -out[n].y, out[n].x, out[n].text)):
+        t = out[n]
+        width = cd.text_width(t.text, t.size, t.bold)
+        x0 = t.x - width if t.right else t.x
+        moved = True
+        while moved:
+            moved = False
+            for right, a0, a1, base in placed:
+                if right != t.right or abs(base - t.y) >= LABEL_HIGH + LABEL_GAP:
+                    continue
+                if x0 + width <= a0 or a1 <= x0:
+                    continue
+                x0 = a0 - 1.5 * MM - width if t.right else a1 + 1.5 * MM
+                moved = True
+        out[n] = dataclasses.replace(t, x=x0 + width if t.right else x0)
+        placed.append((t.right, x0, x0 + width, t.y))
+    return out
 
 
 def _far_label(end: cd.End) -> str:
@@ -1148,10 +1261,10 @@ def _side_of(end: cd.End) -> str:
 
 def _escape(t: _Terminal, slot: _Slot, lane_x: float) -> list[Point]:
     """From a terminal's dot to its escape's end at the lane."""
-    start = (t.dot[0] + slot.dx, t.dot[1])
+    start = (t.dot[0], t.dot[1] + slot.dy)
     pts = [start]
     if not slot.straight:
-        pts.append((start[0], slot.y))
+        pts += [(t.dot[0] + slot.dx, start[1]), (t.dot[0] + slot.dx, slot.y)]
     pts.append((lane_x, slot.y))
     return pts
 

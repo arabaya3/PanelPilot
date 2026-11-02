@@ -588,6 +588,8 @@ def render_connection_drawing(
         "",
         DISCLAIMER,
         "",
+        routing.PRINT_NOTE,
+        "",
         "Legend:",
         *(f"  {item}" for item in LEGEND),
         "",
