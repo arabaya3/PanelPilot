@@ -57,6 +57,7 @@ from app.tests.design.test_drawing_geometry import (
     Run,
     Seg,
     _ink,
+    _read_page,
     _rect,
     _symbol,
     _v1,
@@ -1024,10 +1025,12 @@ def _join_gaps(paths: list[DrawnPath]) -> list[DrawnPath]:
 
 def read_doc(content: bytes, index: ModelIndex) -> Doc:
     """Read every page; find the routed width and the lines, ends, labels."""
-    pages = read_pdf(content)
     raws: list[RawPage] = []
+    # One parse per page: the geometry reader and the path reader share pdfplumber's
+    # parsed objects (the same result as read_pdf() and a second open, parsed once).
     with pdfplumber.open(io.BytesIO(content)) as pdf:
-        for page, plumber in zip(pages, pdf.pages, strict=True):
+        for n, plumber in enumerate(pdf.pages, start=1):
+            page = _read_page(n, plumber)
             raw = _raw_page(page, plumber)
             raw.paths = _join_gaps(raw.paths)
             raws.append(raw)
@@ -1352,6 +1355,20 @@ def _axis(a: P, b: P) -> str | None:
     return None
 
 
+#: More than meet()'s own tolerance (0.05): segments whose boxes are this far apart share no point.
+_APART = 0.1
+
+
+def _apart(p1: P, p2: P, q1: P, q2: P) -> bool:
+    """Whether two segments' bounding boxes are further apart than meet() could join."""
+    return (
+        min(p1[0], p2[0]) > max(q1[0], q2[0]) + _APART
+        or min(q1[0], q2[0]) > max(p1[0], p2[0]) + _APART
+        or min(p1[1], p2[1]) > max(q1[1], q2[1]) + _APART
+        or min(q1[1], q2[1]) > max(p1[1], p2[1]) + _APART
+    )
+
+
 def crossing_problems(lines: Sequence[Line], dots: Sequence[Dot], sheet: int) -> list[str]:
     """Any shared point of two lines of different connections must be a proper crossing."""
     problems: list[str] = []
@@ -1361,6 +1378,8 @@ def crossing_problems(lines: Sequence[Line], dots: Sequence[Dot], sheet: int) ->
         shared_dots = {e.dot.c for e in a.ends if e.dot} & {e.dot.c for e in b.ends if e.dot}
         for i, (p1, p2) in enumerate(itertools.pairwise(a.path.pts)):
             for j, (q1, q2) in enumerate(itertools.pairwise(b.path.pts)):
+                if _apart(p1, p2, q1, q2):
+                    continue
                 hits = meet(p1, p2, q1, q2)
                 if not hits:
                     continue
@@ -1395,9 +1414,14 @@ def crossing_problems(lines: Sequence[Line], dots: Sequence[Dot], sheet: int) ->
 
 def avoidance_problems(raw: RawPage) -> list[str]:
     problems = []
+    inks = [(ch, _ink(ch)) for ch in raw.page.chars]
     for line in raw.lines:
         own = [e.dot.c for e in line.ends if e.dot]
         for p, q in itertools.pairwise(line.path.pts):
+            # A segment can only run through a box its bounding box meets: skipping the
+            # others changes no result, only the cost.
+            sx0, sx1 = min(p[0], q[0]), max(p[0], q[0])
+            sy0, sy1 = min(p[1], q[1]), max(p[1], q[1])
             for box in raw.symbol_boxes:
                 inner = (box[0] + EPS, box[1] + EPS, box[2] - EPS, box[3] - EPS)
                 if through_box(p, q, inner) > EPS:
@@ -1405,8 +1429,9 @@ def avoidance_problems(raw: RawPage) -> list[str]:
                         f"sheet {raw.page.number}: line {line.conn} runs through a symbol body "
                         f"{_fmt(box[:2])}"
                     )
-            for ch in raw.page.chars:
-                ink = _ink(ch)
+            for ch, ink in inks:
+                if ink[0] >= sx1 or ink[2] <= sx0 or ink[1] >= sy1 or ink[3] <= sy0:
+                    continue  # through_box() is 0: the box's open interior is out of reach
                 if through_box(p, q, ink) > 0.1 and not any(
                     _box_gap(ink, (c[0], c[1], c[0], c[1])) < 0.5 for c in own
                 ):
