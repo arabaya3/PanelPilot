@@ -389,6 +389,8 @@ FLAG_ROOM = (
     (cd.AREA_RIGHT - 3.2 * MM) - (cd.AREA_RIGHT - 4 * MM - BOX_W - DOT_OUT - ESCAPE) - 7 * MM
 )
 FLAG_LINE = 3.0 * MM
+#: Extra room above a wrapped flag text.
+FLAG_SEP = 1.0 * MM
 
 
 def _flag_text(end: cd.End, reference: str) -> str:
@@ -404,8 +406,12 @@ def _flag_lines(text: str) -> list[str]:
 
 
 def _track_height(lines: int) -> float:
-    """A track and the flag text above it."""
-    return TRACK + (lines - 1) * FLAG_LINE
+    """A track and the flag text above it.
+
+    A wrapped text gets 1 mm more below the next track up, so each text reads
+    with its own track (below it) rather than the one above.
+    """
+    return TRACK + (lines - 1) * FLAG_LINE + (FLAG_SEP if lines > 1 else 0.0)
 
 
 def _sheet_keys(state: _SheetState) -> set[Key]:
@@ -592,6 +598,8 @@ class _Terminal:
     overflow_ys: list[float] = field(default_factory=list)
     nudge: float = 0.0  # how far the dot is moved off a zone line
     slot_ys: list[float] = field(default_factory=list)  # its lines' rows
+    unit: int = 0  # its first row's unit in its column
+    row_top: float = 0.0  # the top of its rows
 
 
 #: A dot (and the marking centred on it) stays this far from a zone row's edge.
@@ -616,6 +624,70 @@ def _off_zone_line(y: float, lo: float, hi: float, lines: int) -> float:
         if y + move + up <= hi - 0.2 * MM and y + move - down >= lo + 0.2 * MM:
             return move
     return near
+
+
+#: The least clear space between two markings of one block, one above the other.
+ROW_CLEAR = 1.0 * MM
+
+
+def _extent(t: _Terminal) -> tuple[float, float]:
+    """How far a terminal's marking reaches above and below its dot."""
+    lines = len(t.row.marking)
+    return ((lines - 1) / 2 * 3.0 + 0.95) * MM, ((lines - 1) / 2 * 3.0 + 1.4) * MM
+
+
+def _clear_of_zone_lines(y: float) -> bool:
+    edge_y = cd.AREA_TOP - round((cd.AREA_TOP - y) / cd.ZONE_ROW) * cd.ZONE_ROW
+    return abs(y - edge_y) >= ZONE_CLEAR - 1e-6
+
+
+def _space_rows(column: list[_Terminal], bottom: float) -> None:
+    """Keep the markings of a block apart where a dot was moved off a zone line.
+
+    Moving one dot off a zone line can bring its marking within a few tenths
+    of a millimetre of its neighbour's. Then the rows below it move down with
+    it (as a block, as far as the box allows), else the rows above move up,
+    each only where it stays clear of a zone line itself. Rows that still
+    cannot be spaced keep their places (their markings never overlap).
+    """
+
+    def gap(i: int) -> float:
+        above, below = column[i - 1], column[i]
+        return (above.dot[1] - _extent(above)[1]) - (below.dot[1] + _extent(below)[0])
+
+    def move(t: _Terminal, dy: float) -> None:
+        t.dot = (t.dot[0], t.dot[1] + dy)
+        t.nudge += dy
+
+    for i in range(1, len(column)):
+        need = ROW_CLEAR - gap(i)
+        if need <= 1e-6:
+            continue
+        # The rows from i down, as one block, until a row has room to spare.
+        tail = [column[i]]
+        for j in range(i + 1, len(column)):
+            if gap(j) - need >= ROW_CLEAR - 1e-6:
+                break
+            tail.append(column[j])
+        low = tail[-1]
+        if low.dot[1] - need - _extent(low)[1] >= bottom + 0.5 * MM and all(
+            _clear_of_zone_lines(t.dot[1] - need) for t in tail
+        ):
+            for t in tail:
+                move(t, -need)
+            continue
+        # Else the rows from i - 1 up, as one block.
+        head = [column[i - 1]]
+        for j in range(i - 1, 0, -1):
+            if gap(j) - need >= ROW_CLEAR - 1e-6:
+                break
+            head.append(column[j - 1])
+        top = head[-1]
+        if top.dot[1] + need + _extent(top)[0] <= top.row_top and all(
+            _clear_of_zone_lines(t.dot[1] + need) for t in head
+        ):
+            for t in head:
+                move(t, need)
 
 
 def _fan(t: _Terminal, ys: list[float]) -> None:
@@ -663,6 +735,7 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
     for n, state in enumerate(states):
         number = first + n
         for p in state.parts:
+            column: list[_Terminal] = []
             top = _unit_top(p.side, p.unit)
             x_title = L_BOX_X0 + PAD_X if p.side == "L" else R_BOX_X0 + 1.0 * MM
             headers[(p.owner.kind, p.owner.owner_id, p.number)] = cd.Place(
@@ -684,10 +757,15 @@ def routed_set(model: entities.DesignModelV2, drawing: cd.DrawingSet) -> RoutedS
                 t = _Terminal(
                     r, number, p.side, (dot_x, dot_y), [], [], nudge=nudge, slot_ys=ys[:drawn]
                 )
+                t.unit, t.row_top = unit, ys[0] + U / 2
                 terminals[r.row.key] = t
-                places[r.row.key] = cd.Place(number, 0, unit, dot_x, dot_y)
+                column.append(t)
                 t.overflow_ys = ys[drawn:] if len(r.ends) > MAX_FAN else []
                 unit += k
+            bottom = _unit_top(p.side, p.unit + _part_units(p))
+            _space_rows(column, bottom)
+            for t in column:
+                places[t.row.row.key] = cd.Place(number, 0, t.unit, t.dot[0], t.dot[1])
     # Fan order: by far end's place (same sheet first, higher first), then id.
     for t in terminals.values():
         r = t.row
@@ -1031,7 +1109,17 @@ def _route_sheet(
                 ((tip[0] - s * 1.5 * MM, slot.y - 0.8 * MM), tip),
             )
             stubs.append(RoutedStub(cid, tuple(_clean(pts)), arrow))
-            texts.append(_escape_text(t, slot, f"{labels[cid]} not routed"))
+            # The text follows the arrowhead on the stub's own line, clear of it.
+            texts.append(
+                cd.Text(
+                    tip[0] + s * 1.2 * MM,
+                    slot.y - 0.9 * MM,
+                    f"{labels[cid]} not routed",
+                    BODY_PT,
+                    right=t.side == "R",
+                    role="label",
+                )
+            )
     sheet = RoutedSheet(
         number=number,
         board_id=state.board,
@@ -1089,13 +1177,20 @@ def _clean(pts: Sequence[Point]) -> list[Point]:
 
 def _assign_lanes(runs: list[_Run]) -> int | None:
     """Lanes for every run (and tracks for continuations); the lane count, or ``None`` if too many."""
-    order: list[list[_Run]] = []
+
+    def apart(run: _Run, other: _Run) -> bool:
+        # Two runs share a lane only well apart, and never when they meet at a
+        # terminal: one lane through a junction would read as one line.
+        ends = {id(run.ta), id(run.tb)}
+        if ends & {id(other.ta), id(other.tb)}:
+            return False
+        return run.low > other.high + LANE_GAP or other.low > run.high + LANE_GAP
 
     def pack(group: list[_Run]) -> list[list[_Run]]:
         lanes: list[list[_Run]] = []
         for run in group:
             for lane in lanes:
-                if all(run.low > o.high + LANE_GAP or o.low > run.high + LANE_GAP for o in lane):
+                if all(apart(run, o) for o in lane):
                     lane.append(run)
                     break
             else:
@@ -1109,24 +1204,58 @@ def _assign_lanes(runs: list[_Run]) -> int | None:
     lc = sorted(by["Lc"], key=lambda r: (r.a.y, r.cid))
     for n, run in enumerate(lc):
         run.track = len(lc) - 1 - n
-    order += [[r] for r in lc]
     ll = sorted(by["LL"], key=lambda r: (r.high - r.low, r.low, r.cid))
-    order += pack(ll)
+    # Left lanes, nearest the left column first: same-side lanes inserted
+    # among the continuations (whose own order keeps tracks from crossing).
+    order: list[list[_Run]] = _nearest_first([[r] for r in lc], pack(ll))
     lr = sorted(by["LR"], key=lambda r: (r.low, r.high, r.cid))
     order += _fewest_crossings([[r] for r in lr])  # one lane each: lanes reorder freely
     rr = sorted(by["RR"], key=lambda r: (r.high - r.low, r.low, r.cid))
-    order += list(reversed(pack(rr)))
     # Right continuations: the highest escape leftmost; the rightmost lane takes the highest track.
     rc = sorted(by["Rc"], key=lambda r: (-r.a.y, r.cid))
     for n, run in enumerate(rc):
         run.track = n
-    order += [[r] for r in rc]
+    order += list(reversed(_nearest_first([[r] for r in reversed(rc)], pack(rr))))
     if len(order) > LANES:
         return None
     for n, lane in enumerate(order):
         for run in lane:
             run.lane = n
     return len(order)
+
+
+def _escape_ys(run: _Run) -> list[float]:
+    """The heights of a run's escapes (one for a continuation)."""
+    return [run.a.y] if run.b is None else [run.a.y, run.b.y]
+
+
+def _side_crossings(near: list[_Run], far: list[_Run]) -> int:
+    """Crossings when lane ``near`` lies nearer its column than lane ``far`` (one side's runs).
+
+    Each escape of a farther lane crosses every nearer lane whose span it passes.
+    """
+    return sum(p.low < y < p.high for p in near for q in far for y in _escape_ys(q))
+
+
+def _nearest_first(fixed: list[list[_Run]], free: list[list[_Run]]) -> list[list[_Run]]:
+    """One side's lanes, nearest its column first, with the fewest crossings found by insertion.
+
+    ``fixed`` keep their order; each ``free`` lane in turn goes where the
+    order's crossings are fewest (ties: farthest from the column, so that of
+    equal lanes the shorter, placed first, stays nearer). Deterministic.
+    """
+    out = list(fixed)
+    for lane in free:
+        best: tuple[int, int] | None = None
+        for i in range(len(out) + 1):
+            c = sum(_side_crossings(o, lane) for o in out[:i]) + sum(
+                _side_crossings(lane, o) for o in out[i:]
+            )
+            if best is None or c <= best[0]:
+                best = (c, i)
+        assert best is not None
+        out.insert(best[1], lane)
+    return out
 
 
 def _sides_y(run: _Run) -> tuple[float, float]:
