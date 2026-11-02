@@ -1,0 +1,1833 @@
+{
+  "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+  "fixture": "multi_board",
+  "configuration": {
+    "name": "synthetic multi-board review drawing",
+    "_comment": "SYNTHETIC TEST DATA. Template markings, signals, point markings, symbols and wire numbers here are illustrative labels for the data shape only, not a marking or numbering convention, not a symbol standard, not an engineering value, and not taken from any customer document.",
+    "templates": [
+      {
+        "ref": "tenant/synth-rv-command/v1",
+        "function": "command_device",
+        "terminals": [
+          {
+            "id": "x1",
+            "marking": "X1",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x2",
+            "marking": "X2",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x3",
+            "marking": "X3",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "x4",
+            "marking": "X4",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": null,
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-rv-contactor/v1",
+        "function": "contactor",
+        "terminals": [
+          {
+            "id": "a1",
+            "marking": "A1",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "a2",
+            "marking": "A2",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m1",
+            "marking": "1",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m2",
+            "marking": "2",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m3",
+            "marking": "3",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m4",
+            "marking": "4",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m5",
+            "marking": "5",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "m6",
+            "marking": "6",
+            "kind": "main",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x13",
+            "marking": "13",
+            "kind": "contact",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x14",
+            "marking": "14",
+            "kind": "contact",
+            "required": null,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 16,
+          "height": 12,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                4,
+                3,
+                4
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                0,
+                2,
+                4
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                8,
+                2,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                6,
+                0,
+                6,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                9,
+                0,
+                9,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                12,
+                0,
+                12,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                15,
+                0,
+                15,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                3,
+                11
+              ],
+              "text": "K"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "a1",
+              "x": 2,
+              "y": 0
+            },
+            {
+              "terminal": "a2",
+              "x": 2,
+              "y": 12
+            },
+            {
+              "terminal": "m1",
+              "x": 6,
+              "y": 0
+            },
+            {
+              "terminal": "m2",
+              "x": 6,
+              "y": 12
+            },
+            {
+              "terminal": "m3",
+              "x": 9,
+              "y": 0
+            },
+            {
+              "terminal": "m4",
+              "x": 9,
+              "y": 12
+            },
+            {
+              "terminal": "m5",
+              "x": 12,
+              "y": 0
+            },
+            {
+              "terminal": "m6",
+              "x": 12,
+              "y": 12
+            },
+            {
+              "terminal": "x13",
+              "x": 15,
+              "y": 0
+            },
+            {
+              "terminal": "x14",
+              "x": 15,
+              "y": 12
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-rv-indicator/v1",
+        "function": "indicator",
+        "terminals": [
+          {
+            "id": "x1",
+            "marking": "X1",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "x2",
+            "marking": "X2",
+            "kind": "signal",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-rv-interface/v1",
+        "function": "io_module",
+        "terminals": [
+          {
+            "id": "i01",
+            "marking": "I1",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i02",
+            "marking": "I2",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i03",
+            "marking": "I3",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i04",
+            "marking": "I4",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i05",
+            "marking": "I5",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i06",
+            "marking": "I6",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i07",
+            "marking": "I7",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i08",
+            "marking": "I8",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i09",
+            "marking": "I9",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i10",
+            "marking": "I10",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i11",
+            "marking": "I11",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i12",
+            "marking": "I12",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i13",
+            "marking": "I13",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "i14",
+            "marking": "I14",
+            "kind": "signal",
+            "required": null,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 16,
+          "height": 8,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                0,
+                0,
+                16,
+                8
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                1,
+                5
+              ],
+              "text": "IO"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "i01",
+              "x": 1,
+              "y": 0
+            },
+            {
+              "terminal": "i02",
+              "x": 2,
+              "y": 0
+            },
+            {
+              "terminal": "i03",
+              "x": 3,
+              "y": 0
+            },
+            {
+              "terminal": "i04",
+              "x": 4,
+              "y": 0
+            },
+            {
+              "terminal": "i05",
+              "x": 5,
+              "y": 0
+            },
+            {
+              "terminal": "i06",
+              "x": 6,
+              "y": 0
+            },
+            {
+              "terminal": "i07",
+              "x": 7,
+              "y": 0
+            },
+            {
+              "terminal": "i08",
+              "x": 8,
+              "y": 0
+            },
+            {
+              "terminal": "i09",
+              "x": 9,
+              "y": 0
+            },
+            {
+              "terminal": "i10",
+              "x": 10,
+              "y": 0
+            },
+            {
+              "terminal": "i11",
+              "x": 11,
+              "y": 0
+            },
+            {
+              "terminal": "i12",
+              "x": 12,
+              "y": 0
+            },
+            {
+              "terminal": "i13",
+              "x": 13,
+              "y": 0
+            },
+            {
+              "terminal": "i14",
+              "x": 14,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-rv-psu/v1",
+        "function": "power_supply",
+        "terminals": [
+          {
+            "id": "l",
+            "marking": "L",
+            "kind": "ac_in",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "n",
+            "marking": "-",
+            "kind": "dc_out",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "nn",
+            "marking": "N",
+            "kind": "ac_in",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "p",
+            "marking": "+",
+            "kind": "dc_out",
+            "required": true,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": []
+      },
+      {
+        "ref": "tenant/synth-rv-relay/v1",
+        "function": "relay",
+        "terminals": [
+          {
+            "id": "a1",
+            "marking": "A1",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "a2",
+            "marking": "A2",
+            "kind": "coil",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "c11",
+            "marking": "11",
+            "kind": "contact",
+            "required": true,
+            "group": null
+          },
+          {
+            "id": "c12",
+            "marking": "12",
+            "kind": "contact",
+            "required": null,
+            "group": null
+          },
+          {
+            "id": "c14",
+            "marking": "14",
+            "kind": "contact",
+            "required": false,
+            "group": null
+          }
+        ],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 10,
+          "height": 12,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                1,
+                3,
+                4
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                0,
+                2,
+                1
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                2,
+                5,
+                2,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                0,
+                7,
+                8
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                8,
+                9,
+                10
+              ],
+              "text": null
+            },
+            {
+              "kind": "line",
+              "points": [
+                7,
+                10,
+                7,
+                12
+              ],
+              "text": null
+            },
+            {
+              "kind": "text",
+              "points": [
+                1,
+                11
+              ],
+              "text": "K"
+            }
+          ],
+          "anchors": [
+            {
+              "terminal": "a1",
+              "x": 2,
+              "y": 0
+            },
+            {
+              "terminal": "a2",
+              "x": 2,
+              "y": 12
+            },
+            {
+              "terminal": "c11",
+              "x": 7,
+              "y": 12
+            },
+            {
+              "terminal": "c14",
+              "x": 7,
+              "y": 0
+            }
+          ]
+        }
+      },
+      {
+        "ref": "tenant/synth-rv-strip/v1",
+        "function": "terminal_type",
+        "terminals": [],
+        "contact_groups": [],
+        "parameters": [],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        },
+        "restricted_scope": [],
+        "symbol": {
+          "width": 4,
+          "height": 10,
+          "shapes": [
+            {
+              "kind": "rect",
+              "points": [
+                1,
+                0,
+                2,
+                10
+              ],
+              "text": null
+            }
+          ],
+          "anchors": []
+        }
+      }
+    ],
+    "patterns": [
+      {
+        "ref": "tenant/synth-rv-control/v1",
+        "slots": [
+          {
+            "id": "g",
+            "template": "tenant/synth-rv-psu/v1"
+          },
+          {
+            "id": "s",
+            "template": "tenant/synth-rv-command/v1"
+          },
+          {
+            "id": "km",
+            "template": "tenant/synth-rv-contactor/v1"
+          },
+          {
+            "id": "k",
+            "template": "tenant/synth-rv-relay/v1"
+          },
+          {
+            "id": "h",
+            "template": "tenant/synth-rv-indicator/v1"
+          },
+          {
+            "id": "io",
+            "template": "tenant/synth-rv-interface/v1"
+          }
+        ],
+        "strips": [
+          "x"
+        ],
+        "points": [
+          {
+            "id": "p01",
+            "strip": "x",
+            "offset": 1,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p02",
+            "strip": "x",
+            "offset": 2,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p03",
+            "strip": "x",
+            "offset": 3,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p04",
+            "strip": "x",
+            "offset": 4,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p05",
+            "strip": "x",
+            "offset": 5,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p06",
+            "strip": "x",
+            "offset": 6,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p07",
+            "strip": "x",
+            "offset": 7,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p08",
+            "strip": "x",
+            "offset": 8,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p09",
+            "strip": "x",
+            "offset": 9,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p10",
+            "strip": "x",
+            "offset": 10,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p11",
+            "strip": "x",
+            "offset": 11,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p12",
+            "strip": "x",
+            "offset": 12,
+            "level": 1,
+            "kind": "signal"
+          }
+        ],
+        "nets": [
+          {
+            "role": "plus",
+            "signal": "SYN-CTL-P",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "g",
+                "terminal": "p"
+              },
+              {
+                "point": "p01",
+                "side": "inner"
+              },
+              {
+                "point": "p01",
+                "side": "outer"
+              },
+              {
+                "point": "p02",
+                "side": "outer"
+              },
+              {
+                "point": "p03",
+                "side": "outer"
+              },
+              {
+                "slot": "s",
+                "terminal": "x1"
+              },
+              {
+                "slot": "k",
+                "terminal": "c11"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "jumper"
+              },
+              {
+                "from": 3,
+                "to": 4,
+                "via": "jumper"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 4,
+                "to": 5,
+                "via": "wire"
+              },
+              {
+                "from": 5,
+                "to": 6,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "minus",
+            "signal": "SYN-CTL-M",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "g",
+                "terminal": "n"
+              },
+              {
+                "point": "p04",
+                "side": "inner"
+              },
+              {
+                "point": "p04",
+                "side": "outer"
+              },
+              {
+                "point": "p05",
+                "side": "outer"
+              },
+              {
+                "slot": "km",
+                "terminal": "a2"
+              },
+              {
+                "slot": "k",
+                "terminal": "a2"
+              },
+              {
+                "slot": "h",
+                "terminal": "x2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "internal"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "jumper"
+              },
+              {
+                "from": 3,
+                "to": 4,
+                "via": "wire"
+              },
+              {
+                "from": 4,
+                "to": 5,
+                "via": "wire"
+              },
+              {
+                "from": 5,
+                "to": 6,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "start",
+            "signal": "SYN-CTL-S",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "s",
+                "terminal": "x2"
+              },
+              {
+                "point": "p06",
+                "side": "inner"
+              },
+              {
+                "slot": "k",
+                "terminal": "a1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "coil",
+            "signal": "SYN-CTL-C",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "k",
+                "terminal": "c14"
+              },
+              {
+                "point": "p07",
+                "side": "inner"
+              },
+              {
+                "slot": "km",
+                "terminal": "a1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "hold",
+            "signal": "SYN-CTL-H",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "s",
+                "terminal": "x3"
+              },
+              {
+                "slot": "km",
+                "terminal": "x13"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "hold2",
+            "signal": "SYN-CTL-H2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "km",
+                "terminal": "x14"
+              },
+              {
+                "slot": "s",
+                "terminal": "x4"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "lamp",
+            "signal": "SYN-CTL-L",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "k",
+                "terminal": "c12"
+              },
+              {
+                "point": "p08",
+                "side": "inner"
+              },
+              {
+                "slot": "h",
+                "terminal": "x1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "out1",
+            "signal": "SYN-OUT-1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "km",
+                "terminal": "m2"
+              },
+              {
+                "point": "p09",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "out2",
+            "signal": "SYN-OUT-2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "km",
+                "terminal": "m4"
+              },
+              {
+                "point": "p10",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "out3",
+            "signal": "SYN-OUT-3",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "km",
+                "terminal": "m6"
+              },
+              {
+                "point": "p11",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "aux1",
+            "signal": "SYN-CTL-A1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "i01"
+              },
+              {
+                "point": "p12",
+                "side": "inner"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "aux2",
+            "signal": "SYN-CTL-A2",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "io",
+                "terminal": "i03"
+              },
+              {
+                "slot": "g",
+                "terminal": "l"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "in1",
+            "signal": "SYN-IN-1",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "km",
+                "terminal": "m1"
+              },
+              {
+                "slot": "km",
+                "terminal": "m3"
+              }
+            ],
+            "connections": []
+          }
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
+      },
+      {
+        "ref": "tenant/synth-rv-marshal/v1",
+        "slots": [
+          {
+            "id": "k",
+            "template": "tenant/synth-rv-relay/v1"
+          },
+          {
+            "id": "h",
+            "template": "tenant/synth-rv-indicator/v1"
+          }
+        ],
+        "strips": [
+          "x"
+        ],
+        "points": [
+          {
+            "id": "p01",
+            "strip": "x",
+            "offset": 1,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p02",
+            "strip": "x",
+            "offset": 2,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p03",
+            "strip": "x",
+            "offset": 3,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p04",
+            "strip": "x",
+            "offset": 4,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p05",
+            "strip": "x",
+            "offset": 5,
+            "level": 1,
+            "kind": "signal"
+          },
+          {
+            "id": "p06",
+            "strip": "x",
+            "offset": 6,
+            "level": 1,
+            "kind": "signal"
+          }
+        ],
+        "nets": [
+          {
+            "role": "com",
+            "signal": "SYN-MR-COM",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p01",
+                "side": "inner"
+              },
+              {
+                "point": "p01",
+                "side": "outer"
+              },
+              {
+                "point": "p02",
+                "side": "outer"
+              },
+              {
+                "point": "p03",
+                "side": "outer"
+              },
+              {
+                "slot": "k",
+                "terminal": "c11"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "internal"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "jumper"
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "via": "jumper"
+              },
+              {
+                "from": 3,
+                "to": 4,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "coil",
+            "signal": "SYN-MR-A1",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p04",
+                "side": "inner"
+              },
+              {
+                "slot": "k",
+                "terminal": "a1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "zero",
+            "signal": "SYN-MR-A2",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p05",
+                "side": "inner"
+              },
+              {
+                "slot": "k",
+                "terminal": "a2"
+              },
+              {
+                "slot": "h",
+                "terminal": "x2"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              },
+              {
+                "from": 1,
+                "to": 2,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "lamp",
+            "signal": "SYN-MR-L",
+            "scope": "binding",
+            "members": [
+              {
+                "slot": "k",
+                "terminal": "c14"
+              },
+              {
+                "slot": "h",
+                "terminal": "x1"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          },
+          {
+            "role": "spare",
+            "signal": "SYN-MR-SP",
+            "scope": "binding",
+            "members": [
+              {
+                "point": "p06",
+                "side": "inner"
+              },
+              {
+                "slot": "k",
+                "terminal": "c12"
+              }
+            ],
+            "connections": [
+              {
+                "from": 0,
+                "to": 1,
+                "via": "wire"
+              }
+            ]
+          }
+        ],
+        "provenance": {
+          "source": "synthetic test data",
+          "author": "test suite",
+          "created": "2026-11-02"
+        },
+        "review": {
+          "status": "unreviewed",
+          "reviewer": null,
+          "reviewed_at": null,
+          "standards": [],
+          "scope_note": null
+        }
+      }
+    ],
+    "strips": [
+      {
+        "id": "rv-db2a-x",
+        "board": "DB-2A",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X2"
+        },
+        "template": "tenant/synth-rv-strip/v1"
+      },
+      {
+        "id": "rv-mdb-x",
+        "board": "MDB",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X3"
+        },
+        "template": "tenant/synth-rv-strip/v1"
+      },
+      {
+        "id": "rv-smdb1-x",
+        "board": "SMDB-1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X1"
+        },
+        "template": "tenant/synth-rv-strip/v1"
+      },
+      {
+        "id": "rv-smdb2-x",
+        "board": "SMDB-2",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "X5"
+        },
+        "template": "tenant/synth-rv-strip/v1"
+      }
+    ],
+    "components": [
+      {
+        "id": "rv-db2a-h",
+        "board": "DB-2A",
+        "template": "tenant/synth-rv-indicator/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "P2"
+        }
+      },
+      {
+        "id": "rv-db2a-k",
+        "board": "DB-2A",
+        "template": "tenant/synth-rv-relay/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "K2"
+        }
+      },
+      {
+        "id": "rv-mdb-h",
+        "board": "MDB",
+        "template": "tenant/synth-rv-indicator/v1",
+        "designation": null
+      },
+      {
+        "id": "rv-mdb-k",
+        "board": "MDB",
+        "template": "tenant/synth-rv-relay/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "K3"
+        }
+      },
+      {
+        "id": "rv-smdb1-g",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-psu/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "G1"
+        }
+      },
+      {
+        "id": "rv-smdb1-h",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-indicator/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "P1"
+        }
+      },
+      {
+        "id": "rv-smdb1-io",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-interface/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "A1"
+        }
+      },
+      {
+        "id": "rv-smdb1-k",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-relay/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "K1"
+        }
+      },
+      {
+        "id": "rv-smdb1-km",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-contactor/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "Q9"
+        }
+      },
+      {
+        "id": "rv-smdb1-s",
+        "board": "SMDB-1",
+        "template": "tenant/synth-rv-command/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "S1"
+        }
+      },
+      {
+        "id": "rv-smdb2-h",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rv-indicator/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "P5"
+        }
+      },
+      {
+        "id": "rv-smdb2-k",
+        "board": "SMDB-2",
+        "template": "tenant/synth-rv-relay/v1",
+        "designation": {
+          "function": null,
+          "location": null,
+          "product": "K5"
+        }
+      }
+    ],
+    "bindings": [
+      {
+        "id": "rv-db2a",
+        "pattern": "tenant/synth-rv-marshal/v1",
+        "board": "DB-2A",
+        "circuit": null,
+        "slots": {
+          "h": {
+            "component": "rv-db2a-h"
+          },
+          "k": {
+            "component": "rv-db2a-k"
+          }
+        },
+        "strips": {
+          "x": "rv-db2a-x"
+        },
+        "markings": {
+          "p01": "1",
+          "p02": "2",
+          "p03": "3",
+          "p04": "4",
+          "p05": "5",
+          "p06": "6"
+        },
+        "cable": null,
+        "wires": {}
+      },
+      {
+        "id": "rv-mdb",
+        "pattern": "tenant/synth-rv-marshal/v1",
+        "board": "MDB",
+        "circuit": null,
+        "slots": {
+          "h": {
+            "component": "rv-mdb-h"
+          },
+          "k": {
+            "component": "rv-mdb-k"
+          }
+        },
+        "strips": {
+          "x": "rv-mdb-x"
+        },
+        "markings": {
+          "p01": "1",
+          "p02": "2",
+          "p03": "3",
+          "p04": "4",
+          "p05": "5",
+          "p06": "6"
+        },
+        "cable": null,
+        "wires": {}
+      },
+      {
+        "id": "rv-smdb1",
+        "pattern": "tenant/synth-rv-control/v1",
+        "board": "SMDB-1",
+        "circuit": null,
+        "slots": {
+          "g": {
+            "component": "rv-smdb1-g"
+          },
+          "h": {
+            "component": "rv-smdb1-h"
+          },
+          "io": {
+            "component": "rv-smdb1-io"
+          },
+          "k": {
+            "component": "rv-smdb1-k"
+          },
+          "km": {
+            "component": "rv-smdb1-km"
+          },
+          "s": {
+            "component": "rv-smdb1-s"
+          }
+        },
+        "strips": {
+          "x": "rv-smdb1-x"
+        },
+        "markings": {
+          "p01": "1",
+          "p02": "2",
+          "p03": "3",
+          "p04": "4",
+          "p05": "5",
+          "p06": "6",
+          "p07": "7",
+          "p08": "8",
+          "p09": "9",
+          "p10": "10",
+          "p11": "11",
+          "p12": "12"
+        },
+        "cable": null,
+        "wires": {
+          "start/0": {
+            "number": {
+              "value": "SYN-W1",
+              "source": "user"
+            }
+          },
+          "coil/1": {
+            "number": {
+              "value": "SYN-W2",
+              "source": "user"
+            }
+          }
+        }
+      },
+      {
+        "id": "rv-smdb2",
+        "pattern": "tenant/synth-rv-marshal/v1",
+        "board": "SMDB-2",
+        "circuit": null,
+        "slots": {
+          "h": {
+            "component": "rv-smdb2-h"
+          },
+          "k": {
+            "component": "rv-smdb2-k"
+          }
+        },
+        "strips": {
+          "x": "rv-smdb2-x"
+        },
+        "markings": {
+          "p01": "1",
+          "p02": "2",
+          "p03": "3",
+          "p04": "4",
+          "p05": "5",
+          "p06": "6"
+        },
+        "cable": null,
+        "wires": {}
+      }
+    ]
+  },
+  "expect": {
+    "strip_points": 30,
+    "nets": 28,
+    "connections": 52,
+    "wires": 38,
+    "sha256": "bed655ef82db7183d3830a7940afae7f340f81fb3336943250374342b1ec121f"
+  }
+}

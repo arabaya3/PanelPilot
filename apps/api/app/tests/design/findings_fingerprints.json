@@ -59,6 +59,7 @@
     "configuration pe_n_distribution": "7293434fc70f1053db6f4976855b10e8876d7c3636d3fdd461f3695c6af9756c",
     "configuration drawing_control_relay": "c770a1b5d37224bb1bdd2ab72f736aab0ec451c8a0de0e070f9e4bf8e748c8d9",
     "configuration drawing_heldout_feeder": "16874d1c75254cf4ab31238e8fbbcdef2965791ec2b2fe012e7dede58a65087a",
+    "configuration drawing_review_multi_board": "a01205cc24bef6128a7c8146ed518fe7f8edab52e74e3fe51af64c587b90e5bc",
     "configuration drawing_routed_crowded": "9842fcabb84ea0747440c730de1d9bcd7bc4f93f84bab587ad4643127b9f82d5"
   }
 }
