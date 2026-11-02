@@ -2837,8 +2837,12 @@ def _blank_pdf() -> bytes:
 
 
 def label_runs(page: Page) -> list[Run]:
-    """Line labels (w-…, x-…) and stub texts ("… not routed") as printed runs."""
-    return [r for r in page.runs if LINE_LABEL.search(r.text) or _NOT_ROUTED.search(r.text)]
+    """Line labels (w-…, x-…), stub texts ("… not routed") and "(see the open items)"."""
+    return [
+        r
+        for r in page.runs
+        if LINE_LABEL.search(r.text) or _NOT_ROUTED.search(r.text) or _SEE_OPEN.search(r.text)
+    ]
 
 
 def label_gap_problems(page: Page, minimum: float) -> list[str]:
@@ -2878,3 +2882,101 @@ def test_labels_are_found() -> None:
                 stubs += sum(bool(_NOT_ROUTED.search(r.text)) for r in runs)
     assert labels
     assert stubs
+
+
+# --- 11i. Overflow notes stay together at their terminal ------------------- #
+
+#: How far apart the left edges of one overflow note's lines may be.
+NOTE_ALIGN_MAX = 1 * mm
+#: How far an overflow note may start from its terminal's dot, horizontally.
+NOTE_REACH = 6 * mm
+#: How close a stub's arrow tip must be to a "… not routed" text for it to be that stub's own.
+STUB_TEXT_REACH = 3 * mm
+_SEE_OPEN = re.compile(r"\(see the open items\)")
+
+
+def overflow_notes(raw: RawPage) -> list[list[Run]]:
+    """The over-full terminals' notes, each as its lines from top to bottom.
+
+    A note's lines are stub texts with no stub line of their own, and "(see the open
+    items)"; consecutive lines form one note.
+    """
+    tips = []
+    for path in raw.paths:
+        ends = [p for p in (path.pts[0], path.pts[-1]) if _dot_at(raw, p) is None]
+        if len(ends) == 1 and path.length > ARROW_PIECE_MAX:
+            tips.append(ends[0])
+    lines = []
+    for run in raw.page.runs:
+        if _SEE_OPEN.search(run.text):
+            lines.append(run)
+        elif _NOT_ROUTED.search(run.text):
+            box = (run.x0, run.top, run.x1, run.bottom)
+            if not any(_box_gap(box, (t[0], t[1], t[0], t[1])) <= STUB_TEXT_REACH for t in tips):
+                lines.append(run)
+    lines.sort(key=lambda r: r.top)
+    notes: list[list[Run]] = []
+    for run in lines:
+        last = notes[-1][-1] if notes else None
+        if last is not None and -0.1 <= run.top - last.bottom < 1.5 * last.size:
+            notes[-1].append(run)
+        else:
+            notes.append([run])
+    return notes
+
+
+def _note_terminal(raw: RawPage, note: list[Run], index: ModelIndex) -> Dot | None:
+    """The dot of the terminal a note is about: the end its named connections share."""
+    cids = {
+        cid
+        for r in note
+        for m in LINE_LABEL.finditer(r.text)
+        if (cid := index.resolve(m.group(1))) is not None
+    }
+    if not cids:
+        return None
+    shared = set.intersection(*(set(index.ends(c)) for c in cids))
+    first = note[0]
+    mine = [d for d in raw.dots if terminal_at(raw.page, d.c, index) in shared]
+    return min(mine, key=lambda q: math.dist(q.c, (first.x0, first.yc))) if mine else None
+
+
+def overflow_note_problems(raw: RawPage, index: ModelIndex) -> list[str]:
+    problems = []
+    for note in overflow_notes(raw):
+        first = note[0]
+        where = f"sheet {raw.page.number}: overflow note {first.text!r} at ({first.x0:.0f},{first.top:.0f})"
+        lefts = [r.x0 for r in note]
+        if max(lefts) - min(lefts) > NOTE_ALIGN_MAX:
+            problems.append(
+                f"{where}: its lines start at x {', '.join(f'{x:.0f}' for x in lefts)}, not "
+                f"left-aligned within {NOTE_ALIGN_MAX / mm:.0f} mm"
+            )
+        dot = _note_terminal(raw, note, index)
+        if dot is None:
+            problems.append(f"{where}: names no terminal drawn on this sheet")
+            continue
+        key = terminal_at(raw.page, dot.c, index)
+        where += f" ({index.label[key]})" if key else ""
+        gap = abs(first.x0 - dot.c[0])
+        if gap > NOTE_REACH:
+            problems.append(
+                f"{where}: starts {gap / mm:.1f} mm from its terminal's dot at {_fmt(dot.c)}, "
+                f"over {NOTE_REACH / mm:.0f} mm"
+            )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_an_overflow_note_is_one_aligned_stack_at_its_terminal(case: str) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        if raw.page.is_routed:
+            problems += overflow_note_problems(raw, model_index(case))
+    assert not problems, _report(problems)
+
+
+def test_overflow_notes_are_found() -> None:
+    """Non-vacuity: the crowded case has over-full terminals whose notes are read."""
+    notes = [n for raw in doc("config:drawing_routed_crowded").pages for n in overflow_notes(raw)]
+    assert any(any(_SEE_OPEN.search(r.text) for r in n) for n in notes), notes
