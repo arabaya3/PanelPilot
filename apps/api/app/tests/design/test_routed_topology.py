@@ -1716,7 +1716,9 @@ def flag_texts(page: Page) -> list[tuple[str, Any]]:
 
     Wrapped lines are re-joined (a following line continues it unless it starts a new "to ...", and only until a ")").
     """
-    if page.inner is None:
+    if page.inner is None or not page.is_routed:
+        # Flags are drawn on routed sheets only: a cross-reference sheet's "to <board>/..."
+        # texts (board-qualified far ends) are references, read by their own tests.
         return []
     ix0, it, ix1, ib = page.inner
     out = []

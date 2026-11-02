@@ -1010,6 +1010,7 @@ def test_every_printed_value_is_in_the_snapshot_or_reads_not_set(case: str) -> N
     got = read_back(case)
     wires = {w.id: w for w in model.wires}
     labels = {r.label for r in rows.values()}
+    qualified = {f"{r.board_id}/{r.label}" for r in rows.values()}
     vias = {c.via for c in model.connections}
     cores = {
         (c.core.cable_id, str(c.core.index)): c.core.label
@@ -1024,11 +1025,17 @@ def test_every_printed_value_is_in_the_snapshot_or_reads_not_set(case: str) -> N
             assert mark.removesuffix(" (cont.)") in markings, mark
         for net in got.nets[key]:
             assert net in signals, net
-        for _sheet, upper, lower, _kind in got.texts[key]:
+        for sheet, upper, lower, _kind in got.texts[key]:
             if upper:
                 far = _FAR.match(upper)
                 assert far, upper
-                assert far.group(1) in labels, upper
+                # A far end names its board ("<board>/<label>", the real board of a
+                # terminal with that label) on a sheet showing more than one board;
+                # on a one-board sheet the board is optional.
+                if len(got.boards[sheet]) > 1:
+                    assert far.group(1) in qualified, upper
+                else:
+                    assert far.group(1) in labels | qualified, upper
                 assert far.group(2) in vias, upper
             wire = _WIRE.match(lower)
             if wire:
