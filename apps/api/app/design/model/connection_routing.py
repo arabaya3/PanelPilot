@@ -1048,10 +1048,19 @@ def _route_sheet(
                     )
             for n, over in enumerate(t.overflow):
                 slot = _Slot(over, t.overflow_ys[n], 0.0, False)
-                texts.append(_escape_text(t, slot, f"{labels[over.connection_id]} not routed"))
+                texts.append(
+                    dataclasses.replace(
+                        _escape_text(t, slot, f"{labels[over.connection_id]} not routed"),
+                        role="overflow",
+                    )
+                )
             if t.overflow:
                 slot = _Slot(t.overflow[0], t.overflow_ys[len(t.overflow)], 0.0, False)
-                texts.append(_escape_text(t, slot, "(see the open items)"))
+                texts.append(
+                    dataclasses.replace(
+                        _escape_text(t, slot, "(see the open items)"), role="overflow"
+                    )
+                )
 
     # Runs.
     keys = {t.row.row.key for t in here}
@@ -1218,6 +1227,8 @@ LABEL_DROP = 0.65 * MM
 def _stagger_labels(texts: list[cd.Text]) -> list[cd.Text]:
     """Labels (and stub texts) of rows too close for one above the other move along their line.
 
+    An overcrowded terminal's note rows (role ``overflow``) never move.
+
     Going down each side, a label within LABEL_GAP (vertically) of one already
     placed whose extent it overlaps moves on along its own escape, past the
     other's end and 1.5 mm more, so the two read side by side. Deterministic:
@@ -1226,6 +1237,13 @@ def _stagger_labels(texts: list[cd.Text]) -> list[cd.Text]:
     out = list(texts)
     labels = [n for n, t in enumerate(out) if t.role == "label"]
     placed: list[tuple[bool, float, float, float]] = []  # right, x0, x1, baseline
+    # An overcrowded terminal's note rows (no line to move along) stay where
+    # they are, stacked at the fan; labels keep clear of them.
+    for t in out:
+        if t.role == "overflow":
+            width = cd.text_width(t.text, t.size, t.bold)
+            x0 = t.x - width if t.right else t.x
+            placed.append((t.right, x0, x0 + width, t.y))
     for n in sorted(labels, key=lambda n: (out[n].right, -out[n].y, out[n].x, out[n].text)):
         t = out[n]
         width = cd.text_width(t.text, t.size, t.bold)
