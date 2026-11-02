@@ -40,8 +40,15 @@ import pdfplumber
 import pytest
 from reportlab.lib.units import mm
 
-from app.design import connection_drawing_pdf, marking, snapshot
-from app.design.model import connection_drawing, entities, findings_v2, schedules, write
+from app.design import connection_drawing_pdf, marking, schedule_pdf, snapshot
+from app.design.model import (
+    compose,
+    connection_drawing,
+    entities,
+    findings_v2,
+    schedules,
+    write,
+)
 from app.design.model.read import read_snapshot
 from app.domain import design_configuration, design_projects
 from app.tests.design.test_drawing_geometry import (
@@ -136,7 +143,11 @@ MARKING_ROW = 3 * mm
 # Stress models, as configuration data
 # =========================================================================== #
 
-_PROVENANCE = {"source": "synthetic test data", "author": "test suite", "created": "2026-11-01"}
+_PROVENANCE = {
+    "source": "synthetic test data",
+    "author": "test suite",
+    "created": "2026-11-01",
+}
 _REVIEW: dict[str, Any] = {
     "status": "unreviewed",
     "reviewer": None,
@@ -215,7 +226,11 @@ def _configuration(spec: Spec) -> dict[str, Any]:
             {
                 "id": f"X{key}",
                 "board": board,
-                "designation": {"function": None, "location": None, "product": f"X{key}"},
+                "designation": {
+                    "function": None,
+                    "location": None,
+                    "product": f"X{key}",
+                },
                 "template": None,
             }
         )
@@ -237,7 +252,10 @@ def _configuration(spec: Spec) -> dict[str, Any]:
                 connections.append({"from": a, "to": b, "via": via})
                 if via == "wire":
                     wires[f"{role}/{c_index}"] = {
-                        "number": {"value": f"SYN-W{board}-{index:03d}-{c_index}", "source": "user"}
+                        "number": {
+                            "value": f"SYN-W{board}-{index:03d}-{c_index}",
+                            "source": "user",
+                        }
                     }
             nets.append(
                 {
@@ -249,7 +267,13 @@ def _configuration(spec: Spec) -> dict[str, Any]:
                 }
             )
         points = [
-            {"id": f"{k}p{n:03d}", "strip": f"x{k}", "offset": n + 1, "level": 1, "kind": "signal"}
+            {
+                "id": f"{k}p{n:03d}",
+                "strip": f"x{k}",
+                "offset": n + 1,
+                "level": 1,
+                "kind": "signal",
+            }
             for k, count in strip_keys
             for n in range(count)
         ]
@@ -430,7 +454,12 @@ def spec_oversize() -> Spec:
         for k in range(3):
             j = (i + 7 * (k + 1)) % n
             spec.nets.append(
-                _pair(B, f"SYN-O{i:02d}{k}", ("c", f"o{i:02d}", k), ("c", f"o{j:02d}", k + 3))
+                _pair(
+                    B,
+                    f"SYN-O{i:02d}{k}",
+                    ("c", f"o{i:02d}", k),
+                    ("c", f"o{j:02d}", k + 3),
+                )
             )
     return spec
 
@@ -468,6 +497,85 @@ def spec_long_designations() -> Spec:
     return spec
 
 
+def spec_both_sides() -> Spec:
+    """One terminal with six connections: three as their start, three as their end.
+
+    Its peers are components and strip points, so lines leave it towards both
+    sides of the sheet.
+    """
+    spec = Spec(
+        comps=[("bs", B, 2)] + [(f"bp{k}", B, 1) for k in range(3)],
+        strips=[("bs", B, 3)],
+    )
+    members: list[Member] = [("c", "bs", 0)]
+    members += [("c", f"bp{k}", 0) for k in range(3)]
+    members += [("p", "bs", k, "inner") for k in range(3)]
+    connections = [(0, k, "wire") for k in (1, 2, 3)] + [(k, 0, "wire") for k in (4, 5, 6)]
+    spec.nets.append(NetSpec(B, "SYN-BOTH", members, connections))
+    spec.nets.append(_pair(B, "SYN-BOTH2", ("c", "bs", 1), ("p", "bs", 0, "outer")))
+    return spec
+
+
+def spec_same_designation() -> Spec:
+    """Components designated alike ("K1", "K2") on three boards, each wired the same way."""
+    boards = ["DB-SD1", "DB-SD2", "DB-SD3"]
+    spec = Spec(boards=boards)
+    for n, board in enumerate(boards):
+        a, b = f"sd{n}a", f"sd{n}b"
+        spec.comps += [(a, board, 2), (b, board, 2)]
+        spec.names[a], spec.names[b] = "K1", "K2"
+        spec.nets.append(_pair(board, "SYN-SD", ("c", a, 0), ("c", b, 0)))
+        spec.nets.append(_pair(board, "SYN-SD-X", ("c", a, 1), ("c", b, 1)))
+    return spec
+
+
+def spec_jumper_every_point() -> Spec:
+    """A ten-point strip with a jumper between every pair of neighbouring points.
+
+    One net: each point's sides are joined internally, the outer sides by jumpers along
+    the whole strip, and one wire feeds the first point from a component.
+    """
+    n = 10
+    spec = Spec(comps=[("jf", B, 1)], strips=[("jp", B, n)])
+    members: list[Member] = [("c", "jf", 0)]
+    members += [("p", "jp", k, side) for k in range(n) for side in ("inner", "outer")]
+    connections: list[tuple[int, int, str]] = [(0, 1, "wire")]
+    for k in range(n):
+        connections.append((1 + 2 * k, 2 + 2 * k, "internal"))
+        if k + 1 < n:
+            connections.append((2 + 2 * k, 2 + 2 * (k + 1), "jumper"))
+    spec.nets.append(NetSpec(B, "SYN-JMP", members, connections))
+    return spec
+
+
+def spec_all_off_sheet() -> Spec:
+    """A component whose connections go to other sheets.
+
+    A 40-link chain spans sheets; "KFAR" (terminal 1 twice: a junction) is wired to
+    chain members far apart. On the cross-reference sheets its peers are on other
+    sheets; the routed sheets regroup blocks by connection (a layout choice the
+    test cannot force), so there its lines may be drawn whole.
+    """
+    n = 40
+    spec = Spec(comps=[(f"oc{i:02d}", B, 3) for i in range(n)] + [("far", B, 3)])
+    spec.names["far"] = "KFAR"
+    for i in range(n - 1):
+        spec.nets.append(
+            _pair(B, f"SYN-OC{i:02d}", ("c", f"oc{i:02d}", 1), ("c", f"oc{i + 1:02d}", 0))
+        )
+    spec.nets.append(
+        NetSpec(
+            B,
+            "SYN-FAR0",
+            [("c", "far", 0), ("c", "oc00", 2), ("c", "oc39", 2)],
+            [(0, 1, "wire"), (0, 2, "wire")],
+        )
+    )
+    spec.nets.append(_pair(B, "SYN-FAR1", ("c", "far", 1), ("c", "oc20", 2)))
+    spec.nets.append(_pair(B, "SYN-FAR2", ("c", "far", 2), ("c", "oc30", 2)))
+    return spec
+
+
 STRESS: dict[str, Callable[[], Spec]] = {
     "dense_grid": spec_dense_grid,
     "hub": spec_hub,
@@ -479,6 +587,10 @@ STRESS: dict[str, Callable[[], Spec]] = {
     "oversize": spec_oversize,
     "split_symbol": spec_split_symbol,
     "long_designations": spec_long_designations,
+    "both_sides": spec_both_sides,
+    "same_designation": spec_same_designation,
+    "jumper_every_point": spec_jumper_every_point,
+    "all_off_sheet": spec_all_off_sheet,
 }
 
 STRESS_CASES = [f"route:{name}" for name in STRESS]
@@ -573,6 +685,7 @@ class ModelIndex:
         self.owners: list[tuple[str, str, str, dict[str, Key]]] = []
         self.label: dict[Key, str] = {}
         self.board: dict[Key, str] = {}
+        self.side: dict[Key, str] = {}  # a strip point side's side; components have none
         for c in model.components:
             template = model.template(c.template_ref)
             name = c.designation.product if c.designation else c.id
@@ -592,6 +705,7 @@ class ModelIndex:
                     printed[squash(f"{p.marking} {side} L{p.level}")] = key
                     self.label[key] = f"{name}:{p.marking}"
                     self.board[key] = s.board_id
+                    self.side[key] = side
             self.owners.append((s.id, name, s.board_id, printed))
         self.ids = sorted(set(self.connections) | set(self.wire_of.values()))
 
@@ -636,7 +750,9 @@ def _names_board(header: str, board: str) -> bool:
     return re.search(rf"(?<![\w-]){re.escape(board)}(?![\w-])", header) is not None
 
 
-def unrealised_nets(model: entities.DesignModelV2) -> list[tuple[entities.Net, list[set[Key]]]]:
+def unrealised_nets(
+    model: entities.DesignModelV2,
+) -> list[tuple[entities.Net, list[set[Key]]]]:
     """Nets whose own connections leave members in more than one island, with the islands."""
     out = []
     by_net: dict[str, list[entities.Connection]] = defaultdict(list)
@@ -676,6 +792,7 @@ class DrawnPath:
     dash: tuple[tuple[float, ...], float] | None
     obj: int
     hops: list[int] = field(default_factory=list)  # indexes of segments from Bézier pieces
+    gaps: list[int] = field(default_factory=list)  # indexes of segments that bridge a gap
 
     @property
     def length(self) -> float:
@@ -719,6 +836,8 @@ class RawPage:
     paths: list[DrawnPath]
     dots: list[Dot]
     markers: list[Box]  # small closed non-round shapes: arrow / flag candidates
+    marker_shapes: list[list[P]] = field(default_factory=list)  # their outlines
+    dashes: list[tuple[tuple[float, ...], float]] = field(default_factory=list)  # (array, width)
     lines: list[Line] = field(default_factory=list)
     stubs: list[Line] = field(default_factory=list)
     symbol_boxes: list[Box] = field(default_factory=list)
@@ -790,6 +909,7 @@ def _raw_page(page: Page, plumber: Any) -> RawPage:
     paths: list[DrawnPath] = []
     dots: list[Dot] = []
     markers: list[Box] = []
+    shapes: list[list[P]] = []
     for n, obj in enumerate([*plumber.lines, *plumber.curves]):
         pts, hops = _flatten(obj)
         if len(pts) < 2:
@@ -804,6 +924,7 @@ def _raw_page(page: Page, plumber: Any) -> RawPage:
         if closed or obj.get("fill"):
             if max(w, h) <= MARKER_MAX:
                 markers.append(box)
+                shapes.append(pts if closed else [*pts, pts[0]])
             continue
         if not obj.get("stroke", True):
             continue
@@ -814,7 +935,9 @@ def _raw_page(page: Page, plumber: Any) -> RawPage:
         box = (rect["x0"], rect["top"], rect["x1"], rect["bottom"])
         if max(box[2] - box[0], box[3] - box[1]) <= MARKER_MAX and rect.get("fill"):
             markers.append(box)
-    return RawPage(page, paths, dots, markers)
+            x0, t, x1, b = box
+            shapes.append([(x0, t), (x1, t), (x1, b), (x0, b), (x0, t)])
+    return RawPage(page, paths, dots, markers, shapes)
 
 
 def _symbol_extent(page: Page) -> tuple[list[Box], set[float]]:
@@ -1015,7 +1138,12 @@ def _join_gaps(paths: list[DrawnPath]) -> list[DrawnPath]:
                 continue
             offset = len(a.pts)
             merged = DrawnPath(
-                a.pts + b.pts, a.width, a.dash, a.obj, a.hops + [h + offset for h in b.hops]
+                a.pts + b.pts,
+                a.width,
+                a.dash,
+                a.obj,
+                a.hops + [h + offset for h in b.hops],
+                a.gaps + [offset - 1] + [g + offset for g in b.gaps],
             )
             pool = [p for n, p in enumerate(pool) if n not in (i, j)] + [merged]
             changed = True
@@ -1033,6 +1161,11 @@ def read_doc(content: bytes, index: ModelIndex) -> Doc:
             page = _read_page(n, plumber)
             raw = _raw_page(page, plumber)
             raw.paths = _join_gaps(raw.paths)
+            raw.dashes = [
+                (dash[0], round(float(obj.get("linewidth") or 0), 2))
+                for obj in [*plumber.lines, *plumber.curves, *plumber.rects]
+                if obj.get("stroke", True) and (dash := _dash_of(obj)) is not None
+            ]
             raws.append(raw)
     symbol_widths: set[float] = set()
     for raw in raws:
@@ -1103,7 +1236,10 @@ def _is_lead(
     path = line.path
     if path.width == route_width or line.kind != "stub":
         return False
-    if path.dash is not None and _dash_kind(path.dash, path.width) in ("dotted", "dash-dot"):
+    if path.dash is not None and _dash_kind(path.dash, path.width) in (
+        "dotted",
+        "dash-dot",
+    ):
         return False
     far = next(e for e in line.ends if e.dot is None).p
     if (round(far[0]), round(far[1])) in anchors:
@@ -1315,7 +1451,12 @@ def junction_problems(case: str) -> list[str]:
                 if dot.c in own:
                     continue
                 for p, q in itertools.pairwise(a.path.pts):
-                    box = (dot.c[0] - dot.r, dot.c[1] - dot.r, dot.c[0] + dot.r, dot.c[1] + dot.r)
+                    box = (
+                        dot.c[0] - dot.r,
+                        dot.c[1] - dot.r,
+                        dot.c[0] + dot.r,
+                        dot.c[1] + dot.r,
+                    )
                     if through_box(p, q, box) > EPS:
                         problems.append(
                             f"sheet {raw.page.number}: line {a.conn} passes through the dot at "
@@ -1337,7 +1478,9 @@ def junction_problems(case: str) -> list[str]:
 
 
 @pytest.mark.parametrize("case", ALL_CASES)
-def test_junction_dots_are_exactly_at_terminals_with_two_or_more_connections(case: str) -> None:
+def test_junction_dots_are_exactly_at_terminals_with_two_or_more_connections(
+    case: str,
+) -> None:
     problems = junction_problems(case)
     assert not problems, _report(problems)
 
@@ -1621,7 +1764,9 @@ def test_every_continuation_flag_is_complete(case: str) -> None:
 
 
 @pytest.mark.parametrize("case", ALL_CASES)
-def test_continuations_are_read_wherever_a_connection_leaves_its_sheet(case: str) -> None:
+def test_continuations_are_read_wherever_a_connection_leaves_its_sheet(
+    case: str,
+) -> None:
     """Non-vacuity: a connection that leaves its sheet has readable flags.
 
     Every connection not drawn as one line (and not unrouted) must have two readable continued ends, and every flag-like text must be read as a continuation.
@@ -1830,7 +1975,12 @@ def test_text_is_readable_and_no_label_overlaps_another_line(
             if not tokens and not is_cont:
                 continue
             owns = {t for t in tokens if t is not None}
-            box = (run.x0, run.top + 0.25 * run.size, run.x1, run.bottom - 0.15 * run.size)
+            box = (
+                run.x0,
+                run.top + 0.25 * run.size,
+                run.x1,
+                run.bottom - 0.15 * run.size,
+            )
             for line in raw.lines:
                 if line.conn in owns:
                     continue  # its own line or leader
@@ -1845,7 +1995,11 @@ def test_text_is_readable_and_no_label_overlaps_another_line(
 # 10. Determinism
 # =========================================================================== #
 
-DETERMINISM_CASES = ["config:drawing_control_relay", "route:dense_grid", "route:strip_links"]
+DETERMINISM_CASES = [
+    "config:drawing_control_relay",
+    "route:dense_grid",
+    "route:strip_links",
+]
 
 
 @pytest.mark.parametrize("case", DETERMINISM_CASES)
@@ -1945,7 +2099,9 @@ def test_label_tokens_resolve_by_unique_prefix() -> None:
 
 
 @pytest.mark.parametrize("case", ALL_CASES)
-def test_every_dot_is_identified_even_under_wrapped_titles_and_markings(case: str) -> None:
+def test_every_dot_is_identified_even_under_wrapped_titles_and_markings(
+    case: str,
+) -> None:
     """Every dot on a drawing sheet resolves to one model terminal.
 
     Header and marking are read however many lines they wrap over; an
@@ -1974,3 +2130,627 @@ def test_wrapped_titles_are_rejoined() -> None:
     ]
     assert any(squash(longest) in squash(h) for h in headers), headers[:5]
     assert any(len(h) > 60 and h.count(" ") >= 1 for h in headers)
+
+
+# =========================================================================== #
+# 11. Print-scale legibility, continuation endpoints, schedule PDFs, regressions
+# =========================================================================== #
+#
+# The thresholds below are parameters of the review contract, not renderer
+# constants. A3 sheets are often printed on A4 "fit to page": every length then
+# shrinks by A4_FIT (297/420 = 0.707).
+
+#: A3 -> A4 fit-to-page scale.
+A4_FIT = 297 / 420
+#: The shortest dash gap (and dash) still visible on paper, after A4_FIT.
+PRINT_GAP_MIN = 0.4 * mm
+#: Two dash patterns of different meaning must differ by at least this, after A4_FIT.
+PATTERN_DIFF_MIN = 0.4 * mm
+#: A crossing hop's rise off its own line, or each side of a crossing gap, after A4_FIT.
+CROSSING_VISIBLE_MIN = 0.4 * mm
+#: The clearance between any text ink and an arrowhead / flag shape, at A3 100 %.
+ARROW_TEXT_CLEAR = 0.2 * mm
+#: The largest piece of an arrowhead drawn as stroked lines at a stub end.
+ARROW_PIECE_MAX = 2.5 * mm
+#: The least pitch of adjacent terminal rows in one block, at A3 100 %.
+ROW_PITCH_MIN = 3.5 * mm
+
+_SIDE_SUFFIX = re.compile(r"^, (?P<side>inner|outer) side")
+
+
+def _seg_box_gap(a: P, b: P, box: Box) -> float:
+    """The distance from a segment to a box (0 when it touches or enters it)."""
+    if through_box(a, b, box) > 0:
+        return 0.0
+    best = math.inf
+    for q in _samples(a, b, 0.1):
+        dx = max(box[0] - q[0], 0.0, q[0] - box[2])
+        dy = max(box[1] - q[1], 0.0, q[1] - box[3])
+        best = min(best, math.hypot(dx, dy))
+    return best
+
+
+def _inside(p: P, poly: Sequence[P]) -> bool:
+    hit = False
+    for (x1, y1), (x2, y2) in itertools.pairwise(poly):
+        if (y1 > p[1]) != (y2 > p[1]) and p[0] < x1 + (p[1] - y1) * (x2 - x1) / (y2 - y1):
+            hit = not hit
+    return hit
+
+
+def _shape_box_gap(poly: Sequence[P], box: Box) -> float:
+    centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+    if _inside(centre, poly):
+        return 0.0
+    return min(_seg_box_gap(a, b, box) for a, b in itertools.pairwise(poly))
+
+
+# --- 11a. Crossings are visibly a hop or a gap ----------------------------- #
+
+
+def crossing_visibility_problems(lines: Sequence[Line], sheet: int) -> list[str]:
+    """Every crossing of different connections has a visible hop or a visible gap.
+
+    A hop: the crossing lies on a Bézier piece of one line, at least
+    CROSSING_VISIBLE_MIN / A4_FIT off that line's own axis. A gap: the crossing
+    lies in a bridged gap of one line, with at least CROSSING_VISIBLE_MIN / A4_FIT
+    of open paper on each side of the other line. Two lines meeting plainly fail.
+    """
+    need = CROSSING_VISIBLE_MIN / A4_FIT
+    problems: list[str] = []
+    for a, b in itertools.combinations(lines, 2):
+        if a.conn is not None and a.conn == b.conn:
+            continue
+        shared = {e.dot.c for e in a.ends if e.dot} & {e.dot.c for e in b.ends if e.dot}
+        hits: list[tuple[P, Line, int, Line, int]] = []
+        for i, (p1, p2) in enumerate(itertools.pairwise(a.path.pts)):
+            for j, (q1, q2) in enumerate(itertools.pairwise(b.path.pts)):
+                if _apart(p1, p2, q1, q2):
+                    continue
+                got = meet(p1, p2, q1, q2)
+                if len(got) == 1:
+                    hits.append((got[0], a, i, b, j))
+        for at, la, i, lb, j in hits:
+            if any(math.dist(at, c) < CROSSING_DOT_CLEAR + 1.5 for c in shared):
+                continue
+            ends = [la.path.pts[0], la.path.pts[-1], lb.path.pts[0], lb.path.pts[-1]]
+            if any(math.dist(at, e) < 0.5 * mm for e in ends):
+                continue  # a touch: the crossing test reports it
+            ok = False
+            for line, k in ((la, i), (lb, j)):
+                if k in line.path.hops:
+                    ok = ok or _hop_rise(line.path, k, at) >= need - 0.01
+                if k in line.path.gaps:
+                    g1, g2 = line.path.pts[k], line.path.pts[k + 1]
+                    ok = ok or min(math.dist(at, g1), math.dist(at, g2)) >= need - 0.01
+            if not ok:
+                problems.append(
+                    f"sheet {sheet}: lines {la.conn} and {lb.conn} cross at {_fmt(at)} with no "
+                    f"hop or gap visible at {CROSSING_VISIBLE_MIN / mm:.1f} mm after A4 fit"
+                )
+    return problems
+
+
+def _hop_rise(path: DrawnPath, k: int, at: P) -> float:
+    """How far a point on hop piece ``k`` is off the straight line the hop interrupts."""
+    first = k
+    while first - 1 in path.hops:
+        first -= 1
+    last = k
+    while last + 1 in path.hops:
+        last += 1
+    a, b = path.pts[first], path.pts[last + 1]
+    length = math.dist(a, b)
+    if length < 1e-9:
+        return 0.0
+    return abs((b[0] - a[0]) * (at[1] - a[1]) - (b[1] - a[1]) * (at[0] - a[0])) / length
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_every_crossing_shows_a_visible_hop_or_gap(case: str) -> None:
+    d = doc(case)
+    problems: list[str] = []
+    _need_lines(d, problems)
+    for raw in d.pages:
+        problems += crossing_visibility_problems(raw.lines, raw.page.number)
+    assert not problems, _report(problems)
+
+
+def test_the_visibility_checker_tells_hops_and_gaps_from_plain_crossings() -> None:
+    v = _line([(50, 0), (50, 100)], "x-b")
+    plain = _line([(0, 50), (100, 50)], "x-a")
+    assert crossing_visibility_problems([plain, v], 1)
+    hop = _line([(0, 50), (47, 50), (48, 47), (52, 47), (53, 50), (100, 50)], "x-a", [1, 2, 3])
+    assert not crossing_visibility_problems([hop, v], 1)
+    flat = _line(
+        [(0, 50), (47, 50), (48, 49.8), (52, 49.8), (53, 50), (100, 50)],
+        "x-a",
+        [1, 2, 3],
+    )
+    assert crossing_visibility_problems([flat, v], 1)
+    gap = _line([(0, 50), (48, 50), (52, 50), (100, 50)], "x-a")
+    gap.path.gaps = [1]
+    assert not crossing_visibility_problems([gap, v], 1)
+    narrow = _line([(0, 50), (49.6, 50), (50.4, 50), (100, 50)], "x-a")
+    narrow.path.gaps = [1]
+    assert crossing_visibility_problems([narrow, v], 1)
+
+
+# --- 11b. Line patterns at A4 fit-to-page ---------------------------------- #
+
+
+@functools.cache
+def dash_patterns(case: str) -> dict[str, set[tuple[float, ...]]]:
+    """Every dash array stroked on a drawing sheet, by meaning.
+
+    Meanings: "link" (a dashed routed line), "dotted" and "dash-dot" stubs, and
+    "outline" (any other dashed stroke: placeholders, frames).
+    """
+    d = doc(case)
+    out: dict[str, set[tuple[float, ...]]] = defaultdict(set)
+    for raw in d.pages:
+        if not raw.page.is_drawing:
+            continue
+        for array, width in raw.dashes:
+            kind = _dash_kind((array, 0.0), width)
+            if width == d.route_width and kind == "dashed":
+                kind = "link"
+            elif kind == "dashed":
+                kind = "outline"
+            out[kind].add(array)
+    return out
+
+
+def _pattern_differs(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    if len(a) != len(b):
+        return True
+    diff = max(abs(x - y) for x, y in zip(a, b, strict=True))
+    return bool(diff * A4_FIT >= PATTERN_DIFF_MIN)
+
+
+def dash_problems(patterns: dict[str, set[tuple[float, ...]]]) -> list[str]:
+    problems = []
+    for kind, arrays in sorted(patterns.items()):
+        for array in sorted(arrays):
+            gaps = array[1::2] if len(array) > 1 else array
+            short = min(gaps) * A4_FIT
+            if short < PRINT_GAP_MIN - 1e-6:
+                problems.append(
+                    f"{kind} dash {array}: a gap of {short / mm:.2f} mm at A4 fit, under "
+                    f"{PRINT_GAP_MIN / mm:.1f} mm"
+                )
+    kinds = sorted(patterns)
+    for k1, k2 in itertools.combinations(kinds, 2):
+        for a, b in itertools.product(sorted(patterns[k1]), sorted(patterns[k2])):
+            if not _pattern_differs(a, b):
+                problems.append(f"{k1} {a} and {k2} {b} are indistinguishable at A4 fit")
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_line_patterns_stay_visible_and_distinct_at_a4_fit(case: str) -> None:
+    problems = dash_problems(dash_patterns(case))
+    assert not problems, _report(problems)
+
+
+def test_the_dash_checker_rejects_tiny_gaps_and_lookalike_patterns() -> None:
+    assert dash_problems({"dotted": {(0.6, 0.8)}})
+    assert dash_problems({"link": {(5.0, 2.0)}, "outline": {(5.2, 2.1)}})
+    assert not dash_problems({"link": {(5.0, 2.0)}, "outline": {(2.0, 2.0)}})
+
+
+def test_every_line_meaning_occurs_somewhere() -> None:
+    """Non-vacuity: the patterns checked above include each meaning at least once."""
+    seen: set[str] = set()
+    for case in ALL_CASES:
+        seen |= set(dash_patterns(case))
+    assert {"link", "dotted", "dash-dot"} <= seen, seen
+
+
+# --- 11c. No text on an arrowhead or marker -------------------------------- #
+
+
+def arrowheads(raw: RawPage) -> list[list[P]]:
+    """Flag and arrow shapes: filled marker outlines, and stroked arrow pieces at stub ends."""
+    shapes = list(raw.marker_shapes)
+    tips = [e.p for s in raw.stubs for e in s.ends if e.dot is None]
+    for path in raw.paths:
+        if path.length > ARROW_PIECE_MAX:
+            continue
+        if any(math.dist(path.pts[0], t) < EPS or math.dist(path.pts[-1], t) < EPS for t in tips):
+            shapes.append(path.pts)
+    return shapes
+
+
+def arrow_text_problems(raw: RawPage) -> list[str]:
+    problems = []
+    for shape in arrowheads(raw):
+        xs, ys = zip(*shape, strict=True)
+        near = (min(xs) - 2 * mm, min(ys) - 2 * mm, max(xs) + 2 * mm, max(ys) + 2 * mm)
+        for ch in raw.page.chars:
+            if not ch["text"].strip():
+                continue
+            ink = _ink(ch)
+            if _box_gap(ink, near) > 0:
+                continue
+            gap = _shape_box_gap(shape, ink)
+            if gap < ARROW_TEXT_CLEAR:
+                problems.append(
+                    f"sheet {raw.page.number}: text {ch['text']!r} at ({ch['x0']:.1f},"
+                    f"{ch['top']:.1f}) is {gap / mm:.2f} mm from an arrowhead/marker at "
+                    f"{_fmt(shape[0])}"
+                )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_no_text_touches_an_arrowhead_or_marker(case: str) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        if raw.page.is_drawing:
+            problems += arrow_text_problems(raw)
+    assert not problems, _report(problems)
+
+
+def test_arrowheads_are_found() -> None:
+    """Non-vacuity: some case has marker shapes and stroked stub arrows to check."""
+    flags = arrows = 0
+    for case in ALL_CASES:
+        for raw in doc(case).pages:
+            if raw.page.is_drawing:
+                flags += len(raw.marker_shapes)
+                arrows += len(arrowheads(raw)) - len(raw.marker_shapes)
+    assert flags, (flags, arrows)
+    assert arrows, (flags, arrows)
+
+
+# --- 11d. Terminal row pitch ----------------------------------------------- #
+
+
+def row_pitch_problems(raw: RawPage, minimum: float) -> list[str]:
+    """Adjacent terminal points of one block, in one column, at least ``minimum`` apart."""
+    columns: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for dot in raw.dots:
+        block = _block_at(raw.page, dot.c)
+        if block is None:
+            continue
+        ys = columns[(id(block), round(dot.c[0] * 2))]
+        if not any(abs(y - dot.c[1]) < 0.5 for y in ys):
+            ys.append(dot.c[1])
+    problems = []
+    for (_b, x2), ys in columns.items():
+        ys.sort()
+        for y1, y2 in itertools.pairwise(ys):
+            if y2 - y1 < minimum - 0.01:
+                problems.append(
+                    f"sheet {raw.page.number}: terminal rows at x={x2 / 2:.1f}, y={y1:.1f} and "
+                    f"{y2:.1f} are {(y2 - y1) / mm:.2f} mm apart, under {minimum / mm:.1f} mm"
+                )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+@pytest.mark.parametrize("minimum", [ROW_PITCH_MIN])
+def test_adjacent_terminal_rows_keep_their_pitch(case: str, minimum: float) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        if raw.page.is_drawing:
+            problems += row_pitch_problems(raw, minimum)
+    assert not problems, _report(problems)
+
+
+# --- 11e. Continuations name the right far terminal ------------------------ #
+
+
+def far_terminal(marker: re.Match[str], index: ModelIndex) -> list[Key]:
+    """The model terminals a continuation's "to <board>/<name>:<marking>[, <side> side]" names."""
+    after = _SIDE_SUFFIX.match(marker.string[marker.end() :])
+    side = after.group("side") if after else None
+    want = squash(f"{marker['board']}/{marker['label']}")
+    return [
+        k
+        for k, label in index.label.items()
+        if squash(f"{index.board[k]}/{label}") == want and index.side.get(k) == side
+    ]
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_each_continuation_names_its_far_board_component_and_terminal(
+    case: str,
+) -> None:
+    """Each continued end's flag resolves to exactly one terminal: the connection's far end.
+
+    Board, component (or strip) and marking, and a strip point's side, all count:
+    alike designations on other boards and the two sides of a point must not be
+    confused. Each connection's two continued ends name each other.
+    """
+    d, index = doc(case), model_index(case)
+    problems: list[str] = []
+    by_conn: dict[str, list[Line]] = defaultdict(list)
+    for line in d.lines:
+        if line.kind != "continued":
+            continue
+        here = next(e for e in line.ends if e.dot is not None)
+        marker = next(e.marker for e in line.ends if e.marker is not None)
+        assert marker is not None
+        where = f"sheet {line.page} {marker[0]!r}"
+        named = far_terminal(marker, index)
+        if len(named) != 1:
+            problems.append(f"{where}: names {len(named)} model terminals, not one")
+            continue
+        if line.conn is None or here.key is None:
+            problems.append(f"{where}: its line or its own terminal is not identified")
+            continue
+        a, b = index.ends(line.conn)
+        far = b if here.key == a else a
+        if here.key not in (a, b) or named[0] != far:
+            problems.append(
+                f"{where}: drawn at {index.label.get(here.key, '?')}, names "
+                f"{index.board[named[0]]}/{index.label[named[0]]}; the connection's far end is "
+                f"{index.board[far]}/{index.label[far]}"
+            )
+        by_conn[line.conn].append(line)
+    for cid, lines in sorted(by_conn.items()):
+        keys = {e.key for ln in lines for e in ln.ends if e.dot is not None}
+        if len(lines) != 2 or keys != set(index.ends(cid)):
+            problems.append(f"connection {cid}: continued ends {len(lines)}, at {keys}")
+    assert not problems, _report(problems)
+
+
+# --- 11f. Drawing and schedule PDFs agree ---------------------------------- #
+
+
+@functools.cache
+def schedule_pdfs(case: str) -> tuple[bytes, bytes]:
+    """The terminal and wire schedule PDFs of the case's model, through the public functions."""
+    model, digest = build(case)
+    header = schedule_pdf.ScheduleHeader(
+        f"Synthetic {case}",
+        "01",
+        digest,
+        "pp-design/2",
+        "rules-under-test",
+        "renderer-under-test",
+    )
+    structural = [
+        design_configuration.finding_view(f, design_projects._V2_CONFIRM)
+        for f in findings_v2.structural_findings(model)
+    ]
+    terminal = schedule_pdf.render_terminal_schedule(
+        schedules.terminal_schedule(model), header, _MARK, structural
+    )
+    wire = schedule_pdf.render_wire_schedule(
+        schedules.wire_schedule(model), header, _MARK, structural
+    )
+    return terminal, wire
+
+
+@functools.cache
+def schedule_tables(case: str) -> tuple[list[list[str]], list[list[str]], str, str]:
+    """Each schedule PDF's table rows (cells squashed) and its whole text."""
+    out: list[Any] = []
+    texts: list[str] = []
+    for content in schedule_pdfs(case):
+        rows: list[list[str]] = []
+        text = []
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                text.append(page.extract_text() or "")
+                for table in page.extract_tables():
+                    rows += [[squash(c or "") for c in row] for row in table]
+        out.append(rows)
+        texts.append("\n".join(text))
+    return out[0], out[1], texts[0], texts[1]
+
+
+def schedule_pdf_problems(case: str) -> list[str]:
+    d, index = doc(case), model_index(case)
+    _model, digest = build(case)
+    terminal_rows, wire_rows, terminal_text, wire_text = schedule_tables(case)
+    problems: list[str] = []
+    for name, text in (("terminal", terminal_text), ("wire", wire_text)):
+        if digest not in squash(text):
+            problems.append(f"the {name} schedule PDF does not print the design hash {digest}")
+    if not all(digest in squash(raw.page.text) for raw in d.pages):
+        problems.append("a drawing page does not print the design hash")
+    # Wire schedule rows: board, wire, from, to.
+    wires = {r[1]: r for r in wire_rows if len(r) >= 4 and r[1].startswith("w-")}
+    peers: dict[tuple[str, str], str] = {}
+    for r in terminal_rows:
+        if len(r) >= 7 and r[0] and not r[0].startswith("Board"):
+            peers[(r[0], r[1].split("(")[0] + ":" + r[2])] = r[6]
+    for line in d.lines:
+        if line.conn is None:
+            continue
+        keys = [e.key for e in line.ends if e.key is not None]
+        marker = next((e.marker for e in line.ends if e.marker is not None), None)
+        if marker is not None:
+            named = far_terminal(marker, index)
+            keys += named[:1]
+        where = f"sheet {line.page} line {line.conn}"
+        if len(keys) != 2:
+            continue  # unidentified ends are reported by the bijection test
+        tokens = {
+            m.group(1)
+            for run in d.pages[line.page - 1].page.runs
+            for m in LINE_LABEL.finditer(run.text)
+            if _dist_to_path((run.x0, run.top, run.x1, run.bottom), line.path.pts) <= LABEL_REACH
+        }
+        wire_tokens = sorted(
+            t for t in tokens if t.startswith("w-") and index.resolve(t) == line.conn
+        )
+        if wire_tokens:
+            rows = [r for w, r in wires.items() if any(w.startswith(t) for t in wire_tokens)]
+            if len(rows) != 1:
+                problems.append(f"{where}: wire {wire_tokens} is in {len(rows)} wire PDF rows")
+                continue
+            row = rows[0]
+            drawn = {squash(index.label[k]) for k in keys}
+            listed = {row[2], row[3]}
+            if not all(any(lab in cell for cell in listed) for lab in drawn):
+                problems.append(f"{where}: drawn between {sorted(drawn)}, wire PDF row {row[:4]}")
+            if {squash(index.board[k]) for k in keys} != {row[0]}:
+                problems.append(f"{where}: board differs from the wire PDF row {row[:4]}")
+        for k, other in ((keys[0], keys[1]), (keys[1], keys[0])):
+            label = squash(index.label[k])
+            name, _, mark = label.rpartition(":")
+            hits = [
+                v
+                for (board, owner_mark), v in peers.items()
+                if board == squash(index.board[k]) and owner_mark.startswith(name + ":" + mark)
+            ]
+            if not any(squash(index.label[other]) in v for v in hits):
+                problems.append(
+                    f"{where}: no terminal PDF row of {index.board[k]}/{index.label[k]} lists "
+                    f"{index.label[other]}"
+                )
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_drawing_and_schedule_pdfs_agree(case: str) -> None:
+    """The drawing PDF and the terminal and wire schedule PDFs, as printed, agree.
+
+    For each drawn or continued line: the same board, component (or strip),
+    terminal marking and wire id in the wire schedule PDF's row, the far
+    terminal in each end's terminal schedule PDF row, and the same design hash
+    on every PDF.
+    """
+    problems = schedule_pdf_problems(case)
+    assert not problems, _report(problems)
+
+
+# --- 11g. Regressions and the adversarial cases themselves ----------------- #
+
+
+def test_the_adversarial_models_are_what_they_claim() -> None:
+    model, _ = build("route:both_sides")
+    cbs = next(c for c in model.components if c.designation and c.designation.product == "Kbs")
+    hub = entities.TerminalRef(component=cbs.id, terminal="t000").key
+    starts = sum(x.start.key == hub for x in model.connections)
+    ends = sum(x.end.key == hub for x in model.connections)
+    assert starts >= 3
+    assert ends >= 3
+    model, _ = build("route:same_designation")
+    names = defaultdict(set)
+    for c in model.components:
+        assert c.designation is not None
+        names[c.designation.product].add(c.board_id)
+    assert len(names["K1"]) == 3
+    model, _ = build("route:jumper_every_point")
+    jumpers = [x for x in model.connections if x.via == "jumper"]
+    points = {k for x in jumpers for k in (x.start.key, x.end.key)}
+    strip = next(s for s in model.strips if s.designation and s.designation.product == "Xjp")
+    assert {p.id for p in strip.points} == {k[1] for k in points}
+    # KFAR's four peers lie on cross-reference sheets other than its own (three of four
+    # at least). The routed sheets regroup blocks by connection, so there they may meet.
+    d = doc("route:all_off_sheet")
+    sheet_of: dict[str, int] = {}
+    for raw in d.pages:
+        if raw.page.is_drawing and not raw.page.is_routed:
+            for block in raw.page.blocks:
+                sheet_of.setdefault(header_text(raw.page, block).split(" (")[0], raw.page.number)
+    peers = ["Koc00", "Koc39", "Koc20", "Koc30"]
+    assert "KFAR" in sheet_of, sheet_of
+    assert all(p in sheet_of for p in peers), sheet_of
+    assert sum(sheet_of[p] != sheet_of["KFAR"] for p in peers) >= 3, sheet_of
+
+
+def test_nets_across_boards_are_rejected_by_the_codec() -> None:
+    """A connection between boards is not valid pp-design/2: the codec refuses it."""
+    spec = Spec(comps=[("xa", B, 1), ("xb", "DB-XB", 1)], boards=["DB-XB"])
+    config = _configuration(spec)
+    pattern = next(p for p in config["patterns"] if p["ref"].endswith("-db-v/v1"))
+    pattern["slots"].append({"id": "sxb", "template": "tenant/synth-route-xb/v1"})
+    pattern["nets"].append(
+        {
+            "role": "r999",
+            "signal": "SYN-XB",
+            "scope": "binding",
+            "members": [
+                {"slot": "sxa", "terminal": "t000"},
+                {"slot": "sxb", "terminal": "t000"},
+            ],
+            "connections": [{"from": 0, "to": 1, "via": "wire"}],
+        }
+    )
+    binding = next(b for b in config["bindings"] if b["board"] == B)
+    binding["slots"]["sxb"] = {"component": "cxb"}
+    with pytest.raises(compose.CompositionRefusedError, match="board_mismatch"):
+        write.snapshot_v2_from_v1(_v1_with(spec.boards), config)
+
+
+def knot_problems(lines: Sequence[Line], sheet: int) -> list[str]:
+    """No line doubles back on itself or crosses itself (the earlier knots of jogs)."""
+    problems = []
+    for line in lines:
+        pts = [p for n, p in enumerate(line.path.pts) if n == 0 or p != line.path.pts[n - 1]]
+        for (a, b), (_b, c) in itertools.pairwise(itertools.pairwise(pts)):
+            u, v = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+            cross = abs(u[0] * v[1] - u[1] * v[0])
+            if cross < 1e-6 * (math.hypot(*u) * math.hypot(*v) + 1e-9) and (
+                u[0] * v[0] + u[1] * v[1] < 0
+            ):
+                problems.append(f"sheet {sheet}: line {line.conn} doubles back at {_fmt(b)}")
+        segs = list(itertools.pairwise(pts))
+        for i, j in itertools.combinations(range(len(segs)), 2):
+            if j - i < 2 or _apart(*segs[i], *segs[j]):
+                continue
+            if meet(*segs[i], *segs[j]):
+                problems.append(f"sheet {sheet}: line {line.conn} crosses itself")
+                break
+    return problems
+
+
+@pytest.mark.parametrize("case", ALL_CASES)
+def test_no_line_is_knotted(case: str) -> None:
+    problems: list[str] = []
+    for raw in doc(case).pages:
+        problems += knot_problems(raw.lines, raw.page.number)
+    assert not problems, _report(problems)
+
+
+def test_the_knot_checker_finds_reversals_and_self_crossings() -> None:
+    assert knot_problems([_line([(0, 0), (10, 0), (5, 0)], "x-a")], 1)
+    assert knot_problems([_line([(0, 0), (10, 0), (10, 5), (5, 5), (5, -5)], "x-a")], 1)
+    assert not knot_problems([_line([(0, 0), (10, 0), (10, 5), (20, 5)], "x-a")], 1)
+
+
+def test_regression_junction_dots_on_continued_rows() -> None:
+    """A terminal with two or more connections gets its junction dot even when they continue.
+
+    Over every case (the earlier defect drew a plain terminal dot on a continued
+    row); never vacuous: some continued row of such a terminal must exist.
+    """
+    problems = []
+    checked = 0
+    for case in ALL_CASES:
+        d, index = doc(case), model_index(case)
+        radii = [dot.r for raw in d.pages if raw.page.is_drawing for dot in raw.dots]
+        if not radii:
+            continue
+        r_t = min(radii)
+        for line in d.lines:
+            if line.kind != "continued":
+                continue
+            here = next(e for e in line.ends if e.dot is not None)
+            if here.key is None or here.dot is None or len(index.at[here.key]) < 2:
+                continue
+            raw = d.pages[line.page - 1]
+            big = max(q.r for q in raw.dots if math.dist(q.c, here.dot.c) < 0.5)
+            checked += 1
+            if big < JUNCTION_RATIO * r_t - 0.01:
+                problems.append(f"{case} sheet {line.page} {index.label[here.key]}: no junction")
+    if not checked:
+        problems.append("no continued row of a multi-connection terminal in any case")
+    assert not problems, _report(problems)
+
+
+@pytest.mark.parametrize("case", ["route:long_designations", "sample:long_names"])
+def test_regression_continuation_flags_are_never_cut(case: str) -> None:
+    """The earlier cut flags: every flag-like text is whole, or a resolvable marker."""
+    problems = flag_problems(case)
+    texts = [t for raw in doc(case).pages if raw.page.is_drawing for t, _r in flag_texts(raw.page)]
+    if not texts:
+        problems.append("no continuation flag to check")
+    assert not problems, _report(problems)
