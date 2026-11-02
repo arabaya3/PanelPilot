@@ -33,7 +33,7 @@ RENDERER_VERSION = "2026.10.31.4"
 #: (``tests/design/test_renderer_version.py`` holds both to their fingerprints).
 RENDERER_VERSIONS: dict[str, str] = {
     "pp-design/1": RENDERER_VERSION,
-    "pp-design/2": "2026.11.02.v2-8",
+    "pp-design/2": "2026.11.02.v2-9",
 }
 
 
