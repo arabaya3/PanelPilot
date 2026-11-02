@@ -2763,8 +2763,8 @@ def test_regression_continuation_flags_are_never_cut(case: str) -> None:
 
 #: A line's last horizontal run may sit this far off its end dot's row.
 ARRIVAL_ROW_TOL = 0.5 * mm
-#: The longest final vertical jog into a dot from a horizontal off the dot's row.
-ARRIVAL_JOG_MAX = 1 * mm
+#: The longest final vertical jog into a dot: no allowance beyond the row tolerance.
+ARRIVAL_JOG_MAX = 0.5 * mm
 #: The least vertical gap between two line labels / stub texts whose x-ranges overlap.
 LABEL_GAP_MIN = 1.5 * mm
 _NOT_ROUTED = re.compile(r"not routed")
@@ -2774,9 +2774,9 @@ def arrival_problems(raw: RawPage) -> list[str]:
     """Each routed line reaches its end dot along the dot's own row.
 
     From each dot end, the final vertical pieces (the jog into the dot) are summed up
-    to the first horizontal piece; that horizontal must be within ARRIVAL_ROW_TOL of
-    the dot's y, or the jog no longer than ARRIVAL_JOG_MAX. Otherwise the horizontal
-    points at the gap between two rows.
+    to the first horizontal piece; that horizontal must be within ARRIVAL_ROW_TOL
+    (0.5 mm) of the dot's y, and the jog no longer than ARRIVAL_JOG_MAX (also 0.5 mm).
+    Otherwise the horizontal points at the gap between two rows.
     """
     problems = []
     for line in raw.lines:
@@ -2792,7 +2792,7 @@ def arrival_problems(raw: RawPage) -> list[str]:
                     continue
                 if axis == "h":
                     off = abs(a[1] - end.dot.c[1])
-                    if off > ARRIVAL_ROW_TOL and jog > ARRIVAL_JOG_MAX:
+                    if off > ARRIVAL_ROW_TOL or jog > ARRIVAL_JOG_MAX:
                         problems.append(
                             f"sheet {raw.page.number}: line {line.conn} reaches its dot at "
                             f"{_fmt(end.dot.c)} by a {jog / mm:.1f} mm vertical from a horizontal "
@@ -2820,7 +2820,8 @@ def test_the_arrival_checker_finds_a_jog_between_rows() -> None:
         return page
 
     assert not arrival_problems(at([(0, 0), (50, 0), (50, 40)]))
-    assert not arrival_problems(at([(0, 0), (0, 2), (50, 2)]))  # a 0.7 mm jog
+    assert not arrival_problems(at([(0, 0), (0, 1), (50, 1)]))  # a 0.35 mm jog
+    assert arrival_problems(at([(0, 0), (0, 2.8), (50, 2.8)]))  # a 0.99 mm jog (w-36cdaa)
     assert arrival_problems(at([(0, 0), (0, 8), (50, 8)]))  # a 2.8 mm jog
 
 
