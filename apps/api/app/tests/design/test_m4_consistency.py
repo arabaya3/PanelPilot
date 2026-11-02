@@ -31,7 +31,7 @@ import subprocess
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -225,6 +225,10 @@ def _build(case: str) -> tuple[entities.DesignModelV2, str]:
     if kind == "open":
         stored = _config_stored(name)
         return _with_open_items(_read(stored)), "0" * 63 + "1"
+    if kind == "route":
+        from app.tests.design import test_routed_topology  # its synthetic stress models
+
+        return test_routed_topology.build(case)
     assert case == "scale"
     stored = _config_stored(SCALE_BASE)
     return _scaled(_read(stored), SCALE_COPIES), "f" * 64
@@ -234,6 +238,9 @@ CONFIG_CASES = [f"config:{name}" for name in sorted(CONFIGS)]
 FIXTURE_CASES = [f"fixture:{name}" for name in sorted(DESIGNED)]
 OPEN_CASES = [f"open:{name}" for name in sorted(CONFIGS)]
 ALL_CASES = [*CONFIG_CASES, *FIXTURE_CASES, *OPEN_CASES, "scale"]
+#: Regression: K1/K2 on three boards, each wired within its own board, all on one
+#: cross-reference sheet. A bare "to K2:1" there could be any board's K2.
+SAME_NAME_CASES = ["route:same_designation"]
 
 
 def _header(case: str, digest: str) -> pdf_module.DrawingHeader:
@@ -390,12 +397,20 @@ def bridge_line(c: entities.Connection) -> str:
     return f"bridge between the sides: {c.via} {source}"
 
 
-def far_label(expected: dict[Key, Expected], here: Key, far: Key) -> str:
-    """A far end's label as printed: with its board when it is on another board."""
+def far_labels(
+    expected: dict[Key, Expected], here: Key, far: Key, sheet_boards: set[str]
+) -> list[str]:
+    """The labels a far end may be printed as, on a sheet showing ``sheet_boards``.
+
+    The board qualifier is required when the far end is on another board, or when
+    the sheet shows more than one board (a bare "K2:A2" would then be ambiguous);
+    on a one-board sheet it is accepted but not required.
+    """
     row = expected[far]
-    if row.board_id != expected[here].board_id:
-        return f"{row.board_id}/{row.label}"
-    return row.label
+    qualified = f"{row.board_id}/{row.label}"
+    if row.board_id != expected[here].board_id or len(sheet_boards) > 1:
+        return [qualified]
+    return [row.label, qualified]
 
 
 def row_notes(
@@ -537,6 +552,7 @@ class Read:
     nets: dict[Key, list[str]]
     headers: list[tuple[connection_drawing.BlockPart, str, str, str]]  # part, upper, lower, left
     stray: list[tuple[int, str]]  # sheet, text
+    boards: dict[int, set[str]] = field(default_factory=dict)  # boards each sheet shows
 
 
 def _found(page: Page, text: connection_drawing.Text, used: set[int]) -> list[Char]:
@@ -569,6 +585,7 @@ def read_back(case: str) -> Read:
     for sheet in drawing.sheets:
         page = pages[sheet.number - 1]
         used: set[int] = set()
+        out.boards[sheet.number] = {part.board_id for part in sheet.parts}
         for part in sheet.parts:
             got: dict[tuple[str, Key | None, int], list[str]] = defaultdict(list)
             for text in part.texts:
@@ -749,7 +766,7 @@ def test_drawing_and_schedules_hold_the_models_terminals_nets_connections_and_wi
         assert row.signal == (found.net.signal if found.net else None)
 
 
-@pytest.mark.parametrize("case", ALL_CASES)
+@pytest.mark.parametrize("case", [*ALL_CASES, *SAME_NAME_CASES])
 def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case: str) -> None:
     model = model_of(case)
     expected = expected_rows(model)
@@ -792,8 +809,9 @@ def test_the_printed_drawing_holds_every_row_end_and_wire_and_nothing_else(case:
             options += [
                 ("end", c.id)
                 for far, c in ends
-                if fits(
-                    upper, far_line(far_label(expected, key, far), got.printed[far], sheet, c.via)
+                if any(
+                    fits(upper, far_line(label, got.printed[far], sheet, c.via))
+                    for label in far_labels(expected, key, far, got.boards[sheet])
                 )
                 and fits(lower, second_line(model, c))
             ]

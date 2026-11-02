@@ -1389,7 +1389,8 @@ def bijection_problems(case: str) -> list[str]:
                     problems.append(f"unrouted {name}: no stub at {index.label[key]}")
             texts = [squash(t) for t in _drawing_texts(case)]
             for key in index.ends(cid):
-                if not any(squash(f"to {index.label[key]}") in t for t in texts):
+                names = (f"to {index.label[key]}", f"to {index.board[key]}/{index.label[key]}")
+                if not any(squash(n) in t for n in names for t in texts):
                     problems.append(f"unrouted {name}: no cross-reference names {index.label[key]}")
     return problems
 
