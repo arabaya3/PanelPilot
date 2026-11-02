@@ -626,8 +626,8 @@ def _off_zone_line(y: float, lo: float, hi: float, lines: int) -> float:
     return near
 
 
-#: The least clear space between two markings of one block, one above the other.
-ROW_CLEAR = 1.0 * MM
+#: The least distance between two adjacent dots (rows) of one block.
+ROW_PITCH = 3.6 * MM
 
 
 def _extent(t: _Terminal) -> tuple[float, float]:
@@ -636,58 +636,55 @@ def _extent(t: _Terminal) -> tuple[float, float]:
     return ((lines - 1) / 2 * 3.0 + 0.95) * MM, ((lines - 1) / 2 * 3.0 + 1.4) * MM
 
 
-def _clear_of_zone_lines(y: float) -> bool:
+def _zone_clear(y: float, way: float) -> float:
+    """How far to move ``y`` (0 when clear) to keep it ZONE_CLEAR off the nearest zone line.
+
+    Onwards in the direction it was being moved (``way``: below 0 down, above
+    0 up), else away from the line on the side it is on.
+    """
     edge_y = cd.AREA_TOP - round((cd.AREA_TOP - y) / cd.ZONE_ROW) * cd.ZONE_ROW
-    return abs(y - edge_y) >= ZONE_CLEAR - 1e-6
+    d = y - edge_y
+    if abs(d) >= ZONE_CLEAR - 1e-6:
+        return 0.0
+    up = way > 0 or (way == 0 and d >= 0)
+    return (ZONE_CLEAR if up else -ZONE_CLEAR) - d
 
 
 def _space_rows(column: list[_Terminal], bottom: float) -> None:
-    """Keep the markings of a block apart where a dot was moved off a zone line.
+    """Keep a block's dots ROW_PITCH apart where one was moved off a zone line.
 
-    Moving one dot off a zone line can bring its marking within a few tenths
-    of a millimetre of its neighbour's. Then the rows below it move down with
-    it (as a block, as far as the box allows), else the rows above move up,
-    each only where it stays clear of a zone line itself. Rows that still
-    cannot be spaced keep their places (their markings never overlap).
+    Moving one dot off a zone line can bring it within a few tenths of a
+    millimetre of its neighbour. Then the rows below move down, each only as
+    far as needed (so the move fades out within two or three rows); where the
+    block's foot stops that, the rows move up from the foot instead. A row
+    pushed near a zone line goes on past it. Where the block has no room for
+    that, the rows keep their places.
     """
-
-    def gap(i: int) -> float:
-        above, below = column[i - 1], column[i]
-        return (above.dot[1] - _extent(above)[1]) - (below.dot[1] + _extent(below)[0])
-
-    def move(t: _Terminal, dy: float) -> None:
-        t.dot = (t.dot[0], t.dot[1] + dy)
-        t.nudge += dy
-
-    for i in range(1, len(column)):
-        need = ROW_CLEAR - gap(i)
-        if need <= 1e-6:
-            continue
-        # The rows from i down, as one block, until a row has room to spare.
-        tail = [column[i]]
-        for j in range(i + 1, len(column)):
-            if gap(j) - need >= ROW_CLEAR - 1e-6:
-                break
-            tail.append(column[j])
-        low = tail[-1]
-        if low.dot[1] - need - _extent(low)[1] >= bottom + 0.5 * MM and all(
-            _clear_of_zone_lines(t.dot[1] - need) for t in tail
-        ):
-            for t in tail:
-                move(t, -need)
-            continue
-        # Else the rows from i - 1 up, as one block.
-        head = [column[i - 1]]
-        for j in range(i - 1, 0, -1):
-            if gap(j) - need >= ROW_CLEAR - 1e-6:
-                break
-            head.append(column[j - 1])
-        top = head[-1]
-        if top.dot[1] + need + _extent(top)[0] <= top.row_top and all(
-            _clear_of_zone_lines(t.dot[1] + need) for t in head
-        ):
-            for t in head:
-                move(t, need)
+    n = len(column)
+    if n < 2:
+        return
+    ys = [t.dot[1] for t in column]
+    low = bottom + _extent(column[-1])[1] + 0.3 * MM
+    high = column[0].row_top - _extent(column[0])[0]
+    # Down from the top: each row at least ROW_PITCH below the one above, and
+    # a row pushed near a zone line goes on past it.
+    for i in range(1, n):
+        if ys[i] > ys[i - 1] - ROW_PITCH:
+            ys[i] = ys[i - 1] - ROW_PITCH
+            ys[i] += _zone_clear(ys[i], -1.0)
+    # Up from the foot where the box's foot stops that, the same way upwards.
+    if ys[-1] < low:
+        ys[-1] = low + _zone_clear(low, 1.0)
+        for i in range(n - 2, -1, -1):
+            if ys[i] < ys[i + 1] + ROW_PITCH:
+                ys[i] = ys[i + 1] + ROW_PITCH
+                ys[i] += _zone_clear(ys[i], 1.0)
+    if ys[0] > high + 1e-6:
+        return  # no room: keep the places as they were
+    for t, y in zip(column, ys, strict=True):
+        if abs(y - t.dot[1]) > 1e-9:
+            t.nudge += y - t.dot[1]
+            t.dot = (t.dot[0], y)
 
 
 def _fan(t: _Terminal, ys: list[float]) -> None:

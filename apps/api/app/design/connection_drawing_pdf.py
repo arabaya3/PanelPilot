@@ -108,6 +108,9 @@ LEGEND = (
 #: Stub patterns (PDF dash arrays, in points): clearly different when printed.
 DOTTED = (0.6, 2.4)
 DASH_DOT = (6.0, 2.0, 0.6, 2.0)
+#: The "symbol not defined" placeholder outline: far enough from the dotted stub to tell
+#: apart when an A3 sheet is printed fit-to-page on A4.
+PLACEHOLDER_DASH = (3.0, 2.0)
 #: Routed lines of the dashed vias (connection_routing.DASHED_VIAS).
 LINK_DASH = (5.0, 2.0)
 
@@ -303,7 +306,7 @@ def _part(canvas: Canvas, part: layout.BlockPart) -> None:
     canvas.setLineWidth(0.3)
     if part.placeholder is not None:
         canvas.saveState()
-        canvas.setDash(2, 2)
+        canvas.setDash(list(PLACEHOLDER_DASH))
         canvas.rect(*part.placeholder)
         canvas.restoreState()
     if part.symbol is not None and part.frame is not None:
@@ -353,7 +356,7 @@ def _routed(canvas: Canvas, sheet: routing.RoutedSheet) -> None:
         if box.placeholder is not None:
             canvas.saveState()
             canvas.setLineWidth(0.3)
-            canvas.setDash(2, 2)
+            canvas.setDash(list(PLACEHOLDER_DASH))
             canvas.rect(*box.placeholder)
             canvas.restoreState()
     canvas.setLineWidth(routing.LINE_WIDTH)
