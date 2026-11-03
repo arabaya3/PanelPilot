@@ -204,7 +204,7 @@ def test_the_author_may_not_approve_but_the_owner_approves_another_members_revis
     mine = _save(client, REQUEST)
     assert error(approve(client, mine["id"], 1))["code"] == "approval_by_author"
     # No recorded author: approved, said, and none invented.
-    update_row(engine, mine["id"], 1, author="")
+    update_row(engine, mine["id"], 1, author="", author_user_id=None)
     unknown = approve(client, mine["id"], 1)
     assert unknown.status_code == 200, unknown.text[:600]
     assert unknown.json()["author_unknown"] is True
@@ -232,7 +232,7 @@ def test_a_typed_feeder_in_a_stored_revision_opens_but_is_not_re_designed(
 
 _OPEN = (
     "[OPEN] Control circuit not designed: MDB › Pump",  # noqa: RUF001
-    "[OPEN] Board-to-board wiring not modelled: MDB → DB-1",
+    "[OPEN] Board-to-board wiring not modelled: MDB to DB-1",
 )
 
 
@@ -283,8 +283,82 @@ def test_an_account_without_a_display_name_is_named_by_its_email(
     answered = _ask(client, saved["id"], 1, fault["id"], {"action": "answer", "value": 10})
     kept = next(q for q in answered.json()["requirements"]["questions"] if q["id"] == fault["id"])
     assert kept["by_name"] == nameless.email
+    # An exported document never prints an email: "a team member" instead.
     words = _words(revision_export(client, saved["id"], 1, "pdf"))
-    assert f"Assumption acknowledged by {nameless.email} on" in words
+    assert "Assumption acknowledged by a team member on" in words
+    for fmt in ("pdf", "calculations_pdf", "dxf", "json"):
+        exported = revision_export(client, saved["id"], 1, fmt)
+        assert exported.status_code == 200, (fmt, exported.text[:300])
+        text_ = _words(exported) if fmt.endswith("pdf") else exported.content.decode("utf-8")
+        assert "@" not in text_, fmt
+
+
+def test_no_export_of_a_v2_revision_prints_an_email(
+    client: TestClient,
+    engine: Engine,
+    caller: _Caller,
+    tenants: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+    nameless = review_support.new_account(engine, tenants[0])
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET full_name = NULL WHERE id = :i"),
+            {"i": uuid.UUID(nameless.id)},
+        )
+    caller.user = nameless
+    saved = _save(client, GUIDED, requirements_input=INPUT)
+    pf = _question(saved["requirements"], "power_factor")
+    assert _ask(client, saved["id"], 1, pf["id"], {"action": "acknowledge"}).status_code == 200
+    for fmt in (
+        "pdf",
+        "calculations_pdf",
+        "dxf",
+        "json",
+        "connection_drawing_pdf",
+        "terminal_schedule_pdf",
+        "wire_schedule_pdf",
+    ):
+        exported = revision_export(client, saved["id"], 1, fmt)
+        assert exported.status_code == 200, (fmt, exported.text[:300])
+        text_ = _words(exported) if fmt.endswith("pdf") else exported.content.decode("utf-8")
+        assert "@" not in text_, fmt
+
+
+def test_the_author_is_matched_by_account_id(
+    client: TestClient, engine: Engine, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    reviewer = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
+    caller.user = reviewer
+    saved = _save(client, REQUEST)
+    assert str(revision_row(engine, saved["id"], 1)["author_user_id"]) == reviewer.id
+    # The email changed after saving: still the author, still refused.
+    renamed = reviewer.model_copy(update={"email": "renamed-" + reviewer.email})
+    caller.user = renamed
+    assert client.get(f"/design/projects/{saved['id']}").json()["is_author"] is True
+    refused = approve(client, saved["id"], 1)
+    assert refused.status_code == 403
+    assert error(refused)["code"] == "approval_by_author"
+    # Another account later holding the author's old email is not the author.
+    other = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
+    caller.user = other.model_copy(update={"email": reviewer.email})
+    assert client.get(f"/design/projects/{saved['id']}").json()["is_author"] is False
+    assert approve(client, saved["id"], 1).status_code == 200
+
+
+def test_an_older_row_without_an_author_id_falls_back_to_the_email(
+    client: TestClient, engine: Engine, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    reviewer = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
+    caller.user = reviewer
+    saved = _save(client, REQUEST)
+    update_row(engine, saved["id"], 1, author_user_id=None, author=reviewer.email.upper())
+    refused = approve(client, saved["id"], 1)
+    assert refused.status_code == 403
+    assert error(refused)["code"] == "approval_by_author"
+    caller.user = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
+    assert approve(client, saved["id"], 1).status_code == 200
 
 
 def test_a_named_account_is_named_and_an_unknown_author_says_so(
@@ -296,6 +370,6 @@ def test_a_named_account_is_named_and_an_unknown_author_says_so(
     done = next(q for q in acked["requirements"]["questions"] if q["id"] == pf["id"])
     assert done["by_name"] not in ("", None, caller.user.email)
     assert saved["revisions"][0]["author"] == done["by_name"]
-    update_row(engine, saved["id"], 1, author="")
+    update_row(engine, saved["id"], 1, author="", author_user_id=None)
     opened = client.get(f"/design/projects/{saved['id']}").json()
     assert opened["revisions"][0]["author"] == "unknown account"

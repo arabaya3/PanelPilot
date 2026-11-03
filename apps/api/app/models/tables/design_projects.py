@@ -62,6 +62,9 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     author: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    # The saving account's id (since M6a); NULL on older rows, which fall
+    # back to ``author`` (the email) for the self-approval check.
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # Set once, when the engineer approves this revision; never cleared. The
     # approver is the signed-in account: its email and (since f8c4a2e6d9b3)

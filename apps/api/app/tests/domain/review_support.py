@@ -65,6 +65,8 @@ def new_account(
 #: another member of the tenant, so the approval is not by the revision's
 #: author (M6a: ``approval_by_author``). The rule itself is not touched.
 OTHER_AUTHOR = "m6a-author@synthetic.example"
+#: That member's account id, recorded as each such revision's ``author_user_id``.
+OTHER_AUTHOR_ID = "6a6a6a6a-0000-4000-8000-00000000a011"
 
 
 def author_revisions_as_another_member(monkeypatch: Any, email: str = OTHER_AUTHOR) -> None:
@@ -80,7 +82,12 @@ def author_revisions_as_another_member(monkeypatch: Any, email: str = OTHER_AUTH
 
     def add(session: Any, project: Any, tenant: Any, user: CurrentUser, *args: Any, **kw: Any):  # type: ignore[no-untyped-def]
         return original(
-            session, project, tenant, user.model_copy(update={"email": email}), *args, **kw
+            session,
+            project,
+            tenant,
+            user.model_copy(update={"email": email, "id": OTHER_AUTHOR_ID}),
+            *args,
+            **kw,
         )
 
     monkeypatch.setattr(design_projects, "_add_revision", add)
