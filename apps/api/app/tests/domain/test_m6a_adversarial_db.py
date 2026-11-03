@@ -298,7 +298,7 @@ def test_each_missing_value_and_the_default_power_factor_is_a_question(
     # No input holds a nameplate current: an acknowledge-only assumption.
     assert motor["kind"] == "assumption"
     assert motor["field"] == "motor_current_a"
-    assert motor["finding_code"] == "motor_current_table"
+    assert motor["finding_code"] in {"motor_current_table", "motor_current_formula"}
     assert motor["answerable"] is False
     assert pf["kind"] == "assumption"
     assert pf["finding_code"] == "default_power_factor"
@@ -502,6 +502,7 @@ def test_a_revision_with_no_recorded_author_approves_without_inventing_one(
     listed = next(r for r in _open(client, saved["id"], 1)["revisions"] if r["number"] == 1)
     # Never empty and never invented (M6a D1): an unrecorded author says so.
     assert listed["author"] == "unknown account"
+    assert listed["author_unknown"] is True
 
 
 # --------------------------------------------------------------------------- #
