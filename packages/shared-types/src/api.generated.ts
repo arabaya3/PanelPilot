@@ -4961,6 +4961,8 @@ export interface components {
      *         approval_changed: What changed since the approval, when it no longer
      *             counts: ``snapshot``, ``profile``, ``rules_version``,
      *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+     *             ``requirements`` (the requirements record is not the one approved,
+     *             or the approval predates binding it: NULL is not bound),
      *             ``review_decisions`` (a review decision recorded since, M3).
      *         author_unknown: It records no author at all (neither account nor email).
      *         author_established: It records the saving account's id. Only then can
@@ -5074,6 +5076,8 @@ export interface components {
      *         approval_changed: What changed since the approval, when it no longer
      *             counts: ``snapshot``, ``profile``, ``rules_version``,
      *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+     *             ``requirements`` (the requirements record is not the one approved,
+     *             or the approval predates binding it: NULL is not bound),
      *             ``review_decisions`` (a review decision recorded since, M3).
      *         execution_blockers: Why it cannot be exported for execution: the
      *             parts of an execution package this service does not produce yet,

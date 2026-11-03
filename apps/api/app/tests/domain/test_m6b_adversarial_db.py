@@ -261,7 +261,8 @@ def test_a_no_author_cannot_be_approved_and_none_is_backfilled(engine: Engine, a
         assert refused.status_code == 409, refused.text[:600]
         assert error(refused)["code"] == "approval_author_not_established"
     row = revision_row(engine, pid, 1)
-    assert row["author"] == "" and row["author_user_id"] is None
+    assert row["author"] == ""
+    assert row["author_user_id"] is None
     assert row["approved_at"] is None
 
 
@@ -570,7 +571,8 @@ def _interleave(first: Any, second: Any, gate: _Gate, engine: Engine) -> tuple[A
     gate.release.set()
     a.join(30)
     b.join(30)
-    assert not a.is_alive() and not b.is_alive()
+    assert not a.is_alive()
+    assert not b.is_alive()
     return a.result, b.result, blocked and not b_finished_early
 
 
@@ -611,7 +613,8 @@ def test_b_concurrent_double_ack_records_once(
         gate,
         engine,
     )
-    assert ra.status_code == 200 and rb.status_code == 200, (ra.text[:300], rb.text[:300])
+    assert ra.status_code == 200, ra.text[:300]
+    assert rb.status_code == 200, rb.text[:300]
     acks = revision_row(engine, pid, 1)["requirements"]["acknowledgements"]
     mine = [a for a in acks if a["question_id"] == q1]
     assert len(mine) == 1, mine
@@ -679,7 +682,8 @@ def test_b_ack_then_racing_approval_sees_the_ack(
     # After approval the record never changes again.
     late = _ack(as_("engineer"), pid, 1, ids[1]) if len(ids) > 1 else None
     if late is not None:
-        assert late.status_code == 409 and error(late)["code"] == "revision_already_approved"
+        assert late.status_code == 409
+        assert error(late)["code"] == "revision_already_approved"
     final = revision_row(engine, pid, 1)
     assert final["requirements"] == approved["requirements"]
     assert final["requirements_sha256"] == approved["requirements_sha256"]
