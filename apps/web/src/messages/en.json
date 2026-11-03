@@ -1077,7 +1077,7 @@
       "question_not_found": "That question is no longer asked on this revision. Check open items again.",
       "question_not_answerable": "This question takes an acknowledgement, not a value.",
       "question_answered": "This question is already answered.",
-      "revision_not_latest": "Answers are recorded on the latest revision only. Open the latest revision and answer there.",
+      "revision_not_latest": "Answers and acknowledgements are recorded on the latest revision only. Open the latest revision and record them there.",
       "answer_not_valid": "That value is not accepted for this question. Check the number and its range.",
       "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
       "assumption_acknowledged": "Assumption acknowledged — not engineer-validated.",
