@@ -1178,7 +1178,9 @@ def test_the_approval_names_the_account_everywhere_and_the_note_only_as_a_note(
     assert summary["approved_by"] == APPROVER
     assert summary["approver_name"] == APPROVER
     assert summary["approval_note"] == FORGED_APPROVER
-    assert "@" not in response.text
+    # The approver's email is never sent (the author, with no display name,
+    # is named by its recorded email since M6a).
+    assert caller.user.email not in response.text
     row = revision_row(engine, saved["id"], 1)
     assert (row["approved_account"], str(row["approved_user_id"])) == (
         caller.user.email,

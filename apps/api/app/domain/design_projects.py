@@ -984,7 +984,14 @@ class _Names:
     by_id: dict[uuid.UUID, str]
 
     def author(self, row: DesignRevisionRow) -> str:
-        return self.by_email.get(row.author.lower(), "") if row.author else ""
+        """Who saved it: the display name, else the recorded account email, else unknown.
+
+        Never empty and never invented: the email is what the server recorded,
+        and is shown to the tenant's members on the Team page.
+        """
+        if not row.author:
+            return requirements.UNKNOWN_ACCOUNT
+        return self.by_email.get(row.author.lower()) or row.author
 
     def approver(self, row: DesignRevisionRow) -> str | None:
         """The approving account's display name; ``None`` if none resolves.
@@ -1814,6 +1821,7 @@ def _revision_mark(
     names: _Names,
     approval_counts: bool,
     renderer: str,
+    lines: Sequence[str] = (),
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
@@ -1830,7 +1838,9 @@ def _revision_mark(
             f"renderer {renderer}"
         )
         label = marking.DRAFT_LABEL
-    return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
+    return marking.ExportMark(
+        label=label, identity=identity, findings=tuple(findings), requirements=tuple(lines)
+    )
 
 
 def _estimate_subject(
@@ -1949,10 +1959,11 @@ def export_revision(
     mark = _revision_mark(
         project,
         row,
-        [*_printed(findings, read.schema), *_acknowledged(row)],
+        _printed(findings, read.schema),
         names,
         approval_counts,
         applicable.renderer_version,
+        _requirement_lines(row, read),
     )
     if request.format in design_domain.SCHEDULE_FORMATS:
         exported = _schedule_export(project, row, read, request.format, mark, applicable)
@@ -2035,7 +2046,12 @@ def _schedule_export(
         for found in findings_v2.structural_findings(model)
     ]
     other = [found for found in mark.findings if not _structural(found)]
-    plain = marking.ExportMark(label=mark.label, identity=mark.identity, findings=tuple(other))
+    plain = marking.ExportMark(
+        label=mark.label,
+        identity=mark.identity,
+        findings=tuple(other),
+        requirements=mark.requirements,
+    )
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
             connection_drawing.drawing_set(model),
@@ -2334,17 +2350,19 @@ def _record_view(record: Mapping[str, Any] | None) -> RequirementsRecord | None:
     return RequirementsRecord.model_validate(record) if record is not None else None
 
 
-def _acknowledged(row: DesignRevisionRow) -> list[DesignFinding]:
-    """Each acknowledged assumption of a stored record, as a review export prints it."""
-    return [
-        DesignFinding(
-            code="assumption_acknowledged",
-            severity=FindingSeverity.INFO,
-            message=line,
-            source="requirements",
+def _requirement_lines(row: DesignRevisionRow, read: VersionedModel) -> list[str]:
+    """What a review export prints of the revision's record: open items, then acknowledgements."""
+    record = row.requirements if row.requirements is not None else None
+    if record is None:
+        if _request_problem(row) is not None:
+            return []
+        record = requirements.build(
+            ProjectDesignRequest.model_validate(row.request),
+            read.project,
+            _stored_findings(row),
+            derived=True,
         )
-        for line in requirements.acknowledged_lines(_stored_record(row))
-    ]
+    return [*requirements.open_item_lines(record), *requirements.acknowledged_lines(record)]
 
 
 def preview_requirements(
@@ -2479,7 +2497,14 @@ def answer_question(
         result: AcknowledgedRequirements | None = None
         account = _account_id(user)
         named = _display_names(session, project.tenant_id, [], also=account)
-        by = named.by_id.get(account) if account is not None else None
+        # Never empty, never invented: the display name, else the account's
+        # email (shown to the tenant's members on the Team page), else
+        # "unknown account".
+        by = (
+            (named.by_id.get(account) if account is not None else None)
+            or user.email
+            or requirements.UNKNOWN_ACCOUNT
+        )
         if action.action == "acknowledge":
             result = AcknowledgedRequirements(
                 requirements=_acknowledge(row, number, question_id, user, by, now)
@@ -2589,7 +2614,7 @@ def _acknowledge(
             **record,
             "acknowledgements": [
                 *record.get("acknowledgements", []),
-                {"question_id": question_id, "by_user_id": user.id, "by_name": by or "", "at": now},
+                {"question_id": question_id, "by_user_id": user.id, "by_name": by, "at": now},
             ],
             "questions": [dict(q) for q in record["questions"]],
         }

@@ -7,9 +7,12 @@ owner account as the caller).
 from __future__ import annotations
 
 import copy
+import uuid
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from app.design import snapshot
@@ -225,3 +228,74 @@ def test_a_typed_feeder_in_a_stored_revision_opens_but_is_not_re_designed(
     assert revised.status_code == 422
     assert error(revised)["code"] == "sub_board_load_server_owned"
     assert error(revised)["params"] == {"board": "MDB", "load_index": "2"}
+
+
+_OPEN = (
+    "[OPEN] Control circuit not designed: MDB › Pump",  # noqa: RUF001
+    "[OPEN] Board-to-board wiring not modelled: MDB → DB-1",
+)
+
+
+def _words(response: Any) -> str:
+    assert response.status_code == 200, response.text[:600]
+    return " ".join(" ".join(pdf_pages(response.content)).split())
+
+
+def test_open_items_print_on_the_drawing_set_and_calculations(client: TestClient) -> None:
+    saved = _save(client, GUIDED, requirements_input=INPUT)
+    for fmt in ("pdf", "calculations_pdf"):
+        words = _words(revision_export(client, saved["id"], 1, fmt))
+        for line in _OPEN:
+            assert line in words, (fmt, line)
+    exported = revision_export(client, saved["id"], 1, "json")
+    assert list(_OPEN) <= exported.json()["requirements"]
+
+
+def test_open_items_print_on_the_v2_pdfs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+    saved = _save(client, GUIDED, requirements_input=INPUT)
+    for fmt in ("connection_drawing_pdf", "terminal_schedule_pdf", "wire_schedule_pdf"):
+        words = _words(revision_export(client, saved["id"], 1, fmt))
+        for line in _OPEN:
+            assert line in words, (fmt, line)
+
+
+def test_an_account_without_a_display_name_is_named_by_its_email(
+    client: TestClient, engine: Engine, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    nameless = review_support.new_account(engine, tenants[0])
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET full_name = NULL WHERE id = :i"),
+            {"i": uuid.UUID(nameless.id)},
+        )
+    caller.user = nameless
+    saved = _save(client, GUIDED, requirements_input=INPUT)
+    assert saved["revisions"][0]["author"] == nameless.email
+    record = saved["requirements"]
+    pf = _question(record, "power_factor")
+    acked = _ask(client, saved["id"], 1, pf["id"], {"action": "acknowledge"}).json()
+    done = next(q for q in acked["requirements"]["questions"] if q["id"] == pf["id"])
+    assert done["by_name"] == nameless.email
+    fault = _question(record, "fault_level_ka")
+    answered = _ask(client, saved["id"], 1, fault["id"], {"action": "answer", "value": 10})
+    kept = next(q for q in answered.json()["requirements"]["questions"] if q["id"] == fault["id"])
+    assert kept["by_name"] == nameless.email
+    words = _words(revision_export(client, saved["id"], 1, "pdf"))
+    assert f"Assumption acknowledged by {nameless.email} on" in words
+
+
+def test_a_named_account_is_named_and_an_unknown_author_says_so(
+    client: TestClient, engine: Engine, caller: _Caller
+) -> None:
+    saved = _save(client, GUIDED, requirements_input=INPUT)
+    pf = _question(saved["requirements"], "power_factor")
+    acked = _ask(client, saved["id"], 1, pf["id"], {"action": "acknowledge"}).json()
+    done = next(q for q in acked["requirements"]["questions"] if q["id"] == pf["id"])
+    assert done["by_name"] not in ("", None, caller.user.email)
+    assert saved["revisions"][0]["author"] == done["by_name"]
+    update_row(engine, saved["id"], 1, author="")
+    opened = client.get(f"/design/projects/{saved['id']}").json()
+    assert opened["revisions"][0]["author"] == "unknown account"

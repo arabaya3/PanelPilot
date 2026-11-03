@@ -129,9 +129,13 @@ def test_apply_acknowledgements_and_the_printed_lines() -> None:
     assert next(q for q in record["questions"] if q["id"] == pf["id"])["state"] == "acknowledged"
     lines = requirements.acknowledged_lines(record)
     assert lines == [
-        "Assumption acknowledged by Ann on 2026-11-03 — not engineer-validated: "
-        "default_power_factor (MDB, Lights)"
+        "[ACKNOWLEDGED] Assumption acknowledged by Ann on 2026-11-03 — not engineer-validated: "
+        "default_power_factor — MDB \u203a Lights"
     ]
+    # No name recorded: never empty, never invented.
+    record["questions"][0]["by_name"] = None
+    record["questions"][0]["state"] = "acknowledged"
+    assert requirements.UNKNOWN_ACCOUNT in requirements.acknowledged_lines(record)[0]
     # A derived record never counts as acknowledged.
     assert requirements.acknowledged_lines({**record, "derived": True}) == []
 
@@ -158,3 +162,15 @@ def test_an_answered_question_stays_on_later_records() -> None:
     assert kept["answer"] == "15"
     later = _record(_request(), prior=answered)
     assert any(q["id"] == fault["id"] and q["state"] == "answered" for q in later["questions"])
+
+
+def test_open_item_lines_say_what_is_not_designed() -> None:
+    record = _record(_request())
+    assert requirements.open_item_lines(record) == [
+        "[OPEN] Control circuit not designed: MDB \u203a Pump",
+        "[OPEN] Board-to-board wiring not modelled: MDB \u2192 DB-1",
+    ]
+    # A derived record prints them too: a review document never reads complete.
+    derived = _record(_request(), derived=True)
+    assert requirements.open_item_lines(derived) == requirements.open_item_lines(record)
+    assert requirements.open_item_lines(None) == []

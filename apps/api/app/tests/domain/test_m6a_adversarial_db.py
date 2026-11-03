@@ -500,7 +500,8 @@ def test_a_revision_with_no_recorded_author_approves_without_inventing_one(
     assert "author_unknown" in json.dumps(approved.json())
     assert revision_row(engine, saved["id"], 1)["author"] == ""
     listed = next(r for r in _open(client, saved["id"], 1)["revisions"] if r["number"] == 1)
-    assert listed["author"] == ""
+    # Never empty and never invented (M6a D1): an unrecorded author says so.
+    assert listed["author"] == "unknown account"
 
 
 # --------------------------------------------------------------------------- #

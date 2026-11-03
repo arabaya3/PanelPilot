@@ -391,23 +391,56 @@ def _trace(
     return out
 
 
+#: Who an acknowledgement or answer names when its account has neither a
+#: display name nor an email: never empty, never invented.
+UNKNOWN_ACCOUNT = "unknown account"
+
+
+def _subject_text(record: Mapping[str, Any], subject: Mapping[str, Any]) -> str:
+    """``board > load`` (printed with U+203A), or the board alone, by the record's names."""
+    boards = {b["ref"]: b["name"] for b in record.get("boards", [])}
+    loads = {load["ref"]: load["description"] for load in record.get("loads", [])}
+    parts = [boards.get(subject.get("board_ref") or "", "")]
+    if subject.get("load_ref"):
+        parts.append(loads.get(subject["load_ref"], subject["load_ref"]))
+    return " \u203a ".join(part for part in parts if part)
+
+
 def acknowledged_lines(record: Mapping[str, Any] | None) -> list[str]:
     """What a review export prints for each acknowledged question of a stored record."""
     if not record or record.get("derived"):
         return []
-    boards = {b["ref"]: b["name"] for b in record.get("boards", [])}
-    loads = {load["ref"]: load["description"] for load in record.get("loads", [])}
     lines: list[str] = []
     for question in record.get("questions", []):
         if question.get("state") != "acknowledged":
             continue
-        subject = question.get("subject") or {}
-        where = boards.get(subject.get("board_ref") or "", "")
-        if subject.get("load_ref"):
-            where += f", {loads.get(subject['load_ref'], subject['load_ref'])}"
+        where = _subject_text(record, question.get("subject") or {})
         what = question.get("finding_code") or question.get("field") or question["kind"]
         lines.append(
-            f"Assumption acknowledged by {question.get('by_name') or 'a team member'} on "
-            f"{(question.get('at') or '')[:10]} — not engineer-validated: {what} ({where})"
+            f"[ACKNOWLEDGED] Assumption acknowledged by "
+            f"{question.get('by_name') or UNKNOWN_ACCOUNT} on "
+            f"{(question.get('at') or '')[:10]} — not engineer-validated: {what}"
+            + (f" — {where}" if where else "")
         )
+    return lines
+
+
+def open_item_lines(record: Mapping[str, Any] | None) -> list[str]:
+    """What a review export prints for each open item: what this design does not cover.
+
+    Printed for a derived record too: the open items follow from the request,
+    and a review document must never read as complete without them.
+    """
+    if not record:
+        return []
+    boards = {b["ref"]: b["name"] for b in record.get("boards", [])}
+    lines: list[str] = []
+    for item in record.get("open_items", []):
+        subject = item.get("subject") or {}
+        if item["code"] == "control_not_designed":
+            lines.append(f"[OPEN] Control circuit not designed: {_subject_text(record, subject)}")
+        elif item["code"] == "inter_board_wiring_not_modelled":
+            supply = boards.get(subject.get("supply_board_ref") or "", "?")
+            board = boards.get(subject.get("board_ref") or "", "?")
+            lines.append(f"[OPEN] Board-to-board wiring not modelled: {supply} → {board}")
     return lines

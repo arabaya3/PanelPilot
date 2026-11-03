@@ -378,7 +378,9 @@ def printed_designation(designation: object) -> str:
     function = getattr(designation, "function", None)
     location = getattr(designation, "location", None)
     product = getattr(designation, "product", "")
-    return (f"={function}" if function else "") + (f"+{location}" if location else "") + f"-{product}"
+    return (
+        (f"={function}" if function else "") + (f"+{location}" if location else "") + f"-{product}"
+    )
 
 
 def _designation_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:

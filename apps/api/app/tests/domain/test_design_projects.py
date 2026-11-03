@@ -137,8 +137,11 @@ def test_save_project_keeps_what_was_entered(tenants, as_tenant) -> None:  # typ
     )
     assert saved.name == "Tower"
     assert saved.revision == 1
-    # The account has no users row here, so no display name: never its email.
-    assert [(r.number, r.note, r.author) for r in saved.revisions] == [(1, "first issue", "")]
+    # The author has no users row here, so no display name: named by the email
+    # the server recorded (M6a), never by an invented name.
+    assert [(r.number, r.note, r.author) for r in saved.revisions] == [
+        (1, "first issue", review_support.OTHER_AUTHOR)
+    ]
     assert saved.request.boards == _request().boards
     # The title block's revision list is the saved revisions, none approved.
     (listed,) = saved.request.info.revisions
@@ -1069,8 +1072,11 @@ def test_an_account_without_a_usable_name_is_a_team_member(  # type: ignore[no-u
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
     assert revision.approved_by == design_projects.APPROVER_FALLBACK
-    assert revision.author == ""
-    assert _emails_in(approved.model_dump(mode="json")) == []
+    # The author has no account row with a name: named by the email the
+    # server recorded (M6a), never by an invented name. The approver's email
+    # is still never sent.
+    assert revision.author == review_support.OTHER_AUTHOR
+    assert set(_emails_in(approved.model_dump(mode="json"))) <= {review_support.OTHER_AUTHOR}
     calc = _body(_export(as_tenant, a, saved, fmt="calculations_pdf"), "calculations_pdf")
     assert "Review approved by a team member" in calc
     assert "eng@example.com" not in calc
