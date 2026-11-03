@@ -422,3 +422,16 @@ def test_an_undocumented_not_required_is_unresolved_not_settled() -> None:
     rows = [r for r in schedules.terminal_schedule(model) if r.terminal_id in ("t1", "t3")]
     assert rows
     assert all(r.required is None for r in rows)
+
+
+def _duplicate_designation(configuration: dict[str, Any]) -> None:
+    first, second = configuration["components"][:2]
+    second["designation"] = copy.deepcopy(first["designation"])
+
+
+def test_a_designation_printed_twice_on_a_board_is_blocking() -> None:
+    assert _codes(_composed(PE_N), "designation_duplicate") == []
+    model = _composed(PE_N, _duplicate_designation)
+    (found,) = _codes(model, "designation_duplicate")
+    assert found.severity == "blocking"
+    assert len(found.location["parts"].split(",")) == 2
