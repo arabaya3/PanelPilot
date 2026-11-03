@@ -197,7 +197,8 @@ def _question(record: dict[str, Any], *fields: str, finding: str | None = None) 
         finding,
         [(q.get("field"), q.get("finding_code")) for q in record["questions"]],
     )
-    return found[0]
+    question: dict[str, Any] = found[0]
+    return question
 
 
 def _ask(client: TestClient, project_id: str, number: int, qid: str, body: Any) -> Any:

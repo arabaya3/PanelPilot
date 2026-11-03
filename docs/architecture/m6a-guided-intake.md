@@ -134,9 +134,9 @@ Where this section and §1–4 differ, this section holds.
 - Every new revision stores a record. Without `requirements_input` the record
   has `intake` from the previous revision's record, else `"table"`.
 - `requirements_input = {"intake": "guided"|"table"|"import", "control":
-  [{"board_index", "load_index", "needs": [...]}]}` (strict; `"ai"` is
+[{"board_index", "load_index", "needs": [...]}]}` (strict; `"ai"` is
   refused). `needs` ⊆ `start_stop, running_indicator, fault_indicator,
-  hand_off_auto, remote_control, interlock, timed`, each once. Refusals (422):
+hand_off_auto, remote_control, interlock, timed`, each once. Refusals (422):
   `control_load_unknown`, `control_need_requires_controlled` (the load's
   existing `controlled` flag must be set; it is the only control model),
   `control_given_twice`.
@@ -171,8 +171,8 @@ Where this section and §1–4 differ, this section holds.
 ### 5.3 Endpoints as built
 
 - `POST /design/projects/requirements/preview` — body `{request,
-  requirements_input}`; 200 `{requirements, design: {project, profile},
-  findings}`. Saves nothing, reads no project.
+requirements_input}`; 200 `{requirements, design: {project, profile},
+findings}`. Saves nothing, reads no project.
 - `POST /design/projects/{id}/revisions/{n}/questions/{qid}` — strict body
   `{"action": "answer", "value": <number>}` or `{"action": "acknowledge"}`;
   any other field (`by_user_id`, `at`) is 422.

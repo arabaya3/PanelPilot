@@ -211,7 +211,9 @@ def test_a_duplicate_designation_within_a_board_is_a_blocking_finding() -> None:
     board = designed.boards[0]
     breakers = [d for d in board.devices if d.designation is not None]
     assert len(breakers) >= 2
-    breakers[1].designation = breakers[0].designation.model_copy()
+    first = breakers[0].designation
+    assert first is not None
+    breakers[1].designation = first.model_copy()
     found = [f for f in integrity.project_findings(designed) if f.code == "designation_duplicate"]
     assert found, "a duplicated printed designation raised no designation_duplicate"
     assert {f.severity.value for f in found} == {"blocking"}
