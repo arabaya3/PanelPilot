@@ -115,7 +115,7 @@ function stored(): SavedProject {
     ],
     request: REQUEST,
     ...({ requirements: RECORD } as object),
-  } as SavedProject;
+  };
 }
 
 beforeEach(() => {
