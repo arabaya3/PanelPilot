@@ -494,7 +494,7 @@ def test_a_revision_with_no_recorded_author_approves_without_inventing_one(
     client: TestClient, engine: Engine
 ) -> None:
     saved = save(client)
-    update_row(engine, saved["id"], 1, author="")
+    update_row(engine, saved["id"], 1, author="", author_user_id=None)
     approved = approve(client, saved["id"], 1)
     assert approved.status_code == 200, approved.text[:600]
     assert "author_unknown" in json.dumps(approved.json())
@@ -503,6 +503,50 @@ def test_a_revision_with_no_recorded_author_approves_without_inventing_one(
     # Never empty and never invented (M6a D1): an unrecorded author says so.
     assert listed["author"] == "unknown account"
     assert listed["author_unknown"] is True
+
+
+def test_the_author_is_still_refused_after_changing_their_email(
+    client: TestClient, engine: Engine, caller: _Caller
+) -> None:
+    saved = save(client)
+    changed = f"changed-{caller.user.id[:8]}@synthetic.example"
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET email = :e WHERE id = :i"),
+            {"e": changed, "i": caller.user.id},
+        )
+    caller.user = CurrentUser(
+        id=caller.user.id, email=changed, tenant_id=caller.user.tenant_id, roles=caller.user.roles
+    )
+    refused = approve(client, saved["id"], 1)
+    assert refused.status_code == 403, refused.text[:600]
+    assert error(refused)["code"] == "approval_by_author"
+    assert revision_row(engine, saved["id"], 1)["approved_at"] is None
+
+
+def test_another_account_given_the_authors_old_email_is_not_the_author(
+    client: TestClient, engine: Engine, caller: _Caller, tenants: tuple[str, str]
+) -> None:
+    saved = save(client)
+    old_email = caller.user.email
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET email = :e WHERE id = :i"),
+            {"e": f"moved-{caller.user.id[:8]}@synthetic.example", "i": caller.user.id},
+        )
+    other = _reviewer(engine, tenants[0])
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET email = :e WHERE id = :i"), {"e": old_email, "i": other.id}
+        )
+    caller.user = CurrentUser(
+        id=other.id, email=old_email, tenant_id=other.tenant_id, roles=other.roles
+    )
+    approved = approve(client, saved["id"], 1)
+    assert approved.status_code == 200, approved.text[:600]
+    row = revision_row(engine, saved["id"], 1)
+    assert str(row["approved_user_id"]) == other.id
+    assert str(row["author_user_id"]) != other.id
 
 
 # --------------------------------------------------------------------------- #
