@@ -289,12 +289,14 @@ def test_a_self_approval_by_id_survives_an_email_change(
 def test_a_author_established_is_exposed(engine: Engine, as_: Any) -> None:
     c = as_("engineer")
     pid = _save(c, FED)
-    assert c.post(
-        f"/design/projects/{pid}/revisions", json={"request": FED, "note": "r2"}
-    ).status_code == 201
-    assert c.post(
-        f"/design/projects/{pid}/revisions", json={"request": FED, "note": "r3"}
-    ).status_code == 201
+    assert (
+        c.post(f"/design/projects/{pid}/revisions", json={"request": FED, "note": "r2"}).status_code
+        == 201
+    )
+    assert (
+        c.post(f"/design/projects/{pid}/revisions", json={"request": FED, "note": "r3"}).status_code
+        == 201
+    )
     _email_only(engine, pid, 1)
     _no_author(engine, pid, 2)
     opened = _open(as_("reviewer"), pid, 3)
@@ -346,9 +348,12 @@ def test_a_resave_of_an_older_revision_becomes_latest(engine: Engine, as_: Any) 
     pid = _save(c, FED)
     other = copy.deepcopy(FED)
     other["info"]["number"] = "M6B-R2"
-    assert c.post(
-        f"/design/projects/{pid}/revisions", json={"request": other, "note": "r2"}
-    ).status_code == 201
+    assert (
+        c.post(
+            f"/design/projects/{pid}/revisions", json={"request": other, "note": "r2"}
+        ).status_code
+        == 201
+    )
     done = _resave(as_("reviewer"), pid, 1)
     assert done.status_code in (200, 201), done.text[:600]
     assert _count(engine, pid) == 3
@@ -732,9 +737,9 @@ def test_b_ack_racing_a_new_revision_is_carried_or_ordered(
     assert rrev.status_code == 201, rrev.text[:600]
     assert blocked, "the save did not wait for the acknowledgement"
     new = revision_row(engine, pid, 2)["requirements"]
-    assert qid in {a["question_id"] for a in new.get("acknowledgements", [])}, (
-        "the acknowledgement was lost from the new revision"
-    )
+    assert qid in {
+        a["question_id"] for a in new.get("acknowledgements", [])
+    }, "the acknowledgement was lost from the new revision"
 
 
 def _approve_dry_run_blocked(engine: Engine, pid: str) -> bool:

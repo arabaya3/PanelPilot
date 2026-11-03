@@ -1118,7 +1118,7 @@
       "approveDirty": "Save your changes first: approval signs stored revision {revision}, which does not include them.",
       "saveFailed": "The project could not be saved. What you entered is still here; try again.",
       "approvalNotCovering": "This approval was recorded before approvals were tied to a validated design, so it is not treated as covering revision {revision}.",
-      "approvalNotCurrent": "This approval no longer counts: {changes} changed since revision {revision} was approved. Its exports are refused; save it again as a new revision and approve that.",
+      "approvalNotCurrent": "This approval no longer counts for revision {revision}: it does not match {changes} as they are now, or was never tied to them. Do not treat it as current; save it as a new revision for review and have that approved.",
       "approvalNotCurrentListed": "No longer counts: the rules, defaults or export renderer it was approved under changed.",
       "approvalParts": {
         "rules_version": "the calculation rules",

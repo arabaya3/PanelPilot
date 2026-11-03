@@ -476,6 +476,19 @@ export function ProjectsPanel({
                 })}
               </p>
             )}
+            {approvalOutdated.length > 0 && !trial && (
+              <button
+                type="button"
+                disabled={working || dirty}
+                onClick={() => {
+                  void saveForReview();
+                }}
+                className="btn btn-secondary btn-sm self-start"
+                data-testid="resave-outdated-approval"
+              >
+                {t('resave')}
+              </button>
+            )}
             {!approvalCovers && approvalOutdated.length === 0 && (
               <p className="text-sm text-text-muted" data-testid="approval-not-covering">
                 {t('approvalNotCovering', { revision: opened.revision })}

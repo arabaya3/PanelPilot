@@ -43,8 +43,8 @@ from app.tests.domain.test_m6b_adversarial_db import (  # noqa: F401  (fixtures)
     _resave,
     _save,
     _summary,
-    _who_fixture,
     _Who,
+    _who_fixture,
 )
 
 
@@ -86,6 +86,11 @@ def test_c_unbound_approval_is_not_current_and_exports_draft(engine: Engine, as_
     assert "requirements" in summary["approval_changed"]
     for fmt in ("pdf", "calculations_pdf"):
         assert _label_of(_export(as_("owner"), pid, 1, fmt)) == "draft", fmt
+    # The opened request's title block names no approver whose approval no longer counts.
+    opened = _open(as_("owner"), pid, 1)
+    listed = opened["request"]["info"]["revisions"]
+    assert listed
+    assert all(r["approved_by"] == "" for r in listed), listed
     # Re-approval is refused (approved already); recovery is a resave.
     assert _approve(as_("reviewer2"), pid, 1).status_code == 409
 
@@ -153,7 +158,8 @@ def test_c_trial_cannot_resave(engine: Engine, as_: Any) -> None:
 def test_c_ack_on_superseded_revision_is_409(engine: Engine, as_: Any) -> None:
     pid = _save(as_("engineer"))
     qid = next(
-        q["id"] for q in revision_row(engine, pid, 1)["requirements"]["questions"]
+        q["id"]
+        for q in revision_row(engine, pid, 1)["requirements"]["questions"]
         if q["kind"] == "assumption"
     )
     assert _resave(as_("reviewer"), pid, 1).status_code == 201
@@ -165,7 +171,8 @@ def test_c_ack_on_superseded_revision_is_409(engine: Engine, as_: Any) -> None:
 def test_c_resave_carries_acks_whose_basis_stands(engine: Engine, as_: Any, who: _Who) -> None:
     pid = _save(as_("engineer"))
     qid = next(
-        q["id"] for q in revision_row(engine, pid, 1)["requirements"]["questions"]
+        q["id"]
+        for q in revision_row(engine, pid, 1)["requirements"]["questions"]
         if q["kind"] == "assumption"
     )
     assert _ack(as_("engineer"), pid, 1, qid).status_code == 200
@@ -184,3 +191,17 @@ def test_c_resave_other_tenant_and_missing_is_404(engine: Engine, as_: Any) -> N
     assert _resave(as_("reviewer"), pid, 7).status_code == 404
     assert _resave(as_("reviewer"), str(uuid.uuid4()), 1).status_code == 404
     assert _open(as_("owner"), pid)["revision"] == 1
+
+
+def test_c_malformed_record_with_its_hash_is_an_integrity_failure(engine: Engine, as_: Any) -> None:
+    """A stored record of the wrong shape, rehashed, is refused as tampered, never a 500."""
+    pid = _save(as_("engineer"), FED)
+    record = {"schema": "pp-req/1", "derived": False, "questions": [], "acknowledgements": []}
+    update_row(engine, pid, 1, requirements=record, requirements_sha256=snapshot.sha256_of(record))
+    opened = _open(as_("owner"), pid, 1)
+    assert opened["validated"] is False
+    assert opened["requirements"] is None
+    approval = _approve(as_("reviewer"), pid, 1)
+    assert approval.status_code == 409, approval.text[:400]
+    assert error(approval)["code"] == "snapshot_integrity_failed"
+    assert error(approval)["params"]["reason"] == "requirements_mismatch"

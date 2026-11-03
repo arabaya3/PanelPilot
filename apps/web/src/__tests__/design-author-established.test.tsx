@@ -196,3 +196,47 @@ describe('the resave call', () => {
     expect(init?.body).toBe('{}');
   });
 });
+
+describe('an approval that no longer counts', () => {
+  it('says so without calling it current, and offers to save it again for review', async () => {
+    const project = { id: 'p1', revision: 3 } as unknown as SavedProject;
+    const resave = vi.fn<typeof resaveRevision>().mockResolvedValue({ kind: 'saved', project });
+    const list = vi.fn<typeof listProjects>().mockResolvedValue({
+      kind: 'listed',
+      page: { permissions: ['approve_revision'], projects: [] },
+    });
+    const onOpened = vi.fn<(project: SavedProject, fill: boolean) => void>();
+    renderApp(
+      <ProjectsPanel
+        token="tok"
+        current={null}
+        opened={{
+          id: 'p1',
+          name: 'Clinic',
+          revision: 2,
+          revisions: [1, 2],
+          approval: { by: 'Synthetic Owner A', at: '2026-10-20T10:00:00Z', note: '' },
+          approvingAs: 'Omar Nasser',
+          canApprove: true,
+          isAuthor: false,
+          authorEstablished: false,
+        }}
+        approvalOutdated={['rules_version', 'requirements']}
+        onOpened={onOpened}
+        impls={{ list, resave }}
+      />,
+      { locale: 'en' },
+    );
+    expect(screen.getByTestId('approval-not-current').textContent).toBe(
+      'This approval no longer counts for revision 2: it does not match the calculation rules ' +
+        'and the requirements record as they are now, or was never tied to them. Do not treat it ' +
+        'as current; save it as a new revision for review and have that approved.',
+    );
+    fireEvent.click(screen.getByTestId('resave-outdated-approval'));
+    expect(await screen.findByTestId('projects-message')).toBeTruthy();
+    expect(resave).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'tok', id: 'p1', revision: 2 }),
+    );
+    expect(onOpened).toHaveBeenCalledWith(project, true);
+  });
+});

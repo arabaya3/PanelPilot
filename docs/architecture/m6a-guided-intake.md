@@ -247,7 +247,7 @@ findings}`. Saves nothing, reads no project.
 
 - Each acknowledged question of a stored record prints on every review
   export's findings sheet as an info line: "Assumption acknowledged by <name>
-  on <date> — not engineer-validated: <finding or field> (<board>, <load>)"
+  on <date> — not engineer-validated: <finding or field> — <board> › <load>"
   (code `assumption_acknowledged`, source `requirements`).
 - `designation_duplicate` (blocking) prints like every finding; a v1
   revision prints its own (only the v2 structural one is v2-only).
@@ -324,3 +324,29 @@ account`. No name is invented. `RevisionSummary.author` follows the same
   `SavedProject.author_unknown` and each
   `RevisionSummary.author_unknown` are true only when a row records neither.
 - `params` values are strings (`"load_index": "1"`), as for every coded error.
+
+### 5.8 Integration review (M6b, 2026-11-03)
+
+- **Opened request title block.** `GET /design/projects/{id}` lists an earlier
+  or the opened revision's approver in `request.info.revisions` only while that
+  approval still counts (the same `bound_to` rule as an export's title block).
+  Before, a stale or unbound approval's approver was listed there, and a save
+  from the editor could carry the name into a new request.
+- **Malformed stored record.** A stored requirements record that matches its
+  hash but is not a valid `pp-req/1` record is treated as altered:
+  `snapshot_integrity_failed`, `reason: requirements_mismatch`, on open,
+  approval, export and acknowledgement, instead of a 500.
+- **Acknowledgements without a `basis`.** An acknowledgement recorded before
+  `basis` existed (only on this unmerged branch) does not carry to a later
+  revision: what it was given against cannot be shown to be unchanged. Its
+  question reopens there; the earlier revision keeps it as recorded. A resave
+  carries only acknowledgements whose basis still stands.
+- **An approval that no longer counts** (stale, not bound to the requirements
+  record, or failing integrity) is shown as not current, with "Save as a new
+  revision for review" on the approval panel, as for a revision whose author
+  is not established. Its wording covers an approval that was never bound.
+- **Historical documents.** A stale revision's stored documents cannot be
+  viewed or exported as historical artefacts: every revision export of a stale
+  revision is refused (`revision_stale`), and no route serves the stored
+  snapshot as a document. Opening one shows its stored request, findings and
+  an approval marked not current. Not added in this slice.

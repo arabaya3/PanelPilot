@@ -209,9 +209,17 @@ def _requirements_match(row: DesignRevisionRow) -> bool:
     if row.requirements is None:
         return True
     try:
-        return snapshot.sha256_of(row.requirements) == row.requirements_sha256
+        if snapshot.sha256_of(row.requirements) != row.requirements_sha256:
+            return False
     except (TypeError, ValueError):
         return False
+    # A record of the wrong shape, rehashed to match, was not written by this
+    # software: refused as altered like a hash mismatch, never read further.
+    try:
+        RequirementsRecord.model_validate(row.requirements)
+    except PydanticValidationError:
+        return False
+    return True
 
 
 def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
@@ -1330,7 +1338,11 @@ def _opened(
         raise NotFoundError("no such revision", code="revision_not_found")
     viewer_id = _account_id(viewer)
     names = _display_names(session, project.tenant_id, revisions, also=viewer_id)
-    title = _title_revisions(revisions, chosen.number, names)
+    # Bound like an export's title block, so the opened request never lists an
+    # approval that no longer counts (stale, unbound or failing integrity).
+    title = _title_revisions(
+        revisions, chosen.number, names, bound_to=_applicable(chosen, thorough=False)
+    )
     checked = _validation(chosen)
     readable = _request_problem(chosen) is None
     if readable:
