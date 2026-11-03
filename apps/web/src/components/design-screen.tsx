@@ -27,6 +27,11 @@ import { ConfigurationPanel } from '@/components/design/configuration-panel';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import {
+  controlNeedsFrom,
+  RequirementsView,
+  requirementsInputOf,
+} from '@/components/design/requirements-view';
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
@@ -115,7 +120,12 @@ import {
   listProjects,
   openProject,
   permits,
+  requirementsOf,
   suggestSchedule,
+  type answerQuestion,
+  type ControlNeed,
+  type previewRequirements,
+  type RequirementsRecord,
   type BoardDesignResponse,
   type SavedProject,
   type DesignOutcome,
@@ -302,6 +312,10 @@ type DesignScreenProps = {
   signupImpl?: typeof signupClaimingTrial;
   /** Follows a link the engineer chose to leave for with changes discarded. */
   leaveImpl?: (href: string) => void;
+  /** Checks the guided requirements' open items (M6a). */
+  previewRequirementsImpl?: typeof previewRequirements;
+  /** Answers or acknowledges one of a saved revision's questions. */
+  answerQuestionImpl?: typeof answerQuestion;
 };
 
 /**
@@ -389,6 +403,8 @@ function DesignWorkspace({
   listProjectsImpl = listProjects,
   leaveImpl,
   accountSwitched,
+  previewRequirementsImpl,
+  answerQuestionImpl,
 }: DesignScreenProps & {
   account: AccountSession;
   startSignedOut: boolean;
@@ -433,6 +449,10 @@ function DesignWorkspace({
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
   const [boards, setBoards] = useState<BoardForm[]>([blankBoard(0, 1, 'DB1')]);
   const [activeKey, setActiveKey] = useState(0);
+  // Each load's control needs, by row key: requirements only, never designed from.
+  const [controlNeeds, setControlNeeds] = useState<Record<number, ControlNeed[]>>({});
+  // The requirements record the server stored with the revision open.
+  const [savedRequirements, setSavedRequirements] = useState<RequirementsRecord | null>(null);
   // Board keys and row keys both come from this counter, so none collide.
   const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
@@ -872,7 +892,11 @@ function DesignWorkspace({
       approval: approvalOf(project),
       approvingAs: project.approving_as ?? null,
       canApprove: permits(project, 'approve_revision'),
+      author: project.revisions.find((entry) => entry.number === project.revision)?.author ?? null,
+      authorUnknown: (project as { author_unknown?: unknown }).author_unknown === true,
     });
+    const requirements = requirementsOf(project);
+    setSavedRequirements(requirements);
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
     setOpenedSchema(project.snapshot_schema);
@@ -916,6 +940,7 @@ function DesignWorkspace({
     nextKey.current += Math.max(1, loaded.used);
     setInfo(loaded.info);
     setBoards(loaded.boards);
+    setControlNeeds(controlNeedsFrom(requirements, loaded.boards));
     if (loaded.boards[0]) setActiveKey(loaded.boards[0].key);
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
@@ -1610,7 +1635,11 @@ function DesignWorkspace({
                 token={token}
                 current={
                   complete && parsed !== 'invalid'
-                    ? { name: info.name.trim(), request: toRequest(info, boards, profile) }
+                    ? {
+                        name: info.name.trim(),
+                        request: toRequest(info, boards, profile),
+                        requirementsInput: requirementsInputOf(boards, controlNeeds),
+                      }
                     : null
                 }
                 opened={opened}
@@ -1644,6 +1673,51 @@ function DesignWorkspace({
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
           </>,
+        )}
+
+        {viewPanel(
+          'requirements',
+          // Mounted only while shown: its rows repeat the schedule's fields.
+          view === 'requirements' && (
+            <RequirementsView
+              token={token}
+              boards={boards}
+              onBoardChange={updateBoard}
+              onAddBoard={addBoard}
+              onLoadChange={(boardKey, loadKey, patch) => {
+                updateLoads(boardKey, (loads) =>
+                  loads.map((load) => (load.key === loadKey ? { ...load, ...patch } : load)),
+                );
+              }}
+              onLoadRemove={(boardKey, loadKey) => {
+                updateLoads(boardKey, (loads) => loads.filter((load) => load.key !== loadKey));
+              }}
+              onLoadAdd={(boardKey) => {
+                const key = takeKeys(1);
+                updateLoads(boardKey, (loads) => [...loads, blankLoad(key)]);
+              }}
+              control={controlNeeds}
+              onControlChange={(loadKey, needs) => {
+                setControlNeeds((current) => ({ ...current, [loadKey]: needs }));
+              }}
+              request={complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null}
+              opened={opened ? { id: opened.id, revision: opened.revision } : null}
+              savedRecord={savedRequirements}
+              findings={validation?.findings ?? []}
+              onProject={forOwner((project: SavedProject, action: 'answer' | 'acknowledge') => {
+                // An answer is a new revision with the value typed in: the form takes it.
+                onOpened(project, action === 'answer');
+              })}
+              dirty={dirty}
+              onUnauthorized={forOwner(() => {
+                void reauthorize();
+              })}
+              impls={{
+                ...(previewRequirementsImpl ? { preview: previewRequirementsImpl } : {}),
+                ...(answerQuestionImpl ? { answer: answerQuestionImpl } : {}),
+              }}
+            />
+          ),
         )}
 
         <div
