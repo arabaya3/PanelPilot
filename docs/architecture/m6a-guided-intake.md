@@ -184,7 +184,9 @@ findings}`. Saves nothing, reads no project.
   - acknowledge → **200** with the updated record; the design, snapshot hash
     and revision count are unchanged. 409 `requirements_derived` on a derived
     record (save a new revision first); 409 `revision_already_approved` on an
-    approved revision (what was approved does not change); 403
+    approved revision (what was approved does not change); 409
+    `revision_not_latest` on a revision a later one replaced (an
+    acknowledgement there would be missing from the latest revision); 403
     `acknowledgement_requires_account` for a trial. Acknowledging twice is a
     no-op.
   - 404 `revision_not_found` (also another tenant's project) and

@@ -2511,7 +2511,7 @@ def answer_question(
         ConflictError: ``requirements_derived`` (acknowledging an older
             revision's derived record), ``revision_already_approved``
             (acknowledging an approved revision), ``revision_not_latest``
-            (answering a revision a later one replaced),
+            (answering or acknowledging a revision a later one replaced),
             ``question_not_answerable``, ``question_answered``,
             ``snapshot_integrity_failed`` (``requirements_mismatch``).
         AuthorizationError: ``acknowledgement_requires_account`` (a trial).
@@ -2541,7 +2541,9 @@ def answer_question(
         )
         if action.action == "acknowledge":
             result = AcknowledgedRequirements(
-                requirements=_acknowledge(row, number, question_id, user, by, now)
+                requirements=_acknowledge(
+                    row, number, project.revision_count, question_id, user, by, now
+                )
             )
         else:
             latest = project.revision_count
@@ -2616,6 +2618,7 @@ def answer_question(
 def _acknowledge(
     row: DesignRevisionRow,
     number: int,
+    latest: int,
     question_id: str,
     user: CurrentUser,
     by: str | None,
@@ -2639,6 +2642,15 @@ def _acknowledge(
             f"revision {number} is approved; what it was approved with does not change",
             code="revision_already_approved",
             params={"revision": str(number)},
+        )
+    # Checked under the project lock, as an answer is: an acknowledgement of a
+    # revision a later one replaced (an answer that committed first) would be
+    # on no revision anyone works on, and missing from the latest one.
+    if number != latest:
+        raise ConflictError(
+            f"revision {number} is not the latest; acknowledge on revision {latest}",
+            code="revision_not_latest",
+            params={"revision": number, "latest": latest},
         )
     question = _question_in(record, question_id)
     if question["state"] == "answered":

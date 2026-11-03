@@ -432,7 +432,7 @@ def test_derived_approved_and_superseded_revisions_refuse_acknowledgement(
     stale = _ack(client, pid, 1, ze)
     assert stale.status_code == 409
     assert error(stale)["code"] == "revision_not_latest"
-    assert error(stale)["params"]["latest"] == 2
+    assert error(stale)["params"]["latest"] == "2"
     # Approved: what it was approved with does not change.
     assert approve(client, pid, 2).status_code == 200
     approved = _ack(client, pid, 2, ze)
