@@ -193,7 +193,7 @@ export function LoadRows({
                       onChange={(event) => {
                         onChange(load.key, { powerFactor: event.target.value });
                       }}
-                      className="input w-32"
+                      className="input w-24"
                     />
                     {problem(field('pf'), pfProblem)}
                   </td>
