@@ -349,6 +349,7 @@ def design_project(
             inconsistent, or a load cannot be protected or cabled.
     """
     del session
+    project.refuse_client_feeders(request.boards)
     designed, company = build_design(request)
     logger.info(
         "design.project_designed",
