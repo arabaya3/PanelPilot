@@ -371,6 +371,11 @@ describe('control needs in the draft', () => {
     await screen.findByTestId('projects-panel');
     type(nameField(), 'Kept tower');
     tab('Requirements');
+    fireEvent.click(
+      within(screen.getByTestId('view-requirements')).getAllByTestId(
+        'design-controlled-0',
+      )[0] as HTMLElement,
+    );
     fireEvent.click(needBox('running_indicator'));
     await waitFor(() => {
       expect(stored()).toMatchObject({ control: [[['running_indicator']]] });

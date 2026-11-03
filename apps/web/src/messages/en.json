@@ -1069,7 +1069,17 @@
       "feeder_server_owned": "{board}, load row {row}: a feeder to another board is drawn from that board’s “Fed from”, not entered as a load. Remove the row.",
       "approval_by_author": "You saved this revision, so you cannot approve it. Another reviewer must approve it.",
       "designation_duplicate": "Two or more items on a board carry the same printed designation. Approval is refused until this is resolved.",
-      "requirements_derived": "Save a new revision to record answers."
+      "requirements_derived": "Save a new revision to record answers.",
+      "control_load_unknown": "A control need names a load that is not in the schedule. Check the boards and loads, then try again.",
+      "control_need_requires_controlled": "{board}, load row {row}: a control need is recorded only for a load the PLC switches. Tick “PLC switched” on that load, or clear its control needs.",
+      "control_given_twice": "{board}, load row {row}: its control needs were given twice. Try again.",
+      "question_not_found": "That question is no longer asked on this revision. Check open items again.",
+      "question_not_answerable": "This question takes an acknowledgement, not a value.",
+      "question_answered": "This question is already answered.",
+      "revision_not_latest": "Answers are recorded on the latest revision only. Open the latest revision and answer there.",
+      "answer_not_valid": "That value is not accepted for this question. Check the number and its range.",
+      "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
+      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1205,7 +1215,8 @@
       "integrity_device_unrated": "A breaker or fuse on this circuit has no rated current.",
       "integrity_conditions_unknown": "The installation conditions are not known, so the protection is checked only against the {capacity} A upper bound any tabulated installation gives its {cable} cable.",
       "draft_findings_not_rechecked": "These findings are as sent by the page and were not re-checked on the server; save the project for a server-checked design.",
-      "designation_duplicate": "Two or more items on this board carry the same printed designation. Approval is refused while this stands."
+      "designation_duplicate": "Two or more items on this board carry the same printed designation. Approval is refused while this stands.",
+      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated."
     },
     "markups": {
       "title": "Review markups",
@@ -1419,7 +1430,13 @@
       "missing": "Missing value: {field}",
       "assumption": {
         "default_power_factor": "Assumed power factor 0.9 (no value given)",
-        "generic": "Assumed value: {field}"
+        "generic": "Assumed value: {field}",
+        "fault_level_inherited": "Fault level taken from the supplying board",
+        "demand_factors": "Demand factors applied from the profile",
+        "rules_unconfirmed": "Design rules not confirmed for this project",
+        "contactor_ac1": "Contactors rated for AC-1 duty",
+        "motor_current_table": "Motor current taken from a table value, not the nameplate",
+        "motor_current_formula": "Motor current calculated, not taken from the nameplate"
       },
       "field": {
         "motor_current_a": "Motor nameplate current (A)",
@@ -1445,7 +1462,9 @@
         "feeder": "Feeder to {board} from {from}"
       },
       "saveChangesFirst": "Save your changes first: an answer is saved as a new revision from the one stored.",
-      "derivedSaveNew": "Save a new revision to record answers."
+      "derivedSaveNew": "Save a new revision to record answers.",
+      "needsControlled": "Tick “PLC switched” on this load first: a control need is recorded only for a load the PLC switches.",
+      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused."
     }
   },
   "files": {

@@ -156,6 +156,7 @@ export function RequirementsView({
   const id = useId();
   const { preview = previewRequirements, answer = answerQuestion } = impls;
   const [previewed, setPreviewed] = useState<RequirementsRecord | null>(null);
+  const [previewFindings, setPreviewFindings] = useState<DesignFinding[]>([]);
   // An acknowledgement's record as the server answered it, until the revision is read again.
   const [acknowledged, setAcknowledged] = useState<RequirementsRecord | null>(null);
   const [checking, setChecking] = useState(false);
@@ -167,12 +168,15 @@ export function RequirementsView({
   // A record the server stored (a save, an answer, an opening) replaces any preview.
   useEffect(() => {
     setPreviewed(null);
+    setPreviewFindings([]);
     setAcknowledged(null);
   }, [savedRecord]);
 
   const record = previewed ?? acknowledged ?? savedRecord;
   const boardNames = boards.map((board) => board.name.trim()).filter((name) => name !== '');
-  const duplicates = findings.filter((finding) => finding.code === 'designation_duplicate');
+  const duplicates = (previewed !== null ? previewFindings : findings).filter(
+    (finding) => finding.code === 'designation_duplicate',
+  );
 
   function boardOfRef(ref: string | null | undefined): string | null {
     if (!ref || record === null) return null;
@@ -187,7 +191,8 @@ export function RequirementsView({
     const load = loadOfRef(subject.load_ref);
     return [board, load].filter((part): part is string => part !== null && part !== '').join(' › ');
   }
-  function fieldLabel(field: string): string {
+  function fieldLabel(field: string | null): string {
+    if (field === null) return '';
     const key = FIELD_LABELS[field];
     if (key && td.has(key)) return td(key);
     if (t.has(`field.${field}`)) return t(`field.${field}`);
@@ -198,6 +203,13 @@ export function RequirementsView({
     if (record === null) return ref;
     const load = record.loads.find((entry) => entry.ref === ref);
     if (load) return `${boardOfRef(load.board_ref) ?? ''} › ${load.description}`;
+    const feeder = record.feeders.find((entry) => entry.ref === ref);
+    if (feeder) {
+      return t('trace.feeder', {
+        board: boardOfRef(feeder.board_ref) ?? '',
+        from: boardOfRef(feeder.supply_board_ref) ?? '',
+      });
+    }
     const board = record.boards.find((entry) => entry.ref === ref);
     if (board) {
       const from = boardOfRef(board.fed_from_ref);
@@ -222,6 +234,7 @@ export function RequirementsView({
     setChecking(false);
     if (outcome.kind === 'previewed') {
       setPreviewed(outcome.requirements);
+      setPreviewFindings(outcome.findings);
       return;
     }
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
@@ -234,7 +247,7 @@ export function RequirementsView({
     if (opened === null) {
       // Not saved yet: a board value is typed into the form, and the server
       // asks again (or not) on the next check. Nothing is recorded as answered.
-      const field = BOARD_ANSWERS[question.field];
+      const field = BOARD_ANSWERS[question.field ?? ''];
       const name = boardOfRef(question.subject.board_ref);
       const board = boards.find((entry) => entry.name.trim() === name);
       if (action !== 'answer' || !board) return;
@@ -291,7 +304,7 @@ export function RequirementsView({
 
   function canAnswerUnsaved(question: RequirementQuestion): boolean {
     if (question.subject.board_ref == null) return false;
-    if (BOARD_ANSWERS[question.field] !== undefined) return true;
+    if (BOARD_ANSWERS[question.field ?? ''] !== undefined) return true;
     return question.field === 'power_factor' && question.subject.load_ref != null;
   }
 
@@ -299,7 +312,7 @@ export function RequirementsView({
     const inputId = `${id}-q-${question.id}`;
     const subject = subjectText(question.subject);
     const unsavedOnly = opened === null && question.kind === 'missing_value';
-    const answerable = ANSWERABLE.has(question.field);
+    const answerable = question.answerable ?? ANSWERABLE.has(question.field ?? '');
     const blockedUnsaved = opened === null && !(answerable && canAnswerUnsaved(question));
     const ackBlockedUnsaved = opened === null;
     // An answer saves a new revision from the stored one; edits not saved would be left out.
@@ -319,7 +332,9 @@ export function RequirementsView({
             {question.kind === 'assumption'
               ? t.has(`assumption.${question.finding_code ?? ''}`)
                 ? t(`assumption.${question.finding_code ?? ''}`)
-                : t('assumption.generic', { field: fieldLabel(question.field) })
+                : t('assumption.generic', {
+                    field: fieldLabel(question.field) || (question.finding_code ?? ''),
+                  })
               : t('missing', { field: fieldLabel(question.field) })}
           </span>
           {subject && <bdi className="text-sm text-text-muted">{subject}</bdi>}
@@ -508,6 +523,9 @@ export function RequirementsView({
 
       <Panel title={t('steps.control')} testId="requirements-control">
         <p className="mb-3 text-sm text-text-muted">{t('controlIntro')}</p>
+        <p id={`${id}-needs-controlled`} className="mb-3 text-sm text-text-muted">
+          {t('needsControlled')}
+        </p>
         <TableFrame label={t('steps.control')}>
           <table className="data-table w-full text-sm">
             <thead>
@@ -548,6 +566,12 @@ export function RequirementsView({
                             aria-label={`${label}: ${t(`need.${need}`)}`}
                             data-testid={`control-${need}-${String(load.key)}`}
                             checked={needs.includes(need)}
+                            // Recorded only for a load the PLC switches; the page
+                            // never ticks "PLC switched" for the engineer.
+                            disabled={!load.controlled && !needs.includes(need)}
+                            aria-describedby={
+                              load.controlled ? undefined : `${id}-needs-controlled`
+                            }
                             onChange={(event) => {
                               const next = event.target.checked
                                 ? [...needs, need]
@@ -561,7 +585,18 @@ export function RequirementsView({
                         </td>
                       ))}
                       <td className="p-2 text-text-muted">
-                        {needs.length > 0 ? t('controlNotDesigned') : '—'}
+                        {needs.length > 0 && !load.controlled ? (
+                          <span
+                            className="field-error"
+                            data-testid={`control-not-controlled-${String(load.key)}`}
+                          >
+                            {t('needsNotControlled')}
+                          </span>
+                        ) : needs.length > 0 || load.controlled ? (
+                          t('controlNotDesigned')
+                        ) : (
+                          '—'
+                        )}
                       </td>
                     </tr>
                   );
@@ -677,7 +712,7 @@ export function RequirementsView({
               <tbody>
                 {record.trace.map((link) => (
                   <tr
-                    key={`${link.requirement_ref}-${link.design_ref}`}
+                    key={`${link.requirement_ref}-${link.design_ref ?? ''}`}
                     data-testid={`trace-${link.requirement_ref}`}
                   >
                     <td className="p-2">
@@ -687,7 +722,7 @@ export function RequirementsView({
                       </bdi>
                     </td>
                     <td className="p-2 font-mono" dir="ltr">
-                      {link.design_ref}
+                      {link.design_ref ?? '—'}
                     </td>
                   </tr>
                 ))}

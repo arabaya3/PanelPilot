@@ -588,15 +588,23 @@ export type RequirementsInput = {
 export const CONTROL_NEEDS = ['start_stop', 'running_indicator'] as const;
 export type ControlNeed = (typeof CONTROL_NEEDS)[number];
 
-export type RequirementSubject = { board_ref?: string | null; load_ref?: string | null };
+export type RequirementSubject = {
+  board_ref?: string | null;
+  load_ref?: string | null;
+  control_ref?: string | null;
+  supply_board_ref?: string | null;
+};
 
 /** A question the server derived: a value left empty, or an assumption the design made. */
 export type RequirementQuestion = {
   id: string;
   kind: 'missing_value' | 'assumption';
   subject: RequirementSubject;
-  field: string;
+  /** The input it asks for; null for a board-level assumption (`contactor_ac1`, ...). */
+  field: string | null;
   finding_code?: string | null;
+  /** Whether a value can be given (else it can only be acknowledged), as the server says. */
+  answerable?: boolean;
   state: 'open' | 'answered' | 'acknowledged';
   answer?: unknown;
   /** Who answered or acknowledged, as the server recorded it from the token. */
@@ -616,6 +624,10 @@ export type RequirementsRecord = {
   intake: string;
   boards: Array<{ ref: string; name: string; fed_from_ref?: string | null }>;
   loads: Array<{ ref: string; board_ref: string; description: string; source?: string }>;
+  /** Feeders the server generates from "Fed from" (`<board_ref>.feeder`). */
+  feeders: Array<{ ref: string; board_ref: string; supply_board_ref: string; source?: string }>;
+  /** Append-only acknowledgements, as stored. */
+  acknowledgements: Array<Record<string, string>>;
   control: Array<{
     ref: string;
     board_ref: string;
@@ -625,19 +637,43 @@ export type RequirementsRecord = {
   }>;
   questions: RequirementQuestion[];
   open_items: Array<{ code: string; subject: RequirementSubject }>;
-  trace: Array<{ requirement_ref: string; design_ref: string }>;
+  /** `design_ref` is null where the design was refused. */
+  trace: Array<{ requirement_ref: string; design_ref: string | null }>;
 };
 
 /** A saved project's requirements record, where the server returned one. */
 export function requirementsOf(project: object | null | undefined): RequirementsRecord | null {
   const record = (project as { requirements?: unknown } | null | undefined)?.requirements;
-  return typeof record === 'object' && record !== null && 'questions' in record
-    ? (record as RequirementsRecord)
+  return typeof record === 'object' && record !== null && 'schema' in record
+    ? normalRecord(record as Partial<RequirementsRecord>)
     : null;
 }
 
+/** A record with every list present: the API leaves an empty one out. */
+function normalRecord(record: Partial<RequirementsRecord>): RequirementsRecord {
+  return {
+    schema: record.schema ?? 'pp-req/1',
+    intake: record.intake ?? 'table',
+    derived: record.derived ?? false,
+    boards: record.boards ?? [],
+    loads: record.loads ?? [],
+    feeders: record.feeders ?? [],
+    control: record.control ?? [],
+    questions: record.questions ?? [],
+    open_items: record.open_items ?? [],
+    trace: record.trace ?? [],
+    acknowledgements: record.acknowledgements ?? [],
+  };
+}
+
 export type PreviewOutcome =
-  | { kind: 'previewed'; requirements: RequirementsRecord; design: BoardDesignResponse | null }
+  | {
+      kind: 'previewed';
+      requirements: RequirementsRecord;
+      design: BoardDesignResponse | null;
+      /** The design's findings, as a revision would store them. */
+      findings: DesignFinding[];
+    }
   | Failure;
 
 /**
@@ -656,10 +692,11 @@ export function previewRequirements(
     (payload) => {
       const requirements = requirementsOf(payload);
       if (requirements === null) return null;
-      const design = (payload as { design?: unknown }).design;
+      const { design, findings } = payload as { design?: unknown; findings?: unknown };
       return {
         kind: 'previewed',
         requirements,
+        findings: Array.isArray(findings) ? (findings as DesignFinding[]) : [],
         design:
           typeof design === 'object' && design !== null ? (design as BoardDesignResponse) : null,
       };
@@ -694,9 +731,7 @@ export function answerQuestion(
     (payload) => {
       const project = saved(payload);
       if (project) return project;
-      const nested = requirementsOf(payload);
-      const requirements =
-        nested ?? ('questions' in payload ? (payload as RequirementsRecord) : null);
+      const requirements = requirementsOf(payload);
       return requirements ? { kind: 'recorded', requirements } : null;
     },
   );

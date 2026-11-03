@@ -64,7 +64,7 @@ const REQUEST = {
           power_kw: '7.5',
           phases: 3,
           power_factor: null,
-          controlled: false,
+          controlled: true,
           starter: 'dol',
           length_m: null,
         },
@@ -77,6 +77,9 @@ const REQUEST = {
 const RECORD: RequirementsRecord = {
   schema: 'pp-req/1',
   intake: 'guided',
+  derived: false,
+  feeders: [],
+  acknowledgements: [],
   boards: [{ ref: 'b1', name: 'MDB', fed_from_ref: null }],
   loads: [{ ref: 'b1.l1', board_ref: 'b1', description: 'Pump' }],
   control: [
@@ -153,6 +156,14 @@ function renderScreen() {
 }
 
 const requirements = () => within(screen.getByTestId('view-requirements'));
+const plcSwitched = () =>
+  requirements().getAllByTestId('design-controlled-0')[0] as HTMLInputElement;
+/** Only the need left changed: tick "PLC switched", the need, then untick "PLC switched". */
+function tickNeedOnly(need: string) {
+  fireEvent.click(plcSwitched());
+  fireEvent.click(needBox(need));
+  fireEvent.click(plcSwitched());
+}
 const needBox = (need: string) =>
   requirements().getAllByTestId(new RegExp(`^control-${need}-`))[0] as HTMLInputElement;
 
@@ -193,7 +204,8 @@ describe('control needs on the design screen', () => {
     await screen.findByTestId('projects-panel');
     fireEvent.click(viewTab('Requirements'));
     expect(screen.queryByText('Unsaved changes')).toBeNull();
-    fireEvent.click(needBox('start_stop'));
+    tickNeedOnly('start_stop');
+    expect(plcSwitched().checked).toBe(false);
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
     fireEvent.click(viewTab('Load schedule'));
     fireEvent.click(viewTab('Requirements'));
@@ -219,7 +231,7 @@ describe('control needs on the design screen', () => {
     renderScreen();
     await screen.findByTestId('projects-panel');
     fireEvent.click(viewTab('Requirements'));
-    fireEvent.click(needBox('start_stop'));
+    tickNeedOnly('start_stop');
     fireEvent.click(viewTab('Overview'));
     const row = await screen.findByTestId('project-p1');
     fireEvent.click(within(row).getByText('Open'));

@@ -72,13 +72,9 @@ export type OpenedProject = {
 /** One line of the title block's revision list. */
 export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions']>[number];
 
-/** The server's `approval.is_author` for the revision open; undefined where it does not say. */
+/** The server's `is_author` for the revision open; undefined where it does not say. */
 export function isAuthorOf(project: SavedProject): boolean | undefined {
-  const approval = (project as { approval?: unknown }).approval;
-  const flag =
-    typeof approval === 'object' && approval !== null
-      ? (approval as { is_author?: unknown }).is_author
-      : undefined;
+  const flag: unknown = (project as { is_author?: unknown }).is_author;
   return typeof flag === 'boolean' ? flag : undefined;
 }
 

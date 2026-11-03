@@ -29,8 +29,13 @@ function boards(): BoardForm[] {
   const main = blankBoard(0, 1, 'MDB');
   const sub = blankBoard(2, 3, 'DB1', 'MDB');
   return [
-    { ...main, loads: [{ ...blankLoad(1), description: 'Pump', load: 'motor', power: '7.5' }] },
-    { ...sub, loads: [{ ...blankLoad(3), description: 'Sockets', power: '2' }] },
+    {
+      ...main,
+      loads: [
+        { ...blankLoad(1), description: 'Pump', load: 'motor', power: '7.5', controlled: true },
+      ],
+    },
+    { ...sub, loads: [{ ...blankLoad(3), description: 'Sockets', power: '2', controlled: true }] },
   ];
 }
 
@@ -38,6 +43,9 @@ function record(overrides: Partial<RequirementsRecord> = {}): RequirementsRecord
   return {
     schema: 'pp-req/1',
     intake: 'guided',
+    derived: false,
+    feeders: [{ ref: 'b2.feeder', board_ref: 'b2', supply_board_ref: 'b1', source: 'generated' }],
+    acknowledgements: [],
     boards: [
       { ref: 'b1', name: 'MDB', fed_from_ref: null },
       { ref: 'b2', name: 'DB1', fed_from_ref: 'b1' },
@@ -85,7 +93,7 @@ function record(overrides: Partial<RequirementsRecord> = {}): RequirementsRecord
     ],
     trace: [
       { requirement_ref: 'b1.l1', design_ref: 'MDB/c1' },
-      { requirement_ref: 'b2', design_ref: 'MDB/c2' },
+      { requirement_ref: 'b2.feeder', design_ref: 'MDB/c2' },
     ],
     ...overrides,
   };
@@ -187,6 +195,58 @@ describe('the guided requirements step', () => {
     expect(onControlChange).toHaveBeenCalledWith(3, ['running_indicator']);
   });
 
+  it('offers a control need only on a PLC-switched load, and never ticks it for the engineer', () => {
+    const forms = boards().map((board) => ({
+      ...board,
+      loads: board.loads.map((load) => ({ ...load, controlled: false })),
+    }));
+    const { onControlChange } = view({ boards: forms, control: { 1: ['start_stop'] } });
+    expect(screen.getByTestId('control-start_stop-3')).toHaveProperty('disabled', true);
+    // A need already given on a load no longer switched says the save will be refused, and can be cleared.
+    expect(screen.getByTestId('control-not-controlled-1').textContent).toContain(
+      'Not PLC switched',
+    );
+    expect(screen.getByTestId('control-start_stop-1')).toHaveProperty('disabled', false);
+    fireEvent.click(screen.getByTestId('control-start_stop-1'));
+    expect(onControlChange).toHaveBeenCalledWith(1, []);
+  });
+
+  it('says a board-level assumption, acknowledge-only', () => {
+    view({
+      savedRecord: record({
+        questions: [
+          {
+            id: 'q-ac1',
+            kind: 'assumption',
+            subject: { board_ref: 'b1' },
+            field: null,
+            finding_code: 'contactor_ac1',
+            answerable: false,
+            state: 'open',
+          },
+        ],
+      }),
+    });
+    expect(screen.getByTestId('question-q-ac1').textContent).toContain('Contactors rated for AC-1');
+    expect(screen.queryByTestId('question-answer-q-ac1')).toBeNull();
+    expect(screen.getByTestId('question-acknowledge-q-ac1')).toBeTruthy();
+  });
+
+  it('says the server refuses an answer on an older revision', async () => {
+    const answer = vi.fn<typeof answerQuestion>().mockResolvedValue({
+      kind: 'refused',
+      detail: 'x',
+      code: 'revision_not_latest',
+      params: {},
+    });
+    view({ impls: { answer } });
+    fireEvent.change(screen.getByLabelText('Fault level'), { target: { value: '25' } });
+    fireEvent.click(screen.getByTestId('question-answer-q-fault'));
+    expect((await screen.findByTestId('requirements-message')).textContent).toContain(
+      'latest revision only',
+    );
+  });
+
   it('lists the open items for control and for board-to-board wiring', () => {
     view();
     expect(screen.getByTestId('open-item-control_not_designed').textContent).toContain(
@@ -204,8 +264,8 @@ describe('the guided requirements step', () => {
     view();
     expect(screen.getByTestId('trace-b1.l1').textContent).toContain('MDB › Pump');
     expect(screen.getByTestId('trace-b1.l1').textContent).toContain('MDB/c1');
-    expect(screen.getByTestId('trace-b2').textContent).toContain('Feeder to DB1 from MDB');
-    expect(screen.getByTestId('trace-b2').textContent).toContain('MDB/c2');
+    expect(screen.getByTestId('trace-b2.feeder').textContent).toContain('Feeder to DB1 from MDB');
+    expect(screen.getByTestId('trace-b2.feeder').textContent).toContain('MDB/c2');
   });
 
   it('says a refused check in words, a sub-board row by its form number', async () => {
@@ -228,6 +288,7 @@ describe('the guided requirements step', () => {
       kind: 'previewed',
       requirements: record({ questions: [], open_items: [] }),
       design: null,
+      findings: [],
     });
     view({ impls: { preview } });
     fireEvent.click(screen.getByTestId('requirements-check'));
@@ -423,10 +484,10 @@ describe('approval by the revision’s author', () => {
     expect(screen.queryByTestId('approve-self-authored')).toBeNull();
   });
 
-  it('reads the flag from the opened project’s approval info', async () => {
+  it('reads the flag from the opened project', async () => {
     const { isAuthorOf } = await import('@/components/design/projects-panel');
-    expect(isAuthorOf({ approval: { is_author: true } } as never)).toBe(true);
-    expect(isAuthorOf({ approval: { is_author: false } } as never)).toBe(false);
+    expect(isAuthorOf({ is_author: true } as never)).toBe(true);
+    expect(isAuthorOf({ is_author: false } as never)).toBe(false);
     expect(isAuthorOf({} as never)).toBeUndefined();
   });
 
