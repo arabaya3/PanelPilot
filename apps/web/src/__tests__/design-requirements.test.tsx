@@ -433,8 +433,10 @@ describe('the requirements calls', () => {
     const { saveProject, previewRequirements: preview } = await import('@/lib/design');
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ requirements: record(), design: null }), { status: 200 }),
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ requirements: record(), design: null }), { status: 200 }),
+        ),
       );
     const requirementsInput = { intake: 'guided' as const, control: [] };
     await saveProject({
