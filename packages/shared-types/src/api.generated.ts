@@ -612,6 +612,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/requirements/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Requirements
+     * @description The requirements record and design a guided input would be saved with; nothing is saved.
+     */
+    post: operations['preview_requirements_api_v1_design_projects_requirements_preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/questions/{question_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Answer Question
+     * @description Answer a question (201, a new revision) or acknowledge it (200, this revision's record).
+     */
+    post: operations['answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}': {
     parameters: {
       query?: never;
@@ -1300,6 +1340,13 @@ export interface components {
       token_type: string;
       /** Expires In */
       expires_in: number;
+    };
+    /**
+     * AcknowledgedRequirements
+     * @description The revision's requirements record after an acknowledgement.
+     */
+    AcknowledgedRequirements: {
+      requirements: components['schemas']['RequirementsRecord'];
     };
     /**
      * AppliedFactor
@@ -2056,6 +2103,41 @@ export interface components {
       configuration: {
         [key: string]: unknown;
       };
+    };
+    /**
+     * ControlNeed
+     * @description What a controlled load needs from its control, recorded as a requirement only (M6a).
+     *
+     *     Nothing here is designed: the designer's only control model stays the
+     *     load's ``controlled`` flag, and each need is an open item
+     *     (``control_not_designed``).
+     * @enum {string}
+     */
+    ControlNeed:
+      | 'start_stop'
+      | 'running_indicator'
+      | 'fault_indicator'
+      | 'hand_off_auto'
+      | 'remote_control'
+      | 'interlock'
+      | 'timed';
+    /**
+     * ControlRequirementInput
+     * @description The control needs of one load, by its place in the request.
+     *
+     *     Attributes:
+     *         board_index: The board's index in ``request.boards``.
+     *         load_index: The load's index in that board's ``loads``; the load
+     *             must be ``controlled`` (``control_need_requires_controlled``).
+     *         needs: What its control must do, each once.
+     */
+    ControlRequirementInput: {
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index: number;
+      /** Needs */
+      needs: components['schemas']['ControlNeed'][];
     };
     /**
      * CrawlJobRequest
@@ -4230,6 +4312,26 @@ export interface components {
       updated_at: string;
     };
     /**
+     * QuestionAction
+     * @description An answer to, or acknowledgement of, one question of a revision's record.
+     *
+     *     Who and when are the server's: a body naming either is refused (422).
+     *
+     *     Attributes:
+     *         action: ``answer`` supplies the value, saved as typed input in a new
+     *             revision; ``acknowledge`` accepts the stated assumption.
+     *         value: The value, for ``answer`` only.
+     */
+    QuestionAction: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: 'answer' | 'acknowledge';
+      /** Value */
+      value?: number | string | null;
+    };
+    /**
      * QueueItem
      * @description One item in a verifier's queue, with what the verifier checks it against.
      *
@@ -4419,6 +4521,232 @@ export interface components {
       confidence: number;
     };
     /**
+     * RequirementBoard
+     * @description A board of the record.
+     */
+    RequirementBoard: {
+      /** Ref */
+      ref: string;
+      /** Name */
+      name: string;
+      /** Fed From Ref */
+      fed_from_ref?: string | null;
+    };
+    /**
+     * RequirementControl
+     * @description A controlled load's control needs, recorded only: ``not_designed``.
+     */
+    RequirementControl: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Load Ref */
+      load_ref: string;
+      /** Needs */
+      needs: string[];
+      /**
+       * Status
+       * @default not_designed
+       * @constant
+       */
+      status: 'not_designed';
+    };
+    /**
+     * RequirementFeeder
+     * @description A feeder the designer generated from a sub-board's "Fed from"; never typed.
+     */
+    RequirementFeeder: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Supply Board Ref */
+      supply_board_ref: string;
+      /**
+       * Source
+       * @default generated
+       * @constant
+       */
+      source: 'generated';
+    };
+    /**
+     * RequirementLoad
+     * @description A load of the record, as the user entered it (``typed`` or ``imported``).
+     */
+    RequirementLoad: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Description */
+      description: string;
+      /** Source */
+      source: string;
+    };
+    /**
+     * RequirementOpenItem
+     * @description What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``.
+     */
+    RequirementOpenItem: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code: 'control_not_designed' | 'inter_board_wiring_not_modelled';
+      subject: components['schemas']['RequirementSubject'];
+    };
+    /**
+     * RequirementQuestion
+     * @description A question the server derived from an empty input or an assumption finding.
+     *
+     *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in account and
+     *     its clock when answered or acknowledged; ``None`` while open.
+     */
+    RequirementQuestion: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'missing_value' | 'assumption';
+      subject: components['schemas']['RequirementSubject'];
+      /** Field */
+      field?: string | null;
+      /** Finding Code */
+      finding_code?: string | null;
+      /**
+       * Answerable
+       * @default false
+       */
+      answerable: boolean;
+      /**
+       * State
+       * @default open
+       * @enum {string}
+       */
+      state: 'open' | 'answered' | 'acknowledged';
+      /** Answer */
+      answer?: string | null;
+      /** By User Id */
+      by_user_id?: string | null;
+      /** By Name */
+      by_name?: string | null;
+      /** At */
+      at?: string | null;
+    };
+    /**
+     * RequirementSubject
+     * @description What a question or open item is about: a board, and a load or control on it.
+     */
+    RequirementSubject: {
+      /** Board Ref */
+      board_ref?: string | null;
+      /** Load Ref */
+      load_ref?: string | null;
+      /** Control Ref */
+      control_ref?: string | null;
+      /** Supply Board Ref */
+      supply_board_ref?: string | null;
+    };
+    /**
+     * RequirementTrace
+     * @description A load or generated feeder, and the design element it became (``None`` if refused).
+     */
+    RequirementTrace: {
+      /** Requirement Ref */
+      requirement_ref: string;
+      /** Design Ref */
+      design_ref?: string | null;
+    };
+    /**
+     * RequirementsInput
+     * @description What the guided intake adds to a project's request (M6a, ``pp-req/1``).
+     *
+     *     The boards and loads are the request's own; this adds how they were
+     *     entered and the control needs. Questions, open items, refs and the trace
+     *     are the server's, never sent.
+     *
+     *     Attributes:
+     *         intake: How the loads were entered (``ai`` is reserved, refused).
+     *         control: The control needs of controlled loads.
+     */
+    RequirementsInput: {
+      /**
+       * Intake
+       * @default guided
+       * @enum {string}
+       */
+      intake: 'guided' | 'table' | 'import';
+      /** Control */
+      control?: components['schemas']['ControlRequirementInput'][];
+    };
+    /**
+     * RequirementsPreview
+     * @description The requirements record a guided input would be stored with, and its design; nothing saved.
+     */
+    RequirementsPreview: {
+      requirements: components['schemas']['RequirementsRecord'];
+      design: components['schemas']['BoardDesignResponse'];
+      /** Findings */
+      findings?: components['schemas']['DesignFinding'][];
+    };
+    /**
+     * RequirementsPreviewRequest
+     * @description A project and its guided input, to preview the requirements record; nothing is saved.
+     *
+     *     Attributes:
+     *         request: The project as entered.
+     *         requirements_input: The guided input.
+     */
+    RequirementsPreviewRequest: {
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      requirements_input?: components['schemas']['RequirementsInput'];
+    };
+    /**
+     * RequirementsRecord
+     * @description A revision's requirements record, ``pp-req/1`` (M6a).
+     *
+     *     Attributes:
+     *         derived: ``True`` for an older revision with no stored record: built
+     *             now from its request and findings; it never counts as
+     *             acknowledged and cannot be acknowledged (``requirements_derived``).
+     *         acknowledgements: Every acknowledgement recorded, append-only.
+     */
+    RequirementsRecord: {
+      /**
+       * Schema
+       * @default pp-req/1
+       */
+      schema: string;
+      /** Intake */
+      intake: string;
+      /**
+       * Derived
+       * @default false
+       */
+      derived: boolean;
+      /** Boards */
+      boards?: components['schemas']['RequirementBoard'][];
+      /** Loads */
+      loads?: components['schemas']['RequirementLoad'][];
+      /** Feeders */
+      feeders?: components['schemas']['RequirementFeeder'][];
+      /** Control */
+      control?: components['schemas']['RequirementControl'][];
+      /** Questions */
+      questions?: components['schemas']['RequirementQuestion'][];
+      /** Open Items */
+      open_items?: components['schemas']['RequirementOpenItem'][];
+      /** Trace */
+      trace?: components['schemas']['RequirementTrace'][];
+      /** Acknowledgements */
+      acknowledgements?: {
+        [key: string]: string;
+      }[];
+    };
+    /**
      * ResolveEscalationRequest
      * @description A lead's resolution of one escalated item.
      *
@@ -4487,6 +4815,7 @@ export interface components {
      *     Attributes:
      *         request: The project as entered now.
      *         note: What changed, for the revision list.
+     *         requirements_input: As for ``SaveProjectRequest``.
      *         configuration: Templates, connection patterns, strips, components and
      *             bindings to compose with the server's design, as data
      *             (``app.design.model.compose``); ``None`` for none. Only a
@@ -4502,6 +4831,7 @@ export interface components {
        * @default
        */
       note: string;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
       /** Configuration */
       configuration?: {
         [key: string]: unknown;
@@ -4608,6 +4938,7 @@ export interface components {
      *             counts: ``snapshot``, ``profile``, ``rules_version``,
      *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
      *             ``review_decisions`` (a review decision recorded since, M3).
+     *         author_unknown: It records no author; an approval of it says so.
      */
     RevisionSummary: {
       /** Number */
@@ -4642,6 +4973,11 @@ export interface components {
       approval_current?: boolean | null;
       /** Approval Changed */
       approval_changed?: string[];
+      /**
+       * Author Unknown
+       * @default false
+       */
+      author_unknown: boolean;
     };
     /**
      * SaveCompanySettings
@@ -4664,6 +5000,8 @@ export interface components {
      *         name: What the project is listed as.
      *         request: The project as entered.
      *         note: What this revision is, for the revision list.
+     *         requirements_input: The guided input (M6a); the server builds and
+     *             stores the revision's requirements record from it.
      */
     SaveProjectRequest: {
       /** Name */
@@ -4674,6 +5012,7 @@ export interface components {
        * @default
        */
       note: string;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
     };
     /**
      * SavedProject
@@ -4762,6 +5101,17 @@ export interface components {
       model_v2?: components['schemas']['V2ModelSummary'] | null;
       /** Snapshot Schema */
       snapshot_schema?: string | null;
+      requirements?: components['schemas']['RequirementsRecord'] | null;
+      /**
+       * Author Unknown
+       * @default false
+       */
+      author_unknown: boolean;
+      /**
+       * Is Author
+       * @default false
+       */
+      is_author: boolean;
     };
     /**
      * ScheduleSuggestionRequest
@@ -6467,6 +6817,97 @@ export interface operations {
         content: {
           'application/json': components['schemas']['SavedProject'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preview_requirements_api_v1_design_projects_requirements_preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RequirementsPreviewRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RequirementsPreview'];
+        };
+      };
+      /** @description As a save refuses the request, or the design's refusal */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+        question_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['QuestionAction'];
+      };
+    };
+    responses: {
+      /** @description Acknowledged: the revision's updated record */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description Answered: the project at its new revision */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description `revision_not_found` or `question_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `question_not_answerable`, `question_answered`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {
