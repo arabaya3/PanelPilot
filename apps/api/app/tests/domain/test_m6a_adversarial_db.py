@@ -232,7 +232,7 @@ def test_saving_a_client_feeds_is_refused_and_saves_nothing(
     refused = _save(client, _typed_feeder(FED, feeds=True))
     assert refused.status_code == 422, refused.text[:600]
     assert error(refused)["code"] == "feeder_server_owned"
-    assert error(refused)["params"] == {"board": "MDB", "load_index": 1}
+    assert error(refused)["params"] == {"board": "MDB", "load_index": "1"}
     assert _project_count(engine) == before
 
 
@@ -243,7 +243,7 @@ def test_saving_a_sub_board_row_with_fed_from_is_refused(
     refused = _save(client, _typed_feeder(FED, feeds=False))
     assert refused.status_code == 422, refused.text[:600]
     assert error(refused)["code"] == "sub_board_load_server_owned"
-    assert error(refused)["params"] == {"board": "MDB", "load_index": 1}
+    assert error(refused)["params"] == {"board": "MDB", "load_index": "1"}
     assert _project_count(engine) == before
 
 
@@ -291,9 +291,14 @@ def test_each_missing_value_and_the_default_power_factor_is_a_question(
     fault = _question(record, "fault_level")
     ze = _question(record, "earth_loop", "ze")
     feeder = _question(record, "feeder_length")
-    motor = _question(record, "nameplate")
+    motor = _question(record, "motor_current_a")
     pf = _question(record, "power_factor", finding="default_power_factor")
-    assert {q["kind"] for q in (fault, ze, feeder, motor)} == {"missing_value"}
+    assert {q["kind"] for q in (fault, ze, feeder)} == {"missing_value"}
+    # No input holds a nameplate current: an acknowledge-only assumption.
+    assert motor["kind"] == "assumption"
+    assert motor["field"] == "motor_current_a"
+    assert motor["finding_code"] == "motor_current_table"
+    assert motor["answerable"] is False
     assert pf["kind"] == "assumption"
     assert pf["finding_code"] == "default_power_factor"
     every = (fault, ze, feeder, motor, pf)
@@ -303,6 +308,21 @@ def test_each_missing_value_and_the_default_power_factor_is_a_question(
     assert any(
         f["code"] == "default_power_factor" for f in _open(client, project_id, 1)["findings"]
     )
+
+
+def test_the_motor_current_cannot_be_answered_only_acknowledged(
+    client: TestClient, engine: Engine
+) -> None:
+    project_id = _saved_id(client, MISSING, requirements_input=GUIDED)
+    motor = _question(_requirements(_open(client, project_id, 1)), "motor_current_a")
+    refused = _ask(client, project_id, 1, motor["id"], {"action": "answer", "value": 11})
+    assert refused.status_code == 409, refused.text[:600]
+    assert error(refused)["code"] == "question_not_answerable"
+    assert _numbers(client, project_id) == [1]
+    done = _ask(client, project_id, 1, motor["id"], {"action": "acknowledge"})
+    assert done.status_code == 200, done.text[:600]
+    acked = _question(_requirements(_open(client, project_id, 1)), "motor_current_a")
+    assert acked["state"] == "acknowledged"
 
 
 def test_a_complete_project_asks_no_missing_value(client: TestClient) -> None:
@@ -320,7 +340,7 @@ def test_answering_a_question_changes_the_request_in_a_new_revision(
     others = {q["id"] for q in record["questions"] if q["id"] != fault["id"]}
     before = revision_row(engine, project_id, 1)
     answered = _ask(client, project_id, 1, fault["id"], {"action": "answer", "value": 15})
-    assert answered.status_code in (200, 201), answered.text[:600]
+    assert answered.status_code == 201, answered.text[:600]
     assert _numbers(client, project_id) == [1, 2]
     # Revision 1 is untouched; revision 2 has the value as typed input.
     assert revision_row(engine, project_id, 1)["request"] == before["request"]
@@ -337,8 +357,8 @@ def test_answering_the_power_factor_assumption_types_the_value(client: TestClien
     pf = _question(
         _requirements(_open(client, project_id, 1)), "power_factor", finding="default_power_factor"
     )
-    answered = _ask(client, project_id, 1, pf["id"], {"action": "answer", "value": "0.8"})
-    assert answered.status_code in (200, 201), answered.text[:600]
+    answered = _ask(client, project_id, 1, pf["id"], {"action": "answer", "value": 0.8})
+    assert answered.status_code == 201, answered.text[:600]
     latest = _open(client, project_id, max(_numbers(client, project_id)))
     assert float(latest["request"]["boards"][0]["loads"][0]["power_factor"]) == 0.8
     assert not any(f["code"] == "default_power_factor" for f in latest["findings"])
@@ -354,7 +374,7 @@ def test_acknowledging_records_the_server_user_and_clock_and_keeps_the_design(
     sha = revision_row(engine, project_id, 1)["snapshot_sha256"]
     start = datetime.now(UTC) - timedelta(seconds=5)
     done = _ask(client, project_id, 1, pf["id"], {"action": "acknowledge"})
-    assert done.status_code in (200, 201), done.text[:600]
+    assert done.status_code == 200, done.text[:600]
     end = datetime.now(UTC) + timedelta(seconds=5)
     assert _numbers(client, project_id) == [1]
     assert revision_row(engine, project_id, 1)["snapshot_sha256"] == sha
@@ -397,10 +417,7 @@ def test_an_unknown_question_or_action_is_refused(client: TestClient) -> None:
         _requirements(_open(client, project_id, 1)), "power_factor", finding="default_power_factor"
     )
     # The question endpoint exists for a real question ...
-    assert _ask(client, project_id, 1, pf["id"], {"action": "acknowledge"}).status_code in (
-        200,
-        201,
-    )
+    assert _ask(client, project_id, 1, pf["id"], {"action": "acknowledge"}).status_code == 200
     # ... and refuses a made-up one, and an unknown action.
     assert _ask(client, project_id, 1, "q-forged", {"action": "acknowledge"}).status_code == 404
     assert _ask(client, project_id, 1, pf["id"], {"action": "approve"}).status_code == 422
@@ -413,10 +430,7 @@ def test_an_acknowledged_assumption_prints_as_not_engineer_validated(
     pf = _question(
         _requirements(_open(client, project_id, 1)), "power_factor", finding="default_power_factor"
     )
-    assert _ask(client, project_id, 1, pf["id"], {"action": "acknowledge"}).status_code in (
-        200,
-        201,
-    )
+    assert _ask(client, project_id, 1, pf["id"], {"action": "acknowledge"}).status_code == 200
     exported = revision_export(client, project_id, 1, "pdf")
     assert exported.status_code == 200, exported.text[:600]
     words = " ".join(" ".join(pdf_pages(exported.content)).split())
@@ -428,7 +442,7 @@ def test_an_older_revision_gets_a_derived_record_that_never_counts_as_acknowledg
     client: TestClient, engine: Engine
 ) -> None:
     project_id = _saved_id(client, MISSING, requirements_input=GUIDED)
-    update_row(engine, project_id, 1, requirements=None)
+    update_row(engine, project_id, 1, requirements=None, requirements_sha256=None)
     record = _requirements(_open(client, project_id, 1))
     assert record["derived"] is True
     assert all(q["state"] != "acknowledged" for q in record["questions"])
@@ -472,7 +486,7 @@ def test_another_member_with_approve_permission_approves(
     row = revision_row(engine, saved["id"], 1)
     assert row["approved_account"] == caller.user.email
     assert str(row["approved_user_id"]) == caller.user.id
-    assert "author_unknown" not in json.dumps(approved.json())
+    assert approved.json()["author_unknown"] is False
 
 
 def test_a_revision_with_no_recorded_author_approves_without_inventing_one(

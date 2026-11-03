@@ -95,7 +95,7 @@ def test_a_client_supplied_feeds_is_refused_naming_board_and_row(client: TestCli
         client.post("/design/project", json=_request(main, _board("DB2", "MDB"))),
         "feeder_server_owned",
     )
-    assert body["params"] == {"board": "MDB", "load_index": 2}
+    assert body["params"] == {"board": "MDB", "load_index": "2"}
 
 
 def test_feeds_on_an_ordinary_load_is_refused_too(client: TestClient) -> None:
@@ -106,7 +106,7 @@ def test_feeds_on_an_ordinary_load_is_refused_too(client: TestClient) -> None:
         client.post("/design/project", json=_request(main, _board("DB2", "MDB"))),
         "feeder_server_owned",
     )
-    assert body["params"] == {"board": "MDB", "load_index": 0}
+    assert body["params"] == {"board": "MDB", "load_index": "0"}
 
 
 def test_a_sub_board_load_alongside_fed_from_is_refused(client: TestClient) -> None:
@@ -119,7 +119,7 @@ def test_a_sub_board_load_alongside_fed_from_is_refused(client: TestClient) -> N
         client.post("/design/project", json=_request(main, _board("DB2", "MDB"))),
         "sub_board_load_server_owned",
     )
-    assert body["params"] == {"board": "MDB", "load_index": 2}
+    assert body["params"] == {"board": "MDB", "load_index": "2"}
     # The message tells the user what to do instead.
     assert "fed from" in body["detail"].lower()
 
