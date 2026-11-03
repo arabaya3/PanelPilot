@@ -22,6 +22,7 @@ import {
   type ProjectDesignRequest,
   type ProjectPage,
   type Refusal,
+  type RequirementsInput,
   type SavedProject,
 } from '@/lib/design';
 
@@ -58,10 +59,24 @@ export type OpenedProject = {
    * reviewer), as the server said; the server checks again when it is asked.
    */
   canApprove: boolean;
+  /**
+   * The server's `approval.is_author`: true when the signed-in account saved
+   * the revision open, which it cannot approve (`approval_by_author`). Absent,
+   * the page does not guess: Approve stays offered and the server decides.
+   */
+  isAuthor?: boolean | undefined;
+  /** The server holds no author for the revision open (`author_unknown`): said, never guessed. */
+  authorUnknown?: boolean;
 };
 
 /** One line of the title block's revision list. */
 export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions']>[number];
+
+/** The server's `is_author` for the revision open; undefined where it does not say. */
+export function isAuthorOf(project: SavedProject): boolean | undefined {
+  const flag: unknown = (project as { is_author?: unknown }).is_author;
+  return typeof flag === 'boolean' ? flag : undefined;
+}
 
 /** Who approved a saved project's open revision, and when; null while not approved. */
 export function approvalOf(project: SavedProject): OpenedProject['approval'] {
@@ -105,7 +120,12 @@ export function ProjectsPanel({
 }: {
   token: string;
   /** The project as entered now, or null while the form is incomplete. */
-  current: { name: string; request: ProjectDesignRequest } | null;
+  current: {
+    name: string;
+    request: ProjectDesignRequest;
+    /** What the guided intake records with the revision (control needs, intake). */
+    requirementsInput?: RequirementsInput | null;
+  } | null;
   opened: OpenedProject | null;
   /** `fill` is true when the project was opened, so the form takes it. */
   onOpened: (project: SavedProject, fill: boolean) => void;
@@ -173,7 +193,11 @@ export function ProjectsPanel({
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
   // Not the owner or a reviewer: the server would refuse (`approval_not_permitted`).
   const notPermitted = !trial && opened !== null && !opened.canApprove;
-  const held = trial || notPermitted || dirty || reasons.length > 0;
+  // Known ahead of time only from the server's flag, never from names; the
+  // server checks the account itself (`approval_by_author`), owners included.
+  const selfAuthored =
+    !trial && opened !== null && opened.approval === null && opened.isAuthor === true;
+  const held = trial || notPermitted || dirty || selfAuthored || reasons.length > 0;
   const canDelete = permits(page, 'delete_project');
   // Saving the revision open again, unchanged, is how it is designed and
   // approved under today's rules and renderer: when its approval no longer
@@ -229,8 +253,20 @@ export function ProjectsPanel({
     setMessage(null);
     onSaveState?.('saving');
     const outcome = opened
-      ? await revise({ token, id: opened.id, request: current.request, note })
-      : await save({ token, name: current.name, request: current.request, note });
+      ? await revise({
+          token,
+          id: opened.id,
+          request: current.request,
+          note,
+          ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
+        })
+      : await save({
+          token,
+          name: current.name,
+          request: current.request,
+          note,
+          ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
+        });
     // Overtaken by a later open: what is on the page now is not what was
     // saved, so neither the page's baseline nor its project is touched.
     if (ticket !== sequence.current) {
@@ -437,8 +473,18 @@ export function ProjectsPanel({
                 {t('approve', { revision: opened.revision })}
               </button>
             </div>
+            {opened.authorUnknown && (
+              <p className="text-sm text-text-muted" data-testid="approve-author-unknown">
+                {t('authorUnknown')}
+              </p>
+            )}
             {held && (
               <div id={`${id}-approve-held`} className="flex flex-col gap-1">
+                {selfAuthored && (
+                  <p className="text-sm text-text-muted" data-testid="approve-self-authored">
+                    {t('approveSelfAuthored', { revision: opened.revision })}
+                  </p>
+                )}
                 {trial && (
                   <p className="text-sm text-text-muted" data-testid="approve-held-trial">
                     {t('approveTrial')}

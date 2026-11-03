@@ -70,6 +70,13 @@ export const LOAD_KINDS: LoadKind[] = [
   'other',
 ];
 
+/**
+ * The kinds a new row can be given. A sub-board is not a load row: it is
+ * added as a board whose "Fed from" names this one, and the server draws its
+ * feeder (`sub_board_load_server_owned`). A saved row of that kind still shows.
+ */
+export const NEW_LOAD_KINDS: LoadKind[] = LOAD_KINDS.filter((kind) => kind !== 'sub_board');
+
 /** The kinds of load a starter can be chosen for. */
 export const MOTOR_KINDS: LoadKind[] = ['motor', 'fan', 'lift'];
 

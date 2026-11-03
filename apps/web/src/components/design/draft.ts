@@ -1,3 +1,4 @@
+import { CONTROL_NEEDS, type ControlNeed } from '@/lib/design';
 import { DESIGN_DRAFT_STORAGE_KEY } from '@/lib/trial';
 import {
   DRAWING_LANGUAGES,
@@ -61,7 +62,49 @@ export type DesignDraft = {
   profileText: string;
   language: DrawingLanguage | null;
   market: string;
+  /**
+   * Each load's control needs, by board and row (keys are numbered afresh on
+   * restore). Absent in a draft written before control needs were kept,
+   * which still restores, with none ticked.
+   */
+  control?: ControlNeed[][][];
 };
+
+/** Control needs by row key, as the draft keeps them: by board and row position. */
+export function draftControl(
+  boards: BoardForm[],
+  control: Readonly<Record<number, readonly ControlNeed[]>>,
+): ControlNeed[][][] {
+  return boards.map((board) => board.loads.map((load) => [...(control[load.key] ?? [])]));
+}
+
+/** A draft's control needs on the restored boards, by their new row keys. */
+export function formControl(
+  boards: BoardForm[],
+  control: ControlNeed[][][] | undefined,
+): Record<number, ControlNeed[]> {
+  const needs: Record<number, ControlNeed[]> = {};
+  boards.forEach((board, b) => {
+    board.loads.forEach((load, l) => {
+      const row = control?.[b]?.[l];
+      if (row && row.length > 0) needs[load.key] = row;
+    });
+  });
+  return needs;
+}
+
+/** A stored control field, or undefined when absent or not one this page wrote. */
+function parseControl(value: unknown): ControlNeed[][][] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const known = (need: unknown): need is ControlNeed =>
+    CONTROL_NEEDS.some((entry) => entry === need);
+  const ok = value.every(
+    (board) =>
+      Array.isArray(board) &&
+      board.every((row) => Array.isArray(row) && row.every((need) => known(need))),
+  );
+  return ok ? value : undefined;
+}
 
 function storage(): Storage | null {
   try {
@@ -215,5 +258,6 @@ export function parseDraft(value: unknown): DesignDraft | null {
     if (board === null) return null;
     boards.push(board);
   }
-  return { ...head, project, info, boards, language };
+  const control = parseControl(value.control);
+  return { ...head, project, info, boards, language, ...(control ? { control } : {}) };
 }

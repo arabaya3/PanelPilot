@@ -626,7 +626,8 @@
       "materials": "Materials",
       "revisions": "Revisions",
       "review": "Review & export",
-      "configuration": "Configuration"
+      "configuration": "Configuration",
+      "requirements": "Requirements"
     },
     "context": {
       "label": "Current project",
@@ -729,7 +730,9 @@
       "problem": {
         "positive": "Enter a number above 0.",
         "powerFactor": "Enter a value above 0, up to 1."
-      }
+      },
+      "subBoardHint": "A sub-board is not a load row: add it as a board and set its “Fed from”. Its feeder is then drawn for you.",
+      "subBoardRow": "Saved as a sub-board row. The next design refuses it: remove this row and add the sub-board as a board with “Fed from”."
     }
   },
   "design": {
@@ -1061,7 +1064,22 @@
       "approval_requires_account": "Approving a revision needs a signed-in account; a trial cannot approve.",
       "approval_not_permitted": "Only the account's owner, an administrator or a reviewer can approve a revision.",
       "project_delete_not_permitted": "Only the account's owner or an administrator can delete a project.",
-      "settings_not_permitted": "Only the account's owner or an administrator can change the company settings."
+      "settings_not_permitted": "Only the account's owner or an administrator can change the company settings.",
+      "sub_board_load_server_owned": "{board}, load row {row}: a sub-board cannot be entered as a load. Remove the row, then add the sub-board as a board and set its “Fed from” to {board}.",
+      "feeder_server_owned": "{board}, load row {row}: a feeder to another board is drawn from that board’s “Fed from”, not entered as a load. Remove the row.",
+      "approval_by_author": "You saved this revision, so you cannot approve it. Another reviewer must approve it.",
+      "designation_duplicate": "Two or more items on a board carry the same printed designation. Approval is refused until this is resolved.",
+      "requirements_derived": "Save a new revision to record answers.",
+      "control_load_unknown": "A control need names a load that is not in the schedule. Check the boards and loads, then try again.",
+      "control_need_requires_controlled": "{board}, load row {row}: a control need is recorded only for a load the PLC switches. Tick “PLC switched” on that load, or clear its control needs.",
+      "control_given_twice": "{board}, load row {row}: its control needs were given twice. Try again.",
+      "question_not_found": "That question is no longer asked on this revision. Check open items again.",
+      "question_not_answerable": "This question takes an acknowledgement, not a value.",
+      "question_answered": "This question is already answered.",
+      "revision_not_latest": "Answers are recorded on the latest revision only. Open the latest revision and answer there.",
+      "answer_not_valid": "That value is not accepted for this question. Check the number and its range.",
+      "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
+      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1111,7 +1129,9 @@
         "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",
         "notValidated": "Revision {revision} is not validated: save again to validate it before approving.",
         "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval."
-      }
+      },
+      "approveSelfAuthored": "A different team member must approve this revision.",
+      "authorUnknown": "The server holds no author for this revision (author unknown). Approval is recorded with that finding."
     },
     "readiness": {
       "title": "Status",
@@ -1194,7 +1214,9 @@
       "integrity_protection_missing": "No rated breaker, fuse or overload relay protects this circuit’s cable against overload.",
       "integrity_device_unrated": "A breaker or fuse on this circuit has no rated current.",
       "integrity_conditions_unknown": "The installation conditions are not known, so the protection is checked only against the {capacity} A upper bound any tabulated installation gives its {cable} cable.",
-      "draft_findings_not_rechecked": "These findings are as sent by the page and were not re-checked on the server; save the project for a server-checked design."
+      "draft_findings_not_rechecked": "These findings are as sent by the page and were not re-checked on the server; save the project for a server-checked design.",
+      "designation_duplicate": "Two or more items on this board carry the same printed designation. Approval is refused while this stands.",
+      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated."
     },
     "markups": {
       "title": "Review markups",
@@ -1366,6 +1388,83 @@
     "fieldPath": {
       "board": "Board {n}",
       "load": "Load {n}"
+    },
+    "requirements": {
+      "scope": "Enter what the project needs, step by step. This records requirements and the questions they raise; it does not make the design complete or compliant.",
+      "steps": {
+        "boards": "1. Boards",
+        "loads": "2. Loads",
+        "control": "3. Control needs",
+        "openItems": "4. Open items and questions",
+        "trace": "5. Traceability"
+      },
+      "wiringNotModelled": "Board-to-board wiring not modelled.",
+      "loadsOf": "Loads on {board}",
+      "controlIntro": "Tick what each load needs to be controlled by. These are recorded as requirements only; no control circuit is drawn from them.",
+      "need": {
+        "start_stop": "Start/stop",
+        "running_indicator": "Running indicator"
+      },
+      "controlStatus": "Status",
+      "controlNotDesigned": "Control circuit not designed yet",
+      "check": "Check open items",
+      "checking": "Checking…",
+      "incomplete": "Fill in the project name, each board’s name and each load’s description and power to check open items.",
+      "noRecord": "No open items checked yet. Check them, or save the project.",
+      "previewNote": "Checked against what is entered now; nothing is saved until you save the project.",
+      "derived": "This revision was saved before requirements were recorded. Its questions are derived and none of them counts as acknowledged.",
+      "questions": "Questions",
+      "noQuestions": "No questions raised.",
+      "openItems": "Open items",
+      "noOpenItems": "No open items raised.",
+      "itemOpen": "Open",
+      "item": {
+        "control_not_designed": "Control circuit not designed yet",
+        "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled"
+      },
+      "state": {
+        "open": "Open",
+        "answered": "Answered",
+        "acknowledged": "Acknowledged assumption — not engineer-validated"
+      },
+      "missing": "Missing value: {field}",
+      "assumption": {
+        "default_power_factor": "Assumed power factor 0.9 (no value given)",
+        "generic": "Assumed value: {field}",
+        "fault_level_inherited": "Fault level taken from the supplying board",
+        "demand_factors": "Demand factors applied from the profile",
+        "rules_unconfirmed": "Design rules not confirmed for this project",
+        "contactor_ac1": "Contactors rated for AC-1 duty",
+        "motor_current_table": "Motor current taken from a table value, not the nameplate",
+        "motor_current_formula": "Motor current calculated, not taken from the nameplate"
+      },
+      "field": {
+        "motor_current_a": "Motor nameplate current (A)",
+        "nameplate_current_a": "Motor nameplate current (A)"
+      },
+      "answer": "Answer",
+      "fillIn": "Fill in",
+      "acknowledge": "Acknowledge assumption",
+      "acknowledgeMeans": "Acknowledging records that you accept this assumption. It is not an engineer’s validation.",
+      "acknowledgedBy": "Acknowledged by {name} on {date} — not engineer-validated.",
+      "answeredBy": "Answered “{value}” by {name} on {date}.",
+      "someone": "a team member",
+      "saveFirst": "Save the project first, so this is recorded against a revision.",
+      "filledIn": "{field} filled in on {board}. Check open items again to update the list.",
+      "answeredNow": "Answer recorded as revision {revision}.",
+      "acknowledgedNow": "Acknowledgement recorded on revision {revision}.",
+      "designationDuplicate": "{board}: two or more items carry the same printed designation. This blocks approval.",
+      "noTrace": "No trace yet. Check open items or save the project to see which requirement produced each circuit and feeder.",
+      "trace": {
+        "requirement": "Requirement",
+        "design": "Circuit or feeder",
+        "board": "Board {board}",
+        "feeder": "Feeder to {board} from {from}"
+      },
+      "saveChangesFirst": "Save your changes first: an answer is saved as a new revision from the one stored.",
+      "derivedSaveNew": "Save a new revision to record answers.",
+      "needsControlled": "Tick “PLC switched” on this load first: a control need is recorded only for a load the PLC switches.",
+      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused."
     }
   },
   "files": {
