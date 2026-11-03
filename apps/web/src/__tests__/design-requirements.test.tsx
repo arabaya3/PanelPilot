@@ -375,7 +375,7 @@ describe('the guided requirements step', () => {
 });
 
 describe('approval by the revision’s author', () => {
-  function panel(author: string, approve = vi.fn<typeof approveRevision>()) {
+  function panel(isAuthor: boolean | undefined, approve = vi.fn<typeof approveRevision>()) {
     const list = vi.fn<typeof listProjects>().mockResolvedValue({
       kind: 'listed',
       page: { permissions: ['approve_revision'], projects: [] },
@@ -392,7 +392,7 @@ describe('approval by the revision’s author', () => {
           approval: null,
           approvingAs: 'Rana Haddad',
           canApprove: true,
-          author,
+          ...(isAuthor === undefined ? {} : { isAuthor }),
         }}
         onOpened={vi.fn()}
         impls={{ list, approve }}
@@ -402,8 +402,8 @@ describe('approval by the revision’s author', () => {
     return approve;
   }
 
-  it('disables Approve for the author, saying another member must approve', () => {
-    panel('Rana Haddad');
+  it('disables Approve when the server says the signed-in user is the author', () => {
+    panel(true);
     expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
       'disabled',
       true,
@@ -413,6 +413,23 @@ describe('approval by the revision’s author', () => {
     );
   });
 
+  it('never guesses from names: offers Approve without the flag', () => {
+    // Same display name as the approver, but no flag: two people can share a name.
+    panel(undefined);
+    expect(screen.getByRole('button', { name: 'Approve revision 2' })).toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(screen.queryByTestId('approve-self-authored')).toBeNull();
+  });
+
+  it('reads the flag from the opened project’s approval info', async () => {
+    const { isAuthorOf } = await import('@/components/design/projects-panel');
+    expect(isAuthorOf({ approval: { is_author: true } } as never)).toBe(true);
+    expect(isAuthorOf({ approval: { is_author: false } } as never)).toBe(false);
+    expect(isAuthorOf({} as never)).toBeUndefined();
+  });
+
   it('says the server’s refusal when it finds the approver is the author', async () => {
     const approve = vi.fn<typeof approveRevision>().mockResolvedValue({
       kind: 'refused',
@@ -420,7 +437,7 @@ describe('approval by the revision’s author', () => {
       code: 'approval_by_author',
       params: {},
     });
-    panel('Someone Else', approve);
+    panel(undefined, approve);
     fireEvent.click(screen.getByRole('button', { name: 'Approve revision 2' }));
     expect((await screen.findByTestId('projects-message')).textContent).toBe(
       'You saved this revision, so you cannot approve it. Another reviewer must approve it.',

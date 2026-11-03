@@ -60,17 +60,27 @@ export type OpenedProject = {
    */
   canApprove: boolean;
   /**
-   * Who saved the revision open, by display name as the server recorded it.
-   * A revision cannot be approved by its author (`approval_by_author`); the
-   * page says so ahead of time when the names match, and the server decides.
+   * The server's `approval.is_author`: true when the signed-in account saved
+   * the revision open, which it cannot approve (`approval_by_author`). Absent,
+   * the page does not guess: Approve stays offered and the server decides.
    */
-  author?: string | null;
+  isAuthor?: boolean | undefined;
   /** The server holds no author for the revision open (`author_unknown`): said, never guessed. */
   authorUnknown?: boolean;
 };
 
 /** One line of the title block's revision list. */
 export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions']>[number];
+
+/** The server's `approval.is_author` for the revision open; undefined where it does not say. */
+export function isAuthorOf(project: SavedProject): boolean | undefined {
+  const approval = (project as { approval?: unknown }).approval;
+  const flag =
+    typeof approval === 'object' && approval !== null
+      ? (approval as { is_author?: unknown }).is_author
+      : undefined;
+  return typeof flag === 'boolean' ? flag : undefined;
+}
 
 /** Who approved a saved project's open revision, and when; null while not approved. */
 export function approvalOf(project: SavedProject): OpenedProject['approval'] {
@@ -187,15 +197,10 @@ export function ProjectsPanel({
   const reasons = blockers.filter((blocker) => blocker !== 'dirty' && blocker !== 'unsaved');
   // Not the owner or a reviewer: the server would refuse (`approval_not_permitted`).
   const notPermitted = !trial && opened !== null && !opened.canApprove;
-  // Known ahead of time when the revision's author is the signed-in account
-  // (by the names the server gives); the server checks the account itself
-  // and refuses with `approval_by_author`, owners included.
+  // Known ahead of time only from the server's flag, never from names; the
+  // server checks the account itself (`approval_by_author`), owners included.
   const selfAuthored =
-    !trial &&
-    opened !== null &&
-    opened.approval === null &&
-    (opened.author ?? '') !== '' &&
-    opened.author === opened.approvingAs;
+    !trial && opened !== null && opened.approval === null && opened.isAuthor === true;
   const held = trial || notPermitted || dirty || selfAuthored || reasons.length > 0;
   const canDelete = permits(page, 'delete_project');
   // Saving the revision open again, unchanged, is how it is designed and
