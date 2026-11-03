@@ -81,6 +81,8 @@ import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
   clearDraft,
   draftBoards,
+  draftControl,
+  formControl,
   formBoards,
   readDraft,
   writeDraft,
@@ -763,6 +765,7 @@ function DesignWorkspace({
       clean,
       info,
       boards: draftBoards(boards),
+      control: draftControl(boards, controlNeeds),
       profileText,
       language: chosenLanguage,
       market,
@@ -802,6 +805,7 @@ function DesignWorkspace({
     nextKey.current += Math.max(1, keyed.used);
     setInfo(draft.info);
     setBoards(keyed.boards);
+    setControlNeeds(formControl(keyed.boards, draft.control));
     if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
     setProfileText(draft.profileText);
     setDrawingLanguage(draft.language);
