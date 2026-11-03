@@ -214,6 +214,37 @@ findings}`. Saves nothing, reads no project.
 
 ### 5.6 Versions and approvals
 
+**Final versions on this branch:** v1 renderer `2026.11.03.2`, v2 renderer
+`2026.11.03.v2-14`, `RULES_VERSION` `2026.11.03.1`. The intermediate
+`2026.11.03.1` (v1) and `v2-12`/`v2-13` (v2) were never released.
+
+- Second bump (browser verification of the merged head, 2026-11-03), which
+  changes what the review exports print:
+  - **open items** are printed after the findings on the drawing set, the
+    calculations report, and the v2 connection drawing and schedules
+    (`[OPEN] Control circuit not designed: <board> › <load>`,
+    `[OPEN] Board-to-board wiring not modelled: <supply> → <board>`), for
+    stored and derived records alike, so a review document never reads as
+    complete. The JSON export carries them under `requirements`;
+  - acknowledged assumptions print as `[ACKNOWLEDGED] Assumption acknowledged
+    by <name> on <date> — not engineer-validated: <code> — <board> › <load>`
+    (no longer an `[INFO] :` finding line);
+  - the calculations report leaves 6 mm after its findings section;
+  - a duplicated v2 designation prints as drawn (`=function+location-product`,
+    e.g. `-K1`), not as an object.
+- **Names (D1).** `by_name` on answers and acknowledgements, the revision
+  author shown in the list and title block, and the acknowledgement line are
+  never empty: the account's display name, else its recorded email (visible
+  to the tenant's members on the Team page), else `unknown account` (a
+  revision with no recorded author). No name is invented. The approver is
+  still printed by display name or "a team member", never by email.
+- **Approval impact:** every approval recorded under any earlier renderer
+  version stops counting (`renderer_version`), and with the rules bump every
+  earlier revision reads `stale` anyway. On this unmerged stack that is every
+  approval; each is granted again by a member other than the author. No
+  stored row is rewritten.
+
+
 - Renderers bumped: v1 `2026.10.31.4` → `2026.11.03.1`, v2
   `2026.11.02.v2-11` → `2026.11.03.v2-13` (acknowledged-assumption lines; v1
   prints its own `designation_duplicate`). Every approval recorded under the

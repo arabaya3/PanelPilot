@@ -1,16 +1,16 @@
 {
-  "renderer_version": "2026.11.03.1",
+  "renderer_version": "2026.11.03.2",
   "variants": {
     "basic": {
       "pdf": "772eb7db3bb409eeb4686ea458b4703ddb2b2e957101dfa308f3398b9aae388a",
-      "calculations_pdf": "eee70ffd5c0ad9703bbc44aa438e37764b9f0ff8c9bece7866dd45b17db00945",
+      "calculations_pdf": "0e0f5f45f0cc0497052c2028dd606ee5442c0febf6d36ad6b5e61167c96b4023",
       "quotation_pdf": "3445e019b6a95483349f943a9fae1d23c70f76120989cb8a801e338b760103fc",
       "dxf": "81c04e884b6ce8349ed87665c7bda3f4877c812aa01a52e338ffe2d5f88ae167",
       "json": "f932575a4ddd93bbfbe0caa5729ad45a6d843df8bf3c7a59006e0bc30e3859ad"
     },
     "motor": {
       "pdf": "bab1acad7155a759834dca4ef6013149270ee5db9bba68e4c7752503a4f3aa73",
-      "calculations_pdf": "7a3ad18d9edb557a153fec2c59a6f9a5c65bce495fc297930bc361cc267be596",
+      "calculations_pdf": "00cf424513487b9dd8aa85b8c3b5f6c506d586d99e4578879a596d6ddc6b72dd",
       "quotation_pdf": "dec23ed9c15f4b3236a639c6065868f7a01c915819cead2b5f4d51231d635932",
       "dxf": "93ca42f56c19f13000d56bc050b370fed30c7bbb10ae228c749c3cee0a31e648",
       "json": "4ad2c29672ac66b509f996fcc73bb2d8ae42c08bc974cfcb06a9c0124d48ac10"
