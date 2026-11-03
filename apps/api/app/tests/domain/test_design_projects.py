@@ -1025,6 +1025,8 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
             )
         ).one()
     assert tuple(stored) == ("named-approver@example.com", uuid.UUID(user.id), None, "R. Haddad")
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": review_support.OTHER_AUTHOR})
 
 
 def test_every_export_names_the_account_and_labels_the_note(  # type: ignore[no-untyped-def]
