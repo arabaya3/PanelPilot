@@ -57,6 +57,7 @@ import {
 import { MarkupsPanel } from '@/components/design/markups-panel';
 import {
   approvalOf,
+  isAuthorOf,
   ProjectsPanel,
   type OpenedProject,
   type TitleRevision,
@@ -235,9 +236,19 @@ export function snapshotOf(
   profileText: string,
   language: DrawingLanguage | null,
   market: string,
+  control: Readonly<Record<number, readonly ControlNeed[]>> = {},
 ): string {
-  return JSON.stringify({ info, boards, profileText, language, market }, (key, value: unknown) =>
-    key === 'key' ? undefined : value,
+  // Control needs are requirements the save records: a change to them is
+  // unsaved work like any field. Said per row, in row order (keys left out);
+  // left out entirely while none is ticked, so a form without any compares
+  // as it always did.
+  const needs = boards.map((board) => board.loads.map((load) => [...(control[load.key] ?? [])]));
+  const anyNeed = needs.some((rows) => rows.some((row) => row.length > 0));
+  return JSON.stringify(
+    anyNeed
+      ? { info, boards, profileText, language, market, control: needs }
+      : { info, boards, profileText, language, market },
+    (key, value: unknown) => (key === 'key' ? undefined : value),
   );
 }
 
@@ -494,7 +505,7 @@ function DesignWorkspace({
   // entered text stays, so it can be shortened.
   const [tooLong, setTooLong] = useState<TooLong[]>([]);
 
-  const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market);
+  const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market, controlNeeds);
   // What the work looked like when last saved or opened (or when the page
   // started); anything else is unsaved.
   const [clean, setClean] = useState(snapshot);
@@ -892,7 +903,7 @@ function DesignWorkspace({
       approval: approvalOf(project),
       approvingAs: project.approving_as ?? null,
       canApprove: permits(project, 'approve_revision'),
-      author: project.revisions.find((entry) => entry.number === project.revision)?.author ?? null,
+      isAuthor: isAuthorOf(project),
       authorUnknown: (project as { author_unknown?: unknown }).author_unknown === true,
     });
     const requirements = requirementsOf(project);
@@ -940,7 +951,8 @@ function DesignWorkspace({
     nextKey.current += Math.max(1, loaded.used);
     setInfo(loaded.info);
     setBoards(loaded.boards);
-    setControlNeeds(controlNeedsFrom(requirements, loaded.boards));
+    const restoredNeeds = controlNeedsFrom(requirements, loaded.boards);
+    setControlNeeds(restoredNeeds);
     if (loaded.boards[0]) setActiveKey(loaded.boards[0].key);
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
@@ -954,6 +966,7 @@ function DesignWorkspace({
         settings.text,
         settings.language,
         latestMarket.current,
+        restoredNeeds,
       ),
     );
     // The opened revision replaces the form: untouched, until an edit renders,
