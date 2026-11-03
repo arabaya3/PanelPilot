@@ -84,7 +84,7 @@ def _stored(engine: Engine, project_id: str, number: int) -> dict[str, Any]:
 def _waiting(engine: Engine) -> int:
     """How many backends of this database wait on a lock now."""
     with engine.connect() as conn:
-        found = conn.execute(
+        found: int = conn.execute(
             text(
                 "SELECT count(*) FROM pg_stat_activity "
                 "WHERE datname = current_database() AND wait_event_type = 'Lock'"
@@ -211,9 +211,9 @@ def test_an_approval_queued_behind_an_acknowledgement_approves_the_acknowledged_
     stored = _stored(engine, pid, 1)
     assert [a["question_id"] for a in stored["acknowledgements"]] == [fault]
     # The approval's response and the approved export show that record.
-    assert results["approve"].json()["requirements"]["acknowledgements"] == stored[
-        "acknowledgements"
-    ]
+    assert (
+        results["approve"].json()["requirements"]["acknowledgements"] == stored["acknowledgements"]
+    )
     words = " ".join(" ".join(pdf_pages(revision_export(client, pid, 1, "pdf").content)).split())
     assert "Assumption acknowledged by" in words
     assert "not engineer-validated" in words
@@ -263,9 +263,7 @@ def test_an_acknowledgement_stores_the_hash_of_what_it_stores(
     assert revision_row(engine, pid, 1)["snapshot_sha256"] == sha
     opened = client.get(f"/design/projects/{pid}").json()
     assert opened["requirements"]["acknowledgements"] == stored["acknowledgements"]
-    assert not any(
-        f["values"].get("reason") == "requirements_mismatch" for f in opened["findings"]
-    )
+    assert not any(f["values"].get("reason") == "requirements_mismatch" for f in opened["findings"])
 
 
 # --------------------------------------------------------------------------- #
@@ -292,10 +290,12 @@ def test_two_concurrent_answers_make_one_revision_and_carry_acknowledgements(
     assert results["ze"].status_code == 409
     assert error(results["ze"])["code"] == "revision_not_latest"
     with engine.connect() as conn:
-        numbers = conn.execute(
-            text("SELECT number FROM design_project_revisions WHERE project_id = :p"),
-            {"p": uuid.UUID(pid)},
-        ).scalars()
+        numbers: list[int] = list(
+            conn.execute(
+                text("SELECT number FROM design_project_revisions WHERE project_id = :p"),
+                {"p": uuid.UUID(pid)},
+            ).scalars()
+        )
         assert sorted(numbers) == [1, 2]
     carried = _stored(engine, pid, 2)["acknowledgements"]
     # Carried with who and when as first recorded, not re-stamped.
