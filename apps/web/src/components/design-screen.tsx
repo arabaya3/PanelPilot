@@ -13,6 +13,7 @@ import {
 
 import {
   AccountSessionProvider,
+  tokenEmail,
   tokenIdentity,
   useAccountSession,
   type AccountSession,
@@ -1660,6 +1661,7 @@ function DesignWorkspace({
                     : null
                 }
                 opened={opened}
+                accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 dirty={dirty}

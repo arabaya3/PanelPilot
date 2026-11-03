@@ -732,7 +732,8 @@
         "powerFactor": "Enter a value above 0, up to 1."
       },
       "subBoardHint": "A sub-board is not a load row: add it as a board and set its “Fed from”. Its feeder is then drawn for you.",
-      "subBoardRow": "Saved as a sub-board row. The next design refuses it: remove this row and add the sub-board as a board with “Fed from”."
+      "subBoardRow": "Saved as a sub-board row. The next design refuses it: remove this row and add the sub-board as a board with “Fed from”.",
+      "powerFactorDefault": "default 0.9"
     }
   },
   "design": {

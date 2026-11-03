@@ -117,8 +117,11 @@ export function ProjectsPanel({
   note: heldNote,
   onNoteChange,
   impls = {},
+  accountEmail = null,
 }: {
   token: string;
+  /** The signed-in account's email, naming it where it has no display name (this page only). */
+  accountEmail?: string | null;
   /** The project as entered now, or null while the form is incomplete. */
   current: {
     name: string;
@@ -443,9 +446,10 @@ export function ProjectsPanel({
           <>
             {!trial && (
               <p className="text-sm text-text-muted" data-testid="approving-as">
-                {opened.approvingAs === null
-                  ? t('approvingAsUnnamed')
-                  : t('approvingAs', { name: opened.approvingAs })}
+                {/* The display name, else the account's email (this page only), as elsewhere. */}
+                {opened.approvingAs || accountEmail
+                  ? t('approvingAs', { name: opened.approvingAs || accountEmail || '' })
+                  : t('approvingAsUnnamed')}
               </p>
             )}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

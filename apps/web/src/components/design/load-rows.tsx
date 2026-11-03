@@ -186,14 +186,14 @@ export function LoadRows({
                       aria-label={t('field.powerFactor')}
                       inputMode="decimal"
                       dir="ltr"
-                      placeholder="0.9"
+                      placeholder={tw('powerFactorDefault')}
                       value={load.powerFactor}
                       aria-invalid={pfProblem ? true : undefined}
                       aria-describedby={pfProblem ? `${field('pf')}-error` : undefined}
                       onChange={(event) => {
                         onChange(load.key, { powerFactor: event.target.value });
                       }}
-                      className="input w-20"
+                      className="input w-28"
                     />
                     {problem(field('pf'), pfProblem)}
                   </td>

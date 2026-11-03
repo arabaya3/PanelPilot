@@ -342,7 +342,7 @@ export function RequirementsView({
         {question.state === 'acknowledged' && (
           <p className="text-sm" data-testid={`question-recorded-${question.id}`}>
             {t('acknowledgedBy', {
-              name: question.by_name ?? question.by_user_id ?? t('someone'),
+              name: question.by_name || t('someone'),
               date: (question.at ?? '').slice(0, 10),
             })}
           </p>
@@ -354,7 +354,7 @@ export function RequirementsView({
                 typeof question.answer === 'string' || typeof question.answer === 'number'
                   ? String(question.answer)
                   : '',
-              name: question.by_name ?? question.by_user_id ?? t('someone'),
+              name: question.by_name || t('someone'),
               date: (question.at ?? '').slice(0, 10),
             })}
           </p>

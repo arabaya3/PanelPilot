@@ -534,3 +534,93 @@ describe('the requirements calls', () => {
     expect(outcome.kind).toBe('previewed');
   });
 });
+
+describe('review fixes', () => {
+  function acknowledgedBy(by_name: string | undefined) {
+    const after = record();
+    const pf = after.questions[1];
+    if (!pf) throw new Error('no question');
+    after.questions[1] = {
+      ...pf,
+      state: 'acknowledged',
+      by_user_id: 'u-raw-id-123',
+      at: '2026-11-03T10:00:00Z',
+      ...(by_name === undefined ? {} : { by_name }),
+    };
+    return after;
+  }
+
+  it('names a team member, never the raw user id, when the name is empty', () => {
+    view({ savedRecord: acknowledgedBy('') });
+    const text = screen.getByTestId('question-recorded-q-pf').textContent;
+    expect(text).toBe('Acknowledged by a team member on 2026-11-03 — not engineer-validated.');
+    expect(text).not.toContain('u-raw-id-123');
+  });
+
+  it('names a team member, never the raw user id, when the name is missing', () => {
+    view({ savedRecord: acknowledgedBy(undefined) });
+    const text = screen.getByTestId('question-recorded-q-pf').textContent;
+    expect(text).toBe('Acknowledged by a team member on 2026-11-03 — not engineer-validated.');
+  });
+
+  it('shows the power factor default as a default, not a value', () => {
+    renderApp(
+      <LoadRows
+        idPrefix="t"
+        loads={[blankLoad(1)]}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+      { locale: 'en' },
+    );
+    const input = screen.getByLabelText('Power factor');
+    expect(input.getAttribute('placeholder')).toBe('default 0.9');
+    expect(input).toHaveProperty('value', '');
+  });
+
+  function approving(approvingAs: string | null, accountEmail: string | null) {
+    const list = vi.fn<typeof listProjects>().mockResolvedValue({
+      kind: 'listed',
+      page: { permissions: ['approve_revision'], projects: [] },
+    });
+    renderApp(
+      <ProjectsPanel
+        token="tok"
+        current={null}
+        accountEmail={accountEmail}
+        opened={{
+          id: 'p1',
+          name: 'Tower',
+          revision: 2,
+          revisions: [1, 2],
+          approval: null,
+          approvingAs,
+          canApprove: true,
+        }}
+        onOpened={vi.fn()}
+        impls={{ list }}
+      />,
+      { locale: 'en' },
+    );
+    return screen.getByTestId('approving-as').textContent;
+  }
+
+  it('names the approving account by its email where it has no display name', () => {
+    expect(approving(null, 'rana@example.com')).toBe('You are approving as rana@example.com.');
+  });
+
+  it('prefers the display name to the email', () => {
+    expect(approving('Rana Haddad', 'rana@example.com')).toBe('You are approving as Rana Haddad.');
+  });
+});
+
+describe('the account email in a token', () => {
+  it('is read for naming only, null for none', async () => {
+    const { tokenEmail } = await import('@/components/account-session');
+    const part = btoa(JSON.stringify({ sub: 'u1', tid: 't1', email: 'rana@example.com' }));
+    expect(tokenEmail(`h.${part}.s`)).toBe('rana@example.com');
+    expect(tokenEmail(`h.${btoa(JSON.stringify({ sub: 'u1' }))}.s`)).toBeNull();
+    expect(tokenEmail('nonsense')).toBeNull();
+  });
+});
