@@ -599,3 +599,53 @@ def test_the_markets_are_listed(client: TestClient) -> None:
     codes = {m["code"]: m for m in response.json()}
     assert codes["PS"]["currency"] == "ILS"
     assert codes["SA"]["frequency_hz"] == 60
+
+
+_FEEDER_LOADS = [{"description": "Lights", "load": "lighting", "power_kw": "1"}]
+
+
+def _feeders_of(response: Any, board: str) -> list[dict[str, Any]]:
+    boards = {b["name"]: b for b in response.json()["project"]["boards"]}
+    return [c for c in boards[board]["circuits"] if c.get("feeds") or c["load"] == "sub_board"]
+
+
+def test_a_client_feeder_row_is_refused_not_duplicated(client: TestClient) -> None:
+    """M6a §1: a load with ``feeds`` would be a second feeder to DB-1."""
+    typed = {
+        "description": "Feeder to DB-1",
+        "load": "sub_board",
+        "power_kw": "5",
+        "phases": 3,
+        "feeds": "DB-1",
+    }
+    response = client.post(
+        "/design/project",
+        json={
+            "info": {"name": "Tower"},
+            "boards": [
+                {"name": "MDB", "loads": [*_FEEDER_LOADS, typed]},
+                {"name": "DB-1", "loads": _FEEDER_LOADS, "fed_from": "MDB"},
+            ],
+        },
+    )
+    assert response.status_code == 422, _feeders_of(response, "MDB")
+    assert response.json()["code"] == "feeder_server_owned"
+    assert response.json()["params"] == {"board": "MDB", "load_index": "1"}
+
+
+def test_a_sub_board_load_row_is_refused_not_duplicated(client: TestClient) -> None:
+    """M6a §1: a ``sub_board`` row beside ``fed_from`` would be a second feeder."""
+    typed = {"description": "To DB-1", "load": "sub_board", "power_kw": "5", "phases": 3}
+    response = client.post(
+        "/design/project",
+        json={
+            "info": {"name": "Tower"},
+            "boards": [
+                {"name": "MDB", "loads": [*_FEEDER_LOADS, typed]},
+                {"name": "DB-1", "loads": _FEEDER_LOADS, "fed_from": "MDB"},
+            ],
+        },
+    )
+    assert response.status_code == 422, _feeders_of(response, "MDB")
+    assert response.json()["code"] == "sub_board_load_server_owned"
+    assert response.json()["params"] == {"board": "MDB", "load_index": "1"}

@@ -49,6 +49,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     revision_row,
     update_row,
 )
+from app.tests.domain import review_support
 from app.tests.domain.test_design_projects_configured_db import (
     CASE,
     _configuration,
@@ -418,3 +419,9 @@ def test_a_findings_policy_change_shows_on_a_listed_approved_revision(
     assert listed["export_status"] == "stale"
     assert listed["approval_current"] is False
     assert "findings_policy" in listed["approval_changed"]
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

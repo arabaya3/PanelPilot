@@ -49,6 +49,7 @@ from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 from app.tests.accounts import account
 from app.tests.design import stored_design
+from app.tests.domain import review_support
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -994,6 +995,8 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
 ) -> None:
     a, _ = tenants
     user = _account(engine, a, "named-approver@example.com", "  Rana Haddad ")
+    # The revision's author is another member (``_saved_by_another_member``).
+    _account(engine, a, review_support.OTHER_AUTHOR, "Sami Author")
     saved = design_projects.save_project(
         session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
     )
@@ -1004,7 +1007,7 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
     assert revision.approver_account_recorded is True
     assert revision.approver_name == "Rana Haddad"
     assert revision.approval_note == "R. Haddad"
-    assert revision.author == "Rana Haddad"
+    assert revision.author == "Sami Author"
     (listed,) = approved.request.info.revisions
     assert (listed.approved_by, listed.approval_note) == ("Rana Haddad", "R. Haddad")
     assert _emails_in(approved.model_dump(mode="json")) == []
@@ -1022,6 +1025,8 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
             )
         ).one()
     assert tuple(stored) == ("named-approver@example.com", uuid.UUID(user.id), None, "R. Haddad")
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": review_support.OTHER_AUTHOR})
 
 
 def test_every_export_names_the_account_and_labels_the_note(  # type: ignore[no-untyped-def]
@@ -1619,3 +1624,9 @@ def test_an_earlier_approval_under_another_profile_is_not_current_in_the_list(  
                 text(f"UPDATE design_project_revisions SET {column} = :v WHERE number = 1"),
                 {"v": original},
             )
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

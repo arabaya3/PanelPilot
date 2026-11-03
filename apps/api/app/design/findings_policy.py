@@ -145,6 +145,8 @@ INTEGRITY: dict[str, Classification] = {
     "integrity_unknown_device": _blocking("project model: every reference resolves"),
     "integrity_unknown_cable": _blocking("project model: every reference resolves"),
     "integrity_cable_missing": _blocking("policy"),
+    # Two parts of one board printed with one designation (M6a).
+    "designation_duplicate": _blocking("project model: designations are unique per board"),
     "integrity_protection_missing": _blocking(_ABB_2_3),
     "integrity_device_unrated": _blocking("policy"),
     "integrity_device_above_cable_capacity": _blocking(_ABB_2_3),
