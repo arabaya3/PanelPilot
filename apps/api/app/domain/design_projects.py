@@ -596,6 +596,11 @@ def _explained(
     return _reviews_explained(row, read)
 
 
+def _requirements_binding(row: DesignRevisionRow) -> str:
+    """What an approval binds of the requirements record: its hash, or JSON null's for none."""
+    return row.requirements_sha256 or snapshot.sha256_of(None)
+
+
 def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
     """What no longer matches what the revision's approval was granted under.
 
@@ -618,6 +623,15 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         or not applicable.snapshot_reads
     ):
         changed.append("snapshot")
+    # ``requirements``: the record it was granted with is not the record held
+    # (or fails its hash), or the approval recorded none (made before the
+    # binding was: not bound, never assumed to be).
+    if (
+        row.approved_requirements_sha256 is None
+        or row.approved_requirements_sha256 != _requirements_binding(row)
+        or not _requirements_match(row)
+    ):
+        changed.append("requirements")
     if (row.approved_rules_version or row.rules_version) != applicable.rules_version:
         changed.append("rules_version")
     if (row.approved_catalogue_version or row.catalogue_version) != applicable.catalogue_version:
@@ -1618,7 +1632,10 @@ def _refuse_stale(row: DesignRevisionRow, number: int, applicable: _Applicable) 
         for part in approval
         # Another design approved is not a policy change: it exports as a draft,
         # and which renderer printed that other design does not matter.
-        if part != "snapshot"
+        # Nor is a requirements record other than the one approved (or an
+        # approval that recorded none): the approval does not count, and the
+        # revision exports as a draft, never as approved.
+        if part not in ("snapshot", "requirements")
         and not (part == "renderer_version" and "snapshot" in approval)
         and part not in changed
     ]
@@ -1708,6 +1725,8 @@ def approve_revision(
         row.approval_note = request.note or None
         row.approved_at = datetime.now(UTC)
         row.approved_snapshot_sha256 = row.snapshot_sha256
+        # Checked against its hash under the lock (``_check_snapshot``).
+        row.approved_requirements_sha256 = _requirements_binding(row)
         # The policy it is granted under (checked current just now), and the
         # name it is granted by, as every export will print them.
         row.approved_profile_sha256 = applicable.profile_sha256
@@ -2660,7 +2679,14 @@ def _acknowledge(
             **record,
             "acknowledgements": [
                 *record.get("acknowledgements", []),
-                {"question_id": question_id, "by_user_id": user.id, "by_name": by, "at": now},
+                {
+                    "question_id": question_id,
+                    "by_user_id": user.id,
+                    "by_name": by,
+                    "at": now,
+                    # What it acknowledged: it carries forward only while unchanged.
+                    **({"basis": question["basis"]} if question.get("basis") else {}),
+                },
             ],
             "questions": [dict(q) for q in record["questions"]],
         }

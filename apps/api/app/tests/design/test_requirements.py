@@ -144,10 +144,20 @@ def test_an_acknowledgement_carries_over_while_its_question_stands() -> None:
     record = _record(_request(missing=True))
     pf = next(q for q in record["questions"] if q["finding_code"] == "default_power_factor")
     record["acknowledgements"] = [
-        {"question_id": pf["id"], "by_user_id": "u1", "by_name": "Ann", "at": "2026-11-03T10:00:00"}
+        {
+            "question_id": pf["id"],
+            "by_user_id": "u1",
+            "by_name": "Ann",
+            "at": "2026-11-03T10:00:00",
+            "basis": pf["basis"],
+        }
     ]
     again = _record(_request(missing=True), prior=record)
     assert next(q for q in again["questions"] if q["id"] == pf["id"])["state"] == "acknowledged"
+    # An acknowledgement that records no basis (or another one) does not carry.
+    record["acknowledgements"][0].pop("basis")
+    bare = _record(_request(missing=True), prior=record)
+    assert next(q for q in bare["questions"] if q["id"] == pf["id"])["state"] == "open"
     derived = _record(_request(missing=True), prior=record, derived=True)
     assert all(q["state"] == "open" for q in derived["questions"])
 
@@ -155,13 +165,17 @@ def test_an_acknowledgement_carries_over_while_its_question_stands() -> None:
 def test_an_answered_question_stays_on_later_records() -> None:
     record = _record(_request(missing=True))
     fault = next(q for q in record["questions"] if q["field"] == "fault_level_ka")
-    done = {**fault, "answer": "15", "by_user_id": "u1", "by_name": "Ann", "at": "now"}
+    done = {**fault, "answer": "10", "by_user_id": "u1", "by_name": "Ann", "at": "now"}
     answered = _record(_request(), answered=[done])
     kept = next(q for q in answered["questions"] if q["id"] == fault["id"])
     assert kept["state"] == "answered"
-    assert kept["answer"] == "15"
+    assert kept["answer"] == "10"
     later = _record(_request(), prior=answered)
     assert any(q["id"] == fault["id"] and q["state"] == "answered" for q in later["questions"])
+    # Typed over since (the request holds 10, the answer said 15): not carried.
+    other = {**answered, "questions": [{**q, "answer": "15"} for q in answered["questions"]]}
+    retyped = _record(_request(), prior=other)
+    assert all(q["id"] != fault["id"] for q in retyped["questions"])
 
 
 def test_open_item_lines_say_what_is_not_designed() -> None:

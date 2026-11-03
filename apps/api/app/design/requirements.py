@@ -30,7 +30,9 @@ load while its board and description are, as a previous record gives them.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.models.schemas.design import (
@@ -193,19 +195,27 @@ def build(
             questions.append({**done, "state": "answered"})
             asked.add(done["id"])
     for earlier in (prior or {}).get("questions", []):
-        # An answer stays on the record of every later revision.
-        if earlier.get("state") == "answered" and earlier["id"] not in asked:
+        # An answer stays on the record of every later revision while the
+        # request still holds the value answered; changed since (typed in the
+        # table), the value is the table's, attributed to no one.
+        if (
+            earlier.get("state") == "answered"
+            and earlier["id"] not in asked
+            and _still_answered(request, board_refs, load_refs, earlier)
+        ):
             questions.append(dict(earlier))
             asked.add(earlier["id"])
     # An acknowledgement carries over while the very question still stands
-    # (same id, so same kind, field, finding, board and load).
+    # (same id, so same kind, field, finding, board and load) over the same
+    # inputs (same basis): what was acknowledged is what is assumed now.
+    bases = {q["id"]: q.get("basis") for q in questions if q.get("state") == "open"}
     acknowledgements = (
         []
         if derived
         else [
             dict(ack)
             for ack in (prior or {}).get("acknowledgements", [])
-            if ack["question_id"] in asked
+            if ack.get("basis") is not None and bases.get(ack["question_id"]) == ack["basis"]
         ]
     )
     record: dict[str, Any] = {
@@ -239,6 +249,41 @@ def apply_acknowledgements(record: dict[str, Any]) -> dict[str, Any]:
                 at=ack["at"],
             )
     return record
+
+
+def _still_answered(
+    request: ProjectDesignRequest,
+    board_refs: Sequence[str],
+    load_refs: Sequence[Sequence[str]],
+    question: Mapping[str, Any],
+) -> bool:
+    """Whether the request still holds the value an answered question was given."""
+    subject = question.get("subject") or {}
+    try:
+        b = list(board_refs).index(str(subject.get("board_ref") or ""))
+    except ValueError:
+        return False
+    board = request.boards[b]
+    field = question.get("field")
+    value: Any
+    if field == "fault_level_ka":
+        value = board.supply.fault_level_ka
+    elif field == "ze_ohm":
+        value = board.supply.earth_loop_ohm
+    elif field == "feeder_length_m":
+        value = board.feeder_length_m
+    elif field == "power_factor":
+        try:
+            i = list(load_refs[b]).index(str(subject.get("load_ref") or ""))
+        except ValueError:
+            return False
+        value = board.loads[i].power_factor
+    else:
+        return False
+    try:
+        return value is not None and Decimal(str(value)) == Decimal(str(question.get("answer")))
+    except InvalidOperation:
+        return False
 
 
 def _control(
@@ -285,9 +330,12 @@ def _question(
     board: str,
     board_ref: str,
     load_ref: str | None = None,
+    *,
+    basis: str,
 ) -> dict[str, Any]:
     return {
         "id": question_id(kind, field, code, board, load_ref or ""),
+        "basis": basis,
         "kind": kind,
         "subject": {"board_ref": board_ref, "load_ref": load_ref},
         "field": field,
@@ -299,6 +347,38 @@ def _question(
         "by_name": None,
         "at": None,
     }
+
+
+def _digest(value: Any) -> str:
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _basis(board: Any, load: Any = None, *, part: str) -> str:
+    """A digest of the inputs a question's assumption rests on.
+
+    An acknowledgement carries to a later revision only while its question's
+    basis is unchanged: the same question id over changed inputs (a motor's
+    power, a load's kind) is a different assumption, open again.
+    """
+    shown = board.model_dump(mode="json")
+    # The supply as an assumption rests on it: a value answered into it (its
+    # fault level, its Ze) is its own question, and changes no other.
+    supply = {
+        k: v
+        for k, v in (shown.get("supply") or {}).items()
+        if k not in ("fault_level_ka", "earth_loop_ohm")
+    }
+    value: Any
+    if part == "supply":
+        value = {"supply": supply, "fed_from": shown.get("fed_from")}
+    elif part == "feeder":
+        value = {"fed_from": shown.get("fed_from"), "feeder_length_m": shown.get("feeder_length_m")}
+    elif part == "load":
+        value = {"supply": supply, "load": load.model_dump(mode="json")}
+    else:
+        value = {**shown, "supply": supply}
+    return _digest(value)
 
 
 def _questions(
@@ -322,19 +402,54 @@ def _questions(
         if board.fed_from is None:
             if board.supply.fault_level_ka is None:
                 code = "no_fault_level" if "no_fault_level" in here else None
-                out.append(_question("missing_value", "fault_level_ka", code, board.name, ref))
+                out.append(
+                    _question(
+                        "missing_value",
+                        "fault_level_ka",
+                        code,
+                        board.name,
+                        ref,
+                        basis=_basis(board, part="supply"),
+                    )
+                )
             if board.supply.earth_loop_ohm is None:
                 code = "earth_fault_no_ze" if "earth_fault_no_ze" in here else None
-                out.append(_question("missing_value", "ze_ohm", code, board.name, ref))
+                out.append(
+                    _question(
+                        "missing_value",
+                        "ze_ohm",
+                        code,
+                        board.name,
+                        ref,
+                        basis=_basis(board, part="supply"),
+                    )
+                )
         elif board.feeder_length_m is None:
-            out.append(_question("missing_value", "feeder_length_m", None, board.name, ref))
+            out.append(
+                _question(
+                    "missing_value",
+                    "feeder_length_m",
+                    None,
+                    board.name,
+                    ref,
+                    basis=_basis(board, part="feeder"),
+                )
+            )
         for i, load in enumerate(board.loads):
             lref = load_refs[b][i]
             circuit = on_circuit.get((board.name, f"c{i + 1}"), set())
             for code in MOTOR_CURRENT_CODES:
                 if code in circuit:
                     out.append(
-                        _question("assumption", "motor_current_a", code, board.name, ref, lref)
+                        _question(
+                            "assumption",
+                            "motor_current_a",
+                            code,
+                            board.name,
+                            ref,
+                            lref,
+                            basis=_basis(board, load, part="load"),
+                        )
                     )
             if (
                 "default_power_factor" in here
@@ -349,11 +464,17 @@ def _questions(
                         board.name,
                         ref,
                         lref,
+                        basis=_basis(board, load, part="load"),
                     )
                 )
         for code in ASSUMPTION_CODES:
             if code in here:
-                out.append(_question("assumption", None, code, board.name, ref))
+                part = "supply" if code == "fault_level_inherited" else "board"
+                out.append(
+                    _question(
+                        "assumption", None, code, board.name, ref, basis=_basis(board, part=part)
+                    )
+                )
     return out
 
 

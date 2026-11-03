@@ -665,6 +665,7 @@ def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant
         text(
             "UPDATE design_project_revisions SET approved_by = 'First Approver', "
             "approved_account = 'first@example.com', approved_at = now(), "
+            "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
             "approved_snapshot_sha256 = snapshot_sha256 WHERE number = 1"
         )
     )
@@ -1102,6 +1103,7 @@ def test_a_legacy_typed_name_is_never_the_approver(  # type: ignore[no-untyped-d
             text(
                 "UPDATE design_project_revisions SET approved_by = 'TYPED LEGACY ZQX', "
                 "approved_account = :e, approved_at = now(), "
+                "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
                 "approved_snapshot_sha256 = snapshot_sha256, "
                 # Recorded, so the export shows the name it is about.
                 "approved_renderer_version = :r WHERE project_id = :p"
@@ -1307,6 +1309,7 @@ def test_a_legacy_approved_row_counts_only_with_a_recorded_renderer(  # type: ig
         conn.execute(
             text(
                 "UPDATE design_project_revisions SET approved_at = now(), "
+                "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
                 "approved_snapshot_sha256 = snapshot_sha256, approved_account = 'x@example.com'"
             )
         )

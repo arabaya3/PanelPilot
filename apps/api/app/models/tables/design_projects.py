@@ -115,6 +115,10 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # SHA-256 of the canonical findings classification (code, severity,
     # engineering confirmation) of the approved design under the policy then.
     approved_findings_policy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Set with the approval: the requirements record's hash then (the hash of
+    # JSON null for a revision with no stored record). NULL on an approval
+    # recorded before this column: not bound, so not current.
+    approved_requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # The approver's display name, frozen: "" when the account had none (an
     # export says "a team member"). Exports never re-read it from the account.
     approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

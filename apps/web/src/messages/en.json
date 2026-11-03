@@ -1123,7 +1123,8 @@
         "catalogue_version": "the parts catalogue",
         "profile": "the default company profile",
         "findings_policy": "the findings policy",
-        "renderer_version": "how exports are worded and drawn"
+        "renderer_version": "how exports are worded and drawn",
+        "requirements": "the requirements record"
       },
       "approvalChanged": "The page has changes since revision {revision}; the approval does not cover them.",
       "approveHeld": {

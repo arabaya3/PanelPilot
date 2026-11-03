@@ -1717,6 +1717,8 @@ class RevisionSummary(BaseModel):
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``requirements`` (the requirements record is not the one approved,
+            or the approval predates binding it: NULL is not bound),
             ``review_decisions`` (a review decision recorded since, M3).
         author_unknown: It records no author; an approval of it says so.
     """
@@ -1932,6 +1934,8 @@ class SavedProject(BaseModel):
         approval_changed: What changed since the approval, when it no longer
             counts: ``snapshot``, ``profile``, ``rules_version``,
             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+            ``requirements`` (the requirements record is not the one approved,
+            or the approval predates binding it: NULL is not bound),
             ``review_decisions`` (a review decision recorded since, M3).
         execution_blockers: Why it cannot be exported for execution: the
             parts of an execution package this service does not produce yet,

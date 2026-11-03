@@ -1123,7 +1123,8 @@
         "catalogue_version": "كتالوج القطع",
         "profile": "ملف الشركة الافتراضي",
         "findings_policy": "سياسة الملاحظات",
-        "renderer_version": "صياغة ملفات التصدير ورسمها"
+        "renderer_version": "صياغة ملفات التصدير ورسمها",
+        "requirements": "سجل المتطلبات"
       },
       "approvalChanged": "في الصفحة تغييرات منذ النسخة {revision}؛ الاعتماد لا يشملها.",
       "approveHeld": {

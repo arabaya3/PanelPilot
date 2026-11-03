@@ -445,3 +445,125 @@ def test_derived_approved_and_superseded_revisions_refuse_acknowledgement(
     assert derived.status_code == 409
     assert error(derived)["code"] == "requirements_derived"
     assert revision_row(engine, other["id"], 1)["requirements"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Carry-forward: only what still holds
+# --------------------------------------------------------------------------- #
+
+
+def _with_pump_kw(kw: str) -> dict[str, Any]:
+    request = copy.deepcopy(GUIDED)
+    request["boards"][0]["loads"][1]["power_kw"] = kw
+    return request
+
+
+def _with_fault_level(ka: str) -> dict[str, Any]:
+    request = copy.deepcopy(GUIDED)
+    request["boards"][0]["supply"]["fault_level_ka"] = ka
+    return request
+
+
+def _revise(client: TestClient, pid: str, request: dict[str, Any]) -> dict[str, Any]:
+    saved = client.post(
+        f"/design/projects/{pid}/revisions", json={"request": request, "note": "next"}
+    )
+    assert saved.status_code in (200, 201), saved.text[:600]
+    body: dict[str, Any] = saved.json()
+    return body
+
+
+def test_an_acknowledgement_does_not_carry_to_a_changed_assumption(
+    client: TestClient, engine: Engine
+) -> None:
+    saved = _save(client)
+    pid = saved["id"]
+    motor = _qid(saved["requirements"], "motor_current_a")
+    done = _ack(client, pid, 1, motor)
+    assert done.status_code == 200, done.text[:600]
+    first = _stored(engine, pid, 1)
+    # The same inputs: the acknowledgement carries, with who and when as recorded.
+    same = _revise(client, pid, GUIDED)
+    assert _stored(engine, pid, 2)["acknowledgements"] == first["acknowledgements"]
+    assert same["revision"] == 2
+    # The pump's power changed: the same question id, a different assumption.
+    changed = _revise(client, pid, _with_pump_kw("7.5"))
+    record = _stored(engine, pid, 3)
+    assert _qid(record, "motor_current_a") == motor
+    asked = next(q for q in record["questions"] if q["id"] == motor)
+    assert asked["state"] == "open"
+    assert asked["by_user_id"] is None
+    assert asked["at"] is None
+    assert record["acknowledgements"] == []
+    shown = next(q for q in changed["requirements"]["questions"] if q["id"] == motor)
+    assert shown["state"] == "open"
+    # The earlier revisions' records are not rewritten.
+    assert _stored(engine, pid, 1) == first
+
+
+def test_a_changed_value_replaces_an_earlier_answer(client: TestClient, engine: Engine) -> None:
+    saved = _save(client)
+    pid = saved["id"]
+    fault = _qid(saved["requirements"], "fault_level_ka")
+    answered = _ask(client, pid, 1, fault, {"action": "answer", "value": "15"})
+    assert answered.status_code == 201, answered.text[:600]
+    # Unchanged: the answer stays, attributed.
+    _revise(client, pid, _with_fault_level("15"))
+    kept = next(q for q in _stored(engine, pid, 3)["questions"] if q["id"] == fault)
+    assert kept["state"] == "answered"
+    assert kept["answer"] == "15"
+    # Typed over in the table: the table's value, attributed to no one.
+    later = _revise(client, pid, _with_fault_level("25"))
+    assert later["request"]["boards"][0]["supply"]["fault_level_ka"] == "25"
+    record = _stored(engine, pid, 4)
+    assert all(q["id"] != fault for q in record["questions"])
+    assert all(q.get("answer") != "15" for q in later["requirements"]["questions"])
+    # Revision 2's record still says what was answered there.
+    two = next(q for q in _stored(engine, pid, 2)["questions"] if q["id"] == fault)
+    assert two["answer"] == "15"
+
+
+def test_an_approval_binds_the_requirements_record(
+    client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    review_support.author_revisions_as_another_member(monkeypatch)
+    saved = _save(client)
+    pid = saved["id"]
+    assert approve(client, pid, 1).status_code == 200
+    opened = client.get(f"/design/projects/{pid}").json()
+    assert opened["approval_current"] is True, opened.get("approval_changed")
+    # The record rewritten with a consistent hash after approval (outside the
+    # application): the hash check passes, the approval no longer counts.
+    altered = copy.deepcopy(revision_row(engine, pid, 1)["requirements"])
+    fault = _qid(altered, "fault_level_ka")
+    altered["acknowledgements"] = [
+        {"question_id": fault, "by_user_id": str(uuid.uuid4()), "by_name": "X", "at": "2001"}
+    ]
+    update_row(
+        engine, pid, 1, requirements=altered, requirements_sha256=snapshot.sha256_of(altered)
+    )
+    opened = client.get(f"/design/projects/{pid}").json()
+    assert opened["approval_current"] is False
+    assert "requirements" in opened["approval_changed"]
+    assert opened["export_status"] != "review_approved"
+    # Its exports are drafts: the approval is never printed as current.
+    exported = revision_export(client, pid, 1, "pdf")
+    assert exported.status_code == 200, exported.text[:600]
+    body = "\n".join(pdf_pages(exported.content))
+    assert "REVIEW APPROVED" not in body
+    assert "Eng. Real Approver" not in body
+
+
+def test_an_approval_recorded_before_the_binding_is_not_bound(
+    client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    review_support.author_revisions_as_another_member(monkeypatch)
+    saved = _save(client)
+    pid = saved["id"]
+    assert approve(client, pid, 1).status_code == 200
+    update_row(engine, pid, 1, approved_requirements_sha256=None)
+    opened = client.get(f"/design/projects/{pid}").json()
+    assert opened["approval_current"] is False
+    assert "requirements" in opened["approval_changed"]
+    body = "\n".join(pdf_pages(revision_export(client, pid, 1, "pdf").content))
+    assert "REVIEW APPROVED" not in body

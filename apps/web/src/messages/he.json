@@ -1123,7 +1123,8 @@
         "catalogue_version": "קטלוג החלקים",
         "profile": "פרופיל החברה המוגדר כברירת מחדל",
         "findings_policy": "מדיניות הממצאים",
-        "renderer_version": "הניסוח והשרטוט של קובצי הייצוא"
+        "renderer_version": "הניסוח והשרטוט של קובצי הייצוא",
+        "requirements": "רשומת הדרישות"
       },
       "approvalChanged": "בדף יש שינויים מאז גרסה {revision}; האישור אינו חל עליהם.",
       "approveHeld": {
