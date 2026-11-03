@@ -155,7 +155,12 @@ def test_a_pre_m6a_row_opens_stale_unestablished_and_refuses_approval_and_export
         assert opened["requirements"]["derived"] is True
         if shape == "approved":
             assert opened["approval_current"] is False
-            assert opened["approval_changed"] == ["rules_version", "renderer_version"]
+            # Recorded before approvals bound the requirements record: not bound.
+            assert opened["approval_changed"] == [
+                "requirements",
+                "rules_version",
+                "renderer_version",
+            ]
     exported = revision_export(client, project_id, 1, "pdf")
     assert exported.status_code == 409
     assert error(exported)["code"] == "revision_stale"
@@ -217,6 +222,10 @@ def test_the_resave_recovery_end_to_end_leaves_the_old_row_untouched(
     assert approved.status_code == 200, approved.text[:600]
     assert approved.json()["export_status"] == "review_approved"
     assert revision_export(client, project_id, 2, "pdf").status_code == 200
+    # The approval binds the resaved revision's requirements record.
+    bound = revision_row(engine, project_id, 2)
+    assert bound["approved_requirements_sha256"] == bound["requirements_sha256"]
+    assert approved.json()["approval_current"] is True
     # Revision 1: its snapshot, hashes and approval exactly as recorded.
     assert _old(engine, project_id) == before
     still = client.get(f"/design/projects/{project_id}", params={"revision": 1}).json()
