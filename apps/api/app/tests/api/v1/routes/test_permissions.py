@@ -45,6 +45,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     revision_row,
     save,
 )
+from app.tests.domain import review_support
 
 EVERYTHING = ["approve_revision", "delete_project", "edit_company_settings"]
 
@@ -776,3 +777,9 @@ def test_two_transfers_racing_leave_one_owner(round_: int, engine: Engine, team:
     assert codes == [200, 403], [r.text for r in results]
     winner = team.member if results[0].status_code == 200 else team.reviewer
     assert _owner_of(engine, team.owner.tenant_id) == uuid.UUID(winner.id)
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)
