@@ -1,6 +1,6 @@
 {
   "versions": {
-    "rules_version": "2026.10.23.1",
+    "rules_version": "2026.11.03.1",
     "catalogue_version": "none"
   },
   "cases": {
@@ -52,14 +52,14 @@
     "v2 plc": "49cbd90e1026476657b50e9767ad693632deb73d3960ae0766f8f54f87704a82",
     "v1 residential": "17e46615eaa1592b2538c0bf2a6a949b97ad974b558dff2bd64066e97589bc0e",
     "v2 residential": "6be0649439be444d71e9295c2f07b785931ca0308501a9d92076d11ca1102309",
+    "configuration drawing_control_relay": "c770a1b5d37224bb1bdd2ab72f736aab0ec451c8a0de0e070f9e4bf8e748c8d9",
+    "configuration drawing_heldout_feeder": "16874d1c75254cf4ab31238e8fbbcdef2965791ec2b2fe012e7dede58a65087a",
+    "configuration drawing_review_multi_board": "a01205cc24bef6128a7c8146ed518fe7f8edab52e74e3fe51af64c587b90e5bc",
+    "configuration drawing_routed_crowded": "9842fcabb84ea0747440c730de1d9bcd7bc4f93f84bab587ad4643127b9f82d5",
     "configuration feeder_1p": "16ed3412fdf22702e12a04bd4ee4062e9884feed425594a489a0ee58ab0a6ded",
     "configuration heldout_radial": "74f2adaeab8fddd4915c6ee598306af171d5f6d47d355e5a64a6383009e5bbe1",
     "configuration io_marshalling": "1436778e169d3eabd2a4b4b73e23b41778dffd500c4087b74d21ec8543ea0708",
     "configuration motor_dol_with_control": "2da9f0a7a8875428346339469f7389beac9905c51697237b8c12c94de093dff3",
-    "configuration pe_n_distribution": "7293434fc70f1053db6f4976855b10e8876d7c3636d3fdd461f3695c6af9756c",
-    "configuration drawing_control_relay": "c770a1b5d37224bb1bdd2ab72f736aab0ec451c8a0de0e070f9e4bf8e748c8d9",
-    "configuration drawing_heldout_feeder": "16874d1c75254cf4ab31238e8fbbcdef2965791ec2b2fe012e7dede58a65087a",
-    "configuration drawing_review_multi_board": "a01205cc24bef6128a7c8146ed518fe7f8edab52e74e3fe51af64c587b90e5bc",
-    "configuration drawing_routed_crowded": "9842fcabb84ea0747440c730de1d9bcd7bc4f93f84bab587ad4643127b9f82d5"
+    "configuration pe_n_distribution": "7293434fc70f1053db6f4976855b10e8876d7c3636d3fdd461f3695c6af9756c"
   }
 }

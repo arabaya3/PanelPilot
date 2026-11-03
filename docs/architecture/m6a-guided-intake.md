@@ -218,19 +218,30 @@ Where this section and §1–4 differ, this section holds.
   `2026.11.02.v2-11` → `2026.11.03.v2-12` (acknowledged-assumption lines; v1
   prints its own `designation_duplicate`). Every approval recorded under the
   old versions stops counting and is granted again (by a non-author).
-- `RULES_VERSION` is **not** bumped. The findings fingerprints of every
-  committed fixture and configuration are unchanged (no fixture has a
-  duplicate designation). The policy's reason for a bump is that a saved
-  row whose recomputed findings change would read as `findings_mismatch`;
-  for `designation_duplicate` that needs a stored design with one
-  designation on two parts of a board. A v1 design never has one
-  (designations are assigned by the server, per letter, in drawing order);
-  a v2 configuration could, but v2 is written only where
-  `DESIGN_SNAPSHOT_SCHEMA=pp-design/2`, never in a deployed environment.
-  Such a dev row reads `snapshot_integrity_failed` (`findings_mismatch`)
-  rather than `revision_stale`: refused either way. Bumping would make every
-  saved revision stale and force regenerating the compat fixtures. **Owner
-  decision requested** if the strict reading of the policy is preferred.
+- `RULES_VERSION` bumped `2026.10.23.1` → `2026.11.03.1` (owner decision,
+  2026-11-03): `designation_duplicate` changes what the findings checks can
+  produce, and under the M2 cause rule an unchanged version would make an
+  affected stored v2 row read as `snapshot_integrity_failed`
+  (`findings_mismatch`), an integrity failure that looks like tampering,
+  instead of stale. Impact: **every revision saved before this change reads
+  as `stale`** (`changed: rules_version`); its exports are refused
+  `revision_stale` and its approval, if any, stops counting (`rules_version`
+  as well as `renderer_version`). The remedy is to save it again as a new
+  revision and have a member other than its author approve it. **No stored
+  row is rewritten**: snapshots, hashes, findings and approvals stay exactly
+  as recorded. The findings fingerprints were re-recorded
+  (`RECORD_FINDINGS_FINGERPRINTS=1`; no case's digest changed, only the
+  version key) and the compat fixtures regenerated with
+  `python -m app.tests.design.model.fixtures.generate` (only their
+  `rules_version` changed).
+- The v1 renderer bump is required by the guard although every reference
+  export is byte-identical: the renderer has new output paths that the
+  reference exports do not exercise (acknowledged-assumption lines on every
+  review export's findings sheet, and a v1 revision's own
+  `designation_duplicate`). A file printed by this renderer can therefore say
+  what the previous one could not, so it carries a new version. Consequence:
+  every approval on this unmerged stack (and any recorded under
+  `2026.10.31.4` / `2026.11.02.v2-11`) is stale and is granted again.
 
 ### 5.7 Coordinator shape decisions (second round)
 
