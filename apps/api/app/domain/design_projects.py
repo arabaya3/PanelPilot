@@ -57,6 +57,7 @@ from app.design import (
     RULES_VERSION,
     connection_drawing_pdf,
     drawing_text,
+    findings_policy,
     integrity,
     marking,
     renderer_version,
@@ -924,7 +925,8 @@ def _structural(found: DesignFinding) -> bool:
     ``designation_duplicate`` is made by both checks; only the v2 one is
     structural, so a v1 revision still prints its own.
     """
-    return found.code in findings_v2.CODES and found.source == "integrity"
+    shared = found.code in findings_policy.INTEGRITY
+    return found.code in findings_v2.CODES and (not shared or found.source == "integrity")
 
 
 def _printed(findings: Sequence[DesignFinding], schema: str) -> list[DesignFinding]:
