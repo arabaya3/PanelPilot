@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { LOAD_KINDS, MOTOR_KINDS, STARTERS, type Load } from '@/components/design/schedule';
+import { MOTOR_KINDS, NEW_LOAD_KINDS, STARTERS, type Load } from '@/components/design/schedule';
 import { PlusIcon } from '@/components/icons';
 import { TableFrame } from '@/components/ui';
 import type { LoadKind, MotorStarter } from '@/lib/design';
@@ -132,12 +132,23 @@ export function LoadRows({
                       }}
                       className="input w-full min-w-32"
                     >
-                      {LOAD_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
+                      {(load.load === 'sub_board'
+                        ? [...NEW_LOAD_KINDS, load.load]
+                        : NEW_LOAD_KINDS
+                      ).map((kind) => (
+                        <option key={kind} value={kind} disabled={kind === 'sub_board'}>
                           {t(`kind.${kind}`)}
                         </option>
                       ))}
                     </select>
+                    {load.load === 'sub_board' && (
+                      <p
+                        className="field-error mt-1 text-xs"
+                        data-testid={`design-legacy-sub-board-${String(index)}`}
+                      >
+                        {tw('subBoardRow')}
+                      </p>
+                    )}
                   </td>
                   <td className="p-2">
                     <input
@@ -252,6 +263,9 @@ export function LoadRows({
           </tbody>
         </table>
       </TableFrame>
+      <p className="text-xs text-text-muted" data-testid="design-sub-board-hint">
+        {tw('subBoardHint')}
+      </p>
       <button type="button" onClick={onAdd} className="btn btn-sm btn-secondary self-start">
         <PlusIcon width="16" height="16" aria-hidden="true" />
         {t('add')}
