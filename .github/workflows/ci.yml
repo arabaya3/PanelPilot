@@ -70,13 +70,19 @@ jobs:
       # exactly the paths where that must not happen: calc tools produce numbers
       # that end up on drawings, and guardrails decide whether the assistant is
       # allowed to answer at all.
+      # One traced run of the suite measures both packages; each is then gated
+      # on its own, so the two thresholds stay separate as above.
+      - name: Coverage — run the suite once, measuring both packages
+        if: matrix.check == 'coverage'
+        run: pytest --cov=app.ai.tools --cov=app.ai.guardrails --cov-report=
+
       - name: Coverage — calc tools (>=95%)
         if: matrix.check == 'coverage'
-        run: pytest --cov=app.ai.tools --cov-report=term-missing --cov-fail-under=95
+        run: coverage report --show-missing --include='app/ai/tools/*' --fail-under=95
 
       - name: Coverage — cite-or-refuse guardrails (>=95%)
         if: matrix.check == 'coverage'
-        run: pytest --cov=app.ai.guardrails --cov-report=term-missing --cov-fail-under=95
+        run: coverage report --show-missing --include='app/ai/guardrails/*' --fail-under=95
 
   web:
     name: web (${{ matrix.check }})
