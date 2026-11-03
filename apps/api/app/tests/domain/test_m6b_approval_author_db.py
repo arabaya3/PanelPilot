@@ -396,3 +396,29 @@ def test_resave_carries_control_needs_and_acknowledgements_as_recorded(
     assert record["intake"] == "guided"
     assert record["resaved_from"] == 1
     assert revision_row(engine, saved["id"], 1) == before
+
+
+def test_a_configured_revision_is_not_resaved_without_its_configuration(
+    client: TestClient, engine: Engine, caller: _Caller, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The configuration lives only in the snapshot: a re-save of the request would drop it."""
+    from app.tests.domain.test_design_projects_configured_db import _configuration, _request
+
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/2")
+    saved = _saved(client, _request())
+    revised = client.post(
+        f"/design/projects/{saved['id']}/revisions",
+        json={"request": _request(), "note": "configured", "configuration": _configuration()},
+    )
+    assert revised.status_code == 201, revised.text[:500]
+    update_row(engine, saved["id"], 2, author_user_id=None)
+    before = revision_row(engine, saved["id"], 2)
+    refused = _resave(client, saved["id"], 2)
+    assert refused.status_code == 409, refused.text[:300]
+    assert error(refused)["code"] == "revision_not_validated"
+    assert error(refused)["params"]["reason"] == "configuration_not_carried"
+    assert _count(engine, saved["id"]) == (2, 2)
+    assert revision_row(engine, saved["id"], 2) == before
+    # Revision 1 (no configuration) re-saves.
+    update_row(engine, saved["id"], 1, author_user_id=None)
+    assert _resave(client, saved["id"], 1).status_code == 201

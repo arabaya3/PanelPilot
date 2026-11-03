@@ -148,6 +148,8 @@ hand_off_auto, remote_control, interlock, timed`, each once. Refusals (422):
   (append-only `{question_id, by_user_id, by, at}`), and on each question
   `answerable` and `by_name` (the account's display name, never its email; empty
   when it has none). `subject` may carry `control_ref`/`supply_board_ref`.
+  `resaved_from` (int) on a revision saved by `…/resave` (M6b): the revision
+  whose stored request it re-designed; absent otherwise.
 - `trace`: each load `b<n>.l<m>` → `<board name>/c<index+1>`; each feeder →
   the supply board's circuit feeding it; `design_ref: null` where the design
   was refused.
@@ -195,13 +197,36 @@ findings}`. Saves nothing, reads no project.
 ### 5.4 Approval
 
 - Self-approval is strict: `approval_by_author` (403) when the revision's
-  recorded author (the saving account's email, compared case-insensitively)
-  is the approver, owners included. **Product consequence:** a single-person
-  tenant cannot approve; it needs a second member with approve permission
-  (owner, admin or reviewer).
-- A revision with no recorded author approves; `author_unknown: true` is on
-  the opened revision and on each `RevisionSummary`, and no author is
-  invented.
+  saving account (`author_user_id`) is the approver, owners included.
+  **Product consequence:** a single-person tenant cannot approve; it needs a
+  second member with approve permission (owner, admin or reviewer).
+- **Author established (M6b, owner decision).** A revision's author is
+  established only when the row records `author_user_id`. A row with only an
+  email (saved before migration `b7d3f1a9c2e4`) or nothing is "author not
+  established": its approval is refused 409 `approval_author_not_established`
+  (`params.revision` as a string), checked after the revision's own refusals
+  (`revision_already_approved`, `revision_stale`, …) and before
+  `approval_by_author`. The email is never compared and `author_user_id` is
+  never backfilled or guessed from it. `SavedProject.author_established` and
+  each `RevisionSummary.author_established` carry the flag;
+  `author_unknown` stays true only when nothing is recorded. A trial's save
+  records no `author_user_id` (its subject is an anonymous session; the
+  account that later claims the tenant has another id).
+- **Recovery:** `POST /design/projects/{id}/revisions/{n}/resave` (201, any
+  member who may save a revision; a trial is 403 `resave_requires_account`;
+  another tenant's project 404 `revision_not_found`). It designs revision
+  `n`'s stored request under today's rules and saves it as the caller's new
+  latest revision, note `Re-saved from revision <n> for independent review`,
+  record `resaved_from: <n>`. Control needs carry; acknowledgements whose
+  question still stands carry with their original `by_user_id`/`at` (as on an
+  answer). A stored request today's rules refuse is returned refused
+  unchanged (422 `feeder_server_owned`, `sub_board_load_server_owned`, …)
+  and nothing is saved; the user fixes it in the editor and saves normally.
+  A revision whose design holds a configuration is refused 409
+  `revision_not_validated` (`reason: configuration_not_carried`), since the
+  configuration lives only in the snapshot and a re-save of the request would
+  drop it. Revision `n` (snapshot, hashes, record, approval) is never changed.
+  A different eligible member then approves the new revision.
 
 ### 5.5 Exports
 
@@ -279,7 +304,8 @@ account`. No name is invented. `RevisionSummary.author` follows the same
   account's id (`design_project_revisions.author_user_id`, migration
   `b7d3f1a9c2e4`, single head), so an email changed after saving is still
   the author and another account later given that email is not. A row saved
-  before the column (`author_user_id` NULL) falls back to its recorded email,
-  case-insensitive. `SavedProject.author_unknown` and each
+  before the column (`author_user_id` NULL) is "author not established" and
+  cannot be approved (§5.4, superseding the earlier email fallback).
+  `SavedProject.author_unknown` and each
   `RevisionSummary.author_unknown` are true only when a row records neither.
 - `params` values are strings (`"load_index": "1"`), as for every coded error.
