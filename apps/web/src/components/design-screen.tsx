@@ -58,6 +58,7 @@ import {
 import { MarkupsPanel } from '@/components/design/markups-panel';
 import {
   approvalOf,
+  authorEstablishedOf,
   isAuthorOf,
   ProjectsPanel,
   type OpenedProject,
@@ -910,6 +911,7 @@ function DesignWorkspace({
       canApprove: permits(project, 'approve_revision'),
       isAuthor: isAuthorOf(project),
       authorUnknown: (project as { author_unknown?: unknown }).author_unknown === true,
+      authorEstablished: authorEstablishedOf(project),
     });
     const requirements = requirementsOf(project);
     setSavedRequirements(requirements);

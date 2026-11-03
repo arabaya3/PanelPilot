@@ -832,6 +832,26 @@ export function approveRevision(
   );
 }
 
+/**
+ * Save revision `revision`'s stored request again as the signed-in account's
+ * new latest revision, for a different member to approve:
+ * `POST …/revisions/{n}/resave`. For a revision whose author the server cannot
+ * establish (`author_established: false`). Nothing of the page is sent; a
+ * request today's rules refuse comes back refused (e.g. `feeder_server_owned`)
+ * and nothing is saved.
+ */
+export function resaveRevision(
+  options: Transport & { id: string; revision: number },
+): Promise<ProjectOutcome> {
+  const { id, revision } = options;
+  return call(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/resave`,
+    {},
+    saved,
+  );
+}
+
 const COMPANY_SETTINGS = '/api/v1/design/company-settings';
 
 function settingsOf(payload: object): SettingsOutcome | null {

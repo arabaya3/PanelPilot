@@ -17,6 +17,7 @@ import {
   listProjects,
   openProject,
   permits,
+  resaveRevision,
   reviseProject,
   saveProject,
   type ProjectDesignRequest,
@@ -33,6 +34,7 @@ const REOPEN_ON = new Set([
   'revision_not_validated',
   // The account's permissions changed since the revision was opened.
   'approval_not_permitted',
+  'approval_author_not_established',
 ]);
 
 /** The project being worked on, once saved or opened. */
@@ -67,6 +69,13 @@ export type OpenedProject = {
   isAuthor?: boolean | undefined;
   /** The server holds no author for the revision open (`author_unknown`): said, never guessed. */
   authorUnknown?: boolean;
+  /**
+   * The server's `author_established`: false when the revision records no
+   * saving account (only an email, or nothing), so it cannot be approved
+   * (`approval_author_not_established`) until it is saved again for review.
+   * Absent, the page does not guess.
+   */
+  authorEstablished?: boolean | undefined;
 };
 
 /** One line of the title block's revision list. */
@@ -75,6 +84,12 @@ export type TitleRevision = NonNullable<ProjectDesignRequest['info']['revisions'
 /** The server's `is_author` for the revision open; undefined where it does not say. */
 export function isAuthorOf(project: SavedProject): boolean | undefined {
   const flag: unknown = (project as { is_author?: unknown }).is_author;
+  return typeof flag === 'boolean' ? flag : undefined;
+}
+
+/** The server's `author_established` for the revision open; undefined where it does not say. */
+export function authorEstablishedOf(project: SavedProject): boolean | undefined {
+  const flag: unknown = (project as { author_established?: unknown }).author_established;
   return typeof flag === 'boolean' ? flag : undefined;
 }
 
@@ -169,6 +184,7 @@ export function ProjectsPanel({
     open: typeof openProject;
     remove: typeof deleteProject;
     approve: typeof approveRevision;
+    resave: typeof resaveRevision;
   }>;
 }) {
   const t = useIsolatingTranslations('design.projects');
@@ -183,6 +199,7 @@ export function ProjectsPanel({
     open = openProject,
     remove = deleteProject,
     approve = approveRevision,
+    resave = resaveRevision,
   } = impls;
   const [page, setPage] = useState<ProjectPage | null>(null);
   const [ownNote, setOwnNote] = useState('');
@@ -200,7 +217,12 @@ export function ProjectsPanel({
   // server checks the account itself (`approval_by_author`), owners included.
   const selfAuthored =
     !trial && opened !== null && opened.approval === null && opened.isAuthor === true;
-  const held = trial || notPermitted || dirty || selfAuthored || reasons.length > 0;
+  // Only from the server's flag, never from names or emails: a revision that
+  // records no saving account cannot be shown to be approved independently.
+  const authorNotEstablished =
+    !trial && opened !== null && opened.approval === null && opened.authorEstablished === false;
+  const held =
+    trial || notPermitted || dirty || selfAuthored || authorNotEstablished || reasons.length > 0;
   const canDelete = permits(page, 'delete_project');
   // Saving the revision open again, unchanged, is how it is designed and
   // approved under today's rules and renderer: when its approval no longer
@@ -359,6 +381,29 @@ export function ProjectsPanel({
     }
   }
 
+  async function saveForReview() {
+    if (opened === null || working || dirty) return;
+    const ticket = ++sequence.current;
+    setWorking(true);
+    setMessage(null);
+    const outcome = await resave({ token, id: opened.id, revision: opened.revision });
+    if (ticket !== sequence.current) return;
+    setWorking(false);
+    if (outcome.kind === 'saved') {
+      setMessage(t('resaved', { revision: outcome.project.revision, from: opened.revision }));
+      onOpened(outcome.project, true);
+      void refresh();
+      return;
+    }
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    // Refused as a save would be (a typed feeder row, say): nothing was saved,
+    // and nothing of the user's is changed; they correct it in the editor.
+    if (outcome.kind === 'refused') onRefused?.(outcome);
+    setMessage(
+      outcome.kind === 'refused' ? `${say(outcome)} ${t('resaveRefused')}` : t('saveFailed'),
+    );
+  }
+
   async function erase(projectId: string) {
     setConfirming(null);
     if (working) return;
@@ -484,6 +529,24 @@ export function ProjectsPanel({
             )}
             {held && (
               <div id={`${id}-approve-held`} className="flex flex-col gap-1">
+                {authorNotEstablished && (
+                  <div className="flex flex-col gap-2" data-testid="approve-author-not-established">
+                    <p className="text-sm text-text-muted">
+                      {t('authorNotEstablished', { revision: opened.revision })}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={working || dirty}
+                      onClick={() => {
+                        void saveForReview();
+                      }}
+                      className="btn btn-secondary btn-sm self-start"
+                      data-testid="resave-for-review"
+                    >
+                      {t('resave')}
+                    </button>
+                  </div>
+                )}
                 {selfAuthored && (
                   <p className="text-sm text-text-muted" data-testid="approve-self-authored">
                     {t('approveSelfAuthored', { revision: opened.revision })}
