@@ -528,10 +528,22 @@ export function listProjects(
 
 /** Save a new project as its first revision: `POST /api/v1/design/projects`. */
 export function saveProject(
-  options: Transport & { name: string; request: ProjectDesignRequest; note?: string },
+  options: Transport & {
+    name: string;
+    request: ProjectDesignRequest;
+    note?: string;
+    requirementsInput?: RequirementsInput | null;
+  },
 ): Promise<ProjectOutcome> {
-  const { name, request, note = '' } = options;
-  return call(options, PROJECTS, { name, request, note }, saved);
+  const { name, request, note = '', requirementsInput } = options;
+  return call(
+    options,
+    PROJECTS,
+    requirementsInput
+      ? { name, request, note, requirements_input: requirementsInput }
+      : { name, request, note },
+    saved,
+  );
 }
 
 /**
@@ -545,14 +557,148 @@ export function reviseProject(
     request: ProjectDesignRequest;
     note?: string;
     configuration?: Record<string, unknown> | null;
+    requirementsInput?: RequirementsInput | null;
   },
 ): Promise<ProjectOutcome> {
-  const { id, request, note = '', configuration } = options;
+  const { id, request, note = '', configuration, requirementsInput } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
-    configuration ? { request, note, configuration } : { request, note },
+    {
+      request,
+      note,
+      ...(configuration ? { configuration } : {}),
+      ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
+    },
     saved,
+  );
+}
+
+/**
+ * What the guided intake asks the server to record besides the request
+ * (`requirements_input`, M6a): how the schedule was entered and each load's
+ * control needs. Control needs are requirements only; nothing is designed
+ * from them. Boards and loads travel in the request itself.
+ */
+export type RequirementsInput = {
+  intake: 'guided' | 'table' | 'import';
+  control: Array<{ board_index: number; load_index: number; needs: ControlNeed[] }>;
+};
+
+export const CONTROL_NEEDS = ['start_stop', 'running_indicator'] as const;
+export type ControlNeed = (typeof CONTROL_NEEDS)[number];
+
+export type RequirementSubject = { board_ref?: string | null; load_ref?: string | null };
+
+/** A question the server derived: a value left empty, or an assumption the design made. */
+export type RequirementQuestion = {
+  id: string;
+  kind: 'missing_value' | 'assumption';
+  subject: RequirementSubject;
+  field: string;
+  finding_code?: string | null;
+  state: 'open' | 'answered' | 'acknowledged';
+  answer?: unknown;
+  /** Who answered or acknowledged, as the server recorded it from the token. */
+  by_user_id?: string | null;
+  /** A display name for `by_user_id`, where the server gives one. */
+  by_name?: string | null;
+  /** When, by the server's clock (ISO 8601). */
+  at?: string | null;
+};
+
+/** The versioned requirements record a revision stores (`pp-req/1`). */
+export type RequirementsRecord = {
+  /** `pp-req/1` today. */
+  schema: string;
+  /** Derived from an older revision's request: never counts as acknowledged. */
+  derived?: boolean;
+  intake: string;
+  boards: Array<{ ref: string; name: string; fed_from_ref?: string | null }>;
+  loads: Array<{ ref: string; board_ref: string; description: string; source?: string }>;
+  control: Array<{
+    ref: string;
+    board_ref: string;
+    load_ref: string;
+    needs: string[];
+    status: string;
+  }>;
+  questions: RequirementQuestion[];
+  open_items: Array<{ code: string; subject: RequirementSubject }>;
+  trace: Array<{ requirement_ref: string; design_ref: string }>;
+};
+
+/** A saved project's requirements record, where the server returned one. */
+export function requirementsOf(project: object | null | undefined): RequirementsRecord | null {
+  const record = (project as { requirements?: unknown } | null | undefined)?.requirements;
+  return typeof record === 'object' && record !== null && 'questions' in record
+    ? (record as RequirementsRecord)
+    : null;
+}
+
+export type PreviewOutcome =
+  | { kind: 'previewed'; requirements: RequirementsRecord; design: BoardDesignResponse | null }
+  | Failure;
+
+/**
+ * The requirements record the server derives from what is entered, with its
+ * questions and open items: `POST /api/v1/design/projects/requirements/preview`.
+ * Nothing is saved.
+ */
+export function previewRequirements(
+  options: Transport & { request: ProjectDesignRequest; requirementsInput: RequirementsInput },
+): Promise<PreviewOutcome> {
+  const { request, requirementsInput } = options;
+  return call<PreviewOutcome>(
+    options,
+    `${PROJECTS}/requirements/preview`,
+    { request, requirements_input: requirementsInput },
+    (payload) => {
+      const requirements = requirementsOf(payload);
+      if (requirements === null) return null;
+      const design = (payload as { design?: unknown }).design;
+      return {
+        kind: 'previewed',
+        requirements,
+        design:
+          typeof design === 'object' && design !== null ? (design as BoardDesignResponse) : null,
+      };
+    },
+  );
+}
+
+/**
+ * Answer or acknowledge one question of a saved revision:
+ * `POST /api/v1/design/projects/{id}/revisions/{n}/questions/{qid}`. An answer
+ * makes a new revision; an acknowledgement is recorded against this one. The
+ * server records who and when; the page sends neither.
+ */
+export type AnswerOutcome = ProjectOutcome | { kind: 'recorded'; requirements: RequirementsRecord };
+
+export function answerQuestion(
+  options: Transport & {
+    id: string;
+    revision: number;
+    question: string;
+    action: 'answer' | 'acknowledge';
+    value?: string;
+  },
+): Promise<AnswerOutcome> {
+  const { id, revision, question, action, value } = options;
+  // An answer is a new revision (201, the project); an acknowledgement is
+  // recorded on this one (200, its requirements record).
+  return call<AnswerOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/questions/${encodeURIComponent(question)}`,
+    action === 'answer' ? { action, value } : { action },
+    (payload) => {
+      const project = saved(payload);
+      if (project) return project;
+      const nested = requirementsOf(payload);
+      const requirements =
+        nested ?? ('questions' in payload ? (payload as RequirementsRecord) : null);
+      return requirements ? { kind: 'recorded', requirements } : null;
+    },
   );
 }
 

@@ -237,7 +237,12 @@ export function useOutcomeText(): (outcome: { kind: string }) => string {
       const key = `errors.${refusal.code ?? ''}`;
       if (refusal.code && t.has(key)) {
         const { subject, ...values } = refusal.params ?? {};
-        const sentence = t(key, values);
+        // A load row the server names by its index is said as the form numbers it.
+        const row = Number(values.load_index);
+        const sentence = t(
+          key,
+          Number.isInteger(row) && row >= 0 ? { ...values, row: row + 1 } : values,
+        );
         return subject ? `${isolate(subject)}: ${sentence}` : sentence;
       }
       return refusal.detail || t('error');
