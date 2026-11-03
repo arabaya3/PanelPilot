@@ -238,15 +238,15 @@ branch and were never released.
     "to", not an arrow glyph). The JSON export carries them under
     `requirements`;
   - acknowledged assumptions: `[ACKNOWLEDGED] Assumption acknowledged by
-    <name> on <date> — not engineer-validated: <code> — <board> › <load>`;
+<name> on <date> — not engineer-validated: <code> — <board> › <load>`;
   - a v1 revision's own `designation_duplicate`; a duplicated v2 designation
     as drawn (`=function+location-product`, e.g. `-K1`);
   - 6 mm of space after the calculations report's findings section.
-  The v1 bump is required by the guard although the v1 reference exports
-  are byte-identical apart from that spacing: the renderer has output paths
-  the reference exports do not exercise (the lines above), so a file it
-  prints can say what the previous one could not. The v2 connection drawing
-  and schedules also print the rules version in their headers.
+    The v1 bump is required by the guard although the v1 reference exports
+    are byte-identical apart from that spacing: the renderer has output paths
+    the reference exports do not exercise (the lines above), so a file it
+    prints can say what the previous one could not. The v2 connection drawing
+    and schedules also print the rules version in their headers.
 - **Approval impact.** Every revision saved before this change reads `stale`
   (`changed: rules_version`): its exports are refused `revision_stale` and
   its approval, if any, stops counting (`rules_version` and
@@ -266,7 +266,7 @@ branch and were never released.
 - Questions carry `by_name`, set by the server when answered or
   acknowledged and **never empty**: the account's display name, else its
   email (visible to tenant members on the Team page), else `unknown
-  account`. No name is invented. `RevisionSummary.author` follows the same
+account`. No name is invented. `RevisionSummary.author` follows the same
   rule (`unknown account` for a revision with no recorded author).
 - Motor current question: `field: "motor_current_a"`, `kind: "assumption"`,
   subject the load, acknowledge only (`motor_current_table` or
