@@ -89,6 +89,10 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # The findings (``DesignFinding``) recorded when it was saved.
     findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # The requirements record (``pp-req/1``, M6a) and its SHA-256, checked on
+    # every read; NULL on a revision saved before it, which gets a derived one.
+    requirements: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Set with the approval, in the same locked transaction: the snapshot
     # hash approved. An approval counts only while it equals snapshot_sha256.
     approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)

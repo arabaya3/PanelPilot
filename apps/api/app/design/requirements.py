@@ -1,0 +1,413 @@
+"""The requirements record of a revision, ``pp-req/1`` (M6a guided intake).
+
+What the user asked for, kept beside what the designer made of it: the boards
+and loads as entered, the feeders the designer generated, the control needs
+of controlled loads, the questions the server derives, what this slice does
+not design (open items), and a trace from each load and feeder to its design
+element. Nothing here changes the design: the designer's defaults still
+apply, and a question only makes them visible.
+
+Questions are derived, never sent:
+
+* ``missing_value``: a required input left empty that the request can hold
+  (``answerable``): a main board's fault level (``fault_level_ka``) or
+  ``Ze`` (``ze_ohm``, the supply's ``earth_loop_ohm``), a sub-board's feeder
+  length (``feeder_length_m``);
+* ``assumption``: a finding the designer already raises for an assumption.
+  ``default_power_factor`` is asked per load left without a power factor
+  (answerable: the value is that load's ``power_factor``); a motor's current
+  taken from the table or the formula (``motor_current_table``,
+  ``motor_current_formula``) is asked as ``motor_current_a``, which
+  no input holds, so it can only be acknowledged; the other assumption codes
+  (:data:`ASSUMPTION_CODES`) are asked per board, acknowledge only.
+
+A question's id is a digest of what it asks about (kind, field, finding code,
+board name, load ref), so the same question keeps its id across revisions.
+Refs are the server's: a board keeps its ref while its name is unchanged, a
+load while its board and description are, as a previous record gives them.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from app.models.schemas.design import (
+    DesignFinding,
+    DesignProject,
+    LoadKind,
+    ProjectDesignRequest,
+    RequirementsInput,
+)
+
+SCHEMA = "pp-req/1"
+
+#: Finding codes that state an assumption the designer made, asked per board
+#: (beside ``default_power_factor`` and the motor current codes, asked per load).
+ASSUMPTION_CODES: tuple[str, ...] = (
+    "fault_level_inherited",
+    "demand_factors",
+    "rules_unconfirmed",
+    "contactor_ac1",
+)
+
+#: The motor current findings: the current was assumed, not read off a nameplate.
+MOTOR_CURRENT_CODES: tuple[str, ...] = ("motor_current_table", "motor_current_formula")
+
+#: The answerable fields, as a question names them.
+ANSWERABLE: tuple[str, ...] = ("fault_level_ka", "ze_ohm", "feeder_length_m", "power_factor")
+
+
+def question_id(kind: str, field: str | None, code: str | None, board: str, load: str) -> str:
+    """A question's stable id: a digest of what it asks about."""
+    key = "|".join([kind, field or "", code or "", board, load])
+    return "q-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _board_refs(request: ProjectDesignRequest, prior: Mapping[str, Any] | None) -> list[str]:
+    known = {b["name"]: b["ref"] for b in (prior or {}).get("boards", [])}
+    used = set(known.values())
+    refs: list[str] = []
+    counter = 0
+    for board in request.boards:
+        ref = known.get(board.name)
+        if ref is None or ref in refs:
+            counter += 1
+            while f"b{counter}" in used or f"b{counter}" in refs:
+                counter += 1
+            ref = f"b{counter}"
+        refs.append(ref)
+    return refs
+
+
+def _load_refs(
+    board_ref: str, descriptions: Sequence[str], prior: Mapping[str, Any] | None
+) -> list[str]:
+    earlier = [
+        (load["description"], load["ref"])
+        for load in (prior or {}).get("loads", [])
+        if load.get("board_ref") == board_ref
+    ]
+    taken = {ref for _, ref in earlier}
+    refs: list[str | None] = []
+    for description in descriptions:
+        match = next((ref for text, ref in earlier if text == description), None)
+        if match is not None:
+            earlier.remove((description, match))
+        refs.append(match)
+    counter = 0
+    out: list[str] = []
+    for ref in refs:
+        if ref is None:
+            counter += 1
+            while f"{board_ref}.l{counter}" in taken:
+                counter += 1
+            ref = f"{board_ref}.l{counter}"
+            taken.add(ref)
+        out.append(ref)
+    return out
+
+
+def build(
+    request: ProjectDesignRequest,
+    designed: DesignProject | None,
+    findings: Sequence[DesignFinding],
+    given: RequirementsInput | None = None,
+    *,
+    prior: Mapping[str, Any] | None = None,
+    answered: Sequence[Mapping[str, Any]] = (),
+    derived: bool = False,
+) -> dict[str, Any]:
+    """The requirements record of a request, as its revision stores it.
+
+    Args:
+        request: The project as entered.
+        designed: Its design, or ``None`` where the design was refused.
+        findings: The design's findings (for the assumption questions).
+        given: The guided input; ``None`` records the request as a table.
+        prior: The previous revision's record, whose refs, control needs
+            and acknowledgements carry over where they still apply.
+        answered: Questions answered into this request, each the question as
+            it was asked plus its ``answer``, ``by_user_id``, ``by_name`` and ``at``.
+        derived: Built for an older revision with no stored record.
+
+    Returns:
+        The record, JSON-shaped.
+    """
+    intake = given.intake if given is not None else (prior or {}).get("intake", "table")
+    source = "imported" if intake == "import" else "typed"
+    board_refs = _board_refs(request, prior)
+    by_name = {board.name: ref for board, ref in zip(request.boards, board_refs, strict=True)}
+    boards: list[dict[str, Any]] = []
+    loads: list[dict[str, Any]] = []
+    load_refs: list[list[str]] = []
+    for board, ref in zip(request.boards, board_refs, strict=True):
+        boards.append(
+            {
+                "ref": ref,
+                "name": board.name,
+                "fed_from_ref": by_name.get(board.fed_from) if board.fed_from else None,
+            }
+        )
+        refs = _load_refs(ref, [load.description for load in board.loads], prior)
+        load_refs.append(refs)
+        loads += [
+            {"ref": lref, "board_ref": ref, "description": load.description, "source": source}
+            for load, lref in zip(board.loads, refs, strict=True)
+        ]
+
+    control = _control(request, board_refs, load_refs, given, prior)
+    feeders = [
+        {
+            "ref": f"{ref}.feeder",
+            "board_ref": ref,
+            "supply_board_ref": by_name[board.fed_from],
+            "source": "generated",
+        }
+        for board, ref in zip(request.boards, board_refs, strict=True)
+        if board.fed_from is not None and board.fed_from in by_name
+    ]
+    open_items: list[dict[str, Any]] = [
+        {
+            "code": "control_not_designed",
+            "subject": {
+                "board_ref": item["board_ref"],
+                "load_ref": item["load_ref"],
+                "control_ref": item["ref"],
+            },
+        }
+        for item in control
+    ]
+    open_items += [
+        {
+            "code": "inter_board_wiring_not_modelled",
+            "subject": {"board_ref": f["board_ref"], "supply_board_ref": f["supply_board_ref"]},
+        }
+        for f in feeders
+    ]
+    questions = _questions(request, board_refs, load_refs, findings)
+    asked = {q["id"] for q in questions}
+    for done in answered:
+        if done["id"] not in asked:
+            questions.append({**done, "state": "answered"})
+            asked.add(done["id"])
+    for earlier in (prior or {}).get("questions", []):
+        # An answer stays on the record of every later revision.
+        if earlier.get("state") == "answered" and earlier["id"] not in asked:
+            questions.append(dict(earlier))
+            asked.add(earlier["id"])
+    # An acknowledgement carries over while the very question still stands
+    # (same id, so same kind, field, finding, board and load).
+    acknowledgements = (
+        []
+        if derived
+        else [
+            dict(ack)
+            for ack in (prior or {}).get("acknowledgements", [])
+            if ack["question_id"] in asked
+        ]
+    )
+    record: dict[str, Any] = {
+        "schema": SCHEMA,
+        "intake": intake,
+        "derived": derived,
+        "boards": boards,
+        "loads": loads,
+        "feeders": feeders,
+        "control": control,
+        "questions": questions,
+        "open_items": open_items,
+        "trace": _trace(request, board_refs, load_refs, feeders, designed),
+        "acknowledgements": acknowledgements,
+    }
+    return apply_acknowledgements(record)
+
+
+def apply_acknowledgements(record: dict[str, Any]) -> dict[str, Any]:
+    """Each open question an acknowledgement names, set ``acknowledged`` by it (the latest)."""
+    if record.get("derived"):
+        return record
+    latest = {ack["question_id"]: ack for ack in record.get("acknowledgements", [])}
+    for question in record["questions"]:
+        ack = latest.get(question["id"])
+        if ack is not None and question["state"] != "answered":
+            question.update(
+                state="acknowledged",
+                by_user_id=ack["by_user_id"],
+                by_name=ack.get("by_name"),
+                at=ack["at"],
+            )
+    return record
+
+
+def _control(
+    request: ProjectDesignRequest,
+    board_refs: Sequence[str],
+    load_refs: Sequence[Sequence[str]],
+    given: RequirementsInput | None,
+    prior: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """One control requirement per controlled load, with the needs the input gives."""
+    needs: dict[tuple[int, int], list[str]] = {}
+    if given is not None:
+        for item in given.control:
+            needs[(item.board_index, item.load_index)] = [need.value for need in item.needs]
+    else:
+        earlier = {c["load_ref"]: c["needs"] for c in (prior or {}).get("control", [])}
+        for b, refs in enumerate(load_refs):
+            for i, ref in enumerate(refs):
+                if ref in earlier:
+                    needs[(b, i)] = list(earlier[ref])
+    out: list[dict[str, Any]] = []
+    for b, board in enumerate(request.boards):
+        count = 0
+        for i, load in enumerate(board.loads):
+            if not load.controlled:
+                continue
+            count += 1
+            out.append(
+                {
+                    "ref": f"{board_refs[b]}.c{count}",
+                    "board_ref": board_refs[b],
+                    "load_ref": load_refs[b][i],
+                    "needs": needs.get((b, i), []),
+                    "status": "not_designed",
+                }
+            )
+    return out
+
+
+def _question(
+    kind: str,
+    field: str | None,
+    code: str | None,
+    board: str,
+    board_ref: str,
+    load_ref: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": question_id(kind, field, code, board, load_ref or ""),
+        "kind": kind,
+        "subject": {"board_ref": board_ref, "load_ref": load_ref},
+        "field": field,
+        "finding_code": code,
+        "answerable": field in ANSWERABLE,
+        "state": "open",
+        "answer": None,
+        "by_user_id": None,
+        "by_name": None,
+        "at": None,
+    }
+
+
+def _questions(
+    request: ProjectDesignRequest,
+    board_refs: Sequence[str],
+    load_refs: Sequence[Sequence[str]],
+    findings: Sequence[DesignFinding],
+) -> list[dict[str, Any]]:
+    codes: dict[str, set[str]] = {}
+    on_circuit: dict[tuple[str, str], set[str]] = {}
+    for found in findings:
+        if found.board_id is None:
+            continue
+        codes.setdefault(found.board_id, set()).add(found.code)
+        if found.circuit_id is not None:
+            on_circuit.setdefault((found.board_id, found.circuit_id), set()).add(found.code)
+    out: list[dict[str, Any]] = []
+    for b, board in enumerate(request.boards):
+        ref = board_refs[b]
+        here = codes.get(board.name, set())
+        if board.fed_from is None:
+            if board.supply.fault_level_ka is None:
+                code = "no_fault_level" if "no_fault_level" in here else None
+                out.append(_question("missing_value", "fault_level_ka", code, board.name, ref))
+            if board.supply.earth_loop_ohm is None:
+                code = "earth_fault_no_ze" if "earth_fault_no_ze" in here else None
+                out.append(_question("missing_value", "ze_ohm", code, board.name, ref))
+        elif board.feeder_length_m is None:
+            out.append(_question("missing_value", "feeder_length_m", None, board.name, ref))
+        for i, load in enumerate(board.loads):
+            lref = load_refs[b][i]
+            circuit = on_circuit.get((board.name, f"c{i + 1}"), set())
+            for code in MOTOR_CURRENT_CODES:
+                if code in circuit:
+                    out.append(
+                        _question("assumption", "motor_current_a", code, board.name, ref, lref)
+                    )
+            if (
+                "default_power_factor" in here
+                and load.power_factor is None
+                and load.load is not LoadKind.MOTOR
+            ):
+                out.append(
+                    _question(
+                        "assumption",
+                        "power_factor",
+                        "default_power_factor",
+                        board.name,
+                        ref,
+                        lref,
+                    )
+                )
+        for code in ASSUMPTION_CODES:
+            if code in here:
+                out.append(_question("assumption", None, code, board.name, ref))
+    return out
+
+
+def _trace(
+    request: ProjectDesignRequest,
+    board_refs: Sequence[str],
+    load_refs: Sequence[Sequence[str]],
+    feeders: Sequence[Mapping[str, Any]],
+    designed: DesignProject | None,
+) -> list[dict[str, Any]]:
+    """Each load to its circuit (``<board>/c<n>``), each feeder to the circuit feeding it."""
+    boards = {board.id: board for board in designed.boards} if designed is not None else {}
+    names = dict(zip(board_refs, (b.name for b in request.boards), strict=True))
+    out: list[dict[str, Any]] = []
+    for b, board in enumerate(request.boards):
+        circuits = {c.id for c in boards[board.name].circuits} if board.name in boards else set()
+        for i, lref in enumerate(load_refs[b]):
+            cid = f"c{i + 1}"
+            out.append(
+                {
+                    "requirement_ref": lref,
+                    "design_ref": f"{board.name}/{cid}" if cid in circuits else None,
+                }
+            )
+    for feeder in feeders:
+        supply = boards.get(names[feeder["supply_board_ref"]])
+        child = names[feeder["board_ref"]]
+        circuit = next((c for c in supply.circuits if c.feeds == child), None) if supply else None
+        out.append(
+            {
+                "requirement_ref": feeder["ref"],
+                "design_ref": f"{supply.name}/{circuit.id}" if supply and circuit else None,
+            }
+        )
+    return out
+
+
+def acknowledged_lines(record: Mapping[str, Any] | None) -> list[str]:
+    """What a review export prints for each acknowledged question of a stored record."""
+    if not record or record.get("derived"):
+        return []
+    boards = {b["ref"]: b["name"] for b in record.get("boards", [])}
+    loads = {load["ref"]: load["description"] for load in record.get("loads", [])}
+    lines: list[str] = []
+    for question in record.get("questions", []):
+        if question.get("state") != "acknowledged":
+            continue
+        subject = question.get("subject") or {}
+        where = boards.get(subject.get("board_ref") or "", "")
+        if subject.get("load_ref"):
+            where += f", {loads.get(subject['load_ref'], subject['load_ref'])}"
+        what = question.get("finding_code") or question.get("field") or question["kind"]
+        lines.append(
+            f"Assumption acknowledged by {question.get('by_name') or 'a team member'} on "
+            f"{(question.get('at') or '')[:10]} — not engineer-validated: {what} ({where})"
+        )
+    return lines

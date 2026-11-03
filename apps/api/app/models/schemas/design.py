@@ -1327,6 +1327,95 @@ DesignExportRequest.model_rebuild()
 RevisionExportRequest.model_rebuild()
 
 
+class ControlNeed(StrEnum):
+    """What a controlled load needs from its control, recorded as a requirement only (M6a).
+
+    Nothing here is designed: the designer's only control model stays the
+    load's ``controlled`` flag, and each need is an open item
+    (``control_not_designed``).
+    """
+
+    START_STOP = "start_stop"
+    RUNNING_INDICATOR = "running_indicator"
+    FAULT_INDICATOR = "fault_indicator"
+    HAND_OFF_AUTO = "hand_off_auto"
+    REMOTE_CONTROL = "remote_control"
+    INTERLOCK = "interlock"
+    TIMED = "timed"
+
+
+class ControlRequirementInput(StrictModel):
+    """The control needs of one load, by its place in the request.
+
+    Attributes:
+        board_index: The board's index in ``request.boards``.
+        load_index: The load's index in that board's ``loads``; the load
+            must be ``controlled`` (``control_need_requires_controlled``).
+        needs: What its control must do, each once.
+    """
+
+    board_index: int = Field(ge=0, le=99)
+    load_index: int = Field(ge=0, le=499)
+    needs: list[ControlNeed] = Field(min_length=1, max_length=len(ControlNeed))
+
+    @model_validator(mode="after")
+    def _each_once(self) -> ControlRequirementInput:
+        if len(set(self.needs)) != len(self.needs):
+            raise ValueError("each control need is given once")
+        return self
+
+
+class RequirementsInput(StrictModel):
+    """What the guided intake adds to a project's request (M6a, ``pp-req/1``).
+
+    The boards and loads are the request's own; this adds how they were
+    entered and the control needs. Questions, open items, refs and the trace
+    are the server's, never sent.
+
+    Attributes:
+        intake: How the loads were entered (``ai`` is reserved, refused).
+        control: The control needs of controlled loads.
+    """
+
+    intake: Literal["guided", "table", "import"] = "guided"
+    control: list[ControlRequirementInput] = Field(default_factory=list, max_length=500)
+
+
+class RequirementsPreviewRequest(StrictModel):
+    """A project and its guided input, to preview the requirements record; nothing is saved.
+
+    Attributes:
+        request: The project as entered.
+        requirements_input: The guided input.
+    """
+
+    request: ProjectDesignRequest
+    requirements_input: RequirementsInput = Field(default_factory=RequirementsInput)
+
+
+class QuestionAction(StrictModel):
+    """An answer to, or acknowledgement of, one question of a revision's record.
+
+    Who and when are the server's: a body naming either is refused (422).
+
+    Attributes:
+        action: ``answer`` supplies the value, saved as typed input in a new
+            revision; ``acknowledge`` accepts the stated assumption.
+        value: The value, for ``answer`` only.
+    """
+
+    action: Literal["answer", "acknowledge"]
+    value: Decimal | None = Field(default=None, gt=0, le=10000)
+
+    @model_validator(mode="after")
+    def _value_for_answer(self) -> QuestionAction:
+        if self.action == "answer" and self.value is None:
+            raise ValueError("an answer gives a value")
+        if self.action == "acknowledge" and self.value is not None:
+            raise ValueError("an acknowledgement gives no value")
+        return self
+
+
 class SaveProjectRequest(StrictModel):
     """A new project to save, as its first revision.
 
@@ -1334,11 +1423,14 @@ class SaveProjectRequest(StrictModel):
         name: What the project is listed as.
         request: The project as entered.
         note: What this revision is, for the revision list.
+        requirements_input: The guided input (M6a); the server builds and
+            stores the revision's requirements record from it.
     """
 
     name: str = Field(min_length=1, max_length=200)
     request: ProjectDesignRequest
     note: str = Field(default="", max_length=500)
+    requirements_input: RequirementsInput | None = None
 
 
 class ReviseProjectRequest(StrictModel):
@@ -1347,6 +1439,7 @@ class ReviseProjectRequest(StrictModel):
     Attributes:
         request: The project as entered now.
         note: What changed, for the revision list.
+        requirements_input: As for ``SaveProjectRequest``.
         configuration: Templates, connection patterns, strips, components and
             bindings to compose with the server's design, as data
             (``app.design.model.compose``); ``None`` for none. Only a
@@ -1358,6 +1451,7 @@ class ReviseProjectRequest(StrictModel):
 
     request: ProjectDesignRequest
     note: str = Field(default="", max_length=500)
+    requirements_input: RequirementsInput | None = None
     configuration: dict[str, Any] | None = None
 
 
@@ -1624,6 +1718,7 @@ class RevisionSummary(BaseModel):
             counts: ``snapshot``, ``profile``, ``rules_version``,
             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
             ``review_decisions`` (a review decision recorded since, M3).
+        author_unknown: It records no author; an approval of it says so.
     """
 
     number: int
@@ -1639,6 +1734,7 @@ class RevisionSummary(BaseModel):
     export_status: ExportStatus = ExportStatus.NOT_VALIDATED
     approval_current: bool | None = None
     approval_changed: list[str] = Field(default_factory=list)
+    author_unknown: bool = False
 
 
 class ApproveRevisionRequest(StrictModel):
@@ -1688,6 +1784,124 @@ class ProjectPage(BaseModel):
     projects: list[ProjectSummary]
     next_cursor: str | None = None
     permissions: list[Permission] = Field(default_factory=list)
+
+
+class RequirementSubject(BaseModel):
+    """What a question or open item is about: a board, and a load or control on it."""
+
+    board_ref: str | None = None
+    load_ref: str | None = None
+    control_ref: str | None = None
+    supply_board_ref: str | None = None
+
+
+class RequirementBoard(BaseModel):
+    """A board of the record."""
+
+    ref: str
+    name: str
+    fed_from_ref: str | None = None
+
+
+class RequirementLoad(BaseModel):
+    """A load of the record, as the user entered it (``typed`` or ``imported``)."""
+
+    ref: str
+    board_ref: str
+    description: str
+    source: str
+
+
+class RequirementFeeder(BaseModel):
+    """A feeder the designer generated from a sub-board's "Fed from"; never typed."""
+
+    ref: str
+    board_ref: str
+    supply_board_ref: str
+    source: Literal["generated"] = "generated"
+
+
+class RequirementControl(BaseModel):
+    """A controlled load's control needs, recorded only: ``not_designed``."""
+
+    ref: str
+    board_ref: str
+    load_ref: str
+    needs: list[str]
+    status: Literal["not_designed"] = "not_designed"
+
+
+class RequirementQuestion(BaseModel):
+    """A question the server derived from an empty input or an assumption finding.
+
+    ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in account and
+    its clock when answered or acknowledged; ``None`` while open.
+    """
+
+    id: str
+    kind: Literal["missing_value", "assumption"]
+    subject: RequirementSubject
+    field: str | None = None
+    finding_code: str | None = None
+    answerable: bool = False
+    state: Literal["open", "answered", "acknowledged"] = "open"
+    answer: str | None = None
+    by_user_id: str | None = None
+    by_name: str | None = None
+    at: str | None = None
+
+
+class RequirementOpenItem(BaseModel):
+    """What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``."""
+
+    code: Literal["control_not_designed", "inter_board_wiring_not_modelled"]
+    subject: RequirementSubject
+
+
+class RequirementTrace(BaseModel):
+    """A load or generated feeder, and the design element it became (``None`` if refused)."""
+
+    requirement_ref: str
+    design_ref: str | None = None
+
+
+class RequirementsRecord(BaseModel):
+    """A revision's requirements record, ``pp-req/1`` (M6a).
+
+    Attributes:
+        derived: ``True`` for an older revision with no stored record: built
+            now from its request and findings; it never counts as
+            acknowledged and cannot be acknowledged (``requirements_derived``).
+        acknowledgements: Every acknowledgement recorded, append-only.
+    """
+
+    schema_: str = Field(default="pp-req/1", alias="schema")
+    intake: str
+    derived: bool = False
+    boards: list[RequirementBoard] = Field(default_factory=list)
+    loads: list[RequirementLoad] = Field(default_factory=list)
+    feeders: list[RequirementFeeder] = Field(default_factory=list)
+    control: list[RequirementControl] = Field(default_factory=list)
+    questions: list[RequirementQuestion] = Field(default_factory=list)
+    open_items: list[RequirementOpenItem] = Field(default_factory=list)
+    trace: list[RequirementTrace] = Field(default_factory=list)
+    acknowledgements: list[dict[str, str]] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class AcknowledgedRequirements(BaseModel):
+    """The revision's requirements record after an acknowledgement."""
+
+    requirements: RequirementsRecord
+
+
+class RequirementsPreview(BaseModel):
+    """The requirements record a guided input would be stored with, and its design; nothing saved."""
+
+    requirements: RequirementsRecord
+    design: BoardDesignResponse
+    findings: list[DesignFinding] = Field(default_factory=list)
 
 
 class SavedProject(BaseModel):
@@ -1757,6 +1971,9 @@ class SavedProject(BaseModel):
     permissions: list[Permission] = Field(default_factory=list)
     model_v2: V2ModelSummary | None = None
     snapshot_schema: str | None = None
+    requirements: RequirementsRecord | None = None
+    author_unknown: bool = False
+    is_author: bool = False
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is
