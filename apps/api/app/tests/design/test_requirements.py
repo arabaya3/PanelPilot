@@ -168,7 +168,7 @@ def test_open_item_lines_say_what_is_not_designed() -> None:
     record = _record(_request())
     assert requirements.open_item_lines(record) == [
         "[OPEN] Control circuit not designed: MDB \u203a Pump",
-        "[OPEN] Board-to-board wiring not modelled: MDB \u2192 DB-1",
+        "[OPEN] Board-to-board wiring not modelled: MDB to DB-1",
     ]
     # A derived record prints them too: a review document never reads complete.
     derived = _record(_request(), derived=True)

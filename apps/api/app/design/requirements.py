@@ -30,7 +30,7 @@ load while its board and description are, as a previous record gives them.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from app.models.schemas.design import (
@@ -406,8 +406,17 @@ def _subject_text(record: Mapping[str, Any], subject: Mapping[str, Any]) -> str:
     return " \u203a ".join(part for part in parts if part)
 
 
-def acknowledged_lines(record: Mapping[str, Any] | None) -> list[str]:
-    """What a review export prints for each acknowledged question of a stored record."""
+def acknowledged_lines(
+    record: Mapping[str, Any] | None, name_of: Callable[[str | None], str] | None = None
+) -> list[str]:
+    """What a review export prints for each acknowledged question of a stored record.
+
+    Args:
+        record: The record.
+        name_of: Who an acknowledgement names, from its ``by_user_id``; an
+            exported document passes the display name or "a team member", so
+            it never prints an email. ``None`` prints the recorded ``by_name``.
+    """
     if not record or record.get("derived"):
         return []
     lines: list[str] = []
@@ -418,7 +427,7 @@ def acknowledged_lines(record: Mapping[str, Any] | None) -> list[str]:
         what = question.get("finding_code") or question.get("field") or question["kind"]
         lines.append(
             f"[ACKNOWLEDGED] Assumption acknowledged by "
-            f"{question.get('by_name') or UNKNOWN_ACCOUNT} on "
+            f"{name_of(question.get('by_user_id')) if name_of else (question.get('by_name') or UNKNOWN_ACCOUNT)} on "
             f"{(question.get('at') or '')[:10]} — not engineer-validated: {what}"
             + (f" — {where}" if where else "")
         )
@@ -442,5 +451,5 @@ def open_item_lines(record: Mapping[str, Any] | None) -> list[str]:
         elif item["code"] == "inter_board_wiring_not_modelled":
             supply = boards.get(subject.get("supply_board_ref") or "", "?")
             board = boards.get(subject.get("board_ref") or "", "?")
-            lines.append(f"[OPEN] Board-to-board wiring not modelled: {supply} → {board}")
+            lines.append(f"[OPEN] Board-to-board wiring not modelled: {supply} to {board}")
     return lines

@@ -1023,6 +1023,7 @@ def _display_names(
     revisions: Sequence[DesignRevisionRow],
     *,
     also: uuid.UUID | None = None,
+    extra_ids: Sequence[uuid.UUID] = (),
 ) -> _Names:
     """The display names of the accounts the revisions record (and ``also``).
 
@@ -1035,6 +1036,7 @@ def _display_names(
     ids = {row.approved_user_id for row in revisions if row.approved_user_id is not None}
     if also is not None:
         ids.add(also)
+    ids.update(extra_ids)
     if not emails and not ids:
         return _Names(by_email={}, by_id={})
     found = session.execute(
@@ -1266,6 +1268,7 @@ def _add_revision(
             number=project.revision_count,
             note=note,
             author=user.email,
+            author_user_id=_account_id(user),
             request=request.model_dump(mode="json"),
             requirements=record,
             requirements_sha256=snapshot.sha256_of(record),
@@ -1734,15 +1737,19 @@ def approve_revision(
 
 def _author_unknown(row: DesignRevisionRow) -> bool:
     """Whether the revision records no author (saved before authors were): never guessed."""
-    return not (row.author or "").strip()
+    return row.author_user_id is None and not (row.author or "").strip()
 
 
 def _is_author(row: DesignRevisionRow, user: CurrentUser) -> bool:
-    """Whether ``user`` saved the revision: its recorded email, compared case-insensitively.
+    """Whether ``user`` saved the revision.
 
-    The author is recorded as the saving account's email only (no user id
-    column), so that is what is compared; an unknown author is nobody.
+    By the saving account's id where the row records it, so an email changed
+    since, or an email later given to another account, changes nothing.
+    An older row without the id falls back to its recorded email, compared
+    without regard to case. An unknown author is nobody.
     """
+    if row.author_user_id is not None:
+        return row.author_user_id == _account_id(user)
     return not _author_unknown(row) and (
         row.author.strip().casefold() == (user.email or "").strip().casefold()
     )
@@ -1955,7 +1962,7 @@ def export_revision(
     approval_counts = row.approved_at is not None and not _approval_changed(row, applicable)
     designed = read.project
     design_domain.require_format(session=session, user=user, export_format=request.format)
-    names = _display_names(session, project.tenant_id, revisions)
+    names = _display_names(session, project.tenant_id, revisions, extra_ids=_acknowledgers(row))
     mark = _revision_mark(
         project,
         row,
@@ -1963,7 +1970,7 @@ def export_revision(
         names,
         approval_counts,
         applicable.renderer_version,
-        _requirement_lines(row, read),
+        _requirement_lines(row, read, names),
     )
     if request.format in design_domain.SCHEDULE_FORMATS:
         exported = _schedule_export(project, row, read, request.format, mark, applicable)
@@ -2350,8 +2357,24 @@ def _record_view(record: Mapping[str, Any] | None) -> RequirementsRecord | None:
     return RequirementsRecord.model_validate(record) if record is not None else None
 
 
-def _requirement_lines(row: DesignRevisionRow, read: VersionedModel) -> list[str]:
-    """What a review export prints of the revision's record: open items, then acknowledgements."""
+def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
+    """The account ids a stored record's acknowledgements name, for their display names."""
+    out: list[uuid.UUID] = []
+    for ack in (_stored_record(row) or {}).get("acknowledgements", []):
+        try:
+            out.append(uuid.UUID(str(ack.get("by_user_id"))))
+        except ValueError:
+            continue
+    return out
+
+
+def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Names) -> list[str]:
+    """What a review export prints of the revision's record: open items, then acknowledgements.
+
+    An exported document never prints an email address: an acknowledgement
+    names the account by its display name, else "a team member" (the in-app
+    record may show the email to the tenant's members).
+    """
     record = row.requirements if row.requirements is not None else None
     if record is None:
         if _request_problem(row) is not None:
@@ -2362,7 +2385,18 @@ def _requirement_lines(row: DesignRevisionRow, read: VersionedModel) -> list[str
             _stored_findings(row),
             derived=True,
         )
-    return [*requirements.open_item_lines(record), *requirements.acknowledged_lines(record)]
+
+    def printed(user_id: str | None) -> str:
+        try:
+            account = uuid.UUID(str(user_id))
+        except ValueError:
+            return APPROVER_FALLBACK
+        return names.by_id.get(account) or APPROVER_FALLBACK
+
+    return [
+        *requirements.open_item_lines(record),
+        *requirements.acknowledged_lines(record, name_of=printed),
+    ]
 
 
 def preview_requirements(
