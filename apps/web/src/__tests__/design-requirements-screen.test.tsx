@@ -104,6 +104,8 @@ function stored(): SavedProject {
     validated: true,
     findings: [],
     export_status: 'not_validated',
+    author_unknown: false,
+    is_author: false,
     permissions: ['approve_revision'],
     revisions: [
       {
@@ -111,6 +113,7 @@ function stored(): SavedProject {
         note: '',
         author: 'e',
         approver_account_recorded: false,
+        author_unknown: false,
         created_at: '2026-11-03T10:00:00Z',
         validated: true,
         export_status: 'not_validated' as const,

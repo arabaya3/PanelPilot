@@ -131,6 +131,8 @@ function saved(fields: Record<string, unknown> = {}): SavedProject {
     revision: 1,
     validated: true,
     export_status: 'draft',
+    author_unknown: false,
+    is_author: false,
     permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: [
       {
@@ -138,6 +140,7 @@ function saved(fields: Record<string, unknown> = {}): SavedProject {
         note: '',
         author: 'e',
         approver_account_recorded: false,
+        author_unknown: false,
         created_at: '2026-10-02T10:00:00Z',
         validated: true,
         export_status: 'draft',
@@ -260,6 +263,8 @@ describe('reading what the server recorded', () => {
       request,
       validated: false,
       export_status: 'not_validated',
+      author_unknown: false,
+      is_author: false,
     };
     expect(validationOf(legacy)).toMatchObject({ validated: false, findings: [] });
   });
@@ -498,6 +503,8 @@ describe('opening a revision in an unknown design format', () => {
       project: saved({
         validated: false,
         export_status: 'not_validated',
+        author_unknown: false,
+        is_author: false,
         findings: [
           {
             code: 'snapshot_schema_unknown',
@@ -1217,6 +1224,8 @@ describe('a revision whose stored design failed its integrity check', () => {
     const validation = validationOf({
       validated: true,
       export_status: 'not_validated',
+      author_unknown: false,
+      is_author: false,
       findings: [
         ...unconnected,
         {
