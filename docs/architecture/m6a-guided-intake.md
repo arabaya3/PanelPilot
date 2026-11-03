@@ -214,79 +214,72 @@ findings}`. Saves nothing, reads no project.
 
 ### 5.6 Versions and approvals
 
-**Final versions on this branch:** v1 renderer `2026.11.03.2`, v2 renderer
-`2026.11.03.v2-14`, `RULES_VERSION` `2026.11.03.1`. The intermediate
-`2026.11.03.1` (v1) and `v2-12`/`v2-13` (v2) were never released.
+**Final versions on this branch:** v1 renderer `2026.11.03.3`, v2 renderer
+`2026.11.03.v2-15`, `RULES_VERSION` `2026.11.03.1`. The intermediate v1
+`2026.11.03.1`/`.2` and v2 `v2-12` to `v2-14` existed only on this unmerged
+branch and were never released.
 
-- Second bump (browser verification of the merged head, 2026-11-03), which
-  changes what the review exports print:
-  - **open items** are printed after the findings on the drawing set, the
-    calculations report, and the v2 connection drawing and schedules
-    (`[OPEN] Control circuit not designed: <board> › <load>`,
-    `[OPEN] Board-to-board wiring not modelled: <supply> → <board>`), for
-    stored and derived records alike, so a review document never reads as
-    complete. The JSON export carries them under `requirements`;
-  - acknowledged assumptions print as `[ACKNOWLEDGED] Assumption acknowledged
-    by <name> on <date> — not engineer-validated: <code> — <board> › <load>`
-    (no longer an `[INFO] :` finding line);
-  - the calculations report leaves 6 mm after its findings section;
-  - a duplicated v2 designation prints as drawn (`=function+location-product`,
-    e.g. `-K1`), not as an object.
-- **Names (D1).** `by_name` on answers and acknowledgements, the revision
-  author shown in the list and title block, and the acknowledgement line are
-  never empty: the account's display name, else its recorded email (visible
-  to the tenant's members on the Team page), else `unknown account` (a
-  revision with no recorded author). No name is invented. The approver is
-  still printed by display name or "a team member", never by email.
-- **Approval impact:** every approval recorded under any earlier renderer
-  version stops counting (`renderer_version`), and with the rules bump every
-  earlier revision reads `stale` anyway. On this unmerged stack that is every
-  approval; each is granted again by a member other than the author. No
-  stored row is rewritten.
-
-
-- Renderers bumped: v1 `2026.10.31.4` → `2026.11.03.1`, v2
-  `2026.11.02.v2-11` → `2026.11.03.v2-13` (acknowledged-assumption lines; v1
-  prints its own `designation_duplicate`). Every approval recorded under the
-  old versions stops counting and is granted again (by a non-author).
-- `RULES_VERSION` bumped `2026.10.23.1` → `2026.11.03.1` (owner decision,
+- **Rules.** `RULES_VERSION` `2026.10.23.1` → `2026.11.03.1` (owner decision,
   2026-11-03): `designation_duplicate` changes what the findings checks can
   produce, and under the M2 cause rule an unchanged version would make an
   affected stored v2 row read as `snapshot_integrity_failed`
   (`findings_mismatch`), an integrity failure that looks like tampering,
-  instead of stale. Impact: **every revision saved before this change reads
-  as `stale`** (`changed: rules_version`); its exports are refused
-  `revision_stale` and its approval, if any, stops counting (`rules_version`
-  as well as `renderer_version`). The remedy is to save it again as a new
-  revision and have a member other than its author approve it. **No stored
-  row is rewritten**: snapshots, hashes, findings and approvals stay exactly
-  as recorded. The findings fingerprints were re-recorded
-  (`RECORD_FINDINGS_FINGERPRINTS=1`; no case's digest changed, only the
-  version key) and the compat fixtures regenerated with
-  `python -m app.tests.design.model.fixtures.generate` (only their
+  instead of stale. The findings fingerprints were re-recorded (no case's
+  digest changed, only the version key) and the compat fixtures regenerated
+  with `python -m app.tests.design.model.fixtures.generate` (only their
   `rules_version` changed).
-- The v1 renderer bump is required by the guard although every reference
-  export is byte-identical: the renderer has new output paths that the
-  reference exports do not exercise (acknowledged-assumption lines on every
-  review export's findings sheet, and a v1 revision's own
-  `designation_duplicate`). A file printed by this renderer can therefore say
-  what the previous one could not, so it carries a new version. The v2 bump to `v2-13` also covers the v2 connection drawing and schedules,
-  whose headers print the rules version and so changed with it.
-  Every approval on this unmerged stack (and any recorded under
-  `2026.10.31.4` / `2026.11.02.v2-11`) is stale and is granted again.
+- **Renderers** (v1 `2026.10.31.4` → `2026.11.03.3`, v2 `2026.11.02.v2-11` →
+  `2026.11.03.v2-15`). What the review exports now print:
+  - **open items** after the findings on the drawing set, the calculations
+    report and the v2 connection drawing and schedules, for stored and
+    derived records alike, so a review document never reads as complete:
+    `[OPEN] Control circuit not designed: <board> › <load>` and
+    `[OPEN] Board-to-board wiring not modelled: <supply> to <board>` (plain
+    "to", not an arrow glyph). The JSON export carries them under
+    `requirements`;
+  - acknowledged assumptions: `[ACKNOWLEDGED] Assumption acknowledged by
+    <name> on <date> — not engineer-validated: <code> — <board> › <load>`;
+  - a v1 revision's own `designation_duplicate`; a duplicated v2 designation
+    as drawn (`=function+location-product`, e.g. `-K1`);
+  - 6 mm of space after the calculations report's findings section.
+  The v1 bump is required by the guard although the v1 reference exports
+  are byte-identical apart from that spacing: the renderer has output paths
+  the reference exports do not exercise (the lines above), so a file it
+  prints can say what the previous one could not. The v2 connection drawing
+  and schedules also print the rules version in their headers.
+- **Approval impact.** Every revision saved before this change reads `stale`
+  (`changed: rules_version`): its exports are refused `revision_stale` and
+  its approval, if any, stops counting (`rules_version` and
+  `renderer_version`). On this unmerged stack that is every approval; each
+  revision is saved again and approved by a member other than its author.
+  **No stored row is rewritten**: snapshots, hashes, findings and approvals
+  stay exactly as recorded.
+- **No email in an exported document (decision, 2026-11-03).** PDFs, DXF and
+  JSON exports never print an email address: an acknowledgement line names
+  the account by its display name, else "a team member" (resolved from
+  `by_user_id` when the file is made); the approver likewise. The title
+  block prints no revision author. In the app, tenant members may still see
+  the email (below).
 
 ### 5.7 Coordinator shape decisions (second round)
 
-- Questions carry `by_name` (display name of `by_user_id`, server-resolved;
-  empty when the account has none), not `by`.
+- Questions carry `by_name`, set by the server when answered or
+  acknowledged and **never empty**: the account's display name, else its
+  email (visible to tenant members on the Team page), else `unknown
+  account`. No name is invented. `RevisionSummary.author` follows the same
+  rule (`unknown account` for a revision with no recorded author).
 - Motor current question: `field: "motor_current_a"`, `kind: "assumption"`,
-  subject the load, acknowledge only.
+  subject the load, acknowledge only (`motor_current_table` or
+  `motor_current_formula`).
 - Acknowledge returns `{"requirements": <record>}` (200); answer returns the
   `SavedProject` (201).
 - Preview returns `{requirements, design}` plus `findings` (the design's
   findings, as a revision would store them).
-- `SavedProject.is_author` (the signed-in caller saved this revision;
-  compared by the recorded account email, case-insensitive — revisions record
-  no author user id) and `SavedProject.author_unknown`; each
-  `RevisionSummary` has `author_unknown`.
+- `SavedProject.is_author` and the self-approval check compare the saving
+  account's id (`design_project_revisions.author_user_id`, migration
+  `b7d3f1a9c2e4`, single head), so an email changed after saving is still
+  the author and another account later given that email is not. A row saved
+  before the column (`author_user_id` NULL) falls back to its recorded email,
+  case-insensitive. `SavedProject.author_unknown` and each
+  `RevisionSummary.author_unknown` are true only when a row records neither.
 - `params` values are strings (`"load_index": "1"`), as for every coded error.
