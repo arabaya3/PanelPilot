@@ -373,13 +373,21 @@ def _wire_findings(model: entities.DesignModelV2, scope: str) -> list[Structural
     return out
 
 
+def printed_designation(designation: object) -> str:
+    """A designation as it is drawn (IEC 81346-1): ``=function+location-product``."""
+    function = getattr(designation, "function", None)
+    location = getattr(designation, "location", None)
+    product = getattr(designation, "product", "")
+    return (f"={function}" if function else "") + (f"+{location}" if location else "") + f"-{product}"
+
+
 def _designation_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:
     """``designation_duplicate``: one designation printed on two parts of a board."""
     holders: dict[tuple[str, str], list[str]] = defaultdict(list)
     parts: list[entities.Component | entities.TerminalStrip] = [*model.components, *model.strips]
     for part in parts:
         if part.designation is not None:
-            holders[(part.board_id, str(part.designation))].append(part.id)
+            holders[(part.board_id, printed_designation(part.designation))].append(part.id)
     return [
         _finding(
             "designation_duplicate",

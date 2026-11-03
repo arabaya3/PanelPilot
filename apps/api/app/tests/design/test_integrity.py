@@ -381,3 +381,9 @@ def test_a_designation_printed_twice_on_a_board_is_blocking() -> None:
     (found,) = [f for f in integrity.project_findings(project) if f.code == "designation_duplicate"]
     assert found.severity is FindingSeverity.BLOCKING
     assert found.values["parts"] == f"{first.id},{second.id}"
+    assert first.designation is not None
+    drawn = str(first.designation)
+    assert drawn.endswith(f"-{first.designation.product}")
+    assert found.values["designation"] == drawn
+    assert found.message.startswith(f"Board DB1: {drawn} is printed on 2 parts")
+    assert "Designation(" not in found.message

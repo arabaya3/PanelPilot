@@ -435,3 +435,20 @@ def test_a_designation_printed_twice_on_a_board_is_blocking() -> None:
     (found,) = _codes(model, "designation_duplicate")
     assert found.severity == "blocking"
     assert len(found.location["parts"].split(",")) == 2
+
+
+def test_a_duplicate_designation_prints_as_drawn() -> None:
+    model = _composed(PE_N, _duplicate_designation)
+    (found,) = _codes(model, "designation_duplicate")
+    first = next(c for c in model.components if c.id in found.location["parts"].split(","))
+    drawn = findings_v2.printed_designation(first.designation)
+    assert drawn.endswith(f"-{first.designation.product}")
+    assert found.location["designation"] == drawn
+    assert found.message.startswith(f"{drawn} is printed on 2 parts")
+    assert "Designation(" not in found.message
+    assert findings_v2.printed_designation(
+        entities.domain.Designation(function="DB1", location="HALL", product="K1")
+    ) == "=DB1+HALL-K1"
+    assert findings_v2.printed_designation(
+        entities.domain.Designation(function=None, location=None, product="K1")
+    ) == "-K1"
