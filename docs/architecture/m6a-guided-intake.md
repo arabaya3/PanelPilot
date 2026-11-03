@@ -215,7 +215,7 @@ Where this section and §1–4 differ, this section holds.
 ### 5.6 Versions and approvals
 
 - Renderers bumped: v1 `2026.10.31.4` → `2026.11.03.1`, v2
-  `2026.11.02.v2-11` → `2026.11.03.v2-12` (acknowledged-assumption lines; v1
+  `2026.11.02.v2-11` → `2026.11.03.v2-13` (acknowledged-assumption lines; v1
   prints its own `designation_duplicate`). Every approval recorded under the
   old versions stops counting and is granted again (by a non-author).
 - `RULES_VERSION` bumped `2026.10.23.1` → `2026.11.03.1` (owner decision,
@@ -239,8 +239,9 @@ Where this section and §1–4 differ, this section holds.
   reference exports do not exercise (acknowledged-assumption lines on every
   review export's findings sheet, and a v1 revision's own
   `designation_duplicate`). A file printed by this renderer can therefore say
-  what the previous one could not, so it carries a new version. Consequence:
-  every approval on this unmerged stack (and any recorded under
+  what the previous one could not, so it carries a new version. The v2 bump to `v2-13` also covers the v2 connection drawing and schedules,
+  whose headers print the rules version and so changed with it.
+  Every approval on this unmerged stack (and any recorded under
   `2026.10.31.4` / `2026.11.02.v2-11`) is stale and is granted again.
 
 ### 5.7 Coordinator shape decisions (second round)
