@@ -716,6 +716,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/resave': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resave Revision
+     * @description Save a revision's stored request again as the caller's new revision, for independent review.
+     */
+    post: operations['resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}/revisions/{number}/approval': {
     parameters: {
       query?: never;
@@ -4713,6 +4733,8 @@ export interface components {
      *             now from its request and findings; it never counts as
      *             acknowledged and cannot be acknowledged (``requirements_derived``).
      *         acknowledgements: Every acknowledgement recorded, append-only.
+     *         resaved_from: On a revision saved by ``…/resave``, the revision whose
+     *             stored request it re-designed; absent otherwise.
      */
     RequirementsRecord: {
       /**
@@ -4745,6 +4767,8 @@ export interface components {
       acknowledgements?: {
         [key: string]: string;
       }[];
+      /** Resaved From */
+      resaved_from?: number | null;
     };
     /**
      * ResolveEscalationRequest
@@ -4938,7 +4962,9 @@ export interface components {
      *             counts: ``snapshot``, ``profile``, ``rules_version``,
      *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
      *             ``review_decisions`` (a review decision recorded since, M3).
-     *         author_unknown: It records no author; an approval of it says so.
+     *         author_unknown: It records no author at all (neither account nor email).
+     *         author_established: It records the saving account's id. Only then can
+     *             it be approved (``approval_author_not_established`` otherwise).
      */
     RevisionSummary: {
       /** Number */
@@ -4978,6 +5004,11 @@ export interface components {
        * @default false
        */
       author_unknown: boolean;
+      /**
+       * Author Established
+       * @default false
+       */
+      author_established: boolean;
     };
     /**
      * SaveCompanySettings
@@ -5107,6 +5138,11 @@ export interface components {
        * @default false
        */
       author_unknown: boolean;
+      /**
+       * Author Established
+       * @default false
+       */
+      author_established: boolean;
       /**
        * Is Author
        * @default false
@@ -7056,6 +7092,57 @@ export interface operations {
         content?: never;
       };
       /** @description `configuration_too_large`, `configuration_claims_review`, `configuration_ref_reserved` or `configuration_refused` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description `resave_requires_account` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated`, `snapshot_integrity_failed` or `revision_conflict` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description As a revision save refuses the stored request, unchanged (e.g. `feeder_server_owned`, `sub_board_load_server_owned`) */
       422: {
         headers: {
           [name: string]: unknown;

@@ -1080,7 +1080,9 @@
       "revision_not_latest": "Answers are recorded on the latest revision only. Open the latest revision and answer there.",
       "answer_not_valid": "That value is not accepted for this question. Check the number and its range.",
       "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
-      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated."
+      "assumption_acknowledged": "Assumption acknowledged — not engineer-validated.",
+      "approval_author_not_established": "Revision {revision} records no saving account, so who saved it cannot be established and its approval could not be shown to be independent. Save it as a new revision for review; a different member then approves that.",
+      "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1133,7 +1135,11 @@
         "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval."
       },
       "approveSelfAuthored": "A different team member must approve this revision.",
-      "authorUnknown": "The server holds no author for this revision (author unknown). Approval is recorded with that finding."
+      "authorUnknown": "The server holds no author for this revision (author unknown); none is guessed.",
+      "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it.",
+      "resave": "Save as a new revision for review",
+      "resaved": "Saved revision {from} again as revision {revision}, for a different team member to approve.",
+      "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision."
     },
     "readiness": {
       "title": "Status",

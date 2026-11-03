@@ -1720,7 +1720,9 @@ class RevisionSummary(BaseModel):
             ``requirements`` (the requirements record is not the one approved,
             or the approval predates binding it: NULL is not bound),
             ``review_decisions`` (a review decision recorded since, M3).
-        author_unknown: It records no author; an approval of it says so.
+        author_unknown: It records no author at all (neither account nor email).
+        author_established: It records the saving account's id. Only then can
+            it be approved (``approval_author_not_established`` otherwise).
     """
 
     number: int
@@ -1737,6 +1739,7 @@ class RevisionSummary(BaseModel):
     approval_current: bool | None = None
     approval_changed: list[str] = Field(default_factory=list)
     author_unknown: bool = False
+    author_established: bool = False
 
 
 class ApproveRevisionRequest(StrictModel):
@@ -1875,6 +1878,8 @@ class RequirementsRecord(BaseModel):
             now from its request and findings; it never counts as
             acknowledged and cannot be acknowledged (``requirements_derived``).
         acknowledgements: Every acknowledgement recorded, append-only.
+        resaved_from: On a revision saved by ``…/resave``, the revision whose
+            stored request it re-designed; absent otherwise.
     """
 
     schema_: str = Field(default="pp-req/1", alias="schema")
@@ -1888,6 +1893,7 @@ class RequirementsRecord(BaseModel):
     open_items: list[RequirementOpenItem] = Field(default_factory=list)
     trace: list[RequirementTrace] = Field(default_factory=list)
     acknowledgements: list[dict[str, str]] = Field(default_factory=list)
+    resaved_from: int | None = None
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -1977,6 +1983,7 @@ class SavedProject(BaseModel):
     snapshot_schema: str | None = None
     requirements: RequirementsRecord | None = None
     author_unknown: bool = False
+    author_established: bool = False
     is_author: bool = False
 
     #: The revision's request as stored, when it no longer validates against

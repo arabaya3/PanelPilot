@@ -1095,6 +1095,7 @@ def _summary(
         approval_current=checked.approval_bound if approved else None,
         approval_changed=list(checked.approval_changed),
         author_unknown=_author_unknown(row),
+        author_established=_author_established(row),
     )
 
 
@@ -1249,6 +1250,7 @@ def _add_revision(
     requirements_input: RequirementsInput | None = None,
     prior: Mapping[str, Any] | None = None,
     answered: Sequence[Mapping[str, Any]] = (),
+    resaved_from: int | None = None,
 ) -> None:
     if project.revision_count >= MAX_REVISIONS:
         raise ValidationError(
@@ -1275,6 +1277,9 @@ def _add_revision(
         prior=prior,
         answered=answered,
     )
+    if resaved_from is not None:
+        # A pp-req/1 addition: the revision whose stored request this one re-designed.
+        record["resaved_from"] = resaved_from
     session.add(
         DesignRevisionRow(
             tenant_id=tenant,
@@ -1282,7 +1287,10 @@ def _add_revision(
             number=project.revision_count,
             note=note,
             author=user.email,
-            author_user_id=_account_id(user),
+            # A trial's subject is an anonymous session, not an account: the
+            # account that later claims the tenant has another id, so recording
+            # the session's would let that account approve what it saved.
+            author_user_id=_account_id(user) if user.email else None,
             request=request.model_dump(mode="json"),
             requirements=record,
             requirements_sha256=snapshot.sha256_of(record),
@@ -1369,6 +1377,7 @@ def _opened(
         permissions=permissions.allowed(session=session, user=viewer),
         requirements=_record_view(_record_of(chosen, checked)),
         author_unknown=_author_unknown(chosen),
+        author_established=_author_established(chosen),
         is_author=_is_author(chosen, viewer),
     )
     return opened if readable else opened.as_stored(stored)
@@ -1696,7 +1705,9 @@ def approve_revision(
             (``snapshot_integrity_failed``), is in a schema this version does not
             read (``snapshot_schema_unknown``), its rules or settings changed
             (``revision_stale``), or it has blocking findings
-            (``revision_has_blocking_findings``).
+            (``revision_has_blocking_findings``), or its author is not
+            established (``approval_author_not_established``).
+        AuthorizationError: If the caller saved it (``approval_by_author``).
         AuthorizationError: If the caller is not a signed-in account
             (``approval_requires_account``: a trial has none), their plan
             does not include approval, or they are neither the tenant's owner
@@ -1754,34 +1765,154 @@ def approve_revision(
     return _opened(session, project, number, user)
 
 
+def resave_revision(
+    *, session: Session, user: CurrentUser, project_id: str, number: int
+) -> SavedProject:
+    """Save revision ``number``'s stored request again, as the caller's new latest revision.
+
+    The recovery for a revision whose author is not established: its stored
+    request is designed again under today's rules and saved as a new
+    revision whose author is the caller (note ``Re-saved from revision <n>
+    for independent review``; its record's ``resaved_from`` is ``n``), for a
+    different member to approve. Control needs carry; an acknowledgement
+    carries, with its original account and time, while its question still
+    stands, as on an answer. Nothing of revision ``number`` (its snapshot,
+    hashes, record or approval) is changed.
+
+    A request today's rules refuse is refused as a save would refuse it
+    (``feeder_server_owned``, ``sub_board_load_server_owned``, ...), and
+    nothing is saved: the user's data is never stripped or rewritten here;
+    they fix it in the editor and save normally.
+
+    Raises:
+        NotFoundError: ``revision_not_found`` (also another tenant's project).
+        AuthorizationError: ``resave_requires_account`` (a trial: its revision
+            would again record no author).
+        ConflictError: ``revision_not_validated`` (``request_not_valid``: the
+            stored request no longer parses; ``configuration_not_carried``:
+            its design holds a configuration, which a re-save would drop),
+            ``snapshot_integrity_failed`` (``requirements_mismatch``),
+            ``revision_conflict``.
+        ValidationError: As a revision save refuses the request.
+    """
+    tenant = _scope_to(session, user)
+    try:
+        project = _revision_project(session, project_id, lock=True)
+        row = session.scalars(
+            select(DesignRevisionRow).where(
+                DesignRevisionRow.project_id == project.id, DesignRevisionRow.number == number
+            )
+        ).one_or_none()
+        if row is None:
+            raise NotFoundError("no such revision", code="revision_not_found")
+        if not user.email or _account_id(user) is None:
+            raise AuthorizationError(
+                "re-saving a revision for review requires a signed-in account",
+                code="resave_requires_account",
+            )
+        if row.requirements is not None and not _requirements_match(row):
+            raise ConflictError(
+                f"revision {number}'s requirements record does not match its recorded hash",
+                code="snapshot_integrity_failed",
+                params={"revision": number, "reason": "requirements_mismatch"},
+            )
+        checked = _validation(row, thorough=False)
+        record = _record_of(row, checked)
+        if record is None:
+            raise ConflictError(
+                f"revision {number}'s saved project no longer validates; correct it and save",
+                code="revision_not_validated",
+                params={"revision": number, "reason": "request_not_valid"},
+            )
+        stored = checked.read.v2 if checked.read is not None else None
+        if stored is not None and any(
+            (stored.strips, stored.nets, stored.connections, stored.wires, stored.patterns)
+        ):
+            # The configuration is composed into the snapshot, not kept apart:
+            # a re-save of the request alone would silently drop it.
+            raise ConflictError(
+                f"revision {number} holds a configuration a re-save cannot carry; "
+                "save it from the editor with its configuration",
+                code="revision_not_validated",
+                params={"revision": number, "reason": "configuration_not_carried"},
+            )
+        entered = ProjectDesignRequest.model_validate(row.request)
+        # Refused exactly as a save refuses them, the 422 unchanged.
+        design_domain.resolve_profile(entered.profile)
+        project_design.refuse_client_feeders(entered.boards)
+        _add_revision(
+            session,
+            project,
+            tenant,
+            user,
+            entered,
+            f"Re-saved from revision {number} for independent review",
+            prior=record if not record.get("derived") else {**record, "acknowledgements": []},
+            resaved_from=number,
+        )
+        latest = project.revision_count
+        session.commit()
+    except IntegrityError as exc:
+        _release(session)
+        raise ConflictError(
+            "another revision was saved at the same time; save again",
+            code="revision_conflict",
+        ) from exc
+    except BaseException:
+        _release(session)
+        raise
+    logger.info(
+        "design.revision_resaved",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=latest,
+        resaved_from=number,
+    )
+    return _opened(session, project, latest, user)
+
+
 def _author_unknown(row: DesignRevisionRow) -> bool:
     """Whether the revision records no author (saved before authors were): never guessed."""
     return row.author_user_id is None and not (row.author or "").strip()
 
 
-def _is_author(row: DesignRevisionRow, user: CurrentUser) -> bool:
-    """Whether ``user`` saved the revision.
+def _author_established(row: DesignRevisionRow) -> bool:
+    """Whether the revision records the saving account's id: the only proof of its author.
 
-    By the saving account's id where the row records it, so an email changed
-    since, or an email later given to another account, changes nothing.
-    An older row without the id falls back to its recorded email, compared
-    without regard to case. An unknown author is nobody.
+    A row saved before ``author_user_id`` existed records at most an email,
+    which another account may since have taken, or its author changed: such
+    an author is not established, and no id is ever guessed from the email.
     """
-    if row.author_user_id is not None:
-        return row.author_user_id == _account_id(user)
-    return not _author_unknown(row) and (
-        row.author.strip().casefold() == (user.email or "").strip().casefold()
-    )
+    return row.author_user_id is not None
+
+
+def _is_author(row: DesignRevisionRow, user: CurrentUser) -> bool:
+    """Whether ``user`` saved the revision, by the saving account's id alone.
+
+    An email changed since, or an email later given to another account,
+    changes nothing. A row without the id names no author (it is not
+    established, and is never matched by email).
+    """
+    return row.author_user_id is not None and row.author_user_id == _account_id(user)
 
 
 def _refuse_author(row: DesignRevisionRow, user: CurrentUser, number: int) -> None:
-    """Refuse an approval by the revision's own author (M6a §4), owners included.
+    """Refuse an approval no independent reviewer can be shown to give (M6a §4).
 
-    The author is the signed-in account's email recorded at save, compared
-    without regard to case. A revision with no recorded author is not
-    refused: it approves with ``author_unknown`` shown, and no author is
-    invented for it.
+    A revision whose author is not established (no ``author_user_id``: saved
+    before it was recorded, whatever email it holds) is refused 409
+    ``approval_author_not_established``: it is saved again
+    (``resave_revision``) and the new revision approved. One saved by the
+    approver's own account is refused 403 ``approval_by_author``, owners
+    included.
     """
+    if not _author_established(row):
+        raise ConflictError(
+            f"revision {number}'s author cannot be established, so its approval "
+            "could not be shown to be independent; save it as a new revision for review",
+            code="approval_author_not_established",
+            params={"revision": number},
+        )
     if _is_author(row, user):
         raise AuthorizationError(
             f"revision {number} was saved by you; another member must approve it",
