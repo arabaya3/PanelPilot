@@ -12,8 +12,8 @@ implementation. They drive the real routes with the Phase 1 fixtures:
   merged; acknowledging changes neither the design nor the revision count;
 * self-approval: 403 ``approval_by_author``, by user id whatever the email's
   case; another member with approve permission succeeds; a revision with no
-  recorded author approves with an ``author_unknown`` finding and no invented
-  author;
+  recorded author is refused 409 ``approval_author_not_established`` (shown
+  ``author_unknown``), and no author is invented;
 * duplicate designations: blocking ``designation_duplicate``, approval
   refused, the review export prints it;
 * another tenant gets 404 for open, questions and approval;
@@ -490,14 +490,14 @@ def test_another_member_with_approve_permission_approves(
     assert approved.json()["author_unknown"] is False
 
 
-def test_a_revision_with_no_recorded_author_approves_without_inventing_one(
+def test_a_revision_with_no_recorded_author_is_refused_without_inventing_one(
     client: TestClient, engine: Engine
 ) -> None:
     saved = save(client)
     update_row(engine, saved["id"], 1, author="", author_user_id=None)
-    approved = approve(client, saved["id"], 1)
-    assert approved.status_code == 200, approved.text[:600]
-    assert "author_unknown" in json.dumps(approved.json())
+    refused = approve(client, saved["id"], 1)
+    assert refused.status_code == 409, refused.text[:600]
+    assert error(refused)["code"] == "approval_author_not_established"
     assert revision_row(engine, saved["id"], 1)["author"] == ""
     listed = next(r for r in _open(client, saved["id"], 1)["revisions"] if r["number"] == 1)
     # Never empty and never invented (M6a D1): an unrecorded author says so.

@@ -203,11 +203,14 @@ def test_the_author_may_not_approve_but_the_owner_approves_another_members_revis
     # Owners included: the owner's own revision is refused.
     mine = _save(client, REQUEST)
     assert error(approve(client, mine["id"], 1))["code"] == "approval_by_author"
-    # No recorded author: approved, said, and none invented.
+    # No recorded author: refused (its author is not established), none invented.
     update_row(engine, mine["id"], 1, author="", author_user_id=None)
     unknown = approve(client, mine["id"], 1)
-    assert unknown.status_code == 200, unknown.text[:600]
-    assert unknown.json()["author_unknown"] is True
+    assert unknown.status_code == 409, unknown.text[:600]
+    assert error(unknown)["code"] == "approval_author_not_established"
+    opened = client.get(f"/design/projects/{mine['id']}").json()
+    assert opened["author_unknown"] is True
+    assert opened["author_established"] is False
     assert revision_row(engine, mine["id"], 1)["author"] == ""
 
 
@@ -347,18 +350,26 @@ def test_the_author_is_matched_by_account_id(
     assert approve(client, saved["id"], 1).status_code == 200
 
 
-def test_an_older_row_without_an_author_id_falls_back_to_the_email(
+def test_an_older_row_without_an_author_id_is_never_matched_by_email(
     client: TestClient, engine: Engine, caller: _Caller, tenants: tuple[str, str]
 ) -> None:
     reviewer = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
     caller.user = reviewer
     saved = _save(client, REQUEST)
     update_row(engine, saved["id"], 1, author_user_id=None, author=reviewer.email.upper())
-    refused = approve(client, saved["id"], 1)
-    assert refused.status_code == 403
-    assert error(refused)["code"] == "approval_by_author"
-    caller.user = review_support.new_account(engine, tenants[0], role=Role.REVIEWER)
-    assert approve(client, saved["id"], 1).status_code == 200
+    # Whether or not the approver's email matches, the author is not established.
+    for approver in (reviewer, review_support.new_account(engine, tenants[0], role=Role.REVIEWER)):
+        caller.user = approver
+        opened = client.get(f"/design/projects/{saved['id']}").json()
+        assert (opened["is_author"], opened["author_established"]) == (False, False)
+        assert opened["author_unknown"] is False
+        refused = approve(client, saved["id"], 1)
+        assert refused.status_code == 409
+        assert error(refused) == {
+            **error(refused),
+            "code": "approval_author_not_established",
+            "params": {"revision": "1"},
+        }
 
 
 def test_a_named_account_is_named_and_an_unknown_author_says_so(

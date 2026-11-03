@@ -291,6 +291,38 @@ def validate_configuration(
     )
 
 
+@router.post(
+    "/projects/{project_id}/revisions/{number}/resave",
+    response_model=SavedProject,
+    status_code=201,
+    responses={
+        403: {"description": "`resave_requires_account`"},
+        404: {"description": "No such revision is the caller's (`revision_not_found`)"},
+        409: {
+            "description": (
+                "`revision_not_validated`, `snapshot_integrity_failed` or `revision_conflict`"
+            )
+        },
+        422: {
+            "description": (
+                "As a revision save refuses the stored request, unchanged "
+                "(e.g. `feeder_server_owned`, `sub_board_load_server_owned`)"
+            )
+        },
+    },
+)
+def resave_revision(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> SavedProject:
+    """Save a revision's stored request again as the caller's new revision, for independent review."""
+    return design_projects.resave_revision(
+        session=session, user=user, project_id=project_id, number=number
+    )
+
+
 @router.post("/projects/{project_id}/revisions/{number}/approval", response_model=SavedProject)
 def approve_revision(
     project_id: str,
