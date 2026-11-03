@@ -180,7 +180,12 @@ findings}`. Saves nothing, reads no project.
     `Answered: <field>`). Only on the latest revision (409
     `revision_not_latest`); 409 `question_not_answerable`,
     `question_answered`; 422 `answer_not_valid` (e.g. power factor > 1).
-    Acknowledgements whose question still stands carry to the new revision.
+    Acknowledgements whose question still stands over the same inputs carry
+    to the new revision (each records a `basis`, a digest of the inputs its
+    assumption rests on; a changed basis, or none recorded, opens the question
+    again). An answer carries only while the request still holds the value
+    answered; typed over in the table, the table's value stands, attributed to
+    no one. Earlier revisions' records are never rewritten.
   - acknowledge → **200** with the updated record; the design, snapshot hash
     and revision count are unchanged. 409 `requirements_derived` on a derived
     record (save a new revision first); 409 `revision_already_approved` on an
@@ -195,6 +200,14 @@ findings}`. Saves nothing, reads no project.
   tenant-scoped as every project route.
 
 ### 5.4 Approval
+
+- An approval binds the requirements record: `approved_requirements_sha256`
+  is set with it, under the revision lock, after the record's hash is checked
+  (the hash of JSON `null` for a revision without a stored record). Opened
+  later, a different or failing record, or a NULL binding (an approval
+  recorded before the column existed: not bound), makes the approval not
+  current (`approval_changed` names `requirements`); the revision then exports
+  as a draft, never as approved.
 
 - Self-approval is strict: `approval_by_author` (403) when the revision's
   recorded author (the saving account's email, compared case-insensitively)
