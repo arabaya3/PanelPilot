@@ -466,6 +466,12 @@ def test_no_response_path_generates_without_consulting_the_guardrail() -> None:
         # cites nothing, sizes nothing. Its gate is the engineer's review
         # before the sourced design runs; see the module docstring.
         APP_ROOT / "ai" / "schedule_writer.py",
+        # Proposes requirement entries from a designer's description (M6b):
+        # answers nothing, cites nothing, sizes nothing, invents no value. Its
+        # gate is the server's check of every item against the description
+        # (app.design.ai_intake) and the designer's confirmation before
+        # anything reaches the request.
+        APP_ROOT / "ai" / "intake_proposer.py",
         # Turns a question into an English search query: answers nothing,
         # cites nothing. See the test below that keeps it so.
         APP_ROOT / "ai" / "query_translation.py",

@@ -632,6 +632,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/requirements/ai-proposals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create Ai Proposal
+     * @description Propose requirement entries from a description (M6b). A paid model call; designs nothing.
+     */
+    post: operations['create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Ai Proposal
+     * @description One of the tenant's AI proposals, with each item's decision state.
+     */
+    get: operations['get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Decide Ai Item
+     * @description Accept, reject or edit one proposal item; append-only, who and when the server's.
+     */
+    post: operations['decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}/revisions/{number}/questions/{question_id}': {
     parameters: {
       query?: never;
@@ -1367,6 +1427,328 @@ export interface components {
      */
     AcknowledgedRequirements: {
       requirements: components['schemas']['RequirementsRecord'];
+    };
+    /**
+     * AiAppliedProposal
+     * @description The applied proposal as a record keeps it: its immutable part and provenance.
+     */
+    AiAppliedProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+    };
+    /**
+     * AiDecision
+     * @description One decision on an item, append-only; the latest per item holds.
+     *
+     *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
+     *     account and its clock.
+     */
+    AiDecision: {
+      /** Item Id */
+      item_id: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * AiDecisionRequest
+     * @description A decision on one proposal item. Who and when are the server's (any such field is 422).
+     *
+     *     Attributes:
+     *         decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
+     *             it to ``value`` (checked against the item kind's fields).
+     *         value: The edited value, for ``edit`` only.
+     */
+    AiDecisionRequest: {
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiItem
+     * @description One item of an AI proposal, as the server kept it after its checks (M6b).
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``, by its place in the output).
+     *         kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
+     *         source: Where in the description it was read.
+     *         quote: The description's text at ``source``.
+     *         value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
+     *         value_spans: For each numeric field, where its literal stands.
+     */
+    AiItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+    };
+    /**
+     * AiPlacement
+     * @description Where one confirmed AI proposal item was placed in the request (M6b).
+     *
+     *     Attributes:
+     *         item_id: The proposal item.
+     *         board_index: The board's index in ``request.boards`` (a ``board``
+     *             item's board; a ``load`` or ``control_need`` item's load's board).
+     *         load_index: The load's index in that board's ``loads``: given for a
+     *             ``load`` or ``control_need`` item, never for a ``board`` item.
+     */
+    AiPlacement: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+    };
+    /**
+     * AiPlacementRecord
+     * @description Where a confirmed item went, as the save recorded it.
+     *
+     *     Attributes:
+     *         changed_in_editor: The item's fields the row differs on from the
+     *             decided value: the user edited after confirming.
+     */
+    AiPlacementRecord: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+      /** Board Ref */
+      board_ref?: string | null;
+      /** Load Ref */
+      load_ref?: string | null;
+      /** Changed In Editor */
+      changed_in_editor?: string[];
+    };
+    /**
+     * AiProposal
+     * @description An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
+     *
+     *     Attributes:
+     *         proposal_sha256: The canonical hash of its immutable part (input,
+     *             provider, model, prompt version, items, server_rejected).
+     *         used_by_revision_id: The revision that applied it; it then takes no
+     *             more decisions (``ai_proposal_used``) and no second save.
+     */
+    AiProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiProposalItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /**
+       * Used
+       * @default false
+       */
+      used: boolean;
+      /** Used By Revision Id */
+      used_by_revision_id?: string | null;
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+    };
+    /**
+     * AiProposalItem
+     * @description An item with where the user's decisions leave it.
+     *
+     *     Attributes:
+     *         state: ``proposed`` until decided; the latest decision otherwise.
+     *         decided_value: The value an ``accept`` (the item's own) or ``edit``
+     *             (the user's) confirmed; ``None`` while proposed or rejected.
+     */
+    AiProposalItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+      /**
+       * State
+       * @default proposed
+       * @enum {string}
+       */
+      state: 'proposed' | 'accepted' | 'edited' | 'rejected';
+      /** Decided Value */
+      decided_value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiProposalRequest
+     * @description A description to propose requirement entries from; nothing is designed.
+     *
+     *     Attributes:
+     *         description: Typed text only, at most 8 000 characters
+     *             (``ai_input_too_long``), not empty (``ai_input_empty``).
+     *         request: The editor's current draft, read only for its board names
+     *             so the model can name existing boards; never stored, never
+     *             taken as confirmed.
+     */
+    AiProposalRequest: {
+      /** Description */
+      description: string;
+      /** Request */
+      request?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiRejected
+     * @description An output item the server's checks refused, kept and shown, never dropped.
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``).
+     *         kind: Its kind, when it named a known one.
+     *         source: Its span, when it gave a readable one.
+     *         quote: The description's text at the span, when it lies in the input.
+     *         value: What it proposed, as sent (bounded).
+     *         reason: Why it was refused (``offsets_outside_input``,
+     *             ``value_not_in_text``, ``invalid_value``,
+     *             ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
+     *         detail: Which field or reference, in English.
+     */
+    AiRejected: {
+      /** Id */
+      id: string;
+      /** Kind */
+      kind?: string | null;
+      source?: components['schemas']['AiSource'] | null;
+      /** Quote */
+      quote?: string | null;
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Detail
+       * @default
+       */
+      detail: string;
+    };
+    /**
+     * AiRequirementsInput
+     * @description The AI proposal a save applies (M6b): which proposal, and where its items went.
+     *
+     *     The server checks, under the project lock, that the proposal is the
+     *     caller's tenant's and unused, that every placed item's latest decision is
+     *     ``accept`` or ``edit`` and that its row exists. Who decided and when are
+     *     read from the proposal, never from here.
+     *
+     *     Attributes:
+     *         proposal_id: The proposal.
+     *         placements: Each confirmed item inserted into the editor, by place.
+     */
+    AiRequirementsInput: {
+      /** Proposal Id */
+      proposal_id: string;
+      /** Placements */
+      placements?: components['schemas']['AiPlacement'][];
+    };
+    /**
+     * AiSource
+     * @description A span of the stored description: ``input_text[start:end]``.
+     */
+    AiSource: {
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
     };
     /**
      * AppliedFactor
@@ -4606,14 +4988,24 @@ export interface components {
     };
     /**
      * RequirementOpenItem
-     * @description What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``.
+     * @description What this slice does not design or settle.
+     *
+     *     ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
+     *     an AI proposal item left undecided (``ai_item_unreviewed``), or a
+     *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
+     *     the user did not reject; the subject's ``item_id`` names the item.
      */
     RequirementOpenItem: {
       /**
        * Code
        * @enum {string}
        */
-      code: 'control_not_designed' | 'inter_board_wiring_not_modelled';
+      code:
+        | 'control_not_designed'
+        | 'inter_board_wiring_not_modelled'
+        | 'ai_item_unreviewed'
+        | 'ai_question'
+        | 'ai_unsupported';
       subject: components['schemas']['RequirementSubject'];
     };
     /**
@@ -4669,6 +5061,8 @@ export interface components {
       control_ref?: string | null;
       /** Supply Board Ref */
       supply_board_ref?: string | null;
+      /** Item Id */
+      item_id?: string | null;
     };
     /**
      * RequirementTrace
@@ -4681,6 +5075,27 @@ export interface components {
       design_ref?: string | null;
     };
     /**
+     * RequirementsAi
+     * @description A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
+     *
+     *     Attributes:
+     *         applied_in_revision: The revision whose save applied it; a later
+     *             revision carries the block unchanged (its indices are that
+     *             revision's), never re-applying it.
+     *         applied_at: When that save applied it (server clock).
+     */
+    RequirementsAi: {
+      proposal: components['schemas']['AiAppliedProposal'];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /** Placements */
+      placements?: components['schemas']['AiPlacementRecord'][];
+      /** Applied In Revision */
+      applied_in_revision?: number | null;
+      /** Applied At */
+      applied_at?: string | null;
+    };
+    /**
      * RequirementsInput
      * @description What the guided intake adds to a project's request (M6a, ``pp-req/1``).
      *
@@ -4689,8 +5104,10 @@ export interface components {
      *     are the server's, never sent.
      *
      *     Attributes:
-     *         intake: How the loads were entered (``ai`` is reserved, refused).
+     *         intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
      *         control: The control needs of controlled loads.
+     *         ai: The AI proposal applied and where its confirmed items were
+     *             placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
      */
     RequirementsInput: {
       /**
@@ -4698,9 +5115,10 @@ export interface components {
        * @default guided
        * @enum {string}
        */
-      intake: 'guided' | 'table' | 'import';
+      intake: 'guided' | 'table' | 'import' | 'ai';
       /** Control */
       control?: components['schemas']['ControlRequirementInput'][];
+      ai?: components['schemas']['AiRequirementsInput'] | null;
     };
     /**
      * RequirementsPreview
@@ -4735,6 +5153,9 @@ export interface components {
      *         acknowledgements: Every acknowledgement recorded, append-only.
      *         resaved_from: On a revision saved by ``…/resave``, the revision whose
      *             stored request it re-designed; absent otherwise.
+     *         ai: The AI proposal the request was entered from (M6b): the whole
+     *             proposal, its decisions and where its items were placed. Carried
+     *             unchanged to later revisions as the request's provenance.
      */
     RequirementsRecord: {
       /**
@@ -4769,6 +5190,7 @@ export interface components {
       }[];
       /** Resaved From */
       resaved_from?: number | null;
+      ai?: components['schemas']['RequirementsAi'] | null;
     };
     /**
      * ResolveEscalationRequest
@@ -6892,6 +7314,172 @@ export interface operations {
         };
       };
       /** @description As a save refuses the request, or the design's refusal */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiProposalRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_input_empty`, `ai_input_too_long` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `rate_limited`, `model_budget_exceeded` */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_malformed` */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_unavailable` */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_timeout` */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiDecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_edit_not_valid`, `ai_decisions_full`, or a who/when field */
       422: {
         headers: {
           [name: string]: unknown;

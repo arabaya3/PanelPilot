@@ -5,7 +5,7 @@ Routes never call ``app.design`` directly — they call the domain service.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile
@@ -16,10 +16,13 @@ from app.api.deps import (
     enforce_design_rate_limit,
     enforce_trial_rate_limit,
 )
-from app.domain import company_settings, design_projects, model_budget
+from app.domain import company_settings, design_ai, design_projects, model_budget
 from app.domain import design as design_domain
 from app.models.schemas.design import (
     AcknowledgedRequirements,
+    AiDecisionRequest,
+    AiProposal,
+    AiProposalRequest,
     ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
@@ -194,10 +197,76 @@ def save_project(
     responses={422: {"description": "As a save refuses the request, or the design's refusal"}},
 )
 def preview_requirements(
-    payload: RequirementsPreviewRequest, user: CurrentUserDep
+    payload: RequirementsPreviewRequest, user: CurrentUserDep, session: SessionDep
 ) -> RequirementsPreview:
     """The requirements record and design a guided input would be saved with; nothing is saved."""
-    return design_projects.preview_requirements(user=user, request=payload)
+    return design_projects.preview_requirements(user=user, request=payload, session=session)
+
+
+_AI_ERRORS: dict[int | str, dict[str, Any]] = {
+    403: {"description": "`ai_requires_account` (a trial)"},
+    404: {"description": "`ai_proposal_not_found` (also another tenant's)"},
+}
+
+
+@router.post(
+    "/projects/requirements/ai-proposals",
+    response_model=AiProposal,
+    status_code=201,
+    # The design routes' per-address budget (the router's), plus the
+    # per-address trial limit every paid model call carries.
+    dependencies=[Depends(enforce_trial_rate_limit)],
+    responses={
+        403: {"description": "`ai_requires_account` (a trial)"},
+        422: {"description": "`ai_input_empty`, `ai_input_too_long`"},
+        429: {"description": "`rate_limited`, `model_budget_exceeded`"},
+        502: {"description": "`ai_proposal_malformed`"},
+        503: {"description": "`ai_unavailable`"},
+        504: {"description": "`ai_timeout`"},
+    },
+)
+def create_ai_proposal(
+    payload: AiProposalRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    provider: Annotated[Any, Depends(design_ai.get_proposal_provider)],
+) -> AiProposal:
+    """Propose requirement entries from a description (M6b). A paid model call; designs nothing."""
+    return design_ai.create_proposal(session=session, user=user, request=payload, provider=provider)
+
+
+@router.get(
+    "/projects/requirements/ai-proposals/{proposal_id}",
+    response_model=AiProposal,
+    responses=_AI_ERRORS,
+)
+def get_ai_proposal(
+    proposal_id: Annotated[str, Path(max_length=64)], user: CurrentUserDep, session: SessionDep
+) -> AiProposal:
+    """One of the tenant's AI proposals, with each item's decision state."""
+    return design_ai.get_proposal(session=session, user=user, proposal_id=proposal_id)
+
+
+@router.post(
+    "/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision",
+    response_model=AiProposal,
+    responses={
+        **_AI_ERRORS,
+        409: {"description": "`ai_proposal_used`"},
+        422: {"description": "`ai_edit_not_valid`, `ai_decisions_full`, or a who/when field"},
+    },
+)
+def decide_ai_item(
+    proposal_id: Annotated[str, Path(max_length=64)],
+    item_id: Annotated[str, Path(max_length=40)],
+    payload: AiDecisionRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> AiProposal:
+    """Accept, reject or edit one proposal item; append-only, who and when the server's."""
+    return design_ai.decide(
+        session=session, user=user, proposal_id=proposal_id, item_id=item_id, decision=payload
+    )
 
 
 @router.post(

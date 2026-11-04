@@ -133,6 +133,18 @@ class ServiceUnavailableError(PanelPilotError):
     """
 
 
+class BadGatewayError(PanelPilotError):
+    """A dependency answered, but with something unusable (a model's malformed output).
+
+    502 rather than 422: the caller's request was sound; what came back from
+    upstream was not, and retrying may give a usable answer.
+    """
+
+
+class GatewayTimeoutError(PanelPilotError):
+    """A dependency did not answer in time (a model call past its read timeout)."""
+
+
 class NotImplementedYetError(PanelPilotError):
     """The endpoint exists in the contract but its behaviour does not yet.
 
@@ -154,6 +166,8 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     PromotionError: HTTPStatus.CONFLICT,
     TooManyRequestsError: HTTPStatus.TOO_MANY_REQUESTS,
     ServiceUnavailableError: HTTPStatus.SERVICE_UNAVAILABLE,
+    BadGatewayError: HTTPStatus.BAD_GATEWAY,
+    GatewayTimeoutError: HTTPStatus.GATEWAY_TIMEOUT,
     NotImplementedYetError: HTTPStatus.NOT_IMPLEMENTED,
 }
 

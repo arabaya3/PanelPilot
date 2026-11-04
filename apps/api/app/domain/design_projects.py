@@ -76,7 +76,7 @@ from app.design.model import (
 )
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
-from app.domain import billing, design_configuration, engineering_reviews, permissions
+from app.domain import billing, design_ai, design_configuration, engineering_reviews, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
@@ -1277,6 +1277,19 @@ def _add_revision(
         if columns.get("design_snapshot") is not None
         else None
     )
+    proposal = None
+    ai_block = None
+    if requirements_input is not None and requirements_input.ai is not None:
+        # Under the save's transaction: the proposal row is locked until it
+        # commits, so no second save applies it (``ai_proposal_used``).
+        proposal, ai_block = design_ai.apply(
+            session=session,
+            user=user,
+            request=request,
+            given=requirements_input.ai,
+            control=requirements_input.control,
+        )
+        ai_block["applied_in_revision"] = project.revision_count
     record = requirements.build(
         request,
         designed,
@@ -1284,27 +1297,30 @@ def _add_revision(
         requirements_input,
         prior=prior,
         answered=answered,
+        ai=ai_block,
     )
     if resaved_from is not None:
         # A pp-req/1 addition: the revision whose stored request this one re-designed.
         record["resaved_from"] = resaved_from
-    session.add(
-        DesignRevisionRow(
-            tenant_id=tenant,
-            project_id=project.id,
-            number=project.revision_count,
-            note=note,
-            author=user.email,
-            # A trial's subject is an anonymous session, not an account: the
-            # account that later claims the tenant has another id, so recording
-            # the session's would let that account approve what it saved.
-            author_user_id=_account_id(user) if user.email else None,
-            request=request.model_dump(mode="json"),
-            requirements=record,
-            requirements_sha256=snapshot.sha256_of(record),
-            **columns,
-        )
+    revision = DesignRevisionRow(
+        tenant_id=tenant,
+        project_id=project.id,
+        number=project.revision_count,
+        note=note,
+        author=user.email,
+        # A trial's subject is an anonymous session, not an account: the
+        # account that later claims the tenant has another id, so recording
+        # the session's would let that account approve what it saved.
+        author_user_id=_account_id(user) if user.email else None,
+        request=request.model_dump(mode="json"),
+        requirements=record,
+        requirements_sha256=snapshot.sha256_of(record),
+        **columns,
     )
+    session.add(revision)
+    if proposal is not None:
+        session.flush()
+        design_ai.mark_used(proposal, revision.id)
 
 
 def _stored_schema(stored: Any) -> str | None:
@@ -2562,7 +2578,7 @@ def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Nam
 
 
 def preview_requirements(
-    *, user: CurrentUser, request: RequirementsPreviewRequest
+    *, user: CurrentUser, request: RequirementsPreviewRequest, session: Session | None = None
 ) -> RequirementsPreview:
     """The record a guided input would be stored with, and the design; nothing is saved.
 
@@ -2580,7 +2596,23 @@ def preview_requirements(
     designed, company = design_domain.build_design(as_entered)
     conditions = {board.name: board.conditions for board in entered.boards}
     findings = integrity.project_findings(designed, conditions)
-    record = requirements.build(entered, designed, findings, request.requirements_input)
+    ai_block = None
+    given = request.requirements_input
+    if given.ai is not None:
+        if session is None:  # pragma: no cover - the route always passes one
+            raise ValidationError("an AI block is previewed with a session", code="ai_unavailable")
+        # Checked as a save checks it, read only: nothing is locked or marked.
+        _scope_to(session, user)
+        _, ai_block = design_ai.apply(
+            session=session,
+            user=user,
+            request=entered,
+            given=given.ai,
+            control=given.control,
+            lock=False,
+        )
+        session.rollback()
+    record = requirements.build(entered, designed, findings, given, ai=ai_block)
     logger.info("design.requirements_previewed", tenant_id=user.tenant_id)
     return RequirementsPreview(
         requirements=RequirementsRecord.model_validate(record),
