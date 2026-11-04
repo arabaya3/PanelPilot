@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import UniqueConstraint
 
 from app.models.tables.ai_intake_usage import AiIntakeUsageRow
@@ -10,7 +12,8 @@ from app.models.tables.tenant import TenantScopedMixin
 
 def test_usage_is_tenant_scoped_and_one_row_per_account() -> None:
     assert issubclass(AiIntakeUsageRow, TenantScopedMixin)
-    unique = [c for c in AiIntakeUsageRow.__table__.constraints if isinstance(c, UniqueConstraint)]
+    table: Any = AiIntakeUsageRow.__table__
+    unique = [c for c in table.constraints if isinstance(c, UniqueConstraint)]
     assert [sorted(col.name for col in c.columns) for c in unique] == [["tenant_id", "user_id"]]
 
 

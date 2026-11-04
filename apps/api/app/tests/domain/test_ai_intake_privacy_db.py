@@ -77,7 +77,7 @@ def _propose(client: TestClient, **extra: Any) -> Any:
 
 def _usage(engine: Engine, user: CurrentUser) -> tuple[int, Any]:
     with engine.connect() as conn:
-        found = conn.execute(
+        found: Any = conn.execute(
             text("SELECT calls, lease_id FROM ai_intake_usage WHERE tenant_id=:t AND user_id=:u"),
             {"t": uuid.UUID(user.tenant_id), "u": uuid.UUID(user.id)},
         ).one_or_none()
@@ -360,7 +360,7 @@ def test_parallel_calls_of_one_account_get_one_lease(
     outcomes = _race(engine, tenant, user, 12, release=False, limit=None)
     assert sorted(outcomes) == ["ai_request_in_flight"] * 11 + ["ok"]
     with engine.connect() as conn:
-        calls = conn.execute(
+        calls: int = conn.execute(
             text("SELECT calls FROM ai_intake_usage WHERE user_id=:u"), {"u": uuid.UUID(user)}
         ).scalar_one()
     assert calls == 1
@@ -375,7 +375,7 @@ def test_parallel_calls_never_pass_the_cap(engine: Engine, fresh: tuple[str, str
     assert outcomes.count("ok") <= 1
     assert set(outcomes) <= {"ok", "ai_request_in_flight", "ai_user_limit_exceeded"}
     with engine.connect() as conn:
-        calls = conn.execute(
+        calls: int = conn.execute(
             text("SELECT calls FROM ai_intake_usage WHERE user_id=:u"), {"u": uuid.UUID(user)}
         ).scalar_one()
     assert calls == 3 + outcomes.count("ok") <= 4
@@ -387,7 +387,11 @@ def test_a_new_month_starts_the_count_again(engine: Engine, fresh: tuple[str, st
     factory = sessionmaker(bind=engine)
     may = datetime(2026, 5, 31, 23, 59, tzinfo=UTC)
     with factory() as session:
-        args = {"session": session, "tenant_id": uuid.UUID(tenant), "user_id": uuid.UUID(user)}
+        args: dict[str, Any] = {
+            "session": session,
+            "tenant_id": uuid.UUID(tenant),
+            "user_id": uuid.UUID(user),
+        }
         lease = ai_intake_usage.acquire(**args, limit=1, now=may)
         session.commit()
         ai_intake_usage.release(session=session, lease=lease)
