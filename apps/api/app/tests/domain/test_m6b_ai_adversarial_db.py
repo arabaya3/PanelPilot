@@ -424,7 +424,7 @@ def _refused_or_rejected(response: Any, engine: Engine, item_id: str) -> None:
 
 
 def _approve(c: _As, pid: str, n: int) -> Any:
-    return c.post(f"/design/projects/{pid}/revisions/{n}/approval", json={})
+    return c.post(f"/design/projects/{pid}/revisions/{n}/approval", json={"scope_confirmed": True})
 
 
 def _open(c: _As, pid: str, n: int | None = None) -> dict[str, Any]:

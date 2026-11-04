@@ -47,6 +47,7 @@ from app.models.schemas.design import (
     ReviseProjectRequest,
     RevisionExportRequest,
     SafetyClarificationRequest,
+    SafetyResolutionRequest,
     SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
@@ -356,8 +357,41 @@ def clarify_safety_mention(
     session: SessionDep,
     user: CurrentUserDep,
 ) -> AcknowledgedRequirements:
-    """Clarify one (possibly) life-safety mention as not life-safety: four-eyes, append-only."""
+    """Deprecated (M6c): clarify one possibly-safety mention; use ``safety-resolutions``."""
     return design_projects.clarify_mention(
+        session=session, user=user, project_id=project_id, number=number, request=payload
+    )
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/requirements/safety-resolutions",
+    response_model=AcknowledgedRequirements,
+    responses={
+        403: {
+            "description": (
+                "`safety_resolution_requires_account`, `safety_resolution_not_permitted`, "
+                "`safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author`"
+            )
+        },
+        404: {"description": "`revision_not_found` or `safety_target_not_found`"},
+        409: {
+            "description": (
+                "`requirements_derived`, `revision_already_approved`, `revision_not_latest`, "
+                "`safety_concern_already_resolved`, `false_positive_not_allowed`, "
+                "`snapshot_integrity_failed`"
+            )
+        },
+    },
+)
+def resolve_safety_concern(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    payload: SafetyResolutionRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> AcknowledgedRequirements:
+    """Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only."""
+    return design_projects.resolve_safety_concern(
         session=session, user=user, project_id=project_id, number=number, request=payload
     )
 
