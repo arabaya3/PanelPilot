@@ -350,3 +350,31 @@ account`. No name is invented. `RevisionSummary.author` follows the same
   revision is refused (`revision_stale`), and no route serves the stored
   snapshot as a document. Opening one shows its stored request, findings and
   an approval marked not current. Not added in this slice.
+
+### 5.9 Before AI intake (2026-11-04)
+
+- **Opened revision after a findings-policy change.** The opened request's
+  title block now reads the opened revision's stored design and classifies
+  it, as the revision list does (`_read_applicable`), so after a
+  findings-policy change it names no approver whose approval no longer
+  counts. List, opened detail, `approval_current` and exports agree
+  (regression test in `test_design_projects_integrity_status_db.py`, both
+  snapshot schemas).
+- **Stale configured v2 revision.** Not carried by a resave. The connection
+  configuration exists only composed into that revision's v2 snapshot; there
+  is no inverse of `compose`, so carrying it would need an extraction proven
+  lossless under current rules, which this slice does not attempt. The
+  refusal stays (`revision_not_validated`, `reason:
+configuration_not_carried`); its message now says the configuration is kept
+  unchanged with the old revision, is never dropped, and has to be entered
+  again in a new revision. The web app shows that message instead of the
+  generic "save again to validate". Gap: a stale revision's composed model
+  (`model_v2`) is withheld, so the app cannot show the old configuration to
+  copy from; it is still in the database unchanged.
+- **What a resave proves.** A resave records the account that resaved as the
+  new revision's author. It does not identify who first entered the design,
+  and it is not proof of historical independence: a colleague of the
+  original author could resave, and the original author could then approve
+  the new revision. Four-eyes holds between the resaver and the approver
+  only. The approval panel and this document say so; no historical approval
+  is represented as independent.

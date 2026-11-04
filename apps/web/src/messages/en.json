@@ -1048,6 +1048,7 @@
       "configuration_requires_v2": "This deployment cannot save a configuration with a revision yet.",
       "schedule_requires_v2": "Terminal and wire schedules and the connection drawing exist only for a saved revision with terminals, nets and wires.",
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
+      "configuration_not_carried": "Revision {revision} holds a connection configuration (strips, nets, wires or patterns). A re-save cannot carry it: the configuration is stored only inside that revision's design, and carrying it is not yet proven lossless, so it is never dropped silently. Revision {revision} and its configuration are kept unchanged. To review it again, save a new revision from the editor and enter the configuration again in the configuration step.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
       "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
       "export_format_unprotected": "Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.",
@@ -1136,7 +1137,7 @@
       },
       "approveSelfAuthored": "A different team member must approve this revision.",
       "authorUnknown": "The server holds no author for this revision (author unknown); none is guessed.",
-      "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it.",
+      "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it. The new revision records you as its author; it does not show who first entered this design.",
       "resave": "Save as a new revision for review",
       "resaved": "Saved revision {from} again as revision {revision}, for a different team member to approve.",
       "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision."
