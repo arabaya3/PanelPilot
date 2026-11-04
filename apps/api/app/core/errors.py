@@ -155,6 +155,10 @@ class NotImplementedYetError(PanelPilotError):
     """
 
 
+class GoneError(PanelPilotError):
+    """An endpoint that existed and was retired: it does nothing now (410)."""
+
+
 # The single place mapping domain failures to HTTP. Adding an error type
 # without adding it here yields a 500, which is the correct default: an
 # unmapped error is a bug, not a documented outcome.
@@ -171,6 +175,7 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     BadGatewayError: HTTPStatus.BAD_GATEWAY,
     GatewayTimeoutError: HTTPStatus.GATEWAY_TIMEOUT,
     NotImplementedYetError: HTTPStatus.NOT_IMPLEMENTED,
+    GoneError: HTTPStatus.GONE,
 }
 
 

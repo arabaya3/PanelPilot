@@ -2118,8 +2118,12 @@ class SafetyResolution(BaseModel):
     requirement. Who and when are the server's; it validates nothing.
     """
 
-    target_kind: Literal["mention", "item"]
+    target_kind: Literal["mention", "item", "request"]
     target_id: str
+    #: The AI proposal an AI concern belongs to (M6e); ``None`` for a request one.
+    proposal_id: str | None = None
+    #: The revision the concern was first raised on (M6e).
+    raised_on: int | None = None
     resolution: Literal["excluded_from_scope", "false_positive"]
     reason: str
     by_user_id: str
@@ -2250,13 +2254,20 @@ class SafetyResolutionRequest(StrictModel):
 
     mention_id: str | None = Field(default=None, pattern=r"^m[0-9a-f]{16}$")
     item_id: str | None = Field(default=None, pattern=r"^i[0-9]{1,4}$")
+    #: A request concern (M6e): ``r`` and 16 hex digits.
+    request_id: str | None = Field(default=None, pattern=r"^r[0-9a-f]{16}$")
+    #: The AI proposal of a mention or item carried from an earlier revision.
+    proposal_id: str | None = Field(default=None, max_length=64)
     resolution: Literal["excluded_from_scope", "false_positive"]
     reason: str = Field(max_length=2000)
 
     @model_validator(mode="after")
     def _checked(self) -> SafetyResolutionRequest:
-        if (self.mention_id is None) == (self.item_id is None):
-            raise ValueError("name exactly one of mention_id and item_id")
+        named = [x for x in (self.mention_id, self.item_id, self.request_id) if x is not None]
+        if len(named) != 1:
+            raise ValueError("name exactly one of mention_id, item_id and request_id")
+        if self.request_id is not None and self.proposal_id is not None:
+            raise ValueError("a request concern names no proposal")
         self.reason = " ".join(self.reason.split())
         if not 10 <= len(self.reason) <= 500:
             raise ValueError("the reason holds 10 to 500 characters")
@@ -2282,8 +2293,9 @@ class SafetyConcern(BaseModel):
             ``life_safety_item_overlaps``), or ``None``.
     """
 
-    kind: Literal["mention", "item"]
+    kind: Literal["mention", "item", "request"]
     target_id: str
+    proposal_id: str | None = None
     level: Literal["life_safety", "possibly"]
     code: str
     label: str
@@ -2292,6 +2304,13 @@ class SafetyConcern(BaseModel):
     resolved: bool
     resolution: SafetyResolution | None = None
     false_positive_refusal: str | None = None
+    #: Why it may not be excluded (``in_request``: remove it from the request).
+    exclusion_refusal: str | None = None
+    #: The revision it was first raised on, and whether only an earlier one holds it.
+    raised_on: int | None = None
+    carried: bool = False
+    #: Where in the request (a request concern): the board, ``board > load`` or field.
+    where: str | None = None
 
 
 class SafetyResolutionEligibility(BaseModel):
@@ -2401,6 +2420,8 @@ class RequirementsRecord(BaseModel):
     acknowledgements: list[dict[str, str]] = Field(default_factory=list)
     resaved_from: int | None = None
     ai: RequirementsAi | None = None
+    #: Resolutions of safety concerns (M6e): append-only, carried forward.
+    safety_resolutions: list[SafetyResolution] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 

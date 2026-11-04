@@ -57,7 +57,7 @@ export function SafetyConcerns({
   }
 
   function action(concern: SafetyConcern) {
-    const key = `${concern.kind}-${concern.target_id}`;
+    const key = keyOf(concern);
     if (concern.resolved || eligibility === null) return null;
     if (!eligibility.eligible) {
       const why = eligibility.reason ?? '';
@@ -68,26 +68,38 @@ export function SafetyConcerns({
       );
     }
     if (open?.key !== key) {
+      // A life-safety board or load still in the request: removed, never resolved.
+      if (concern.exclusion_refusal && concern.false_positive_refusal) {
+        return (
+          <p className="text-xs text-text-muted" data-testid={`resolve-remove-${key}`}>
+            {t('removeFromRequest')}
+          </p>
+        );
+      }
       return (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn btn-sm btn-secondary"
-            disabled={working}
-            data-testid={`resolve-exclude-${key}`}
-            onClick={() => {
-              setOpen({ key, resolution: 'excluded_from_scope' });
-              setReason('');
-            }}
-          >
-            {t('exclude')}
-          </button>
+          {concern.exclusion_refusal ? null : (
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              disabled={working}
+              data-testid={`resolve-exclude-${key}`}
+              onClick={() => {
+                setOpen({ key, resolution: 'excluded_from_scope' });
+                setReason('');
+              }}
+            >
+              {t('exclude')}
+            </button>
+          )}
           {concern.false_positive_refusal ? (
             <p className="text-xs text-text-muted" data-testid={`resolve-no-fp-${key}`}>
               {t(
                 concern.false_positive_refusal === 'item'
                   ? 'noFalsePositive.item'
-                  : 'noFalsePositive.overlaps',
+                  : concern.false_positive_refusal === 'life_safety'
+                    ? 'noFalsePositive.lifeSafety'
+                    : 'noFalsePositive.overlaps',
               )}
             </p>
           ) : (
@@ -166,7 +178,7 @@ export function SafetyConcerns({
       <p className="text-xs text-text-muted">{t('detectionLimit')}</p>
       <ul className="flex flex-col gap-3">
         {concerns.map((concern) => {
-          const key = `${concern.kind}-${concern.target_id}`;
+          const key = keyOf(concern);
           const resolution = concern.resolution;
           return (
             <li key={key} className="flex flex-col gap-1" data-testid={`safety-concern-${key}`}>
@@ -176,8 +188,20 @@ export function SafetyConcerns({
                 </span>{' '}
                 <bdi>‘{concern.label}’</bdi>{' '}
                 <span className="text-text-muted">
-                  ({t(concern.kind === 'mention' ? 'kind.mention' : 'kind.item')})
+                  ({t(`kind.${concern.kind}`)}
+                  {concern.where ? (
+                    <>
+                      : <bdi>{concern.where}</bdi>
+                    </>
+                  ) : null}
+                  )
                 </span>
+                {concern.carried && concern.raised_on != null ? (
+                  <span className="text-text-muted" data-testid={`carried-${key}`}>
+                    {' '}
+                    {t('raisedOn', { revision: concern.raised_on })}
+                  </span>
+                ) : null}
               </p>
               {resolution ? (
                 <p className="text-sm text-text-muted" data-testid={`resolved-${key}`}>
@@ -210,6 +234,13 @@ export function SafetyConcerns({
       )}
     </section>
   );
+}
+
+/** A concern's key on the page: its kind, its proposal (a carried one) and its id. */
+function keyOf(concern: SafetyConcern): string {
+  return concern.proposal_id && concern.carried
+    ? `${concern.kind}-${concern.proposal_id}-${concern.target_id}`
+    : `${concern.kind}-${concern.target_id}`;
 }
 
 /**
@@ -257,7 +288,7 @@ export function ApprovalScope({
           <p className="text-sm font-medium">{t('excludedTitle')}</p>
           <ul className="list-disc ps-5 text-sm">
             {excluded.map((c) => (
-              <li key={c.target_id}>
+              <li key={keyOf(c)}>
                 <bdi>‘{c.label}’</bdi>: {c.resolution?.reason}
               </li>
             ))}
@@ -269,7 +300,7 @@ export function ApprovalScope({
           <p className="text-sm font-medium">{t('falsePositivesTitle')}</p>
           <ul className="list-disc ps-5 text-sm">
             {falsePositives.map((c) => (
-              <li key={c.target_id}>
+              <li key={keyOf(c)}>
                 <bdi>‘{c.label}’</bdi>: {c.resolution?.reason}
               </li>
             ))}

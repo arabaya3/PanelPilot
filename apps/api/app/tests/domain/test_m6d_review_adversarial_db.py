@@ -8,7 +8,7 @@ reason, who/when set by the server, on the latest unapproved revision only;
 approval is refused ``approval_blocked_by_safety`` while any concern is
 unresolved and needs the literal ``scope_confirmed: true``.
 
-The coming rules are strict xfail until the integrated head lands; the route
+The coming rules were strict xfail until the integrated head landed (M6e: all pass); the route
 and body are assumed in ``test_m6d_review_journeys_db.resolve``. Tests that
 pass today pin what already holds. Synthetic data only.
 """
@@ -67,7 +67,9 @@ from app.tests.domain.test_m6d_review_journeys_db import (
 REASON = "Supplied and wired by the fire-protection contractor."
 
 
-def _concerns(engine: Engine, pid: str, proposal: dict[str, Any], quote: str, n: int = 1):
+def _concerns(
+    engine: Engine, pid: str, proposal: dict[str, Any], quote: str, n: int = 1
+) -> list[dict[str, str]]:
     """Every subject to resolve on the standby/fire journey: the item, then each mention."""
     item = by_quote(proposal, quote)["id"]
     return [{"item_id": item}] + [{"mention_id": m} for m in mention_ids(record(engine, pid, n))]
@@ -302,7 +304,7 @@ def test_approval_racing_the_last_resolution_is_serialised(
                 resolve(as_("reviewer"), pid, 1, subject, "excluded_from_scope", REASON).status_code
                 == 200
             )
-        calls = {
+        calls: dict[str, Any] = {
             "approve": lambda c, p=pid: c.post(
                 f"/design/projects/{p}/revisions/1/approval",
                 json={"scope_confirmed": True},
@@ -492,11 +494,6 @@ def test_re_saving_does_not_dodge_the_block(
     assert code(refused) == "approval_blocked_by_safety", refused.text[:300]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding at 5133b60: a fresh proposal without the pump replaces the AI block; "
-    "rev 2 with hand-typed FP-1 15 kW is approved 200",
-)
 def test_a_new_proposal_omitting_the_fire_pump_does_not_clear_fp1(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -610,7 +607,7 @@ def test_a_run_on_a_disposable_database_it_does_not_own_is_refused_before_collec
         assert ran.returncode != 0, ran.stdout[-400:]
         assert "owner" in (ran.stdout + ran.stderr).lower()
         with admin.connect() as conn:
-            comment = conn.execute(
+            comment: str = conn.execute(
                 text(
                     "SELECT shobj_description(oid, 'pg_database') FROM pg_database "
                     "WHERE datname = :n"
@@ -630,11 +627,6 @@ def test_a_run_on_a_disposable_database_it_does_not_own_is_refused_before_collec
         admin.dispose()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding at 5133b60: the block reads only AI text/items; a hand-typed "
-    "'Fire pump' load in a manual-intake project is review-approved",
-)
 def test_a_manual_project_with_a_fire_pump_load_is_not_approved(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -675,11 +667,6 @@ def test_the_revision_author_may_not_use_the_new_route(
     assert refused.status_code == 403, refused.text[:300]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding at 5133b60: the deprecated safety-clarifications route has no "
-    "revision-author check, and its clarifications count as false positives",
-)
 def test_the_revision_author_may_not_use_the_deprecated_route_either(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -721,14 +708,7 @@ def test_re_saving_with_another_intake_does_not_dodge_the_block(
     [
         "pdf",
         "calculations_pdf",
-        pytest.param(
-            "quotation_pdf",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="finding at 5133b60: the quotation PDF prints [SCOPE] but no "
-                "[EXCLUDED FROM SCOPE]/[FALSE POSITIVE] lines",
-            ),
-        ),
+        "quotation_pdf",
         "json",
     ],
 )

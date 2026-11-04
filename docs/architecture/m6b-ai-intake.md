@@ -640,10 +640,8 @@ life_safety_item_overlaps`: exclude it instead). Never on an item (409
 — not engineer-validated`. Examples: "Fire Station Road" (`fire`),
   "no fire pump is required" (`fire pump`, no item), "Emergency contact on
   the door label", "duty/standby booster pumps".
-- A possibly-safety item is also resolved when every possibly-level mention
-  of the description (at least one, and no life-safety mention) is a false
-  positive in force: the words it was raised for were judged harmless. It
-  stays `unsupported` (printed "Not covered by this design"), never a load.
+- (Superseded in M6e, §6.11.1: a possibly-safety item is resolved only by its
+  own exclusion; a false positive of its words no longer resolves it.)
 
 Rules: under the project lock, then the revision's; the stored record must
 match its hash (409 `snapshot_integrity_failed`, `requirements_mismatch`);
@@ -665,8 +663,7 @@ concern (same id) and its resolution is still allowed; the first per target
 holds.
 
 **The M6c clarification** (`…/safety-clarifications`, `ai.clarifications`)
-is kept for compatibility, unchanged, and deprecated: the web app no longer
-offers it. A clarification in force counts as a `false_positive` of its
+is retired (410, §6.11.1); the web app no longer offers it. A clarification in force counts as a `false_positive` of its
 possibly-level mention and prints as `[FALSE POSITIVE]` (no longer
 `[CLARIFIED]`).
 
@@ -714,6 +711,74 @@ M6c bump): its revision is stale for export; save it again and have it
 approved, with the scope confirmed, by another member. `RULES_VERSION`
 unchanged. Execution export (`execution_package_incomplete`) and the
 restricted formats (`export_format_unprotected`) stay refused.
+
+#### 6.11.1 Final-review fixes (M6e)
+
+The independent review of 5133b60 found ways past the hold. Now
+(`app/design/safety_review.py`, re-derived on every approval, open, export and
+resolution; never read from a stored list):
+
+- **Earlier revisions.** Every AI and request concern of every earlier
+  revision of the project (from that revision's stored description, items and
+  request) is a concern of the revision being approved until resolved
+  **on that revision**. A fresh proposal without the pump, a re-save with
+  another intake, or an edited request no longer clears it. The panel and
+  the exports say "raised on revision n"; unresolved ones print
+  `[OPEN] Safety concern (raised on revision n): '<term>' … not designed or
+reviewed; needs a second member's resolution before approval`.
+- **The request itself, whatever the intake.** The same detector reads the
+  project information (`name`, `number`, `customer`, `consultant`,
+  `contractor`), each board's name and each load's description. A hit is
+  `request_life_safety` / `request_possibly_life_safety` (`kind: request`,
+  `target_id` `r` + 16 hex digits of level, place, text, term and offset;
+  `where` says `board › load` or the field). **Decision (the safer option):**
+  a board or load **still in the request** that names life-safety equipment
+  has no resolution (409 `exclusion_not_allowed` / `false_positive_not_allowed`,
+  `reason: in_request` / `life_safety`): excluding it would leave the
+  drawings showing it as an ordinary load while saying its safety function is
+  not designed. It is removed from the request (a new revision); the carried
+  concern is then excluded from scope. A possibly-safety board or load still
+  in the request may only be a false positive ("Standby pump" as a booster
+  set's standby). Project information may be excluded, or (possibly-level) a
+  false positive ("Fire Station Road").
+- **Each item on its own.** A false positive of a mention never resolves an
+  item (the M6d auto-resolve is removed). So an approved export never prints
+  a safety `[OPEN]` line: approval is refused while one would print.
+- **Body.** `{mention_id | item_id | request_id, proposal_id?, resolution,
+reason}`; `proposal_id` names the proposal of a concern carried from an
+  earlier revision (a request concern names none: 422). A concern of an
+  earlier proposal is refused to that proposal's creator
+  (`safety_resolution_by_proposal_author`). Storage: a concern of the
+  revision's own AI block in `ai.resolutions` (as M6d); request and carried
+  concerns in the record's `safety_resolutions`. Both are covered by
+  `requirements_sha256` and carried forward to later revisions.
+- **The clarification route is retired:** `POST …/safety-clarifications` is
+  410 `clarification_route_retired` for everyone. Stored clarifications keep
+  counting (as false positives of their possibly-level mention) and printing.
+- **Quotation PDF** prints the requirements lines (open items, exclusions,
+  false positives) and the scope, as every review export does.
+- **Cross-row conflicts.** Two placed rows from AI load items of the same
+  normalised description whose values differ are an `ai_conflicting_values`
+  open item (`kind: rows_disagree`), printed `[OPEN] Conflicting values for
+<field> of one load placed on two rows: …`. Not a hold.
+- **Exclusion lines** end "— not engineer-validated", as false positives do.
+- **The hash is an integrity check against accident, not tamper-proofing.**
+  `requirements_sha256` and the approval binding detect an edited record and
+  stop an approval counting; anyone with database write access can rewrite a
+  record and its hash together. The controls against that are database
+  access control and audit, not the hash.
+- The panel's hold message counts the unresolved safety concerns (it showed
+  the blocking-findings count).
+
+Renderers: **not bumped** (owner rule: only when the guard requires it).
+The guard's reference exports are unchanged (they hold no requirements
+record, exclusions or request concerns), so v1 stays `2026.11.04.3` and v2
+`2026.11.04.v2-18`. Consequence: an approval recorded at 5133b60 keeps
+counting even where the new holds would now refuse it (a manual project with
+a hand-typed "Fire pump" load, or a revision whose earlier revision raised a
+concern); its exports also now print the new lines under the same version.
+On this unmerged stack, re-check or re-approve such revisions; a bump would
+retire them all at once if the owner prefers.
 
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 

@@ -1217,8 +1217,7 @@ def false_positive_refusal(ai: Mapping[str, Any] | None, target: SafetyTarget) -
     """Why ``target`` may not be resolved as a false positive, or ``None``.
 
     ``item``: an item is never a false positive (a person may only exclude
-    it from scope; a possibly-safety item follows its mentions, see
-    :func:`unresolved_safety`). ``life_safety_item_overlaps``: a life-safety
+    it from scope, each item on its own). ``life_safety_item_overlaps``: a life-safety
     mention whose span overlaps an item the proposal holds as life-safety
     equipment (proposed or turned unsupported from that text) is real by the
     proposal's own reading: exclude it from scope instead.
@@ -1276,28 +1275,14 @@ def resolutions_in_force(ai: Mapping[str, Any] | None) -> dict[tuple[str, str], 
 
 
 def unresolved_safety(ai: Mapping[str, Any] | None) -> list[SafetyTarget]:
-    """The safety concerns no resolution in force covers: what holds a review approval.
+    """This block's own safety concerns no resolution of the block covers.
 
-    A possibly-safety item is resolved by its own exclusion from scope, or
-    when every possibly-safety mention of the description (there is at
-    least one, and no life-safety one) is a false positive in force: the
-    ambiguous words it was turned unsupported for were all judged harmless.
-    It then stays an ``unsupported`` item (not covered, never a load).
+    Every concern needs its own resolution (M6e): a false positive of a
+    mention never resolves an item. The approval reads
+    ``app.design.safety_review``, which adds request and carried concerns.
     """
-    targets = safety_targets(ai)
     resolved = resolutions_in_force(ai)
-    mentions = [t for t in targets if t.kind == "mention"]
-    words_harmless = (
-        bool(mentions)
-        and all(t.level == "possibly" for t in mentions)
-        and all(resolved.get(t.key, {}).get("resolution") == FALSE_POSITIVE for t in mentions)
-    )
-    return [
-        t
-        for t in targets
-        if t.key not in resolved
-        and not (t.kind == "item" and t.level == "possibly" and words_harmless)
-    ]
+    return [t for t in safety_targets(ai) if t.key not in resolved]
 
 
 def clarifications_in_force(ai: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
@@ -1371,6 +1356,8 @@ def conflicting_values(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     latest = latest_decisions(ai.get("decisions", []))
     out: list[dict[str, Any]] = []
     by_row: dict[tuple[int, Any], list[tuple[str, dict[str, Any]]]] = {}
+    # M6e: two rows from AI items of one (normalised) name, values differing.
+    by_name: dict[str, list[tuple[str, dict[str, Any], tuple[int, Any]]]] = {}
     for placement in ai.get("placements", []) or []:
         item_id = str(placement.get("item_id"))
         item = items.get(item_id)
@@ -1378,9 +1365,11 @@ def conflicting_values(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
             continue
         confirmed = decided_value(item, latest.get(item_id)) or {}
         if item.get("kind") in ("board", "load"):
-            by_row.setdefault(
-                (int(placement.get("board_index", 0)), placement.get("load_index")), []
-            ).append((item_id, confirmed))
+            row_key = (int(placement.get("board_index", 0)), placement.get("load_index"))
+            by_row.setdefault(row_key, []).append((item_id, confirmed))
+            name = " ".join(str(confirmed.get("description") or "").casefold().split())
+            if item.get("kind") == "load" and name:
+                by_name.setdefault(name, []).append((item_id, confirmed, row_key))
         entered = placement.get("entered") or {}
         for field in placement.get("changed_in_editor", []) or []:
             out.append(
@@ -1415,6 +1404,31 @@ def conflicting_values(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
                                     "other_item_id": second,
                                     "field": field,
                                     "kind": "items_disagree",
+                                    "ai_value": _shown(a[field]),
+                                    "other_value": _shown(b[field]),
+                                },
+                            }
+                        )
+    for named in by_name.values():
+        for n, (first, a, row_a) in enumerate(named):
+            for second, b, row_b in named[n + 1 :]:
+                if row_a == row_b:
+                    continue
+                for field in sorted((set(a) & set(b)) - {"description", "board"}):
+                    same = (
+                        _same(a[field], b[field])
+                        if field in NUMERIC_FIELDS
+                        else str(a[field]) == str(b[field])
+                    )
+                    if not same:
+                        out.append(
+                            {
+                                "code": CONFLICTING_VALUES,
+                                "subject": {
+                                    "item_id": first,
+                                    "other_item_id": second,
+                                    "field": field,
+                                    "kind": "rows_disagree",
                                     "ai_value": _shown(a[field]),
                                     "other_value": _shown(b[field]),
                                 },
@@ -1495,6 +1509,14 @@ def open_item_line(ai: Mapping[str, Any] | None, item: Mapping[str, Any]) -> str
     items = (ai.get("proposal") or {}).get("items", [])
     if item["code"] == CONFLICTING_VALUES:
         quotes = {str(i["id"]): _short(str(i.get("quote", "")), 80) for i in items}
+        if subject.get("kind") == "rows_disagree":
+            return (
+                f"[OPEN] Conflicting values for {subject.get('field')} of one load placed on "
+                f"two rows: {subject.get('ai_value')} "
+                f"(“{quotes.get(str(subject.get('item_id')), '?')}”) and "
+                f"{subject.get('other_value')} "
+                f"(“{quotes.get(str(subject.get('other_item_id')), '?')}”); confirm which applies"
+            )
         if subject.get("kind") == "items_disagree":
             return (
                 f"[OPEN] Conflicting values for {subject.get('field')}: "

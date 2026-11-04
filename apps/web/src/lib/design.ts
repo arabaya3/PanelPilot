@@ -769,7 +769,7 @@ export function resolveSafetyConcern(
   options: Transport & {
     id: string;
     revision: number;
-    concern: Pick<SafetyConcern, 'kind' | 'target_id'>;
+    concern: Pick<SafetyConcern, 'kind' | 'target_id'> & { proposal_id?: string | null };
     resolution: SafetyResolutionKind;
     reason: string;
   },
@@ -779,7 +779,15 @@ export function resolveSafetyConcern(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-resolutions`,
     {
-      [concern.kind === 'mention' ? 'mention_id' : 'item_id']: concern.target_id,
+      [concern.kind === 'mention'
+        ? 'mention_id'
+        : concern.kind === 'item'
+          ? 'item_id'
+          : 'request_id']: concern.target_id,
+      // A carried AI concern names its proposal (M6e); a request one names none.
+      ...(concern.kind !== 'request' && concern.proposal_id
+        ? { proposal_id: concern.proposal_id }
+        : {}),
       resolution,
       reason,
     },

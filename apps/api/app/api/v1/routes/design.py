@@ -16,6 +16,7 @@ from app.api.deps import (
     enforce_design_rate_limit,
     enforce_trial_rate_limit,
 )
+from app.core.errors import GoneError
 from app.domain import company_settings, design_ai, design_projects, model_budget
 from app.domain import design as design_domain
 from app.models.schemas.design import (
@@ -46,7 +47,6 @@ from app.models.schemas.design import (
     RequirementsPreviewRequest,
     ReviseProjectRequest,
     RevisionExportRequest,
-    SafetyClarificationRequest,
     SafetyResolutionRequest,
     SaveCompanySettings,
     SavedProject,
@@ -333,33 +333,18 @@ def answer_question(
 
 @router.post(
     "/projects/{project_id}/revisions/{number}/requirements/safety-clarifications",
-    response_model=AcknowledgedRequirements,
-    responses={
-        403: {
-            "description": (
-                "`clarification_requires_account`, `clarification_not_permitted`, "
-                "`clarification_by_proposal_author`"
-            )
-        },
-        404: {"description": "`revision_not_found` or `mention_not_found`"},
-        409: {
-            "description": (
-                "`requirements_derived`, `revision_already_approved`, `revision_not_latest`, "
-                "`safety_concern_unresolved`, `mention_is_life_safety`, `snapshot_integrity_failed`"
-            )
-        },
-    },
+    status_code=410,
+    responses={410: {"description": "`clarification_route_retired`"}},
 )
 def clarify_safety_mention(
-    project_id: str,
-    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
-    payload: SafetyClarificationRequest,
-    session: SessionDep,
-    user: CurrentUserDep,
-) -> AcknowledgedRequirements:
-    """Deprecated (M6c): clarify one possibly-safety mention; use ``safety-resolutions``."""
-    return design_projects.clarify_mention(
-        session=session, user=user, project_id=project_id, number=number, request=payload
+    project_id: str,  # noqa: ARG001
+    number: int,  # noqa: ARG001
+    user: CurrentUserDep,  # noqa: ARG001  (a signed-in caller only)
+) -> None:
+    """Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing."""
+    raise GoneError(
+        "this route is retired; record a resolution with POST …/requirements/safety-resolutions",
+        code="clarification_route_retired",
     )
 
 

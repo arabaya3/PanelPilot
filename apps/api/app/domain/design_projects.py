@@ -70,6 +70,7 @@ from app.design import (
     marking,
     renderer_version,
     requirements,
+    safety_review,
     schedule_pdf,
     snapshot,
 )
@@ -116,8 +117,6 @@ from app.models.schemas.design import (
     Revision,
     RevisionExportRequest,
     RevisionSummary,
-    SafetyClarificationEligibility,
-    SafetyClarificationRequest,
     SafetyConcern,
     SafetyResolution,
     SafetyResolutionEligibility,
@@ -1452,23 +1451,20 @@ def _opened(
         author_established=_author_established(chosen),
         is_author=_is_author(chosen, viewer),
     )
-    opened.safety_clarification = clarification_eligibility(
-        session=session,
-        row=chosen,
-        record=_stored_record(chosen),
-        latest=project.revision_count,
-        user=viewer,
-    )
     stored_record = _stored_record(chosen)
-    opened.safety_concerns = _safety_concerns(stored_record)
+    found = _found(chosen, revisions)
+    opened.safety_concerns = _safety_concerns(found, stored_record)
     opened.safety_resolution = resolution_eligibility(
         session=session,
         row=chosen,
         record=stored_record,
+        found=found,
         latest=project.revision_count,
         user=viewer,
     )
-    opened.approval_held = _approval_held(stored_record) if chosen.approved_at is None else None
+    opened.approval_held = (
+        _approval_held(found, stored_record) if chosen.approved_at is None else None
+    )
     opened.approval_scope_version = approval_scope.APPROVAL_SCOPE_VERSION
     opened.approved_scope_version = chosen.approved_scope_version
     return opened if readable else opened.as_stored(stored)
@@ -1821,7 +1817,7 @@ def approve_revision(
         applicable = _approvable(session, project, row, number)
         # Under the same locks: no approval while a safety concern of the
         # stored (hash-checked) record stands unresolved.
-        _refuse_unresolved_safety(row, number)
+        _refuse_unresolved_safety(row, number, _found(row, _revisions(session, project)))
         # After what the revision itself refuses (approved, stale, blocked):
         # those say what is wrong with the revision, this who may approve it.
         _refuse_author(row, user, number)
@@ -2080,6 +2076,7 @@ def _revision_mark(
     approval_counts: bool,
     renderer: str,
     lines: Sequence[str] = (),
+    found: Sequence[safety_review.Concern] = (),
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
@@ -2098,11 +2095,10 @@ def _revision_mark(
         label = marking.DRAFT_LABEL
     approved = approval_counts and row.approved_at is not None
     stored = _stored_record(row) if row.requirements is not None else None
-    ai = (stored or {}).get("ai")
     printed = _printed_name(names)
     excluded: list[str] = []
     false_positives: list[str] = []
-    for line in ai_intake.resolution_lines(ai, name_of=printed):
+    for line in safety_review.resolution_lines(found, stored, name_of=printed):
         (excluded if line.startswith("[EXCLUDED FROM SCOPE]") else false_positives).append(line)
     scope = approval_scope.statement_lines()
     if approved:
@@ -2248,6 +2244,7 @@ def export_revision(
     designed = read.project
     design_domain.require_format(session=session, user=user, export_format=request.format)
     names = _display_names(session, project.tenant_id, revisions, extra_ids=_acknowledgers(row))
+    found = _found(row, revisions)
     mark = _revision_mark(
         project,
         row,
@@ -2255,7 +2252,8 @@ def export_revision(
         names,
         approval_counts,
         applicable.renderer_version,
-        _requirement_lines(row, read, names),
+        _requirement_lines(row, read, names, found),
+        found,
     )
     if request.format in design_domain.SCHEDULE_FORMATS:
         exported = _schedule_export(project, row, read, request.format, mark, applicable)
@@ -2660,7 +2658,12 @@ def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
     return out
 
 
-def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Names) -> list[str]:
+def _requirement_lines(
+    row: DesignRevisionRow,
+    read: VersionedModel,
+    names: _Names,
+    found: Sequence[safety_review.Concern] = (),
+) -> list[str]:
     """What a review export prints of the revision's record: open items, then acknowledgements.
 
     An exported document never prints an email address: an acknowledgement
@@ -2678,9 +2681,14 @@ def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Nam
             derived=True,
         )
 
+    stored = _stored_record(row) if row.requirements is not None else None
+    shown = {**record, "open_items": _open_items_shown(record, found)}
     return [
-        *requirements.open_item_lines(record),
+        *requirements.open_item_lines(shown),
+        # M6e: request and carried safety concerns, then every resolution.
+        *safety_review.open_lines(found, stored),
         *requirements.acknowledged_lines(record, name_of=_printed_name(names)),
+        *safety_review.resolution_lines(found, stored, name_of=_printed_name(names)),
     ]
 
 
@@ -2978,230 +2986,6 @@ def _acknowledge(
     return RequirementsRecord.model_validate(record)
 
 
-#: Why a caller may not clarify a mention now (``SafetyClarificationEligibility``).
-_CLARIFY_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
-    "requires_account": (
-        AuthorizationError,
-        "clarification_requires_account",
-        "clarifying a safety mention requires a signed-in account",
-    ),
-    "not_permitted": (
-        AuthorizationError,
-        "clarification_not_permitted",
-        "only a member who may approve revisions may clarify a safety mention",
-    ),
-    "proposal_author": (
-        AuthorizationError,
-        "clarification_by_proposal_author",
-        "you created this AI proposal; another member must clarify its safety mentions",
-    ),
-    "requirements_derived": (
-        ConflictError,
-        "requirements_derived",
-        "this revision was saved before requirements were recorded",
-    ),
-    "revision_already_approved": (
-        ConflictError,
-        "revision_already_approved",
-        "this revision is approved; what it was approved with does not change",
-    ),
-    "revision_not_latest": (
-        ConflictError,
-        "revision_not_latest",
-        "this revision is not the latest; clarify on the latest revision",
-    ),
-    "safety_concern_unresolved": (
-        ConflictError,
-        "safety_concern_unresolved",
-        "an item of this proposal is life-safety equipment, or a possibly-safety item "
-        "is undecided; no mention can be clarified",
-    ),
-    "mention_is_life_safety": (
-        ConflictError,
-        "mention_is_life_safety",
-        "a life-safety mention is never clarified; it stays open on this proposal "
-        "(remove the text and request a new proposal)",
-    ),
-    "nothing_to_clarify": (
-        NotFoundError,
-        "mention_not_found",
-        "this revision's record has no open safety mention",
-    ),
-}
-
-
-def _clarify_blocker(
-    record: Mapping[str, Any] | None,
-    row: DesignRevisionRow,
-    latest: int,
-    user: CurrentUser,
-    *,
-    may_approve: bool,
-    target: str | None = None,
-) -> str | None:
-    """Why ``user`` may not clarify a mention of this revision's record now, or ``None``.
-
-    Only a ``possibly``-level mention is ever clarifiable: a life-safety one
-    is ``mention_is_life_safety`` for good (``target``: the mention asked
-    for; without one, whether any open mention could be).
-
-    The order is the order the endpoint checks in: who (account, permission),
-    then the revision (derived, approved, latest), then the proposal (a
-    safety concern, nothing open), then four-eyes against the proposal's
-    creator.
-    """
-    account = _account_id(user)
-    if not user.email or account is None:
-        return "requires_account"
-    if not may_approve:
-        return "not_permitted"
-    if record is None or record.get("derived"):
-        return "requirements_derived"
-    if row.approved_at is not None:
-        return "revision_already_approved"
-    if row.number != latest:
-        return "revision_not_latest"
-    ai = record.get("ai")
-    open_by_code = {
-        str((o.get("subject") or {}).get("mention_id")): o["code"]
-        for o in record.get("open_items", [])
-        if (o.get("subject") or {}).get("mention_id")
-    }
-    if target is not None:
-        if target not in open_by_code:
-            return "nothing_to_clarify"
-        if open_by_code[target] != ai_intake.POSSIBLY_SAFETY_MENTIONED:
-            return "mention_is_life_safety"
-    elif not open_by_code:
-        return "nothing_to_clarify"
-    elif ai_intake.POSSIBLY_SAFETY_MENTIONED not in open_by_code.values():
-        return "mention_is_life_safety"
-    if ai_intake.safety_concern(ai) is not None:
-        return "safety_concern_unresolved"
-    creator = str(((ai or {}).get("proposal") or {}).get("created_by_user_id") or "")
-    # A proposal whose creator is unknown cannot be shown to be someone
-    # else's: refused like the creator's own.
-    if not creator or creator == str(account):
-        return "proposal_author"
-    return None
-
-
-def clarification_eligibility(
-    *,
-    session: Session,
-    row: DesignRevisionRow,
-    record: Mapping[str, Any] | None,
-    latest: int,
-    user: CurrentUser,
-) -> SafetyClarificationEligibility | None:
-    """The flag a client shows the clarify action by; ``None`` when nothing was ever mentioned."""
-    ai = (record or {}).get("ai")
-    if not ai_intake.input_mentions(ai):
-        return None
-    may = Permission.APPROVE_REVISION in permissions.allowed(session=session, user=user)
-    reason = _clarify_blocker(record, row, latest, user, may_approve=may)
-    return SafetyClarificationEligibility(eligible=reason is None, reason=reason)
-
-
-def clarify_mention(
-    *,
-    session: Session,
-    user: CurrentUser,
-    project_id: str,
-    number: int,
-    request: SafetyClarificationRequest,
-) -> AcknowledgedRequirements:
-    """Record that one safety mention of the latest revision's record is not life-safety.
-
-    The acknowledge path's rules: under the project lock, then the
-    revision's; the stored record must match its hash; not derived, not
-    approved, the latest revision. Who: a member holding ``approve_revision``
-    who did not create the AI proposal (four-eyes). Appended to the record's
-    ``ai.clarifications`` (append-only), the hash recomputed, the design
-    untouched; the approval later binds the new hash.
-
-    Raises:
-        NotFoundError: ``revision_not_found`` (also another tenant's),
-            ``mention_not_found`` (no such open mention).
-        AuthorizationError: ``clarification_requires_account``,
-            ``clarification_not_permitted``, ``clarification_by_proposal_author``.
-        ConflictError: ``requirements_derived``, ``revision_already_approved``,
-            ``revision_not_latest``, ``safety_concern_unresolved``,
-            ``snapshot_integrity_failed`` (``requirements_mismatch``).
-    """
-    tenant = _scope_to(session, user)
-    try:
-        project = _revision_project(session, project_id, lock=True)
-        row = _locked_revision(session, project, number)
-        if row.requirements is not None and not _requirements_match(row):
-            raise ConflictError(
-                f"revision {number}'s requirements record does not match its recorded hash",
-                code="snapshot_integrity_failed",
-                params={"revision": number, "reason": "requirements_mismatch"},
-            )
-        account = _account_id(user)
-        may = False
-        if user.email and account is not None:
-            try:
-                # Locked FOR SHARE until commit, as an approval's check is.
-                permissions.require(
-                    session=session, user=user, permission=Permission.APPROVE_REVISION
-                )
-                may = True
-            except AuthorizationError:
-                may = False
-        record = _stored_record(row)
-        blocker = _clarify_blocker(
-            record,
-            row,
-            project.revision_count,
-            user,
-            may_approve=may,
-            target=request.mention_id,
-        )
-        if blocker is not None or record is None:
-            kind, code, message = _CLARIFY_REFUSALS[blocker or "requirements_derived"]
-            params: dict[str, Any] = {"revision": number}
-            if code == "revision_not_latest":
-                params["latest"] = project.revision_count
-            raise kind(message, code=code, params=params)
-        named = _display_names(session, project.tenant_id, [], also=account)
-        by = (
-            (named.by_id.get(account) if account is not None else None)
-            or user.email
-            or requirements.UNKNOWN_ACCOUNT
-        )
-        ai = dict(record["ai"])
-        ai["clarifications"] = [
-            *ai.get("clarifications", []),
-            {
-                "mention_id": request.mention_id,
-                "statement": ai_intake.NOT_LIFE_SAFETY,
-                "reason": request.reason,
-                "by_user_id": user.id,
-                "by_name": by,
-                "at": datetime.now(UTC).isoformat(),
-            },
-        ]
-        record = {**record, "ai": ai}
-        # The open items re-derived: the clarified mention's goes, every other stays.
-        record["open_items"] = _rederive_open_items(record)
-        row.requirements = record
-        row.requirements_sha256 = snapshot.sha256_of(record)
-        session.commit()
-    except BaseException:
-        _release(session)
-        raise
-    logger.info(
-        "design.safety_mention_clarified",
-        tenant_id=str(tenant),
-        project_id=str(project.id),
-        revision=number,
-        mention=request.mention_id,
-    )
-    return AcknowledgedRequirements(requirements=RequirementsRecord.model_validate(record))
-
-
 def _rederive_open_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The record's open items with its AI ones derived again from its ``ai`` block, in place."""
     kept = [
@@ -3213,71 +2997,124 @@ def _rederive_open_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
-# Safety concerns: the approval hold and its two resolutions (M6d)
+# Safety concerns: the approval hold and its two resolutions (M6d, M6e)
 # --------------------------------------------------------------------------- #
 
 
-def _approval_held(record: Mapping[str, Any] | None) -> ApprovalHeld | None:
-    """Why a revision with this stored record cannot be approved now, or ``None``.
+def _stored_of(row: DesignRevisionRow) -> safety_review.Stored:
+    """A revision as stored, for re-deriving its concerns (its record read as stored).
 
-    Every safety concern of its ``ai`` block no resolution in force covers
-    (``ai_intake.unresolved_safety``). A derived record (no stored one) or a
-    record without an AI block holds none. Generic acknowledgements never
-    resolve one: they are not read here.
+    An earlier revision's record is read even when it fails its hash: an
+    over-inclusive concern is safer than a dropped one.
     """
-    if not record or record.get("derived"):
-        return None
-    unresolved = ai_intake.unresolved_safety(record.get("ai"))
+    record = row.requirements if isinstance(row.requirements, Mapping) else None
+    request = row.request if isinstance(row.request, Mapping) else None
+    return safety_review.Stored(number=row.number, request=request, record=record)
+
+
+def _found(
+    row: DesignRevisionRow, revisions: Sequence[DesignRevisionRow]
+) -> list[safety_review.Concern]:
+    """Every safety concern of ``row``: its own AI block and request, and every earlier revision's."""
+    return safety_review.concerns(
+        _stored_of(row), [_stored_of(r) for r in revisions if r.number < row.number]
+    )
+
+
+def _approval_held(
+    found: Sequence[safety_review.Concern],
+    record: Mapping[str, Any] | None,
+) -> ApprovalHeld | None:
+    """Why a revision cannot be approved now: its unresolved safety concerns, or ``None``.
+
+    Generic acknowledgements never resolve one (they are not read here). A
+    revision with no stored record (derived) cannot record a resolution, so
+    any concern holds it for good: it is saved again.
+    """
+    unresolved = safety_review.unresolved(found, record)
     if not unresolved:
         return None
-    return ApprovalHeld(count=len(unresolved), codes=sorted({t.code for t in unresolved}))
+    return ApprovalHeld(count=len(unresolved), codes=sorted({c.code for c in unresolved}))
 
 
-def _refuse_unresolved_safety(row: DesignRevisionRow, number: int) -> None:
-    """Refuse approving a revision whose stored record holds an unresolved safety concern.
-
-    Called under the project and revision locks, after ``_approvable``
-    checked the record against its hash (``_check_snapshot``).
-    """
-    held = _approval_held(_stored_record(row))
+def _refuse_unresolved_safety(
+    row: DesignRevisionRow, number: int, found: Sequence[safety_review.Concern]
+) -> None:
+    """Refuse approving a revision with an unresolved safety concern (under the approval's locks)."""
+    held = _approval_held(found, _stored_record(row) if row.requirements is not None else None)
     if held is not None:
         raise ConflictError(
             f"revision {number} has {held.count} unresolved safety concern(s): "
-            "each life-safety or possibly-safety mention and item must be excluded from "
-            "scope or judged a false positive by a second member before approval",
+            "each life-safety or possibly-safety mention, item or request entry (this "
+            "revision's or an earlier one's) must be resolved by a second member before approval",
             code="approval_blocked_by_safety",
             params={"revision": number, "count": held.count, "codes": ",".join(held.codes)},
         )
 
 
-def _safety_concerns(record: Mapping[str, Any] | None) -> list[SafetyConcern]:
-    """Every safety concern of a stored record, and how each stands, for the app."""
-    if not record or record.get("derived"):
-        return []
-    ai = record.get("ai")
-    resolved = ai_intake.resolutions_in_force(ai)
-    open_keys = {t.key for t in ai_intake.unresolved_safety(ai)}
+def _open_items_shown(
+    record: Mapping[str, Any], found: Sequence[safety_review.Concern]
+) -> list[dict[str, Any]]:
+    """The record's open items without the AI safety ones a resolution in force now covers."""
+    proposal = str(((record.get("ai") or {}).get("proposal") or {}).get("id") or "")
+    resolved = set(safety_review.resolutions_in_force(found, record))
     out = []
-    for target in ai_intake.safety_targets(ai):
-        entry = resolved.get(target.key)
+    for item in record.get("open_items", []):
+        subject = item.get("subject") or {}
+        if (
+            subject.get("mention_id")
+            and ("mention", str(subject["mention_id"]), proposal) in resolved
+        ):
+            continue
+        if (
+            item.get("code") == "ai_unsupported"
+            and (
+                "item",
+                str(subject.get("item_id")),
+                proposal,
+            )
+            in resolved
+        ):
+            continue
+        out.append(dict(item))
+    return out
+
+
+def _safety_concerns(
+    found: Sequence[safety_review.Concern], record: Mapping[str, Any] | None
+) -> list[SafetyConcern]:
+    """Every safety concern of a revision, and how each stands, for the app."""
+    resolved = safety_review.resolutions_in_force(found, record)
+    out = []
+    for c in found:
+        entry = resolved.get(c.key)
         out.append(
             SafetyConcern(
-                kind=target.kind,
-                target_id=target.target_id,
-                level=target.level,
-                code=target.code,
-                label=target.label,
-                start=target.start,
-                end=target.end,
-                resolved=target.key not in open_keys,
+                kind=c.kind,
+                target_id=c.target_id,
+                proposal_id=c.proposal_id,
+                level=c.level,
+                code=c.code,
+                label=c.label,
+                start=c.start,
+                end=c.end,
+                resolved=entry is not None,
                 resolution=(
                     SafetyResolution.model_validate(
-                        {k: entry.get(k) for k in SafetyResolution.model_fields}
+                        {
+                            **{k: entry.get(k) for k in SafetyResolution.model_fields},
+                            "target_kind": c.kind,
+                            "target_id": c.target_id,
+                        }
                     )
                     if entry is not None
                     else None
                 ),
-                false_positive_refusal=ai_intake.false_positive_refusal(ai, target),
+                false_positive_refusal=safety_review.refusal(c, safety_review.FALSE_POSITIVE),
+                exclusion_refusal=safety_review.refusal(c, safety_review.EXCLUDED_FROM_SCOPE),
+                raised_on=c.raised_on,
+                carried=not c.present,
+                where=c.where,
             )
         )
     return out
@@ -3298,7 +3135,7 @@ _RESOLVE_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
     "requirements_derived": (
         ConflictError,
         "requirements_derived",
-        "this revision was saved before requirements were recorded",
+        "this revision was saved before requirements were recorded; save it again",
     ),
     "revision_already_approved": (
         ConflictError,
@@ -3313,7 +3150,7 @@ _RESOLVE_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
     "nothing_to_resolve": (
         NotFoundError,
         "safety_target_not_found",
-        "this revision's record has no such safety concern",
+        "this revision has no such safety concern",
     ),
     "proposal_author": (
         AuthorizationError,
@@ -3329,11 +3166,26 @@ _RESOLVE_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
 }
 
 
+def _proposal_creators(
+    row: DesignRevisionRow, revisions: Sequence[DesignRevisionRow]
+) -> dict[str, str]:
+    """Each AI proposal applied by this or an earlier revision, and the account that created it."""
+    out: dict[str, str] = {}
+    for r in [*revisions, row]:
+        if r.number > row.number or not isinstance(r.requirements, Mapping):
+            continue
+        proposal = (r.requirements.get("ai") or {}).get("proposal") or {}
+        if proposal.get("id"):
+            out[str(proposal["id"])] = str(proposal.get("created_by_user_id") or "")
+    return out
+
+
 def _resolve_blocker(
     record: Mapping[str, Any] | None,
     row: DesignRevisionRow,
     latest: int,
     user: CurrentUser,
+    found: Sequence[safety_review.Concern],
     *,
     may_approve: bool,
 ) -> str | None:
@@ -3341,9 +3193,10 @@ def _resolve_blocker(
 
     In the order the endpoint checks: who (account, permission), the
     revision (derived, approved, latest), that it holds a concern at all,
-    then four-eyes: not the proposal's creator (an unknown creator is
-    refused alike), not the revision's author (an author not established is
-    refused alike: independence cannot be shown).
+    then four-eyes: not the creator of the revision's own AI proposal (an
+    unknown creator is refused alike), not the revision's author (an author
+    not established is refused alike). A concern of an earlier proposal is
+    checked against that proposal's creator when it is resolved.
     """
     account = _account_id(user)
     if not user.email or account is None:
@@ -3356,12 +3209,13 @@ def _resolve_blocker(
         return "revision_already_approved"
     if row.number != latest:
         return "revision_not_latest"
-    ai = record.get("ai")
-    if not ai_intake.safety_targets(ai):
+    if not found:
         return "nothing_to_resolve"
-    creator = str(((ai or {}).get("proposal") or {}).get("created_by_user_id") or "")
-    if not creator or creator == str(account):
-        return "proposal_author"
+    ai = record.get("ai")
+    if ai:
+        creator = str((ai.get("proposal") or {}).get("created_by_user_id") or "")
+        if not creator or creator == str(account):
+            return "proposal_author"
     if not _author_established(row) or _is_author(row, user):
         return "revision_author"
     return None
@@ -3372,14 +3226,15 @@ def resolution_eligibility(
     session: Session,
     row: DesignRevisionRow,
     record: Mapping[str, Any] | None,
+    found: Sequence[safety_review.Concern],
     latest: int,
     user: CurrentUser,
 ) -> SafetyResolutionEligibility | None:
     """The flag a client shows the resolve actions by; ``None`` when there is no concern."""
-    if not record or record.get("derived") or not ai_intake.safety_targets(record.get("ai")):
+    if not found:
         return None
     may = Permission.APPROVE_REVISION in permissions.allowed(session=session, user=user)
-    reason = _resolve_blocker(record, row, latest, user, may_approve=may)
+    reason = _resolve_blocker(record, row, latest, user, found, may_approve=may)
     return SafetyResolutionEligibility(eligible=reason is None, reason=reason)
 
 
@@ -3396,11 +3251,13 @@ def resolve_safety_concern(
     Under the project lock, then the revision's (the approval's order); the
     stored record must match its hash; not derived, not approved, the latest
     revision. Who: a member holding ``approve_revision`` (checked with the
-    approval's ``FOR SHARE`` locks) who neither created the AI proposal nor
-    saved the revision. Appended to the record's ``ai.resolutions``
-    (append-only), the hash recomputed; the design and every item untouched
-    (nothing becomes a load or a placeable item); the approval later binds
-    the new hash.
+    approval's ``FOR SHARE`` locks) who neither created the AI proposal the
+    concern belongs to nor saved the revision. The concern may be this
+    revision's own (its AI block or its request) or one carried from an
+    earlier revision. Appended to the record's ``safety_resolutions``
+    (append-only, carried to later revisions), the hash recomputed; the
+    design and every item untouched (nothing becomes a load or a placeable
+    item); the approval later binds the new hash.
 
     Raises:
         NotFoundError: ``revision_not_found`` (also another tenant's),
@@ -3411,13 +3268,19 @@ def resolve_safety_concern(
             ``safety_resolution_by_revision_author``.
         ConflictError: ``requirements_derived``, ``revision_already_approved``,
             ``revision_not_latest``, ``safety_concern_already_resolved``,
-            ``false_positive_not_allowed`` (``reason``: ``item`` or
-            ``life_safety_item_overlaps``: exclude it from scope instead),
+            ``false_positive_not_allowed`` (``reason``: ``item``,
+            ``life_safety``, ``life_safety_item_overlaps`` or ``in_request``),
+            ``exclusion_not_allowed`` (``in_request``: a life-safety board or
+            load still in the request is removed, not excluded),
             ``snapshot_integrity_failed`` (``requirements_mismatch``).
     """
     tenant = _scope_to(session, user)
-    kind = "mention" if request.mention_id is not None else "item"
-    target_id = str(request.mention_id or request.item_id)
+    kind = (
+        "mention"
+        if request.mention_id is not None
+        else "item" if request.item_id is not None else "request"
+    )
+    target_id = str(request.mention_id or request.item_id or request.request_id)
     try:
         project = _revision_project(session, project_id, lock=True)
         row = _locked_revision(session, project, number)
@@ -3438,57 +3301,97 @@ def resolve_safety_concern(
                 may = True
             except AuthorizationError:
                 may = False
+        revisions = _revisions(session, project)
+        found = _found(row, revisions)
         record = _stored_record(row)
-        blocker = _resolve_blocker(record, row, project.revision_count, user, may_approve=may)
+        blocker = _resolve_blocker(
+            record, row, project.revision_count, user, found, may_approve=may
+        )
         if blocker is not None or record is None:
             error_kind, code, message = _RESOLVE_REFUSALS[blocker or "requirements_derived"]
             params: dict[str, Any] = {"revision": number}
             if code == "revision_not_latest":
                 params["latest"] = project.revision_count
             raise error_kind(message, code=code, params=params)
-        ai = dict(record["ai"])
-        target = next((t for t in ai_intake.safety_targets(ai) if t.key == (kind, target_id)), None)
-        if target is None:
+        current = str(((record.get("ai") or {}).get("proposal") or {}).get("id") or "")
+        matches = [
+            c
+            for c in found
+            if c.kind == kind
+            and c.target_id == target_id
+            and (request.proposal_id is None or (c.proposal_id or "") == request.proposal_id)
+        ]
+        if len(matches) > 1:
+            # The same id in two proposals: the revision's own block, unless named.
+            matches = [c for c in matches if (c.proposal_id or "") == current] or matches[:1]
+        if not matches:
             raise NotFoundError(
-                "this revision's record has no such safety concern",
+                "this revision has no such safety concern",
                 code="safety_target_not_found",
                 params={"revision": number},
             )
-        if target.key not in {t.key for t in ai_intake.unresolved_safety(ai)}:
+        target = matches[0]
+        if target.proposal_id:
+            creator = _proposal_creators(row, revisions).get(target.proposal_id, "")
+            if not creator or creator == str(account):
+                error_kind, code, message = _RESOLVE_REFUSALS["proposal_author"]
+                raise error_kind(message, code=code, params={"revision": number})
+        if target.key not in {c.key for c in safety_review.unresolved(found, record)}:
             raise ConflictError(
                 "this safety concern is resolved already; a resolution is never replaced",
                 code="safety_concern_already_resolved",
                 params={"revision": number},
             )
-        if request.resolution == ai_intake.FALSE_POSITIVE:
-            refusal = ai_intake.false_positive_refusal(ai, target)
-            if refusal is not None:
-                raise ConflictError(
-                    "this concern cannot be a false positive: the proposal holds it as "
-                    "life-safety equipment; record it as excluded_from_scope instead",
-                    code="false_positive_not_allowed",
-                    params={"revision": number, "reason": refusal},
-                )
+        refusal = safety_review.refusal(target, request.resolution)
+        if refusal is not None:
+            raise ConflictError(
+                (
+                    "this concern cannot be a false positive; record it as excluded_from_scope"
+                    if request.resolution == safety_review.FALSE_POSITIVE
+                    and refusal != "in_request"
+                    else (
+                        "a board or load still in the request that names life-safety "
+                        "equipment cannot be resolved: remove it from the request and save a new "
+                        "revision, then record the exclusion"
+                        if refusal == "in_request" and target.level == "life_safety"
+                        else "a possibly-safety board or load still in the request can only be "
+                        "judged a false positive; or remove it from the request"
+                    )
+                ),
+                code=(
+                    "false_positive_not_allowed"
+                    if request.resolution == safety_review.FALSE_POSITIVE
+                    else "exclusion_not_allowed"
+                ),
+                params={"revision": number, "reason": refusal},
+            )
         named = _display_names(session, project.tenant_id, [], also=account)
         by = (
             (named.by_id.get(account) if account is not None else None)
             or user.email
             or requirements.UNKNOWN_ACCOUNT
         )
-        ai["resolutions"] = [
-            *ai.get("resolutions", []),
-            {
-                "target_kind": kind,
-                "target_id": target_id,
-                "resolution": request.resolution,
-                "reason": request.reason,
-                "by_user_id": user.id,
-                "by_name": by,
-                "at": datetime.now(UTC).isoformat(),
-            },
-        ]
-        record = {**record, "ai": ai}
-        record["open_items"] = _rederive_open_items(record)
+        entry = {
+            "target_kind": kind,
+            "target_id": target_id,
+            "proposal_id": target.proposal_id,
+            "raised_on": target.raised_on,
+            "resolution": request.resolution,
+            "reason": request.reason,
+            "by_user_id": user.id,
+            "by_name": by,
+            "at": datetime.now(UTC).isoformat(),
+        }
+        record = dict(record)
+        if target.kind != "request" and target.present and target.proposal_id == current:
+            # A concern of the revision's own AI block: on that block, as in M6d.
+            ai = dict(record["ai"])
+            ai["resolutions"] = [*ai.get("resolutions", []), entry]
+            record["ai"] = ai
+        else:
+            # A request concern, or one carried from an earlier proposal.
+            record["safety_resolutions"] = [*record.get("safety_resolutions", []), entry]
+        record["open_items"] = _open_items_shown(record, found)
         row.requirements = record
         row.requirements_sha256 = snapshot.sha256_of(record)
         session.commit()

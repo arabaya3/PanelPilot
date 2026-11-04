@@ -97,7 +97,9 @@ def it(text: str, phrase: str, item_id: str, item_kind: str, /, **value: Any) ->
     return {"id": item_id, "kind": item_kind, "source": span(text, phrase), "value": value}
 
 
-def propose(as_: Any, provider: StubProvider, text: str, items: list[dict[str, Any]], **kw: Any):
+def propose(
+    as_: Any, provider: StubProvider, text: str, items: list[dict[str, Any]], **kw: Any
+) -> dict[str, Any]:
     provider.payload = _payload(items)
     created = _propose(as_(kw.pop("creator", "engineer")), text, **kw)
     assert created.status_code == 201, created.text[:600]
@@ -112,7 +114,7 @@ def by_quote(proposal: dict[str, Any], quote: str) -> dict[str, Any]:
 
 def decide_all(
     as_: Any, proposal: dict[str, Any], decisions: dict[str, str], who: str = "engineer"
-):
+) -> None:
     for item_id, decision in decisions.items():
         done = _decide(as_(who), proposal["id"], item_id, {"decision": decision})
         assert done.status_code == 200, done.text[:400]
@@ -313,7 +315,9 @@ FIRE = (
 )
 
 
-def _fire(as_: Any, provider: StubProvider, pump_in_request: bool = False) -> tuple[str, dict]:
+def _fire(
+    as_: Any, provider: StubProvider, pump_in_request: bool = False
+) -> tuple[str, dict[str, Any]]:
     t = FIRE
     proposal = propose(
         as_,
@@ -434,7 +438,7 @@ STANDBY = "Main board MDB, fault level 10 kA. Standby pump 5.5 kW on MDB. Lighti
 ROAD = "Site at 12 Fire Station Road. Main board MDB, fault level 10 kA. Lighting 1 kW on MDB."
 
 
-def _standby(as_: Any, provider: StubProvider) -> tuple[str, dict]:
+def _standby(as_: Any, provider: StubProvider) -> tuple[str, dict[str, Any]]:
     t = STANDBY
     proposal = propose(
         as_,
@@ -485,7 +489,7 @@ def _standby(as_: Any, provider: StubProvider) -> tuple[str, dict]:
     )
 
 
-def _road(as_: Any, provider: StubProvider) -> tuple[str, dict]:
+def _road(as_: Any, provider: StubProvider) -> tuple[str, dict[str, Any]]:
     t = ROAD
     proposal = propose(
         as_,
@@ -596,7 +600,7 @@ CONFLICT = (
 )
 
 
-def _conflict(as_: Any, provider: StubProvider) -> tuple[str, dict]:
+def _conflict(as_: Any, provider: StubProvider) -> tuple[str, dict[str, Any]]:
     t = CONFLICT
     proposal = propose(
         as_,
@@ -758,7 +762,7 @@ OUTSIDE = (
 )
 
 
-def _outside(as_: Any, provider: StubProvider) -> tuple[str, dict]:
+def _outside(as_: Any, provider: StubProvider) -> tuple[str, dict[str, Any]]:
     t = OUTSIDE
     proposal = propose(
         as_,

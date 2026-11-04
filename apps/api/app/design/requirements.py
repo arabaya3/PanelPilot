@@ -35,7 +35,7 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.design import ai_intake
+from app.design import ai_intake, safety_review
 from app.models.schemas.design import (
     DesignFinding,
     DesignProject,
@@ -245,6 +245,12 @@ def build(
     }
     if block is not None and not derived:
         record["ai"] = dict(block)
+    if not derived:
+        # M6e: resolutions of safety concerns carry forward; each counts on a
+        # later revision only while its concern is still one there.
+        carried = safety_review.carried_resolutions(prior)
+        if carried:
+            record["safety_resolutions"] = carried
     return apply_acknowledgements(record)
 
 
@@ -566,9 +572,7 @@ def acknowledged_lines(
             f"{(question.get('at') or '')[:10]} — not engineer-validated: {what}"
             + (f" — {where}" if where else "")
         )
-    # M6c: a mention of (possibly) life-safety equipment clarified as not
-    # life-safety by a second member; never engineer-validated.
-    lines += ai_intake.resolution_lines(record.get("ai"), name_of=name_of)
+    # Resolutions of safety concerns print from ``safety_review`` (M6e).
     return lines
 
 

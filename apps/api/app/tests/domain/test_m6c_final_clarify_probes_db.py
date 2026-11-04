@@ -75,7 +75,8 @@ def test_a_life_safety_mention_cannot_be_clarified_away(
     done = _clarify(
         as_("reviewer"), pid, 1, mention["subject"]["mention_id"], "Sprinklers are by others."
     )
-    assert done.status_code == 409, done.text[:300]
-    assert done.json()["code"] == "mention_is_life_safety"
+    # M6e: the clarification route is retired.
+    assert done.status_code == 410, done.text[:300]
+    assert done.json()["code"] == "clarification_route_retired"
     # It stays open, and the exports keep printing it.
     assert [m["code"] for m in _mentions(_record(engine, pid))] == ["ai_life_safety_mentioned"]

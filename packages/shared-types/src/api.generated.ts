@@ -727,7 +727,7 @@ export interface paths {
     put?: never;
     /**
      * Clarify Safety Mention
-     * @description Deprecated (M6c): clarify one possibly-safety mention; use ``safety-resolutions``.
+     * @description Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing.
      */
     post: operations['clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post'];
     delete?: never;
@@ -5321,6 +5321,8 @@ export interface components {
       /** Resaved From */
       resaved_from?: number | null;
       ai?: components['schemas']['RequirementsAi'] | null;
+      /** Safety Resolutions */
+      safety_resolutions?: components['schemas']['SafetyResolution'][];
     };
     /**
      * ResolveEscalationRequest
@@ -5605,29 +5607,6 @@ export interface components {
       reason?: string | null;
     };
     /**
-     * SafetyClarificationRequest
-     * @description Clarify one mention of a revision's record as not life-safety (four-eyes).
-     *
-     *     Who and when are the server's (any such field is 422).
-     *
-     *     Attributes:
-     *         mention_id: The open item's ``subject.mention_id``.
-     *         statement: Only ``not_life_safety``.
-     *         reason: Why, in the clarifier's words: 10 to 500 characters, not
-     *             counting surrounding whitespace.
-     */
-    SafetyClarificationRequest: {
-      /** Mention Id */
-      mention_id: string;
-      /**
-       * Statement
-       * @constant
-       */
-      statement: 'not_life_safety';
-      /** Reason */
-      reason: string;
-    };
-    /**
      * SafetyConcern
      * @description One safety concern of a revision's record, and how it stands (M6d).
      *
@@ -5651,9 +5630,11 @@ export interface components {
        * Kind
        * @enum {string}
        */
-      kind: 'mention' | 'item';
+      kind: 'mention' | 'item' | 'request';
       /** Target Id */
       target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
       /**
        * Level
        * @enum {string}
@@ -5672,6 +5653,17 @@ export interface components {
       resolution?: components['schemas']['SafetyResolution'] | null;
       /** False Positive Refusal */
       false_positive_refusal?: string | null;
+      /** Exclusion Refusal */
+      exclusion_refusal?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
+      /**
+       * Carried
+       * @default false
+       */
+      carried: boolean;
+      /** Where */
+      where?: string | null;
     };
     /**
      * SafetyMention
@@ -5705,9 +5697,13 @@ export interface components {
        * Target Kind
        * @enum {string}
        */
-      target_kind: 'mention' | 'item';
+      target_kind: 'mention' | 'item' | 'request';
       /** Target Id */
       target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
       /**
        * Resolution
        * @enum {string}
@@ -5756,6 +5752,10 @@ export interface components {
       mention_id?: string | null;
       /** Item Id */
       item_id?: string | null;
+      /** Request Id */
+      request_id?: string | null;
+      /** Proposal Id */
+      proposal_id?: string | null;
       /**
        * Resolution
        * @enum {string}
@@ -7954,41 +7954,16 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SafetyClarificationRequest'];
-      };
-    };
+    requestBody?: never;
     responses: {
-      /** @description Successful Response */
-      200: {
+      /** @description `clarification_route_retired` */
+      410: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['AcknowledgedRequirements'];
+          'application/json': unknown;
         };
-      };
-      /** @description `clarification_requires_account`, `clarification_not_permitted`, `clarification_by_proposal_author` */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description `revision_not_found` or `mention_not_found` */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_unresolved`, `mention_is_life_safety`, `snapshot_integrity_failed` */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
       /** @description Validation Error */
       422: {

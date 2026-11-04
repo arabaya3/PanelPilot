@@ -1100,7 +1100,9 @@
       "safety_resolution_by_revision_author": "You saved this revision: another member must resolve its safety concerns.",
       "safety_target_not_found": "That safety concern is not on this revision.",
       "safety_concern_already_resolved": "That safety concern is already resolved; a resolution is never replaced.",
-      "false_positive_not_allowed": "This cannot be a false positive: the proposal reads it as life-safety equipment. Record it as excluded from scope instead."
+      "false_positive_not_allowed": "This cannot be a false positive: the proposal reads it as life-safety equipment. Record it as excluded from scope instead.",
+      "exclusion_not_allowed": "A board or load still in the request cannot be excluded from scope: remove it from the request and save a new revision, then record the exclusion.",
+      "clarification_route_retired": "Clarifications are retired: record a resolution (excluded from scope or false positive) instead."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1188,13 +1190,15 @@
         },
         "kind": {
           "mention": "in the description",
-          "item": "proposal item"
+          "item": "proposal item",
+          "request": "in the request"
         },
         "exclude": "Exclude from scope",
         "falsePositive": "Not a life-safety requirement",
         "noFalsePositive": {
           "item": "An item is never a false positive: exclude it from scope, or resolve its words.",
-          "overlaps": "The proposal reads this text as life-safety equipment: it can only be excluded from scope."
+          "overlaps": "The proposal reads this text as life-safety equipment: it can only be excluded from scope.",
+          "lifeSafety": "Text that names life-safety equipment is never a false positive: exclude it from scope."
         },
         "meansExclude": "You record that this requirement is real and is not covered by this revision (for example, designed separately by the fire-protection contractor). It prints on every review export as excluded from scope. It never becomes a load.",
         "meansFalsePositive": "You record that this text is not a life-safety requirement (for example, a street name). Your name, the date and reason print on every review export. This is not engineer validation.",
@@ -1216,7 +1220,9 @@
           "revision_not_latest": "Safety concerns are resolved on the latest revision only.",
           "nothing_to_resolve": "No safety concern is open.",
           "other": "You cannot resolve safety concerns on this revision."
-        }
+        },
+        "raisedOn": "raised on revision {revision}",
+        "removeFromRequest": "This board or load names life-safety equipment and is still in the request, where it would be drawn as an ordinary load. It cannot be resolved: remove it from the request and save a new revision, then record its exclusion."
       }
     },
     "readiness": {

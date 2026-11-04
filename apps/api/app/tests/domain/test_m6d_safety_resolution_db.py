@@ -257,7 +257,8 @@ def test_a_generic_acknowledgement_never_unblocks(
         f"/design/projects/{pid}/revisions/1/requirements/safety-clarifications",
         json={"mention_id": mid, "statement": "not_life_safety", "reason": FP_REASON},
     )
-    _refused(old, 409, "mention_is_life_safety")
+    # M6e: the deprecated route is retired.
+    _refused(old, 410, "clarification_route_retired")
     _held(_approve(as_("reviewer"), pid), {"ai_life_safety_mentioned"})
 
 
@@ -378,7 +379,7 @@ def test_scenario_ambiguous_wording_with_a_harmless_false_positive(
     assert json.loads(_export(as_("owner"), pid, "json").content)["approval"]["false_positives"]
 
 
-def test_a_possibly_item_follows_its_words_judged_harmless(
+def test_a_false_positive_of_the_words_never_resolves_the_item(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
     pid, _ = _saved(
@@ -395,14 +396,24 @@ def test_a_possibly_item_follows_its_words_judged_harmless(
         reason="Duty and standby of a booster set.",
     )
     assert done.status_code == 200, done.text[:400]
+    # M6e: every item needs its own resolution; the item still holds approval.
     concerns = _concerns(as_("reviewer"), pid)
-    assert all(c["resolved"] for c in concerns)
+    assert [c["kind"] for c in concerns if not c["resolved"]] == ["item"]
+    _held(_approve(as_("owner"), pid), {"ai_possibly_life_safety_item"})
+    item = _one(concerns, "item")
+    excluded = _resolve(
+        as_("reviewer"), pid, 1, "excluded_from_scope", item=item, reason=EXCLUDE_REASON
+    )
+    assert excluded.status_code == 200, excluded.text[:400]
     assert _approve(as_("owner"), pid).status_code == 200
-    # Still not a load, still printed as not covered.
+    # Still not a load; no safety [OPEN] line under the approval.
     record = _record(engine, pid)
     assert [i["kind"] for i in record["ai"]["proposal"]["items"]] == ["unsupported"]
     printed = _pdf_text(_export(as_("owner"), pid, "pdf").content)
-    assert "[OPEN] Not covered by this design (from AI intake)" in printed
+    assert "REVIEW APPROVED" in printed
+    assert "[OPEN] Safety concern" not in printed
+    assert "may refer to life-safety" not in printed
+    assert "[EXCLUDED FROM SCOPE]" in printed
 
 
 def test_scenario_conflicting_or_missing_information_stays_open_and_does_not_hold(

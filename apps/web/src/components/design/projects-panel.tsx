@@ -236,6 +236,7 @@ export function ProjectsPanel({
   const held =
     trial || notPermitted || dirty || selfAuthored || authorNotEstablished || reasons.length > 0;
   const concerns = opened?.safetyConcerns ?? [];
+  const unresolvedConcerns = concerns.filter((concern) => !concern.resolved).length;
   const canDelete = permits(page, 'delete_project');
   // Saving the revision open again, unchanged, is how it is designed and
   // approved under today's rules and renderer: when its approval no longer
@@ -636,7 +637,9 @@ export function ProjectsPanel({
                   >
                     {t(`approveHeld.${reason}`, {
                       revision: opened.revision,
-                      count: blockingCount,
+                      // Each hold says its own count: blocking findings, or
+                      // the unresolved safety concerns (M6e).
+                      count: reason === 'safety' ? unresolvedConcerns : blockingCount,
                     })}
                   </p>
                 ))}

@@ -31,6 +31,7 @@ const MENTION: SafetyConcern = {
   resolved: false,
   resolution: null,
   false_positive_refusal: 'life_safety_item_overlaps',
+  carried: false,
 };
 const ITEM: SafetyConcern = {
   ...MENTION,
@@ -268,10 +269,11 @@ describe('the approval panel', () => {
   }
 
   it('holds approval while a safety concern is unresolved, and says so', () => {
-    panel(OPENED, ['safety']);
-    expect(screen.getByTestId('approve-held-safety').textContent).toMatch(
-      /excluded from scope or judged a false positive/,
-    );
+    panel({ ...OPENED, safetyConcerns: [ROAD, MENTION, FALSE_POSITIVE] }, ['safety']);
+    const held = screen.getByTestId('approve-held-safety').textContent;
+    expect(held).toMatch(/excluded from scope or judged a false positive/);
+    // M6e: the safety hold counts the unresolved concerns, not blocking findings.
+    expect(held).toMatch(/^2 safety concerns are unresolved/);
     fireEvent.click(screen.getByTestId('scope-confirm'));
     expect(
       screen.getByRole<HTMLButtonElement>('button', { name: 'Approve revision 1' }).disabled,
@@ -369,5 +371,82 @@ describe('the server’s flags', () => {
     await approveRevision({ token: 't', fetchImpl, id: 'p1', revision: 2, scopeConfirmed: true });
     const [, approval] = fetchImpl.mock.calls[1] as [string, RequestInit];
     expect(JSON.parse(approval.body as string)).toEqual({ note: '', scope_confirmed: true });
+  });
+});
+
+describe('M6e: request and carried concerns', () => {
+  const LOAD: SafetyConcern = {
+    kind: 'request',
+    target_id: 'r0123456789abcdef',
+    level: 'life_safety',
+    code: 'request_life_safety',
+    label: 'fire pump',
+    start: 0,
+    end: 9,
+    resolved: false,
+    resolution: null,
+    false_positive_refusal: 'life_safety',
+    exclusion_refusal: 'in_request',
+    carried: false,
+    where: 'MDB › Fire pump FP-1',
+  };
+  const CARRIED: SafetyConcern = {
+    ...MENTION,
+    proposal_id: 'p-old',
+    carried: true,
+    raised_on: 1,
+    false_positive_refusal: null,
+  };
+
+  it('says a life-safety load in the request is removed, never resolved', () => {
+    renderApp(
+      <SafetyConcerns
+        concerns={[LOAD]}
+        eligibility={{ eligible: true, reason: null }}
+        onResolve={vi.fn()}
+      />,
+    );
+    const key = `request-${LOAD.target_id}`;
+    expect(screen.getByTestId(`resolve-remove-${key}`).textContent).toMatch(
+      /remove it from the request/,
+    );
+    expect(screen.queryByTestId(`resolve-exclude-${key}`)).toBeNull();
+    expect(screen.getByTestId(`safety-concern-${key}`).textContent).toMatch(/MDB › Fire pump FP-1/);
+  });
+
+  it.each(['en', 'ar', 'he'] as const)(
+    'says on which revision a carried concern was raised (%s)',
+    (locale) => {
+      renderApp(
+        <SafetyConcerns
+          concerns={[CARRIED]}
+          eligibility={{ eligible: true, reason: null }}
+          onResolve={vi.fn()}
+        />,
+        { locale },
+      );
+      const text = screen.getByTestId(`carried-mention-p-old-${MENTION.target_id}`).textContent;
+      expect(text).toMatch(/1/);
+      expect(text).not.toMatch(locale === 'en' ? /^$/ : /raised on/);
+    },
+  );
+
+  it('sends a request concern by request_id, a carried one with its proposal', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ requirements: { schema: 'pp-req/1' } }), { status: 200 }),
+        ),
+      );
+    const base = { token: 't', fetchImpl, id: 'p1', revision: 2, reason: 'Designed elsewhere.' };
+    await resolveSafetyConcern({ ...base, concern: LOAD, resolution: 'false_positive' });
+    await resolveSafetyConcern({ ...base, concern: CARRIED, resolution: 'excluded_from_scope' });
+    const bodies = fetchImpl.mock.calls.map(
+      (call) => JSON.parse((call as [string, RequestInit])[1].body as string) as object,
+    );
+    expect(bodies[0]).toMatchObject({ request_id: LOAD.target_id });
+    expect(bodies[0]).not.toHaveProperty('proposal_id');
+    expect(bodies[1]).toMatchObject({ mention_id: MENTION.target_id, proposal_id: 'p-old' });
   });
 });
