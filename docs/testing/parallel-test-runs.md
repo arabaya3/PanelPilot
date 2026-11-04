@@ -79,12 +79,16 @@ before the marker existed). With `TEST_DATABASE_URL` naming it, from
 python -m app.tests.db_owner status   # marker, this run's token, tables holding data
 python -m app.tests.db_owner claim    # record this worktree's token (or PANELPILOT_TEST_DB_OWNER)
 python -m app.tests.db_owner release  # remove the marker; the next fresh-only claim rules apply
+python -m app.tests.db_owner claim --force    # take it from another owner (named on stderr)
+python -m app.tests.db_owner release --force  # remove another owner's marker
 ```
 
 `claim` and `release` pass the same name guard, refuse while a pytest run
 holds the database's lock, and refuse a database whose comment is not a
-PanelPilot marker. `claim` overwrites another owner's marker: tell that owner
-first. To share one database between two checkouts deliberately (not
+PanelPilot marker. A database marked for **another** token is refused by
+both (exit 1, naming the owner) unless `--force` is given; with `--force` the
+previous owner's marker is written to stderr before it is replaced or
+removed. Tell that owner first. To share one database between two checkouts deliberately (not
 recommended), set the same `PANELPILOT_TEST_DB_OWNER` in both; the lock still
 keeps their runs apart.
 

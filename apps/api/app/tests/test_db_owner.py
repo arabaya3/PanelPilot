@@ -90,3 +90,32 @@ def test_claims_only_a_fresh_database_and_refuses_another_owner(
         db_owner.require_owned(conn, name, "lane-b")
     assert conn.execute(text("SELECT count(*) FROM notes")).scalar_one() == 1
     assert db_owner.parse(db_owner._comment(conn)) is None
+
+
+def test_claim_and_release_refuse_another_owner_without_force(
+    scratch: tuple[Connection, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conn, name = scratch
+    url = db_target.require_disposable(os.environ["TEST_DATABASE_URL"]).set(database=name)
+    monkeypatch.setenv("TEST_DATABASE_URL", url.render_as_string(hide_password=False))
+    monkeypatch.setenv(db_owner.OWNER_ENV, "lane-mine")
+    conn.execute(text(f"COMMENT ON DATABASE \"{name}\" IS '{db_owner.marker('lane-other')}'"))
+    for command in ("claim", "release"):
+        assert db_owner.main([command]) == 1
+        err = capsys.readouterr().err
+        assert "lane-other" in err
+        assert "--force" in err
+        assert db_owner.parse(db_owner._comment(conn)) == "lane-other"
+    assert db_owner.main(["status", "--force"]) == 2
+    capsys.readouterr()
+    # --force takes it, naming the previous owner on stderr.
+    assert db_owner.main(["claim", "--force"]) == 0
+    assert "previous owner panelpilot-test-owner:lane-other" in capsys.readouterr().err
+    assert db_owner.parse(db_owner._comment(conn)) == "lane-mine"
+    # Its own marker needs no --force.
+    assert db_owner.main(["release"]) == 0
+    assert db_owner._comment(conn) is None
+    assert db_owner.main(["claim"]) == 0
+    assert db_owner.parse(db_owner._comment(conn)) == "lane-mine"
