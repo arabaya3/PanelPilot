@@ -2500,7 +2500,7 @@ class SavedProject(BaseModel):
     approval_held: ApprovalHeld | None = None
     #: The scope statement an approval now confirms; and the one this
     #: revision's approval confirmed (``None``: none, or not approved).
-    approval_scope_version: str = ""
+    approval_scope_version: str | None = None
     approved_scope_version: str | None = None
 
     #: The revision's request as stored, when it no longer validates against

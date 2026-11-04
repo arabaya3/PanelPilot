@@ -575,6 +575,7 @@ describe('the review view', () => {
     fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'A. Engineer' },
     });
+    confirmScope();
     const approve = overview().getByText<HTMLButtonElement>('Approve revision 1');
     expect(approve.disabled).toBe(true);
     expect(overview().getByTestId('approve-held-blocking').textContent).toContain(
@@ -1020,10 +1021,12 @@ describe('the backend’s finding codes and approval refusals', () => {
     fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'A. Engineer' },
     });
+    confirmScope();
     fireEvent.click(overview().getByText('Approve revision 1'));
     expect((await overview().findByTestId('projects-message')).textContent).toBe(
       'Another revision was saved at the same time; save again.',
     );
+    confirmScope();
     fireEvent.click(overview().getByText('Approve revision 1'));
     await waitFor(() => {
       expect(overview().getByTestId('projects-message').textContent).toBe(
@@ -1103,6 +1106,7 @@ describe('execution blockers, a second approver, and over-long fields', () => {
     fireEvent.change(overview().getByLabelText('Approval note (optional)'), {
       target: { value: 'B. Second' },
     });
+    confirmScope();
     fireEvent.click(overview().getByText('Approve revision 1'));
     expect((await overview().findByTestId('project-approval')).textContent).toContain(
       'A. Engineer',
@@ -1392,3 +1396,10 @@ describe('a market detected as a revision opens', () => {
     });
   }
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}

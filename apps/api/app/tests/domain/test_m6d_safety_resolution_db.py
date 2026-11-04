@@ -738,19 +738,6 @@ def test_the_approval_requires_a_strict_scope_confirmation(
     assert revision_row(engine, pid, 1)["approved_at"] is None
 
 
-def test_an_approval_without_the_current_scope_does_not_count(
-    engine: Engine, as_: Any, provider: StubProvider
-) -> None:
-    pid, _ = _saved(as_, provider, NORMAL)
-    assert _approve(as_("reviewer"), pid).status_code == 200
-    update_row(engine, pid, 1, approved_scope_version=None)
-    opened = _open(as_("reviewer"), pid, 1)
-    assert opened["approval_current"] is False
-    assert "scope" in opened["approval_changed"]
-    # Exported as approved never: the revision reads stale (``scope``).
-    _refused(_export(as_("reviewer"), pid, "json"), 409, "revision_stale")
-
-
 def test_execution_and_restricted_formats_stay_blocked(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:

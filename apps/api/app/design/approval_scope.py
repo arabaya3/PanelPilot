@@ -2,9 +2,9 @@
 
 Printed on every review export and shown on the approval panel; the approver
 ticks that they read it (``scope_confirmed``), and the approval records the
-version of the statement confirmed (``approved_scope_version``). An approval
-confirmed under another version stops counting (``approval_changed``:
-``scope``).
+version of the statement confirmed (``approved_scope_version``). The
+statement is printed on every review export, so changing it bumps the
+renderer version, which stops every earlier approval counting.
 """
 
 from __future__ import annotations

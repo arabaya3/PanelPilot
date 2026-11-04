@@ -3,11 +3,10 @@
 Adds the nullable ``design_project_revisions.approved_scope_version``, set
 with each approval to the version of the statement of what a review approval
 covers and does not (``app.design.approval_scope``) that the approver ticked.
-An approval counts only while it equals the current statement's version.
-
 Existing approvals are left NULL: no confirmation was asked, and none is
-invented. NULL reads as not confirmed (``approval_changed`` names
-``scope``); those approvals are stale under the renderer bump anyway.
+invented. They stop counting under the same change's renderer bump (the
+statement is printed on every review export), as any approval made before a
+change of the statement would.
 
 A column, not a field of the bound requirements record: the confirmation is
 part of the approval act (like its note and versions), made after the record

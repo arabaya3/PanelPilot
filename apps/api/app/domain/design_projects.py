@@ -663,10 +663,10 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         changed.append("profile")
     if (row.approved_renderer_version or RENDERER_BASELINE) != applicable.renderer_version:
         changed.append("renderer_version")
-    # ``scope``: the approver did not confirm the approval-scope statement now
-    # in force (an approval made before it was asked: NULL, never assumed).
-    if row.approved_scope_version != approval_scope.APPROVAL_SCOPE_VERSION:
-        changed.append("scope")
+    # The approval-scope statement confirmed (``approved_scope_version``) is
+    # not compared here: it is printed on every review export, so changing it
+    # changes the renderer's reference output and bumps the renderer version,
+    # which stops every earlier approval counting (``renderer_version``).
     if not applicable.thorough and applicable.findings is None:
         # No classification of the snapshot (a cheap check whose integrity
         # read did not classify it): the recorded fingerprint is held to the
