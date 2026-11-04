@@ -2070,6 +2070,11 @@ class AiProposal(BaseModel):
             life-safety equipment somewhere; a save records the open item
             ``ai_life_safety_mentioned``. Shown beside the proposal, never
             dismissed.
+        ai_consent_at: When the caller acknowledged that the description is
+            sent to the model provider; ``ai_consent_by_user_id`` who.
+            Null on proposals made before the acknowledgement was asked.
+        calls_remaining: On the response that created it only: the caller's
+            AI intake calls left this month (``None`` with no per-account cap).
     """
 
     id: str
@@ -2088,6 +2093,9 @@ class AiProposal(BaseModel):
     used_by_revision_id: str | None = None
     proposal_sha256: str
     life_safety_mentioned: bool = False
+    ai_consent_at: str | None = None
+    ai_consent_by_user_id: str | None = None
+    calls_remaining: int | None = None
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -2137,10 +2145,14 @@ class AiProposalRequest(StrictModel):
         request: The editor's current draft, read only for its board names
             so the model can name existing boards; never stored, never
             taken as confirmed.
+        ai_consent: The caller acknowledges that the description (and the
+            board names) is sent to the AI model provider; without it the
+            request is 422 ``ai_consent_required`` and nothing is sent.
     """
 
     description: str = Field(max_length=100_000)
     request: dict[str, Any] | None = None
+    ai_consent: bool = False
 
 
 class AiDecisionRequest(StrictModel):

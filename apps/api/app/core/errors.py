@@ -110,6 +110,7 @@ class TooManyRequestsError(PanelPilotError):
         *,
         retry_after_seconds: int | None = None,
         code: str = "rate_limited",
+        params: Mapping[str, object] | None = None,
     ) -> None:
         """Record the message and, when known, how long to wait.
 
@@ -120,8 +121,9 @@ class TooManyRequestsError(PanelPilotError):
             code: Which limit was hit. A subclass names its own, so a page can
                 tell "wait a few minutes" apart from "the month is used up" --
                 both are 429s, and only the code says which one applies.
+            params: The values the message names (a limit, a period).
         """
-        super().__init__(message, code=code)
+        super().__init__(message, code=code, params=params)
         self.retry_after_seconds = retry_after_seconds
 
 

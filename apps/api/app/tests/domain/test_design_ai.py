@@ -51,11 +51,19 @@ BASE = "/design/projects/requirements/ai-proposals"
 
 
 @pytest.fixture(name="stub")
-def _stub(app: FastAPI) -> StubProvider:
+def _stub(app: FastAPI, engine: Engine) -> StubProvider:
     provider = StubProvider(complete_payload())
     app.dependency_overrides[design_ai.get_proposal_provider] = lambda: provider
     app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None
+    _reset_usage(engine)
     return provider
+
+
+def _reset_usage(engine: Engine) -> None:
+    """The tenants and accounts are reused across tests: start each at zero calls."""
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE ai_intake_usage"))
+        conn.execute(text("DELETE FROM model_usage"))
 
 
 @pytest.fixture(autouse=True, params=[None, "pp-design/2"], ids=["schema-unset", "pp-design-2"])
@@ -72,7 +80,7 @@ def _count(engine: Engine) -> int:
 
 
 def _propose(client: TestClient, description: str = TEXT, **extra: Any) -> Any:
-    return client.post(BASE, json={"description": description, **extra})
+    return client.post(BASE, json={"description": description, "ai_consent": True, **extra})
 
 
 def _created(client: TestClient, **extra: Any) -> dict[str, Any]:
@@ -141,7 +149,9 @@ def test_a_complete_description_is_proposed_and_stored(
     assert _count(engine) == 1
     again = client.get(f"{BASE}/{body['id']}")
     assert again.status_code == 200
-    assert again.json() == body
+    # The allowance left is said on the response that spent it only.
+    assert body["calls_remaining"] == 99
+    assert again.json() == {**body, "calls_remaining": None}
 
 
 def test_input_bounds(client: TestClient, engine: Engine, stub: StubProvider) -> None:
@@ -151,7 +161,7 @@ def test_input_bounds(client: TestClient, engine: Engine, stub: StubProvider) ->
     assert error(long)["code"] == "ai_input_too_long"
     ok = _propose(client, "x" * 8000)
     assert ok.status_code in (201, 502), ok.text
-    extra = client.post(BASE, json={"description": "a", "files": ["x"]})
+    extra = client.post(BASE, json={"description": "a", "ai_consent": True, "files": ["x"]})
     assert extra.status_code == 422
     assert stub.calls == [{"description": "x" * 8000, "boards": []}]
 

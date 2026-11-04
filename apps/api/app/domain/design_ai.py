@@ -9,9 +9,11 @@ confirmed items and builds the record's ``ai`` block. The designer receives
 only the request: nothing here feeds design, calculations or checks.
 
 Every failure saves nothing and never touches the user's draft. The model
-call is charged to the tenant's month in a short transaction committed before
-it is made; the provider is asked outside any transaction or lock, and the
-proposal stored in a short transaction after.
+call is charged to the tenant's month, and counted against the account's own
+month with its one in-flight lease (``ai_intake_usage``), in one short
+transaction committed before it is made; the provider is asked outside any
+transaction or lock, the proposal stored in a short transaction after, and
+the lease released however the call ended.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.ai import intake_proposer
@@ -39,7 +41,7 @@ from app.core.errors import (
 )
 from app.core.tenancy import bind_tenant
 from app.design import ai_intake
-from app.domain import model_budget
+from app.domain import ai_intake_usage, model_budget
 from app.models.schemas.auth import CurrentUser
 from app.models.schemas.design import (
     AiDecisionRequest,
@@ -148,6 +150,10 @@ def view(row: DesignAiProposalRow) -> AiProposal:
             ),
             "proposal_sha256": row.proposal_sha256,
             "life_safety_mentioned": ai_intake.life_safety(row.input_text),
+            "ai_consent_at": row.ai_consent_at.isoformat() if row.ai_consent_at else None,
+            "ai_consent_by_user_id": (
+                str(row.ai_consent_by_user_id) if row.ai_consent_by_user_id else None
+            ),
         }
     )
 
@@ -162,14 +168,22 @@ def create_proposal(
     """Ask the model for a proposal, check it, and store it for the user's decisions.
 
     Raises:
-        ValidationError: ``ai_input_empty``, ``ai_input_too_long``.
+        ValidationError: ``ai_consent_required``, ``ai_input_empty``,
+            ``ai_input_too_long``.
         AuthorizationError: ``ai_requires_account`` (a trial).
+        ConflictError: ``ai_request_in_flight`` (the account's other call).
         ServiceUnavailableError: ``ai_unavailable``.
         BadGatewayError: ``ai_proposal_malformed``.
         GatewayTimeoutError: ``ai_timeout``.
-        TooManyRequestsError: The tenant's model calls for the month are used.
+        TooManyRequestsError: ``ai_user_limit_exceeded`` (the account's
+            month), ``model_budget_exceeded`` (the tenant's).
     """
     text = request.description
+    if not request.ai_consent:
+        raise ValidationError(
+            "confirm that the description will be sent to the AI model provider",
+            code="ai_consent_required",
+        )
     if not text.strip():
         raise ValidationError("describe the project first", code="ai_input_empty")
     if len(text) > ai_intake.MAX_INPUT_CHARS:
@@ -185,13 +199,43 @@ def create_proposal(
     # before the model is asked: no row lock or connection is held while the
     # provider answers (up to the client's read timeout), and a call the
     # month's ceiling refuses never reaches the model. A failed call stays
-    # charged: the provider was asked.
+    # charged: the provider was asked. The account's own month and its one
+    # call in flight are taken under its row lock in the same transaction,
+    # so either refusal charges nothing (S2).
     try:
+        lease = ai_intake_usage.acquire(session=session, tenant_id=tenant, user_id=account)
         model_budget.charge_model_call(session=session, tenant_id=tenant)
         session.commit()
     except BaseException:
         session.rollback()
         raise
+    try:
+        row = _ask_and_store(
+            session=session,
+            tenant=tenant,
+            account=account,
+            text=text,
+            boards=boards,
+            provider=provider,
+        )
+    finally:
+        try:
+            ai_intake_usage.release(session=session, lease=lease)
+        except Exception:  # the lease expires on its own
+            logger.warning("design.ai_lease_not_released", tenant_id=str(tenant))
+    return view(row).model_copy(update={"calls_remaining": lease.remaining})
+
+
+def _ask_and_store(
+    *,
+    session: Session,
+    tenant: uuid.UUID,
+    account: uuid.UUID,
+    text: str,
+    boards: list[str],
+    provider: intake_proposer.ProposalProvider,
+) -> DesignAiProposalRow:
+    """Ask the provider (no transaction open), check its answer and store the proposal."""
     try:
         call = _CALLS.submit(provider.propose, description=text, boards=boards)
         try:
@@ -226,10 +270,13 @@ def create_proposal(
         "prompt_version": str(answer.prompt_version)[:64],
     }
     try:
+        now = datetime.now(UTC)
         row = DesignAiProposalRow(
             tenant_id=tenant,
             created_by_user_id=account,
-            created_at=datetime.now(UTC),
+            created_at=now,
+            ai_consent_at=now,
+            ai_consent_by_user_id=account,
             input_text=text,
             input_sha256=ai_intake.input_sha256(text),
             items=items,
@@ -252,13 +299,79 @@ def create_proposal(
         items=len(items),
         rejected=len(rejected),
     )
-    return view(row)
+    return row
 
 
 def get_proposal(*, session: Session, user: CurrentUser, proposal_id: str) -> AiProposal:
     """The caller's tenant's proposal; another tenant's is ``ai_proposal_not_found``."""
     _tenant(session, user)
     return view(_row(session, proposal_id))
+
+
+def delete_proposal(*, session: Session, user: CurrentUser, proposal_id: str) -> None:
+    """Delete one of the caller's own proposals that no saved revision applied (S3).
+
+    A proposal a revision applied is part of that revision's record and is
+    never deleted here; the revision keeps its own copy in any case.
+
+    Raises:
+        NotFoundError: ``ai_proposal_not_found`` (also another tenant's).
+        AuthorizationError: ``ai_requires_account``; ``ai_proposal_not_yours``
+            (another account's proposal in the tenant).
+        ConflictError: ``ai_proposal_used``.
+    """
+    tenant = _tenant(session, user)
+    try:
+        account = _account(user)
+        row = _row(session, proposal_id, lock=True)
+        if row.created_by_user_id != account:
+            raise AuthorizationError(
+                "only the account that asked for a proposal can delete it",
+                code="ai_proposal_not_yours",
+            )
+        if row.used_at is not None:
+            raise ConflictError(
+                "this proposal was applied by a saved revision and is part of its record",
+                code="ai_proposal_used",
+            )
+        session.delete(row)
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    logger.info("design.ai_proposal_deleted", tenant_id=str(tenant), proposal_id=str(row.id))
+
+
+def purge_unused_proposals(
+    *, session: Session, older_than_days: int | None = None, now: datetime | None = None
+) -> int:
+    """Delete every proposal no saved revision applied, older than the retention (S3).
+
+    Spans tenants: the caller (a system job) lifts the tenant filter. A
+    proposal a save is applying holds its row lock; the delete waits for it
+    and then re-reads ``used_at``, so an applied proposal is never purged.
+    The caller commits.
+
+    Args:
+        session: A session that may span tenants.
+        older_than_days: ``AI_INTAKE_UNUSED_RETENTION_DAYS`` by default.
+        now: Injected for tests.
+
+    Returns:
+        How many proposals were deleted.
+    """
+    from datetime import timedelta
+
+    from app.core.config import get_settings
+
+    days = older_than_days or get_settings().ai_intake_unused_retention_days
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=days)
+    result = session.execute(
+        delete(DesignAiProposalRow)
+        .where(DesignAiProposalRow.used_at.is_(None), DesignAiProposalRow.created_at < cutoff)
+        .execution_options(synchronize_session=False)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def decide(

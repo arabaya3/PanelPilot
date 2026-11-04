@@ -8,6 +8,7 @@ last step, queueing its passages, on ``verification_items.flagged_answer_id``.
 """
 
 from app.models.tables import (  # noqa: F401
+    ai_intake_usage,
     base,
     billing,
     calculations,

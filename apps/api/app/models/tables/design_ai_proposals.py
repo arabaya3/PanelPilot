@@ -42,3 +42,8 @@ class DesignAiProposalRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Bas
         ForeignKey("design_project_revisions.id", ondelete="SET NULL"), nullable=True
     )
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The caller's acknowledgement that the description is sent to the model
+    # provider (S3): when, and which account. Null on proposals made before
+    # it was asked for.
+    ai_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_consent_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)

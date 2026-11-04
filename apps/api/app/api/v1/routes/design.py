@@ -218,8 +218,9 @@ _AI_ERRORS: dict[int | str, dict[str, Any]] = {
     dependencies=[Depends(enforce_trial_rate_limit)],
     responses={
         403: {"description": "`ai_requires_account` (a trial)"},
-        422: {"description": "`ai_input_empty`, `ai_input_too_long`"},
-        429: {"description": "`rate_limited`, `model_budget_exceeded`"},
+        409: {"description": "`ai_request_in_flight` (the account's other call)"},
+        422: {"description": "`ai_consent_required`, `ai_input_empty`, `ai_input_too_long`"},
+        429: {"description": "`rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded`"},
         502: {"description": "`ai_proposal_malformed`"},
         503: {"description": "`ai_unavailable`"},
         504: {"description": "`ai_timeout`"},
@@ -245,6 +246,23 @@ def get_ai_proposal(
 ) -> AiProposal:
     """One of the tenant's AI proposals, with each item's decision state."""
     return design_ai.get_proposal(session=session, user=user, proposal_id=proposal_id)
+
+
+@router.delete(
+    "/projects/requirements/ai-proposals/{proposal_id}",
+    status_code=204,
+    responses={
+        **_AI_ERRORS,
+        403: {"description": "`ai_requires_account`, `ai_proposal_not_yours`"},
+        409: {"description": "`ai_proposal_used` (part of a saved revision's record)"},
+    },
+)
+def delete_ai_proposal(
+    proposal_id: Annotated[str, Path(max_length=64)], user: CurrentUserDep, session: SessionDep
+) -> Response:
+    """Delete one of the caller's own proposals that no saved revision applied (S3)."""
+    design_ai.delete_proposal(session=session, user=user, proposal_id=proposal_id)
+    return Response(status_code=204)
 
 
 @router.post(
