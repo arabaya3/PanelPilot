@@ -254,7 +254,11 @@ def _release_detached(bind: Any, lease: ai_intake_usage.Lease) -> None:
 
 
 def _require_live_account(session: Session, tenant: uuid.UUID, account: uuid.UUID) -> None:
-    """Refuse (401) unless the account is still an active member of an active tenant."""
+    """Refuse (401) unless the account is still an active member of an active tenant.
+
+    Both rows are share-locked, so a removal or a tenant deactivation that
+    updates them either commits first (and is seen) or waits for this store.
+    """
     active = session.scalar(
         select(User.is_active)
         .where(User.id == account, User.tenant_id == tenant)
@@ -264,6 +268,7 @@ def _require_live_account(session: Session, tenant: uuid.UUID, account: uuid.UUI
     live_tenant = session.scalar(
         select(TenantRow.is_active)
         .where(TenantRow.id == tenant)
+        .with_for_update(read=True)
         .execution_options(populate_existing=True)
     )
     if not active or not live_tenant:

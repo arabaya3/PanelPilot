@@ -181,8 +181,17 @@ def test_a_removed_account_can_no_longer_call_decide_or_delete(
     assert left == {used["id"]}
 
 
+def _set_tenant_active(engine: Engine, tenant: str, active: bool) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE tenants SET is_active = :a WHERE id = :t"),
+            {"a": active, "t": uuid.UUID(tenant)},
+        )
+
+
+@pytest.mark.parametrize("gone", ["member_removed", "tenant_deactivated"])
 def test_an_account_removed_while_the_provider_answers_stores_nothing(
-    engine: Engine, app: FastAPI, who: _Who
+    engine: Engine, app: FastAPI, who: _Who, gone: str
 ) -> None:
     from app.tests.domain.ai_intake_support import TEXT, StubProvider, complete_payload
 
@@ -191,8 +200,12 @@ def test_an_account_removed_while_the_provider_answers_stores_nothing(
 
     class RemovedMidCall(StubProvider):
         def propose(self, *, description: str, boards: list[str]) -> Any:
-            # The owner removes the member while the model is still answering.
-            _remove(engine, owner, engineer)
+            # While the model is still answering, the owner removes the
+            # member, or the whole tenant is deactivated.
+            if gone == "member_removed":
+                _remove(engine, owner, engineer)
+            else:
+                _set_tenant_active(engine, engineer.tenant_id, False)
             removed_mid_call.append(True)
             return super().propose(description=description, boards=boards)
 
@@ -201,7 +214,11 @@ def test_an_account_removed_while_the_provider_answers_stores_nothing(
     c = _As(app, "engineer")
     calls_before = _usage(engine, engineer)[0]
 
-    late = _propose(c, TEXT)
+    try:
+        late = _propose(c, TEXT)
+    finally:
+        # The tenants are shared by the module's tests.
+        _set_tenant_active(engine, engineer.tenant_id, True)
     assert late.status_code == 401, late.text[:400]
     assert removed_mid_call == [True]
     assert len(slow.calls) == 1

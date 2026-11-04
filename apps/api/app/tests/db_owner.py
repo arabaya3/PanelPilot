@@ -24,11 +24,13 @@ A person who legitimately reassigns a database runs, with
 ``TEST_DATABASE_URL`` set to it::
 
     python -m app.tests.db_owner status
-    python -m app.tests.db_owner claim     # take it for this worktree's token
-    python -m app.tests.db_owner release   # drop the marker
+    python -m app.tests.db_owner claim     # take an unmarked one for this worktree's token
+    python -m app.tests.db_owner release   # drop this worktree's marker
+    python -m app.tests.db_owner claim --force    # take it from another owner
 
-``claim`` overwrites another owner's marker and is meant for exactly that
-reassignment; it refuses while a pytest run holds the database's lock.
+``claim`` and ``release`` refuse a database another token owns unless
+``--force`` is given; with it, the previous owner is printed to stderr. Both
+refuse while a pytest run holds the database's lock.
 """
 
 from __future__ import annotations
@@ -212,9 +214,19 @@ def main(argv: list[str]) -> int:
     """``status`` | ``claim`` | ``release`` for the database ``TEST_DATABASE_URL`` names."""
     from app.tests import db_lock
 
-    if len(argv) != 1 or argv[0] not in {"status", "claim", "release"}:
-        print("usage: python -m app.tests.db_owner status|claim|release", file=sys.stderr)
+    force = "--force" in argv
+    args = [a for a in argv if a != "--force"]
+    if (
+        len(args) != 1
+        or args[0] not in {"status", "claim", "release"}
+        or (force and args[0] == "status")
+    ):
+        print(
+            "usage: python -m app.tests.db_owner status | claim [--force] | release [--force]",
+            file=sys.stderr,
+        )
         return 2
+    argv = args
     url = os.environ.get("TEST_DATABASE_URL", "")
     try:
         engine, conn, database = _connect(url)
@@ -234,10 +246,23 @@ def main(argv: list[str]) -> int:
             print(f"db_owner: a pytest run holds {database!r}; try again when it ends")
             return 1
         try:
-            parse(current)
+            holder = parse(current)
         except DatabaseNotOwnedError as exc:
             print(f"db_owner: {exc}", file=sys.stderr)
             return 1
+        if holder is not None and holder != mine:
+            if not force:
+                print(
+                    f"db_owner: {database!r} belongs to another owner ({current}); "
+                    f"refusing to {argv[0]} it. If it really is being handed over, tell "
+                    "that owner and repeat with --force.",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                f"db_owner: --force: taking {database!r} from previous owner {current}",
+                file=sys.stderr,
+            )
         if argv[0] == "claim":
             _set_marker(conn, database, mine)
             print(f"db_owner: {database!r} now belongs to {mine!r} (was {current or 'none'})")
