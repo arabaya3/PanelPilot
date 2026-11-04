@@ -646,3 +646,120 @@ def test_a_manual_project_with_a_fire_pump_load_is_not_approved(
     assert saved.status_code == 201, saved.text[:300]
     refused = approve(as_("reviewer"), str(saved.json()["id"]))
     assert refused.status_code == 409, refused.text[:300]
+
+
+# --------------------------------------------------------------------------- #
+# Integrated-head probes (5133b60)
+# --------------------------------------------------------------------------- #
+
+
+def _road_mention_project(as_: Any, provider: StubProvider, engine: Engine) -> tuple[str, str]:
+    """A possibly-safety mention only ("Fire Station Road"), rev 2 authored by the reviewer."""
+    from app.tests.domain.test_m6d_review_journeys_db import _road
+
+    pid, _ = _road(as_, provider)
+    revised = as_("reviewer").post(
+        f"/design/projects/{pid}/revisions",
+        json={"request": revision_row(engine, pid, 1)["request"], "note": "r2"},
+    )
+    assert revised.status_code == 201, revised.text[:300]
+    (mid,) = mention_ids(record(engine, pid, 2))
+    return pid, mid
+
+
+def test_the_revision_author_may_not_use_the_new_route(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    pid, mid = _road_mention_project(as_, provider, engine)
+    refused = resolve(as_("reviewer"), pid, 2, {"mention_id": mid}, "false_positive", REASON)
+    assert refused.status_code == 403, refused.text[:300]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="finding at 5133b60: the deprecated safety-clarifications route has no "
+    "revision-author check, and its clarifications count as false positives",
+)
+def test_the_revision_author_may_not_use_the_deprecated_route_either(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    pid, mid = _road_mention_project(as_, provider, engine)
+    done = as_("reviewer").post(
+        f"/design/projects/{pid}/revisions/2/requirements/safety-clarifications",
+        json={"mention_id": mid, "statement": "not_life_safety", "reason": "A street name."},
+    )
+    approved = approve(as_("owner"), pid, 2)
+    # Observed at 5133b60: 200, then approval 200.
+    assert done.status_code == 403 or approved.status_code == 409, (
+        done.text[:200],
+        approved.text[:200],
+    )
+
+
+@pytest.mark.parametrize("intake", ["manual", "guided"])
+def test_re_saving_with_another_intake_does_not_dodge_the_block(
+    engine: Engine, as_: Any, provider: StubProvider, intake: str
+) -> None:
+    pid, _ = _fire(as_, provider, pump_in_request=True)
+    revised = as_().post(
+        f"/design/projects/{pid}/revisions",
+        json={
+            "request": revision_row(engine, pid, 1)["request"],
+            "note": "r2",
+            "requirements_input": {"intake": intake},
+        },
+    )
+    if revised.status_code != 201:
+        assert revised.status_code in (409, 422), revised.text[:300]
+        return
+    refused = approve(as_("reviewer"), pid, 2)
+    assert code(refused) == "approval_blocked_by_safety", refused.text[:300]
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "pdf",
+        "calculations_pdf",
+        pytest.param(
+            "quotation_pdf",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="finding at 5133b60: the quotation PDF prints [SCOPE] but no "
+                "[EXCLUDED FROM SCOPE]/[FALSE POSITIVE] lines",
+            ),
+        ),
+        "json",
+    ],
+)
+def test_every_review_export_states_the_scope_and_the_exclusions(
+    engine: Engine, as_: Any, provider: StubProvider, fmt: str
+) -> None:
+    import json as _json
+
+    from app.tests.api.v1.routes.test_export_integrity import PRICING, text_of
+
+    pid, proposal = _standby(as_, provider)
+    for subject in _concerns(engine, pid, proposal, "Standby pump 5.5 kW on MDB"):
+        assert (
+            resolve(as_("reviewer"), pid, 1, subject, "excluded_from_scope", REASON).status_code
+            == 200
+        )
+    for approved in (False, True):
+        if approved:
+            assert approve(as_("owner"), pid).status_code == 200
+        body: dict[str, Any] = {"format": fmt}
+        if fmt.startswith("quotation"):
+            body["pricing"] = PRICING
+        done = as_("owner").post(f"/design/projects/{pid}/revisions/1/export", json=body)
+        assert done.status_code == 200, (fmt, done.text[:300])
+        if fmt == "json":
+            block = _json.loads(done.content)["approval"]
+            assert block["engineer_validated"] is False
+            assert block["scope_confirmed"] is approved
+            assert block["excluded_from_scope"], block
+            continue
+        words = text_of(fmt, done.content)
+        assert "[SCOPE] It does not cover" in words, fmt
+        assert "[EXCLUDED FROM SCOPE]" in words, fmt
+        assert ("approver confirmed this scope" in words) is approved, fmt
