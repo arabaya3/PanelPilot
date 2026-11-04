@@ -13,6 +13,16 @@ from app.core.config import ConfigurationError
 from app.design import ai_intake
 
 
+@pytest.fixture(autouse=True)
+def _settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No configuration in the unit job: the provider reads only these two settings."""
+    monkeypatch.setattr(
+        intake_proposer,
+        "get_settings",
+        lambda: SimpleNamespace(generation_model="test-model", llm_provider="anthropic"),
+    )
+
+
 class _Client:
     def __init__(self, message: Any = None, raises: Exception | None = None) -> None:
         self.messages = self
