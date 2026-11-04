@@ -12,6 +12,9 @@ from typing import Any
 import structlog
 from structlog.typing import Processor
 
+#: Libraries whose DEBUG output carries request or response bodies.
+QUIET_LOGGERS = ("anthropic", "openai", "httpx", "httpcore")
+
 
 def configure_logging(*, log_level: str, json_output: bool) -> None:
     """Install the process-wide structlog configuration.
@@ -28,6 +31,12 @@ def configure_logging(*, log_level: str, json_output: bool) -> None:
     # Route stdlib logging (uvicorn, sqlalchemy) through the same stream so a
     # deployed environment gets one consistent format, not two interleaved ones.
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level, force=True)
+    # The model SDKs and their HTTP client log each request's options, body
+    # included, at DEBUG: with LOG_LEVEL=DEBUG that would print every AI
+    # intake description, board name and model answer to the log stream.
+    # They stay at INFO or above whatever the app's level.
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(max(level, logging.INFO))
 
     shared: list[Processor] = [
         structlog.contextvars.merge_contextvars,
