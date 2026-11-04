@@ -35,14 +35,14 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from app.design import snapshot
+from app.design import safety_terms, snapshot
 from app.models.schemas.design import ControlNeed, LoadKind, ProjectDesignRequest
 
 SCHEMA = "pp-ai-proposal/1"
@@ -77,28 +77,16 @@ OUT_OF_SCOPE_REASON = "fire-pump or life-safety equipment is out of scope"
 #: equipment anywhere (G4's safety net).
 LIFE_SAFETY_MENTIONED = "ai_life_safety_mentioned"
 
-LIFE_SAFETY_LINE = (
-    "[OPEN] The description mentions fire-pump or life-safety equipment: out of scope "
-    "and not designed; check that no placed load is that equipment"
-)
+#: The record-level open item of a description that may refer to life-safety
+#: equipment (an ambiguous word: "emergency", "standby", "alarm", "fire" alone).
+POSSIBLY_SAFETY_MENTIONED = "ai_possibly_life_safety"
 
-_LIFE_SAFETY = re.compile(
-    r"fire[\s_-]*(?:pump|alarm|main|hose|fight|m[ae]n'?s?[\s_-]*lift|service|damper|curtain)|"
-    r"jockey[\s_-]*pump|sprinkler|hydrant|deluge|drencher|foam[\s_-]*(?:pump|system)|"
-    r"smoke[\s_-]*(?:extract|exhaust|control|vent|damper|detect|fan)|"
-    r"emergency[\s_-]*(?:light|lighting|luminaire|exit)|exit[\s_-]*sign|"
-    r"life[\s_-]*safety|stair(?:case|well)?[\s_-]*pressuri[sz]|evacuation|"
-    # Arabic: fire, emergency, sprinklers, extinguishing, hydrant, smoke.
-    "\u062d\u0631\u064a\u0642|\u0637\u0648\u0627\u0631\u0626|\u0631\u0634\u0627\u0634|"
-    "\u0625\u0637\u0641\u0627\u0621|\u0627\u0637\u0641\u0627\u0621|\u0647\u064a\u062f\u0631\u0627\u0646\u062a|"
-    "\u062f\u062e\u0627\u0646|"
-    # Hebrew: fire (the word alone: it is inside many words), sprinkler(s),
-    # emergency, smoke detector, extinguishing, hydrant, smoke.
-    "(?<!\\w)\u05d0\u05e9(?!\\w)|\u05de\u05ea\u05d6|\u05e1\u05e4\u05e8\u05d9\u05e0\u05e7\u05dc\u05e8|"
-    "\u05d7\u05d9\u05e8\u05d5\u05dd|\u05d2\u05dc\u05d0\u05d9 \u05e2\u05e9\u05df|\u05db\u05d9\u05d1\u05d5\u05d9|"
-    "\u05d4\u05d9\u05d3\u05e8\u05e0\u05d8|\u05e2\u05e9\u05df",
-    re.IGNORECASE,
-)
+#: The reason of an item turned ``unsupported`` for an ambiguous word: it
+#: needs a person's safety review, and is never a supported load.
+POSSIBLY_REASON = "possibly_life_safety"
+
+#: The one statement a clarification makes about a mention.
+NOT_LIFE_SAFETY = "not_life_safety"
 
 #: Where a description's sentences end: a full stop, semicolon, question or
 #: exclamation mark followed by space (not "5.5"), or a line break.
@@ -220,6 +208,24 @@ _REFERS_BACK = re.compile(
 )
 
 
+#: A reference to something said earlier, not only in the sentence before:
+#: "the former/latter", "the first/second (one)", "both", "these/those pumps",
+#: "the above", "all of them", Arabic and Hebrew alike. Anywhere in a sentence.
+_REFERS_FAR = re.compile(
+    r"\b(?:the\s+(?:former|latter|first|second|third|last|above|previous|preceding|"
+    r"aforementioned|same)|both|either|neither|(?:these|those|the)\s+(?:two|three|pumps?|"
+    r"loads?|motors?|fans?|ones?|units?|items?|equipment)|all\s+of\s+them|each\s+of\s+them|"
+    r"above(?:[\s-]+mentioned)?|aforesaid|said\s+\w+)\b"
+    "|\u0627\u0644\u0627\u0648\u0644|\u0627\u0644\u0627\u062e\u064a\u0631|"
+    "\u0627\u0644\u062b\u0627\u0646\u064a|\u0643\u0644\u0627\u0647\u0645\u0627|"
+    "\u0627\u0644\u0645\u0630\u0643\u0648\u0631|\u0627\u0639\u0644\u0627\u0647|"
+    "\u05d4\u05e8\u05d0\u05e9\u05d5\u05df|\u05d4\u05d0\u05d7\u05e8\u05d5\u05df|"
+    '\u05d4\u05e9\u05e0\u05d9|\u05e9\u05e0\u05d9\u05d4\u05dd|\u05d4\u05e0"?\u05dc|'
+    "\u05d4\u05e0\u05d6\u05db\u05e8",
+    re.IGNORECASE,
+)
+
+
 def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
     """The sentences a span stands in, those referring back to them, and those naming its tags.
 
@@ -227,9 +233,11 @@ def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
     fire pump" or "It is the fire pump". Read are: the span's sentences;
     each following sentence that opens with a word referring back ("It",
     "That pump", Arabic and Hebrew demonstratives and pronouns), in a chain;
-    and every sentence naming one of the span's tags ("P-7", compared
+    every sentence naming one of the span's tags ("P-7", compared
     without case, hyphen or space), except board names, so a board's other
-    loads are not drawn in.
+    loads are not drawn in; and every later sentence holding a reference to
+    something said earlier ("The former is the fire pump", "Both serve the
+    sprinklers"), which can draw in more than it means (deliberately).
     """
     sentences = _sentences(text)
     own = [n for n, (a, b) in enumerate(sentences) if a < span[1] and span[0] < b]
@@ -242,6 +250,11 @@ def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
                 break
             chosen.add(follow)
             follow += 1
+    first = min(own) if own else len(sentences)
+    for n in range(first + 1, len(sentences)):
+        a, b = sentences[n]
+        if _REFERS_FAR.search(safety_terms.skeleton(text[a:b])[0]):
+            chosen.add(n)
     names_keys = {_tag_key(name) for name in names}
     tags = {
         _tag_key(m.group())
@@ -259,8 +272,13 @@ def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
 
 
 def life_safety(text: str) -> bool:
-    """Whether ``text`` names fire-pump or life-safety equipment (en/ar/he), as normalised."""
-    return _LIFE_SAFETY.search(_plain(text)) is not None
+    """Whether ``text`` names fire-pump or life-safety equipment (en/ar/he), as detection reads it."""
+    return safety_terms.level_of(text) == "life_safety"
+
+
+def safety_level(text: str) -> safety_terms.Level | None:
+    """``life_safety``, ``possibly`` (an ambiguous word) or ``None`` (``app.design.safety_terms``)."""
+    return safety_terms.level_of(text)
 
 
 _NUMBER = re.compile(r"(?<![\d.,])\d*[.,]?\d+(?![\d])")
@@ -665,10 +683,16 @@ def check_output(
         kind = item.kind
         if kind in ("board", "load"):
             own = " ".join([str(data.get("name", "")), str(data.get("description", ""))])
-            if life_safety(" ".join([context_of(text, span, names), own])):
+            level = safety_level(" ".join([context_of(text, span, names), own]))
+            if level is not None:
                 kind, data, spans = (
                     "unsupported",
-                    {"text": quote[:MAX_STRING], "reason": OUT_OF_SCOPE_REASON},
+                    {
+                        "text": quote[:MAX_STRING],
+                        "reason": (
+                            OUT_OF_SCOPE_REASON if level == "life_safety" else POSSIBLY_REASON
+                        ),
+                    },
                     {},
                 )
             elif product_number(" ".join([quote, own])):
@@ -989,16 +1013,96 @@ def with_refs(
     return {**block, "placements": placed}
 
 
+def input_mentions(ai: Mapping[str, Any] | None) -> list[safety_terms.Mention]:
+    """Every life-safety and possibly-safety mention in an applied proposal's description."""
+    if not ai:
+        return []
+    return safety_terms.mentions(str((ai.get("proposal") or {}).get("input_text", "")))
+
+
+def mention_views(text: str) -> list[dict[str, Any]]:
+    """Every mention in ``text``, JSON-shaped."""
+    return [
+        {
+            "mention_id": m.mention_id,
+            "level": m.level,
+            "term": m.term,
+            "start": m.start,
+            "end": m.end,
+        }
+        for m in safety_terms.mentions(text)
+    ]
+
+
+def safety_concern(ai: Mapping[str, Any] | None) -> str | None:
+    """Why no mention of this proposal may be clarified now, or ``None``.
+
+    ``life_safety_item``: an item is ``unsupported`` as life-safety equipment
+    (the server's reason, or a model's unsupported item whose words are
+    life-safety ones): the description does name such equipment.
+    ``possibly_safety_undecided``: an item turned ``unsupported`` for an
+    ambiguous word has no decision yet.
+    """
+    if not ai:
+        return None
+    latest = latest_decisions(ai.get("decisions", []))
+    undecided = False
+    for item in (ai.get("proposal") or {}).get("items", []):
+        if item.get("kind") != "unsupported":
+            continue
+        value = item.get("value") or {}
+        reason = str(value.get("reason", ""))
+        if reason == OUT_OF_SCOPE_REASON or (
+            reason != POSSIBLY_REASON and life_safety(f"{value.get('text', '')} {reason}")
+        ):
+            return "life_safety_item"
+        if reason == POSSIBLY_REASON and str(item["id"]) not in latest:
+            undecided = True
+    return "possibly_safety_undecided" if undecided else None
+
+
+def clarifications_in_force(ai: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
+    """The block's clarifications that count, by mention id.
+
+    One counts while its mention is still detected in the description (same
+    id: same level, term and offset) and nothing in the proposal is a safety
+    concern (:func:`safety_concern`); the first recorded for a mention holds.
+    """
+    if not ai or safety_concern(ai) is not None:
+        return {}
+    detected = {m.mention_id for m in input_mentions(ai)}
+    out: dict[str, Mapping[str, Any]] = {}
+    for entry in ai.get("clarifications", []) or []:
+        mid = str(entry.get("mention_id", ""))
+        if mid in detected and mid not in out and entry.get("statement") == NOT_LIFE_SAFETY:
+            out[mid] = entry
+    return out
+
+
 def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     """The open items an applied proposal leaves: undecided items, unrejected questions and gaps."""
     if not ai:
         return []
     latest = latest_decisions(ai.get("decisions", []))
     out: list[dict[str, Any]] = []
-    # The safety net that needs no linking: the description names life-safety
-    # equipment somewhere. It stays open; no decision closes it.
-    if life_safety(str((ai.get("proposal") or {}).get("input_text", ""))):
-        out.append({"code": LIFE_SAFETY_MENTIONED, "subject": {}})
+    # The safety net that needs no linking: the description names (or may
+    # name) life-safety equipment somewhere, one open item per mention. No
+    # decision closes one; only a clarification in force does (four-eyes,
+    # recorded on the block, printed on every review export).
+    clarified = clarifications_in_force(ai)
+    for mention in input_mentions(ai):
+        if mention.mention_id in clarified:
+            continue
+        out.append(
+            {
+                "code": (
+                    LIFE_SAFETY_MENTIONED
+                    if mention.level == "life_safety"
+                    else POSSIBLY_SAFETY_MENTIONED
+                ),
+                "subject": {"mention_id": mention.mention_id, "term": mention.term},
+            }
+        )
     for item in (ai.get("proposal") or {}).get("items", []):
         decision = latest.get(str(item["id"]))
         rejected = decision is not None and decision["decision"] == "reject"
@@ -1014,6 +1118,32 @@ def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     return out
 
 
+def clarified_lines(
+    ai: Mapping[str, Any] | None, name_of: Callable[[str | None], str] | None = None
+) -> list[str]:
+    """What a review export prints for each clarification in force.
+
+    Args:
+        ai: The record's ``ai`` block.
+        name_of: Who a clarification names, from its ``by_user_id`` (an
+            export never prints an email); ``None`` prints the recorded ``by_name``.
+    """
+    lines = []
+    terms = {m.mention_id: m.term for m in input_mentions(ai)}
+    for mid, entry in clarifications_in_force(ai).items():
+        who = (
+            name_of(entry.get("by_user_id"))
+            if name_of
+            else (entry.get("by_name") or "unknown account")
+        )
+        lines.append(
+            f"[CLARIFIED] '{terms.get(mid, '?')}' judged not life-safety by {who} on "
+            f"{str(entry.get('at') or '')[:10]}: {_short(str(entry.get('reason', '')), 500)}"
+            " — not engineer-validated"
+        )
+    return lines
+
+
 def _short(text: str, limit: int = 120) -> str:
     flat = " ".join(str(text).split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
@@ -1023,8 +1153,17 @@ def open_item_line(ai: Mapping[str, Any] | None, item: Mapping[str, Any]) -> str
     """The ``[OPEN]`` line a review export prints for one AI open item, or ``None``."""
     if not ai:
         return None
+    term = str((item.get("subject") or {}).get("term") or "")
     if item["code"] == LIFE_SAFETY_MENTIONED:
-        return LIFE_SAFETY_LINE
+        return (
+            f"[OPEN] The description mentions fire-pump or life-safety equipment ('{term}'): "
+            "out of scope and not designed; check that no placed load is that equipment"
+        )
+    if item["code"] == POSSIBLY_SAFETY_MENTIONED:
+        return (
+            f"[OPEN] The description may refer to life-safety equipment ('{term}'): "
+            "needs a person's safety review; not designed"
+        )
     wanted = (item.get("subject") or {}).get("item_id")
     items = (ai.get("proposal") or {}).get("items", [])
     found = next((i for i in items if str(i["id"]) == wanted), None)

@@ -278,6 +278,12 @@ def test_a_life_safety_mention_anywhere_is_an_open_item_no_decision_closes() -> 
         "decisions": [{"item_id": i["id"], "decision": "reject"} for i in items],
     }
     found = ai_intake.open_items(block)
-    assert found == [{"code": ai_intake.LIFE_SAFETY_MENTIONED, "subject": {}}]
-    assert ai_intake.open_item_line(block, found[0]) == ai_intake.LIFE_SAFETY_LINE
+    assert [(o["code"], o["subject"]["term"]) for o in found] == [
+        (ai_intake.LIFE_SAFETY_MENTIONED, "fire main")
+    ]
+    assert found[0]["subject"]["mention_id"].startswith("m")
+    assert ai_intake.open_item_line(block, found[0]) == (
+        "[OPEN] The description mentions fire-pump or life-safety equipment ('fire main'): "
+        "out of scope and not designed; check that no placed load is that equipment"
+    )
     assert ai_intake.open_items({"proposal": {"items": [], "input_text": TEXT}}) == []

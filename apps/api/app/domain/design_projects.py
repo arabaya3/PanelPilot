@@ -49,12 +49,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
 from app.core import config
-from app.core.errors import AuthorizationError, ConflictError, NotFoundError, ValidationError
+from app.core.errors import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    PanelPilotError,
+    ValidationError,
+)
 from app.core.tenancy import bind_tenant
 from app.design import (
     CATALOGUE_VERSION,
     RENDERER_BASELINE,
     RULES_VERSION,
+    ai_intake,
     connection_drawing_pdf,
     drawing_text,
     findings_policy,
@@ -107,6 +114,8 @@ from app.models.schemas.design import (
     Revision,
     RevisionExportRequest,
     RevisionSummary,
+    SafetyClarificationEligibility,
+    SafetyClarificationRequest,
     SavedProject,
     SaveProjectRequest,
 )
@@ -1433,6 +1442,13 @@ def _opened(
         author_established=_author_established(chosen),
         is_author=_is_author(chosen, viewer),
     )
+    opened.safety_clarification = clarification_eligibility(
+        session=session,
+        row=chosen,
+        record=_stored_record(chosen),
+        latest=project.revision_count,
+        user=viewer,
+    )
     return opened if readable else opened.as_stored(stored)
 
 
@@ -2566,7 +2582,11 @@ def _record_view(record: Mapping[str, Any] | None) -> RequirementsRecord | None:
 def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
     """The account ids a stored record's acknowledgements name, for their display names."""
     out: list[uuid.UUID] = []
-    for ack in (_stored_record(row) or {}).get("acknowledgements", []):
+    stored = _stored_record(row) or {}
+    for ack in [
+        *stored.get("acknowledgements", []),
+        *(stored.get("ai") or {}).get("clarifications", []),
+    ]:
         try:
             out.append(uuid.UUID(str(ack.get("by_user_id"))))
         except ValueError:
@@ -2897,3 +2917,213 @@ def _acknowledge(
         row.requirements = record
         row.requirements_sha256 = snapshot.sha256_of(record)
     return RequirementsRecord.model_validate(record)
+
+
+#: Why a caller may not clarify a mention now (``SafetyClarificationEligibility``).
+_CLARIFY_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
+    "requires_account": (
+        AuthorizationError,
+        "clarification_requires_account",
+        "clarifying a safety mention requires a signed-in account",
+    ),
+    "not_permitted": (
+        AuthorizationError,
+        "clarification_not_permitted",
+        "only a member who may approve revisions may clarify a safety mention",
+    ),
+    "proposal_author": (
+        AuthorizationError,
+        "clarification_by_proposal_author",
+        "you created this AI proposal; another member must clarify its safety mentions",
+    ),
+    "requirements_derived": (
+        ConflictError,
+        "requirements_derived",
+        "this revision was saved before requirements were recorded",
+    ),
+    "revision_already_approved": (
+        ConflictError,
+        "revision_already_approved",
+        "this revision is approved; what it was approved with does not change",
+    ),
+    "revision_not_latest": (
+        ConflictError,
+        "revision_not_latest",
+        "this revision is not the latest; clarify on the latest revision",
+    ),
+    "safety_concern_unresolved": (
+        ConflictError,
+        "safety_concern_unresolved",
+        "an item of this proposal is life-safety equipment, or a possibly-safety item "
+        "is undecided; no mention can be clarified",
+    ),
+    "nothing_to_clarify": (
+        NotFoundError,
+        "mention_not_found",
+        "this revision's record has no open safety mention",
+    ),
+}
+
+
+def _clarify_blocker(
+    record: Mapping[str, Any] | None,
+    row: DesignRevisionRow,
+    latest: int,
+    user: CurrentUser,
+    *,
+    may_approve: bool,
+) -> str | None:
+    """Why ``user`` may not clarify a mention of this revision's record now, or ``None``.
+
+    The order is the order the endpoint checks in: who (account, permission),
+    then the revision (derived, approved, latest), then the proposal (a
+    safety concern, nothing open), then four-eyes against the proposal's
+    creator.
+    """
+    account = _account_id(user)
+    if not user.email or account is None:
+        return "requires_account"
+    if not may_approve:
+        return "not_permitted"
+    if record is None or record.get("derived"):
+        return "requirements_derived"
+    if row.approved_at is not None:
+        return "revision_already_approved"
+    if row.number != latest:
+        return "revision_not_latest"
+    ai = record.get("ai")
+    if not any((o.get("subject") or {}).get("mention_id") for o in record.get("open_items", [])):
+        return "nothing_to_clarify"
+    if ai_intake.safety_concern(ai) is not None:
+        return "safety_concern_unresolved"
+    creator = str(((ai or {}).get("proposal") or {}).get("created_by_user_id") or "")
+    # A proposal whose creator is unknown cannot be shown to be someone
+    # else's: refused like the creator's own.
+    if not creator or creator == str(account):
+        return "proposal_author"
+    return None
+
+
+def clarification_eligibility(
+    *,
+    session: Session,
+    row: DesignRevisionRow,
+    record: Mapping[str, Any] | None,
+    latest: int,
+    user: CurrentUser,
+) -> SafetyClarificationEligibility | None:
+    """The flag a client shows the clarify action by; ``None`` when nothing was ever mentioned."""
+    ai = (record or {}).get("ai")
+    if not ai_intake.input_mentions(ai):
+        return None
+    may = Permission.APPROVE_REVISION in permissions.allowed(session=session, user=user)
+    reason = _clarify_blocker(record, row, latest, user, may_approve=may)
+    return SafetyClarificationEligibility(eligible=reason is None, reason=reason)
+
+
+def clarify_mention(
+    *,
+    session: Session,
+    user: CurrentUser,
+    project_id: str,
+    number: int,
+    request: SafetyClarificationRequest,
+) -> AcknowledgedRequirements:
+    """Record that one safety mention of the latest revision's record is not life-safety.
+
+    The acknowledge path's rules: under the project lock, then the
+    revision's; the stored record must match its hash; not derived, not
+    approved, the latest revision. Who: a member holding ``approve_revision``
+    who did not create the AI proposal (four-eyes). Appended to the record's
+    ``ai.clarifications`` (append-only), the hash recomputed, the design
+    untouched; the approval later binds the new hash.
+
+    Raises:
+        NotFoundError: ``revision_not_found`` (also another tenant's),
+            ``mention_not_found`` (no such open mention).
+        AuthorizationError: ``clarification_requires_account``,
+            ``clarification_not_permitted``, ``clarification_by_proposal_author``.
+        ConflictError: ``requirements_derived``, ``revision_already_approved``,
+            ``revision_not_latest``, ``safety_concern_unresolved``,
+            ``snapshot_integrity_failed`` (``requirements_mismatch``).
+    """
+    tenant = _scope_to(session, user)
+    try:
+        project = _revision_project(session, project_id, lock=True)
+        row = _locked_revision(session, project, number)
+        if row.requirements is not None and not _requirements_match(row):
+            raise ConflictError(
+                f"revision {number}'s requirements record does not match its recorded hash",
+                code="snapshot_integrity_failed",
+                params={"revision": number, "reason": "requirements_mismatch"},
+            )
+        account = _account_id(user)
+        may = False
+        if user.email and account is not None:
+            try:
+                # Locked FOR SHARE until commit, as an approval's check is.
+                permissions.require(
+                    session=session, user=user, permission=Permission.APPROVE_REVISION
+                )
+                may = True
+            except AuthorizationError:
+                may = False
+        record = _stored_record(row)
+        blocker = _clarify_blocker(record, row, project.revision_count, user, may_approve=may)
+        if blocker is None and record is not None:
+            open_ids = {
+                (o.get("subject") or {}).get("mention_id") for o in record.get("open_items", [])
+            }
+            if request.mention_id not in open_ids:
+                blocker = "nothing_to_clarify"
+        if blocker is not None or record is None:
+            kind, code, message = _CLARIFY_REFUSALS[blocker or "requirements_derived"]
+            params: dict[str, Any] = {"revision": number}
+            if code == "revision_not_latest":
+                params["latest"] = project.revision_count
+            raise kind(message, code=code, params=params)
+        named = _display_names(session, project.tenant_id, [], also=account)
+        by = (
+            (named.by_id.get(account) if account is not None else None)
+            or user.email
+            or requirements.UNKNOWN_ACCOUNT
+        )
+        ai = dict(record["ai"])
+        ai["clarifications"] = [
+            *ai.get("clarifications", []),
+            {
+                "mention_id": request.mention_id,
+                "statement": ai_intake.NOT_LIFE_SAFETY,
+                "reason": request.reason,
+                "by_user_id": user.id,
+                "by_name": by,
+                "at": datetime.now(UTC).isoformat(),
+            },
+        ]
+        record = {**record, "ai": ai}
+        # The open items re-derived: the clarified mention's goes, every other stays.
+        record["open_items"] = _rederive_open_items(record)
+        row.requirements = record
+        row.requirements_sha256 = snapshot.sha256_of(record)
+        session.commit()
+    except BaseException:
+        _release(session)
+        raise
+    logger.info(
+        "design.safety_mention_clarified",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=number,
+        mention=request.mention_id,
+    )
+    return AcknowledgedRequirements(requirements=RequirementsRecord.model_validate(record))
+
+
+def _rederive_open_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The record's open items with its AI ones derived again from its ``ai`` block, in place."""
+    kept = [
+        dict(o)
+        for o in record.get("open_items", [])
+        if not str(o.get("code", "")).startswith("ai_")
+    ]
+    return kept + ai_intake.open_items(record.get("ai"))

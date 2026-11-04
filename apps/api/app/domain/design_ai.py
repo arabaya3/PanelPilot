@@ -148,6 +148,7 @@ def view(row: DesignAiProposalRow) -> AiProposal:
             ),
             "proposal_sha256": row.proposal_sha256,
             "life_safety_mentioned": ai_intake.life_safety(row.input_text),
+            "safety_mentions": ai_intake.mention_views(row.input_text),
         }
     )
 

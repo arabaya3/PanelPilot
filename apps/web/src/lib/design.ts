@@ -608,6 +608,9 @@ export type RequirementSubject = {
   supply_board_ref?: string | null;
   /** An AI proposal item an open item is about (M6b `ai_*` open items). */
   item_id?: string | null;
+  /** A (possibly) life-safety mention of the description (M6c), and its term as detection read it. */
+  mention_id?: string | null;
+  term?: string | null;
 };
 
 /** A question the server derived: a value left empty, or an assumption the design made. */
@@ -749,6 +752,26 @@ export function answerQuestion(
     (payload) => {
       const project = saved(payload);
       if (project) return project;
+      const requirements = requirementsOf(payload);
+      return requirements ? { kind: 'recorded', requirements } : null;
+    },
+  );
+}
+
+/**
+ * Clarify one safety mention of the latest revision as not life-safety:
+ * `POST /api/v1/design/projects/{id}/revisions/{n}/requirements/safety-clarifications`.
+ * Who and when are the server's; the page sends the mention, the statement and a reason.
+ */
+export function clarifySafetyMention(
+  options: Transport & { id: string; revision: number; mention: string; reason: string },
+): Promise<AnswerOutcome> {
+  const { id, revision, mention, reason } = options;
+  return call<AnswerOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-clarifications`,
+    { mention_id: mention, statement: 'not_life_safety', reason },
+    (payload) => {
       const requirements = requirementsOf(payload);
       return requirements ? { kind: 'recorded', requirements } : null;
     },
@@ -988,7 +1011,45 @@ export type AiProposal = {
   proposal_sha256?: string;
   /** The description names fire-pump or life-safety equipment somewhere (never dismissed). */
   life_safety_mentioned?: boolean;
+  /** Every life-safety and possibly-safety term keyword detection found (M6c). */
+  safety_mentions?: SafetyMention[];
 };
+
+/** A term detection found: `life_safety`, or `possibly` (an ambiguous word needing review). */
+export type SafetyMention = {
+  mention_id: string;
+  level: 'life_safety' | 'possibly';
+  term: string;
+  start: number;
+  end: number;
+};
+
+/** A mention a second member judged not life-safety: recorded, never engineer-validated. */
+export type SafetyClarification = {
+  mention_id: string;
+  statement: 'not_life_safety';
+  reason: string;
+  by_user_id: string;
+  by_name: string;
+  at: string;
+};
+
+/** Whether the caller may clarify a mention on the revision open, as the server says. */
+export type SafetyClarificationEligibility = { eligible: boolean; reason?: string | null };
+
+/** The server's flag on a saved project, if it sent one. */
+export function safetyClarificationOf(
+  project: object | null | undefined,
+): SafetyClarificationEligibility | null {
+  const flag = (project as { safety_clarification?: unknown } | null | undefined)
+    ?.safety_clarification;
+  if (typeof flag !== 'object' || flag === null) return null;
+  const { eligible, reason } = flag as { eligible?: unknown; reason?: unknown };
+  return {
+    eligible: eligible === true,
+    reason: typeof reason === 'string' ? reason : null,
+  };
+}
 
 /** Where a confirmed item sits in the editor when saved. */
 export type AiPlacement = { item_id: string; board_index: number; load_index?: number };
@@ -998,6 +1059,8 @@ export type AiRecord = {
   proposal: Partial<AiProposal>;
   decisions?: AiDecision[];
   placements?: Array<AiPlacement & { changed_in_editor?: string[] }>;
+  /** Append-only clarifications of safety mentions (M6c). */
+  clarifications?: SafetyClarification[];
 };
 
 export type AiProposalOutcome = { kind: 'proposed'; proposal: AiProposal } | Failure;

@@ -46,6 +46,7 @@ from app.models.schemas.design import (
     RequirementsPreviewRequest,
     ReviseProjectRequest,
     RevisionExportRequest,
+    SafetyClarificationRequest,
     SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
@@ -309,6 +310,38 @@ def answer_question(
     if isinstance(result, AcknowledgedRequirements):
         response.status_code = 200
     return result
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/requirements/safety-clarifications",
+    response_model=AcknowledgedRequirements,
+    responses={
+        403: {
+            "description": (
+                "`clarification_requires_account`, `clarification_not_permitted`, "
+                "`clarification_by_proposal_author`"
+            )
+        },
+        404: {"description": "`revision_not_found` or `mention_not_found`"},
+        409: {
+            "description": (
+                "`requirements_derived`, `revision_already_approved`, `revision_not_latest`, "
+                "`safety_concern_unresolved`, `snapshot_integrity_failed`"
+            )
+        },
+    },
+)
+def clarify_safety_mention(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    payload: SafetyClarificationRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> AcknowledgedRequirements:
+    """Clarify one (possibly) life-safety mention as not life-safety: four-eyes, append-only."""
+    return design_projects.clarify_mention(
+        session=session, user=user, project_id=project_id, number=number, request=payload
+    )
 
 
 @router.get("/projects/{project_id}", response_model=SavedProject)

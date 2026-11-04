@@ -1732,25 +1732,14 @@ def _net_open(engine: Engine, as_: Any, provider: StubProvider, description: str
         pytest.param(
             "MDB. Pump 5.5 kW on MDB. FIRE\u2011PUMP duty.",
             id="nb_hyphen",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="KNOWN LIMIT H4: a non-breaking hyphen (U+2011; NFKC gives U+2010) in fire-pump",
-            ),
         ),
         pytest.param(
             "MDB. Pump 5.5 kW on MDB. The fіre pump is on MDB.",
             id="cyrillic_homoglyph",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="KNOWN LIMIT H1: a Cyrillic homoglyph (і) in 'fire' defeats the record-level net",
-            ),
         ),
         pytest.param(
             "MDB. Firewater pump 5.5 kW on MDB.",
             id="firewater",
-            marks=pytest.mark.xfail(
-                strict=True, reason="KNOWN LIMIT H2: 'firewater pump' is not in the word list"
-            ),
         ),
     ],
 )
@@ -1776,10 +1765,6 @@ def test_life_safety_net_is_not_raised_by_ordinary_text(
             "MDB. Pump P-7 5.5 kW on MDB. Lighting 1 kW on MDB. The former is the fire pump.",
             "Pump P-7 5.5 kW on MDB",
             id="the_former",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="KNOWN LIMIT H3: 'The former' two sentences later is not followed (the net still raises)",
-            ),
         ),
         pytest.param(
             "MDB. Pump P 7 5.5 kW on MDB. P7 is the fire pump.",

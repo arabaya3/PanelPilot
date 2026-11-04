@@ -544,7 +544,7 @@ def _subject_text(record: Mapping[str, Any], subject: Mapping[str, Any]) -> str:
 def acknowledged_lines(
     record: Mapping[str, Any] | None, name_of: Callable[[str | None], str] | None = None
 ) -> list[str]:
-    """What a review export prints for each acknowledged question of a stored record.
+    """What a review export prints for each acknowledged question (and clarified mention).
 
     Args:
         record: The record.
@@ -566,6 +566,9 @@ def acknowledged_lines(
             f"{(question.get('at') or '')[:10]} — not engineer-validated: {what}"
             + (f" — {where}" if where else "")
         )
+    # M6c: a mention of (possibly) life-safety equipment clarified as not
+    # life-safety by a second member; never engineer-validated.
+    lines += ai_intake.clarified_lines(record.get("ai"), name_of=name_of)
     return lines
 
 

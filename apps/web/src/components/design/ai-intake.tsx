@@ -685,6 +685,11 @@ export function AiIntake({
                 {t('lifeSafetyMentioned')}
               </Notice>
             )}
+            {(proposal.safety_mentions ?? []).some((mention) => mention.level === 'possibly') && (
+              <Notice tone="warning" live={false} testId="ai-possibly-safety">
+                {t('possiblySafety')}
+              </Notice>
+            )}
             <p className="text-xs text-text-muted" data-testid="ai-provider">
               {t('provenance', { provider: proposal.provider, model: proposal.model })}
             </p>

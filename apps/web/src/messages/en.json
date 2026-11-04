@@ -1086,7 +1086,12 @@
       "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot.",
       "ai_item_not_confirmed": "An AI-proposed row was saved without an accepted decision. Accept or edit it in the proposals, or remove the row.",
       "ai_proposal_used": "These AI proposals were already used by a saved revision. Request new proposals, or continue by hand.",
-      "ai_proposal_not_found": "The AI proposals this save refers to are no longer available. Request new ones, or continue by hand."
+      "ai_proposal_not_found": "The AI proposals this save refers to are no longer available. Request new ones, or continue by hand.",
+      "clarification_requires_account": "Sign in to clarify a safety mention.",
+      "clarification_not_permitted": "Only a member who may approve revisions can clarify a safety mention.",
+      "clarification_by_proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
+      "safety_concern_unresolved": "An item of this proposal is life-safety equipment, or a possibly-safety item is undecided: no mention can be clarified.",
+      "mention_not_found": "That safety mention is not open on this revision."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1441,7 +1446,8 @@
         "ai_item_unreviewed": "AI proposal not reviewed",
         "ai_question": "Question from the AI proposal",
         "ai_unsupported": "Described but not supported",
-        "ai_life_safety_mentioned": "Description mentions life-safety equipment (out of scope, not designed)"
+        "ai_life_safety_mentioned": "Description mentions life-safety equipment (out of scope, not designed)",
+        "ai_possibly_life_safety": "Description may refer to life-safety equipment (needs a safety review, not designed)"
       },
       "state": {
         "open": "Open",
@@ -1485,7 +1491,31 @@
       "saveChangesFirst": "Save your changes first: an answer is saved as a new revision from the one stored.",
       "derivedSaveNew": "Save a new revision to record answers.",
       "needsControlled": "Tick “PLC switched” on this load first: a control need is recorded only for a load the PLC switches.",
-      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused."
+      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused.",
+      "clarify": {
+        "action": "Clarify as not life-safety",
+        "means": "You state that this word, as used here, is not about fire-pump or life-safety equipment. Your name, the date and your reason are recorded and printed on review exports. This is not engineer validation, and it never makes an item a supported load.",
+        "reason": "Reason (required)",
+        "reasonHint": "{min} to {max} characters ({length} now).",
+        "submit": "Record clarification",
+        "cancel": "Cancel",
+        "done": "Clarification recorded on revision {revision}.",
+        "title": "Clarified safety mentions",
+        "limits": "Keyword detection cannot recognise every safety requirement: it finds listed words only. A clarification is a person’s judgement, not engineer validation.",
+        "badge": "Clarified",
+        "by": "Judged not life-safety by {name} on {date}:",
+        "ineligible": {
+          "requires_account": "Sign in to clarify a safety mention.",
+          "not_permitted": "Only a member who may approve revisions (owner, administrator or reviewer) can clarify a safety mention.",
+          "proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
+          "requirements_derived": "Save a new revision to clarify safety mentions.",
+          "revision_already_approved": "This revision is approved; its record does not change.",
+          "revision_not_latest": "Safety mentions are clarified on the latest revision only.",
+          "safety_concern_unresolved": "An item of this proposal is life-safety equipment, or a possibly-safety item is undecided: no mention can be clarified.",
+          "nothing_to_clarify": "No safety mention is open.",
+          "other": "You cannot clarify safety mentions on this revision."
+        }
+      }
     },
     "ai": {
       "title": "Describe the project",
@@ -1599,7 +1629,8 @@
         "noDecisions": "No proposal was decided.",
         "changed": "(changed in the editor: {fields})"
       },
-      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision."
+      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision.",
+      "possiblySafety": "The description uses words that may refer to life-safety equipment (for example “emergency”, “standby”, “alarm”). Items so worded are not supported loads: each stays open for a safety review."
     }
   },
   "files": {
