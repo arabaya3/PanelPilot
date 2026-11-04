@@ -61,9 +61,6 @@ def test_consent_is_checked_first_and_nothing_is_counted(
     assert _count(engine) == 0
 
 
-@pytest.mark.xfail(
-    strict=True, reason="ai_consent is a lax bool: the strings 'yes'/'1' and 1 count as consent"
-)
 @pytest.mark.parametrize("value", ["yes", "1", 1, "on"])
 def test_only_the_literal_true_is_consent(
     client: TestClient, stub: StubProvider, value: Any
