@@ -45,13 +45,16 @@ def _refuse_unsafe_database() -> None:
     (``app.tests.db_target``). Without ``TEST_DATABASE_URL`` the database
     tests skip or fail on their own; nothing falls back to ``DATABASE_URL``.
     """
-    from app.tests import db_target
+    from app.tests import db_lock, db_target
 
     url = os.environ.get("TEST_DATABASE_URL", "")
     if url:
         try:
             db_target.require_disposable(url)
-        except db_target.UnsafeDatabaseTargetError as exc:
+            # One run per database: a second run against it stops here, before
+            # any fixture can truncate or drop (app.tests.db_lock).
+            db_lock.claim(url)
+        except (db_target.UnsafeDatabaseTargetError, db_lock.DatabaseInUseError) as exc:
             raise SystemExit(f"pytest: {exc}") from None
 
 
