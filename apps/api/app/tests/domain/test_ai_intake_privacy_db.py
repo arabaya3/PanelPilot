@@ -213,25 +213,45 @@ def test_a_failed_call_counts_once_and_releases_its_lease(
     assert _propose(client).status_code == 201
 
 
-def test_a_call_past_the_deadline_releases_its_lease(
+def test_a_call_past_the_deadline_keeps_its_lease_until_the_provider_ends(
     client: TestClient, engine: Engine, app: FastAPI, caller: _Caller, monkeypatch: Any
 ) -> None:
     stub = StubProvider(complete_payload())
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE ai_intake_usage"))
     gate = threading.Event()
+    finished = threading.Event()
 
     class Slow(StubProvider):
         def propose(self, *, description: str, boards: list[str]) -> Any:
-            gate.wait(5)
-            return stub.propose(description=description, boards=boards)
+            try:
+                gate.wait(10)
+                return stub.propose(description=description, boards=boards)
+            finally:
+                finished.set()
 
     app.dependency_overrides[design_ai.get_proposal_provider] = lambda: Slow()
     app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None
     monkeypatch.setattr(design_ai, "PROVIDER_DEADLINE_S", 0.2)
-    late = _propose(client)
-    gate.set()
-    assert late.status_code == 504
+    try:
+        late = _propose(client)
+        assert late.status_code == 504
+        # The abandoned call still runs on its thread: the account keeps its
+        # lease, so another call of its gets 409 and reaches no provider.
+        calls, lease = _usage(engine, caller.user)
+        assert (calls, lease is not None) == (1, True)
+        busy = _propose(client)
+        assert busy.status_code == 409
+        assert error(busy)["code"] == "ai_request_in_flight"
+        assert stub.calls == []
+    finally:
+        gate.set()
+    assert finished.wait(10)
+    # Released from the worker once the provider call ends.
+    for _ in range(100):
+        if _usage(engine, caller.user) == (1, None):
+            break
+        threading.Event().wait(0.05)
     assert _usage(engine, caller.user) == (1, None)
 
 

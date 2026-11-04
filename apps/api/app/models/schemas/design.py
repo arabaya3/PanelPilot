@@ -31,6 +31,7 @@ from pydantic import (
     SerializationInfo,
     SerializeAsAny,
     SerializerFunctionWrapHandler,
+    StrictBool,
     StringConstraints,
     field_serializer,
     model_validator,
@@ -2225,7 +2226,7 @@ class AiProposalRequest(StrictModel):
 
     description: str = Field(max_length=100_000)
     request: dict[str, Any] | None = None
-    ai_consent: bool = False
+    ai_consent: StrictBool = False
 
 
 class AiDecisionRequest(StrictModel):

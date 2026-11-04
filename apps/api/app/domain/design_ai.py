@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import UTC, datetime
 from typing import Any
@@ -210,6 +210,7 @@ def create_proposal(
     except BaseException:
         session.rollback()
         raise
+    calls: list[Future[Any]] = []
     try:
         row = _ask_and_store(
             session=session,
@@ -218,13 +219,36 @@ def create_proposal(
             text=text,
             boards=boards,
             provider=provider,
+            calls=calls,
         )
     finally:
-        try:
-            ai_intake_usage.release(session=session, lease=lease)
-        except Exception:  # the lease expires on its own
-            logger.warning("design.ai_lease_not_released", tenant_id=str(tenant))
+        # A call abandoned at its deadline may still run on its worker thread
+        # (until the client's own timeout): the account keeps its lease until
+        # that thread ends, so it cannot start more calls and tie up the
+        # shared pool meanwhile (409 ``ai_request_in_flight``). The lease's
+        # expiry still bounds it if the release never comes.
+        if calls and not calls[0].done():
+            bind = session.get_bind()
+            calls[0].add_done_callback(lambda _done: _release_detached(bind, lease))
+        else:
+            _release_quietly(session, lease)
     return view(row).model_copy(update={"calls_remaining": lease.remaining})
+
+
+def _release_quietly(session: Session, lease: ai_intake_usage.Lease) -> None:
+    try:
+        ai_intake_usage.release(session=session, lease=lease)
+    except Exception:  # the lease expires on its own
+        logger.warning("design.ai_lease_not_released", tenant_id=str(lease.tenant_id))
+
+
+def _release_detached(bind: Any, lease: ai_intake_usage.Lease) -> None:
+    """Release ``lease`` from the provider's worker thread, on a session of its own."""
+    try:
+        with Session(bind=bind) as own:
+            _release_quietly(own, lease)
+    except Exception:  # the lease expires on its own
+        logger.warning("design.ai_lease_not_released", tenant_id=str(lease.tenant_id))
 
 
 def _ask_and_store(
@@ -235,10 +259,16 @@ def _ask_and_store(
     text: str,
     boards: list[str],
     provider: intake_proposer.ProposalProvider,
+    calls: list[Future[Any]],
 ) -> DesignAiProposalRow:
-    """Ask the provider (no transaction open), check its answer and store the proposal."""
+    """Ask the provider (no transaction open), check its answer and store the proposal.
+
+    The submitted call is appended to ``calls``, so the caller can tell
+    whether it is still running when this returns or raises.
+    """
     try:
         call = _CALLS.submit(provider.propose, description=text, boards=boards)
+        calls.append(call)
         try:
             answer = call.result(timeout=PROVIDER_DEADLINE_S)
         except FutureTimeout as exc:
