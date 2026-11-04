@@ -300,10 +300,10 @@ def test_limits_are_per_tenant_and_account(
     # Another account of the same tenant has its own month.
     caller.user = _member(engine, tenants[0], "eng-a2@example.com")
     assert _propose(client).status_code == 201
-    # The same account id in another tenant is another (tenant, account).
-    caller.user = CurrentUser(
-        id=owner.id, email="eng-b@example.com", tenant_id=tenants[1], roles=owner.roles
-    )
+    # An account of another tenant has its own month. (A users row belongs to
+    # one tenant, and a proposal is stored only for a live account of the
+    # tenant, so the same id cannot call in two tenants.)
+    caller.user = _member(engine, tenants[1], "eng-b@example.com")
     assert _propose(client).status_code == 201
     # A live lease of one account does not hold up another.
     with engine.begin() as conn:

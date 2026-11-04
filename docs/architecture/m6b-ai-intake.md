@@ -760,10 +760,15 @@ through the real `team.remove` and the production liveness check
 - Every AI intake call, read, decision and delete by it is **401** at
   authentication: nothing is counted, charged or sent. An unexpired token
   does not help. No code change was needed.
-- A call already in flight when it is removed runs to its end (it was
-  authorised and counted at its start) and may store its proposal; its lease
-  is released by that call's `finally` (or lapses at `lease_expires_at`). The
-  lease is per `(tenant, account)` and holds up no other account.
+- A call already in flight when it is removed reaches the provider (it was
+  authorised and counted at its start) but **stores nothing**: before the
+  proposal is written, `create_proposal` re-reads the account and its tenant
+  under a share lock (the `auth.resolve_caller` rule: account active, in that
+  tenant, tenant active) and answers **401** if either is gone. The call stays
+  counted for the account and charged to the tenant (it reached the
+  provider); the lease is released by the call's `finally` (or lapses at
+  `lease_expires_at`). The lease is per `(tenant, account)` and holds up no
+  other account (`test_an_account_removed_while_the_provider_answers_stores_nothing`).
 - Its unused proposals **stay** (visible to the tenant's members, deletable
   by nobody but the retention purge, which removes them on schedule); its
   used proposals stay; its decisions and clarifications in saved revisions

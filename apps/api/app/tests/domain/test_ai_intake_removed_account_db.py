@@ -179,3 +179,42 @@ def test_a_removed_account_can_no_longer_call_decide_or_delete(
             ).all()
         }
     assert left == {used["id"]}
+
+
+def test_an_account_removed_while_the_provider_answers_stores_nothing(
+    engine: Engine, app: FastAPI, who: _Who
+) -> None:
+    from app.tests.domain.ai_intake_support import TEXT, StubProvider, complete_payload
+
+    engineer, owner = who.users["engineer"], who.users["owner"]
+    removed_mid_call: list[bool] = []
+
+    class RemovedMidCall(StubProvider):
+        def propose(self, *, description: str, boards: list[str]) -> Any:
+            # The owner removes the member while the model is still answering.
+            _remove(engine, owner, engineer)
+            removed_mid_call.append(True)
+            return super().propose(description=description, boards=boards)
+
+    slow = RemovedMidCall(complete_payload())
+    app.dependency_overrides[design_ai.get_proposal_provider] = lambda: slow
+    c = _As(app, "engineer")
+    calls_before = _usage(engine, engineer)[0]
+
+    late = _propose(c, TEXT)
+    assert late.status_code == 401, late.text[:400]
+    assert removed_mid_call == [True]
+    assert len(slow.calls) == 1
+    # Nothing stored; the call stays counted (it reached the provider); the
+    # lease is released.
+    with engine.connect() as conn:
+        stored: int = conn.execute(
+            text("SELECT count(*) FROM design_ai_proposals WHERE created_by_user_id=:u"),
+            {"u": uuid.UUID(engineer.id)},
+        ).scalar_one()
+    assert stored == 0
+    calls, lease, _ = _usage(engine, engineer)
+    assert calls == calls_before + 1
+    assert lease is None
+    # The description is not echoed in the refusal.
+    assert TEXT not in late.text
