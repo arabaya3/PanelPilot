@@ -425,3 +425,30 @@ def test_a_findings_policy_change_shows_on_a_listed_approved_revision(
 def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
     """Revisions here are saved by another member, so the caller may approve them (M6a)."""
     review_support.author_revisions_as_another_member(monkeypatch)
+
+
+@pytest.mark.parametrize("schema", ["pp-design/1", "pp-design/2"])
+def test_a_findings_policy_change_names_no_approver_on_the_opened_revision(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, schema: str
+) -> None:
+    """Opened after a findings-policy change, an approved revision agrees everywhere.
+
+    The opened request's title block, the revision list, the approval status
+    and the review exports all treat the approval as no longer counting.
+    """
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", schema)
+    project_id = _save(client)
+    assert approve(client, project_id, 1).status_code == 200
+    opened = _open(client, project_id, 1)
+    assert opened["request"]["info"]["revisions"][0]["approved_by"]
+    _reclassify_a_finding(monkeypatch, opened)
+    opened = _open(client, project_id, 1)
+    listed = next(r for r in opened["revisions"] if r["number"] == 1)
+    assert listed["approval_current"] is False
+    assert "findings_policy" in listed["approval_changed"]
+    assert opened["approval_current"] is False
+    assert [r["approved_by"] for r in opened["request"]["info"]["revisions"]] == [""]
+    for fmt in FORMATS:
+        response = revision_export(client, project_id, 1, fmt)
+        assert response.status_code == 409, fmt
+        assert error(response)["code"] == "revision_stale", fmt

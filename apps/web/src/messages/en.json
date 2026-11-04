@@ -1048,6 +1048,7 @@
       "configuration_requires_v2": "This deployment cannot save a configuration with a revision yet.",
       "schedule_requires_v2": "Terminal and wire schedules and the connection drawing exist only for a saved revision with terminals, nets and wires.",
       "revision_not_validated": "This revision was saved before designs were validated on saving. Save again to validate it.",
+      "configuration_not_carried": "Revision {revision} holds a connection configuration (strips, nets, wires or patterns). A re-save cannot carry it: the configuration is stored only inside that revision's design, and carrying it is not yet proven lossless, so it is never dropped silently. Revision {revision} and its configuration are kept unchanged. To review it again, save a new revision from the editor and enter the configuration again in the configuration step.",
       "revision_has_blocking_findings": "This revision has blocking findings; resolve them and save a new revision before approving.",
       "execution_package_incomplete": "No execution package can be exported yet: it is incomplete.",
       "export_format_unprotected": "Not available yet: this format cannot keep a visible draft warning once imported. Use the PDF or DXF for review.",
@@ -1082,7 +1083,10 @@
       "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
       "assumption_acknowledged": "Assumption acknowledged — not engineer-validated.",
       "approval_author_not_established": "Revision {revision} records no saving account, so who saved it cannot be established and its approval could not be shown to be independent. Save it as a new revision for review; a different member then approves that.",
-      "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot."
+      "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot.",
+      "ai_item_not_confirmed": "An AI-proposed row was saved without an accepted decision. Accept or edit it in the proposals, or remove the row.",
+      "ai_proposal_used": "These AI proposals were already used by a saved revision. Request new proposals, or continue by hand.",
+      "ai_proposal_not_found": "The AI proposals this save refers to are no longer available. Request new ones, or continue by hand."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1136,7 +1140,7 @@
       },
       "approveSelfAuthored": "A different team member must approve this revision.",
       "authorUnknown": "The server holds no author for this revision (author unknown); none is guessed.",
-      "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it.",
+      "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it. The new revision records you as its author; it does not show who first entered this design.",
       "resave": "Save as a new revision for review",
       "resaved": "Saved revision {from} again as revision {revision}, for a different team member to approve.",
       "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision."
@@ -1411,7 +1415,12 @@
       "controlIntro": "Tick what each load needs to be controlled by. These are recorded as requirements only; no control circuit is drawn from them.",
       "need": {
         "start_stop": "Start/stop",
-        "running_indicator": "Running indicator"
+        "running_indicator": "Running indicator",
+        "fault_indicator": "Fault indicator",
+        "hand_off_auto": "Hand/off/auto",
+        "remote_control": "Remote control",
+        "interlock": "Interlock",
+        "timed": "Timed"
       },
       "controlStatus": "Status",
       "controlNotDesigned": "Control circuit not designed yet",
@@ -1428,7 +1437,10 @@
       "itemOpen": "Open",
       "item": {
         "control_not_designed": "Control circuit not designed yet",
-        "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled"
+        "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled",
+        "ai_item_unreviewed": "AI proposal not reviewed",
+        "ai_question": "Question from the AI proposal",
+        "ai_unsupported": "Described but not supported"
       },
       "state": {
         "open": "Open",
@@ -1473,6 +1485,119 @@
       "derivedSaveNew": "Save a new revision to record answers.",
       "needsControlled": "Tick “PLC switched” on this load first: a control need is recorded only for a load the PLC switches.",
       "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused."
+    },
+    "ai": {
+      "title": "Describe the project",
+      "notice": "Type a plain description and ask for proposals. Proposals are unconfirmed suggestions, not designed or validated: only what you accept goes into the editor. Only the text typed here is sent to the AI provider — no files, attachments or documents.",
+      "label": "Project description",
+      "count": "{count} / {max} characters",
+      "request": "Request proposals",
+      "requestAgain": "Request new proposals",
+      "requestAgainNote": "A new request replaces these proposals; rows already placed in the editor stay, as your own entries.",
+      "requesting": "Requesting proposals…",
+      "retry": "Retry",
+      "continueManually": "Continue manually",
+      "nothingChanged": "Nothing in the editor, your draft or your description was changed.",
+      "reviewTitle": "Proposals to review",
+      "unconfirmed": "Unconfirmed suggestions read from your description. They are not designed, checked or validated. Accept, edit or reject each one; only accepted or edited items are placed in the editor.",
+      "provenance": "Proposed by {provider} · {model}",
+      "original": "Your description, as sent",
+      "kind": {
+        "board": "Boards ({count})",
+        "load": "Loads ({count})",
+        "control_need": "Control needs ({count})",
+        "question": "Questions ({count})",
+        "unsupported": "Not supported ({count})",
+        "server_rejected": "Refused by the server ({count})"
+      },
+      "boardSupplyNote": "A description gives no supply: a placed board starts with the voltage empty. Set its supply in the load schedule.",
+      "serverRejectedNote": "These proposed items failed the server's checks and cannot be accepted.",
+      "rejectedReason": "Reason:",
+      "status": {
+        "proposed": "Proposed",
+        "accepted": "Accepted",
+        "edited": "Edited",
+        "rejected": "Rejected",
+        "server_rejected": "Refused"
+      },
+      "recording": "Recording…",
+      "inEditor": "In the editor",
+      "showInText": "Show in description",
+      "field": {
+        "name": "Board name",
+        "fed_from": "Fed from",
+        "board": "Board",
+        "description": "Description",
+        "kind": "Load type",
+        "power_kw": "Power (kW)",
+        "phases": "Phases",
+        "power_factor": "Power factor",
+        "length_m": "Length (m)",
+        "controlled": "PLC switched",
+        "load": "Load",
+        "need": "Control need",
+        "text": "Text",
+        "about": "About",
+        "reason": "Reason"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "someone": "a team member",
+      "decidedBy": {
+        "accept": "Accepted by {name} at {date}",
+        "edit": "Edited by {name} at {date}",
+        "reject": "Rejected by {name} at {date}"
+      },
+      "problem": {
+        "missing": "Edit it first to give: {fields}. Nothing is filled in for you.",
+        "boardNotInEditor": "Board {board} is not in the editor yet. Accept that board first, or edit this item.",
+        "boardExists": "A board named {board} is already in the editor.",
+        "loadNotPlaced": "Place the load it is for first.",
+        "notPlaceable": "This item cannot be placed in the editor."
+      },
+      "accept": "Accept",
+      "edit": "Edit",
+      "reject": "Reject",
+      "place": "Place in editor",
+      "placedLocked": "Placed in the editor. You can change the row there; remove the row to change this decision.",
+      "editOf": "Edit proposal: {quote}",
+      "choose": "Choose…",
+      "notStated": "Not stated",
+      "saveEdit": "Save edit",
+      "cancelEdit": "Cancel",
+      "editError": {
+        "required": "Required.",
+        "tooLong": "At most 200 characters.",
+        "number": "Enter a number.",
+        "positive": "Must be more than zero.",
+        "powerFactor": "At most 1.",
+        "phases": "1 or 3.",
+        "kind": "Choose a load type.",
+        "need": "Choose a control need.",
+        "sameBoard": "A board cannot feed itself."
+      },
+      "reason": {
+        "missing": "A value is missing",
+        "ambiguous": "The description is ambiguous",
+        "contradictory": "The description contradicts itself"
+      },
+      "error": {
+        "ai_unavailable": "The AI service is not available right now. Try again later, or continue by hand.",
+        "ai_proposal_malformed": "The AI service answered with something that could not be used. Try again, or continue by hand.",
+        "ai_timeout": "The AI service took too long to answer. Try again, or continue by hand.",
+        "ai_input_too_long": "The description is longer than {max} characters. Shorten it and try again.",
+        "ai_input_empty": "Type a description first.",
+        "ai_requires_account": "AI proposals need a signed-in account. Sign in, or continue by hand.",
+        "ai_proposal_used": "These proposals were used by a saved revision and can no longer be changed. Request new proposals, or continue by hand.",
+        "ai_proposal_not_found": "These proposals are no longer available. Request new ones, or continue by hand."
+      },
+      "saved": {
+        "title": "AI-assisted entries",
+        "note": "Entries in this revision were proposed by AI from the description below and confirmed by the people named. Confirmed is not engineer-validated.",
+        "decisions": "Decisions",
+        "noDecisions": "No proposal was decided.",
+        "changed": "(changed in the editor: {fields})"
+      }
     }
   },
   "files": {

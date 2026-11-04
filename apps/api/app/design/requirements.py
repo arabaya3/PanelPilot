@@ -35,6 +35,7 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.design import ai_intake
 from app.models.schemas.design import (
     DesignFinding,
     DesignProject,
@@ -120,6 +121,7 @@ def build(
     prior: Mapping[str, Any] | None = None,
     answered: Sequence[Mapping[str, Any]] = (),
     derived: bool = False,
+    ai: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The requirements record of a request, as its revision stores it.
 
@@ -133,6 +135,11 @@ def build(
         answered: Questions answered into this request, each the question as
             it was asked plus its ``answer``, ``by_user_id``, ``by_name`` and ``at``.
         derived: Built for an older revision with no stored record.
+        ai: The ``ai`` block of a proposal this save applies (M6b), its
+            placements given the record's refs here. Without one, the
+            previous record's block carries unchanged: the request's
+            provenance, with its own timestamps and indices, never applied
+            again.
 
     Returns:
         The record, JSON-shaped.
@@ -218,6 +225,11 @@ def build(
             if ack.get("basis") is not None and bases.get(ack["question_id"]) == ack["basis"]
         ]
     )
+    block: Mapping[str, Any] | None = (
+        ai_intake.with_refs(ai, boards, loads) if ai is not None else (prior or {}).get("ai")
+    )
+    if block is not None and not derived:
+        open_items += ai_intake.open_items(block)
     record: dict[str, Any] = {
         "schema": SCHEMA,
         "intake": intake,
@@ -231,6 +243,8 @@ def build(
         "trace": _trace(request, board_refs, load_refs, feeders, designed),
         "acknowledgements": acknowledgements,
     }
+    if block is not None and not derived:
+        record["ai"] = dict(block)
     return apply_acknowledgements(record)
 
 
@@ -573,4 +587,8 @@ def open_item_lines(record: Mapping[str, Any] | None) -> list[str]:
             supply = boards.get(subject.get("supply_board_ref") or "", "?")
             board = boards.get(subject.get("board_ref") or "", "?")
             lines.append(f"[OPEN] Board-to-board wiring not modelled: {supply} to {board}")
+        else:
+            line = ai_intake.open_item_line(record.get("ai"), item)
+            if line is not None:
+                lines.append(line)
     return lines

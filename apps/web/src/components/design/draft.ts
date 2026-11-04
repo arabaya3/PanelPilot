@@ -68,7 +68,75 @@ export type DesignDraft = {
    * which still restores, with none ticked.
    */
   control?: ControlNeed[][][];
+  /**
+   * M6b: the typed project description, the proposal open (re-read from the
+   * server on restore) and the control needs placed from it, by position.
+   * Absent in an older draft, which restores without them.
+   */
+  ai?: AiDraft;
 };
+
+export type AiDraft = {
+  description: string;
+  proposalId: string | null;
+  controlTags: Array<{ item: string; board: number; row: number; need: ControlNeed }>;
+};
+
+/** Control tags by row key, as the draft keeps them: by board and row position. */
+export function draftControlTags(
+  boards: BoardForm[],
+  tags: Readonly<Record<string, { loadKey: number; need: ControlNeed }>>,
+): AiDraft['controlTags'] {
+  const out: AiDraft['controlTags'] = [];
+  for (const [item, tag] of Object.entries(tags)) {
+    boards.forEach((board, b) => {
+      board.loads.forEach((load, row) => {
+        if (load.key === tag.loadKey) out.push({ item, board: b, row, need: tag.need });
+      });
+    });
+  }
+  return out;
+}
+
+/** A draft's control tags on the restored boards, by their new row keys. */
+export function formControlTags(
+  boards: BoardForm[],
+  tags: AiDraft['controlTags'] | undefined,
+): Record<string, { loadKey: number; need: ControlNeed }> {
+  const out: Record<string, { loadKey: number; need: ControlNeed }> = {};
+  for (const tag of tags ?? []) {
+    const load = boards[tag.board]?.loads[tag.row];
+    if (load) out[tag.item] = { loadKey: load.key, need: tag.need };
+  }
+  return out;
+}
+
+function parseAi(value: unknown): AiDraft | undefined {
+  if (!isFields(value) || typeof value.description !== 'string') return undefined;
+  const proposalId =
+    typeof value.proposalId === 'string' && value.proposalId !== '' ? value.proposalId : null;
+  const tags: AiDraft['controlTags'] = [];
+  if (Array.isArray(value.controlTags)) {
+    for (const entry of value.controlTags as unknown[]) {
+      if (!isFields(entry)) continue;
+      const need = CONTROL_NEEDS.find((known) => known === entry.need);
+      if (
+        typeof entry.item === 'string' &&
+        Number.isInteger(entry.board) &&
+        Number.isInteger(entry.row) &&
+        need
+      ) {
+        tags.push({
+          item: entry.item,
+          board: entry.board as number,
+          row: entry.row as number,
+          need,
+        });
+      }
+    }
+  }
+  return { description: value.description, proposalId, controlTags: tags };
+}
 
 /** Control needs by row key, as the draft keeps them: by board and row position. */
 export function draftControl(
@@ -196,7 +264,15 @@ function parseLoad(value: unknown): Omit<Load, 'key'> | null {
   const starter = value.starter === '' ? '' : oneOf(value.starter, STARTERS);
   if (text === null || load === null || phases === null || starter === null) return null;
   if (typeof value.controlled !== 'boolean') return null;
-  return { ...text, load, phases, starter, controlled: value.controlled };
+  const aiItem = typeof value.aiItem === 'string' && value.aiItem !== '' ? value.aiItem : null;
+  return {
+    ...text,
+    load,
+    phases,
+    starter,
+    controlled: value.controlled,
+    ...(aiItem ? { aiItem } : {}),
+  };
 }
 
 function parseBoard(value: unknown): BoardDraft | null {
@@ -221,7 +297,15 @@ function parseBoard(value: unknown): BoardDraft | null {
     if (load === null) return null;
     loads.push(load);
   }
-  return { ...text, phases, earthing, ...(frequency ? { frequency } : {}), loads };
+  const aiItem = typeof value.aiItem === 'string' && value.aiItem !== '' ? value.aiItem : null;
+  return {
+    ...text,
+    phases,
+    earthing,
+    ...(frequency ? { frequency } : {}),
+    loads,
+    ...(aiItem ? { aiItem } : {}),
+  };
 }
 
 function parseProject(value: unknown): DesignDraft['project'] | undefined {
@@ -259,5 +343,14 @@ export function parseDraft(value: unknown): DesignDraft | null {
     boards.push(board);
   }
   const control = parseControl(value.control);
-  return { ...head, project, info, boards, language, ...(control ? { control } : {}) };
+  const ai = parseAi(value.ai);
+  return {
+    ...head,
+    project,
+    info,
+    boards,
+    language,
+    ...(control ? { control } : {}),
+    ...(ai ? { ai } : {}),
+  };
 }

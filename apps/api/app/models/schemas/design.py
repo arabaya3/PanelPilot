@@ -1365,6 +1365,39 @@ class ControlRequirementInput(StrictModel):
         return self
 
 
+class AiPlacement(StrictModel):
+    """Where one confirmed AI proposal item was placed in the request (M6b).
+
+    Attributes:
+        item_id: The proposal item.
+        board_index: The board's index in ``request.boards`` (a ``board``
+            item's board; a ``load`` or ``control_need`` item's load's board).
+        load_index: The load's index in that board's ``loads``: given for a
+            ``load`` or ``control_need`` item, never for a ``board`` item.
+    """
+
+    item_id: str = Field(min_length=1, max_length=40)
+    board_index: int = Field(ge=0, le=99)
+    load_index: int | None = Field(default=None, ge=0, le=499)
+
+
+class AiRequirementsInput(StrictModel):
+    """The AI proposal a save applies (M6b): which proposal, and where its items went.
+
+    The server checks, under the project lock, that the proposal is the
+    caller's tenant's and unused, that every placed item's latest decision is
+    ``accept`` or ``edit`` and that its row exists. Who decided and when are
+    read from the proposal, never from here.
+
+    Attributes:
+        proposal_id: The proposal.
+        placements: Each confirmed item inserted into the editor, by place.
+    """
+
+    proposal_id: str = Field(min_length=1, max_length=64)
+    placements: list[AiPlacement] = Field(default_factory=list, max_length=500)
+
+
 class RequirementsInput(StrictModel):
     """What the guided intake adds to a project's request (M6a, ``pp-req/1``).
 
@@ -1373,12 +1406,23 @@ class RequirementsInput(StrictModel):
     are the server's, never sent.
 
     Attributes:
-        intake: How the loads were entered (``ai`` is reserved, refused).
+        intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
         control: The control needs of controlled loads.
+        ai: The AI proposal applied and where its confirmed items were
+            placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
     """
 
-    intake: Literal["guided", "table", "import"] = "guided"
+    intake: Literal["guided", "table", "import", "ai"] = "guided"
     control: list[ControlRequirementInput] = Field(default_factory=list, max_length=500)
+    ai: AiRequirementsInput | None = None
+
+    @model_validator(mode="after")
+    def _ai_with_its_block(self) -> RequirementsInput:
+        # ``intake: "ai"`` is accepted only with the proposal it applies (M6b),
+        # and a proposal only under ``intake: "ai"``.
+        if (self.intake == "ai") != (self.ai is not None):
+            raise ValueError('intake "ai" is given with its "ai" block, and only then')
+        return self
 
 
 class RequirementsPreviewRequest(StrictModel):
@@ -1798,6 +1842,7 @@ class RequirementSubject(BaseModel):
     load_ref: str | None = None
     control_ref: str | None = None
     supply_board_ref: str | None = None
+    item_id: str | None = None
 
 
 class RequirementBoard(BaseModel):
@@ -1857,9 +1902,21 @@ class RequirementQuestion(BaseModel):
 
 
 class RequirementOpenItem(BaseModel):
-    """What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``."""
+    """What this slice does not design or settle.
 
-    code: Literal["control_not_designed", "inter_board_wiring_not_modelled"]
+    ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
+    an AI proposal item left undecided (``ai_item_unreviewed``), or a
+    ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
+    the user did not reject; the subject's ``item_id`` names the item.
+    """
+
+    code: Literal[
+        "control_not_designed",
+        "inter_board_wiring_not_modelled",
+        "ai_item_unreviewed",
+        "ai_question",
+        "ai_unsupported",
+    ]
     subject: RequirementSubject
 
 
@@ -1868,6 +1925,233 @@ class RequirementTrace(BaseModel):
 
     requirement_ref: str
     design_ref: str | None = None
+
+
+AiItemKind = Literal["board", "load", "control_need", "question", "unsupported"]
+
+#: The numeric fields of a proposal value: stored as decimal strings (the
+#: canonical hash takes no float), sent to the client as JSON numbers.
+_AI_NUMBERS = ("power_kw", "power_factor", "length_m")
+
+
+def _ai_numbers(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    out = dict(value)
+    for field in _AI_NUMBERS:
+        if isinstance(out.get(field), str):
+            try:
+                number = Decimal(out[field])
+            except ArithmeticError:
+                continue
+            out[field] = int(number) if number == number.to_integral_value() else float(number)
+    return out
+
+
+class AiSource(BaseModel):
+    """A span of the stored description: ``input_text[start:end]``."""
+
+    start: int
+    end: int
+
+
+class AiItem(BaseModel):
+    """One item of an AI proposal, as the server kept it after its checks (M6b).
+
+    Attributes:
+        id: The server's id for it (``i<n>``, by its place in the output).
+        kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
+        source: Where in the description it was read.
+        quote: The description's text at ``source``.
+        value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
+        value_spans: For each numeric field, where its literal stands.
+    """
+
+    id: str
+    kind: AiItemKind
+    source: AiSource
+    quote: str
+    value: dict[str, Any]
+    value_spans: dict[str, AiSource] = Field(default_factory=dict)
+
+    @field_serializer("value")
+    def _value_numbers(self, value: dict[str, Any]) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiProposalItem(AiItem):
+    """An item with where the user's decisions leave it.
+
+    Attributes:
+        state: ``proposed`` until decided; the latest decision otherwise.
+        decided_value: The value an ``accept`` (the item's own) or ``edit``
+            (the user's) confirmed; ``None`` while proposed or rejected.
+    """
+
+    state: Literal["proposed", "accepted", "edited", "rejected"] = "proposed"
+    decided_value: dict[str, Any] | None = None
+
+    @field_serializer("decided_value")
+    def _decided_numbers(self, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiRejected(BaseModel):
+    """An output item the server's checks refused, kept and shown, never dropped.
+
+    Attributes:
+        id: The server's id for it (``i<n>``).
+        kind: Its kind, when it named a known one.
+        source: Its span, when it gave a readable one.
+        quote: The description's text at the span, when it lies in the input.
+        value: What it proposed, as sent (bounded).
+        reason: Why it was refused (``offsets_outside_input``,
+            ``value_not_in_text``, ``invalid_value``,
+            ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
+        detail: Which field or reference, in English.
+    """
+
+    id: str
+    kind: str | None = None
+    source: AiSource | None = None
+    quote: str | None = None
+    value: dict[str, Any] | None = None
+    reason: str
+    detail: str = ""
+
+
+class AiDecision(BaseModel):
+    """One decision on an item, append-only; the latest per item holds.
+
+    ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
+    account and its clock.
+    """
+
+    item_id: str
+    decision: Literal["accept", "reject", "edit"]
+    value: dict[str, Any] | None = None
+    by_user_id: str
+    by_name: str
+    at: str
+
+    @field_serializer("value")
+    def _value_numbers(self, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiPlacementRecord(BaseModel):
+    """Where a confirmed item went, as the save recorded it.
+
+    Attributes:
+        changed_in_editor: The item's fields the row differs on from the
+            decided value: the user edited after confirming.
+    """
+
+    item_id: str
+    board_index: int
+    load_index: int | None = None
+    board_ref: str | None = None
+    load_ref: str | None = None
+    changed_in_editor: list[str] = Field(default_factory=list)
+
+
+class AiProposal(BaseModel):
+    """An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
+
+    Attributes:
+        proposal_sha256: The canonical hash of its immutable part (input,
+            provider, model, prompt version, items, server_rejected).
+        used_by_revision_id: The revision that applied it; it then takes no
+            more decisions (``ai_proposal_used``) and no second save.
+    """
+
+    id: str
+    schema_: str = Field(default="pp-ai-proposal/1", alias="schema")
+    created_at: str
+    created_by_user_id: str | None = None
+    input_text: str
+    input_sha256: str
+    provider: str
+    model: str
+    prompt_version: str
+    items: list[AiProposalItem] = Field(default_factory=list)
+    server_rejected: list[AiRejected] = Field(default_factory=list)
+    decisions: list[AiDecision] = Field(default_factory=list)
+    used: bool = False
+    used_by_revision_id: str | None = None
+    proposal_sha256: str
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class AiAppliedProposal(BaseModel):
+    """The applied proposal as a record keeps it: its immutable part and provenance."""
+
+    id: str
+    schema_: str = Field(default="pp-ai-proposal/1", alias="schema")
+    created_at: str
+    created_by_user_id: str | None = None
+    input_text: str
+    input_sha256: str
+    provider: str
+    model: str
+    prompt_version: str
+    items: list[AiItem] = Field(default_factory=list)
+    server_rejected: list[AiRejected] = Field(default_factory=list)
+    proposal_sha256: str
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class RequirementsAi(BaseModel):
+    """A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
+
+    Attributes:
+        applied_in_revision: The revision whose save applied it; a later
+            revision carries the block unchanged (its indices are that
+            revision's), never re-applying it.
+        applied_at: When that save applied it (server clock).
+    """
+
+    proposal: AiAppliedProposal
+    decisions: list[AiDecision] = Field(default_factory=list)
+    placements: list[AiPlacementRecord] = Field(default_factory=list)
+    applied_in_revision: int | None = None
+    applied_at: str | None = None
+
+
+class AiProposalRequest(StrictModel):
+    """A description to propose requirement entries from; nothing is designed.
+
+    Attributes:
+        description: Typed text only, at most 8 000 characters
+            (``ai_input_too_long``), not empty (``ai_input_empty``).
+        request: The editor's current draft, read only for its board names
+            so the model can name existing boards; never stored, never
+            taken as confirmed.
+    """
+
+    description: str = Field(max_length=100_000)
+    request: dict[str, Any] | None = None
+
+
+class AiDecisionRequest(StrictModel):
+    """A decision on one proposal item. Who and when are the server's (any such field is 422).
+
+    Attributes:
+        decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
+            it to ``value`` (checked against the item kind's fields).
+        value: The edited value, for ``edit`` only.
+    """
+
+    decision: Literal["accept", "reject", "edit"]
+    value: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _value_for_edit(self) -> AiDecisionRequest:
+        if (self.decision == "edit") != (self.value is not None):
+            raise ValueError("an edit gives a value, and only an edit")
+        return self
 
 
 class RequirementsRecord(BaseModel):
@@ -1880,6 +2164,9 @@ class RequirementsRecord(BaseModel):
         acknowledgements: Every acknowledgement recorded, append-only.
         resaved_from: On a revision saved by ``…/resave``, the revision whose
             stored request it re-designed; absent otherwise.
+        ai: The AI proposal the request was entered from (M6b): the whole
+            proposal, its decisions and where its items were placed. Carried
+            unchanged to later revisions as the request's provenance.
     """
 
     schema_: str = Field(default="pp-req/1", alias="schema")
@@ -1894,6 +2181,7 @@ class RequirementsRecord(BaseModel):
     trace: list[RequirementTrace] = Field(default_factory=list)
     acknowledgements: list[dict[str, str]] = Field(default_factory=list)
     resaved_from: int | None = None
+    ai: RequirementsAi | None = None
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 

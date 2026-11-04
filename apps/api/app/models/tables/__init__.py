@@ -11,6 +11,7 @@ from app.models.tables import (  # noqa: F401
     base,
     billing,
     calculations,
+    design_ai_proposals,
     design_projects,
     diagnostics,
     engineering_reviews,

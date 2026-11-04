@@ -76,7 +76,7 @@ from app.design.model import (
 )
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
-from app.domain import billing, design_configuration, engineering_reviews, permissions
+from app.domain import billing, design_ai, design_configuration, engineering_reviews, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
@@ -1107,12 +1107,35 @@ def _summary(
     )
 
 
+def _read_applicable(row: DesignRevisionRow) -> _Applicable:
+    """The policy that applies to ``row`` now, its stored design read and classified.
+
+    The same check the revision list makes of each row (``_validation``), so
+    the opened request's title block, the list, the approval status and the
+    exports agree on whether an approval counts, a findings-policy change
+    included.
+    """
+    stored, classified = (
+        _read_classified(row)
+        if row.design_snapshot is not None and row.snapshot_sha256 is not None
+        else (None, None)
+    )
+    return _applicable(
+        row,
+        thorough=False,
+        read=stored if isinstance(stored, VersionedModel) else None,
+        read_checked=stored is not None,
+        classified=classified,
+    )
+
+
 def _title_revisions(
     revisions: Sequence[DesignRevisionRow],
     upto: int,
     names: _Names,
     *,
     bound_to: _Applicable | None = None,
+    upto_counts: bool | None = None,
 ) -> list[Revision]:
     """The title block's revision list: each saved revision up to ``upto``.
 
@@ -1125,6 +1148,9 @@ def _title_revisions(
             today's policy. ``bound_to`` is that policy for ``upto``, resolved
             in full from the snapshot the caller read once; the others are
             checked from their columns alone (``_Applicable``).
+        upto_counts: Given, whether ``upto``'s approval counts, as the caller
+            already checked it in full (an opened revision's own check), so
+            the snapshot is not read a second time.
     """
     listed: list[Revision] = []
     for row in revisions:
@@ -1134,21 +1160,13 @@ def _title_revisions(
         if bound_to is not None and row.number != upto and row.approved_at is not None:
             # Read for integrity as the revision list reads it, so an earlier
             # approval of a design that fails it never prints as approved.
-            stored, classified = (
-                _read_classified(row)
-                if row.design_snapshot is not None and row.snapshot_sha256 is not None
-                else (None, None)
+            applicable = _read_applicable(row)
+        if row.number == upto and upto_counts is not None:
+            shown = row.approved_at is not None and upto_counts
+        else:
+            shown = row.approved_at is not None and (
+                applicable is None or not _approval_changed(row, applicable)
             )
-            applicable = _applicable(
-                row,
-                thorough=False,
-                read=stored if isinstance(stored, VersionedModel) else None,
-                read_checked=stored is not None,
-                classified=classified,
-            )
-        shown = row.approved_at is not None and (
-            applicable is None or not _approval_changed(row, applicable)
-        )
         listed.append(
             Revision(
                 index=f"{row.number:02d}",
@@ -1277,6 +1295,19 @@ def _add_revision(
         if columns.get("design_snapshot") is not None
         else None
     )
+    proposal = None
+    ai_block = None
+    if requirements_input is not None and requirements_input.ai is not None:
+        # Under the save's transaction: the proposal row is locked until it
+        # commits, so no second save applies it (``ai_proposal_used``).
+        proposal, ai_block = design_ai.apply(
+            session=session,
+            user=user,
+            request=request,
+            given=requirements_input.ai,
+            control=requirements_input.control,
+        )
+        ai_block["applied_in_revision"] = project.revision_count
     record = requirements.build(
         request,
         designed,
@@ -1284,27 +1315,30 @@ def _add_revision(
         requirements_input,
         prior=prior,
         answered=answered,
+        ai=ai_block,
     )
     if resaved_from is not None:
         # A pp-req/1 addition: the revision whose stored request this one re-designed.
         record["resaved_from"] = resaved_from
-    session.add(
-        DesignRevisionRow(
-            tenant_id=tenant,
-            project_id=project.id,
-            number=project.revision_count,
-            note=note,
-            author=user.email,
-            # A trial's subject is an anonymous session, not an account: the
-            # account that later claims the tenant has another id, so recording
-            # the session's would let that account approve what it saved.
-            author_user_id=_account_id(user) if user.email else None,
-            request=request.model_dump(mode="json"),
-            requirements=record,
-            requirements_sha256=snapshot.sha256_of(record),
-            **columns,
-        )
+    revision = DesignRevisionRow(
+        tenant_id=tenant,
+        project_id=project.id,
+        number=project.revision_count,
+        note=note,
+        author=user.email,
+        # A trial's subject is an anonymous session, not an account: the
+        # account that later claims the tenant has another id, so recording
+        # the session's would let that account approve what it saved.
+        author_user_id=_account_id(user) if user.email else None,
+        request=request.model_dump(mode="json"),
+        requirements=record,
+        requirements_sha256=snapshot.sha256_of(record),
+        **columns,
     )
+    session.add(revision)
+    if proposal is not None:
+        session.flush()
+        design_ai.mark_used(proposal, revision.id)
 
 
 def _stored_schema(stored: Any) -> str | None:
@@ -1340,10 +1374,17 @@ def _opened(
     names = _display_names(session, project.tenant_id, revisions, also=viewer_id)
     # Bound like an export's title block, so the opened request never lists an
     # approval that no longer counts (stale, unbound or failing integrity).
-    title = _title_revisions(
-        revisions, chosen.number, names, bound_to=_applicable(chosen, thorough=False)
-    )
     checked = _validation(chosen)
+    # The opened revision's approver is named only where its own full check
+    # (``checked``, findings policy included) says the approval counts, as the
+    # list, ``approval_current`` and an export say; earlier ones as an export.
+    title = _title_revisions(
+        revisions,
+        chosen.number,
+        names,
+        bound_to=_applicable(chosen, thorough=False),
+        upto_counts=checked.approval_bound,
+    )
     readable = _request_problem(chosen) is None
     if readable:
         request = ProjectDesignRequest.model_validate(chosen.request)
@@ -1843,8 +1884,11 @@ def resave_revision(
             # The configuration is composed into the snapshot, not kept apart:
             # a re-save of the request alone would silently drop it.
             raise ConflictError(
-                f"revision {number} holds a configuration a re-save cannot carry; "
-                "save it from the editor with its configuration",
+                f"revision {number} holds a connection configuration a re-save cannot "
+                "carry: it is stored only inside that revision's design and carrying it "
+                "is not proven lossless, so it is never dropped; the revision and its "
+                "configuration are kept unchanged. Save a new revision from the editor "
+                "and enter the configuration again",
                 code="revision_not_validated",
                 params={"revision": number, "reason": "configuration_not_carried"},
             )
@@ -2562,7 +2606,7 @@ def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Nam
 
 
 def preview_requirements(
-    *, user: CurrentUser, request: RequirementsPreviewRequest
+    *, user: CurrentUser, request: RequirementsPreviewRequest, session: Session | None = None
 ) -> RequirementsPreview:
     """The record a guided input would be stored with, and the design; nothing is saved.
 
@@ -2580,7 +2624,23 @@ def preview_requirements(
     designed, company = design_domain.build_design(as_entered)
     conditions = {board.name: board.conditions for board in entered.boards}
     findings = integrity.project_findings(designed, conditions)
-    record = requirements.build(entered, designed, findings, request.requirements_input)
+    ai_block = None
+    given = request.requirements_input
+    if given.ai is not None:
+        if session is None:  # pragma: no cover - the route always passes one
+            raise RuntimeError("an AI block is previewed with a session")
+        # Checked as a save checks it, read only: nothing is locked or marked.
+        _scope_to(session, user)
+        _, ai_block = design_ai.apply(
+            session=session,
+            user=user,
+            request=entered,
+            given=given.ai,
+            control=given.control,
+            lock=False,
+        )
+        session.rollback()
+    record = requirements.build(entered, designed, findings, given, ai=ai_block)
     logger.info("design.requirements_previewed", tenant_id=user.tenant_id)
     return RequirementsPreview(
         requirements=RequirementsRecord.model_validate(record),
