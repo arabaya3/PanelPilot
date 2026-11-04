@@ -20,6 +20,7 @@ seeing only the request, fire-pump/life-safety text, old revisions and both
 ``DESIGN_SNAPSHOT_SCHEMA`` modes. Synthetic data only.
 """
 
+# ruff: noqa: RUF001  (Arabic/Hebrew probe text)
 from __future__ import annotations
 
 import copy
@@ -1476,3 +1477,255 @@ def test_life_safety_equipment_cannot_slip_through_as_a_load(
     if response.status_code == 201:
         loads = {i["id"] for i in response.json()["items"] if i["kind"] == "load"}
         assert "i2" not in loads, f"life-safety equipment proposed as a load: {phrase}"
+
+
+# =========================================================================== #
+# 12. Probes of the 81f88ee heuristics (units, part numbers, life-safety context, deadline)
+# =========================================================================== #
+
+
+def _one_load(text_: str, phrase: str, /, **value: Any) -> dict[str, Any]:
+    return _payload(
+        [
+            {
+                "id": "b1",
+                "kind": "board",
+                "source": span(text_, "MDB"),
+                "value": {"name": "MDB"},
+            },
+            {
+                "id": "l1",
+                "kind": "load",
+                "source": span(text_, phrase),
+                "value": {"board": "MDB", "kind": "motor", **value},
+            },
+        ]
+    )
+
+
+def _kept_load(response: Any) -> dict[str, Any] | None:
+    assert response.status_code in (201, 502), response.text[:400]
+    if response.status_code == 502:
+        return None
+    found = [i for i in response.json()["items"] if i["id"] == "i2" and i["kind"] == "load"]
+    return found[0] if found else None
+
+
+UNIT_CASES = [
+    # (description, phrase, value): the value is NOT what the text states.
+    ("MDB. Pump ٥٫٥ كيلوواط on MDB.", "Pump ٥٫٥ كيلوواط", {"description": "Pump", "power_kw": 5}),
+    ("MDB. Pump 1/2 kW on MDB.", "Pump 1/2 kW", {"description": "Pump", "power_kw": 2}),
+    ("MDB. Pump 2x5.5 kW on MDB.", "Pump 2x5.5 kW", {"description": "Pump", "power_kw": 2}),
+    ("MDB. Fan 5 kWh a day on MDB.", "Fan 5 kWh", {"description": "Fan", "power_kw": 5}),
+    ("MDB. Fan 10 kVA on MDB.", "Fan 10 kVA", {"description": "Fan", "power_kw": 10}),
+    (
+        "MDB. Pump 5.5 kW, cable 16 mm on MDB.",
+        "Pump 5.5 kW, cable 16 mm",
+        {"description": "Pump", "power_kw": 5.5, "length_m": 16},
+    ),
+    (
+        "MDB. Pump 5.5 kW at 3 m/s on MDB.",
+        "Pump 5.5 kW at 3 m/s",
+        {"description": "Pump", "power_kw": 5.5, "length_m": 3},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase", "value"),
+    [
+        pytest.param(
+            *UNIT_CASES[0],
+            id="arabic_decimal_sep",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="FINDING G1: Arabic decimal separator ٫ splits 5٫5; 5 kW accepted",
+            ),
+        ),
+        pytest.param(
+            *UNIT_CASES[1],
+            id="fraction",
+            marks=pytest.mark.xfail(strict=True, reason="FINDING G2: '1/2 kW' accepted as 2 kW"),
+        ),
+        pytest.param(*UNIT_CASES[2], id="multiplier"),
+        pytest.param(*UNIT_CASES[3], id="kwh"),
+        pytest.param(*UNIT_CASES[4], id="kva"),
+        pytest.param(*UNIT_CASES[5], id="mm_as_m"),
+        pytest.param(
+            *UNIT_CASES[6],
+            id="speed_as_length",
+            marks=pytest.mark.xfail(
+                strict=True, reason="FINDING G3 (low): '3 m/s' accepted as a length"
+            ),
+        ),
+    ],
+)
+def test_misread_units_are_not_kept(
+    as_: Any, provider: StubProvider, description: str, phrase: str, value: dict[str, Any]
+) -> None:
+    provider.payload = _one_load(description, phrase, **value)
+    assert _kept_load(_propose(as_(), description)) is None
+
+
+LIFE_CONTEXT = [
+    ("MDB. Pump P-7 5.5 kW on MDB. It is the fire pump.", "Pump P-7 5.5 kW on MDB", "pronoun"),
+    ("MDB. Pump P7 5.5 kW on MDB. P-7 is the fire pump.", "Pump P7 5.5 kW on MDB", "tag_spelling"),
+    ("MDB. Pump 5.5 kW on MDB. That pump serves the sprinklers.", "Pump 5.5 kW on MDB", "no_tag"),
+    ("MDB. Pump P-7 5.5 kW on MDB\nP-7: fire pump duty", "Pump P-7 5.5 kW on MDB", "newline_tag"),
+    (
+        "MDB. משאבה 5.5 kW on MDB לספרינקלרים.",
+        "משאבה 5.5 kW on MDB לספרינקלרים",
+        "hebrew_sprinkler",
+    ),
+    ("MDB. مضخة الحريق 5.5 kW on MDB.", "مضخة الحريق 5.5 kW on MDB", "arabic_fire_pump"),
+    ("MDB. Fire​pump 5.5 kW on MDB.", "Fire​pump 5.5 kW on MDB", "zero_width"),
+]
+_LIFE_XFAIL = {
+    "pronoun": "FINDING G4: a pronoun ('It is the fire pump') in the next sentence is not followed",
+    "tag_spelling": "FINDING G5: tag spelled P7 vs P-7 is not matched across sentences",
+    "no_tag": "FINDING G4: 'That pump serves the sprinklers' (no tag) is not followed",
+    "zero_width": "FINDING G7 (low): a zero-width space inside 'fire pump' defeats the check",
+}
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase"),
+    [
+        pytest.param(
+            d,
+            ph,
+            id=name,
+            marks=(
+                [pytest.mark.xfail(strict=True, reason=_LIFE_XFAIL[name])]
+                if name in _LIFE_XFAIL
+                else []
+            ),
+        )
+        for d, ph, name in LIFE_CONTEXT
+    ],
+)
+def test_life_safety_context_is_followed(
+    as_: Any, provider: StubProvider, description: str, phrase: str
+) -> None:
+    provider.payload = _one_load(description, phrase, description="Pump", power_kw=5.5)
+    assert _kept_load(_propose(as_(), description)) is None, "life-safety equipment kept as a load"
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase", "desc"),
+    [
+        pytest.param(
+            "MDB. Contactor LC1-D18 5.5 kW on MDB.",
+            "Contactor LC1-D18 5.5 kW",
+            "LC1-D18",
+            id="hyphenated_code",
+            marks=pytest.mark.xfail(
+                strict=True, reason="FINDING G8: hyphenated catalogue number LC1-D18 not detected"
+            ),
+        ),
+        pytest.param(
+            "MDB. PLC 6ES7 214-1AG40 0.1 kW on MDB.",
+            "PLC 6ES7 214-1AG40 0.1 kW",
+            "6ES7 214-1AG40",
+            id="siemens_code",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="FINDING G8: spaced/hyphenated Siemens order number not detected",
+            ),
+        ),
+        pytest.param(
+            "MDB. Drive ACS580-01-12A6-4 5.5 kW on MDB.",
+            "Drive ACS580-01-12A6-4 5.5 kW",
+            "Drive ACS580",
+            id="drive_code",
+        ),
+        pytest.param(
+            "MDB. Breaker S203-C16 on MDB 1 kW.",
+            "Breaker S203-C16 on MDB 1 kW",
+            "Breaker",
+            id="code_with_suffix",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="FINDING G8: catalogue number with a suffix (S203-C16) not detected",
+            ),
+        ),
+    ],
+)
+def test_part_numbers_are_not_loads(
+    as_: Any, provider: StubProvider, description: str, phrase: str, desc: str
+) -> None:
+    provider.payload = _one_load(
+        description, phrase, description=desc, power_kw=float(phrase.split(" kW")[0].split()[-1])
+    )
+    assert _kept_load(_propose(as_(), description)) is None, "a part number kept as a load"
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase", "desc"),
+    [
+        pytest.param(
+            "MDB. Room 101A lighting 1 kW on MDB.",
+            "Room 101A lighting 1 kW",
+            "Room 101A lighting",
+            id="room_number",
+        ),
+        pytest.param("MDB. Pump P-7 5.5 kW on MDB.", "Pump P-7 5.5 kW", "Pump P-7", id="tag"),
+        pytest.param("MDB. AHU2 fan 4 kW on MDB.", "AHU2 fan 4 kW", "AHU2 fan", id="ahu_tag"),
+    ],
+)
+def test_ordinary_tags_are_not_part_numbers(
+    as_: Any, provider: StubProvider, description: str, phrase: str, desc: str
+) -> None:
+    provider.payload = _one_load(
+        description, phrase, description=desc, power_kw=float(phrase.split(" kW")[0].split()[-1])
+    )
+    assert _kept_load(_propose(as_(), description)) is not None, "an ordinary load refused"
+
+
+def test_slow_provider_is_cut_at_the_deadline_without_starving_the_api(
+    as_: Any, provider: StubProvider, monkeypatch: pytest.MonkeyPatch, engine: Engine
+) -> None:
+    """Twelve hung provider calls (more than the 8 workers) end at the deadline.
+
+    Each request ends with 504, nothing is stored, and other routes keep answering.
+    """
+    import threading
+    import time
+
+    from app.domain import design_ai
+
+    monkeypatch.setattr(design_ai, "PROVIDER_DEADLINE_S", 1.0)
+    release = threading.Event()
+
+    def hang(**_kw: Any) -> Any:
+        release.wait(20)
+        raise RuntimeError("released")
+
+    monkeypatch.setattr(provider, "create", hang)
+    results: list[tuple[int, float]] = []
+
+    def one() -> None:
+        started = time.monotonic()
+        response = _propose(as_())
+        results.append((response.status_code, time.monotonic() - started))
+
+    threads = [threading.Thread(target=one) for _ in range(12)]
+    try:
+        for t in threads:
+            t.start()
+        time.sleep(0.3)
+        started = time.monotonic()
+        other = as_().get(f"{AI}/{uuid.uuid4()}")
+        assert other.status_code == 404
+        assert time.monotonic() - started < 2, "another route waited on the hung provider"
+        for t in threads:
+            t.join(15)
+        assert sorted(s for s, _ in results) == [504] * 12, results
+        assert max(d for _, d in results) < 5, results
+        assert _rows(engine) == []
+        # While the 8 workers are still hung, a further call is still answered at the deadline.
+        started = time.monotonic()
+        assert _propose(as_()).status_code == 504
+        assert time.monotonic() - started < 3
+    finally:
+        release.set()
