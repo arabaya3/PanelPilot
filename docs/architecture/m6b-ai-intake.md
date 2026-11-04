@@ -545,6 +545,7 @@ unchanged; no migration.
   was itself flagged. Four-eyes, the reason, the printed `[CLARIFIED]` line
   and the approval (a further member) are the controls; nothing validates
   it.
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)
