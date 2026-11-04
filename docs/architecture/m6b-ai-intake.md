@@ -770,15 +770,16 @@ reason}`; `proposal_id` names the proposal of a concern carried from an
 - The panel's hold message counts the unresolved safety concerns (it showed
   the blocking-findings count).
 
-Renderers: **not bumped** (owner rule: only when the guard requires it).
-The guard's reference exports are unchanged (they hold no requirements
-record, exclusions or request concerns), so v1 stays `2026.11.04.3` and v2
-`2026.11.04.v2-18`. Consequence: an approval recorded at 5133b60 keeps
-counting even where the new holds would now refuse it (a manual project with
-a hand-typed "Fire pump" load, or a revision whose earlier revision raised a
-concern); its exports also now print the new lines under the same version.
-On this unmerged stack, re-check or re-approve such revisions; a bump would
-retire them all at once if the owner prefers.
+Renderers (owner decision): v1 `2026.11.04.3` → `2026.11.04.4`, v2
+`2026.11.04.v2-18` → `2026.11.04.v2-19`. The guard's reference exports are
+unchanged (they hold no requirements record, exclusions or request concerns;
+fingerprints re-recorded for the version key only); the bump is made so that
+**every approval granted under the weaker rules stops counting**
+(`approval_changed: renderer_version`, exports refused `revision_stale`): on
+this unmerged stack, every approval recorded since the M6d bump, including any
+granted while a request or carried concern was not yet seen. Each such
+revision is saved again and approved by another member. Test:
+`test_an_approval_recorded_before_the_m6e_bump_is_not_current`.
 
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 

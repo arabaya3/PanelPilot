@@ -23,6 +23,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     _tenants,
     pytestmark,
     revision_row,
+    update_row,
 )
 from app.tests.domain.test_m6b_ai_adversarial_db import (  # noqa: F401  (fixtures)
     CONTROL,
@@ -309,3 +310,27 @@ def test_one_load_placed_on_two_rows_with_different_values_is_open(
     assert ("rows_disagree", "power_kw") in {(s["kind"], s["field"]) for s in conflicts}
     printed = _pdf_text(_export(as_("reviewer"), pid, "pdf").content)
     assert "[OPEN] Conflicting values for power_kw of one load placed on two rows: 11" in printed
+
+
+# --------------------------------------------------------------------------- #
+# The renderer bump: an approval under the weaker rules stops counting
+# --------------------------------------------------------------------------- #
+
+#: The renderer versions before M6e, by snapshot schema mode.
+BEFORE_M6E = {None: "2026.11.04.3", "pp-design/2": "2026.11.04.v2-18"}
+
+
+def test_an_approval_recorded_before_the_m6e_bump_is_not_current(
+    engine: Engine, as_: Any, provider: StubProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    pid = _manual(as_, ["Booster pump", "Office lighting"])
+    assert _approve(as_("reviewer"), pid).status_code == 200
+    assert _open(as_("reviewer"), pid, 1)["approval_current"] is True
+    previous = BEFORE_M6E[os.environ.get("DESIGN_SNAPSHOT_SCHEMA")]
+    update_row(engine, pid, 1, approved_renderer_version=previous)
+    opened = _open(as_("reviewer"), pid, 1)
+    assert opened["approval_current"] is False
+    assert "renderer_version" in opened["approval_changed"]
+    _refused(_export(as_("reviewer"), pid, "pdf"), 409, "revision_stale")
