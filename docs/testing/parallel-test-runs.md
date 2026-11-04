@@ -24,7 +24,7 @@ tables mid-suite.
    `panelpilot-pytest`.
 
 3. **Owner marker** (`app/tests/db_owner.py`). The lock stops two runs at
-   once; it does not stop a run that targets another worktree's *idle*
+   once; it does not stop a run that targets another worktree's _idle_
    database (a copied env file, a mistyped lane). So, under the lock and
    still before collection, the run must own the database:
    - The run's owner token is `PANELPILOT_TEST_DB_OWNER` if set (letters,
