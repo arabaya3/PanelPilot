@@ -11,6 +11,7 @@ import { PlusIcon } from '@/components/icons';
 import { Notice, Panel, StatusBadge, TableFrame, type Tone } from '@/components/ui';
 import {
   answerQuestion,
+  clarifySafetyMention,
   CONTROL_NEEDS,
   previewRequirements,
   type ControlNeed,
@@ -22,7 +23,14 @@ import {
   type RequirementSubject,
   type SavedProject,
   type AiRecord,
+  type SafetyClarificationEligibility,
 } from '@/lib/design';
+
+/** The reason a clarification takes, in characters (the server's bounds). */
+const REASON_MIN = 10;
+const REASON_MAX = 500;
+/** Open items a second member may clarify as not life-safety (M6c). */
+const MENTION_CODES = new Set(['ai_life_safety_mentioned', 'ai_possibly_life_safety']);
 
 /** Each load's control needs, by the load row's key. Requirements only: nothing is designed from them. */
 export type ControlNeeds = Readonly<Record<number, readonly ControlNeed[]>>;
@@ -95,7 +103,11 @@ const STATE_TONE: Record<RequirementQuestion['state'], Tone> = {
   acknowledged: 'info',
 };
 
-type Impls = { preview?: typeof previewRequirements; answer?: typeof answerQuestion };
+type Impls = {
+  preview?: typeof previewRequirements;
+  answer?: typeof answerQuestion;
+  clarify?: typeof clarifySafetyMention;
+};
 
 /**
  * The guided requirements step: boards (name, location, fed from), each
@@ -125,6 +137,7 @@ export function RequirementsView({
   impls = {},
   ai,
   boardsTargetId,
+  safetyClarification = null,
 }: {
   token: string | null;
   boards: readonly BoardForm[];
@@ -156,12 +169,21 @@ export function RequirementsView({
   ai?: ReactNode;
   /** The id the boards step takes, so "Continue manually" can move the focus to it. */
   boardsTargetId?: string;
+  /**
+   * M6c: whether the caller may clarify a safety mention of the revision open,
+   * as the server flags it (the server checks again). Null: no flag sent.
+   */
+  safetyClarification?: SafetyClarificationEligibility | null;
 }) {
   const t = useTranslations('design.requirements');
   const td = useTranslations('design');
   const say = useOutcomeText();
   const id = useId();
-  const { preview = previewRequirements, answer = answerQuestion } = impls;
+  const {
+    preview = previewRequirements,
+    answer = answerQuestion,
+    clarify = clarifySafetyMention,
+  } = impls;
   const [previewed, setPreviewed] = useState<RequirementsRecord | null>(null);
   const [previewFindings, setPreviewFindings] = useState<DesignFinding[]>([]);
   // An acknowledgement's record as the server answered it, until the revision is read again.
@@ -170,6 +192,9 @@ export function RequirementsView({
   const [message, setMessage] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // The mention whose clarification form is open, and its reason as typed.
+  const [clarifying, setClarifying] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
   const sequence = useRef(0);
 
   // A record the server stored (a save, an answer, an opening) replaces any preview.
@@ -309,6 +334,110 @@ export function RequirementsView({
   }
 
   /** The form row a question's load ref names, by its position among its board's loads. */
+  async function clarifyMention(mention: string) {
+    const text = reason.trim();
+    if (opened === null || token === null || working !== null) return;
+    if (text.length < REASON_MIN || text.length > REASON_MAX) return;
+    setWorking(mention);
+    setMessage(null);
+    const outcome = await clarify({
+      token,
+      id: opened.id,
+      revision: opened.revision,
+      mention,
+      reason: text,
+    });
+    setWorking(null);
+    if (outcome.kind === 'recorded') {
+      setAcknowledged(outcome.requirements);
+      setClarifying(null);
+      setReason('');
+      setMessage(t('clarify.done', { revision: opened.revision }));
+      return;
+    }
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    setMessage(say(outcome));
+  }
+
+  /** The clarify action of one mention, or why the caller cannot clarify it. */
+  function mentionAction(mention: string) {
+    if (previewed !== null || opened === null || safetyClarification === null) return null;
+    if (!safetyClarification.eligible) {
+      const why = safetyClarification.reason ?? '';
+      return (
+        <p className="w-full text-xs text-text-muted" data-testid={`clarify-ineligible-${mention}`}>
+          {t.has(`clarify.ineligible.${why}`)
+            ? t(`clarify.ineligible.${why}`)
+            : t('clarify.ineligible.other')}
+        </p>
+      );
+    }
+    if (clarifying !== mention) {
+      return (
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          disabled={working !== null}
+          data-testid={`clarify-open-${mention}`}
+          onClick={() => {
+            setClarifying(mention);
+            setReason('');
+          }}
+        >
+          {t('clarify.action')}
+        </button>
+      );
+    }
+    const length = reason.trim().length;
+    const valid = length >= REASON_MIN && length <= REASON_MAX;
+    const field = `${id}-clarify-${mention}`;
+    return (
+      <div className="flex w-full flex-col gap-2" data-testid={`clarify-form-${mention}`}>
+        <p className="text-xs text-text-muted">{t('clarify.means')}</p>
+        <label htmlFor={field} className="text-sm font-medium">
+          {t('clarify.reason')}
+        </label>
+        <textarea
+          id={field}
+          dir="auto"
+          required
+          maxLength={REASON_MAX}
+          aria-describedby={`${field}-hint`}
+          className="min-h-[4rem] rounded-md border border-border p-2 text-sm"
+          value={reason}
+          data-testid={`clarify-reason-${mention}`}
+          onChange={(event) => {
+            setReason(event.target.value);
+          }}
+        />
+        <p id={`${field}-hint`} className="text-xs text-text-muted">
+          {t('clarify.reasonHint', { min: REASON_MIN, max: REASON_MAX, length })}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            disabled={!valid || working !== null}
+            data-testid={`clarify-submit-${mention}`}
+            onClick={() => void clarifyMention(mention)}
+          >
+            {t('clarify.submit')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary"
+            data-testid={`clarify-cancel-${mention}`}
+            onClick={() => {
+              setClarifying(null);
+            }}
+          >
+            {t('clarify.cancel')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function loadKeyOf(subject: RequirementSubject, board: BoardForm): number | null {
     if (record === null || !subject.load_ref) return null;
     const ofBoard = record.loads.filter((load) => load.board_ref === subject.board_ref);
@@ -715,10 +844,48 @@ export function RequirementsView({
                             {aiQuote(item.subject.item_id)}
                           </bdi>
                         )}
+                        {item.subject.term && (
+                          <bdi
+                            dir="auto"
+                            className="min-w-0 break-words text-text-muted"
+                            data-testid={`open-item-term-${item.subject.mention_id ?? ''}`}
+                          >
+                            “{item.subject.term}”
+                          </bdi>
+                        )}
+                        {MENTION_CODES.has(item.code) &&
+                          item.subject.mention_id &&
+                          mentionAction(item.subject.mention_id)}
                       </li>
                     );
                   })}
                 </ul>
+              )}
+              {(record.ai?.clarifications ?? []).length > 0 && (
+                <>
+                  <h3 className="font-semibold">{t('clarify.title')}</h3>
+                  <p className="text-xs text-text-muted">{t('clarify.limits')}</p>
+                  <ul className="flex flex-col gap-2" data-testid="requirements-clarifications">
+                    {(record.ai?.clarifications ?? []).map((entry) => (
+                      <li
+                        key={entry.mention_id}
+                        className="flex min-w-0 flex-wrap items-center gap-2 text-sm"
+                        data-testid={`clarified-${entry.mention_id}`}
+                      >
+                        <StatusBadge tone="info">{t('clarify.badge')}</StatusBadge>
+                        <span className="min-w-0 break-words">
+                          {t('clarify.by', {
+                            name: entry.by_name || t('someone'),
+                            date: entry.at.slice(0, 10),
+                          })}
+                        </span>
+                        <bdi dir="auto" className="min-w-0 break-words text-text-muted">
+                          {entry.reason}
+                        </bdi>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
               {record.ai && <AiProvenance ai={record.ai} />}
             </>
