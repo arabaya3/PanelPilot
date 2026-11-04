@@ -276,6 +276,8 @@ async function call<T>(
   accept: (payload: object) => T | null,
   extra?: (response: Response) => T | null,
   method: 'POST' | 'PUT' | 'GET' | 'DELETE' = 'POST',
+  /** Further statuses whose body is a coded refusal (the AI routes' 502, 503 and 504). */
+  alsoRefused: readonly number[] = [],
 ): Promise<T | Failure> {
   const { token, fetchImpl = fetch, endpoint = defaultEndpoint } = transport;
   const isForm = body instanceof FormData;
@@ -301,7 +303,7 @@ async function call<T>(
   // 429 too: the design routes' per-address budget, said with a code; 404, a
   // saved project that is not (or no longer) there; and 409, a revision that
   // cannot be approved or exported as it stands (`revision_stale`, ...).
-  if (REFUSED.includes(response.status)) {
+  if (REFUSED.includes(response.status) || alsoRefused.includes(response.status)) {
     const refusal = refusalOf(await readJson(response));
     const wait = Number(response.headers.get('Retry-After'));
     return response.status === 429 && Number.isFinite(wait) && wait > 0
@@ -581,11 +583,22 @@ export function reviseProject(
  * from them. Boards and loads travel in the request itself.
  */
 export type RequirementsInput = {
-  intake: 'guided' | 'table' | 'import';
+  intake: 'guided' | 'table' | 'import' | 'ai';
   control: Array<{ board_index: number; load_index: number; needs: ControlNeed[] }>;
+  /** With `intake: "ai"` only (M6b): the proposal the save used and where its confirmed items sit. */
+  ai?: { proposal_id: string; placements: AiPlacement[] };
 };
 
-export const CONTROL_NEEDS = ['start_stop', 'running_indicator'] as const;
+/** The seven control needs the server records (M6a `ControlNeed`), in its order. */
+export const CONTROL_NEEDS = [
+  'start_stop',
+  'running_indicator',
+  'fault_indicator',
+  'hand_off_auto',
+  'remote_control',
+  'interlock',
+  'timed',
+] as const;
 export type ControlNeed = (typeof CONTROL_NEEDS)[number];
 
 export type RequirementSubject = {
@@ -593,6 +606,8 @@ export type RequirementSubject = {
   load_ref?: string | null;
   control_ref?: string | null;
   supply_board_ref?: string | null;
+  /** An AI proposal item an open item is about (M6b `ai_*` open items). */
+  item_id?: string | null;
 };
 
 /** A question the server derived: a value left empty, or an assumption the design made. */
@@ -639,6 +654,8 @@ export type RequirementsRecord = {
   open_items: Array<{ code: string; subject: RequirementSubject }>;
   /** `design_ref` is null where the design was refused. */
   trace: Array<{ requirement_ref: string; design_ref: string | null }>;
+  /** M6b: the AI proposal the revision was saved from, its decisions and placements. */
+  ai?: AiRecord | null;
 };
 
 /** A saved project's requirements record, where the server returned one. */
@@ -663,6 +680,7 @@ function normalRecord(record: Partial<RequirementsRecord>): RequirementsRecord {
     open_items: record.open_items ?? [],
     trace: record.trace ?? [],
     acknowledgements: record.acknowledgements ?? [],
+    ...(record.ai && typeof record.ai === 'object' ? { ai: record.ai } : {}),
   };
 }
 
@@ -906,5 +924,213 @@ export function readMarkups(
   if (options.profile) body.append('profile', JSON.stringify(options.profile));
   return call(options, '/api/v1/design/markups', body, (payload) =>
     has(payload, 'markups', 'matched') ? { kind: 'read', report: payload as MarkupReport } : null,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M6b: AI-assisted requirements intake (`docs/architecture/m6b-ai-intake.md`).
+// The model proposes; nothing here is designed or validated. Only items the
+// designer accepts or edits reach the editor, and only the editor's rows
+// reach the request.
+
+/** The most characters a description may have (422 `ai_input_too_long` above it). */
+export const AI_DESCRIPTION_LIMIT = 8000;
+
+export const AI_ITEM_KINDS = ['board', 'load', 'control_need', 'question', 'unsupported'] as const;
+export type AiItemKind = (typeof AI_ITEM_KINDS)[number];
+
+/** Character offsets into the stored description (Unicode code points, as the server counts). */
+export type AiSource = { start: number; end: number };
+
+export type AiItem = {
+  id: string;
+  kind: AiItemKind;
+  source: AiSource;
+  /** The described text the item was read from, as the server quoted it. */
+  quote: string;
+  /** The fields the item proposes; only those its kind may set. */
+  value: Record<string, unknown>;
+};
+
+/** An item the server refused to keep (bad offsets, a number not in its span, ...). */
+export type AiRejectedItem = {
+  kind?: string | null;
+  source?: AiSource | null;
+  quote?: string | null;
+  value?: Record<string, unknown> | null;
+  reason: string;
+};
+
+/** One recorded decision; who and when are the server's. */
+export type AiDecision = {
+  item_id: string;
+  decision: 'accept' | 'reject' | 'edit';
+  value?: Record<string, unknown> | null;
+  by_user_id?: string | null;
+  by_name?: string | null;
+  at: string;
+};
+
+/** `pp-ai-proposal/1` as the API returns it. */
+export type AiProposal = {
+  id: string;
+  input_text: string;
+  provider: string;
+  model: string;
+  prompt_version?: string;
+  created_at?: string;
+  created_by_user_id?: string | null;
+  items: AiItem[];
+  server_rejected: AiRejectedItem[];
+  /** Append-only: a later decision on an item supersedes an earlier one. */
+  decisions: AiDecision[];
+  used_by_revision_id?: string | null;
+  proposal_sha256?: string;
+};
+
+/** Where a confirmed item sits in the editor when saved. */
+export type AiPlacement = { item_id: string; board_index: number; load_index?: number };
+
+/** The `ai` block of a saved revision's requirements record. */
+export type AiRecord = {
+  proposal: Partial<AiProposal>;
+  decisions?: AiDecision[];
+  placements?: Array<AiPlacement & { changed_in_editor?: string[] }>;
+};
+
+export type AiProposalOutcome = { kind: 'proposed'; proposal: AiProposal } | Failure;
+
+/** The status code each AI failure answers with, for a body that carries no code. */
+const AI_STATUS_CODES: Readonly<Record<number, string>> = {
+  502: 'ai_proposal_malformed',
+  503: 'ai_unavailable',
+  504: 'ai_timeout',
+};
+
+function proposalOf(payload: object): AiProposal | null {
+  const value = payload as Partial<AiProposal>;
+  if (typeof value.id !== 'string' || !Array.isArray(value.items)) return null;
+  if (typeof value.input_text !== 'string') return null;
+  return {
+    ...value,
+    id: value.id,
+    input_text: value.input_text,
+    provider: typeof value.provider === 'string' ? value.provider : '',
+    model: typeof value.model === 'string' ? value.model : '',
+    items: value.items,
+    server_rejected: Array.isArray(value.server_rejected) ? value.server_rejected : [],
+    decisions: Array.isArray(value.decisions) ? value.decisions : [],
+  };
+}
+
+/** A 502/503/504 the provider answered without a code is still said by its code. */
+async function aiCall<T extends { kind: string }>(
+  transport: Transport,
+  endpoint: string,
+  body: unknown,
+  accept: (payload: object) => T | null,
+  method: 'POST' | 'GET' = 'POST',
+): Promise<T | Failure> {
+  let status = 0;
+  const watched: Transport = {
+    ...transport,
+    fetchImpl: async (...args: Parameters<typeof fetch>) => {
+      const response = await (transport.fetchImpl ?? fetch)(...args);
+      status = response.status;
+      return response;
+    },
+  };
+  const outcome = await call<T>(
+    watched,
+    endpoint,
+    method === 'GET' ? undefined : body,
+    accept,
+    undefined,
+    method,
+    [502, 503, 504],
+  );
+  const code = AI_STATUS_CODES[status];
+  if (code !== undefined && outcome.kind === 'refused' && !(outcome as Refusal).code) {
+    return { ...(outcome as Refusal), code };
+  }
+  if (code !== undefined && outcome.kind === 'failed') {
+    return { kind: 'refused', detail: '', code };
+  }
+  return outcome;
+}
+
+const AI_PROPOSALS = `${PROJECTS}/requirements/ai-proposals`;
+
+/**
+ * Ask for proposals from a typed description:
+ * `POST /api/v1/design/projects/requirements/ai-proposals`, body
+ * `{description, request?}`. Only the typed text (and the current draft, so
+ * the model can name existing boards) is sent; never a file.
+ */
+export function requestAiProposal(
+  options: Transport & { description: string; request?: ProjectDesignRequest | null },
+): Promise<AiProposalOutcome> {
+  const { description, request } = options;
+  return aiCall<AiProposalOutcome>(
+    options,
+    AI_PROPOSALS,
+    request ? { description, request } : { description },
+    (payload) => {
+      const proposal = proposalOf(payload);
+      return proposal ? { kind: 'proposed', proposal } : null;
+    },
+  );
+}
+
+/** `GET /api/v1/design/projects/requirements/ai-proposals/{id}`. */
+export function getAiProposal(options: Transport & { id: string }): Promise<AiProposalOutcome> {
+  return aiCall<AiProposalOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(options.id)}`,
+    undefined,
+    (payload) => {
+      const proposal = proposalOf(payload);
+      return proposal ? { kind: 'proposed', proposal } : null;
+    },
+    'GET',
+  );
+}
+
+/**
+ * Record a decision on one item:
+ * `POST …/ai-proposals/{id}/items/{item_id}/decision`, strict body
+ * `{"decision": "accept" | "reject"}` or `{"decision": "edit", "value": {...}}`.
+ * The server records who and when; the page sends neither. It answers with
+ * the proposal as now stored (or, failing that, the decision it recorded).
+ */
+export function decideAiItem(
+  options: Transport & {
+    proposal: AiProposal;
+    item: string;
+    decision: 'accept' | 'reject' | 'edit';
+    value?: Record<string, unknown>;
+  },
+): Promise<AiProposalOutcome> {
+  const { proposal, item, decision, value } = options;
+  return aiCall<AiProposalOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(proposal.id)}/items/${encodeURIComponent(item)}/decision`,
+    decision === 'edit' ? { decision, value } : { decision },
+    (payload) => {
+      const stored = proposalOf(payload);
+      if (stored) return { kind: 'proposed', proposal: stored };
+      const recorded = payload as Partial<AiDecision>;
+      if (
+        recorded.item_id === item &&
+        recorded.decision === decision &&
+        typeof recorded.at === 'string'
+      ) {
+        return {
+          kind: 'proposed',
+          proposal: { ...proposal, decisions: [...proposal.decisions, recorded as AiDecision] },
+        };
+      }
+      return null;
+    },
   );
 }
