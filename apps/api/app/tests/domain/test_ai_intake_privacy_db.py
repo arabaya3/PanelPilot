@@ -86,7 +86,7 @@ def _usage(engine: Engine, user: CurrentUser) -> tuple[int, Any]:
 
 def _tenant_calls(engine: Engine, tenant: str) -> int:
     with engine.connect() as conn:
-        found = conn.execute(
+        found: Any = conn.execute(
             text("SELECT coalesce(sum(calls), 0) FROM model_usage WHERE tenant_id=:t"),
             {"t": uuid.UUID(tenant)},
         ).scalar_one()
