@@ -2113,7 +2113,7 @@
       }
     ],
     "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
-    "rules_version": "2026.10.23.1",
+    "rules_version": "2026.11.03.1",
     "snapshot_sha256": "d387aa3f164d0e9f54c346fc12dd66720eed9da57a644fdd566151f71e682dea"
   }
 }

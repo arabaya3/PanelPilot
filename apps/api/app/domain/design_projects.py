@@ -57,12 +57,15 @@ from app.design import (
     RULES_VERSION,
     connection_drawing_pdf,
     drawing_text,
+    findings_policy,
     integrity,
     marking,
     renderer_version,
+    requirements,
     schedule_pdf,
     snapshot,
 )
+from app.design import project as project_design
 from app.design.model import (
     anchoring,
     connection_drawing,
@@ -78,7 +81,9 @@ from app.domain import design as design_domain
 from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import (
+    AcknowledgedRequirements,
     ApproveRevisionRequest,
+    BoardDesignResponse,
     ConfigurationReview,
     ConfigurationValidateRequest,
     DesignFinding,
@@ -93,6 +98,11 @@ from app.models.schemas.design import (
     ProjectInfo,
     ProjectPage,
     ProjectSummary,
+    QuestionAction,
+    RequirementsInput,
+    RequirementsPreview,
+    RequirementsPreviewRequest,
+    RequirementsRecord,
     ReviseProjectRequest,
     Revision,
     RevisionExportRequest,
@@ -188,6 +198,28 @@ def _snapshot_matches(row: DesignRevisionRow) -> bool:
         return snapshot.sha256_of(row.design_snapshot) == row.snapshot_sha256
     except (ValueError, RecursionError):
         return False
+
+
+def _requirements_match(row: DesignRevisionRow) -> bool:
+    """Whether a stored requirements record matches its hash; ``True`` when none is stored.
+
+    A revision without a record (saved before M6a) gets a derived one, which
+    never counts as acknowledged, so a record removed reads as never made.
+    """
+    if row.requirements is None:
+        return True
+    try:
+        if snapshot.sha256_of(row.requirements) != row.requirements_sha256:
+            return False
+    except (TypeError, ValueError):
+        return False
+    # A record of the wrong shape, rehashed to match, was not written by this
+    # software: refused as altered like a hash mismatch, never read further.
+    try:
+        RequirementsRecord.model_validate(row.requirements)
+    except PydanticValidationError:
+        return False
+    return True
 
 
 def _current_profile_sha256(row: DesignRevisionRow) -> str | None:
@@ -572,6 +604,11 @@ def _explained(
     return _reviews_explained(row, read)
 
 
+def _requirements_binding(row: DesignRevisionRow) -> str:
+    """What an approval binds of the requirements record: its hash, or JSON null's for none."""
+    return row.requirements_sha256 or snapshot.sha256_of(None)
+
+
 def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[str, ...]:
     """What no longer matches what the revision's approval was granted under.
 
@@ -594,6 +631,15 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         or not applicable.snapshot_reads
     ):
         changed.append("snapshot")
+    # ``requirements``: the record it was granted with is not the record held
+    # (or fails its hash), or the approval recorded none (made before the
+    # binding was: not bound, never assumed to be).
+    if (
+        row.approved_requirements_sha256 is None
+        or row.approved_requirements_sha256 != _requirements_binding(row)
+        or not _requirements_match(row)
+    ):
+        changed.append("requirements")
     if (row.approved_rules_version or row.rules_version) != applicable.rules_version:
         changed.append("rules_version")
     if (row.approved_catalogue_version or row.catalogue_version) != applicable.catalogue_version:
@@ -693,6 +739,8 @@ def _read_classified(
     """
     if not _snapshot_matches(row):
         return _integrity_finding("hash_mismatch"), None
+    if not _requirements_match(row):
+        return _integrity_finding("requirements_mismatch"), None
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotSchemaUnknownError as exc:
@@ -799,6 +847,8 @@ _INTEGRITY_MESSAGES: dict[str, str] = {
     "review_not_issued": "The stored design holds a review status this server never issued",
     "findings_mismatch": "The findings stored with this revision are not the findings of "
     "its stored design under the rules it records",
+    "requirements_mismatch": "The requirements record stored with this revision does not "
+    "match its recorded hash",
 }
 
 
@@ -891,6 +941,16 @@ def _execution_blockers(checked: _Validation) -> list[str]:
     return blockers
 
 
+def _structural(found: DesignFinding) -> bool:
+    """Whether a stored finding is a v2 structural one (``source`` ``integrity``).
+
+    ``designation_duplicate`` is made by both checks; only the v2 one is
+    structural, so a v1 revision still prints its own.
+    """
+    shared = found.code in findings_policy.INTEGRITY
+    return found.code in findings_v2.CODES and (not shared or found.source == "integrity")
+
+
 def _printed(findings: Sequence[DesignFinding], schema: str) -> list[DesignFinding]:
     """The findings a revision's review exports print.
 
@@ -901,7 +961,7 @@ def _printed(findings: Sequence[DesignFinding], schema: str) -> list[DesignFindi
     """
     if schema == versions.V2:
         return list(findings)
-    return [found for found in findings if found.code not in findings_v2.CODES]
+    return [found for found in findings if not _structural(found)]
 
 
 def _written_schema() -> str:
@@ -946,7 +1006,14 @@ class _Names:
     by_id: dict[uuid.UUID, str]
 
     def author(self, row: DesignRevisionRow) -> str:
-        return self.by_email.get(row.author.lower(), "") if row.author else ""
+        """Who saved it: the display name, else the recorded account email, else unknown.
+
+        Never empty and never invented: the email is what the server recorded,
+        and is shown to the tenant's members on the Team page.
+        """
+        if not row.author:
+            return requirements.UNKNOWN_ACCOUNT
+        return self.by_email.get(row.author.lower()) or row.author
 
     def approver(self, row: DesignRevisionRow) -> str | None:
         """The approving account's display name; ``None`` if none resolves.
@@ -978,6 +1045,7 @@ def _display_names(
     revisions: Sequence[DesignRevisionRow],
     *,
     also: uuid.UUID | None = None,
+    extra_ids: Sequence[uuid.UUID] = (),
 ) -> _Names:
     """The display names of the accounts the revisions record (and ``also``).
 
@@ -990,6 +1058,7 @@ def _display_names(
     ids = {row.approved_user_id for row in revisions if row.approved_user_id is not None}
     if also is not None:
         ids.add(also)
+    ids.update(extra_ids)
     if not emails and not ids:
         return _Names(by_email={}, by_id={})
     found = session.execute(
@@ -1033,6 +1102,30 @@ def _summary(
         export_status=checked.status,
         approval_current=checked.approval_bound if approved else None,
         approval_changed=list(checked.approval_changed),
+        author_unknown=_author_unknown(row),
+        author_established=_author_established(row),
+    )
+
+
+def _read_applicable(row: DesignRevisionRow) -> _Applicable:
+    """The policy that applies to ``row`` now, its stored design read and classified.
+
+    The same check the revision list makes of each row (``_validation``), so
+    the opened request's title block, the list, the approval status and the
+    exports agree on whether an approval counts, a findings-policy change
+    included.
+    """
+    stored, classified = (
+        _read_classified(row)
+        if row.design_snapshot is not None and row.snapshot_sha256 is not None
+        else (None, None)
+    )
+    return _applicable(
+        row,
+        thorough=False,
+        read=stored if isinstance(stored, VersionedModel) else None,
+        read_checked=stored is not None,
+        classified=classified,
     )
 
 
@@ -1042,6 +1135,7 @@ def _title_revisions(
     names: _Names,
     *,
     bound_to: _Applicable | None = None,
+    upto_counts: bool | None = None,
 ) -> list[Revision]:
     """The title block's revision list: each saved revision up to ``upto``.
 
@@ -1054,6 +1148,9 @@ def _title_revisions(
             today's policy. ``bound_to`` is that policy for ``upto``, resolved
             in full from the snapshot the caller read once; the others are
             checked from their columns alone (``_Applicable``).
+        upto_counts: Given, whether ``upto``'s approval counts, as the caller
+            already checked it in full (an opened revision's own check), so
+            the snapshot is not read a second time.
     """
     listed: list[Revision] = []
     for row in revisions:
@@ -1063,21 +1160,13 @@ def _title_revisions(
         if bound_to is not None and row.number != upto and row.approved_at is not None:
             # Read for integrity as the revision list reads it, so an earlier
             # approval of a design that fails it never prints as approved.
-            stored, classified = (
-                _read_classified(row)
-                if row.design_snapshot is not None and row.snapshot_sha256 is not None
-                else (None, None)
+            applicable = _read_applicable(row)
+        if row.number == upto and upto_counts is not None:
+            shown = row.approved_at is not None and upto_counts
+        else:
+            shown = row.approved_at is not None and (
+                applicable is None or not _approval_changed(row, applicable)
             )
-            applicable = _applicable(
-                row,
-                thorough=False,
-                read=stored if isinstance(stored, VersionedModel) else None,
-                read_checked=stored is not None,
-                classified=classified,
-            )
-        shown = row.approved_at is not None and (
-            applicable is None or not _approval_changed(row, applicable)
-        )
         listed.append(
             Revision(
                 index=f"{row.number:02d}",
@@ -1184,6 +1273,10 @@ def _add_revision(
     request: ProjectDesignRequest,
     note: str,
     configuration: Mapping[str, Any] | None = None,
+    requirements_input: RequirementsInput | None = None,
+    prior: Mapping[str, Any] | None = None,
+    answered: Sequence[Mapping[str, Any]] = (),
+    resaved_from: int | None = None,
 ) -> None:
     if project.revision_count >= MAX_REVISIONS:
         raise ValidationError(
@@ -1192,6 +1285,27 @@ def _add_revision(
             params={"limit": str(MAX_REVISIONS)},
         )
     project.revision_count += 1
+    columns = _validate(
+        request,
+        configuration,
+        engineering_reviews.anchor_for(session=session, tenant_id=tenant),
+    )
+    designed = (
+        read_snapshot(columns["design_snapshot"]).project
+        if columns.get("design_snapshot") is not None
+        else None
+    )
+    record = requirements.build(
+        request,
+        designed,
+        [DesignFinding.model_validate(found) for found in columns["findings"]],
+        requirements_input,
+        prior=prior,
+        answered=answered,
+    )
+    if resaved_from is not None:
+        # A pp-req/1 addition: the revision whose stored request this one re-designed.
+        record["resaved_from"] = resaved_from
     session.add(
         DesignRevisionRow(
             tenant_id=tenant,
@@ -1199,12 +1313,14 @@ def _add_revision(
             number=project.revision_count,
             note=note,
             author=user.email,
+            # A trial's subject is an anonymous session, not an account: the
+            # account that later claims the tenant has another id, so recording
+            # the session's would let that account approve what it saved.
+            author_user_id=_account_id(user) if user.email else None,
             request=request.model_dump(mode="json"),
-            **_validate(
-                request,
-                configuration,
-                engineering_reviews.anchor_for(session=session, tenant_id=tenant),
-            ),
+            requirements=record,
+            requirements_sha256=snapshot.sha256_of(record),
+            **columns,
         )
     )
 
@@ -1240,8 +1356,19 @@ def _opened(
         raise NotFoundError("no such revision", code="revision_not_found")
     viewer_id = _account_id(viewer)
     names = _display_names(session, project.tenant_id, revisions, also=viewer_id)
-    title = _title_revisions(revisions, chosen.number, names)
+    # Bound like an export's title block, so the opened request never lists an
+    # approval that no longer counts (stale, unbound or failing integrity).
     checked = _validation(chosen)
+    # The opened revision's approver is named only where its own full check
+    # (``checked``, findings policy included) says the approval counts, as the
+    # list, ``approval_current`` and an export say; earlier ones as an export.
+    title = _title_revisions(
+        revisions,
+        chosen.number,
+        names,
+        bound_to=_applicable(chosen, thorough=False),
+        upto_counts=checked.approval_bound,
+    )
     readable = _request_problem(chosen) is None
     if readable:
         request = ProjectDesignRequest.model_validate(chosen.request)
@@ -1285,6 +1412,10 @@ def _opened(
         snapshot_schema=_stored_schema(chosen.design_snapshot),
         approving_as=names.by_id.get(viewer_id) if viewer_id is not None else None,
         permissions=permissions.allowed(session=session, user=viewer),
+        requirements=_record_view(_record_of(chosen, checked)),
+        author_unknown=_author_unknown(chosen),
+        author_established=_author_established(chosen),
+        is_author=_is_author(chosen, viewer),
     )
     return opened if readable else opened.as_stored(stored)
 
@@ -1311,6 +1442,9 @@ def save_project(
     # Malformed company settings are the request's error, refused as such,
     # not saved as a design the server could not make.
     design_domain.resolve_profile(request.request.profile)
+    # A feeder is the designer's: a typed one is refused, never saved.
+    project_design.refuse_client_feeders(request.request.boards)
+    check_requirements_input(request.request, request.requirements_input)
     billing.require_project_room(session=session, user=user)
     try:
         held = session.scalars(select(DesignProjectRow.id).limit(MAX_PROJECTS)).all()
@@ -1323,7 +1457,15 @@ def save_project(
         project = DesignProjectRow(tenant_id=tenant, name=request.name.strip(), revision_count=0)
         session.add(project)
         session.flush()
-        _add_revision(session, project, tenant, user, request.request, request.note)
+        _add_revision(
+            session,
+            project,
+            tenant,
+            user,
+            request.request,
+            request.note,
+            requirements_input=request.requirements_input,
+        )
         session.commit()
     except BaseException:
         # Whatever failed, nothing half-saved is kept and no lock outlives it.
@@ -1357,10 +1499,22 @@ def revise_project(
         project = _load(session, project_id, lock=True)
         # Malformed company settings are refused, not saved as a refused design.
         design_domain.resolve_profile(request.request.profile)
+        # So is a typed feeder row, which an earlier revision may hold: the
+        # user removes it and sets "Fed from" (the stored revision is untouched).
+        project_design.refuse_client_feeders(request.request.boards)
+        check_requirements_input(request.request, request.requirements_input)
         # Raising the revision count updates the row, which moves its
         # ``updated_at`` (the list's order) to now.
         _add_revision(
-            session, project, tenant, user, request.request, request.note, request.configuration
+            session,
+            project,
+            tenant,
+            user,
+            request.request,
+            request.note,
+            request.configuration,
+            requirements_input=request.requirements_input,
+            prior=_stored_record(_revisions(session, project)[-1]),
         )
         # The number this save took: by the time it is opened, a concurrent
         # save may have added a later one.
@@ -1468,6 +1622,12 @@ def _check_snapshot(row: DesignRevisionRow, number: int) -> VersionedModel:
             code="snapshot_integrity_failed",
             params={"revision": number, "reason": "hash_mismatch"},
         )
+    if not _requirements_match(row):
+        raise ConflictError(
+            f"revision {number}'s requirements record does not match its recorded hash",
+            code="snapshot_integrity_failed",
+            params={"revision": number, "reason": "requirements_mismatch"},
+        )
     try:
         read = read_snapshot(row.design_snapshot)
     except versions.SnapshotUnreadableError as exc:
@@ -1518,7 +1678,10 @@ def _refuse_stale(row: DesignRevisionRow, number: int, applicable: _Applicable) 
         for part in approval
         # Another design approved is not a policy change: it exports as a draft,
         # and which renderer printed that other design does not matter.
-        if part != "snapshot"
+        # Nor is a requirements record other than the one approved (or an
+        # approval that recorded none): the approval does not count, and the
+        # revision exports as a draft, never as approved.
+        if part not in ("snapshot", "requirements")
         and not (part == "renderer_version" and "snapshot" in approval)
         and part not in changed
     ]
@@ -1579,7 +1742,9 @@ def approve_revision(
             (``snapshot_integrity_failed``), is in a schema this version does not
             read (``snapshot_schema_unknown``), its rules or settings changed
             (``revision_stale``), or it has blocking findings
-            (``revision_has_blocking_findings``).
+            (``revision_has_blocking_findings``), or its author is not
+            established (``approval_author_not_established``).
+        AuthorizationError: If the caller saved it (``approval_by_author``).
         AuthorizationError: If the caller is not a signed-in account
             (``approval_requires_account``: a trial has none), their plan
             does not include approval, or they are neither the tenant's owner
@@ -1598,6 +1763,9 @@ def approve_revision(
         permissions.require(session=session, user=user, permission=Permission.APPROVE_REVISION)
         row = _locked_revision(session, project, number)
         applicable = _approvable(session, project, row, number)
+        # After what the revision itself refuses (approved, stale, blocked):
+        # those say what is wrong with the revision, this who may approve it.
+        _refuse_author(row, user, number)
         # Who approves is the signed-in account, from its token: the request
         # names no one. ``approved_by`` (the legacy typed name) stays NULL.
         row.approved_account = user.email
@@ -1605,6 +1773,8 @@ def approve_revision(
         row.approval_note = request.note or None
         row.approved_at = datetime.now(UTC)
         row.approved_snapshot_sha256 = row.snapshot_sha256
+        # Checked against its hash under the lock (``_check_snapshot``).
+        row.approved_requirements_sha256 = _requirements_binding(row)
         # The policy it is granted under (checked current just now), and the
         # name it is granted by, as every export will print them.
         row.approved_profile_sha256 = applicable.profile_sha256
@@ -1630,6 +1800,165 @@ def approve_revision(
         snapshot_sha256=row.snapshot_sha256,
     )
     return _opened(session, project, number, user)
+
+
+def resave_revision(
+    *, session: Session, user: CurrentUser, project_id: str, number: int
+) -> SavedProject:
+    """Save revision ``number``'s stored request again, as the caller's new latest revision.
+
+    The recovery for a revision whose author is not established: its stored
+    request is designed again under today's rules and saved as a new
+    revision whose author is the caller (note ``Re-saved from revision <n>
+    for independent review``; its record's ``resaved_from`` is ``n``), for a
+    different member to approve. Control needs carry; an acknowledgement
+    carries, with its original account and time, while its question still
+    stands, as on an answer. Nothing of revision ``number`` (its snapshot,
+    hashes, record or approval) is changed.
+
+    A request today's rules refuse is refused as a save would refuse it
+    (``feeder_server_owned``, ``sub_board_load_server_owned``, ...), and
+    nothing is saved: the user's data is never stripped or rewritten here;
+    they fix it in the editor and save normally.
+
+    Raises:
+        NotFoundError: ``revision_not_found`` (also another tenant's project).
+        AuthorizationError: ``resave_requires_account`` (a trial: its revision
+            would again record no author).
+        ConflictError: ``revision_not_validated`` (``request_not_valid``: the
+            stored request no longer parses; ``configuration_not_carried``:
+            its design holds a configuration, which a re-save would drop),
+            ``snapshot_integrity_failed`` (``requirements_mismatch``),
+            ``revision_conflict``.
+        ValidationError: As a revision save refuses the request.
+    """
+    tenant = _scope_to(session, user)
+    try:
+        project = _revision_project(session, project_id, lock=True)
+        row = session.scalars(
+            select(DesignRevisionRow).where(
+                DesignRevisionRow.project_id == project.id, DesignRevisionRow.number == number
+            )
+        ).one_or_none()
+        if row is None:
+            raise NotFoundError("no such revision", code="revision_not_found")
+        if not user.email or _account_id(user) is None:
+            raise AuthorizationError(
+                "re-saving a revision for review requires a signed-in account",
+                code="resave_requires_account",
+            )
+        if row.requirements is not None and not _requirements_match(row):
+            raise ConflictError(
+                f"revision {number}'s requirements record does not match its recorded hash",
+                code="snapshot_integrity_failed",
+                params={"revision": number, "reason": "requirements_mismatch"},
+            )
+        checked = _validation(row, thorough=False)
+        record = _record_of(row, checked)
+        if record is None:
+            raise ConflictError(
+                f"revision {number}'s saved project no longer validates; correct it and save",
+                code="revision_not_validated",
+                params={"revision": number, "reason": "request_not_valid"},
+            )
+        stored = checked.read.v2 if checked.read is not None else None
+        if stored is not None and any(
+            (stored.strips, stored.nets, stored.connections, stored.wires, stored.patterns)
+        ):
+            # The configuration is composed into the snapshot, not kept apart:
+            # a re-save of the request alone would silently drop it.
+            raise ConflictError(
+                f"revision {number} holds a connection configuration a re-save cannot "
+                "carry: it is stored only inside that revision's design and carrying it "
+                "is not proven lossless, so it is never dropped; the revision and its "
+                "configuration are kept unchanged. Save a new revision from the editor "
+                "and enter the configuration again",
+                code="revision_not_validated",
+                params={"revision": number, "reason": "configuration_not_carried"},
+            )
+        entered = ProjectDesignRequest.model_validate(row.request)
+        # Refused exactly as a save refuses them, the 422 unchanged.
+        design_domain.resolve_profile(entered.profile)
+        project_design.refuse_client_feeders(entered.boards)
+        _add_revision(
+            session,
+            project,
+            tenant,
+            user,
+            entered,
+            f"Re-saved from revision {number} for independent review",
+            prior=record if not record.get("derived") else {**record, "acknowledgements": []},
+            resaved_from=number,
+        )
+        latest = project.revision_count
+        session.commit()
+    except IntegrityError as exc:
+        _release(session)
+        raise ConflictError(
+            "another revision was saved at the same time; save again",
+            code="revision_conflict",
+        ) from exc
+    except BaseException:
+        _release(session)
+        raise
+    logger.info(
+        "design.revision_resaved",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=latest,
+        resaved_from=number,
+    )
+    return _opened(session, project, latest, user)
+
+
+def _author_unknown(row: DesignRevisionRow) -> bool:
+    """Whether the revision records no author (saved before authors were): never guessed."""
+    return row.author_user_id is None and not (row.author or "").strip()
+
+
+def _author_established(row: DesignRevisionRow) -> bool:
+    """Whether the revision records the saving account's id: the only proof of its author.
+
+    A row saved before ``author_user_id`` existed records at most an email,
+    which another account may since have taken, or its author changed: such
+    an author is not established, and no id is ever guessed from the email.
+    """
+    return row.author_user_id is not None
+
+
+def _is_author(row: DesignRevisionRow, user: CurrentUser) -> bool:
+    """Whether ``user`` saved the revision, by the saving account's id alone.
+
+    An email changed since, or an email later given to another account,
+    changes nothing. A row without the id names no author (it is not
+    established, and is never matched by email).
+    """
+    return row.author_user_id is not None and row.author_user_id == _account_id(user)
+
+
+def _refuse_author(row: DesignRevisionRow, user: CurrentUser, number: int) -> None:
+    """Refuse an approval no independent reviewer can be shown to give (M6a §4).
+
+    A revision whose author is not established (no ``author_user_id``: saved
+    before it was recorded, whatever email it holds) is refused 409
+    ``approval_author_not_established``: it is saved again
+    (``resave_revision``) and the new revision approved. One saved by the
+    approver's own account is refused 403 ``approval_by_author``, owners
+    included.
+    """
+    if not _author_established(row):
+        raise ConflictError(
+            f"revision {number}'s author cannot be established, so its approval "
+            "could not be shown to be independent; save it as a new revision for review",
+            code="approval_author_not_established",
+            params={"revision": number},
+        )
+    if _is_author(row, user):
+        raise AuthorizationError(
+            f"revision {number} was saved by you; another member must approve it",
+            code="approval_by_author",
+            params={"revision": number},
+        )
 
 
 def _require_account(user: CurrentUser) -> None:
@@ -1689,6 +2018,7 @@ def _revision_mark(
     names: _Names,
     approval_counts: bool,
     renderer: str,
+    lines: Sequence[str] = (),
 ) -> marking.ExportMark:
     digest = (row.snapshot_sha256 or "")[:SHORT_HASH]
     where = f"{project.name}, revision {row.number:02d}"
@@ -1705,7 +2035,9 @@ def _revision_mark(
             f"renderer {renderer}"
         )
         label = marking.DRAFT_LABEL
-    return marking.ExportMark(label=label, identity=identity, findings=tuple(findings))
+    return marking.ExportMark(
+        label=label, identity=identity, findings=tuple(findings), requirements=tuple(lines)
+    )
 
 
 def _estimate_subject(
@@ -1820,7 +2152,7 @@ def export_revision(
     approval_counts = row.approved_at is not None and not _approval_changed(row, applicable)
     designed = read.project
     design_domain.require_format(session=session, user=user, export_format=request.format)
-    names = _display_names(session, project.tenant_id, revisions)
+    names = _display_names(session, project.tenant_id, revisions, extra_ids=_acknowledgers(row))
     mark = _revision_mark(
         project,
         row,
@@ -1828,6 +2160,7 @@ def export_revision(
         names,
         approval_counts,
         applicable.renderer_version,
+        _requirement_lines(row, read, names),
     )
     if request.format in design_domain.SCHEDULE_FORMATS:
         exported = _schedule_export(project, row, read, request.format, mark, applicable)
@@ -1909,8 +2242,13 @@ def _schedule_export(
         design_configuration.finding_view(found, _V2_CONFIRM)
         for found in findings_v2.structural_findings(model)
     ]
-    other = [found for found in mark.findings if found.code not in findings_v2.CODES]
-    plain = marking.ExportMark(label=mark.label, identity=mark.identity, findings=tuple(other))
+    other = [found for found in mark.findings if not _structural(found)]
+    plain = marking.ExportMark(
+        label=mark.label,
+        identity=mark.identity,
+        findings=tuple(other),
+        requirements=mark.requirements,
+    )
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
             connection_drawing.drawing_set(model),
@@ -1980,6 +2318,7 @@ def validate_configuration(
             params={"revision": latest.number, "reason": "request_not_valid"},
         ) from exc
     design_configuration.check_configuration(request.configuration)
+    project_design.refuse_client_feeders(entered.boards)
     as_entered = entered.model_copy(
         update={"info": entered.info.model_copy(update={"revisions": []})}
     )
@@ -2127,3 +2466,402 @@ def delete_project(*, session: Session, user: CurrentUser, project_id: str) -> N
         _release(session)
         raise
     logger.info("design.project_deleted", tenant_id=str(tenant), project_id=project_id)
+
+
+# --------------------------------------------------------------------------- #
+# Requirements records (M6a, ``pp-req/1``)
+# --------------------------------------------------------------------------- #
+
+
+def check_requirements_input(
+    request: ProjectDesignRequest, given: RequirementsInput | None
+) -> None:
+    """Refuse guided input that names no load, or a load that is not controlled.
+
+    Raises:
+        ValidationError: ``control_load_unknown`` (no such board or load),
+            ``control_need_requires_controlled`` (the load's ``controlled``
+            flag, the designer's only control model, is not set), or
+            ``control_given_twice``.
+    """
+    if given is None:
+        return
+    seen: set[tuple[int, int]] = set()
+    for item in given.control:
+        where = {"board_index": item.board_index, "load_index": item.load_index}
+        if item.board_index >= len(request.boards) or item.load_index >= len(
+            request.boards[item.board_index].loads
+        ):
+            raise ValidationError(
+                f"control needs name board {item.board_index}, load {item.load_index}, "
+                "which the project does not have",
+                code="control_load_unknown",
+                params=where,
+            )
+        board = request.boards[item.board_index]
+        if not board.loads[item.load_index].controlled:
+            raise ValidationError(
+                f"{board.name}, load {item.load_index + 1}: control needs are for a "
+                "controlled load; mark it controlled first",
+                code="control_need_requires_controlled",
+                params={"board": board.name, "load_index": item.load_index},
+            )
+        if (item.board_index, item.load_index) in seen:
+            raise ValidationError(
+                f"{board.name}, load {item.load_index + 1}: control needs are given twice",
+                code="control_given_twice",
+                params={"board": board.name, "load_index": item.load_index},
+            )
+        seen.add((item.board_index, item.load_index))
+
+
+def _stored_record(row: DesignRevisionRow) -> dict[str, Any] | None:
+    """The revision's stored requirements record, when it has one matching its hash."""
+    if row.requirements is None or not _requirements_match(row):
+        return None
+    return dict(row.requirements)
+
+
+def _record_of(row: DesignRevisionRow, checked: _Validation | None = None) -> dict[str, Any] | None:
+    """The revision's record: stored, or derived for an older revision; ``None`` if neither.
+
+    A stored record that fails its hash is not shown (the revision opens as
+    not validated, ``requirements_mismatch``); a derived one is built from
+    the stored request and findings, never from a new design.
+    """
+    if row.requirements is not None:
+        return _stored_record(row)
+    if _request_problem(row) is not None:
+        return None
+    request = ProjectDesignRequest.model_validate(row.request)
+    read = checked.read if checked is not None else None
+    return requirements.build(
+        request,
+        read.project if read is not None else None,
+        _stored_findings(row),
+        derived=True,
+    )
+
+
+def _record_view(record: Mapping[str, Any] | None) -> RequirementsRecord | None:
+    return RequirementsRecord.model_validate(record) if record is not None else None
+
+
+def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
+    """The account ids a stored record's acknowledgements name, for their display names."""
+    out: list[uuid.UUID] = []
+    for ack in (_stored_record(row) or {}).get("acknowledgements", []):
+        try:
+            out.append(uuid.UUID(str(ack.get("by_user_id"))))
+        except ValueError:
+            continue
+    return out
+
+
+def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Names) -> list[str]:
+    """What a review export prints of the revision's record: open items, then acknowledgements.
+
+    An exported document never prints an email address: an acknowledgement
+    names the account by its display name, else "a team member" (the in-app
+    record may show the email to the tenant's members).
+    """
+    record = row.requirements if row.requirements is not None else None
+    if record is None:
+        if _request_problem(row) is not None:
+            return []
+        record = requirements.build(
+            ProjectDesignRequest.model_validate(row.request),
+            read.project,
+            _stored_findings(row),
+            derived=True,
+        )
+
+    def printed(user_id: str | None) -> str:
+        try:
+            account = uuid.UUID(str(user_id))
+        except ValueError:
+            return APPROVER_FALLBACK
+        return names.by_id.get(account) or APPROVER_FALLBACK
+
+    return [
+        *requirements.open_item_lines(record),
+        *requirements.acknowledged_lines(record, name_of=printed),
+    ]
+
+
+def preview_requirements(
+    *, user: CurrentUser, request: RequirementsPreviewRequest
+) -> RequirementsPreview:
+    """The record a guided input would be stored with, and the design; nothing is saved.
+
+    Raises:
+        ValidationError: As a save refuses the request (a typed feeder, a
+            control need on no controlled load, malformed settings), or the
+            design's own refusal.
+    """
+    entered = request.request
+    project_design.refuse_client_feeders(entered.boards)
+    check_requirements_input(entered, request.requirements_input)
+    as_entered = entered.model_copy(
+        update={"info": entered.info.model_copy(update={"revisions": []})}
+    )
+    designed, company = design_domain.build_design(as_entered)
+    conditions = {board.name: board.conditions for board in entered.boards}
+    findings = integrity.project_findings(designed, conditions)
+    record = requirements.build(entered, designed, findings, request.requirements_input)
+    logger.info("design.requirements_previewed", tenant_id=user.tenant_id)
+    return RequirementsPreview(
+        requirements=RequirementsRecord.model_validate(record),
+        design=BoardDesignResponse(project=designed, profile=company),
+        findings=findings,
+    )
+
+
+def _question_in(record: Mapping[str, Any], question_id: str) -> dict[str, Any]:
+    found = next((q for q in record.get("questions", []) if q["id"] == question_id), None)
+    if found is None:
+        raise NotFoundError("no such question", code="question_not_found")
+    return dict(found)
+
+
+def _answered_request(
+    request: ProjectDesignRequest,
+    record: Mapping[str, Any],
+    question: Mapping[str, Any],
+    value: Any,
+) -> ProjectDesignRequest:
+    """The request with an answer typed in where its question points."""
+    body = request.model_dump(mode="json")
+    subject = question.get("subject") or {}
+    names = {b["ref"]: b["name"] for b in record.get("boards", [])}
+    board_name = names.get(subject.get("board_ref") or "")
+    index = next((i for i, b in enumerate(body["boards"]) if b["name"] == board_name), None)
+    if index is None:
+        raise ConflictError(
+            "the question's board is no longer in the project", code="question_not_answerable"
+        )
+    board = body["boards"][index]
+    field = question["field"]
+    if field == "fault_level_ka":
+        board.setdefault("supply", {})["fault_level_ka"] = str(value)
+    elif field == "ze_ohm":
+        board.setdefault("supply", {})["earth_loop_ohm"] = str(value)
+    elif field == "feeder_length_m":
+        board["feeder_length_m"] = str(value)
+    elif field == "power_factor":
+        refs = [
+            load["ref"]
+            for load in record.get("loads", [])
+            if load["board_ref"] == subject.get("board_ref")
+        ]
+        try:
+            position = refs.index(subject.get("load_ref"))
+        except ValueError:
+            position = -1
+        if not 0 <= position < len(board["loads"]):
+            raise ConflictError(
+                "the question's load is no longer in the project", code="question_not_answerable"
+            )
+        board["loads"][position]["power_factor"] = str(value)
+    else:  # pragma: no cover - guarded by ``answerable``
+        raise ConflictError("this question takes no value", code="question_not_answerable")
+    try:
+        return ProjectDesignRequest.model_validate(body)
+    except PydanticValidationError as exc:
+        raise ValidationError(
+            f"{value} is not a valid {field}",
+            code="answer_not_valid",
+            params={"field": field, "value": value},
+        ) from exc
+
+
+def answer_question(
+    *,
+    session: Session,
+    user: CurrentUser,
+    project_id: str,
+    number: int,
+    question_id: str,
+    action: QuestionAction,
+) -> SavedProject | AcknowledgedRequirements:
+    """Answer a question (a new revision) or acknowledge it (recorded on this revision).
+
+    Who and when are the signed-in account and the server's clock. An answer
+    is typed into the latest revision's request and saved as a new revision,
+    designed on the server; an acknowledgement is appended to the revision's
+    stored record, its hash recomputed, the design untouched.
+
+    Returns:
+        The project at the new revision for an answer; the updated record for
+        an acknowledgement.
+
+    Raises:
+        NotFoundError: ``revision_not_found`` (also another tenant's project),
+            ``question_not_found``.
+        ConflictError: ``requirements_derived`` (acknowledging an older
+            revision's derived record), ``revision_already_approved``
+            (acknowledging an approved revision), ``revision_not_latest``
+            (answering or acknowledging a revision a later one replaced),
+            ``question_not_answerable``, ``question_answered``,
+            ``snapshot_integrity_failed`` (``requirements_mismatch``).
+        AuthorizationError: ``acknowledgement_requires_account`` (a trial).
+        ValidationError: ``answer_not_valid``, or as a revision save refuses.
+    """
+    tenant = _scope_to(session, user)
+    try:
+        project = _revision_project(session, project_id, lock=True)
+        row = _locked_revision(session, project, number)
+        if row.requirements is not None and not _requirements_match(row):
+            raise ConflictError(
+                f"revision {number}'s requirements record does not match its recorded hash",
+                code="snapshot_integrity_failed",
+                params={"revision": number, "reason": "requirements_mismatch"},
+            )
+        now = datetime.now(UTC).isoformat()
+        result: AcknowledgedRequirements | None = None
+        account = _account_id(user)
+        named = _display_names(session, project.tenant_id, [], also=account)
+        # Never empty, never invented: the display name, else the account's
+        # email (shown to the tenant's members on the Team page), else
+        # "unknown account".
+        by = (
+            (named.by_id.get(account) if account is not None else None)
+            or user.email
+            or requirements.UNKNOWN_ACCOUNT
+        )
+        if action.action == "acknowledge":
+            result = AcknowledgedRequirements(
+                requirements=_acknowledge(
+                    row, number, project.revision_count, question_id, user, by, now
+                )
+            )
+        else:
+            latest = project.revision_count
+            if number != latest:
+                raise ConflictError(
+                    f"revision {number} is not the latest; answer on revision {latest}",
+                    code="revision_not_latest",
+                    params={"revision": number, "latest": latest},
+                )
+            record = _record_of(row, _validation(row, thorough=False))
+            if record is None:
+                raise ConflictError(
+                    f"revision {number}'s saved project no longer validates",
+                    code="revision_not_validated",
+                    params={"revision": number, "reason": "request_not_valid"},
+                )
+            question = _question_in(record, question_id)
+            if question["state"] == "answered":
+                raise ConflictError("this question is answered", code="question_answered")
+            if not question.get("answerable"):
+                raise ConflictError(
+                    "no input holds this value; acknowledge the assumption instead",
+                    code="question_not_answerable",
+                    params={"field": question.get("field") or ""},
+                )
+            entered = ProjectDesignRequest.model_validate(row.request)
+            answered = _answered_request(entered, record, question, action.value)
+            # A typed feeder an earlier revision holds is refused here too.
+            project_design.refuse_client_feeders(answered.boards)
+            design_domain.resolve_profile(answered.profile)
+            _add_revision(
+                session,
+                project,
+                tenant,
+                user,
+                answered,
+                f"Answered: {question['field']}",
+                prior=record if not record.get("derived") else {**record, "acknowledgements": []},
+                answered=[
+                    {
+                        **question,
+                        "answer": format(action.value, "f"),
+                        "by_user_id": user.id,
+                        "by_name": by,
+                        "at": now,
+                    }
+                ],
+            )
+            number = project.revision_count
+        session.commit()
+    except IntegrityError as exc:
+        _release(session)
+        raise ConflictError(
+            "another revision was saved at the same time; save again",
+            code="revision_conflict",
+        ) from exc
+    except BaseException:
+        _release(session)
+        raise
+    logger.info(
+        "design.question_" + ("acknowledged" if action.action == "acknowledge" else "answered"),
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=number,
+        question=question_id,
+    )
+    if result is None:
+        return _opened(session, project, number, user)
+    return result
+
+
+def _acknowledge(
+    row: DesignRevisionRow,
+    number: int,
+    latest: int,
+    question_id: str,
+    user: CurrentUser,
+    by: str | None,
+    now: str,
+) -> RequirementsRecord:
+    if not user.email or _account_id(user) is None:
+        raise AuthorizationError(
+            "acknowledging an assumption requires a signed-in account",
+            code="acknowledgement_requires_account",
+        )
+    record = _stored_record(row)
+    if record is None:
+        raise ConflictError(
+            f"revision {number} was saved before requirements were recorded; "
+            "save it again as a new revision to acknowledge its assumptions",
+            code="requirements_derived",
+            params={"revision": number},
+        )
+    if row.approved_at is not None:
+        raise ConflictError(
+            f"revision {number} is approved; what it was approved with does not change",
+            code="revision_already_approved",
+            params={"revision": str(number)},
+        )
+    # Checked under the project lock, as an answer is: an acknowledgement of a
+    # revision a later one replaced (an answer that committed first) would be
+    # on no revision anyone works on, and missing from the latest one.
+    if number != latest:
+        raise ConflictError(
+            f"revision {number} is not the latest; acknowledge on revision {latest}",
+            code="revision_not_latest",
+            params={"revision": number, "latest": latest},
+        )
+    question = _question_in(record, question_id)
+    if question["state"] == "answered":
+        raise ConflictError("this question is answered", code="question_answered")
+    if question["state"] != "acknowledged":
+        record = {
+            **record,
+            "acknowledgements": [
+                *record.get("acknowledgements", []),
+                {
+                    "question_id": question_id,
+                    "by_user_id": user.id,
+                    "by_name": by,
+                    "at": now,
+                    # What it acknowledged: it carries forward only while unchanged.
+                    **({"basis": question["basis"]} if question.get("basis") else {}),
+                },
+            ],
+            "questions": [dict(q) for q in record["questions"]],
+        }
+        record = requirements.apply_acknowledgements(record)
+        row.requirements = record
+        row.requirements_sha256 = snapshot.sha256_of(record)
+    return RequirementsRecord.model_validate(record)

@@ -76,6 +76,7 @@ export const APPROVAL_POLICY_PARTS = [
   'profile',
   'findings_policy',
   'renderer_version',
+  'requirements',
 ] as const;
 export type ApprovalPolicyPart = (typeof APPROVAL_POLICY_PARTS)[number];
 

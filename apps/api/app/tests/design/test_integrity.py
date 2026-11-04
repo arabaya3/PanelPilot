@@ -370,3 +370,20 @@ def test_a_request_board_name_is_its_designed_board_id() -> None:
     )
     designed, _ = design_domain.build_design(request)
     assert [b.id for b in designed.boards] == [b.name for b in request.boards]
+
+
+def test_a_designation_printed_twice_on_a_board_is_blocking() -> None:
+    project = _designed()
+    assert "designation_duplicate" not in {f.code for f in integrity.project_findings(project)}
+    board = project.boards[0]
+    first, second = board.devices[0], board.devices[1]
+    second.designation = first.designation
+    (found,) = [f for f in integrity.project_findings(project) if f.code == "designation_duplicate"]
+    assert found.severity is FindingSeverity.BLOCKING
+    assert found.values["parts"] == f"{first.id},{second.id}"
+    assert first.designation is not None
+    drawn = str(first.designation)
+    assert drawn.endswith(f"-{first.designation.product}")
+    assert found.values["designation"] == drawn
+    assert found.message.startswith(f"Board DB1: {drawn} is printed on 2 parts")
+    assert "Designation(" not in found.message

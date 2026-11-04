@@ -184,6 +184,8 @@ def test_the_migration_runs_up_and_down(migration_url: str) -> None:
             )
         with engine.connect() as conn, pytest.raises(DBAPIError):
             conn.execute(text("DELETE FROM global_engineering_review_decisions"))
+        # The models are the latest head's: checked there, later migrations included.
+        _alembic(migration_url, "upgrade", "head")
         _alembic(migration_url, "check")
         _alembic(migration_url, "downgrade", BEFORE)
         with engine.connect() as conn:

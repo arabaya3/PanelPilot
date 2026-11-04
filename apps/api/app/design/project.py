@@ -30,6 +30,12 @@ than from a figure typed in by hand:
 Names, the feeding graph (unknown board, a board feeding itself, a loop) and
 supply compatibility are checked before anything is designed, each refusal
 naming the board.
+
+A feeder is the designer's alone: it is generated once, from ``fed_from``. A
+schedule row naming a board of the project in ``feeds`` would be a second
+feeder to it and is refused (``feeder_server_owned``); ``refuse_client_feeders``
+refuses every client-typed feeder row of a new design (``feeds`` set, or a
+``sub_board`` load), which a stored revision may still hold.
 """
 
 from __future__ import annotations
@@ -120,6 +126,49 @@ def design_order(requests: list[DistributionBoardRequest]) -> list[DistributionB
     return order
 
 
+def refuse_client_feeders(requests: list[DistributionBoardRequest]) -> None:
+    """Refuse a feeder typed into a new design's schedule: the designer makes it.
+
+    Args:
+        requests: The boards as the client entered them.
+
+    Raises:
+        ValidationError: ``feeder_server_owned`` for a load with ``feeds`` set,
+            ``sub_board_load_server_owned`` for a load of kind ``sub_board``;
+            each names the board and the load's index in its schedule.
+    """
+    for request in requests:
+        for index, load in enumerate(request.loads):
+            if load.feeds is not None:
+                raise ValidationError(
+                    f"{request.name}, load {index + 1}: a feeder is generated from the "
+                    'sub-board\'s "Fed from"; it cannot be entered as a load',
+                    code="feeder_server_owned",
+                    params={"board": request.name, "load_index": index},
+                )
+            if load.load is LoadKind.SUB_BOARD:
+                raise ValidationError(
+                    f"{request.name}, load {index + 1}: a sub-board is not a load; add the "
+                    'sub-board and set its "Fed from" to this board instead',
+                    code="sub_board_load_server_owned",
+                    params={"board": request.name, "load_index": index},
+                )
+
+
+def _refuse_second_feeders(requests: list[DistributionBoardRequest]) -> None:
+    """Refuse a typed row feeding a board of the project, whose feeder is generated."""
+    names = {request.name for request in requests}
+    for request in requests:
+        for index, load in enumerate(request.loads):
+            if load.feeds is not None and load.feeds in names:
+                raise ValidationError(
+                    f"{request.name}, load {index + 1}: the feeder to {load.feeds} is "
+                    'generated from its "Fed from"; it cannot be entered as a load',
+                    code="feeder_server_owned",
+                    params={"board": request.name, "load_index": index},
+                )
+
+
 def feeder_load(
     board: Board, length_m: Decimal | None = None, profile: CompanyProfile | None = None
 ) -> LoadInput:
@@ -188,10 +237,12 @@ def design_boards(requests: list[DistributionBoardRequest], profile: CompanyProf
         The boards, undesignated, in the order given.
 
     Raises:
-        ValidationError: If the feeding graph or a supply is inconsistent, or
-            a load cannot be protected or cabled.
+        ValidationError: If the feeding graph or a supply is inconsistent, a
+            schedule row feeds a board of the project (``feeder_server_owned``),
+            or a load cannot be protected or cabled.
     """
     order = design_order(requests)
+    _refuse_second_feeders(requests)
     by_name = {request.name: request for request in requests}
     for request in requests:
         if request.fed_from is not None:

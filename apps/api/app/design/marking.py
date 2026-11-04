@@ -86,6 +86,9 @@ class ExportMark:
     label: str
     identity: str
     findings: tuple[DesignFinding, ...] = field(default_factory=tuple)
+    #: The revision's requirements lines (M6a): its open items (``[OPEN] …``)
+    #: and acknowledged assumptions, printed after the findings.
+    requirements: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def banner(self) -> str:
@@ -110,9 +113,7 @@ def finding_lines(mark: ExportMark) -> list[str]:
         One line per finding (wrapped lines indented), or one line saying
         there are none.
     """
-    if not mark.findings:
-        return ["No unresolved findings."]
-    lines: list[str] = []
+    lines: list[str] = [] if mark.findings else ["No unresolved findings."]
     ordered = sorted(mark.findings, key=lambda found: _SEVERITY_ORDER[found.severity])
     for found in ordered:
         where = " / ".join(part for part in (found.board_id, found.circuit_id) if part)
@@ -125,6 +126,8 @@ def finding_lines(mark: ExportMark) -> list[str]:
         )
         wrapped = textwrap.wrap(text, _LINE_CHARS, subsequent_indent="    ") or [text]
         lines.extend(wrapped)
+    for text in mark.requirements:
+        lines.extend(textwrap.wrap(text, _LINE_CHARS, subsequent_indent="    ") or [text])
     return lines
 
 
@@ -273,6 +276,8 @@ def pdf_findings_section(
         font, drawn = font_for(line, right_to_left=has_rtl(line))
         style = body if font == body.fontName else body.clone(f"{body.name}-{font}", fontName=font)
         section.append(Paragraph(escape(drawn), style))
+    # Clear of what follows (the calculations report's signature table).
+    section.append(Spacer(1, 6 * mm))
     return section
 
 
@@ -336,6 +341,7 @@ def mark_json(project_json: str, mark: ExportMark) -> bytes:
     envelope = {
         "export_status": {"label": mark.label, "identity": mark.identity},
         "findings": [found.model_dump(mode="json") for found in mark.findings],
+        **({"requirements": list(mark.requirements)} if mark.requirements else {}),
         "project": json.loads(project_json),
     }
     return json.dumps(envelope, indent=2, ensure_ascii=False).encode("utf-8")

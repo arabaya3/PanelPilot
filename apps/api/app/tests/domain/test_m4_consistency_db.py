@@ -42,6 +42,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
 )
 from app.tests.design.model.compat_support import DESIGNED
 from app.tests.design.model.v2_support import CONFIGS, config_case
+from app.tests.domain import review_support
 
 CASE = "pe_n_distribution"
 FORMATS = ("connection_drawing_pdf", "terminal_schedule_pdf", "wire_schedule_pdf")
@@ -191,3 +192,9 @@ def test_a_pp_design_1_revision_refuses_all_three(
     assert plain.status_code == 201
     assert "schema" not in revision_row(engine, project_id, 2)["design_snapshot"]
     assert _refusals(client, project_id) == {(409, "schedule_requires_v2")}
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

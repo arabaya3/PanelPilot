@@ -50,6 +50,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     update_row,
 )
 from app.tests.design import render_content
+from app.tests.domain import review_support
 from app.tests.domain.test_design_projects_configured_db import CASE, _configuration, _revise
 from app.tests.domain.test_design_projects_configured_db import _save as _save_configured
 
@@ -361,3 +362,9 @@ def test_an_opened_revision_names_its_stored_schema(
     assert _opened(client, saved["id"], 1)["snapshot_schema"] == "pp-design/1"
     update_row(engine, saved["id"], 1, design_snapshot={"schema": "pp-design/9", "x": 1})
     assert _opened(client, saved["id"], 1)["snapshot_schema"] is None
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

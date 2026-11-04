@@ -103,6 +103,26 @@ export function tokenIdentity(token: string): TokenIdentity | null {
   }
 }
 
+/**
+ * The account email an access token carries, without verifying it; null for
+ * none (a trial). Only to name the signed-in account on its own page, where
+ * it has no display name; it is never sent anywhere.
+ */
+export function tokenEmail(token: string): string | null {
+  const part = token.split('.')[1];
+  if (part === undefined || part === '') return null;
+  try {
+    const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const payload: unknown = JSON.parse(atob(padded));
+    if (typeof payload !== 'object' || payload === null) return null;
+    const { email } = payload as Record<string, unknown>;
+    return typeof email === 'string' && email.trim() !== '' ? email.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the page reads from an access token to judge one another tab shared. */
 export type TokenClaims = { subject: string; session: string | null; expiresAt: number | null };
 

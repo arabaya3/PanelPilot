@@ -93,6 +93,9 @@ function saved(id = 'p1'): SavedProject {
     revision: 1,
     validated: false,
     export_status: 'not_validated',
+    author_unknown: false,
+    author_established: true,
+    is_author: false,
     permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: [
       {
@@ -100,6 +103,8 @@ function saved(id = 'p1'): SavedProject {
         note: '',
         author: 'e',
         approver_account_recorded: false,
+        author_unknown: false,
+        author_established: true,
         created_at: '2026-10-02T10:00:00Z',
         validated: false,
         export_status: 'not_validated' as const,

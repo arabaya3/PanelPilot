@@ -35,6 +35,7 @@ from app.models.schemas.auth import CurrentUser, Role
 from app.models.tables.tenant import TenantRow
 from app.tests import db_target
 from app.tests.design import stored_design
+from app.tests.domain import review_support
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -1177,7 +1178,9 @@ def test_the_approval_names_the_account_everywhere_and_the_note_only_as_a_note(
     assert summary["approved_by"] == APPROVER
     assert summary["approver_name"] == APPROVER
     assert summary["approval_note"] == FORGED_APPROVER
-    assert "@" not in response.text
+    # The approver's email is never sent (the author, with no display name,
+    # is named by its recorded email since M6a).
+    assert caller.user.email not in response.text
     row = revision_row(engine, saved["id"], 1)
     assert (row["approved_account"], str(row["approved_user_id"])) == (
         caller.user.email,
@@ -1352,3 +1355,9 @@ def test_an_approver_renamed_after_approval_changes_no_export(
     # Who would approve now is the account as it is now.
     assert shown["approving_as"] == "Renamed Later ZQX"
     assert revision_row(engine, saved["id"], 1)["approved_display_name"] == APPROVER
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

@@ -47,6 +47,7 @@ from app.tests.api.v1.routes.test_export_integrity import (
 )
 from app.tests.design.model.compat_support import DESIGNED
 from app.tests.design.model.v2_support import CONFIGS, config_case
+from app.tests.domain import review_support
 from app.tests.domain.review_support import SYNTHETIC_QUALIFICATION, new_account, new_tenant
 
 pytestmark = pytest.mark.skipif(
@@ -767,3 +768,16 @@ def test_a_reviewer_may_not_decide_on_a_definition_they_saved(
     other = _decide(client, *own)
     assert other.status_code == 201, other.text
     assert other.json()["independence_checked"] is True
+
+
+#: Tests that need the caller recorded as the revision's author.
+_AUTHORED_BY_CALLER = {"test_a_reviewer_may_not_decide_on_a_definition_they_saved"}
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    if request.node.originalname not in _AUTHORED_BY_CALLER:
+        review_support.author_revisions_as_another_member(monkeypatch)

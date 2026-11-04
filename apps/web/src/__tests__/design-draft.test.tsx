@@ -110,12 +110,17 @@ function saved(revision = 1): SavedProject {
     revision,
     validated: false,
     export_status: 'not_validated',
+    author_unknown: false,
+    author_established: true,
+    is_author: false,
     permissions: ['approve_revision', 'delete_project', 'edit_company_settings'],
     revisions: Array.from({ length: revision }, (_, index) => ({
       number: index + 1,
       note: '',
       author: 'e',
       approver_account_recorded: false,
+      author_unknown: false,
+      author_established: true,
       created_at: '2026-10-02T10:00:00Z',
       validated: false,
       export_status: 'not_validated' as const,
@@ -350,5 +355,67 @@ describe('clearing the draft', () => {
     // A render after the choice must not write it back.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(stored()).toBeNull();
+  });
+});
+
+describe('control needs in the draft', () => {
+  const needBox = (need: string) =>
+    within(screen.getByTestId('view-requirements')).getAllByTestId(
+      new RegExp(`^control-${need}-`),
+    )[0] as HTMLInputElement;
+  function tab(label: string) {
+    const found = screen
+      .getByText(label, { selector: '[role="tab"], [role="tab"] *' })
+      .closest('[role="tab"]');
+    if (!(found instanceof HTMLElement)) throw new Error(`no tab ${label}`);
+    fireEvent.click(found);
+  }
+
+  it('keeps them, and restores them on the restored rows', async () => {
+    const { unmount } = renderScreen();
+    await screen.findByTestId('projects-panel');
+    type(nameField(), 'Kept tower');
+    tab('Requirements');
+    fireEvent.click(
+      within(screen.getByTestId('view-requirements')).getAllByTestId(
+        'design-controlled-0',
+      )[0] as HTMLElement,
+    );
+    fireEvent.click(needBox('running_indicator'));
+    await waitFor(() => {
+      expect(stored()).toMatchObject({ control: [[['running_indicator']]] });
+    });
+    unmount();
+    renderScreen();
+    fireEvent.click(
+      within(await screen.findByTestId('draft-offer')).getByText('Restore unsaved work'),
+    );
+    await waitFor(() => {
+      expect(nameField().value).toBe('Kept tower');
+    });
+    tab('Requirements');
+    expect(needBox('running_indicator').checked).toBe(true);
+    expect(needBox('start_stop').checked).toBe(false);
+  });
+
+  it('still reads a draft written without them, and ignores a field it did not write', () => {
+    const base = {
+      v: 1,
+      session: 's1',
+      project: null,
+      clean: '',
+      info: { name: 'Old', number: '', customer: '', consultant: '', contractor: '' },
+      boards: draftBoards([blankBoard(0, 1, 'MDB')]),
+      profileText: '',
+      language: null,
+      market: '',
+    };
+    const old = parseDraft(base);
+    expect(old?.info.name).toBe('Old');
+    expect(old?.control).toBeUndefined();
+    expect(parseDraft({ ...base, control: [[['launch_missiles']]] })?.control).toBeUndefined();
+    expect(parseDraft({ ...base, control: [[['start_stop']]] })?.control).toEqual([
+      [['start_stop']],
+    ]);
   });
 });
