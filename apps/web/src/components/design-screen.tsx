@@ -28,6 +28,16 @@ import { ConfigurationPanel } from '@/components/design/configuration-panel';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import { AiIntake } from '@/components/design/ai-intake';
+import {
+  aiRequirementsInput,
+  isProblem,
+  placedItems,
+  placeItem,
+  text,
+  untagged,
+  type AiControlTag,
+} from '@/components/design/ai-intake-model';
 import {
   controlNeedsFrom,
   RequirementsView,
@@ -84,7 +94,9 @@ import {
   clearDraft,
   draftBoards,
   draftControl,
+  draftControlTags,
   formControl,
+  formControlTags,
   formBoards,
   readDraft,
   writeDraft,
@@ -127,6 +139,11 @@ import {
   permits,
   requirementsOf,
   suggestSchedule,
+  getAiProposal,
+  type AiItem,
+  type AiProposal,
+  type decideAiItem,
+  type requestAiProposal,
   type answerQuestion,
   type ControlNeed,
   type previewRequirements,
@@ -241,6 +258,7 @@ export function snapshotOf(
   language: DrawingLanguage | null,
   market: string,
   control: Readonly<Record<number, readonly ControlNeed[]>> = {},
+  aiDescription = '',
 ): string {
   // Control needs are requirements the save records: a change to them is
   // unsaved work like any field. Said per row, in row order (keys left out);
@@ -248,11 +266,14 @@ export function snapshotOf(
   // as it always did.
   const needs = boards.map((board) => board.loads.map((load) => [...(control[load.key] ?? [])]));
   const anyNeed = needs.some((rows) => rows.some((row) => row.length > 0));
-  return JSON.stringify(
-    anyNeed
-      ? { info, boards, profileText, language, market, control: needs }
-      : { info, boards, profileText, language, market },
-    (key, value: unknown) => (key === 'key' ? undefined : value),
+  // The typed project description (M6b) is work too, left out while empty.
+  // Which AI item a row came from is not: it changes only with the row itself.
+  const work: Record<string, unknown> = anyNeed
+    ? { info, boards, profileText, language, market, control: needs }
+    : { info, boards, profileText, language, market };
+  if (aiDescription !== '') work.aiDescription = aiDescription;
+  return JSON.stringify(work, (key, value: unknown) =>
+    key === 'key' || key === 'aiItem' ? undefined : value,
   );
 }
 
@@ -331,6 +352,12 @@ type DesignScreenProps = {
   previewRequirementsImpl?: typeof previewRequirements;
   /** Answers or acknowledges one of a saved revision's questions. */
   answerQuestionImpl?: typeof answerQuestion;
+  /** M6b: asks for AI proposals from the typed description. */
+  requestAiProposalImpl?: typeof requestAiProposal;
+  /** M6b: records a decision on one proposed item. */
+  decideAiItemImpl?: typeof decideAiItem;
+  /** M6b: reads a proposal again (a restored draft's). */
+  getAiProposalImpl?: typeof getAiProposal;
 };
 
 /**
@@ -420,6 +447,9 @@ function DesignWorkspace({
   accountSwitched,
   previewRequirementsImpl,
   answerQuestionImpl,
+  requestAiProposalImpl,
+  decideAiItemImpl,
+  getAiProposalImpl = getAiProposal,
 }: DesignScreenProps & {
   account: AccountSession;
   startSignedOut: boolean;
@@ -468,6 +498,10 @@ function DesignWorkspace({
   const [controlNeeds, setControlNeeds] = useState<Record<number, ControlNeed[]>>({});
   // The requirements record the server stored with the revision open.
   const [savedRequirements, setSavedRequirements] = useState<RequirementsRecord | null>(null);
+  // M6b: the typed description, the proposal open and the control needs placed from it.
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiProposal, setAiProposal] = useState<AiProposal | null>(null);
+  const [aiControlTags, setAiControlTags] = useState<Record<string, AiControlTag>>({});
   // Board keys and row keys both come from this counter, so none collide.
   const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
@@ -509,7 +543,15 @@ function DesignWorkspace({
   // entered text stays, so it can be shortened.
   const [tooLong, setTooLong] = useState<TooLong[]>([]);
 
-  const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market, controlNeeds);
+  const snapshot = snapshotOf(
+    info,
+    boards,
+    profileText,
+    chosenLanguage,
+    market,
+    controlNeeds,
+    aiDescription,
+  );
   // What the work looked like when last saved or opened (or when the page
   // started); anything else is unsaved.
   const [clean, setClean] = useState(snapshot);
@@ -768,6 +810,15 @@ function DesignWorkspace({
       info,
       boards: draftBoards(boards),
       control: draftControl(boards, controlNeeds),
+      ...(aiDescription !== '' || aiProposal !== null
+        ? {
+            ai: {
+              description: aiDescription,
+              proposalId: aiProposal?.id ?? null,
+              controlTags: draftControlTags(boards, aiControlTags),
+            },
+          }
+        : {}),
       profileText,
       language: chosenLanguage,
       market,
@@ -808,6 +859,16 @@ function DesignWorkspace({
     setInfo(draft.info);
     setBoards(keyed.boards);
     setControlNeeds(formControl(keyed.boards, draft.control));
+    setAiDescription(draft.ai?.description ?? '');
+    setAiControlTags(formControlTags(keyed.boards, draft.ai?.controlTags));
+    setAiProposal(null);
+    const proposalId = draft.ai?.proposalId ?? null;
+    if (proposalId !== null && token !== null) {
+      // Read again from the server: the draft keeps only its id, never its decisions.
+      void getAiProposalImpl({ token, id: proposalId }).then((outcome) => {
+        if (outcome.kind === 'proposed') setAiProposal(outcome.proposal);
+      });
+    }
     if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
     setProfileText(draft.profileText);
     setDrawingLanguage(draft.language);
@@ -897,6 +958,45 @@ function DesignWorkspace({
   }
 
   const complete = isComplete(info, boards);
+
+  // M6b: the proposal a save would send (none once a revision used it).
+  const aiOpen =
+    aiProposal !== null && (aiProposal.used_by_revision_id ?? null) === null ? aiProposal : null;
+  const aiBoardNames = [
+    ...new Set([
+      ...boards.map((board) => board.name.trim()).filter((name) => name !== ''),
+      ...(aiProposal?.items ?? [])
+        .filter((item) => item.kind === 'board')
+        .map((item) => text(item.value.name).trim())
+        .filter((name) => name !== ''),
+    ]),
+  ];
+  // The form as last rendered, for a placement that lands after a decision's round trip.
+  const formNow = useRef({ boards, controlNeeds, aiControlTags });
+  formNow.current = { boards, controlNeeds, aiControlTags };
+  function placeAiItem(item: AiItem, proposal: AiProposal) {
+    const result = placeItem(
+      {
+        boards: formNow.current.boards,
+        control: formNow.current.controlNeeds,
+        controlTags: formNow.current.aiControlTags,
+      },
+      proposal,
+      item,
+      takeKeys,
+      supply,
+    );
+    if (isProblem(result)) return result;
+    formNow.current = {
+      boards: result.boards,
+      controlNeeds: result.control,
+      aiControlTags: result.controlTags,
+    };
+    setBoards(result.boards);
+    setControlNeeds(result.control);
+    setAiControlTags(result.controlTags);
+    return null;
+  }
   // The form, not the session, is what keeps the button disabled.
   const incomplete = token !== null && !complete;
 
@@ -960,6 +1060,10 @@ function DesignWorkspace({
     setBoards(loaded.boards);
     const restoredNeeds = controlNeedsFrom(requirements, loaded.boards);
     setControlNeeds(restoredNeeds);
+    // The opened revision replaces the form, and with it any proposal open over the last one.
+    setAiDescription('');
+    setAiProposal(null);
+    setAiControlTags({});
     if (loaded.boards[0]) setActiveKey(loaded.boards[0].key);
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
@@ -1658,7 +1762,15 @@ function DesignWorkspace({
                     ? {
                         name: info.name.trim(),
                         request: toRequest(info, boards, profile),
-                        requirementsInput: requirementsInputOf(boards, controlNeeds),
+                        requirementsInput: aiOpen
+                          ? aiRequirementsInput(
+                              requirementsInputOf(boards, controlNeeds),
+                              boards,
+                              controlNeeds,
+                              aiControlTags,
+                              aiOpen,
+                            )
+                          : requirementsInputOf(boards, controlNeeds),
                       }
                     : null
                 }
@@ -1687,6 +1799,14 @@ function DesignWorkspace({
                   // snapshot is exactly the request that was stored.
                   if (state === 'saved') setClean(snapshot);
                   rebaseOnSave.current = state === 'saved';
+                  // A saved proposal is used: it can place nothing more, so its
+                  // tags come off the rows (they are not part of the snapshot)
+                  // and its open items now come from the stored record.
+                  if (state === 'saved' && aiOpen) {
+                    setAiProposal(null);
+                    setAiControlTags({});
+                    setBoards((current) => untagged(current));
+                  }
                 })}
               />
             ) : (
@@ -1737,6 +1857,41 @@ function DesignWorkspace({
                 ...(previewRequirementsImpl ? { preview: previewRequirementsImpl } : {}),
                 ...(answerQuestionImpl ? { answer: answerQuestionImpl } : {}),
               }}
+              boardsTargetId={`${id}-boards-step`}
+              ai={
+                <AiIntake
+                  token={token}
+                  description={aiDescription}
+                  onDescriptionChange={setAiDescription}
+                  proposal={aiProposal}
+                  onProposal={forOwner((proposal: AiProposal) => {
+                    // A new proposal replaces the last: tags of the last stay
+                    // on their rows only until the save, where they would name
+                    // items of a proposal no longer sent, so they come off.
+                    setAiProposal((current) => {
+                      if (current !== null && current.id !== proposal.id) {
+                        setAiControlTags({});
+                        setBoards((rows) => untagged(rows));
+                      }
+                      return proposal;
+                    });
+                  })}
+                  request={
+                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
+                  }
+                  placed={placedItems(boards, controlNeeds, aiControlTags)}
+                  onPlace={placeAiItem}
+                  boardNames={aiBoardNames}
+                  manualTargetId={`${id}-boards-step`}
+                  onUnauthorized={forOwner(() => {
+                    void reauthorize();
+                  })}
+                  impls={{
+                    ...(requestAiProposalImpl ? { request: requestAiProposalImpl } : {}),
+                    ...(decideAiItemImpl ? { decide: decideAiItemImpl } : {}),
+                  }}
+                />
+              }
             />
           ),
         )}

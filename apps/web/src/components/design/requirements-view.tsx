@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { Field } from '@/components/cable-sizing-panel';
 import { LoadRows } from '@/components/design/load-rows';
@@ -21,12 +21,13 @@ import {
   type RequirementsRecord,
   type RequirementSubject,
   type SavedProject,
+  type AiRecord,
 } from '@/lib/design';
 
 /** Each load's control needs, by the load row's key. Requirements only: nothing is designed from them. */
 export type ControlNeeds = Readonly<Record<number, readonly ControlNeed[]>>;
 
-/** What the guided intake records with a save: the intake and each load's control needs. */
+/** What the guided intake records with a save: the intake and each load's control needs (M6b adds `ai`). */
 export function requirementsInputOf(
   boards: readonly BoardForm[],
   control: ControlNeeds,
@@ -122,6 +123,8 @@ export function RequirementsView({
   onUnauthorized,
   dirty = false,
   impls = {},
+  ai,
+  boardsTargetId,
 }: {
   token: string | null;
   boards: readonly BoardForm[];
@@ -149,6 +152,10 @@ export function RequirementsView({
   dirty?: boolean;
   onUnauthorized?: () => void;
   impls?: Impls;
+  /** M6b: the "Describe the project" step and its proposals, shown before the boards. */
+  ai?: ReactNode;
+  /** The id the boards step takes, so "Continue manually" can move the focus to it. */
+  boardsTargetId?: string;
 }) {
   const t = useTranslations('design.requirements');
   const td = useTranslations('design');
@@ -177,6 +184,13 @@ export function RequirementsView({
   const duplicates = (previewed !== null ? previewFindings : findings).filter(
     (finding) => finding.code === 'designation_duplicate',
   );
+
+  /** The quoted text of a saved proposal's item, for an open item about it. */
+  function aiQuote(itemId: string): string {
+    const items = record?.ai?.proposal.items ?? [];
+    const found = items.find((entry) => entry.id === itemId);
+    return found ? `“${found.quote}”` : itemId;
+  }
 
   function boardOfRef(ref: string | null | undefined): string | null {
     if (!ref || record === null) return null;
@@ -431,7 +445,16 @@ export function RequirementsView({
         {t('scope')}
       </Notice>
 
-      <Panel title={t('steps.boards')} testId="requirements-boards">
+      {ai}
+
+      <Panel
+        title={
+          <span id={boardsTargetId} tabIndex={-1}>
+            {t('steps.boards')}
+          </span>
+        }
+        testId="requirements-boards"
+      >
         <ol className="flex flex-col gap-4">
           {boards.map((board, index) => {
             const field = (name: string) => `${id}-board-${name}-${String(board.key)}`;
@@ -683,11 +706,21 @@ export function RequirementsView({
                           {t.has(`item.${item.code}`) ? t(`item.${item.code}`) : item.code}
                         </span>
                         {subject && <bdi className="text-text-muted">{subject}</bdi>}
+                        {item.subject.item_id && (
+                          <bdi
+                            dir="auto"
+                            className="min-w-0 break-words text-text-muted"
+                            data-testid={`open-item-quote-${item.subject.item_id}`}
+                          >
+                            {aiQuote(item.subject.item_id)}
+                          </bdi>
+                        )}
                       </li>
                     );
                   })}
                 </ul>
               )}
+              {record.ai && <AiProvenance ai={record.ai} />}
             </>
           )}
         </div>
@@ -732,5 +765,60 @@ export function RequirementsView({
         )}
       </Panel>
     </div>
+  );
+}
+
+/**
+ * Where a revision's AI entries came from: the description as typed, the
+ * provider and model, and who decided what and when (the server's record).
+ */
+function AiProvenance({ ai }: { ai: AiRecord }) {
+  const t = useTranslations('design.ai');
+  const items = ai.proposal.items ?? [];
+  const decisions = ai.decisions ?? ai.proposal.decisions ?? [];
+  const placements = ai.placements ?? [];
+  return (
+    <section className="flex min-w-0 flex-col gap-2" data-testid="ai-provenance">
+      <h3 className="font-semibold">{t('saved.title')}</h3>
+      <p className="text-sm text-text-muted">{t('saved.note')}</p>
+      <p className="text-xs text-text-muted" data-testid="ai-provenance-provider">
+        {t('provenance', { provider: ai.proposal.provider ?? '', model: ai.proposal.model ?? '' })}
+      </p>
+      <h4 className="text-sm font-semibold">{t('original')}</h4>
+      <p
+        dir="auto"
+        className="min-w-0 whitespace-pre-wrap break-words rounded-md border border-border p-3 text-sm"
+        data-testid="ai-provenance-text"
+      >
+        {ai.proposal.input_text ?? ''}
+      </p>
+      <h4 className="text-sm font-semibold">{t('saved.decisions')}</h4>
+      {decisions.length === 0 ? (
+        <p className="text-sm text-text-muted">{t('saved.noDecisions')}</p>
+      ) : (
+        <ul className="flex flex-col gap-1 text-sm" data-testid="ai-provenance-decisions">
+          {decisions.map((decision, index) => {
+            const item = items.find((entry) => entry.id === decision.item_id);
+            const placement = placements.find((entry) => entry.item_id === decision.item_id);
+            return (
+              <li key={`${decision.item_id}-${String(index)}`} className="min-w-0 break-words">
+                {t(`decidedBy.${decision.decision}`, {
+                  name: decision.by_name || t('someone'),
+                  date: decision.at.slice(0, 16).replace('T', ' '),
+                })}
+                {': '}
+                <bdi dir="auto">{item ? `“${item.quote}”` : decision.item_id}</bdi>
+                {placement?.changed_in_editor && placement.changed_in_editor.length > 0 && (
+                  <span className="text-text-muted">
+                    {' '}
+                    {t('saved.changed', { fields: placement.changed_in_editor.join(', ') })}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
