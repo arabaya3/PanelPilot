@@ -17,7 +17,8 @@ import {
 const HELD =
   'Approval is held: the server cannot establish who saved revision 2 (it was saved before ' +
   'accounts were recorded with revisions). Save it as a new revision for review; a different ' +
-  'team member can then approve it.';
+  'team member can then approve it. The new revision records you as its author; it does not ' +
+  'show who first entered this design.';
 
 function panel({
   established,
@@ -122,6 +123,30 @@ describe('a revision whose author is not established', () => {
     expect(onOpened).not.toHaveBeenCalled();
     expect(onRefused).toHaveBeenCalledOnce();
   });
+
+  it.each(['en', 'ar', 'he'] as const)(
+    'explains a configured revision a re-save cannot carry, never as "save again" (%s)',
+    async (locale) => {
+      const resave = vi.fn<typeof resaveRevision>().mockResolvedValue({
+        kind: 'refused',
+        detail: 'configured',
+        code: 'revision_not_validated',
+        params: { revision: '2', reason: 'configuration_not_carried' },
+      });
+      const { onOpened } = panel({ established: false, resave, locale });
+      fireEvent.click(screen.getByTestId('resave-for-review'));
+      const message = (await screen.findByTestId('projects-message')).textContent;
+      if (locale === 'en') {
+        expect(message).toContain('Revision 2 holds a connection configuration');
+        expect(message).toContain('kept unchanged');
+        expect(message).not.toContain('saved before designs were validated');
+      } else {
+        expect(message).toContain('2');
+        expect(message).not.toContain('{revision}');
+      }
+      expect(onOpened).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not save for review while the page has unsaved changes', () => {
     panel({ established: false, dirty: true });

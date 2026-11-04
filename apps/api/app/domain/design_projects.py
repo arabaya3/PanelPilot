@@ -1107,12 +1107,35 @@ def _summary(
     )
 
 
+def _read_applicable(row: DesignRevisionRow) -> _Applicable:
+    """The policy that applies to ``row`` now, its stored design read and classified.
+
+    The same check the revision list makes of each row (``_validation``), so
+    the opened request's title block, the list, the approval status and the
+    exports agree on whether an approval counts, a findings-policy change
+    included.
+    """
+    stored, classified = (
+        _read_classified(row)
+        if row.design_snapshot is not None and row.snapshot_sha256 is not None
+        else (None, None)
+    )
+    return _applicable(
+        row,
+        thorough=False,
+        read=stored if isinstance(stored, VersionedModel) else None,
+        read_checked=stored is not None,
+        classified=classified,
+    )
+
+
 def _title_revisions(
     revisions: Sequence[DesignRevisionRow],
     upto: int,
     names: _Names,
     *,
     bound_to: _Applicable | None = None,
+    upto_counts: bool | None = None,
 ) -> list[Revision]:
     """The title block's revision list: each saved revision up to ``upto``.
 
@@ -1125,6 +1148,9 @@ def _title_revisions(
             today's policy. ``bound_to`` is that policy for ``upto``, resolved
             in full from the snapshot the caller read once; the others are
             checked from their columns alone (``_Applicable``).
+        upto_counts: Given, whether ``upto``'s approval counts, as the caller
+            already checked it in full (an opened revision's own check), so
+            the snapshot is not read a second time.
     """
     listed: list[Revision] = []
     for row in revisions:
@@ -1134,21 +1160,13 @@ def _title_revisions(
         if bound_to is not None and row.number != upto and row.approved_at is not None:
             # Read for integrity as the revision list reads it, so an earlier
             # approval of a design that fails it never prints as approved.
-            stored, classified = (
-                _read_classified(row)
-                if row.design_snapshot is not None and row.snapshot_sha256 is not None
-                else (None, None)
+            applicable = _read_applicable(row)
+        if row.number == upto and upto_counts is not None:
+            shown = row.approved_at is not None and upto_counts
+        else:
+            shown = row.approved_at is not None and (
+                applicable is None or not _approval_changed(row, applicable)
             )
-            applicable = _applicable(
-                row,
-                thorough=False,
-                read=stored if isinstance(stored, VersionedModel) else None,
-                read_checked=stored is not None,
-                classified=classified,
-            )
-        shown = row.approved_at is not None and (
-            applicable is None or not _approval_changed(row, applicable)
-        )
         listed.append(
             Revision(
                 index=f"{row.number:02d}",
@@ -1356,10 +1374,17 @@ def _opened(
     names = _display_names(session, project.tenant_id, revisions, also=viewer_id)
     # Bound like an export's title block, so the opened request never lists an
     # approval that no longer counts (stale, unbound or failing integrity).
-    title = _title_revisions(
-        revisions, chosen.number, names, bound_to=_applicable(chosen, thorough=False)
-    )
     checked = _validation(chosen)
+    # The opened revision's approver is named only where its own full check
+    # (``checked``, findings policy included) says the approval counts, as the
+    # list, ``approval_current`` and an export say; earlier ones as an export.
+    title = _title_revisions(
+        revisions,
+        chosen.number,
+        names,
+        bound_to=_applicable(chosen, thorough=False),
+        upto_counts=checked.approval_bound,
+    )
     readable = _request_problem(chosen) is None
     if readable:
         request = ProjectDesignRequest.model_validate(chosen.request)
@@ -1859,8 +1884,11 @@ def resave_revision(
             # The configuration is composed into the snapshot, not kept apart:
             # a re-save of the request alone would silently drop it.
             raise ConflictError(
-                f"revision {number} holds a configuration a re-save cannot carry; "
-                "save it from the editor with its configuration",
+                f"revision {number} holds a connection configuration a re-save cannot "
+                "carry: it is stored only inside that revision's design and carrying it "
+                "is not proven lossless, so it is never dropped; the revision and its "
+                "configuration are kept unchanged. Save a new revision from the editor "
+                "and enter the configuration again",
                 code="revision_not_validated",
                 params={"revision": number, "reason": "configuration_not_carried"},
             )
