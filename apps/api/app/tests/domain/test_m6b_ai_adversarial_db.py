@@ -156,6 +156,11 @@ def _who_fixture(engine: Engine, tenants: tuple[str, str]) -> _Who:
     with engine.begin() as conn:
         if conn.execute(text("SELECT to_regclass('design_ai_proposals')")).scalar():
             conn.execute(text("TRUNCATE design_ai_proposals CASCADE"))
+        # The tenants are reused across runs: reset their monthly model-call count.
+        conn.execute(
+            text("DELETE FROM model_usage WHERE tenant_id = ANY(:t)"),
+            {"t": [uuid.UUID(i) for i in tenants]},
+        )
     return _Who(engine, tenants)
 
 
@@ -219,13 +224,13 @@ def span(description: str, phrase: str) -> dict[str, int]:
 def good_items(description: str = DESCRIPTION) -> list[dict[str, Any]]:
     return [
         {
-            "id": "b1",
+            "id": "i1",
             "kind": "board",
             "source": span(description, "Main board MDB"),
             "value": {"name": "MDB"},
         },
         {
-            "id": "l1",
+            "id": "i2",
             "kind": "load",
             "source": span(description, "a booster pump of 5.5 kW, 20 m from the board"),
             "value": {
@@ -237,13 +242,13 @@ def good_items(description: str = DESCRIPTION) -> list[dict[str, Any]]:
             },
         },
         {
-            "id": "c1",
+            "id": "i3",
             "kind": "control_need",
             "source": span(description, "needs start/stop"),
-            "value": {"load": "l1", "need": "start_stop"},
+            "value": {"load": "i2", "need": "start_stop"},
         },
         {
-            "id": "q1",
+            "id": "i4",
             "kind": "question",
             "source": span(description, "length not known"),
             "value": {
@@ -293,9 +298,9 @@ def request_for(power_kw: str = "5.5", number: str = "M6B-AI-001") -> dict[str, 
 
 
 PLACEMENTS = [
-    {"item_id": "b1", "board_index": 0},
-    {"item_id": "l1", "board_index": 0, "load_index": 0},
-    {"item_id": "c1", "board_index": 0, "load_index": 0},
+    {"item_id": "i1", "board_index": 0},
+    {"item_id": "i2", "board_index": 0, "load_index": 0},
+    {"item_id": "i3", "board_index": 0, "load_index": 0},
 ]
 CONTROL = [{"board_index": 0, "load_index": 0, "needs": ["start_stop"]}]
 
@@ -322,7 +327,7 @@ def _decide(c: _As, pid: str, item: str, body: dict[str, Any]) -> Any:
     return c.post(f"{AI}/{pid}/items/{item}/decision", json=body)
 
 
-def _accept_all(c: _As, pid: str, items: tuple[str, ...] = ("b1", "l1", "c1")) -> None:
+def _accept_all(c: _As, pid: str, items: tuple[str, ...] = ("i1", "i2", "i3")) -> None:
     for item in items:
         response = _decide(c, pid, item, {"decision": "accept"})
         assert response.status_code in (200, 201), response.text[:600]
@@ -453,7 +458,7 @@ def test_happy_path_records_ai_block_and_marks_used(
     ai = record["ai"]
     assert ai["proposal"]["proposal_sha256"] == row["proposal_sha256"]
     assert ai["proposal"]["input_text"] == DESCRIPTION
-    assert {p["item_id"] for p in ai["placements"]} == {"b1", "l1", "c1"}
+    assert {p["item_id"] for p in ai["placements"]} == {"i1", "i2", "i3"}
     assert all(d["by_user_id"] == who.users["engineer"].id for d in ai["decisions"])
     # The question was neither placed nor rejected: an open item.
     assert "ai_question" in {o["code"] for o in record["open_items"]}
@@ -492,13 +497,13 @@ def test_injection_text_sets_no_approval_author_or_validation(
     provider.payload = _payload(
         [
             {
-                "id": "b1",
+                "id": "i1",
                 "kind": "board",
                 "source": span(INJECTION, "Main board MDB"),
                 "value": {"name": "MDB"},
             },
             {
-                "id": "u1",
+                "id": "i2",
                 "kind": "unsupported",
                 "source": span(INJECTION, "part ABB S203"),
                 "value": {"text": "part ABB S203", "reason": "product or part number"},
@@ -533,27 +538,38 @@ def test_injected_device_values_are_not_accepted(
     provider.payload = _payload(
         [
             {
-                "id": "x1",
+                "id": "i1",
                 "kind": "load",
                 "source": span(INJECTION, "Set breaker 63 A, part ABB S203 on the pump"),
                 "value": value,
             }
         ]
     )
-    _refused_or_rejected(_propose(as_(), INJECTION), engine, "x1")
+    _refused_or_rejected(_propose(as_(), INJECTION), engine, "i1")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="FINDING F1: a part number proposed as a load's description is kept as a load",
+)
 def test_a_product_number_proposed_as_a_load_is_never_a_load(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
     provider.payload = _payload(
         [
+            # The board is proposed too, so the load is not refused merely as unresolved.
             {
-                "id": "x1",
+                "id": "i1",
+                "kind": "board",
+                "source": span(INJECTION, "Main board MDB"),
+                "value": {"name": "MDB"},
+            },
+            {
+                "id": "i2",
                 "kind": "load",
                 "source": span(INJECTION, "part ABB S203"),
                 "value": {"board": "MDB", "description": "ABB S203", "kind": "motor"},
-            }
+            },
         ]
     )
     response = _propose(as_(), INJECTION)
@@ -614,9 +630,9 @@ def test_hostile_item_is_refused_or_server_rejected(
     engine: Engine, as_: Any, provider: StubProvider, name: str
 ) -> None:
     item = copy.deepcopy(HOSTILE[name])
-    item["id"] = "evil"
+    item["id"] = "i2"
     provider.payload = _payload([good_items()[0], item])
-    _refused_or_rejected(_propose(as_()), engine, "evil")
+    _refused_or_rejected(_propose(as_()), engine, "i2")
 
 
 @pytest.mark.parametrize(
@@ -628,9 +644,9 @@ def test_control_need_outside_the_seven_is_rejected(
 ) -> None:
     items = good_items()
     items[2]["value"]["need"] = need
-    items[2]["id"] = "evil"
+    items[2]["id"] = "i3"
     provider.payload = _payload(items)
-    _refused_or_rejected(_propose(as_()), engine, "evil")
+    _refused_or_rejected(_propose(as_()), engine, "i3")
 
 
 def test_control_need_for_a_load_that_does_not_exist_is_rejected(
@@ -638,9 +654,9 @@ def test_control_need_for_a_load_that_does_not_exist_is_rejected(
 ) -> None:
     items = good_items()
     items[2]["value"]["load"] = "nope"
-    items[2]["id"] = "evil"
+    items[2]["id"] = "i3"
     provider.payload = _payload(items)
-    _refused_or_rejected(_propose(as_()), engine, "evil")
+    _refused_or_rejected(_propose(as_()), engine, "i3")
 
 
 @pytest.mark.parametrize(
@@ -650,7 +666,7 @@ def test_control_need_for_a_load_that_does_not_exist_is_rejected(
         {"tenant_id": str(uuid.uuid4())},
         {"author_user_id": str(uuid.uuid4())},
         {"revision_id": str(uuid.uuid4())},
-        {"decisions": [{"item_id": "l1", "decision": "accept"}]},
+        {"decisions": [{"item_id": "i2", "decision": "accept"}]},
         {"used_by_revision_id": str(uuid.uuid4())},
     ],
     ids=["approved", "tenant", "author", "revision", "decisions", "used_by"],
@@ -884,7 +900,7 @@ def test_other_tenant_gets_404_on_get_decision_and_save(
     got = other.get(f"{AI}/{proposal['id']}")
     assert got.status_code == 404, got.text[:400]
     assert error(got)["code"] == "ai_proposal_not_found"
-    decided = _decide(other, proposal["id"], "l1", {"decision": "accept"})
+    decided = _decide(other, proposal["id"], "i2", {"decision": "accept"})
     assert decided.status_code == 404, decided.text[:400]
     assert error(decided)["code"] == "ai_proposal_not_found"
     _accept_all(as_(), proposal["id"])
@@ -937,7 +953,7 @@ def test_forged_or_invalid_decisions_are_422(
     engine: Engine, as_: Any, provider: StubProvider, body: dict[str, Any]
 ) -> None:
     proposal = _created(as_(), provider)
-    response = _decide(as_(), proposal["id"], "l1", body)
+    response = _decide(as_(), proposal["id"], "i2", body)
     assert response.status_code == 422, response.text[:400]
     assert _row(engine, proposal["id"])["decisions"] in ([], None)
 
@@ -946,8 +962,8 @@ def test_decision_is_server_attributed_and_append_only(
     engine: Engine, as_: Any, provider: StubProvider, who: _Who
 ) -> None:
     proposal = _created(as_(), provider)
-    assert _decide(as_(), proposal["id"], "l1", {"decision": "accept"}).status_code in (200, 201)
-    assert _decide(as_("owner"), proposal["id"], "l1", {"decision": "reject"}).status_code in (
+    assert _decide(as_(), proposal["id"], "i2", {"decision": "accept"}).status_code in (200, 201)
+    assert _decide(as_("owner"), proposal["id"], "i2", {"decision": "reject"}).status_code in (
         200,
         201,
     )
@@ -961,7 +977,7 @@ def test_decision_is_server_attributed_and_append_only(
             "length_m": 20,
         },
     }
-    assert _decide(as_(), proposal["id"], "l1", edit).status_code in (200, 201)
+    assert _decide(as_(), proposal["id"], "i2", edit).status_code in (200, 201)
     decisions = _row(engine, proposal["id"])["decisions"]
     assert [d["decision"] for d in decisions] == ["accept", "reject", "edit"]
     assert [d["by_user_id"] for d in decisions] == [
@@ -983,8 +999,8 @@ def test_decision_on_a_server_rejected_item_is_refused(
     items = good_items()
     items[1]["value"]["power_kw"] = "63"  # not in its span
     proposal = _created(as_(), provider, items)
-    assert "l1" in _rejected_ids(proposal)
-    response = _decide(as_(), proposal["id"], "l1", {"decision": "accept"})
+    assert "i2" in _rejected_ids(proposal)
+    response = _decide(as_(), proposal["id"], "i2", {"decision": "accept"})
     assert response.status_code in (404, 409, 422), response.text[:400]
 
 
@@ -992,7 +1008,7 @@ def test_decisions_after_use_are_409(engine: Engine, as_: Any, provider: StubPro
     _pid, proposal = _saved_ai(as_(), provider)
     before = _row(engine, proposal["id"])["decisions"]
     for body in ({"decision": "reject"}, {"decision": "accept"}):
-        response = _decide(as_(), proposal["id"], "l1", body)
+        response = _decide(as_(), proposal["id"], "i2", body)
         assert response.status_code == 409, response.text[:400]
         assert error(response)["code"] == "ai_proposal_used"
     assert _row(engine, proposal["id"])["decisions"] == before
@@ -1009,12 +1025,12 @@ def test_placing_an_unconfirmed_item_is_422(
 ) -> None:
     c = as_()
     proposal = _created(c, provider)
-    _accept_all(c, proposal["id"], ("b1", "c1"))
+    _accept_all(c, proposal["id"], ("i1", "i3"))
     if state == "rejected":
-        _decide(c, proposal["id"], "l1", {"decision": "reject"})
+        _decide(c, proposal["id"], "i2", {"decision": "reject"})
     if state == "accept_then_reject":
-        _decide(c, proposal["id"], "l1", {"decision": "accept"})
-        _decide(c, proposal["id"], "l1", {"decision": "reject"})
+        _decide(c, proposal["id"], "i2", {"decision": "accept"})
+        _decide(c, proposal["id"], "i2", {"decision": "reject"})
     before = _projects(engine)
     response = _save(c, request_for(), _ai_input(proposal["id"]))
     assert response.status_code == 422, response.text[:400]
@@ -1026,12 +1042,12 @@ def test_placing_an_unconfirmed_item_is_422(
 @pytest.mark.parametrize(
     "placement",
     [
-        {"item_id": "l1", "board_index": 5, "load_index": 0},
-        {"item_id": "l1", "board_index": 0, "load_index": 99},
-        {"item_id": "l1", "board_index": -1, "load_index": 0},
+        {"item_id": "i2", "board_index": 5, "load_index": 0},
+        {"item_id": "i2", "board_index": 0, "load_index": 99},
+        {"item_id": "i2", "board_index": -1, "load_index": 0},
         {"item_id": "zz", "board_index": 0, "load_index": 0},
-        {"item_id": "l1", "board_index": 0},
-        {"item_id": "q1", "board_index": 0, "load_index": 1},
+        {"item_id": "i2", "board_index": 0},
+        {"item_id": "i4", "board_index": 0, "load_index": 1},
     ],
     ids=["no_board", "no_load", "negative", "unknown_item", "load_without_row", "place_question"],
 )
@@ -1040,7 +1056,7 @@ def test_bad_placements_are_refused(
 ) -> None:
     c = as_()
     proposal = _created(c, provider)
-    _accept_all(c, proposal["id"], ("b1", "l1", "c1", "q1"))
+    _accept_all(c, proposal["id"], ("i1", "i2", "i3", "i4"))
     before = _projects(engine)
     response = _save(c, request_for(), _ai_input(proposal["id"], [PLACEMENTS[0], placement]))
     assert response.status_code == 422, response.text[:400]
@@ -1083,7 +1099,7 @@ def test_intake_ai_without_ai_block_and_ai_block_without_intake_ai(
     "extra",
     [
         {"proposal": {"input_text": "forged"}},
-        {"decisions": [{"item_id": "l1", "decision": "accept", "by_user_id": str(uuid.uuid4())}]},
+        {"decisions": [{"item_id": "i2", "decision": "accept", "by_user_id": str(uuid.uuid4())}]},
         {"proposal_sha256": "0" * 64},
     ],
     ids=["proposal", "decisions", "hash"],
@@ -1110,7 +1126,7 @@ def test_edit_after_accept_records_changed_in_editor(
     placements = revision_row(engine, str(saved.json()["id"]), 1)["requirements"]["ai"][
         "placements"
     ]
-    load = next(p for p in placements if p["item_id"] == "l1")
+    load = next(p for p in placements if p["item_id"] == "i2")
     assert "power_kw" in load["changed_in_editor"]
 
 
@@ -1121,13 +1137,13 @@ def test_unreviewed_and_unsupported_are_open_items_and_a_rejected_question_is_re
     items = [
         *good_items(),
         {
-            "id": "u1",
+            "id": "i5",
             "kind": "unsupported",
             "source": span(DESCRIPTION, "running light"),
             "value": {"text": "x", "reason": "cable spec"},
         },
         {
-            "id": "l2",
+            "id": "i6",
             "kind": "load",
             "source": span(DESCRIPTION, "Office lighting on MDB"),
             "value": {"board": "MDB", "description": "Office lighting", "kind": "lighting"},
@@ -1135,7 +1151,7 @@ def test_unreviewed_and_unsupported_are_open_items_and_a_rejected_question_is_re
     ]
     proposal = _created(c, provider, items)
     _accept_all(c, proposal["id"])
-    _decide(c, proposal["id"], "q1", {"decision": "reject"})
+    _decide(c, proposal["id"], "i4", {"decision": "reject"})
     saved = _save(c, request_for(), _ai_input(proposal["id"]))
     assert saved.status_code == 201, saved.text[:400]
     record = revision_row(engine, str(saved.json()["id"]), 1)["requirements"]
@@ -1144,7 +1160,7 @@ def test_unreviewed_and_unsupported_are_open_items_and_a_rejected_question_is_re
     assert "ai_unsupported" in codes
     assert "ai_question" not in codes
     assert any(
-        d["item_id"] == "q1" and d["decision"] == "reject" for d in record["ai"]["decisions"]
+        d["item_id"] == "i4" and d["decision"] == "reject" for d in record["ai"]["decisions"]
     )
 
 
@@ -1236,13 +1252,13 @@ def test_unplaced_ai_values_do_not_change_the_design(
     items = [
         *good_items(desc),
         {
-            "id": "b9",
+            "id": "i5",
             "kind": "board",
             "source": span(desc, "board DB9"),
             "value": {"name": "DB9", "fed_from": "MDB"},
         },
         {
-            "id": "l9",
+            "id": "i6",
             "kind": "load",
             "source": span(desc, "a 63 kW chiller on board DB9, 300 m away"),
             "value": {
@@ -1258,7 +1274,7 @@ def test_unplaced_ai_values_do_not_change_the_design(
     created = _propose(c, desc)
     assert created.status_code == 201, created.text[:400]
     proposal = created.json()
-    _accept_all(c, proposal["id"], ("b1", "l1", "c1", "b9", "l9"))
+    _accept_all(c, proposal["id"], ("i1", "i2", "i3", "i5", "i6"))
     saved = _save(c, request_for(), _ai_input(proposal["id"]))
     assert saved.status_code == 201, saved.text[:400]
     row = revision_row(engine, str(saved.json()["id"]), 1)
@@ -1281,13 +1297,13 @@ def test_fire_pump_and_life_safety_are_never_loads(
     provider.payload = _payload(
         [
             {
-                "id": "b1",
+                "id": "i1",
                 "kind": "board",
                 "source": span(FIRE, "Main board MDB"),
                 "value": {"name": "MDB"},
             },
             {
-                "id": "f1",
+                "id": "i2",
                 "kind": "load",
                 "source": span(FIRE, phrase),
                 "value": {
@@ -1304,17 +1320,17 @@ def test_fire_pump_and_life_safety_are_never_loads(
         return
     assert response.status_code == 201, response.text[:400]
     body = response.json()
-    assert "f1" not in {
+    assert "i2" not in {
         i["id"] for i in body["items"] if i["kind"] == "load"
     }, "fire/life-safety proposed as a load"
-    _decide(c, body["id"], "b1", {"decision": "accept"})
-    accept = _decide(c, body["id"], "f1", {"decision": "accept"})
+    _decide(c, body["id"], "i1", {"decision": "accept"})
+    accept = _decide(c, body["id"], "i2", {"decision": "accept"})
     if accept.status_code in (200, 201):
         placed = _save(
             c,
             request_for(),
             _ai_input(
-                body["id"], [PLACEMENTS[0], {"item_id": "f1", "board_index": 0, "load_index": 0}]
+                body["id"], [PLACEMENTS[0], {"item_id": "i2", "board_index": 0, "load_index": 0}]
             ),
         )
         assert placed.status_code == 422, placed.text[:400]
@@ -1359,7 +1375,7 @@ def test_customer_text_is_not_logged(
     provider.payload = _payload(
         [
             {
-                "id": "b1",
+                "id": "i1",
                 "kind": "board",
                 "source": span(canary, "Main board MDB"),
                 "value": {"name": "MDB"},
@@ -1371,3 +1387,99 @@ def test_customer_text_is_not_logged(
         provider.payload = {"items": "malformed"}
         _propose(as_(), canary)
     assert "ZQX-7731" not in caplog.text
+
+
+# =========================================================================== #
+# 11. Phase 2 probes (added after reading the as-built checks)
+# =========================================================================== #
+
+UNITS = "Main board MDB. Set breaker 63 A on the pump. Cable 16 mm2 for the pump. Pump 5.5 kW."
+
+
+@pytest.mark.parametrize(
+    ("phrase", "number"), [("breaker 63 A", "63"), ("Cable 16 mm2", "16")], ids=["amps", "mm2"]
+)
+@pytest.mark.xfail(
+    strict=True,
+    reason="FINDING F2: a number with another unit (63 A, 16 mm2) is accepted as power_kw",
+)
+def test_a_number_in_another_unit_is_not_a_power(
+    engine: Engine, as_: Any, provider: StubProvider, phrase: str, number: str
+) -> None:
+    """A "63 A" (a breaker rating) or "16 mm2" (a cable) must not become a load's kW."""
+    provider.payload = _payload(
+        [
+            {
+                "id": "i1",
+                "kind": "board",
+                "source": span(UNITS, "Main board MDB"),
+                "value": {"name": "MDB"},
+            },
+            {
+                "id": "i2",
+                "kind": "load",
+                "source": span(UNITS, phrase),
+                "value": {
+                    "board": "MDB",
+                    "description": "Pump",
+                    "kind": "motor",
+                    "power_kw": number,
+                },
+            },
+        ]
+    )
+    _refused_or_rejected(_propose(as_(), UNITS), engine, "i2")
+
+
+_F3 = pytest.mark.xfail(
+    strict=True, reason="FINDING F3: life-safety check reads only the span and a fixed word list"
+)
+
+LIFE = (
+    "Main board MDB. Pump P-7 5.5 kW on MDB; P-7 is the fire pump. "
+    "Hydrant booster set 7.5 kW on MDB. Deluge valve actuator 1 kW on MDB. "
+    "Firefighting lift 11 kW on MDB."
+)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        pytest.param("Pump P-7 5.5 kW on MDB", marks=_F3),
+        pytest.param("Hydrant booster set 7.5 kW", marks=_F3),
+        pytest.param("Deluge valve actuator 1 kW", marks=_F3),
+        "Firefighting lift 11 kW",
+    ],
+    ids=["named_elsewhere", "hydrant", "deluge", "firefighting_lift"],
+)
+def test_life_safety_equipment_cannot_slip_through_as_a_load(
+    as_: Any, provider: StubProvider, phrase: str
+) -> None:
+    """The model chooses the span: equipment named life-safety elsewhere, or by a synonym, stays out."""
+    power = phrase.split(" kW")[0].split()[-1]
+    provider.payload = _payload(
+        [
+            {
+                "id": "i1",
+                "kind": "board",
+                "source": span(LIFE, "Main board MDB"),
+                "value": {"name": "MDB"},
+            },
+            {
+                "id": "i2",
+                "kind": "load",
+                "source": span(LIFE, phrase),
+                "value": {
+                    "board": "MDB",
+                    "description": "Pump",
+                    "kind": "motor",
+                    "power_kw": power,
+                },
+            },
+        ]
+    )
+    response = _propose(as_(), LIFE)
+    assert response.status_code in (201, 502), response.text[:400]
+    if response.status_code == 201:
+        loads = {i["id"] for i in response.json()["items"] if i["kind"] == "load"}
+        assert "i2" not in loads, f"life-safety equipment proposed as a load: {phrase}"
