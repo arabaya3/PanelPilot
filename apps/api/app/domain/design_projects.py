@@ -37,7 +37,7 @@ from __future__ import annotations
 import base64
 import dataclasses
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -62,6 +62,7 @@ from app.design import (
     RENDERER_BASELINE,
     RULES_VERSION,
     ai_intake,
+    approval_scope,
     connection_drawing_pdf,
     drawing_text,
     findings_policy,
@@ -89,6 +90,7 @@ from app.domain.plans import Feature
 from app.models.schemas.auth import CurrentUser, Permission
 from app.models.schemas.design import (
     AcknowledgedRequirements,
+    ApprovalHeld,
     ApproveRevisionRequest,
     BoardDesignResponse,
     ConfigurationReview,
@@ -116,6 +118,10 @@ from app.models.schemas.design import (
     RevisionSummary,
     SafetyClarificationEligibility,
     SafetyClarificationRequest,
+    SafetyConcern,
+    SafetyResolution,
+    SafetyResolutionEligibility,
+    SafetyResolutionRequest,
     SavedProject,
     SaveProjectRequest,
 )
@@ -657,6 +663,10 @@ def _approval_changed(row: DesignRevisionRow, applicable: _Applicable) -> tuple[
         changed.append("profile")
     if (row.approved_renderer_version or RENDERER_BASELINE) != applicable.renderer_version:
         changed.append("renderer_version")
+    # The approval-scope statement confirmed (``approved_scope_version``) is
+    # not compared here: it is printed on every review export, so changing it
+    # changes the renderer's reference output and bumps the renderer version,
+    # which stops every earlier approval counting (``renderer_version``).
     if not applicable.thorough and applicable.findings is None:
         # No classification of the snapshot (a cheap check whose integrity
         # read did not classify it): the recorded fingerprint is held to the
@@ -1449,6 +1459,18 @@ def _opened(
         latest=project.revision_count,
         user=viewer,
     )
+    stored_record = _stored_record(chosen)
+    opened.safety_concerns = _safety_concerns(stored_record)
+    opened.safety_resolution = resolution_eligibility(
+        session=session,
+        row=chosen,
+        record=stored_record,
+        latest=project.revision_count,
+        user=viewer,
+    )
+    opened.approval_held = _approval_held(stored_record) if chosen.approved_at is None else None
+    opened.approval_scope_version = approval_scope.APPROVAL_SCOPE_VERSION
+    opened.approved_scope_version = chosen.approved_scope_version
     return opened if readable else opened.as_stored(stored)
 
 
@@ -1775,7 +1797,9 @@ def approve_revision(
             read (``snapshot_schema_unknown``), its rules or settings changed
             (``revision_stale``), or it has blocking findings
             (``revision_has_blocking_findings``), or its author is not
-            established (``approval_author_not_established``).
+            established (``approval_author_not_established``), or its
+            stored requirements record holds an unresolved safety concern
+            (``approval_blocked_by_safety``, params ``count`` and ``codes``).
         AuthorizationError: If the caller saved it (``approval_by_author``).
         AuthorizationError: If the caller is not a signed-in account
             (``approval_requires_account``: a trial has none), their plan
@@ -1795,6 +1819,9 @@ def approve_revision(
         permissions.require(session=session, user=user, permission=Permission.APPROVE_REVISION)
         row = _locked_revision(session, project, number)
         applicable = _approvable(session, project, row, number)
+        # Under the same locks: no approval while a safety concern of the
+        # stored (hash-checked) record stands unresolved.
+        _refuse_unresolved_safety(row, number)
         # After what the revision itself refuses (approved, stale, blocked):
         # those say what is wrong with the revision, this who may approve it.
         _refuse_author(row, user, number)
@@ -1803,6 +1830,8 @@ def approve_revision(
         row.approved_account = user.email
         row.approved_user_id = _account_id(user)
         row.approval_note = request.note or None
+        # The scope statement the approver ticked (strictly true, schema-checked).
+        row.approved_scope_version = approval_scope.APPROVAL_SCOPE_VERSION
         row.approved_at = datetime.now(UTC)
         row.approved_snapshot_sha256 = row.snapshot_sha256
         # Checked against its hash under the lock (``_check_snapshot``).
@@ -2067,9 +2096,43 @@ def _revision_mark(
             f"renderer {renderer}"
         )
         label = marking.DRAFT_LABEL
+    approved = approval_counts and row.approved_at is not None
+    stored = _stored_record(row) if row.requirements is not None else None
+    ai = (stored or {}).get("ai")
+    printed = _printed_name(names)
+    excluded: list[str] = []
+    false_positives: list[str] = []
+    for line in ai_intake.resolution_lines(ai, name_of=printed):
+        (excluded if line.startswith("[EXCLUDED FROM SCOPE]") else false_positives).append(line)
+    scope = approval_scope.statement_lines()
+    if approved:
+        scope.append(approval_scope.confirmed_line(row.approved_scope_version))
     return marking.ExportMark(
-        label=label, identity=identity, findings=tuple(findings), requirements=tuple(lines)
+        label=label,
+        identity=identity,
+        findings=tuple(findings),
+        requirements=tuple(lines),
+        scope=tuple(scope),
+        approval=approval_scope.block(
+            approved=approved,
+            scope_version=row.approved_scope_version,
+            excluded=excluded,
+            false_positives=false_positives,
+        ),
     )
+
+
+def _printed_name(names: _Names) -> Callable[[str | None], str]:
+    """Who an exported line names, from an account id: display name, else "a team member"."""
+
+    def printed(user_id: str | None) -> str:
+        try:
+            account = uuid.UUID(str(user_id))
+        except ValueError:
+            return APPROVER_FALLBACK
+        return names.by_id.get(account) or APPROVER_FALLBACK
+
+    return printed
 
 
 def _estimate_subject(
@@ -2280,6 +2343,8 @@ def _schedule_export(
         identity=mark.identity,
         findings=tuple(other),
         requirements=mark.requirements,
+        scope=mark.scope,
+        approval=mark.approval,
     )
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
@@ -2586,6 +2651,7 @@ def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
     for ack in [
         *stored.get("acknowledgements", []),
         *(stored.get("ai") or {}).get("clarifications", []),
+        *(stored.get("ai") or {}).get("resolutions", []),
     ]:
         try:
             out.append(uuid.UUID(str(ack.get("by_user_id"))))
@@ -2612,16 +2678,9 @@ def _requirement_lines(row: DesignRevisionRow, read: VersionedModel, names: _Nam
             derived=True,
         )
 
-    def printed(user_id: str | None) -> str:
-        try:
-            account = uuid.UUID(str(user_id))
-        except ValueError:
-            return APPROVER_FALLBACK
-        return names.by_id.get(account) or APPROVER_FALLBACK
-
     return [
         *requirements.open_item_lines(record),
-        *requirements.acknowledged_lines(record, name_of=printed),
+        *requirements.acknowledged_lines(record, name_of=_printed_name(names)),
     ]
 
 
@@ -3151,3 +3210,298 @@ def _rederive_open_items(record: Mapping[str, Any]) -> list[dict[str, Any]]:
         if not str(o.get("code", "")).startswith("ai_")
     ]
     return kept + ai_intake.open_items(record.get("ai"))
+
+
+# --------------------------------------------------------------------------- #
+# Safety concerns: the approval hold and its two resolutions (M6d)
+# --------------------------------------------------------------------------- #
+
+
+def _approval_held(record: Mapping[str, Any] | None) -> ApprovalHeld | None:
+    """Why a revision with this stored record cannot be approved now, or ``None``.
+
+    Every safety concern of its ``ai`` block no resolution in force covers
+    (``ai_intake.unresolved_safety``). A derived record (no stored one) or a
+    record without an AI block holds none. Generic acknowledgements never
+    resolve one: they are not read here.
+    """
+    if not record or record.get("derived"):
+        return None
+    unresolved = ai_intake.unresolved_safety(record.get("ai"))
+    if not unresolved:
+        return None
+    return ApprovalHeld(count=len(unresolved), codes=sorted({t.code for t in unresolved}))
+
+
+def _refuse_unresolved_safety(row: DesignRevisionRow, number: int) -> None:
+    """Refuse approving a revision whose stored record holds an unresolved safety concern.
+
+    Called under the project and revision locks, after ``_approvable``
+    checked the record against its hash (``_check_snapshot``).
+    """
+    held = _approval_held(_stored_record(row))
+    if held is not None:
+        raise ConflictError(
+            f"revision {number} has {held.count} unresolved safety concern(s): "
+            "each life-safety or possibly-safety mention and item must be excluded from "
+            "scope or judged a false positive by a second member before approval",
+            code="approval_blocked_by_safety",
+            params={"revision": number, "count": held.count, "codes": ",".join(held.codes)},
+        )
+
+
+def _safety_concerns(record: Mapping[str, Any] | None) -> list[SafetyConcern]:
+    """Every safety concern of a stored record, and how each stands, for the app."""
+    if not record or record.get("derived"):
+        return []
+    ai = record.get("ai")
+    resolved = ai_intake.resolutions_in_force(ai)
+    open_keys = {t.key for t in ai_intake.unresolved_safety(ai)}
+    out = []
+    for target in ai_intake.safety_targets(ai):
+        entry = resolved.get(target.key)
+        out.append(
+            SafetyConcern(
+                kind=target.kind,
+                target_id=target.target_id,
+                level=target.level,
+                code=target.code,
+                label=target.label,
+                start=target.start,
+                end=target.end,
+                resolved=target.key not in open_keys,
+                resolution=(
+                    SafetyResolution.model_validate(
+                        {k: entry.get(k) for k in SafetyResolution.model_fields}
+                    )
+                    if entry is not None
+                    else None
+                ),
+                false_positive_refusal=ai_intake.false_positive_refusal(ai, target),
+            )
+        )
+    return out
+
+
+#: Why a caller may not resolve a safety concern now (``SafetyResolutionEligibility``).
+_RESOLVE_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
+    "requires_account": (
+        AuthorizationError,
+        "safety_resolution_requires_account",
+        "resolving a safety concern requires a signed-in account",
+    ),
+    "not_permitted": (
+        AuthorizationError,
+        "safety_resolution_not_permitted",
+        "only a member who may approve revisions may resolve a safety concern",
+    ),
+    "requirements_derived": (
+        ConflictError,
+        "requirements_derived",
+        "this revision was saved before requirements were recorded",
+    ),
+    "revision_already_approved": (
+        ConflictError,
+        "revision_already_approved",
+        "this revision is approved; what it was approved with does not change",
+    ),
+    "revision_not_latest": (
+        ConflictError,
+        "revision_not_latest",
+        "this revision is not the latest; resolve on the latest revision",
+    ),
+    "nothing_to_resolve": (
+        NotFoundError,
+        "safety_target_not_found",
+        "this revision's record has no such safety concern",
+    ),
+    "proposal_author": (
+        AuthorizationError,
+        "safety_resolution_by_proposal_author",
+        "you created this AI proposal; another member must resolve its safety concerns",
+    ),
+    "revision_author": (
+        AuthorizationError,
+        "safety_resolution_by_revision_author",
+        "you saved this revision (or its author is not established); another member "
+        "must resolve its safety concerns",
+    ),
+}
+
+
+def _resolve_blocker(
+    record: Mapping[str, Any] | None,
+    row: DesignRevisionRow,
+    latest: int,
+    user: CurrentUser,
+    *,
+    may_approve: bool,
+) -> str | None:
+    """Why ``user`` may not resolve a safety concern of this revision now, or ``None``.
+
+    In the order the endpoint checks: who (account, permission), the
+    revision (derived, approved, latest), that it holds a concern at all,
+    then four-eyes: not the proposal's creator (an unknown creator is
+    refused alike), not the revision's author (an author not established is
+    refused alike: independence cannot be shown).
+    """
+    account = _account_id(user)
+    if not user.email or account is None:
+        return "requires_account"
+    if not may_approve:
+        return "not_permitted"
+    if record is None or record.get("derived"):
+        return "requirements_derived"
+    if row.approved_at is not None:
+        return "revision_already_approved"
+    if row.number != latest:
+        return "revision_not_latest"
+    ai = record.get("ai")
+    if not ai_intake.safety_targets(ai):
+        return "nothing_to_resolve"
+    creator = str(((ai or {}).get("proposal") or {}).get("created_by_user_id") or "")
+    if not creator or creator == str(account):
+        return "proposal_author"
+    if not _author_established(row) or _is_author(row, user):
+        return "revision_author"
+    return None
+
+
+def resolution_eligibility(
+    *,
+    session: Session,
+    row: DesignRevisionRow,
+    record: Mapping[str, Any] | None,
+    latest: int,
+    user: CurrentUser,
+) -> SafetyResolutionEligibility | None:
+    """The flag a client shows the resolve actions by; ``None`` when there is no concern."""
+    if not record or record.get("derived") or not ai_intake.safety_targets(record.get("ai")):
+        return None
+    may = Permission.APPROVE_REVISION in permissions.allowed(session=session, user=user)
+    reason = _resolve_blocker(record, row, latest, user, may_approve=may)
+    return SafetyResolutionEligibility(eligible=reason is None, reason=reason)
+
+
+def resolve_safety_concern(
+    *,
+    session: Session,
+    user: CurrentUser,
+    project_id: str,
+    number: int,
+    request: SafetyResolutionRequest,
+) -> AcknowledgedRequirements:
+    """Record that one safety concern of the latest revision is excluded from scope or a false positive.
+
+    Under the project lock, then the revision's (the approval's order); the
+    stored record must match its hash; not derived, not approved, the latest
+    revision. Who: a member holding ``approve_revision`` (checked with the
+    approval's ``FOR SHARE`` locks) who neither created the AI proposal nor
+    saved the revision. Appended to the record's ``ai.resolutions``
+    (append-only), the hash recomputed; the design and every item untouched
+    (nothing becomes a load or a placeable item); the approval later binds
+    the new hash.
+
+    Raises:
+        NotFoundError: ``revision_not_found`` (also another tenant's),
+            ``safety_target_not_found``.
+        AuthorizationError: ``safety_resolution_requires_account`` (a trial
+            too), ``safety_resolution_not_permitted``,
+            ``safety_resolution_by_proposal_author``,
+            ``safety_resolution_by_revision_author``.
+        ConflictError: ``requirements_derived``, ``revision_already_approved``,
+            ``revision_not_latest``, ``safety_concern_already_resolved``,
+            ``false_positive_not_allowed`` (``reason``: ``item`` or
+            ``life_safety_item_overlaps``: exclude it from scope instead),
+            ``snapshot_integrity_failed`` (``requirements_mismatch``).
+    """
+    tenant = _scope_to(session, user)
+    kind = "mention" if request.mention_id is not None else "item"
+    target_id = str(request.mention_id or request.item_id)
+    try:
+        project = _revision_project(session, project_id, lock=True)
+        row = _locked_revision(session, project, number)
+        if row.requirements is not None and not _requirements_match(row):
+            raise ConflictError(
+                f"revision {number}'s requirements record does not match its recorded hash",
+                code="snapshot_integrity_failed",
+                params={"revision": number, "reason": "requirements_mismatch"},
+            )
+        account = _account_id(user)
+        may = False
+        if user.email and account is not None:
+            try:
+                # Locked FOR SHARE until commit, as an approval's check is.
+                permissions.require(
+                    session=session, user=user, permission=Permission.APPROVE_REVISION
+                )
+                may = True
+            except AuthorizationError:
+                may = False
+        record = _stored_record(row)
+        blocker = _resolve_blocker(record, row, project.revision_count, user, may_approve=may)
+        if blocker is not None or record is None:
+            error_kind, code, message = _RESOLVE_REFUSALS[blocker or "requirements_derived"]
+            params: dict[str, Any] = {"revision": number}
+            if code == "revision_not_latest":
+                params["latest"] = project.revision_count
+            raise error_kind(message, code=code, params=params)
+        ai = dict(record["ai"])
+        target = next((t for t in ai_intake.safety_targets(ai) if t.key == (kind, target_id)), None)
+        if target is None:
+            raise NotFoundError(
+                "this revision's record has no such safety concern",
+                code="safety_target_not_found",
+                params={"revision": number},
+            )
+        if target.key not in {t.key for t in ai_intake.unresolved_safety(ai)}:
+            raise ConflictError(
+                "this safety concern is resolved already; a resolution is never replaced",
+                code="safety_concern_already_resolved",
+                params={"revision": number},
+            )
+        if request.resolution == ai_intake.FALSE_POSITIVE:
+            refusal = ai_intake.false_positive_refusal(ai, target)
+            if refusal is not None:
+                raise ConflictError(
+                    "this concern cannot be a false positive: the proposal holds it as "
+                    "life-safety equipment; record it as excluded_from_scope instead",
+                    code="false_positive_not_allowed",
+                    params={"revision": number, "reason": refusal},
+                )
+        named = _display_names(session, project.tenant_id, [], also=account)
+        by = (
+            (named.by_id.get(account) if account is not None else None)
+            or user.email
+            or requirements.UNKNOWN_ACCOUNT
+        )
+        ai["resolutions"] = [
+            *ai.get("resolutions", []),
+            {
+                "target_kind": kind,
+                "target_id": target_id,
+                "resolution": request.resolution,
+                "reason": request.reason,
+                "by_user_id": user.id,
+                "by_name": by,
+                "at": datetime.now(UTC).isoformat(),
+            },
+        ]
+        record = {**record, "ai": ai}
+        record["open_items"] = _rederive_open_items(record)
+        row.requirements = record
+        row.requirements_sha256 = snapshot.sha256_of(record)
+        session.commit()
+    except BaseException:
+        _release(session)
+        raise
+    logger.info(
+        "design.safety_concern_resolved",
+        tenant_id=str(tenant),
+        project_id=str(project.id),
+        revision=number,
+        target_kind=kind,
+        target=target_id,
+        resolution=request.resolution,
+    )
+    return AcknowledgedRequirements(requirements=RequirementsRecord.model_validate(record))

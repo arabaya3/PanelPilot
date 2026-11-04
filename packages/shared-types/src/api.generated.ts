@@ -727,9 +727,29 @@ export interface paths {
     put?: never;
     /**
      * Clarify Safety Mention
-     * @description Clarify one (possibly) life-safety mention as not life-safety: four-eyes, append-only.
+     * @description Deprecated (M6c): clarify one possibly-safety mention; use ``safety-resolutions``.
      */
     post: operations['clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-resolutions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Safety Concern
+     * @description Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only.
+     */
+    post: operations['resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1603,6 +1623,10 @@ export interface components {
       load_ref?: string | null;
       /** Changed In Editor */
       changed_in_editor?: string[];
+      /** Entered */
+      entered?: {
+        [key: string]: string;
+      };
     };
     /**
      * AiProposal
@@ -1818,6 +1842,26 @@ export interface components {
       source: components['schemas']['Citation'];
     };
     /**
+     * ApprovalHeld
+     * @description Why the revision cannot be approved now: unresolved safety concerns (M6d).
+     *
+     *     Attributes:
+     *         code: ``approval_blocked_by_safety``.
+     *         count: How many concerns are unresolved.
+     *         codes: Their concern codes, sorted, distinct.
+     */
+    ApprovalHeld: {
+      /**
+       * Code
+       * @default approval_blocked_by_safety
+       */
+      code: string;
+      /** Count */
+      count: number;
+      /** Codes */
+      codes: string[];
+    };
+    /**
      * ApproveRevisionRequest
      * @description An engineer's approval of one revision.
      *
@@ -1835,6 +1879,8 @@ export interface components {
        * @default
        */
       note: string;
+      /** Scope Confirmed */
+      scope_confirmed: boolean;
     };
     /**
      * Board
@@ -5068,7 +5114,8 @@ export interface components {
         | 'ai_question'
         | 'ai_unsupported'
         | 'ai_life_safety_mentioned'
-        | 'ai_possibly_life_safety';
+        | 'ai_possibly_life_safety'
+        | 'ai_conflicting_values';
       subject: components['schemas']['RequirementSubject'];
     };
     /**
@@ -5130,6 +5177,18 @@ export interface components {
       mention_id?: string | null;
       /** Term */
       term?: string | null;
+      /** Other Item Id */
+      other_item_id?: string | null;
+      /** Field */
+      field?: string | null;
+      /** Kind */
+      kind?: string | null;
+      /** Ai Value */
+      ai_value?: string | null;
+      /** Other Value */
+      other_value?: string | null;
+      /** Entered Value */
+      entered_value?: string | null;
     };
     /**
      * RequirementTrace
@@ -5163,6 +5222,8 @@ export interface components {
       applied_at?: string | null;
       /** Clarifications */
       clarifications?: components['schemas']['SafetyClarification'][];
+      /** Resolutions */
+      resolutions?: components['schemas']['SafetyResolution'][];
     };
     /**
      * RequirementsInput
@@ -5567,6 +5628,52 @@ export interface components {
       reason: string;
     };
     /**
+     * SafetyConcern
+     * @description One safety concern of a revision's record, and how it stands (M6d).
+     *
+     *     Attributes:
+     *         kind: ``mention`` or ``item``.
+     *         target_id: The mention id or item id a resolution names.
+     *         level: ``life_safety`` or ``possibly``.
+     *         code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+     *             ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+     *         label: The term or item text.
+     *         start: Offset in the description.
+     *         end: Offset after it.
+     *         resolved: Whether it holds no approval now (a resolution in force, or
+     *             a possibly-safety item whose words were all judged false positives).
+     *         resolution: The resolution in force on it, if any.
+     *         false_positive_refusal: Why it may not be a false positive (``item``,
+     *             ``life_safety_item_overlaps``), or ``None``.
+     */
+    SafetyConcern: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'mention' | 'item';
+      /** Target Id */
+      target_id: string;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Code */
+      code: string;
+      /** Label */
+      label: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+      /** Resolved */
+      resolved: boolean;
+      resolution?: components['schemas']['SafetyResolution'] | null;
+      /** False Positive Refusal */
+      false_positive_refusal?: string | null;
+    };
+    /**
      * SafetyMention
      * @description A life-safety or possibly-safety term detected in a description (keyword detection).
      */
@@ -5584,6 +5691,78 @@ export interface components {
       start: number;
       /** End */
       end: number;
+    };
+    /**
+     * SafetyResolution
+     * @description A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
+     *
+     *     ``excluded_from_scope``: the requirement is real and not covered by this
+     *     revision. ``false_positive``: the detected text is not a life-safety
+     *     requirement. Who and when are the server's; it validates nothing.
+     */
+    SafetyResolution: {
+      /**
+       * Target Kind
+       * @enum {string}
+       */
+      target_kind: 'mention' | 'item';
+      /** Target Id */
+      target_id: string;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyResolutionEligibility
+     * @description Whether the caller may resolve safety concerns on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
+     *     ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
+     *     ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
+     *     again on every request.
+     */
+    SafetyResolutionEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyResolutionRequest
+     * @description Resolve one safety concern of the latest revision's record (four-eyes, M6d).
+     *
+     *     Exactly one of ``mention_id`` and ``item_id``. Who and when are the
+     *     server's (any such field is 422).
+     *
+     *     Attributes:
+     *         mention_id: A detected mention (``m`` and 16 hex digits).
+     *         item_id: A proposal item unsupported as (possibly) life-safety.
+     *         resolution: ``excluded_from_scope`` or ``false_positive``.
+     *         reason: Why, in the resolver's words: 10 to 500 characters once
+     *             whitespace is collapsed.
+     */
+    SafetyResolutionRequest: {
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Item Id */
+      item_id?: string | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
     };
     /**
      * SaveCompanySettings
@@ -5726,6 +5905,14 @@ export interface components {
        */
       is_author: boolean;
       safety_clarification?: components['schemas']['SafetyClarificationEligibility'] | null;
+      /** Safety Concerns */
+      safety_concerns?: components['schemas']['SafetyConcern'][];
+      safety_resolution?: components['schemas']['SafetyResolutionEligibility'] | null;
+      approval_held?: components['schemas']['ApprovalHeld'] | null;
+      /** Approval Scope Version */
+      approval_scope_version?: string | null;
+      /** Approved Scope Version */
+      approved_scope_version?: string | null;
     };
     /**
      * ScheduleSuggestionRequest
@@ -7797,6 +7984,63 @@ export interface operations {
         content?: never;
       };
       /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_unresolved`, `mention_is_life_safety`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SafetyResolutionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description `safety_resolution_requires_account`, `safety_resolution_not_permitted`, `safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_found` or `safety_target_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_already_resolved`, `false_positive_not_allowed`, `snapshot_integrity_failed` */
       409: {
         headers: {
           [name: string]: unknown;

@@ -10,7 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate
 
-from app.design import marking
+from app.design import approval_scope, marking
 from app.design.sheet import Sheet, Text
 from app.models.schemas.design import DesignFinding, DesignProject, FindingSeverity
 
@@ -49,7 +49,11 @@ def test_text_formats_carry_the_mark() -> None:
 
 
 def test_no_findings_is_said() -> None:
-    assert marking.finding_lines(marking.ExportMark("x", "y")) == ["No unresolved findings."]
+    # M6d: the approval-scope statement always follows.
+    assert marking.finding_lines(marking.ExportMark("x", "y")) == [
+        "No unresolved findings.",
+        *approval_scope.statement_lines(),
+    ]
 
 
 def test_the_page_stamp_label_and_identity_do_not_overlap() -> None:
@@ -123,8 +127,9 @@ def test_requirement_lines_follow_the_findings_and_reach_the_json() -> None:
     lines = ("[OPEN] Control circuit not designed: MDB › Pump",)  # noqa: RUF001
     mark = marking.ExportMark(marking.DRAFT_LABEL, "r", (_FINDING,), requirements=lines)
     printed = marking.finding_lines(mark)
-    assert printed[-1] == lines[0]
+    scope = approval_scope.statement_lines()
+    assert printed[-1 - len(scope)] == lines[0]
     alone = marking.finding_lines(marking.ExportMark("x", "y", requirements=lines))
-    assert alone == ["No unresolved findings.", lines[0]]
+    assert alone == ["No unresolved findings.", lines[0], *scope]
     assert json.loads(marking.mark_json("{}", mark))["requirements"] == list(lines)
     assert "requirements" not in json.loads(marking.mark_json("{}", MARK))

@@ -575,6 +575,146 @@ instead of terms ("NFPA 20 listed"), and a one-word repeated name
 ("Pump … Pump feeds the sprinklers": not followed, it would draw in every
 pump).
 
+### 6.11 Safety concerns hold approval; two resolutions; approval scope (M6d)
+
+**Why.** Before M6d a revision whose record held an unresolved life-safety
+mention could still be review-approved; the `[OPEN]` line only printed on the
+approved documents. Now an unresolved safety concern holds the approval.
+
+**Detection is not complete.** Keyword detection (§6.10) and the model's own
+reading cannot find every life-safety requirement: an unlisted phrasing, a
+standard number, an abbreviation or a misspelling passes both (see the
+bypasses in §6.10). The hold covers what was detected; it is not evidence that
+nothing else is a life-safety requirement, and no resolution is engineer
+validation.
+
+**Safety concerns** (`ai_intake.safety_targets`), re-derived on every check
+from the bound record's `ai` block — the stored description (`input_text`,
+same detection as the proposal path) and the stored items — never from the
+stored `open_items` list (a record whose open items were edited and rehashed
+is still held):
+
+| code                           | what                                                                                                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai_life_safety_mentioned`     | a `life_safety`-level mention in the description                                                                                                                             |
+| `ai_possibly_life_safety`      | a `possibly`-level mention                                                                                                                                                   |
+| `ai_life_safety_item`          | an item `unsupported` as life-safety (server reason `fire-pump or life-safety equipment is out of scope`, or a model-made unsupported item whose words are life-safety ones) |
+| `ai_possibly_life_safety_item` | an item `unsupported` with reason `possibly_life_safety`                                                                                                                     |
+
+A decision (accept/reject) on an item, and a generic M6a acknowledgement,
+never resolve a concern.
+
+**The hold.** `approve_revision` refuses 409 `approval_blocked_by_safety`
+(params `revision`, `count`, `codes` comma-joined, sorted) while any concern of
+the stored record is unresolved. Checked under the project and revision locks,
+after the revision's own refusals (approved, integrity, stale, blocking
+findings) and before the author checks. `SavedProject.approval_held =
+{code, count, codes}` (null when approvable or approved),
+`SavedProject.safety_concerns` (each with `kind`, `target_id`, `level`,
+`code`, `label`, offsets, `resolved`, the `resolution` in force and
+`false_positive_refusal`) and `SavedProject.safety_resolution = {eligible,
+reason}`. The approval panel shows the concerns, their resolve actions and
+the hold (`approveHeld.safety`). A derived record (no stored one) holds none.
+
+**The only two resolutions.** PanelPilot has no "separately engineered"
+workflow and no other way to clear a safety concern.
+`POST /design/projects/{id}/revisions/{n}/requirements/safety-resolutions`,
+strict body `{mention_id | item_id (exactly one), resolution, reason}`
+(reason 10–500 characters after whitespace is collapsed; `by_user_id`,
+`by_name`, `at` or any other key is 422). 200 `{requirements}`.
+
+- `excluded_from_scope` — the requirement is real and is **not** covered by
+  this revision ("Fire pump is designed separately by the fire-protection
+  contractor"). Allowed on every concern. Prints on every review export and in
+  the approval scope: `[EXCLUDED FROM SCOPE] '<term or item text>' — not
+designed or reviewed here: <reason> (recorded by <name> on <date>)`. It
+  never turns anything into a load or a placeable item; an excluded item's
+  `ai_unsupported` open item is replaced by this line.
+- `false_positive` — the detected text is not a life-safety requirement.
+  Allowed on a mention: a `possibly` one always; a `life_safety` one only when
+  no item of the proposal is life-safety equipment from an overlapping span
+  (else 409 `false_positive_not_allowed`, `reason:
+life_safety_item_overlaps`: exclude it instead). Never on an item (409
+  `false_positive_not_allowed`, `reason: item`). Prints `[FALSE POSITIVE]
+'<term>' judged not a life-safety requirement by <name> on <date>: <reason>
+— not engineer-validated`. Examples: "Fire Station Road" (`fire`),
+  "no fire pump is required" (`fire pump`, no item), "Emergency contact on
+  the door label", "duty/standby booster pumps".
+- A possibly-safety item is also resolved when every possibly-level mention
+  of the description (at least one, and no life-safety mention) is a false
+  positive in force: the words it was raised for were judged harmless. It
+  stays `unsupported` (printed "Not covered by this design"), never a load.
+
+Rules: under the project lock, then the revision's; the stored record must
+match its hash (409 `snapshot_integrity_failed`, `requirements_mismatch`);
+409 `requirements_derived`, `revision_already_approved`,
+`revision_not_latest`; 404 `revision_not_found` (another tenant's too),
+`safety_target_not_found`; 409 `safety_concern_already_resolved` (a
+resolution is never replaced). Who: a signed-in member holding
+`approve_revision` (403 `safety_resolution_requires_account` — a trial too —
+and `safety_resolution_not_permitted`, checked with the approval's `FOR
+SHARE` locks), not the account that created the AI proposal (403
+`safety_resolution_by_proposal_author`; unknown creator refused alike) and
+not the revision's author (403 `safety_resolution_by_revision_author`; an
+author not established is refused alike). Stored append-only in
+`ai.resolutions` (`{target_kind, target_id, resolution, reason,
+by_user_id, by_name, at}`, server-set who/when), covered by
+`requirements_sha256` and so by `approved_requirements_sha256`; carried with
+the block to later revisions. A resolution counts while its target is still a
+concern (same id) and its resolution is still allowed; the first per target
+holds.
+
+**The M6c clarification** (`…/safety-clarifications`, `ai.clarifications`)
+is kept for compatibility, unchanged, and deprecated: the web app no longer
+offers it. A clarification in force counts as a `false_positive` of its
+possibly-level mention and prints as `[FALSE POSITIVE]` (no longer
+`[CLARIFIED]`).
+
+**Approval meaning and scope.** `app/design/approval_scope.py`
+(`APPROVAL_SCOPE_VERSION` `2026.11.04.1`). A review approval is a review of
+this revision's study under PanelPilot's default rules. It does not cover
+control circuits, board-to-board wiring, items listed as open or excluded from
+scope, life-safety systems, standards compliance, electrical accuracy or
+execution. It is not engineer validation. Printed as `[SCOPE]` lines after the
+requirements lines on every review export (drawing set, calculations report,
+quotation, v2 connection drawing and schedules); an approved export adds
+`[SCOPE] The approver confirmed this scope (scope statement <version>)`. The
+JSON export carries `approval: {approved, scope_version, scope_confirmed,
+covers, does_not_cover, engineer_validated: false, excluded_from_scope[],
+false_positives[]}`. The approval body requires `scope_confirmed: true`
+(strict boolean; missing, false, `"true"`, `1` are 422); the panel shows the
+statement, the exclusions and false positives, and a confirmation box Approve
+waits for. Recorded in the new nullable column
+`design_project_revisions.approved_scope_version` (migration `d2b6f4a8c1e3`,
+additive, single head). A column, not a field of the bound record: the
+confirmation is part of the approval act made after the record is final;
+writing it into the record would change the hash the approval binds. It is
+not compared when deciding whether an approval counts: the statement is
+printed on every review export, so changing it changes the renderer's
+reference output and forces a renderer bump, which already stops every earlier
+approval counting.
+
+**Conflicting values (`ai_conflicting_values`, open item, not a hold).**
+Two confirmed items placed on one row that disagree on a field, and a placed
+row changed in the editor after acceptance, each leave an open item, printed
+`[OPEN] Conflicting values for <field>: <a> ("<quote>") and <b> ("<quote>")
+were both accepted for one row; confirm which applies` and `[OPEN] Changed in
+the editor after acceptance: <field>, AI value <v> ("<quote>"), entered value
+<w>`. Placements now record `entered` (the row's value per changed field);
+older placements print "not recorded". A question's reason `conflict` is
+accepted as an alias of `contradictory`.
+
+**Renderers.** v1 `2026.11.04.2` → `2026.11.04.3`, v2 `2026.11.04.v2-17` →
+`2026.11.04.v2-18`: every review export now prints the scope lines and the
+JSON export the `approval` block, and can print the new
+`[EXCLUDED FROM SCOPE]`/`[FALSE POSITIVE]`/conflict lines. Fingerprints
+re-recorded. **Every approval recorded before this change stops counting**
+(`renderer_version`; on this unmerged stack every approval made since the
+M6c bump): its revision is stale for export; save it again and have it
+approved, with the scope confirmed, by another member. `RULES_VERSION`
+unchanged. Execution export (`execution_package_incomplete`) and the
+restricted formats (`export_format_unprotected`) stay refused.
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)

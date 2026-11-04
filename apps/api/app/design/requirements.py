@@ -568,7 +568,7 @@ def acknowledged_lines(
         )
     # M6c: a mention of (possibly) life-safety equipment clarified as not
     # life-safety by a second member; never engineer-validated.
-    lines += ai_intake.clarified_lines(record.get("ai"), name_of=name_of)
+    lines += ai_intake.resolution_lines(record.get("ai"), name_of=name_of)
     return lines
 
 

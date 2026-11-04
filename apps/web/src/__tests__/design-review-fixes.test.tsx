@@ -493,6 +493,7 @@ describe('approval refusals that change the readiness', () => {
       api.approve.mockResolvedValue({ kind: 'refused', detail: 'no', code });
       renderScreen({ account: true });
       await openRow('p1', 'Stored tower');
+      confirmScope();
       fireEvent.click(overview().getByText('Approve revision 1'));
       await waitFor(() => {
         expect(api.open).toHaveBeenCalledTimes(2);
@@ -586,3 +587,10 @@ describe('download names', () => {
     click.mockRestore();
   });
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}
