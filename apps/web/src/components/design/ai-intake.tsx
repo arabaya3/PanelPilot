@@ -680,6 +680,11 @@ export function AiIntake({
                 {t('error.ai_proposal_used')}
               </Notice>
             )}
+            {proposal.life_safety_mentioned === true && (
+              <Notice tone="warning" live={false} testId="ai-life-safety">
+                {t('lifeSafetyMentioned')}
+              </Notice>
+            )}
             <p className="text-xs text-text-muted" data-testid="ai-provider">
               {t('provenance', { provider: proposal.provider, model: proposal.model })}
             </p>

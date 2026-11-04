@@ -1440,7 +1440,8 @@
         "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled",
         "ai_item_unreviewed": "AI proposal not reviewed",
         "ai_question": "Question from the AI proposal",
-        "ai_unsupported": "Described but not supported"
+        "ai_unsupported": "Described but not supported",
+        "ai_life_safety_mentioned": "Description mentions life-safety equipment (out of scope, not designed)"
       },
       "state": {
         "open": "Open",
@@ -1597,7 +1598,8 @@
         "decisions": "Decisions",
         "noDecisions": "No proposal was decided.",
         "changed": "(changed in the editor: {fields})"
-      }
+      },
+      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision."
     }
   },
   "files": {

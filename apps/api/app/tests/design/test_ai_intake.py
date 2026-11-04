@@ -221,3 +221,63 @@ def test_a_boards_other_loads_are_not_drawn_in() -> None:
     }
     items, _ = ai_intake.check_output(payload, text, ["MDB"])
     assert items[0]["kind"] == "load"
+
+
+def test_normalising_keeps_the_way_back_to_the_stored_text() -> None:
+    text = "Pump ٥٫٥ kW fire​pump"  # noqa: RUF001
+    plain, where = ai_intake.normalise(text)
+    assert plain == "Pump 5.5 kW firepump"
+    assert ai_intake.literal_span("power_kw", "5.5", text) == (5, 8)
+    assert text[where[5] : where[7] + 1] == "٥٫٥"  # noqa: RUF001
+    assert ai_intake.literal_span("power_kw", "5", text) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "quote"),
+    [
+        ("power_kw", "2", "1/2 kW"),
+        ("power_kw", "1", "1/2 kW"),
+        ("power_kw", "3", "ratio 3:1 kW"),
+        ("length_m", "3", "3 m/s"),
+        ("length_m", "5", "5 m per hour"),
+    ],
+)
+def test_fractions_ratios_and_rates_are_not_values(field: str, value: Any, quote: str) -> None:
+    assert ai_intake.literal_span(field, value, quote) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "product"),
+    [
+        ("LC1-D18", True),
+        ("6ES7 214-1AG40", True),
+        ("S203-C16", True),
+        ("ACS580-01-12A6-4", True),
+        ("DB-12", False),
+        ("Room 101A", False),
+        ("230-400V supply", False),
+    ],
+)
+def test_hyphenated_codes(text: str, product: bool) -> None:
+    assert ai_intake.product_number(text) is product
+
+
+def test_tags_compare_without_case_or_hyphen_and_pronouns_refer_back() -> None:
+    text = "Pump P7 on MDB. Lights on MDB. p-7 is the fire pump."
+    assert "fire pump" in ai_intake.context_of(text, (0, 7), {"mdb"})
+    text = "Pump on MDB. It is the fire pump. Lights on MDB."
+    context = ai_intake.context_of(text, (0, 4), {"mdb"})
+    assert "fire pump" in context
+    assert "Lights" not in context
+
+
+def test_a_life_safety_mention_anywhere_is_an_open_item_no_decision_closes() -> None:
+    items, _ = ai_intake.check_output(complete_payload(), TEXT, [])
+    block = {
+        "proposal": {"items": items, "input_text": TEXT + " The fire main is by others."},
+        "decisions": [{"item_id": i["id"], "decision": "reject"} for i in items],
+    }
+    found = ai_intake.open_items(block)
+    assert found == [{"code": ai_intake.LIFE_SAFETY_MENTIONED, "subject": {}}]
+    assert ai_intake.open_item_line(block, found[0]) == ai_intake.LIFE_SAFETY_LINE
+    assert ai_intake.open_items({"proposal": {"items": [], "input_text": TEXT}}) == []

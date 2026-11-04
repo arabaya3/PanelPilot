@@ -343,3 +343,41 @@ changed_in_editor}], applied_in_revision, applied_at}`. Covered by
   id with **no** foreign key (the review assumed `RESTRICT`); deleting an
   account leaves the id in place. The owner decides on retention and
   deletion, and on whether to add a foreign key.
+
+### 6.9 Second review round (G1–G8) and the life-safety safety net
+
+- **Normalised reading.** Every check reads the text normalised: NFKC per
+  character, format characters (zero-width spaces/joiners, bidi marks)
+  dropped, every decimal digit as ASCII, and the Arabic decimal and
+  thousands separators (٫ ٬) as `.` and `,`. Stored text and offsets never
+  change; a position map takes a match back to the stored text
+  (`value_spans` stay true). G1 ("٥٫٥ كيلوواط" is 5.5), G7 (a zero-width
+  space inside "fire pump").
+- **G2/G3.** A number that is one side of a fraction or ratio (`1/2`,
+  `3:1`) is no value; a length followed by `/` or "per" is a rate
+  ("3 m/s"), not a length.
+- **G5.** Tags compare without case, hyphen or space (`P7` = `P-7` = `p 7`).
+- **G4.** A sentence opening with a word referring back (It, Its, This,
+  That, These, Those, They, Which, The same; Arabic هذا/هذه/ذلك/تلك/هو/هي;
+  Hebrew זה/זו/זאת/הוא/היא) is read with the sentence before it, in a chain.
+- **G8.** Part numbers also cover hyphenated and spaced codes with at
+  least three digits and a segment mixing letters and digits (`LC1-D18`,
+  `S203-C16`, `6ES7 214-1AG40`, `ACS580-01-12A6-4`); not `P-7`, `DB-1`,
+  `DB-12`, `AHU2`, `Room 101A` or `230-400V`.
+- **Safety net (needs no linking).** When a life-safety term appears
+  anywhere in the description, the proposal says so (`life_safety_mentioned:
+true`, shown as a warning beside the proposals, with no way to dismiss
+  it) and a save records the record-level open item
+  `ai_life_safety_mentioned` (subject `{}`). No decision closes it, and a
+  carried block keeps it. Review exports print:
+  `[OPEN] The description mentions fire-pump or life-safety equipment: out
+of scope and not designed; check that no placed load is that equipment`.
+  The renderer versions already bumped on this unmerged branch
+  (`2026.11.04.1`, `2026.11.04.v2-16`) are not bumped again (the guard's
+  reference exports are unchanged).
+- **Limits.** Unit, part-number and life-safety detection are heuristics
+  with known limits: other phrasings, languages, spellings and indirect
+  references can still pass, and ordinary text can be caught. They narrow
+  what a model can slip through; they are not the gate. The gate remains the
+  user's accept and place step: nothing reaches the request unless the user
+  confirms it, and the safety-net open item stays on the record for review.

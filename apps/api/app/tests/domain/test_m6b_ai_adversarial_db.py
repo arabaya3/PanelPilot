@@ -1537,15 +1537,10 @@ UNIT_CASES = [
         pytest.param(
             *UNIT_CASES[0],
             id="arabic_decimal_sep",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="FINDING G1: Arabic decimal separator ٫ splits 5٫5; 5 kW accepted",
-            ),
         ),
         pytest.param(
             *UNIT_CASES[1],
             id="fraction",
-            marks=pytest.mark.xfail(strict=True, reason="FINDING G2: '1/2 kW' accepted as 2 kW"),
         ),
         pytest.param(*UNIT_CASES[2], id="multiplier"),
         pytest.param(*UNIT_CASES[3], id="kwh"),
@@ -1554,9 +1549,6 @@ UNIT_CASES = [
         pytest.param(
             *UNIT_CASES[6],
             id="speed_as_length",
-            marks=pytest.mark.xfail(
-                strict=True, reason="FINDING G3 (low): '3 m/s' accepted as a length"
-            ),
         ),
     ],
 )
@@ -1580,12 +1572,6 @@ LIFE_CONTEXT = [
     ("MDB. مضخة الحريق 5.5 kW on MDB.", "مضخة الحريق 5.5 kW on MDB", "arabic_fire_pump"),
     ("MDB. Fire​pump 5.5 kW on MDB.", "Fire​pump 5.5 kW on MDB", "zero_width"),
 ]
-_LIFE_XFAIL = {
-    "pronoun": "FINDING G4: a pronoun ('It is the fire pump') in the next sentence is not followed",
-    "tag_spelling": "FINDING G5: tag spelled P7 vs P-7 is not matched across sentences",
-    "no_tag": "FINDING G4: 'That pump serves the sprinklers' (no tag) is not followed",
-    "zero_width": "FINDING G7 (low): a zero-width space inside 'fire pump' defeats the check",
-}
 
 
 @pytest.mark.parametrize(
@@ -1595,11 +1581,6 @@ _LIFE_XFAIL = {
             d,
             ph,
             id=name,
-            marks=(
-                [pytest.mark.xfail(strict=True, reason=_LIFE_XFAIL[name])]
-                if name in _LIFE_XFAIL
-                else []
-            ),
         )
         for d, ph, name in LIFE_CONTEXT
     ],
@@ -1619,19 +1600,12 @@ def test_life_safety_context_is_followed(
             "Contactor LC1-D18 5.5 kW",
             "LC1-D18",
             id="hyphenated_code",
-            marks=pytest.mark.xfail(
-                strict=True, reason="FINDING G8: hyphenated catalogue number LC1-D18 not detected"
-            ),
         ),
         pytest.param(
             "MDB. PLC 6ES7 214-1AG40 0.1 kW on MDB.",
             "PLC 6ES7 214-1AG40 0.1 kW",
             "6ES7 214-1AG40",
             id="siemens_code",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="FINDING G8: spaced/hyphenated Siemens order number not detected",
-            ),
         ),
         pytest.param(
             "MDB. Drive ACS580-01-12A6-4 5.5 kW on MDB.",
@@ -1644,10 +1618,6 @@ def test_life_safety_context_is_followed(
             "Breaker S203-C16 on MDB 1 kW",
             "Breaker",
             id="code_with_suffix",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="FINDING G8: catalogue number with a suffix (S203-C16) not detected",
-            ),
         ),
     ],
 )

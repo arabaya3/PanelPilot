@@ -476,4 +476,45 @@ describe('the saved revision', () => {
     expect(decisions).toContain('changed in the editor: description');
     expect(provenance.textContent).toContain('not engineer-validated');
   });
+
+  it('keeps the life-safety mention open on the saved record', () => {
+    renderApp(
+      <RequirementsView
+        token="tok"
+        boards={[blankBoard(0, 1, 'MDB')]}
+        onBoardChange={vi.fn()}
+        onAddBoard={vi.fn()}
+        onLoadChange={vi.fn()}
+        onLoadRemove={vi.fn()}
+        onLoadAdd={vi.fn()}
+        control={{}}
+        onControlChange={vi.fn()}
+        request={null}
+        opened={{ id: 'p1', revision: 2 }}
+        savedRecord={{
+          ...RECORD,
+          open_items: [{ code: 'ai_life_safety_mentioned', subject: {} }],
+        }}
+        onProject={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('open-item-ai_life_safety_mentioned').textContent).toContain(
+      'Description mentions life-safety equipment',
+    );
+  });
+});
+
+describe('a description that mentions life-safety equipment', () => {
+  it('says so beside the proposals, and offers no way to dismiss it', () => {
+    renderApp(<Harness initial={proposal({ life_safety_mentioned: true })} />);
+    const notice = screen.getByTestId('ai-life-safety');
+    expect(notice.textContent).toContain('fire-pump or life-safety equipment');
+    expect(notice.textContent).toContain('not designed');
+    expect(within(notice).queryByRole('button')).toBeNull();
+  });
+
+  it('shows nothing when the description does not', () => {
+    renderApp(<Harness initial={proposal()} />);
+    expect(screen.queryByTestId('ai-life-safety')).toBeNull();
+  });
 });

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
@@ -72,6 +73,15 @@ PROPOSABLE_LOAD_KINDS = tuple(kind.value for kind in LoadKind if kind is not Loa
 
 OUT_OF_SCOPE_REASON = "fire-pump or life-safety equipment is out of scope"
 
+#: The record-level open item of a description that mentions life-safety
+#: equipment anywhere (G4's safety net).
+LIFE_SAFETY_MENTIONED = "ai_life_safety_mentioned"
+
+LIFE_SAFETY_LINE = (
+    "[OPEN] The description mentions fire-pump or life-safety equipment: out of scope "
+    "and not designed; check that no placed load is that equipment"
+)
+
 _LIFE_SAFETY = re.compile(
     r"fire[\s_-]*(?:pump|alarm|main|hose|fight|m[ae]n'?s?[\s_-]*lift|service|damper|curtain)|"
     r"jockey[\s_-]*pump|sprinkler|hydrant|deluge|drencher|foam[\s_-]*(?:pump|system)|"
@@ -94,8 +104,47 @@ _LIFE_SAFETY = re.compile(
 #: exclamation mark followed by space (not "5.5"), or a line break.
 _SENTENCE_END = re.compile("(?<=[.;!?\u061b\u061f])\\s+|\\n+")
 
+
+def normalise(text: str) -> tuple[str, list[int]]:
+    """``text`` as the checks read it, and where each of its characters came from.
+
+    NFKC per character, format characters (zero-width spaces and joiners,
+    bidi marks) dropped, every decimal digit (Arabic-Indic, extended
+    Arabic-Indic, ...) as its ASCII digit, and the Arabic decimal and
+    thousands separators as "." and ",". The stored text and its offsets are
+    never changed: the map takes a position in the result back to ``text``.
+    """
+    out: list[str] = []
+    where: list[int] = []
+    for index, char in enumerate(text):
+        if unicodedata.category(char) == "Cf":
+            continue
+        if char == "\u066b":
+            mapped = "."
+        elif char == "\u066c":
+            mapped = ","
+        elif char.isdecimal() and not char.isascii():
+            mapped = str(unicodedata.decimal(char))
+        else:
+            mapped = unicodedata.normalize("NFKC", char)
+        for piece in mapped:
+            out.append(piece)
+            where.append(index)
+    return "".join(out), where
+
+
+def _plain(text: str) -> str:
+    return normalise(text)[0]
+
+
 #: An identifier tag: letters then digits ("P-7", "AHU2", "FP01").
-_TAG = re.compile(r"(?<![\w-])[A-Za-z]{1,6}-?\d{1,4}[A-Za-z]?(?![\w-])")
+_TAG = re.compile(r"(?<![\w-])[A-Za-z]{1,6}[-\s]?\d{1,4}[A-Za-z]?(?![\w-])")
+
+
+def _tag_key(tag: str) -> str:
+    """A tag as compared: case, hyphens and spaces ignored ("P-7" is "p7")."""
+    return re.sub(r"[-\s]", "", tag).lower()
+
 
 PRODUCT_REASON = "product_number"
 
@@ -111,22 +160,43 @@ _BRANDED_CODE = re.compile(
 #: An unbranded catalogue code: letters and at least three digits in one
 #: unhyphenated token ("S203", "3RT2015", "LC1D18" has three digits too).
 _CODE = re.compile(r"(?<![\w-])(?=\w*[A-Za-z])(?=(?:\w*\d){3})[A-Za-z0-9]{4,20}(?![\w-])")
+#: A hyphenated code ("LC1-D18", "S203-C16", "214-1AG40", "ACS580-01-12A6-4").
+_HYPHENATED = re.compile(r"(?<![\w-])[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+(?![\w-])")
 #: ...except a number with its unit ("5500W", "400V", "1200mm").
 _NUMBER_WITH_UNIT = re.compile(
     r"^\d+(?:kw|w|kva|va|v|a|ma|ka|m|mm|mm2|hz|hp|rpm|kg|btu|lm|lux|k)$", re.IGNORECASE
 )
 
 
+def _mixed(segment: str) -> bool:
+    return (
+        any(c.isdigit() for c in segment)
+        and any(c.isalpha() for c in segment)
+        and not _NUMBER_WITH_UNIT.match(segment)
+    )
+
+
 def product_number(text: str) -> bool:
     """Whether ``text`` names a manufacturer's part or catalogue number.
 
-    Conservative: a known brand followed by a letters-and-digits code, or an
+    Conservative: a known brand followed by a letters-and-digits code; an
     unhyphenated token of letters and at least three digits that is not a
-    number with a unit. A tag such as "P-7", "DB-1" or "AHU2" is not one.
+    number with a unit ("S203", "3RT2015"); or a hyphenated code with at
+    least three digits and a segment mixing letters and digits ("LC1-D18",
+    "S203-C16", "6ES7 214-1AG40"). A tag such as "P-7", "DB-1", "DB-12",
+    "AHU2" or a room number "Room 101A" is not one.
     """
-    if _BRANDED_CODE.search(text):
+    plain = _plain(text)
+    if _BRANDED_CODE.search(plain):
         return True
-    return any(not _NUMBER_WITH_UNIT.match(m.group()) for m in _CODE.finditer(text))
+    if any(not _NUMBER_WITH_UNIT.match(m.group()) for m in _CODE.finditer(plain)):
+        return True
+    for match in _HYPHENATED.finditer(plain):
+        code = match.group()
+        digits = sum(c.isdigit() for c in code)
+        if digits >= 3 and any(_mixed(part) for part in code.split("-")):
+            return True
+    return False
 
 
 def _sentences(text: str) -> list[tuple[int, int]]:
@@ -139,39 +209,61 @@ def _sentences(text: str) -> list[tuple[int, int]]:
     return out
 
 
+#: A sentence opening with a word that refers back to the one before it:
+#: "It is the fire pump", "That pump serves ...", Arabic and Hebrew alike.
+_REFERS_BACK = re.compile(
+    r"^\W*(?:it|its|this|that|these|those|they|which|the\s+same|"
+    "\u0647\u0630\u0627|\u0647\u0630\u0647|\u0630\u0644\u0643|\u062a\u0644\u0643|"
+    "\u0647\u0648|\u0647\u064a|\u0648\u0647\u0648|\u0648\u0647\u064a|"
+    "\u05d6\u05d4|\u05d6\u05d5|\u05d6\u05d0\u05ea|\u05d4\u05d5\u05d0|\u05d4\u05d9\u05d0)\\b",
+    re.IGNORECASE,
+)
+
+
 def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
-    """The sentences a span stands in, and every other sentence naming one of its tags.
+    """The sentences a span stands in, those referring back to them, and those naming its tags.
 
     The model chooses the span: "Pump P-7 5.5 kW" can leave out "P-7 is the
-    fire pump". A tag is an identifier in the span ("P-7") that is not a
-    board's name, so a board's other loads are not drawn in.
+    fire pump" or "It is the fire pump". Read are: the span's sentences;
+    each following sentence that opens with a word referring back ("It",
+    "That pump", Arabic and Hebrew demonstratives and pronouns), in a chain;
+    and every sentence naming one of the span's tags ("P-7", compared
+    without case, hyphen or space), except board names, so a board's other
+    loads are not drawn in.
     """
     sentences = _sentences(text)
-    own = [(a, b) for a, b in sentences if a < span[1] and span[0] < b] or [span]
+    own = [n for n, (a, b) in enumerate(sentences) if a < span[1] and span[0] < b]
+    chosen = set(own)
+    for n in sorted(own):
+        follow = n + 1
+        while follow < len(sentences):
+            a, b = sentences[follow]
+            if not _REFERS_BACK.match(_plain(text[a:b])):
+                break
+            chosen.add(follow)
+            follow += 1
+    names_keys = {_tag_key(name) for name in names}
     tags = {
-        m.group().lower()
-        for m in _TAG.finditer(text[span[0] : span[1]])
-        if m.group().lower() not in names
+        _tag_key(m.group())
+        for m in _TAG.finditer(_plain(text[span[0] : span[1]]))
+        if _tag_key(m.group()) not in names_keys
     }
-    parts = [text[a:b] for a, b in own]
-    for a, b in sentences:
-        if (a, b) in own or not tags:
-            continue
-        words = {m.group().lower() for m in _TAG.finditer(text[a:b])}
-        if words & tags:
-            parts.append(text[a:b])
+    if tags:
+        for n, (a, b) in enumerate(sentences):
+            if {_tag_key(m.group()) for m in _TAG.finditer(_plain(text[a:b]))} & tags:
+                chosen.add(n)
+    parts = [text[sentences[n][0] : sentences[n][1]] for n in sorted(chosen)] or [
+        text[span[0] : span[1]]
+    ]
     return " ".join(parts)
 
 
 def life_safety(text: str) -> bool:
-    """Whether ``text`` names fire-pump or life-safety equipment (en/ar/he)."""
-    return _LIFE_SAFETY.search(text) is not None
+    """Whether ``text`` names fire-pump or life-safety equipment (en/ar/he), as normalised."""
+    return _LIFE_SAFETY.search(_plain(text)) is not None
 
 
 _NUMBER = re.compile(r"(?<![\d.,])\d*[.,]?\d+(?![\d])")
-_ARABIC_DIGITS = str.maketrans(
-    "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669", "0123456789"
-)
 
 #: The unit or cue each numeric field must be written with (F2): a positive
 #: match, not a deny-list.
@@ -186,7 +278,9 @@ _AFTER = {
     # Metres: "m", "metre(s)", "meter(s)", and the Arabic and Hebrew words.
     "length_m": re.compile(
         "\\s*(?:m(?![a-z0-9\u00b2])|metres?\\b|meters?\\b|"
-        "\u0645\u062a\u0631|\u0645(?!\\w)|\u05de\u05d8\u05e8|\u05de'(?!\\w))",
+        "\u0645\u062a\u0631|\u0645(?!\\w)|\u05de\u05d8\u05e8|\u05de'(?!\\w))"
+        # Not a rate: "3 m/s", "5 m per hour".
+        "(?!\\s*(?:/|per\\b))",
         re.IGNORECASE,
     ),
     # Phases: "3-phase", "3 ph", "3\u00d8", and the Arabic and Hebrew words.
@@ -385,9 +479,9 @@ def existing_boards(draft: Mapping[str, Any] | None) -> list[str]:
     return names
 
 
-def _numbers(text: str) -> list[tuple[Decimal, int, int]]:
+def _numbers(plain: str) -> list[tuple[Decimal, int, int]]:
+    """The numbers of an already normalised text, with their offsets in it."""
     found: list[tuple[Decimal, int, int]] = []
-    plain = text.translate(_ARABIC_DIGITS)
     for match in _NUMBER.finditer(plain):
         literal = match.group()
         # "1,200" is a thousands separator; "7,5" a decimal comma.
@@ -398,6 +492,11 @@ def _numbers(text: str) -> list[tuple[Decimal, int, int]]:
         except InvalidOperation:  # pragma: no cover - the pattern is a number
             continue
     return found
+
+
+#: A number that is one side of a fraction or ratio ("1/2", "3:1").
+_RATIO_BEFORE = re.compile(r"[/:\u2044]\s*$")
+_RATIO_AFTER = re.compile(r"\s*[/:\u2044]\s*\d")
 
 
 def literal_span(field: str, value: Any, quote: str) -> tuple[int, int] | None:
@@ -422,19 +521,25 @@ def literal_span(field: str, value: Any, quote: str) -> tuple[int, int] | None:
         wanted = Decimal(str(value))
     except InvalidOperation:
         return None
-    plain = quote.translate(_ARABIC_DIGITS)
-    for number, start, end in _numbers(quote):
+    plain, where = normalise(quote)
+
+    def back(start: int, end: int) -> tuple[int, int]:
+        return where[start], where[end - 1] + 1
+
+    for number, start, end in _numbers(plain):
         if number != wanted:
+            continue
+        if _RATIO_BEFORE.search(plain[:start]) or _RATIO_AFTER.match(plain, end):
             continue
         if field == "power_factor":
             if _PF_CUE.search(plain[max(0, start - 24) : start]):
-                return start, end
+                return back(start, end)
         elif _AFTER[field].match(plain, end):
-            return start, end
+            return back(start, end)
     if field == "phases" and wanted == wanted.to_integral_value() and int(wanted) in _PHASE_WORDS:
-        match = _PHASE_WORDS[int(wanted)].search(quote)
+        match = _PHASE_WORDS[int(wanted)].search(plain)
         if match:
-            return match.start(), match.end()
+            return back(match.start(), match.end())
     return None
 
 
@@ -890,6 +995,10 @@ def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         return []
     latest = latest_decisions(ai.get("decisions", []))
     out: list[dict[str, Any]] = []
+    # The safety net that needs no linking: the description names life-safety
+    # equipment somewhere. It stays open; no decision closes it.
+    if life_safety(str((ai.get("proposal") or {}).get("input_text", ""))):
+        out.append({"code": LIFE_SAFETY_MENTIONED, "subject": {}})
     for item in (ai.get("proposal") or {}).get("items", []):
         decision = latest.get(str(item["id"]))
         rejected = decision is not None and decision["decision"] == "reject"
@@ -914,6 +1023,8 @@ def open_item_line(ai: Mapping[str, Any] | None, item: Mapping[str, Any]) -> str
     """The ``[OPEN]`` line a review export prints for one AI open item, or ``None``."""
     if not ai:
         return None
+    if item["code"] == LIFE_SAFETY_MENTIONED:
+        return LIFE_SAFETY_LINE
     wanted = (item.get("subject") or {}).get("item_id")
     items = (ai.get("proposal") or {}).get("items", [])
     found = next((i for i in items if str(i["id"]) == wanted), None)

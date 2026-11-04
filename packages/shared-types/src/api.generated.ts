@@ -1589,6 +1589,10 @@ export interface components {
      *             provider, model, prompt version, items, server_rejected).
      *         used_by_revision_id: The revision that applied it; it then takes no
      *             more decisions (``ai_proposal_used``) and no second save.
+     *         life_safety_mentioned: The description names fire-pump or
+     *             life-safety equipment somewhere; a save records the open item
+     *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
+     *             dismissed.
      */
     AiProposal: {
       /** Id */
@@ -1627,6 +1631,11 @@ export interface components {
       used_by_revision_id?: string | null;
       /** Proposal Sha256 */
       proposal_sha256: string;
+      /**
+       * Life Safety Mentioned
+       * @default false
+       */
+      life_safety_mentioned: boolean;
     };
     /**
      * AiProposalItem
@@ -4993,7 +5002,9 @@ export interface components {
      *     ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
      *     an AI proposal item left undecided (``ai_item_unreviewed``), or a
      *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
-     *     the user did not reject; the subject's ``item_id`` names the item.
+     *     the user did not reject; the subject's ``item_id`` names the item. A
+     *     description mentioning life-safety equipment anywhere adds
+     *     ``ai_life_safety_mentioned`` (no subject), which no decision closes.
      */
     RequirementOpenItem: {
       /**
@@ -5005,7 +5016,8 @@ export interface components {
         | 'inter_board_wiring_not_modelled'
         | 'ai_item_unreviewed'
         | 'ai_question'
-        | 'ai_unsupported';
+        | 'ai_unsupported'
+        | 'ai_life_safety_mentioned';
       subject: components['schemas']['RequirementSubject'];
     };
     /**

@@ -663,3 +663,21 @@ def test_a_provider_past_the_deadline_is_504_and_saves_nothing(
     assert refused.status_code == 504
     assert error(refused)["code"] == "ai_timeout"
     assert _count(engine) == 0
+
+
+def test_a_life_safety_mention_is_flagged_saved_and_printed(
+    client: TestClient, stub: StubProvider
+) -> None:
+    description = TEXT + " The sprinkler pump is by others."
+    proposal = _created(client, description=description)
+    assert proposal["life_safety_mentioned"] is True
+    assert _created(client)["life_safety_mentioned"] is False
+    given = _ai_input(proposal, control=[])
+    given["ai"]["placements"] = []
+    saved = _save(client, given).json()
+    codes = [i["code"] for i in saved["requirements"]["open_items"]]
+    assert "ai_life_safety_mentioned" in codes
+    response = revision_export(client, saved["id"], 1, "pdf")
+    assert response.status_code == 200
+    words = " ".join(" ".join(pdf_pages(response.content)).split())
+    assert "[OPEN] The description mentions fire-pump or life-safety equipment" in words

@@ -986,6 +986,8 @@ export type AiProposal = {
   decisions: AiDecision[];
   used_by_revision_id?: string | null;
   proposal_sha256?: string;
+  /** The description names fire-pump or life-safety equipment somewhere (never dismissed). */
+  life_safety_mentioned?: boolean;
 };
 
 /** Where a confirmed item sits in the editor when saved. */
