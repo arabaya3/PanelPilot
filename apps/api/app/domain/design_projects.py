@@ -2600,7 +2600,7 @@ def preview_requirements(
     given = request.requirements_input
     if given.ai is not None:
         if session is None:  # pragma: no cover - the route always passes one
-            raise ValidationError("an AI block is previewed with a session", code="ai_unavailable")
+            raise RuntimeError("an AI block is previewed with a session")
         # Checked as a save checks it, read only: nothing is locked or marked.
         _scope_to(session, user)
         _, ai_block = design_ai.apply(
