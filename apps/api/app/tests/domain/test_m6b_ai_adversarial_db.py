@@ -1699,3 +1699,126 @@ def test_slow_provider_is_cut_at_the_deadline_without_starving_the_api(
         assert time.monotonic() - started < 3
     finally:
         release.set()
+
+
+# =========================================================================== #
+# 13. Probes of 878b51d: normalised reading, back-references, the life-safety net
+# =========================================================================== #
+
+
+def _net_open(engine: Engine, as_: Any, provider: StubProvider, description: str) -> set[str]:
+    """Save a revision applying a proposal for ``description`` with no placements; its AI open item codes."""
+    provider.payload = _payload([])
+    created = _propose(as_(), description)
+    assert created.status_code == 201, created.text[:400]
+    saved = _save(
+        as_(),
+        request_for(),
+        {
+            "intake": "ai",
+            "control": CONTROL,
+            "ai": {"proposal_id": created.json()["id"], "placements": []},
+        },
+    )
+    assert saved.status_code == 201, saved.text[:400]
+    record = revision_row(engine, str(saved.json()["id"]), 1)["requirements"]
+    return {o["code"] for o in record["open_items"]}
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        pytest.param("MDB. Pump 5.5 kW on MDB. It is the fire pump.", id="pronoun"),
+        pytest.param(
+            "MDB. Pump 5.5 kW on MDB. FIRE\u2011PUMP duty.",
+            id="nb_hyphen",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="KNOWN LIMIT H4: a non-breaking hyphen (U+2011; NFKC gives U+2010) in fire-pump",
+            ),
+        ),
+        pytest.param(
+            "MDB. Pump 5.5 kW on MDB. The fіre pump is on MDB.",
+            id="cyrillic_homoglyph",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="KNOWN LIMIT H1: a Cyrillic homoglyph (і) in 'fire' defeats the record-level net",
+            ),
+        ),
+        pytest.param(
+            "MDB. Firewater pump 5.5 kW on MDB.",
+            id="firewater",
+            marks=pytest.mark.xfail(
+                strict=True, reason="KNOWN LIMIT H2: 'firewater pump' is not in the word list"
+            ),
+        ),
+    ],
+)
+def test_life_safety_net_open_item(
+    engine: Engine, as_: Any, provider: StubProvider, description: str
+) -> None:
+    assert "ai_life_safety_mentioned" in _net_open(engine, as_, provider, description)
+
+
+def test_life_safety_net_is_not_raised_by_ordinary_text(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    codes = _net_open(
+        engine, as_, provider, "MDB. Fireplace fan 1 kW and exit corridor sockets on MDB."
+    )
+    assert "ai_life_safety_mentioned" not in codes
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase"),
+    [
+        pytest.param(
+            "MDB. Pump P-7 5.5 kW on MDB. Lighting 1 kW on MDB. The former is the fire pump.",
+            "Pump P-7 5.5 kW on MDB",
+            id="the_former",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="KNOWN LIMIT H3: 'The former' two sentences later is not followed (the net still raises)",
+            ),
+        ),
+        pytest.param(
+            "MDB. Pump P 7 5.5 kW on MDB. P7 is the fire pump.",
+            "Pump P 7 5.5 kW on MDB",
+            id="spaced_tag",
+        ),
+        pytest.param(
+            "MDB. Pump 5.5 kW on MDB. This serves sprinklers.", "Pump 5.5 kW on MDB", id="this"
+        ),
+    ],
+)
+def test_life_safety_item_context_more(
+    as_: Any, provider: StubProvider, description: str, phrase: str
+) -> None:
+    provider.payload = _one_load(description, phrase, description="Pump", power_kw=5.5)
+    assert _kept_load(_propose(as_(), description)) is None
+
+
+@pytest.mark.parametrize(
+    ("description", "phrase", "value"),
+    [
+        ("MDB. Pump ５.５ ｋＷ on MDB.", "Pump ５.５ ｋＷ", 5),
+        ("MDB. Pump 5.5​ kW on MDB.", "Pump 5.5​ kW", 5),
+        ("MDB. Pump 5.5 kW / 7.5 kW on MDB.", "Pump 5.5 kW / 7.5 kW", 2),
+    ],
+    ids=["fullwidth_wrong_value", "zw_wrong_value", "ratio_wrong_value"],
+)
+def test_normalised_reading_keeps_the_stated_value(
+    as_: Any, provider: StubProvider, description: str, phrase: str, value: float
+) -> None:
+    provider.payload = _one_load(description, phrase, description="Pump", power_kw=value)
+    assert _kept_load(_propose(as_(), description)) is None
+
+
+def test_normalised_reading_offsets_stay_in_the_original(as_: Any, provider: StubProvider) -> None:
+    description = "MDB. Pump ​٥٫٥ kW on MDB."
+    phrase = "Pump ​٥٫٥ kW"
+    provider.payload = _one_load(description, phrase, description="Pump", power_kw=5.5)
+    kept = _kept_load(_propose(as_(), description))
+    assert kept is not None
+    where = kept["value_spans"]["power_kw"]
+    assert description[where["start"] : where["end"]] == "٥٫٥"
