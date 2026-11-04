@@ -368,8 +368,9 @@ changed_in_editor}], applied_in_revision, applied_at}`. Covered by
   anywhere in the description, the proposal says so (`life_safety_mentioned:
 true`, shown as a warning beside the proposals, with no way to dismiss
   it) and a save records the record-level open item
-  `ai_life_safety_mentioned` (subject `{}`). No decision closes it, and a
-  carried block keeps it. Review exports print:
+  `ai_life_safety_mentioned` (subject `{}`; one per mention with
+  `{mention_id, term}` since §6.10). No decision closes it (only a
+  clarification, §6.10), and a carried block keeps it. Review exports print:
   `[OPEN] The description mentions fire-pump or life-safety equipment: out
 of scope and not designed; check that no placed load is that equipment`.
   The renderer versions already bumped on this unmerged branch
@@ -381,3 +382,167 @@ of scope and not designed; check that no placed load is that equipment`.
   what a model can slip through; they are not the gate. The gate remains the
   user's accept and place step: nothing reaches the request unless the user
   confirms it, and the safety-net open item stays on the record for review.
+
+### 6.10 Life-safety detection, ambiguity and clarification (M6c)
+
+**Keyword detection can never recognise every safety requirement.** It
+finds the words listed below, as listed; a description can name life-safety
+equipment in ways no list holds. It narrows what a model can slip through
+and puts what it finds in front of a person. It is not the gate and it
+validates nothing: the gate stays the user's accept-and-place step, and
+every finding stays on the record and on every review export. The UI says
+so beside the clarifications ("Keyword detection cannot recognise every
+safety requirement ... not engineer validation").
+
+**Reading (`app/design/safety_terms.py`, detection only).** Text is read
+through a UTS #39-style skeleton: NFKC; every dash and hyphen variant
+(U+2010–2015, U+2011, U+2212, U+00AD soft hyphen, U+2043, U+FE58, U+FE63,
+U+FF0D and others) as `-`; format characters (zero-width spaces/joiners,
+bidi marks) and the Arabic tatweel dropped; combining marks dropped
+(accents, Arabic harakat, Hebrew niqqud); Cyrillic, Greek and small-capital
+Latin look-alikes folded to Latin (`fіre` with Cyrillic і is `fire`);
+Arabic alef/hamza seats, alef maqsura and teh marbuta folded; lower case.
+Stored text and offsets never change: each mention carries offsets into the
+stored text. Compound words match with any of nothing, space, `-`, `_`,
+`.` or `/` between their parts.
+
+**Two levels.**
+
+- _Life-safety_ (`life_safety`): fire pump/water/alarm/main/hose/
+  fighting/fighter(s) lift/fireman's lift/service/damper/curtain/shutter/
+  suppression/detection/extinguisher/protection/reel/riser/brigade/door
+  hold-open/telephone/panel; firewater; jockey; sprinkler(s); hydrant;
+  deluge; drencher; foam pump/system; wet/dry riser; smoke extract/exhaust/
+  control/vent/damper/detector/fan/curtain/management/evacuation/clearance/
+  shaft/alarm; emergency lighting/luminaire/exit/escape/voice/evacuation/
+  lift; escape lighting/sign; exit sign; life safety; stair(case/well)
+  pressurisation; evacuation; voice alarm; refuge alarm; gas suppression;
+  FM-200; heat detector; manual call point; break glass. Arabic: مضخة
+  (ال)حريق, إنذار (ال)حريق, مكافحة (ال)حريق, إطفاء, رشاش/مرشات, هيدرانت,
+  دخان, جوكي, إخلاء, سلامة الأرواح, تضغيط, إنارة/إضاءة (ال)طوارئ, مخرج
+  (ال)طوارئ. Hebrew: משאבת (ה)אש/כיבוי, מתז, ספרינקלר, גלאי עשן/אש/חום,
+  גילוי אש, כיבוי, הידרנט, עשן, ג'וקי, תאורת חירום, יציאת חירום, בטיחות
+  חיים, שחרור עשן.
+- _Possibly safety_ (`possibly`, ambiguous): `fire`/`fires` alone,
+  `emergency`, `standby`/`stand-by` (so "duty/standby pump"), `alarm(s)`,
+  `critical`, `safety` (so "UPS for safety lighting"), `pressuris/zation`,
+  `smoke` alone, `escape`, `essential`, `life support`, `firefighter`,
+  `fireman`. Arabic حريق alone, طوارئ, إنذار, احتياطي, سلامة; Hebrew אש
+  alone, חירום, אזעקה, גיבוי, בטיחות, פינוי. (Arabic حريق and Hebrew אש /
+  חירום alone were life-safety before; they are possibly-safety now, which
+  is still never a supported load.)
+
+**Items.** A `board` or `load` whose context (below) or name/description
+holds a life-safety term becomes `unsupported` with reason
+`fire-pump or life-safety equipment is out of scope`; one holding only a
+possibly-safety word becomes `unsupported` with reason
+`possibly_life_safety` (the existing kind reused; no new kind). Neither is
+ever placeable (422 `ai_placement_invalid`) nor a supported load; accept and
+reject only record the user's decision.
+
+**Context.** As §6.7/§6.9 (the span's sentences, sentences opening with a
+back-reference in a chain, sentences naming the span's tags) and now every
+_later_ sentence holding a reference to something said earlier: "the
+former/latter", "the first/second/third/last", "the above", "the
+aforementioned", "the same", "both", "either", "neither", "these/those/the
+two/pumps/loads/motors/fans/ones/units/items/equipment", "all of them",
+"each of them", "above-mentioned", "aforesaid", "said <noun>"; Arabic
+الأول/الأخير/الثاني/كلاهما/المذكور/أعلاه; Hebrew הראשון/האחרון/השני/
+שניהם/הנ"ל/הנזכר. Such a sentence is read with every earlier item, so
+"The former is the fire pump" also catches the latter item (deliberately
+over-inclusive).
+
+**Record.** One open item per mention (each matched span): `ai_life_safety_mentioned`
+or `ai_possibly_life_safety`, subject `{mention_id, term}`.
+`mention_id` = `m` + the first 16 hex digits of SHA-256 of
+`level NUL term NUL start` (term: the skeleton text with separators as
+one space). The proposal response carries `safety_mentions` (each with
+level, term and offsets) and the UI warns about possibly-safety words as
+it does about life-safety ones. Exports print, per open mention:
+`[OPEN] The description mentions fire-pump or life-safety equipment
+('<term>'): out of scope and not designed; check that no placed load is
+that equipment` or `[OPEN] The description may refer to life-safety
+equipment ('<term>'): needs a person's safety review; not designed`.
+
+**Clarification (owner's design, implemented).** `POST
+/design/projects/{id}/revisions/{n}/requirements/safety-clarifications`,
+strict body `{mention_id, statement: "not_life_safety", reason}` (reason
+10–500 characters after whitespace is collapsed; any other key, including
+`by_user_id`, `by_name`, `at`, `validated`, is 422). The server sets
+`by_user_id`, `by_name`, `at`. 200 `{requirements}`.
+
+- Rules as an acknowledgement's: under the project lock, then the
+  revision's; the stored record must match its hash (409
+  `snapshot_integrity_failed`); 409 `requirements_derived`,
+  `revision_already_approved`, `revision_not_latest`; 404
+  `revision_not_found` (another tenant's too), `mention_not_found` (unknown,
+  or not open: already clarified).
+- Who: a signed-in member holding `approve_revision` (403
+  `clarification_requires_account`, `clarification_not_permitted`; checked
+  with the approval's `FOR SHARE` locks), and **not** the account that
+  created the AI proposal (403 `clarification_by_proposal_author`; a
+  proposal whose creator is unknown is refused the same way). The plan's
+  approval feature is not checked (the permission is the rule asked for).
+- Never: 409 `safety_concern_unresolved` while any item of the proposal is
+  `unsupported` as life-safety equipment (the server's reason, or a
+  model-made unsupported item whose words are life-safety ones) — whatever
+  its decision — or any `possibly_life_safety` item has no decision. A
+  clarification changes no item, decision or placement; an `ai_unsupported`
+  item stays open; nothing becomes a load.
+- Stored append-only in the record's `ai.clarifications` (`{mention_id,
+statement, reason, by_user_id, by_name, at}`), covered by
+  `requirements_sha256` and so by the approval's
+  `approved_requirements_sha256`; carried with the block to later
+  revisions. The record's AI open items are re-derived: a clarification
+  counts only while its mention is still detected (same id) and the
+  proposal has no safety concern (checked again at derivation), and the
+  first for a mention holds.
+- Exports print each clarification in force: `[CLARIFIED] '<term>' judged
+not life-safety by <name> on <date>: <reason> — not engineer-validated`
+  (`<name>`: display name, else "a team member"; never an email). An
+  unclarified mention stays `[OPEN]`.
+- UI: the requirements view shows "Clarify as not life-safety" on a
+  mention for an eligible member only, from the server flag
+  `SavedProject.safety_clarification = {eligible, reason}`
+  (`requires_account`, `not_permitted`, `proposal_author`,
+  `requirements_derived`, `revision_already_approved`,
+  `revision_not_latest`, `safety_concern_unresolved`,
+  `nothing_to_clarify`); an ineligible member sees why. A required reason
+  (10–500); afterwards who, when and the reason. en/ar/he.
+
+**Renderers.** Review export lines changed (per-mention terms, the
+possibly-safety line, `[CLARIFIED]`): v1 `2026.11.04.1` → `2026.11.04.2`,
+v2 `2026.11.04.v2-16` → `2026.11.04.v2-17`; reference exports unchanged,
+fingerprints re-recorded for the version key. Every approval recorded under
+`2026.11.04.1` or `2026.11.04.v2-16` (on this unmerged stack: every approval
+made since M6b's bump) stops counting (`renderer_version`). `RULES_VERSION`
+unchanged; no migration.
+
+**Known bypasses (explicit, not exhaustive).**
+
+- Phrasings not listed: "the pump that keeps the building wet when it
+  burns", "the pump the fire brigade connects to" without "fire brigade",
+  trade names ("FM-200" is listed; "Inergen", "Novec 1230" are not),
+  standards ("NFPA 20 pump", "EN 12845 pump", "BS 5839") and abbreviations
+  ("FA panel", "FAP", "FACP", "EL", "JP", "FP-1" as a tag alone).
+- Letters spaced or split ("f i r e pump", "fi re"), leetspeak and digit
+  look-alikes ("f1re", "sm0ke"), look-alikes outside the folded set
+  (Armenian, Cherokee, mathematical letters NFKC does not fold, other
+  scripts), misspellings ("sprinker", "hydrent", "evacuaton").
+- Languages other than English, Arabic and Hebrew, and Arabic/Hebrew
+  phrasings, spellings and inflections not listed (e.g. Arabic حريق in a
+  compound not listed is possibly-safety only).
+- References: a pronoun or noun that is not listed ("the pump" mid-sentence
+  two sentences later, "it" not opening a sentence, "the one on DB-2"), a
+  reference to a later item, or a reference whose antecedent is in a
+  different description.
+- Over-catching is accepted: "Fire" in a company name, "critical" or
+  "standby" used of ordinary loads, "alarm" of an intruder alarm, and the
+  far references pulling in neighbouring items all become non-loads and
+  open mentions needing review; a clarification is the way to record that
+  a mention was harmless.
+- A clarification is a person's judgement: a member who may approve can
+  wrongly clarify a real life-safety mention when no item of the proposal
+  was itself flagged. Four-eyes, the reason, the printed `[CLARIFIED]` line
+  and the approval (a further member) are the controls; nothing validates
+  it.
