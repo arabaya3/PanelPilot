@@ -119,9 +119,22 @@ export function AiIntake({
   const firstEditField = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
   const editButtons = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Where the focus goes back to once an edit closes or a decision lands.
+  const refocus = useRef<string | null>(null);
   useEffect(() => {
-    if (editing !== null) firstEditField.current?.focus();
-  }, [editing]);
+    if (editing !== null) {
+      firstEditField.current?.focus();
+      return;
+    }
+    if (refocus.current !== null && pending === null) {
+      // Only where the focus was lost (a button that went disabled, a form that closed).
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        editButtons.current[refocus.current]?.focus();
+      }
+      refocus.current = null;
+    }
+  }, [editing, pending]);
 
   const length = Array.from(description).length;
   const tooLong = length > AI_DESCRIPTION_LIMIT;
@@ -189,7 +202,7 @@ export function AiIntake({
     // Only now, with the server's record of the decision, does the item go in.
     if (decision !== 'reject' && statusOf(stored, item.id) !== 'rejected') place(item, stored);
     else setProblems(({ [item.id]: _gone, ...rest }) => rest);
-    editButtons.current[item.id]?.focus();
+    refocus.current = item.id;
   }
 
   function place(item: AiItem, from: AiProposal) {
@@ -284,7 +297,7 @@ export function AiIntake({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             setEditing(null);
-            editButtons.current[item.id]?.focus();
+            refocus.current = item.id;
           }
         }}
       >
@@ -409,7 +422,7 @@ export function AiIntake({
             className="btn btn-sm btn-ghost"
             onClick={() => {
               setEditing(null);
-              editButtons.current[item.id]?.focus();
+              refocus.current = item.id;
             }}
           >
             {t('cancelEdit')}

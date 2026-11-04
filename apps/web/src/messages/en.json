@@ -1487,7 +1487,7 @@
     },
     "ai": {
       "title": "Describe the project",
-      "notice": "Type a plain description and ask for proposals. Proposals are unconfirmed suggestions: nothing in them is designed or validated, and only what you accept goes into the editor. Only the text typed here is sent to the AI provider — no files, attachments or documents.",
+      "notice": "Type a plain description and ask for proposals. Proposals are unconfirmed suggestions, not designed or validated: only what you accept goes into the editor. Only the text typed here is sent to the AI provider — no files, attachments or documents.",
       "label": "Project description",
       "count": "{count} / {max} characters",
       "request": "Request proposals",
