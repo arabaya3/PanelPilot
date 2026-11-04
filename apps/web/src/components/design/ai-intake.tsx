@@ -28,6 +28,7 @@ import {
   AI_ITEM_KINDS,
   CONTROL_NEEDS,
   decideAiItem,
+  deleteAiProposal,
   requestAiProposal,
   type AiItem,
   type AiProposal,
@@ -52,6 +53,10 @@ const AI_CODES = new Set([
   'ai_requires_account',
   'ai_proposal_used',
   'ai_proposal_not_found',
+  'ai_consent_required',
+  'ai_request_in_flight',
+  'ai_user_limit_exceeded',
+  'ai_proposal_not_yours',
 ]);
 
 type Failure = {
@@ -59,7 +64,11 @@ type Failure = {
   retry: () => void;
 };
 
-type Impls = { request?: typeof requestAiProposal; decide?: typeof decideAiItem };
+type Impls = {
+  request?: typeof requestAiProposal;
+  decide?: typeof decideAiItem;
+  discard?: typeof deleteAiProposal;
+};
 
 /**
  * M6b: the "Describe the project" step and the review of what the model
@@ -80,6 +89,7 @@ export function AiIntake({
   boardNames,
   manualTargetId,
   onUnauthorized,
+  onDiscard,
   impls = {},
 }: {
   token: string | null;
@@ -99,6 +109,8 @@ export function AiIntake({
   /** Where "Continue manually" moves the focus: the editor's first step. */
   manualTargetId?: string;
   onUnauthorized?: () => void;
+  /** The proposal was deleted on the server; the screen forgets it. */
+  onDiscard?: () => void;
   impls?: Impls;
 }) {
   const t = useTranslations('design.ai');
@@ -106,8 +118,15 @@ export function AiIntake({
   const tr = useTranslations('design.requirements');
   const say = useOutcomeText();
   const id = useId();
-  const { request: ask = requestAiProposal, decide = decideAiItem } = impls;
+  const {
+    request: ask = requestAiProposal,
+    decide = decideAiItem,
+    discard = deleteAiProposal,
+  } = impls;
   const [asking, setAsking] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [discarding, setDiscarding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [itemFailure, setItemFailure] = useState<({ item: string } & Failure) | null>(null);
@@ -143,18 +162,25 @@ export function AiIntake({
   function failureText(outcome: { kind: string }): string {
     const code = (outcome as Refusal).code ?? '';
     if (outcome.kind === 'refused' && AI_CODES.has(code)) {
-      return t(`error.${code}`, { max: AI_DESCRIPTION_LIMIT });
+      const params = (outcome as Refusal).params ?? {};
+      return t(`error.${code}`, {
+        max: AI_DESCRIPTION_LIMIT,
+        limit: params.limit ?? '',
+        period: params.period ?? '',
+      });
     }
     return say(outcome);
   }
 
   async function requestProposals() {
-    if (token === null || asking) return;
+    if (token === null || asking || !consent) return;
     setAsking(true);
     setFailure(null);
-    const outcome = await ask({ token, description, request });
+    const outcome = await ask({ token, description, request, consent });
     setAsking(false);
     if (outcome.kind === 'proposed') {
+      const left = outcome.proposal.calls_remaining;
+      setRemaining(typeof left === 'number' ? left : null);
       setProblems({});
       setEditing(null);
       setShown(null);
@@ -163,6 +189,23 @@ export function AiIntake({
     }
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
     setFailure({ message: failureText(outcome), retry: () => void requestProposals() });
+  }
+
+  async function discardProposal() {
+    if (token === null || proposal === null || discarding) return;
+    setDiscarding(true);
+    setFailure(null);
+    const outcome = await discard({ token, id: proposal.id });
+    setDiscarding(false);
+    if (outcome.kind === 'deleted') {
+      setProblems({});
+      setEditing(null);
+      setShown(null);
+      onDiscard?.();
+      return;
+    }
+    if (outcome.kind === 'unauthorized') onUnauthorized?.();
+    setFailure({ message: failureText(outcome), retry: () => void discardProposal() });
   }
 
   function continueManually() {
@@ -632,15 +675,32 @@ export function AiIntake({
             <bdi dir="ltr">{t('count', { count: length, max: AI_DESCRIPTION_LIMIT })}</bdi>
             {tooLong ? ` ${t('error.ai_input_too_long', { max: AI_DESCRIPTION_LIMIT })}` : ''}
           </p>
+          <label className="flex items-start gap-2 text-sm" data-testid="ai-consent-label">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={consent}
+              data-testid="ai-consent"
+              onChange={(event) => {
+                setConsent(event.target.checked);
+              }}
+            />
+            <span>{t('consent')}</span>
+          </label>
           <button
             type="button"
             className="btn btn-primary self-start"
-            disabled={token === null || asking || tooLong || description.trim() === ''}
+            disabled={token === null || asking || !consent || tooLong || description.trim() === ''}
             data-testid="ai-request"
             onClick={() => void requestProposals()}
           >
             {asking ? t('requesting') : proposal ? t('requestAgain') : t('request')}
           </button>
+          {remaining !== null && (
+            <p className="text-xs text-text-muted" data-testid="ai-remaining">
+              {t('remaining', { count: remaining })}
+            </p>
+          )}
           {proposal && !used && <p className="text-xs text-text-muted">{t('requestAgainNote')}</p>}
           {failure && (
             <div className="flex flex-col gap-2" role="alert" data-testid="ai-error">
@@ -693,6 +753,20 @@ export function AiIntake({
             <p className="text-xs text-text-muted" data-testid="ai-provider">
               {t('provenance', { provider: proposal.provider, model: proposal.model })}
             </p>
+            {!used && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  disabled={token === null || discarding}
+                  data-testid="ai-discard"
+                  onClick={() => void discardProposal()}
+                >
+                  {discarding ? t('discarding') : t('discard')}
+                </button>
+                <span className="text-xs text-text-muted">{t('discardNote')}</span>
+              </div>
+            )}
             <div>
               <h3 className="mb-1 text-sm font-semibold">{t('original')}</h3>
               <p

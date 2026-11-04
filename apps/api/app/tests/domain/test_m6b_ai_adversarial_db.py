@@ -157,6 +157,8 @@ def _who_fixture(engine: Engine, tenants: tuple[str, str]) -> _Who:
     with engine.begin() as conn:
         if conn.execute(text("SELECT to_regclass('design_ai_proposals')")).scalar():
             conn.execute(text("TRUNCATE design_ai_proposals CASCADE"))
+        if conn.execute(text("SELECT to_regclass('ai_intake_usage')")).scalar():
+            conn.execute(text("TRUNCATE ai_intake_usage"))
         # The tenants are reused across runs: reset their monthly model-call count.
         conn.execute(
             text("DELETE FROM model_usage WHERE tenant_id = ANY(:t)"),
@@ -314,7 +316,7 @@ CONTROL = [{"board_index": 0, "load_index": 0, "needs": ["start_stop"]}]
 
 
 def _propose(c: _As, description: Any = DESCRIPTION, **extra: Any) -> Any:
-    return c.post(AI, json={"description": description, **extra})
+    return c.post(AI, json={"description": description, "ai_consent": True, **extra})
 
 
 def _created(
@@ -1672,6 +1674,17 @@ def test_slow_provider_is_cut_at_the_deadline_without_starving_the_api(
         raise RuntimeError("released")
 
     monkeypatch.setattr(provider, "create", hang)
+    # Twelve accounts, not one: one account's parallel calls are refused at
+    # its in-flight lease (S2, ``test_ai_intake_privacy_db``); this is about
+    # the pool.
+    from app.domain import ai_intake_usage
+
+    acquire = ai_intake_usage.acquire
+    monkeypatch.setattr(
+        ai_intake_usage,
+        "acquire",
+        lambda **kw: acquire(**{**kw, "user_id": uuid.uuid4()}),
+    )
     results: list[tuple[int, float]] = []
 
     def one() -> None:

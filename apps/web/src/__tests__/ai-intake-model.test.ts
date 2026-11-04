@@ -351,11 +351,16 @@ describe('the AI API calls', () => {
 
   it('posts only the typed description and the current request', async () => {
     const fetchImpl = respond(201, proposal());
-    const outcome = await requestAiProposal({ token: 't', fetchImpl, description: 'text' });
+    const outcome = await requestAiProposal({
+      token: 't',
+      fetchImpl,
+      description: 'text',
+      consent: true,
+    });
     expect(outcome).toEqual({ kind: 'proposed', proposal: proposal() });
     const [url, init] = fetchImpl.mock.calls[0] ?? [];
     expect(url).toBe('/api/v1/design/projects/requirements/ai-proposals');
-    expect(JSON.parse(init?.body as string)).toEqual({ description: 'text' });
+    expect(JSON.parse(init?.body as string)).toEqual({ description: 'text', ai_consent: true });
   });
 
   it.each([
@@ -368,11 +373,15 @@ describe('the AI API calls', () => {
     [422, { code: 'ai_input_empty' }, 'ai_input_empty'],
     [403, { code: 'ai_requires_account' }, 'ai_requires_account'],
     [409, { code: 'ai_proposal_used' }, 'ai_proposal_used'],
+    [422, { code: 'ai_consent_required' }, 'ai_consent_required'],
+    [409, { code: 'ai_request_in_flight' }, 'ai_request_in_flight'],
+    [429, { code: 'ai_user_limit_exceeded' }, 'ai_user_limit_exceeded'],
   ])('says a %i as its code', async (status, body, code) => {
     const outcome = await requestAiProposal({
       token: 't',
       fetchImpl: respond(status, body),
       description: 'text',
+      consent: true,
     });
     expect(outcome).toMatchObject({ kind: 'refused', code });
   });
@@ -382,6 +391,7 @@ describe('the AI API calls', () => {
       token: 't',
       fetchImpl: respond(201, { id: 'x' }),
       description: 'text',
+      consent: true,
     });
     expect(outcome).toEqual({ kind: 'failed' });
   });

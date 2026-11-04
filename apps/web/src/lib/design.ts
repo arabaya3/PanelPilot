@@ -1013,6 +1013,11 @@ export type AiProposal = {
   life_safety_mentioned?: boolean;
   /** Every life-safety and possibly-safety term keyword detection found (M6c). */
   safety_mentions?: SafetyMention[];
+  /** When, and by whom, sending the description to the AI provider was acknowledged. */
+  ai_consent_at?: string | null;
+  ai_consent_by_user_id?: string | null;
+  /** On the response that created it only: the caller's AI calls left this month (null: no cap). */
+  calls_remaining?: number | null;
 };
 
 /** A term detection found: `life_safety`, or `possibly` (an ambiguous word needing review). */
@@ -1129,21 +1134,42 @@ const AI_PROPOSALS = `${PROJECTS}/requirements/ai-proposals`;
 /**
  * Ask for proposals from a typed description:
  * `POST /api/v1/design/projects/requirements/ai-proposals`, body
- * `{description, request?}`. Only the typed text (and the current draft, so
- * the model can name existing boards) is sent; never a file.
+ * `{description, request?, ai_consent}`. Only the typed text (and the current
+ * draft, so the model can name existing boards) is sent; never a file. The
+ * server refuses (`ai_consent_required`) unless `consent` is true: the user
+ * acknowledged that the text goes to the AI provider.
  */
 export function requestAiProposal(
-  options: Transport & { description: string; request?: ProjectDesignRequest | null },
+  options: Transport & {
+    description: string;
+    request?: ProjectDesignRequest | null;
+    consent: boolean;
+  },
 ): Promise<AiProposalOutcome> {
-  const { description, request } = options;
+  const { description, request, consent } = options;
   return aiCall<AiProposalOutcome>(
     options,
     AI_PROPOSALS,
-    request ? { description, request } : { description },
+    request ? { description, request, ai_consent: consent } : { description, ai_consent: consent },
     (payload) => {
       const proposal = proposalOf(payload);
       return proposal ? { kind: 'proposed', proposal } : null;
     },
+  );
+}
+
+/**
+ * Delete one of the caller's own proposals that no saved revision applied:
+ * `DELETE /api/v1/design/projects/requirements/ai-proposals/{id}`.
+ */
+export function deleteAiProposal(options: Transport & { id: string }): Promise<DeleteOutcome> {
+  return call<DeleteOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(options.id)}`,
+    undefined,
+    () => null,
+    (response) => (response.status === 204 ? { kind: 'deleted' } : null),
+    'DELETE',
   );
 }
 

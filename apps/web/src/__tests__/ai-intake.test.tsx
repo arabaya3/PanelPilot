@@ -14,6 +14,7 @@ import type {
   AiProposal,
   AiProposalOutcome,
   decideAiItem,
+  deleteAiProposal,
   requestAiProposal,
   RequirementsRecord,
 } from '@/lib/design';
@@ -24,6 +25,8 @@ type Props = {
   initial?: AiProposal | null;
   request?: ReturnType<typeof vi.fn<typeof requestAiProposal>>;
   decide?: ReturnType<typeof vi.fn<typeof decideAiItem>>;
+  discard?: ReturnType<typeof vi.fn<typeof deleteAiProposal>>;
+  onDiscard?: () => void;
   onPlace?: (item: AiItem, proposal: AiProposal) => PlaceProblem | null;
   placed?: Set<string>;
   token?: string | null;
@@ -34,6 +37,8 @@ function Harness({
   initial = null,
   request = vi.fn<typeof requestAiProposal>(),
   decide = vi.fn<typeof decideAiItem>(),
+  discard = vi.fn<typeof deleteAiProposal>(),
+  onDiscard,
   onPlace = () => null,
   placed = new Set(),
   token = 'tok',
@@ -57,7 +62,11 @@ function Harness({
         onPlace={onPlace}
         boardNames={['MDB', 'DB1']}
         manualTargetId="boards-step"
-        impls={{ request, decide }}
+        onDiscard={() => {
+          setCurrent(null);
+          onDiscard?.();
+        }}
+        impls={{ request, decide, discard }}
       />
     </>
   );
@@ -72,6 +81,12 @@ function deferred<T>() {
 }
 
 const description = () => screen.getByTestId<HTMLTextAreaElement>('ai-description');
+
+/** Acknowledge that the description goes to the AI provider (once per render). */
+function agree() {
+  const box = screen.getByTestId<HTMLInputElement>('ai-consent');
+  if (!box.checked) fireEvent.click(box);
+}
 
 describe('describe the project', () => {
   it('says what proposals are and what is sent, and shows the limit', () => {
@@ -94,6 +109,9 @@ describe('describe the project', () => {
     expect(screen.getByTestId('ai-count').textContent).toContain('longer than 8000');
     expect(screen.getByTestId<HTMLButtonElement>('ai-request').disabled).toBe(true);
     fireEvent.change(description(), { target: { value: 'x'.repeat(8000) } });
+    // Without the acknowledgement nothing can be sent.
+    expect(screen.getByTestId<HTMLButtonElement>('ai-request').disabled).toBe(true);
+    agree();
     expect(screen.getByTestId<HTMLButtonElement>('ai-request').disabled).toBe(false);
   });
 
@@ -103,6 +121,7 @@ describe('describe the project', () => {
       .mockResolvedValue({ kind: 'proposed', proposal: proposal() });
     renderApp(<Harness request={request} />);
     fireEvent.change(description(), { target: { value: DESCRIPTION } });
+    agree();
     fireEvent.click(screen.getByTestId('ai-request'));
     await screen.findByTestId('ai-review');
     expect(request).toHaveBeenCalledWith(
@@ -302,6 +321,7 @@ describe('failures', () => {
       const request = vi.fn<typeof requestAiProposal>().mockResolvedValue(outcome);
       const onPlace = vi.fn(() => null);
       renderApp(<Harness request={request} onPlace={onPlace} description="My typed text" />);
+      agree();
       fireEvent.click(screen.getByTestId('ai-request'));
       const error = await screen.findByTestId('ai-error');
       expect(error.getAttribute('role')).toBe('alert');
@@ -324,6 +344,7 @@ describe('failures', () => {
       .fn<typeof requestAiProposal>()
       .mockResolvedValue({ kind: 'refused', detail: '', code: 'ai_timeout' });
     renderApp(<Harness request={request} description="text" />);
+    agree();
     fireEvent.click(screen.getByTestId('ai-request'));
     await screen.findByTestId('ai-error');
     fireEvent.click(screen.getByTestId('ai-manual'));
@@ -516,5 +537,76 @@ describe('a description that mentions life-safety equipment', () => {
   it('shows nothing when the description does not', () => {
     renderApp(<Harness initial={proposal()} />);
     expect(screen.queryByTestId('ai-life-safety')).toBeNull();
+  });
+});
+
+describe('consent, per-account limits and deleting a proposal (S2/S3)', () => {
+  it('sends nothing until the user acknowledges the AI provider, then sends the acknowledgement', async () => {
+    const request = vi
+      .fn<typeof requestAiProposal>()
+      .mockResolvedValue({ kind: 'proposed', proposal: { ...proposal(), calls_remaining: 4 } });
+    renderApp(<Harness request={request} description="text" />);
+    expect(screen.getByTestId('ai-consent-label').textContent).toContain('sent to the AI provider');
+    expect(screen.getByTestId<HTMLButtonElement>('ai-request').disabled).toBe(true);
+    agree();
+    fireEvent.click(screen.getByTestId('ai-request'));
+    await screen.findByTestId('ai-review');
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ consent: true }));
+    expect(screen.getByTestId('ai-remaining').textContent).toContain('4 AI proposal requests left');
+  });
+
+  it.each([
+    [
+      {
+        kind: 'refused',
+        detail: '',
+        code: 'ai_user_limit_exceeded',
+        params: { limit: '100', period: '2026-11' },
+      },
+      'used your 100 AI proposal requests for 2026-11',
+    ],
+    [{ kind: 'refused', detail: '', code: 'ai_request_in_flight' }, 'still being prepared'],
+    [
+      { kind: 'refused', detail: '', code: 'ai_consent_required' },
+      'may be sent to the AI provider',
+    ],
+  ] as Array<[AiProposalOutcome, string]>)('says %o in its own words', async (outcome, words) => {
+    const request = vi.fn<typeof requestAiProposal>().mockResolvedValue(outcome);
+    renderApp(<Harness request={request} description="text" />);
+    agree();
+    fireEvent.click(screen.getByTestId('ai-request'));
+    const error = await screen.findByTestId('ai-error');
+    expect(error.textContent).toContain(words);
+    expect(description().value).toBe('text');
+  });
+
+  it('deletes an unused proposal and forgets it; a used one offers no delete', async () => {
+    const discard = vi.fn<typeof deleteAiProposal>().mockResolvedValue({ kind: 'deleted' });
+    const onDiscard = vi.fn();
+    renderApp(<Harness initial={proposal()} discard={discard} onDiscard={onDiscard} />);
+    expect(screen.getByTestId('ai-review').textContent).toContain('provider keeps');
+    fireEvent.click(screen.getByTestId('ai-discard'));
+    await waitFor(() => {
+      expect(onDiscard).toHaveBeenCalledTimes(1);
+    });
+    expect(discard).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'tok', id: proposal().id }),
+    );
+    expect(screen.queryByTestId('ai-review')).toBeNull();
+  });
+
+  it('a refused delete says why and keeps the proposal', async () => {
+    const discard = vi
+      .fn<typeof deleteAiProposal>()
+      .mockResolvedValue({ kind: 'refused', detail: '', code: 'ai_proposal_not_yours' });
+    renderApp(<Harness initial={proposal()} discard={discard} />);
+    fireEvent.click(screen.getByTestId('ai-discard'));
+    expect((await screen.findByTestId('ai-error')).textContent).toContain('Only the person');
+    expect(screen.getByTestId('ai-review')).toBeTruthy();
+  });
+
+  it('a used proposal cannot be deleted from here', () => {
+    renderApp(<Harness initial={{ ...proposal(), used_by_revision_id: 'r1' }} />);
+    expect(screen.queryByTestId('ai-discard')).toBeNull();
   });
 });

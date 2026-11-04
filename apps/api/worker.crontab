@@ -28,3 +28,7 @@
 # crawler at its edge and has no curated list; its documents are added by hand.
 0 2 * * 0     crawl abb
 30 2 * * 0    crawl siemens
+
+# Delete AI intake proposals no saved revision applied once they are older
+# than AI_INTAKE_UNUSED_RETENTION_DAYS (M6b S3). Applied ones are never touched.
+15 4 * * *    purge-ai-proposals

@@ -14,3 +14,9 @@ def test_a_deleted_revision_leaves_its_proposal_used() -> None:
     (fk,) = DesignAiProposalRow.__table__.c.used_by_revision_id.foreign_keys
     assert fk.ondelete == "SET NULL"
     assert "used_at" in DesignAiProposalRow.__table__.c
+
+
+def test_consent_is_recorded_in_nullable_columns() -> None:
+    columns = DesignAiProposalRow.__table__.c
+    assert columns.ai_consent_at.nullable
+    assert columns.ai_consent_by_user_id.nullable
