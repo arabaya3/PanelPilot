@@ -68,6 +68,10 @@ def get_anthropic_client() -> Any:
     """
     import anthropic
 
+    from app.core.logging import quiet_sdk_loggers
+
+    quiet_sdk_loggers()  # its import may have read ANTHROPIC_LOG=debug
+
     return anthropic.Anthropic(
         api_key=_anthropic_key(),
         # The SDK's own Timeout type: it vendors its HTTP client, and rejects
@@ -89,6 +93,10 @@ def _openai_client() -> Any:
         ConfigurationError: If ``OPENAI_API_KEY`` is not set.
     """
     import openai
+
+    from app.core.logging import quiet_sdk_loggers
+
+    quiet_sdk_loggers()  # its import may have read OPENAI_LOG=debug
 
     from app.ai.openai_transport import OpenAIMessages
     from app.core.config import ConfigurationError
