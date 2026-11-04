@@ -1886,6 +1886,12 @@ function DesignWorkspace({
                   onUnauthorized={forOwner(() => {
                     void reauthorize();
                   })}
+                  onDiscard={forOwner(() => {
+                    // A deleted proposal: its tags name items that no longer exist.
+                    setAiProposal(null);
+                    setAiControlTags({});
+                    setBoards((rows) => untagged(rows));
+                  })}
                   impls={{
                     ...(requestAiProposalImpl ? { request: requestAiProposalImpl } : {}),
                     ...(decideAiItemImpl ? { decide: decideAiItemImpl } : {}),

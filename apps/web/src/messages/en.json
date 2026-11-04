@@ -1590,7 +1590,11 @@
         "ai_input_empty": "Type a description first.",
         "ai_requires_account": "AI proposals need a signed-in account. Sign in, or continue by hand.",
         "ai_proposal_used": "These proposals were used by a saved revision and can no longer be changed. Request new proposals, or continue by hand.",
-        "ai_proposal_not_found": "These proposals are no longer available. Request new ones, or continue by hand."
+        "ai_proposal_not_found": "These proposals are no longer available. Request new ones, or continue by hand.",
+        "ai_consent_required": "Confirm that the description may be sent to the AI provider, then try again.",
+        "ai_request_in_flight": "Proposals you asked for are still being prepared, perhaps in another tab. Wait for them to finish, then try again.",
+        "ai_user_limit_exceeded": "You have used your {limit} AI proposal requests for {period}. The allowance resets at the start of next month; you can continue by hand.",
+        "ai_proposal_not_yours": "Only the person who asked for these proposals can delete them."
       },
       "saved": {
         "title": "AI-assisted entries",
@@ -1599,7 +1603,12 @@
         "noDecisions": "No proposal was decided.",
         "changed": "(changed in the editor: {fields})"
       },
-      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision."
+      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision.",
+      "consent": "I understand that the description typed here, and the names of the boards already in the editor, are sent to the AI provider to prepare proposals.",
+      "remaining": "{count, plural, =0 {You have no AI proposal requests left this month.} one {You have # AI proposal request left this month.} other {You have # AI proposal requests left this month.}}",
+      "discard": "Delete these proposals",
+      "discarding": "Deleting…",
+      "discardNote": "Deletes them and the stored description from PanelPilot. Rows already placed in the editor stay, as your own entries. A copy the AI provider keeps under its own terms is not affected."
     }
   },
   "files": {

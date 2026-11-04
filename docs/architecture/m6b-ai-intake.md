@@ -334,15 +334,14 @@ changed_in_editor}], applied_in_revision, applied_at}`. Covered by
 
 ### 6.8 Open owner decisions
 
-- **S2:** there is no per-user limit. A tenant's members share its monthly
-  model-call budget and the per-address limits.
-- **S3:** `input_text` is kept for as long as the proposal row exists, which
-  is indefinitely, and is copied into the hashed requirements record of
-  every revision that applies or carries it. It cannot be removed without
-  breaking those records' hashes. `created_by_user_id` is a plain nullable
-  id with **no** foreign key (the review assumed `RESTRICT`); deleting an
-  account leaves the id in place. The owner decides on retention and
-  deletion, and on whether to add a foreign key.
+- **S2:** decided in code, defaults open (see §7.1): a per-account monthly
+  cap and one call in flight per account, on top of the tenant's budget.
+- **S3:** partly addressed (see §7): consent is recorded, unused proposals
+  can be deleted by their author and are purged after a retention period.
+  `input_text` copied into a saved revision's hashed record is **not**
+  removable today; §7.4 is the design for a separate change.
+  `created_by_user_id` is still a plain nullable id with **no** foreign key;
+  deleting an account leaves the id in place (owner decision unchanged).
 
 ### 6.9 Second review round (G1–G8) and the life-safety safety net
 
@@ -381,3 +380,157 @@ of scope and not designed; check that no placed load is that equipment`.
   what a model can slip through; they are not the gate. The gate remains the
   user's accept and place step: nothing reaches the request unless the user
   confirms it, and the safety-net open item stays on the record for review.
+
+## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
+
+### 7.1 Per-account usage control (S2)
+
+- **What is limited.** Per `(tenant, account)`, in table `ai_intake_usage`
+  (one row per tenant and account, tenant-scoped like `model_usage`):
+  - `AI_INTAKE_CALLS_PER_USER_PER_MONTH` (setting, default **100**, unset =
+    no per-account cap) AI intake calls per UTC calendar month. Refused with
+    **429 `ai_user_limit_exceeded`**, `params: {limit, period}`, and
+    `Retry-After` (seconds to the next UTC month). Distinct from
+    `rate_limited` (per address, wait minutes) and `model_budget_exceeded`
+    (the tenant's month).
+  - **One call in flight** per account: **409 `ai_request_in_flight`** while
+    another of the account's calls runs (parallel tabs cannot fan out).
+- **Atomicity.** The account's row is read `FOR UPDATE` (created through a
+  savepoint on first use, as `model_usage`), checked and incremented, and the
+  lease set, in the **same short transaction** as the tenant's
+  `charge_model_call`, committed before the provider is asked. Either refusal
+  rolls back both: a refused call is counted nowhere and reaches no
+  provider. Order: lease, account cap, tenant ceiling.
+- **The lease** (`lease_id`, `lease_expires_at` = now + 60 s deadline +
+  30 s margin) is released in a `finally` after the call, whatever its
+  outcome: success, 502/503/504, a bug (500), or a store failure. Release
+  clears only its own lease id. A crashed worker never releases it; it
+  lapses at `lease_expires_at` and the next call proceeds.
+- **Failed calls count.** A call that reached the provider stays counted for
+  the account as it stays charged to the tenant (consistent with §6.1/S1);
+  refusals before the provider (consent, input bounds, lease, caps) count
+  nothing. **No automatic retry**, server or client: the page offers Retry,
+  which is a new counted call.
+- **Remaining count.** The create response carries `calls_remaining`
+  (the account's calls left this month after this one; `null` with no cap,
+  and on GET/decision responses). The page shows it under the request
+  button.
+- **UI.** `ai-intake.tsx` says `ai_user_limit_exceeded` (with limit and
+  month), `ai_request_in_flight`, `ai_consent_required` and
+  `ai_proposal_not_yours` in en/ar/he, each with Retry and Continue
+  manually.
+- **Not decided here.** Pricing, plan-specific per-account caps, and
+  whether owners get a higher cap. The cap is a setting, not a plan field
+  (`billing.Plan` has only the pooled tenant allowance). The default 100 is
+  a tenth of the default tenant ceiling (`MODEL_CALLS_PER_MONTH` 1000): an
+  **open owner decision**.
+
+### 7.2 Where the description, proposals, decisions and quotes go
+
+| What                                                           | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Lifetime                                                                                    | Removable today                                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Description (`input_text`)                                     | `design_ai_proposals.input_text` (+ `input_sha256`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Until the proposal is deleted                                                               | Unused proposal: yes (author's delete, retention purge). Used: no (it is the applied revision's source) |
+| Description                                                    | Saved revision's `requirements.ai.proposal.input_text`, inside `requirements_sha256`, and every later revision that carries the block (§6.4)                                                                                                                                                                                                                                                                                                                                                                                                     | As long as the revision                                                                     | **No** (hashed, approvals bind to it); see §7.4                                                         |
+| Description                                                    | Browser `sessionStorage` draft (`DESIGN_DRAFT_STORAGE_KEY`, `ai.description`, plus `proposalId`)                                                                                                                                                                                                                                                                                                                                                                                                                                                 | The tab session; removed on save/discard/trial change                                       | By the user (closing the tab, discarding the draft)                                                     |
+| Description                                                    | API responses: create, GET proposal, saved-revision/project GET (`requirements.ai`)                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Client side only                                                                            | n/a                                                                                                     |
+| Description sent to the provider                               | `LlmProposalProvider`: `system=SYSTEM_PROMPT` (fixed text), one user message `"<existing_boards>\n{board names, one per line, < > escaped, or (none)}\n</existing_boards>\n\n<description>\n{description, delimiter tags neutralised}\n</description>\n\nOffsets count from …"`, plus model id, `max_tokens`, the tool schema and `tool_choice`. Nothing else from the tenant: no project info, loads, supply, customer, account, email or tenant id (asserted in `test_the_provider_receives_only_the_prompt_the_description_and_board_names`). | Provider-side retention under the provider's terms; this code sets no zero-retention option | **Not by us**                                                                                           |
+| Board names (from the editor's draft)                          | Sent to the provider (above); not stored with the proposal (`request` is read for names only)                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Provider side                                                                               | Not by us                                                                                               |
+| Model output (items, quotes, `value_spans`, `server_rejected`) | `design_ai_proposals.items/server_rejected` and the revision's `ai` block                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | As the description                                                                          | As the description                                                                                      |
+| Decisions (who, name, when, value)                             | `design_ai_proposals.decisions` (append-only) and the revision's `ai.decisions`                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | As the description                                                                          | As the description                                                                                      |
+| Quotes and question/unsupported texts                          | Review exports (drawing set PDF, calculations report, v2 connection drawing and schedules, JSON `requirements` lines): `[OPEN] …` lines cut at 120 characters (§6.6); the life-safety line names no text                                                                                                                                                                                                                                                                                                                                         | In every file already downloaded                                                            | **No**: downloaded files are outside the system                                                         |
+| Full description in exports                                    | Not printed by any export (PDF, DXF, AML, QET, ECAD, lists, JSON)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | —                                                                                           | —                                                                                                       |
+| Logs                                                           | `design.ai_proposal_created/deleted/malformed`, `ai_intake.in_flight/user_limit`: tenant id, proposal id, counts only; never text (malformed reasons are not logged; the request-body middleware logs no bodies)                                                                                                                                                                                                                                                                                                                                 | Log retention                                                                               | n/a (no text)                                                                                           |
+| Error responses                                                | Codes and English messages only; the description is never echoed (tested)                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | —                                                                                           | —                                                                                                       |
+| Consent                                                        | `design_ai_proposals.ai_consent_at`, `ai_consent_by_user_id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | As the proposal                                                                             | With the proposal                                                                                       |
+| Counts                                                         | `ai_intake_usage` (calls, lease), `model_usage` (tenant)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Indefinite (one row per account / per tenant-month)                                         | Not text                                                                                                |
+| Database backups                                               | Every table above                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Backup retention (infrastructure)                                                           | **No**: a purge or delete does not reach backups until they age out                                     |
+
+### 7.3 What is implemented (S3)
+
+- **Consent.** `POST …/ai-proposals` requires `ai_consent: true` (the user
+  acknowledges that the typed description and the editor's board names are
+  sent to the AI provider). Without it: **422 `ai_consent_required`**,
+  checked before anything else that costs (nothing is counted, charged or
+  sent). Recorded as `ai_consent_at` (= `created_at`) and
+  `ai_consent_by_user_id` on the proposal, returned on the proposal. The
+  page shows an unticked checkbox; the request button stays disabled until
+  it is ticked. Proposals created before this change have null consent
+  columns. Consent is not part of `proposal_sha256` or the revision's `ai`
+  block (no hash changes).
+- **Delete one's own unused proposal.** `DELETE
+…/ai-proposals/{id}` → 204. 404 `ai_proposal_not_found` (absent or another
+  tenant's), 403 `ai_proposal_not_yours` (another account's, even the
+  tenant owner's), 409 `ai_proposal_used` (applied by a saved revision),
+  403 `ai_requires_account` (a trial). Under the row lock, so it cannot race
+  a save applying it. The page offers "Delete these proposals" on an
+  unused proposal; rows already placed stay as the user's own entries.
+- **Retention purge.** Worker job `purge-ai-proposals [--days N]`
+  (crontab: daily 04:15 UTC) deletes proposals with `used_at IS NULL` older
+  than `AI_INTAKE_UNUSED_RETENTION_DAYS` (default **30**, an open owner
+  decision). Spans tenants (`worker/jobs.py`, already allowed). Used
+  proposals, including those whose revision was deleted (`used_at` kept),
+  are never purged. A save holding the row lock wins: the delete waits and
+  re-reads `used_at`.
+- Migration `e9d3b7a2c5f4` (revises `d4f8a1c3e6b2`), single head, additive:
+  table `ai_intake_usage`; nullable `design_ai_proposals.ai_consent_at`,
+  `ai_consent_by_user_id`.
+- Deletion is **not** claimed beyond the rows named: provider-side copies,
+  backups, downloaded exports and browser drafts are outside it.
+
+### 7.4 Design for a separate change: redactable description in saved revisions
+
+Not implemented. No snapshot, record or approval is rewritten by this change.
+
+- **Today.** A saved revision's `requirements` record embeds
+  `ai.proposal.input_text`; `requirements_sha256` covers it; an approval
+  binds to the record hash; later revisions carry the block (§6.4). Removing
+  the text changes the hash, so the record fails integrity and every
+  approval of it stops counting.
+- **Proposal.**
+  1. New tenant-scoped table `design_ai_inputs (tenant_id, input_sha256 PK
+per tenant, input_text NULL, redacted_at, redacted_by, reason)`.
+  2. New records (a new `pp-ai-proposal/2`, renderer/record versions
+     bumped) keep **only** `input_sha256` (and its length) in the hashed
+     record; `input_text` moves to the side table. Quotes (`items[].quote`)
+     are also substrings of the description: they would move too, as
+     `(start, end)` offsets only, resolved through the side table, or be
+     accepted as kept text (owner decision; keeping them leaves fragments
+     of the description in the record).
+  3. Redaction sets `input_text = NULL` and writes a tombstone (who, when,
+     why). The record and its hash are untouched, so integrity checks and
+     approvals keep verifying.
+  4. Readers (UI, exports) show "description redacted on …" where the text
+     is gone; open-item lines print without quotes.
+  5. Existing `pp-ai-proposal/1` records are left as they are: their text
+     stays in the hashed record. Migrating them means re-saving as a new
+     revision (a new hash, a new approval), which is the user's act.
+- **What an approval still proves after redaction:** that the approved
+  record, with that `input_sha256`, is unchanged; that the placements and
+  decisions it holds are the ones approved. It **no longer lets anyone
+  re-read** what the description said, or re-check quotes against it;
+  anyone holding a copy of the text can still prove it was that text
+  (hash match).
+- **Tradeoff.** Auditability of the source text against the right to remove
+  it. A redacted revision cannot be re-reviewed for "did the model misread
+  the description"; the review must rely on the decisions and placements
+  recorded. A short description is guessable from its hash (low entropy):
+  an unsalted hash is not anonymisation; a per-tenant salt/HMAC key
+  (destroyed on tenant deletion) mitigates this at the cost of a key to
+  manage.
+- **Copies that remain whatever we do:** files already exported and
+  downloaded (open-item lines with quotes ≤120 characters); the provider's
+  own retention of the request; database backups until they expire; browser
+  session drafts until the tab closes; any external system the user sent an
+  export to. Deletion must be described as "removed from PanelPilot's live
+  database", never as erasure.
+
+### 7.5 Open owner decisions (S2/S3)
+
+- The per-account default (100/month) and whether it varies by plan or role.
+- The unused-proposal retention (30 days).
+- Whether a tenant owner (not only the author) may delete a member's unused
+  proposal; whether account deletion should delete or anonymise that
+  account's unused proposals (and add the foreign key, §6.8).
+- Provider-side retention: whether to require a zero-data-retention
+  arrangement with the provider, and to state it in the consent text.
+- Whether to build §7.4, and whether quotes move with the text.

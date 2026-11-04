@@ -91,6 +91,12 @@ function viewTab(label: string): HTMLElement {
 }
 
 const requirements = () => within(screen.getByTestId('view-requirements'));
+
+/** Acknowledge that the description goes to the AI provider. */
+function agreeToSend() {
+  const box = requirements().getByTestId<HTMLInputElement>('ai-consent');
+  if (!box.checked) fireEvent.click(box);
+}
 const loadsPanel = () => within(screen.getByTestId('requirements-loads'));
 const descriptions = () => loadsPanel().getAllByLabelText<HTMLInputElement>('Circuit');
 const boardNames = () =>
@@ -108,6 +114,7 @@ async function openWithProposal(decide = serverDecides()) {
   fireEvent.change(requirements().getByTestId('ai-description'), {
     target: { value: DESCRIPTION },
   });
+  agreeToSend();
   fireEvent.click(requirements().getByTestId('ai-request'));
   await requirements().findByTestId('ai-review');
   return { request, decide };
@@ -218,6 +225,7 @@ describe('AI proposals on the design screen', () => {
       expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).not.toBeNull();
     });
     const before = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    agreeToSend();
     fireEvent.click(requirements().getByTestId('ai-request'));
     await requirements().findByTestId('ai-error');
     expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBe(before);

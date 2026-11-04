@@ -666,7 +666,11 @@ export interface paths {
     get: operations['get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get'];
     put?: never;
     post?: never;
-    delete?: never;
+    /**
+     * Delete Ai Proposal
+     * @description Delete one of the caller's own proposals that no saved revision applied (S3).
+     */
+    delete: operations['delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete'];
     options?: never;
     head?: never;
     patch?: never;
@@ -1593,6 +1597,11 @@ export interface components {
      *             life-safety equipment somewhere; a save records the open item
      *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
      *             dismissed.
+     *         ai_consent_at: When the caller acknowledged that the description is
+     *             sent to the model provider; ``ai_consent_by_user_id`` who.
+     *             Null on proposals made before the acknowledgement was asked.
+     *         calls_remaining: On the response that created it only: the caller's
+     *             AI intake calls left this month (``None`` with no per-account cap).
      */
     AiProposal: {
       /** Id */
@@ -1636,6 +1645,12 @@ export interface components {
        * @default false
        */
       life_safety_mentioned: boolean;
+      /** Ai Consent At */
+      ai_consent_at?: string | null;
+      /** Ai Consent By User Id */
+      ai_consent_by_user_id?: string | null;
+      /** Calls Remaining */
+      calls_remaining?: number | null;
     };
     /**
      * AiProposalItem
@@ -1686,6 +1701,9 @@ export interface components {
      *         request: The editor's current draft, read only for its board names
      *             so the model can name existing boards; never stored, never
      *             taken as confirmed.
+     *         ai_consent: The caller acknowledges that the description (and the
+     *             board names) is sent to the AI model provider; without it the
+     *             request is 422 ``ai_consent_required`` and nothing is sent.
      */
     AiProposalRequest: {
       /** Description */
@@ -1694,6 +1712,11 @@ export interface components {
       request?: {
         [key: string]: unknown;
       } | null;
+      /**
+       * Ai Consent
+       * @default false
+       */
+      ai_consent: boolean;
     };
     /**
      * AiRejected
@@ -7363,14 +7386,21 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description `ai_input_empty`, `ai_input_too_long` */
+      /** @description `ai_request_in_flight` (the account's other call) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_consent_required`, `ai_input_empty`, `ai_input_too_long` */
       422: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
-      /** @description `rate_limited`, `model_budget_exceeded` */
+      /** @description `rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded` */
       429: {
         headers: {
           [name: string]: unknown;
@@ -7429,6 +7459,56 @@ export interface operations {
       };
       /** @description `ai_proposal_not_found` (also another tenant's) */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_requires_account`, `ai_proposal_not_yours` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` (part of a saved revision's record) */
+      409: {
         headers: {
           [name: string]: unknown;
         };
