@@ -109,3 +109,115 @@ def test_edits_fit_their_kind() -> None:
         ai_intake.check_edit("question", {"text": "x"})
     with pytest.raises(ValueError, match="does not fit"):
         ai_intake.check_edit("board", {"name": "DB-2", "approved": True})
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "quote"),
+    [
+        ("power_kw", "63", "breaker 63 A"),
+        ("power_kw", "16", "cable 16 mm2"),
+        ("power_kw", "400", "400 V supply"),
+        ("power_kw", "5", "a 5 MW plant"),
+        ("power_kw", "10", "10 kVA UPS"),
+        ("power_kw", "12", "12 kWh battery"),
+        ("length_m", "5.5", "pump 5.5 kW"),
+        ("length_m", "16", "16 mm2 cable"),
+        ("phases", 3, "3 kW heater"),
+        ("power_factor", "0.85", "0.85 kW"),
+    ],
+)
+def test_a_number_needs_its_own_unit(field: str, value: Any, quote: str) -> None:
+    assert ai_intake.literal_span(field, value, quote) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "quote"),
+    [
+        ("power_kw", "5.5", "pump 5.5 kW"),
+        ("power_kw", "2", "2 kilowatt heater"),
+        ("power_kw", "3", "\u0633\u062e\u0627\u0646 3 \u0643\u064a\u0644\u0648\u0648\u0627\u0637"),
+        ("length_m", "20", "20 m from the board"),
+        ("length_m", "35", "35 metres"),
+        ("phases", 3, "3-phase motor"),
+        ("phases", 3, "3\u00d8 motor"),
+        ("phases", 1, "single phase"),
+        ("power_factor", "0.8", "cos phi 0.8"),
+        ("power_factor", "0.9", "power factor of 0.9"),
+    ],
+)
+def test_a_number_with_its_unit_is_read(field: str, value: Any, quote: str) -> None:
+    assert ai_intake.literal_span(field, value, quote) is not None
+
+
+@pytest.mark.parametrize(
+    ("text", "product"),
+    [
+        ("Contactor ABB S203", True),
+        ("Siemens 3RT2015 contactor", True),
+        ("LC1D18", True),
+        ("Schneider iC60N", True),
+        ("Pump P-7", False),
+        ("DB-1 sockets", False),
+        ("AHU2 fan", False),
+        ("Heater 5500W", False),
+        ("Siemens motor 3 kW", False),
+        ("Lighting 1.2 kW", False),
+    ],
+)
+def test_part_numbers_are_told_from_tags(text: str, product: bool) -> None:
+    assert ai_intake.product_number(text) is product
+
+
+def test_a_part_number_is_never_a_load() -> None:
+    text = "Main board MDB. Contactor ABB S203 on MDB."
+    payload = {
+        "items": [
+            item(text, "Main board MDB", "b1", "board", name="MDB"),
+            item(
+                text,
+                "Contactor ABB S203 on MDB",
+                "l1",
+                "load",
+                board="MDB",
+                description="ABB S203",
+                kind="motor",
+            ),
+        ]
+    }
+    items, _ = ai_intake.check_output(payload, text, [])
+    assert items[1]["kind"] == "unsupported"
+    assert items[1]["value"]["reason"] == ai_intake.PRODUCT_REASON
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Pump P-7 on MDB; P-7 is the fire pump.",
+        "Hydrant booster on MDB.",
+        "Deluge valve on MDB.",
+        "Firefighting lift on MDB.",
+        "Fireman's lift on MDB.",
+        "Smoke extract fan on MDB.",
+        "Emergency lighting on MDB.",
+        "\u0645\u0636\u062e\u0629 \u0625\u0637\u0641\u0627\u0621 on MDB.",
+        "\u05d4\u05d9\u05d3\u05e8\u05e0\u05d8 on MDB.",
+    ],
+)
+def test_life_safety_reads_the_sentence_and_its_tags(text: str) -> None:
+    head = text.split(" on MDB")[0]
+    payload = {
+        "items": [item(text, head, "l1", "load", board="MDB", description="Pump", kind="motor")]
+    }
+    items, _ = ai_intake.check_output(payload, text, ["MDB"])
+    assert items[0]["kind"] == "unsupported"
+
+
+def test_a_boards_other_loads_are_not_drawn_in() -> None:
+    text = "Lights on MDB. Sprinkler panel on MDB."
+    payload = {
+        "items": [
+            item(text, "Lights", "l1", "load", board="MDB", description="Lights", kind="lighting")
+        ]
+    }
+    items, _ = ai_intake.check_output(payload, text, ["MDB"])
+    assert items[0]["kind"] == "load"

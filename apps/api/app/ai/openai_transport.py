@@ -204,3 +204,15 @@ class OpenAIMessages:
             client: What answers ``chat.completions.create``.
         """
         self.messages = _Messages(client)
+        self._raw = client
+
+    def with_options(self, **options: Any) -> OpenAIMessages:
+        """The same wrapper over ``client.with_options(**options)`` (timeout, retries).
+
+        Args:
+            **options: As the OpenAI client's ``with_options`` takes them.
+
+        Returns:
+            A wrapper whose calls use those options.
+        """
+        return OpenAIMessages(self._raw.with_options(**options))

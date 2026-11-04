@@ -277,3 +277,69 @@ changed_in_editor}], applied_in_revision, applied_at}`. Covered by
   is every approval.
 - Migration `d4f8a1c3e6b2` (revises `c8e4a2d6f1b9`), single head, additive.
 - New error classes: `BadGatewayError` (502), `GatewayTimeoutError` (504).
+
+### 6.7 Review fixes (independent review of 1fe1c81)
+
+- **F2: numbers need their own unit.** A number counts for a field only with
+  a positive unit or cue next to it in the item's span: `power_kw` followed
+  by `kW` / `kilowatt(s)` (or the Arabic كيلوواط / ك.و, Hebrew קילוואט /
+  קו״ט); `length_m` followed by `m` / `metre(s)` / `meter(s)` (Arabic متر /
+  م, Hebrew מטר / מ'); `phases` followed by `phase(s)` / `ph` / `Ø` / `φ`
+  (Arabic فاز / طور, Hebrew פאז…) or written "single-phase" / "three-phase";
+  `power_factor` after `pf` / `p.f.` / `cos φ` / `cos phi` / "power factor"
+  (Arabic معامل القدرة, Hebrew מקדם הספק). "63 A", "16 mm2", "400 V",
+  "5 MW", "10 kVA", "12 kWh", "5.5 kW" as a length and "3 kW" as phases are
+  `server_rejected` with `value_not_in_text`. The reason code was kept, not
+  split per unit.
+- **F1: part numbers.** A `board` or `load` whose span or name/description
+  holds a manufacturer part or catalogue number becomes `unsupported` with
+  `reason: "product_number"`. Two conservative rules: a known brand (ABB,
+  Siemens, Schneider, Legrand, Eaton, Hager, Mitsubishi, Omron,
+  Allen-Bradley, Danfoss, Telemecanique, Chint, LS, GE, WEG, Wago, Phoenix,
+  Rittal, Finder, Lovato, Socomec) followed by a code with letters and
+  digits ("ABB S203", "Schneider iC60N"); or an unhyphenated token of
+  letters and at least three digits ("S203", "3RT2015", "LC1D18") that is
+  not a number with its unit ("5500W", "400V"). Decided: tags such as
+  "Pump P-7", "DB-1" or "AHU2" are **not** part numbers (a hyphen, or fewer
+  than three digits); "Siemens motor 3 kW" is not one either.
+- **F3: life safety reads context.** The check reads every sentence the span
+  stands in (sentences end at `.` `;` `!` `?` and the Arabic marks when
+  followed by space, so "5.5" does not split one, or at a line break), and
+  every other sentence that names one of the span's identifier tags
+  (letters then digits, "P-7"), except the board names, so "P-7 is the fire
+  pump" reaches "Pump P-7 5.5 kW" while a board's other loads are not drawn
+  in. The word list adds hydrant, deluge, drencher, foam pump/system, fire
+  main/hose/service/damper/curtain, fireman's/firemen's lift, firefighting
+  lift, smoke detector/fan, evacuation, and in Arabic إطفاء / هيدرانت / دخان,
+  in Hebrew כיבוי / הידרנט / עשן. **Decided:** emergency lighting (and
+  emergency luminaires/exit signs) stays unsupported: it is life-safety
+  equipment under its own standards, which this designer does not cover.
+- **S1: bounded call.** The provider is asked with a 60 s timeout and no
+  retry (`with_options(timeout=60, max_retries=0)`, also on the OpenAI
+  wrapper), and the domain bounds the whole call to
+  `PROVIDER_DEADLINE_S = 60` on a worker thread: past it, 504 `ai_timeout`,
+  nothing stored. An abandoned call's thread ends at the client's own
+  timeout.
+- **S4:** any opening or closing `description` tag typed into the
+  description, in any case or spacing (`</ Description >`), has its angle
+  brackets replaced by single guillemets in place (same length, offsets
+  unchanged).
+- **S6:** only the SDKs' `APIError` types, `httpx`/`httpx2` `HTTPError`,
+  `ConnectionError` and `TimeoutError` map to 503/504; anything else
+  propagates as a 500 (the generic handler, no customer text in the body).
+- The adversarial suite's app fixture now also overrides the per-address
+  trial limit (every request of a run comes from one test address; the
+  limits have their own tests), and its synthetic SDK errors use `httpx2`,
+  the SDK's own HTTP package, so `mypy app` passes.
+
+### 6.8 Open owner decisions
+
+- **S2:** there is no per-user limit. A tenant's members share its monthly
+  model-call budget and the per-address limits.
+- **S3:** `input_text` is kept for as long as the proposal row exists, which
+  is indefinitely, and is copied into the hashed requirements record of
+  every revision that applies or carries it. It cannot be removed without
+  breaking those records' hashes. `created_by_user_id` is a plain nullable
+  id with **no** foreign key (the review assumed `RESTRICT`); deleting an
+  account leaves the id in place. The owner decides on retention and
+  deletion, and on whether to add a foreign key.

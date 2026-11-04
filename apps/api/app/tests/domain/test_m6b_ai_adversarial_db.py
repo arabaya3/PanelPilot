@@ -183,6 +183,9 @@ def _app_fixture(engine: Engine, who: _Who) -> FastAPI:
     app.dependency_overrides[deps.get_current_user] = current
     app.dependency_overrides[get_session] = session
     app.dependency_overrides[deps.enforce_design_rate_limit] = lambda: None
+    # The per-address trial limit (create carries it) counts every request of
+    # the run from the one test address; the limits have their own tests.
+    app.dependency_overrides[deps.enforce_trial_rate_limit] = lambda: None
     install_exception_handlers(app)
     return app
 
@@ -548,10 +551,6 @@ def test_injected_device_values_are_not_accepted(
     _refused_or_rejected(_propose(as_(), INJECTION), engine, "i1")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="FINDING F1: a part number proposed as a load's description is kept as a load",
-)
 def test_a_product_number_proposed_as_a_load_is_never_a_load(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -778,7 +777,9 @@ def test_no_provider_configured_is_503(
 
 def _api_error(kind: str) -> BaseException:
     import anthropic
-    import httpx
+
+    # The SDK's own HTTP package (it vendors httpx as httpx2).
+    import httpx2 as httpx
 
     req = httpx.Request("POST", "https://provider.invalid/v1/messages")
     if kind == "timeout":
@@ -1399,10 +1400,6 @@ UNITS = "Main board MDB. Set breaker 63 A on the pump. Cable 16 mm2 for the pump
 @pytest.mark.parametrize(
     ("phrase", "number"), [("breaker 63 A", "63"), ("Cable 16 mm2", "16")], ids=["amps", "mm2"]
 )
-@pytest.mark.xfail(
-    strict=True,
-    reason="FINDING F2: a number with another unit (63 A, 16 mm2) is accepted as power_kw",
-)
 def test_a_number_in_another_unit_is_not_a_power(
     engine: Engine, as_: Any, provider: StubProvider, phrase: str, number: str
 ) -> None:
@@ -1431,10 +1428,6 @@ def test_a_number_in_another_unit_is_not_a_power(
     _refused_or_rejected(_propose(as_(), UNITS), engine, "i2")
 
 
-_F3 = pytest.mark.xfail(
-    strict=True, reason="FINDING F3: life-safety check reads only the span and a fixed word list"
-)
-
 LIFE = (
     "Main board MDB. Pump P-7 5.5 kW on MDB; P-7 is the fire pump. "
     "Hydrant booster set 7.5 kW on MDB. Deluge valve actuator 1 kW on MDB. "
@@ -1445,9 +1438,9 @@ LIFE = (
 @pytest.mark.parametrize(
     "phrase",
     [
-        pytest.param("Pump P-7 5.5 kW on MDB", marks=_F3),
-        pytest.param("Hydrant booster set 7.5 kW", marks=_F3),
-        pytest.param("Deluge valve actuator 1 kW", marks=_F3),
+        "Pump P-7 5.5 kW on MDB",
+        "Hydrant booster set 7.5 kW",
+        "Deluge valve actuator 1 kW",
         "Firefighting lift 11 kW",
     ],
     ids=["named_elsewhere", "hydrant", "deluge", "firefighting_lift"],

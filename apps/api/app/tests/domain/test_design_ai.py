@@ -641,3 +641,25 @@ def test_an_open_proposal_with_no_placements_records_its_open_items(
         "phases": 3,
         "controlled": True,
     }
+
+
+def test_a_provider_past_the_deadline_is_504_and_saves_nothing(
+    client: TestClient, engine: Engine, stub: StubProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    release = threading.Event()
+
+    class Slow(StubProvider):
+        def propose(self, *, description: str, boards: list[str]) -> Any:
+            release.wait(5)
+            return super().propose(description=description, boards=boards)
+
+    slow = Slow(complete_payload())
+    client.app.dependency_overrides[design_ai.get_proposal_provider] = lambda: slow  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_ai, "PROVIDER_DEADLINE_S", 0.2)
+    refused = _propose(client)
+    release.set()
+    assert refused.status_code == 504
+    assert error(refused)["code"] == "ai_timeout"
+    assert _count(engine) == 0

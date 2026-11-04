@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import UTC, datetime
 from typing import Any
 
@@ -53,6 +55,15 @@ logger = structlog.get_logger(__name__)
 
 #: Who a decision names when its account has neither a display name nor an email.
 UNKNOWN_ACCOUNT = "unknown account"
+
+#: The whole provider call's deadline (S1), seconds; past it the request is
+#: 504 ``ai_timeout`` whatever the client's own timeouts did.
+PROVIDER_DEADLINE_S = intake_proposer.DEADLINE_S
+
+#: Threads the provider calls run on, so a call can be abandoned at its
+#: deadline. A call abandoned keeps its thread only until the client's own
+#: timeout (the same deadline, no retry) ends it.
+_CALLS = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ai-intake")
 
 #: The most decisions one proposal keeps (a click loop is stopped here).
 MAX_DECISIONS = 2000
@@ -181,7 +192,12 @@ def create_proposal(
         session.rollback()
         raise
     try:
-        answer = provider.propose(description=text, boards=boards)
+        call = _CALLS.submit(provider.propose, description=text, boards=boards)
+        try:
+            answer = call.result(timeout=PROVIDER_DEADLINE_S)
+        except FutureTimeout as exc:
+            call.cancel()
+            raise intake_proposer.ProviderTimeout("past the deadline") from exc
     except intake_proposer.ProviderTimeout as exc:
         raise GatewayTimeoutError(
             "the model did not answer in time; try again", code="ai_timeout"

@@ -18,6 +18,7 @@ deterministic stub through the route's dependency; production builds only
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -31,6 +32,16 @@ TOOL_NAME = "propose_requirements"
 
 #: Output ceiling: two hundred short items fit.
 MAX_OUTPUT_TOKENS = 8192
+
+#: The whole call's deadline, in seconds (S1): a person is waiting at the
+#: editor. The client is asked with this timeout and no retry; the domain
+#: also bounds the call as a whole (``app.domain.design_ai``), which maps
+#: running past it to 504 ``ai_timeout``.
+DEADLINE_S = 60.0
+
+#: A description's own delimiter tag, opening or closing, in any case and
+#: spacing ("</ Description >").
+_DELIMITER = re.compile(r"<(\s*/?\s*description\s*)>", re.IGNORECASE)
 
 SYSTEM_PROMPT = f"""You read a panel designer's description of an electrical project and
 propose entries for a requirements form. You do not design anything.
@@ -120,13 +131,14 @@ def _escape(text: str) -> str:
 def user_message(description: str, boards: list[str]) -> str:
     """The user turn: the existing board names and the description, each delimited as data.
 
-    The description is sent unescaped so offsets into it stay true; its own
-    closing delimiter is neutralised in place, at the same length
-    (the closing tag loses its slash for a backslash), so it cannot end the
-    block early and no offset after it moves.
+    The description is sent unescaped so offsets into it stay true; a
+    delimiter tag typed into it, opening or closing, in any case or spacing,
+    is neutralised in place at the same length (its angle brackets become
+    single guillemets), so it cannot end or open the block and no offset
+    after it moves.
     """
     named = "\n".join(_escape(name) for name in boards) or "(none)"
-    body = description.replace("</description>", r"<\description>")
+    body = _DELIMITER.sub(lambda m: "\u2039" + m.group(1) + "\u203a", description)
     return (
         f"<existing_boards>\n{named}\n</existing_boards>\n\n"
         f"<description>\n{body}\n</description>\n\n"
@@ -142,6 +154,37 @@ def _timed_out(exc: BaseException) -> bool:
             return True
         seen = seen.__cause__ or seen.__context__
     return False
+
+
+def _transport_errors() -> tuple[type[BaseException], ...]:
+    """The exceptions a provider call raises for the provider or the network (S6).
+
+    Anything else -- a bug, a bad argument -- is not "unavailable" and
+    propagates as a 500.
+    """
+    found: list[type[BaseException]] = [ConnectionError, TimeoutError]
+    for module, name in (
+        ("anthropic", "APIError"),
+        ("openai", "APIError"),
+        ("httpx", "HTTPError"),
+        ("httpx2", "HTTPError"),
+    ):
+        try:
+            imported = __import__(module)
+        except ImportError:  # pragma: no cover - both SDKs are installed
+            continue
+        error = getattr(imported, name, None)
+        if isinstance(error, type) and issubclass(error, BaseException):
+            found.append(error)
+    return tuple(found)
+
+
+def _bounded(client: Any) -> Any:
+    """The client with this route's deadline and no retry, where it supports that."""
+    with_options = getattr(client, "with_options", None)
+    if callable(with_options):
+        return with_options(timeout=DEADLINE_S, max_retries=0)
+    return client
 
 
 def tool_definition() -> dict[str, Any]:
@@ -169,6 +212,7 @@ class LlmProposalProvider:
             client = self._client if self._client is not None else get_llm_client()
         except ConfigurationError as exc:
             raise ProviderUnavailable("no model provider is configured") from exc
+        client = _bounded(client)
         try:
             message = client.messages.create(
                 model=settings.generation_model,
@@ -178,9 +222,10 @@ class LlmProposalProvider:
                 tools=[tool_definition()],
                 tool_choice={"type": "tool", "name": TOOL_NAME},
             )
-        except Exception as exc:
-            # Broad: each provider client raises its own types. A timeout is
-            # told apart by name, without importing either SDK here.
+        except _transport_errors() as exc:
+            # The SDKs' own error types and the network's; a timeout is told
+            # apart by name (each SDK names its own). Anything else is a bug
+            # and propagates.
             if _timed_out(exc):
                 raise ProviderTimeout("the model did not answer in time") from exc
             raise ProviderUnavailable("the model could not be reached") from exc

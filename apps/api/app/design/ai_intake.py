@@ -73,23 +73,140 @@ PROPOSABLE_LOAD_KINDS = tuple(kind.value for kind in LoadKind if kind is not Loa
 OUT_OF_SCOPE_REASON = "fire-pump or life-safety equipment is out of scope"
 
 _LIFE_SAFETY = re.compile(
-    r"fire[\s_-]*pump|jockey[\s_-]*pump|sprinkler|fire[\s_-]*alarm|fire[\s_-]*fight|"
-    r"smoke[\s_-]*(?:extract|exhaust|control|vent|damper)|emergency[\s_-]*light|"
-    r"exit[\s_-]*sign|life[\s_-]*safety|stair(?:case|well)?[\s_-]*pressuri[sz]|"
-    # Arabic: fire, emergency (lighting), sprinklers.
-    "\u062d\u0631\u064a\u0642|\u0637\u0648\u0627\u0631\u0626|\u0631\u0634\u0627\u0634\u0627\u062a|"
+    r"fire[\s_-]*(?:pump|alarm|main|hose|fight|m[ae]n'?s?[\s_-]*lift|service|damper|curtain)|"
+    r"jockey[\s_-]*pump|sprinkler|hydrant|deluge|drencher|foam[\s_-]*(?:pump|system)|"
+    r"smoke[\s_-]*(?:extract|exhaust|control|vent|damper|detect|fan)|"
+    r"emergency[\s_-]*(?:light|lighting|luminaire|exit)|exit[\s_-]*sign|"
+    r"life[\s_-]*safety|stair(?:case|well)?[\s_-]*pressuri[sz]|evacuation|"
+    # Arabic: fire, emergency, sprinklers, extinguishing, hydrant, smoke.
+    "\u062d\u0631\u064a\u0642|\u0637\u0648\u0627\u0631\u0626|\u0631\u0634\u0627\u0634|"
+    "\u0625\u0637\u0641\u0627\u0621|\u0627\u0637\u0641\u0627\u0621|\u0647\u064a\u062f\u0631\u0627\u0646\u062a|"
+    "\u062f\u062e\u0627\u0646|"
     # Hebrew: fire (the word alone: it is inside many words), sprinkler(s),
-    # emergency, smoke detector.
+    # emergency, smoke detector, extinguishing, hydrant, smoke.
     "(?<!\\w)\u05d0\u05e9(?!\\w)|\u05de\u05ea\u05d6|\u05e1\u05e4\u05e8\u05d9\u05e0\u05e7\u05dc\u05e8|"
-    "\u05d7\u05d9\u05e8\u05d5\u05dd|\u05d2\u05dc\u05d0\u05d9 \u05e2\u05e9\u05df",
+    "\u05d7\u05d9\u05e8\u05d5\u05dd|\u05d2\u05dc\u05d0\u05d9 \u05e2\u05e9\u05df|\u05db\u05d9\u05d1\u05d5\u05d9|"
+    "\u05d4\u05d9\u05d3\u05e8\u05e0\u05d8|\u05e2\u05e9\u05df",
     re.IGNORECASE,
 )
 
+#: Where a description's sentences end: a full stop, semicolon, question or
+#: exclamation mark followed by space (not "5.5"), or a line break.
+_SENTENCE_END = re.compile("(?<=[.;!?\u061b\u061f])\\s+|\\n+")
+
+#: An identifier tag: letters then digits ("P-7", "AHU2", "FP01").
+_TAG = re.compile(r"(?<![\w-])[A-Za-z]{1,6}-?\d{1,4}[A-Za-z]?(?![\w-])")
+
+PRODUCT_REASON = "product_number"
+
+_BRANDS = (
+    r"abb|siemens|schneider|legrand|eaton|hager|mitsubishi|omron|allen[\s-]*bradley|"
+    r"danfoss|telemecanique|chint|ls|ge|weg|wago|phoenix|rittal|finder|lovato|socomec"
+)
+
+#: A brand followed by a code holding letters and digits ("ABB S203").
+_BRANDED_CODE = re.compile(
+    rf"\b(?:{_BRANDS})\b\s+(?=[\w./-]*\d)(?=[\w./-]*[a-z])[\w./-]{{2,24}}", re.IGNORECASE
+)
+#: An unbranded catalogue code: letters and at least three digits in one
+#: unhyphenated token ("S203", "3RT2015", "LC1D18" has three digits too).
+_CODE = re.compile(r"(?<![\w-])(?=\w*[A-Za-z])(?=(?:\w*\d){3})[A-Za-z0-9]{4,20}(?![\w-])")
+#: ...except a number with its unit ("5500W", "400V", "1200mm").
+_NUMBER_WITH_UNIT = re.compile(
+    r"^\d+(?:kw|w|kva|va|v|a|ma|ka|m|mm|mm2|hz|hp|rpm|kg|btu|lm|lux|k)$", re.IGNORECASE
+)
+
+
+def product_number(text: str) -> bool:
+    """Whether ``text`` names a manufacturer's part or catalogue number.
+
+    Conservative: a known brand followed by a letters-and-digits code, or an
+    unhyphenated token of letters and at least three digits that is not a
+    number with a unit. A tag such as "P-7", "DB-1" or "AHU2" is not one.
+    """
+    if _BRANDED_CODE.search(text):
+        return True
+    return any(not _NUMBER_WITH_UNIT.match(m.group()) for m in _CODE.finditer(text))
+
+
+def _sentences(text: str) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        out.append((start, match.start()))
+        start = match.end()
+    out.append((start, len(text)))
+    return out
+
+
+def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
+    """The sentences a span stands in, and every other sentence naming one of its tags.
+
+    The model chooses the span: "Pump P-7 5.5 kW" can leave out "P-7 is the
+    fire pump". A tag is an identifier in the span ("P-7") that is not a
+    board's name, so a board's other loads are not drawn in.
+    """
+    sentences = _sentences(text)
+    own = [(a, b) for a, b in sentences if a < span[1] and span[0] < b] or [span]
+    tags = {
+        m.group().lower()
+        for m in _TAG.finditer(text[span[0] : span[1]])
+        if m.group().lower() not in names
+    }
+    parts = [text[a:b] for a, b in own]
+    for a, b in sentences:
+        if (a, b) in own or not tags:
+            continue
+        words = {m.group().lower() for m in _TAG.finditer(text[a:b])}
+        if words & tags:
+            parts.append(text[a:b])
+    return " ".join(parts)
+
+
+def life_safety(text: str) -> bool:
+    """Whether ``text`` names fire-pump or life-safety equipment (en/ar/he)."""
+    return _LIFE_SAFETY.search(text) is not None
+
+
 _NUMBER = re.compile(r"(?<![\d.,])\d*[.,]?\d+(?![\d])")
-_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+_ARABIC_DIGITS = str.maketrans(
+    "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669", "0123456789"
+)
+
+#: The unit or cue each numeric field must be written with (F2): a positive
+#: match, not a deny-list.
+_AFTER = {
+    # kW: "kW", "kilowatt(s)", and the Arabic and Hebrew words and abbreviations.
+    "power_kw": re.compile(
+        "\\s*(?:k\\s?w(?![a-z])|kilo[\\s-]?watts?\\b|"
+        "\u0643\u064a\u0644\u0648\\s?\u0648\u0627\u0637|\u0643\\.\u0648|"
+        '\u05e7\u05d9\u05dc\u05d5\u05d5\u05d0\u05d8|\u05e7\u05d5"\u05d8|\u05e7\u05d5\u05f4\u05d8)',
+        re.IGNORECASE,
+    ),
+    # Metres: "m", "metre(s)", "meter(s)", and the Arabic and Hebrew words.
+    "length_m": re.compile(
+        "\\s*(?:m(?![a-z0-9\u00b2])|metres?\\b|meters?\\b|"
+        "\u0645\u062a\u0631|\u0645(?!\\w)|\u05de\u05d8\u05e8|\u05de'(?!\\w))",
+        re.IGNORECASE,
+    ),
+    # Phases: "3-phase", "3 ph", "3\u00d8", and the Arabic and Hebrew words.
+    "phases": re.compile(
+        "\\s*-?\\s*(?:phases?\\b|ph\\b|\u00f8|\u03c6|\u0444|"
+        "\u0641\u0627\u0632|\u0637\u0648\u0631|\u05e4\u05d0\u05d6)",
+        re.IGNORECASE,
+    ),
+}
+#: A power factor is written after its cue: "pf 0.85", "cos φ 0.8", "power factor of 0.9".
+_PF_CUE = re.compile(
+    "(?:p\\.?\\s?f\\.?|cos\\s*(?:\u03c6|\u03d5|phi|\u00f8)|power[\\s-]*factor|"
+    "\u0645\u0639\u0627\u0645\u0644\\s+\u0627\u0644\u0642\u062f\u0631\u0629|"
+    "\u05de\u05e7\u05d3\u05dd\\s+\u05d4\u05e1\u05e4\u05e7)"
+    "\\s*(?:of|is|=|:|\u2248|~)?\\s*$",
+    re.IGNORECASE,
+)
 _PHASE_WORDS = {
     1: re.compile(r"\b(?:single|one|mono)[\s_-]*phase", re.IGNORECASE),
-    3: re.compile(r"\b(?:three|tri|3)[\s_-]*phase|\b3\s*ph\b", re.IGNORECASE),
+    3: re.compile(r"\b(?:three|tri)[\s_-]*phase", re.IGNORECASE),
 }
 
 
@@ -268,10 +385,6 @@ def existing_boards(draft: Mapping[str, Any] | None) -> list[str]:
     return names
 
 
-#: A unit after a number that makes it no kW figure: watts or horsepower.
-_NOT_KW = re.compile(r"\s*(?:w(?![a-z])|watts?\b|hp\b|bhp\b)", re.IGNORECASE)
-
-
 def _numbers(text: str) -> list[tuple[Decimal, int, int]]:
     found: list[tuple[Decimal, int, int]] = []
     plain = text.translate(_ARABIC_DIGITS)
@@ -288,7 +401,13 @@ def _numbers(text: str) -> list[tuple[Decimal, int, int]]:
 
 
 def literal_span(field: str, value: Any, quote: str) -> tuple[int, int] | None:
-    """Where in ``quote`` the number ``value`` of ``field`` is written, or ``None``.
+    """Where in ``quote`` the number ``value`` of ``field`` is written with its unit, or ``None``.
+
+    A number counts only with a positive unit or cue (F2): ``power_kw``
+    followed by kW, ``length_m`` by metres, ``phases`` by a phase word or
+    sign, ``power_factor`` after a power-factor cue. "63 A", "16 mm2",
+    "400 V", "5 MW", "10 kVA", "5.5 kW" as a length and "3 kW" as phases are
+    not stated values of those fields.
 
     Args:
         field: The numeric field.
@@ -307,10 +426,12 @@ def literal_span(field: str, value: Any, quote: str) -> tuple[int, int] | None:
     for number, start, end in _numbers(quote):
         if number != wanted:
             continue
-        if field == "power_kw" and _NOT_KW.match(plain, end):
-            continue
-        return start, end
-    if field == "phases" and int(wanted) in _PHASE_WORDS and wanted == int(wanted):
+        if field == "power_factor":
+            if _PF_CUE.search(plain[max(0, start - 24) : start]):
+                return start, end
+        elif _AFTER[field].match(plain, end):
+            return start, end
+    if field == "phases" and wanted == wanted.to_integral_value() and int(wanted) in _PHASE_WORDS:
         match = _PHASE_WORDS[int(wanted)].search(quote)
         if match:
             return match.start(), match.end()
@@ -365,6 +486,11 @@ def check_output(
             f"the output is not the proposal tool's shape: {_fields(exc)}"
         ) from exc
 
+    names = {name.lower() for name in boards} | {
+        str(raw_item.value.get("name", "")).lower()
+        for raw_item in raw.items
+        if raw_item.kind == "board"
+    }
     kept: dict[str, dict[str, Any]] = {}
     rejected: list[dict[str, Any]] = []
     model_ids: dict[str, str] = {}
@@ -432,14 +558,20 @@ def check_output(
             )
             continue
         kind = item.kind
-        if kind in ("board", "load") and _LIFE_SAFETY.search(
-            " ".join([quote, str(data.get("name", "")), str(data.get("description", ""))])
-        ):
-            kind, data, spans = (
-                "unsupported",
-                {"text": quote[:MAX_STRING], "reason": OUT_OF_SCOPE_REASON},
-                {},
-            )
+        if kind in ("board", "load"):
+            own = " ".join([str(data.get("name", "")), str(data.get("description", ""))])
+            if life_safety(" ".join([context_of(text, span, names), own])):
+                kind, data, spans = (
+                    "unsupported",
+                    {"text": quote[:MAX_STRING], "reason": OUT_OF_SCOPE_REASON},
+                    {},
+                )
+            elif product_number(" ".join([quote, own])):
+                kind, data, spans = (
+                    "unsupported",
+                    {"text": quote[:MAX_STRING], "reason": PRODUCT_REASON},
+                    {},
+                )
         model_ids[item.id] = sid
         kept[sid] = {
             "id": sid,

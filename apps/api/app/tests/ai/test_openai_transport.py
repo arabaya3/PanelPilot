@@ -155,3 +155,21 @@ def test_the_wrapper_sends_the_translation_and_returns_the_reply() -> None:
 
     assert sent[0]["tool_choice"] == {"type": "function", "function": {"name": "emit_diagnosis"}}
     assert extract_named_tool_payload(message, "emit_diagnosis") == {"summary": "ok"}
+
+
+def test_with_options_wraps_the_optioned_client() -> None:
+
+    from app.ai.openai_transport import OpenAIMessages
+
+    class Raw:
+        def __init__(self) -> None:
+            self.options: dict[str, Any] = {}
+
+        def with_options(self, **options: Any) -> Raw:
+            optioned = Raw()
+            optioned.options = options
+            return optioned
+
+    wrapped = OpenAIMessages(Raw()).with_options(timeout=60.0, max_retries=0)
+    assert isinstance(wrapped, OpenAIMessages)
+    assert wrapped._raw.options == {"timeout": 60.0, "max_retries": 0}
