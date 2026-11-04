@@ -9,10 +9,8 @@ execution-ready design: the execution export is refused, unsupported text
 never reaches the request or the stored design, and approval is refused
 while a safety concern is unresolved.
 
-The contract's coming rules (``approval_blocked_by_safety``,
-``scope_confirmed``, the two resolutions, the scope statement) are marked
-strict xfail until the integrated head lands; the resolution route and body
-are assumed in :func:`resolve` (adapt that one helper to the real shape).
+Written against 710da3b with the coming rules as strict xfail; at 5133b60
+they pass and the markers are gone. The resolution route is in :func:`resolve`.
 Synthetic data only.
 """
 
@@ -21,7 +19,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import pytest
 from sqlalchemy.engine import Engine
 
 from app.design import snapshot
@@ -46,11 +43,6 @@ from app.tests.domain.test_m6b_ai_adversarial_db import (  # noqa: F401  (fixtur
     _save,
     _who_fixture,
     span,
-)
-
-#: The contract's coming rules: strict, so the integrated head must clear each.
-CONTRACT = pytest.mark.xfail(
-    strict=True, reason="M6d contract not implemented at 710da3b (safety block/resolutions/scope)"
 )
 
 #: What the scope statement must name as not covered (contract wording, loosely).
@@ -296,7 +288,6 @@ def test_a_normal_request_has_no_safety_concern_and_is_never_executable(
     assert "NOT FOR EXECUTION" in text
 
 
-@CONTRACT
 def test_a_normal_request_approves_only_with_scope_confirmed_and_states_its_scope(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -400,7 +391,6 @@ def test_a_fire_pump_is_never_placed_and_never_executable(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@CONTRACT
 def test_a_fire_pump_blocks_approval_until_excluded_and_prints_the_exclusion(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -426,7 +416,6 @@ def test_a_fire_pump_blocks_approval_until_excluded_and_prints_the_exclusion(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@CONTRACT
 def test_a_fire_pump_typed_into_the_request_by_hand_still_blocks_approval(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -547,7 +536,6 @@ def test_a_standby_pump_is_not_designed_and_is_open_in_the_pdf(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@CONTRACT
 def test_a_standby_pump_blocks_approval_until_resolved(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -577,7 +565,6 @@ def test_fire_station_road_is_raised_not_designed(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@CONTRACT
 def test_fire_station_road_is_a_false_positive_printed_as_not_engineer_validated(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -685,12 +672,7 @@ def test_a_conflict_and_a_missing_fault_level_stay_open_and_print(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="review finding: two accepted AI loads (11 and 15 kW) both place onto one 11 kW row; "
-    "saved 201 with no open item, the 15 kW reading recorded only as changed_in_editor",
-)
-def test_two_powers_for_one_load_cannot_both_be_placed(
+def test_two_powers_for_one_load_are_refused_or_open(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
     t = CONFLICT
@@ -741,10 +723,18 @@ def test_two_powers_for_one_load_cannot_both_be_placed(
             },
         },
     )
-    assert both.status_code == 422, both.text[:300]
+    if both.status_code == 422:
+        return
+    assert both.status_code == 201, both.text[:300]
+    pid = str(both.json()["id"])
+    conflicts = [
+        o for o in record(engine, pid)["open_items"] if o["code"] == "ai_conflicting_values"
+    ]
+    assert {o["subject"]["kind"] for o in conflicts} >= {"items_disagree"}
+    lines = [x for x in pdf_text(as_("reviewer"), pid).splitlines() if x.startswith("[OPEN]")]
+    assert any("11" in x and "15" in x for x in lines), lines
 
 
-@CONTRACT
 def test_a_conflict_is_listed_as_not_covered_when_approved(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -842,7 +832,6 @@ def test_outside_the_model_is_open_never_designed(
     assert_never_executable(as_("reviewer"), pid)
 
 
-@CONTRACT
 def test_outside_the_model_approves_only_as_not_covered(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:

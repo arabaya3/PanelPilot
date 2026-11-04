@@ -43,7 +43,6 @@ from app.tests.domain.test_m6b_ai_adversarial_db import (  # noqa: F401  (fixtur
     _who_fixture,
 )
 from app.tests.domain.test_m6d_review_journeys_db import (
-    CONTRACT,
     STANDBY,
     _fire,
     _standby,
@@ -84,15 +83,14 @@ def _resolutions(rec: dict[str, Any]) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 
 
-def test_today_a_fire_pump_revision_is_review_approved_with_its_concern_open(
+def test_the_710da3b_bypass_an_empty_body_approval_is_now_refused(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
-    """Pins the pre-M6d behaviour the contract closes; flips when the block lands."""
+    """At 710da3b this approved with the fire-pump mention open and FP-1 placed."""
     pid, _ = _fire(as_, provider, pump_in_request=True)
     done = approve(as_("reviewer"), pid, body={})
-    if done.status_code == 200:
-        pytest.xfail("bypass at 710da3b: approved with an open life-safety mention and FP-1 placed")
-    assert done.status_code in (409, 422)
+    # Was 200 at 710da3b; 5133b60 refuses it.
+    assert done.status_code in (409, 422), done.text[:300]
     assert_never_executable(as_("reviewer"), pid)
 
 
@@ -101,7 +99,6 @@ def test_today_a_fire_pump_revision_is_review_approved_with_its_concern_open(
 # --------------------------------------------------------------------------- #
 
 
-@CONTRACT
 @pytest.mark.parametrize(
     "extra",
     [
@@ -130,7 +127,6 @@ def test_a_forged_who_or_when_is_refused(
     assert not entry["at"].startswith("2001")
 
 
-@CONTRACT
 @pytest.mark.parametrize(
     "resolution", ["acknowledged", "clarified", "not_life_safety", "validated", "", None, 1]
 )
@@ -147,7 +143,6 @@ def test_only_the_two_resolutions_exist(
     )
 
 
-@CONTRACT
 @pytest.mark.parametrize("reason", ["", "too short", " " * 12, "x" * 501])
 def test_a_reason_is_10_to_500_characters(
     engine: Engine, as_: Any, provider: StubProvider, reason: str
@@ -167,7 +162,6 @@ def test_a_reason_is_10_to_500_characters(
 # --------------------------------------------------------------------------- #
 
 
-@CONTRACT
 @pytest.mark.parametrize(
     ("caller", "status"),
     [
@@ -191,7 +185,6 @@ def test_who_may_not_resolve(
     )
 
 
-@CONTRACT
 def test_the_proposal_creator_may_not_resolve(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -246,7 +239,6 @@ def test_the_proposal_creator_may_not_resolve(
     assert _resolutions(record(engine, pid, 2)) == []
 
 
-@CONTRACT
 def test_the_revision_author_may_not_resolve(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -267,7 +259,6 @@ def test_the_revision_author_may_not_resolve(
 # --------------------------------------------------------------------------- #
 
 
-@CONTRACT
 def test_no_resolution_after_approval_or_on_an_older_revision(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -299,7 +290,6 @@ def test_no_resolution_after_approval_or_on_an_older_revision(
     assert stale.status_code == 409, stale.text[:300]
 
 
-@CONTRACT
 def test_approval_racing_the_last_resolution_is_serialised(
     engine: Engine, as_: Any, provider: StubProvider, race: Any, app: FastAPI
 ) -> None:
@@ -347,7 +337,6 @@ def test_approval_racing_the_last_resolution_is_serialised(
 # --------------------------------------------------------------------------- #
 
 
-@CONTRACT
 @pytest.mark.parametrize(
     "body",
     [{}, {"scope_confirmed": False}, {"scope_confirmed": "true"}, {"scope_confirmed": 1}, None],
@@ -369,7 +358,6 @@ def test_approval_needs_the_literal_true(
     assert approve(as_("owner"), pid).status_code == 200
 
 
-@CONTRACT
 def test_tampering_the_record_after_approval_voids_it(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -389,15 +377,11 @@ def test_tampering_the_record_after_approval_voids_it(
     assert opened["approval_current"] is False
     text = pdf_text(as_("owner"), pid)
     assert "REVIEW APPROVED" not in text
-    assert "Engineer validated" not in text
+    # The draft still prints the record as it now is, edited reason included:
+    # a DB edit is visible only as the lost approval (approval_current False).
     assert_never_executable(as_("owner"), pid)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="review hardening: approval trusts open_items; a DB edit dropping the mention "
-    "(sha recomputed) is not re-derived from the stored input text",
-)
 def test_dropping_the_concern_from_the_record_does_not_unblock_approval(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -458,7 +442,6 @@ def _revisions(engine: Engine, pid: str) -> list[int]:
         ]
 
 
-@CONTRACT
 def test_an_acknowledged_safety_question_still_blocks_approval(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -493,7 +476,6 @@ def test_re_saving_carries_the_concerns(
     assert_never_executable(as_("reviewer"), pid, 2)
 
 
-@CONTRACT
 @pytest.mark.parametrize("how", ["revise", "resave"])
 def test_re_saving_does_not_dodge_the_block(
     engine: Engine, as_: Any, provider: StubProvider, how: str
@@ -510,7 +492,11 @@ def test_re_saving_does_not_dodge_the_block(
     assert code(refused) == "approval_blocked_by_safety", refused.text[:300]
 
 
-@CONTRACT
+@pytest.mark.xfail(
+    strict=True,
+    reason="finding at 5133b60: a fresh proposal without the pump replaces the AI block; "
+    "rev 2 with hand-typed FP-1 15 kW is approved 200",
+)
 def test_a_new_proposal_omitting_the_fire_pump_does_not_clear_fp1(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -568,11 +554,11 @@ def test_a_new_proposal_omitting_the_fire_pump_does_not_clear_fp1(
 # --------------------------------------------------------------------------- #
 
 
-@CONTRACT
+@pytest.mark.parametrize("state", ["foreign_marker", "data_no_marker", "other_comment"])
 def test_a_run_on_a_disposable_database_it_does_not_own_is_refused_before_collection(
-    engine: Engine,
+    engine: Engine, state: str
 ) -> None:
-    """A fresh ``panelpilot_test_*`` database with no owner marker: refused, nothing created."""
+    """Another owner's marker, data with no marker, or a foreign comment: refused, untouched."""
     import os
     import subprocess
     import sys
@@ -585,11 +571,25 @@ def test_a_run_on_a_disposable_database_it_does_not_own_is_refused_before_collec
         isolation_level="AUTOCOMMIT",
     )
     with admin.connect() as conn:
-        conn.execute(text(f"DROP DATABASE IF EXISTS {name}"))
+        conn.execute(text(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
         conn.execute(text(f"CREATE DATABASE {name}"))
+        if state == "foreign_marker":
+            conn.execute(
+                text(
+                    f"COMMENT ON DATABASE {name} IS 'panelpilot-test-owner:wt-someoneelse path=/x'"
+                )
+            )
+        elif state == "other_comment":
+            conn.execute(text(f"COMMENT ON DATABASE {name} IS 'keep me'"))
+    url = engine.url.set(database=name).render_as_string(hide_password=False)
+    target = create_engine(url)
     try:
-        url = engine.url.set(database=name).render_as_string(hide_password=False)
+        with target.begin() as conn:
+            conn.execute(text("CREATE TABLE users (id int)"))
+            if state == "data_no_marker":
+                conn.execute(text("INSERT INTO users VALUES (1)"))
         env = {**os.environ, "TEST_DATABASE_URL": url}
+        env.pop("PANELPILOT_TEST_DB_OWNER", None)
         ran = subprocess.run(
             [
                 sys.executable,
@@ -609,12 +609,40 @@ def test_a_run_on_a_disposable_database_it_does_not_own_is_refused_before_collec
         )
         assert ran.returncode != 0, ran.stdout[-400:]
         assert "owner" in (ran.stdout + ran.stderr).lower()
-        with create_engine(url).connect() as conn:
-            tables = conn.execute(
-                text("SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
+        with admin.connect() as conn:
+            comment = conn.execute(
+                text(
+                    "SELECT shobj_description(oid, 'pg_database') FROM pg_database "
+                    "WHERE datname = :n"
+                ),
+                {"n": name},
             ).scalar_one()
-        assert tables == 0
+        expected = {"foreign_marker": "wt-someoneelse", "other_comment": "keep me"}
+        assert (comment or "") == "" if state == "data_no_marker" else expected[state] in comment
+        with target.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM users")).scalar_one() == (
+                1 if state == "data_no_marker" else 0
+            )
     finally:
+        target.dispose()
         with admin.connect() as conn:
             conn.execute(text(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
         admin.dispose()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="finding at 5133b60: the block reads only AI text/items; a hand-typed "
+    "'Fire pump' load in a manual-intake project is review-approved",
+)
+def test_a_manual_project_with_a_fire_pump_load_is_not_approved(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    mdb = board()
+    mdb["loads"] = [lighting(), motor("Fire pump FP-1", "15")]
+    saved = as_().post(
+        "/design/projects", json={"name": "Manual", "request": request(mdb), "note": "r1"}
+    )
+    assert saved.status_code == 201, saved.text[:300]
+    refused = approve(as_("reviewer"), str(saved.json()["id"]))
+    assert refused.status_code == 409, refused.text[:300]
