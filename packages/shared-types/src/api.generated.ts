@@ -7796,7 +7796,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_unresolved`, `snapshot_integrity_failed` */
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_unresolved`, `mention_is_life_safety`, `snapshot_integrity_failed` */
       409: {
         headers: {
           [name: string]: unknown;

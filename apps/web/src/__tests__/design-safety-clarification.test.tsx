@@ -213,3 +213,18 @@ describe('the server flag and the request', () => {
     });
   });
 });
+
+describe('a life-safety mention', () => {
+  it('offers no clarify action, and says why, even to an eligible member', () => {
+    view({
+      safetyClarification: { eligible: true, reason: null },
+      savedRecord: record({
+        open_items: [
+          { code: 'ai_life_safety_mentioned', subject: { mention_id: MENTION, term: 'fire main' } },
+        ],
+      }),
+    });
+    expect(screen.queryByTestId(`clarify-open-${MENTION}`)).toBeNull();
+    expect(screen.getByTestId(`clarify-never-${MENTION}`).textContent).toContain('never clarified');
+  });
+});

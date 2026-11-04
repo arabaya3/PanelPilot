@@ -226,6 +226,10 @@ _REFERS_FAR = re.compile(
 )
 
 
+#: The words a span opens with before its first number or punctuation ("Pump one").
+_NAME_HEAD = re.compile(r"^\W*((?:[^\W\d_]+\s+){0,3}[^\W\d_]+)")
+
+
 def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
     """The sentences a span stands in, those referring back to them, and those naming its tags.
 
@@ -250,6 +254,14 @@ def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
                 break
             chosen.add(follow)
             follow += 1
+    # A clause after ";" is read with the one it continues ("Pump 15 kW; standby.").
+    for n in sorted(chosen):
+        follow = n
+        while follow + 1 < len(sentences) and text[: sentences[follow + 1][0]].rstrip().endswith(
+            (";", "\u061b")
+        ):
+            follow += 1
+            chosen.add(follow)
     first = min(own) if own else len(sentences)
     for n in range(first + 1, len(sentences)):
         a, b = sentences[n]
@@ -265,6 +277,17 @@ def context_of(text: str, span: tuple[int, int], names: set[str]) -> str:
         for n, (a, b) in enumerate(sentences):
             if {_tag_key(m.group()) for m in _TAG.finditer(_plain(text[a:b]))} & tags:
                 chosen.add(n)
+    # An untagged name of two or more words, repeated later ("Pump one 15 kW
+    # ... Pump one feeds the sprinklers"), is followed as a tag is.
+    name = _NAME_HEAD.match(_plain(text[span[0] : span[1]]))
+    if name is not None:
+        words = name.group(1).split()
+        key = " ".join(words).lower()
+        if len(words) >= 2 and _tag_key(key) not in names_keys:
+            found = re.compile(rf"(?<!\w){re.escape(key).replace(chr(92) + ' ', r'\s+')}(?!\w)")
+            for n, (a, b) in enumerate(sentences):
+                if found.search(_plain(text[a:b]).lower()):
+                    chosen.add(n)
     parts = [text[sentences[n][0] : sentences[n][1]] for n in sorted(chosen)] or [
         text[span[0] : span[1]]
     ]
@@ -1042,9 +1065,15 @@ def safety_concern(ai: Mapping[str, Any] | None) -> str | None:
     life-safety ones): the description does name such equipment.
     ``possibly_safety_undecided``: an item turned ``unsupported`` for an
     ambiguous word has no decision yet.
+    ``life_safety_mentioned``: the description names life-safety equipment
+    anywhere, whatever the model returned for it (omitted, asked, or a plain
+    load the context check missed); such a mention is never clarified, and
+    while one stands no other mention of the proposal is either.
     """
     if not ai:
         return None
+    if any(m.level == "life_safety" for m in input_mentions(ai)):
+        return "life_safety_mentioned"
     latest = latest_decisions(ai.get("decisions", []))
     undecided = False
     for item in (ai.get("proposal") or {}).get("items", []):
@@ -1144,6 +1173,13 @@ def clarified_lines(
     return lines
 
 
+#: What an export prints for a server-set reason code, in place of the code.
+_REASON_PHRASES = {
+    POSSIBLY_REASON: "may be life-safety equipment; needs a person's safety review",
+    PRODUCT_REASON: "names a manufacturer's part or catalogue number",
+}
+
+
 def _short(text: str, limit: int = 120) -> str:
     flat = " ".join(str(text).split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
@@ -1175,7 +1211,7 @@ def open_item_line(ai: Mapping[str, Any] | None, item: Mapping[str, Any]) -> str
     if item["code"] == "ai_unsupported":
         return (
             f"[OPEN] Not covered by this design (from AI intake): {_short(value.get('text', ''))}"
-            f" — {_short(value.get('reason', ''), 80)}"
+            f" — {_short(_REASON_PHRASES.get(str(value.get('reason', '')), str(value.get('reason', ''))), 80)}"
         )
     if item["code"] == "ai_item_unreviewed":
         return f"[OPEN] AI intake item not reviewed ({found['kind']}): “{_short(found['quote'])}”"

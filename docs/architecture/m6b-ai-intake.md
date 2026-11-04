@@ -482,6 +482,16 @@ strict body `{mention_id, statement: "not_life_safety", reason}` (reason
   created the AI proposal (403 `clarification_by_proposal_author`; a
   proposal whose creator is unknown is refused the same way). The plan's
   approval feature is not checked (the permission is the rule asked for).
+- **Only `possibly`-level mentions are clarifiable (final review, owner).**
+  A `life_safety`-level mention is never clarified: 409
+  `mention_is_life_safety`; it stays `[OPEN]` for good on that proposal
+  (to remove it, delete the text from the description and request a new
+  proposal). While any life-safety mention stands in the description —
+  whatever the model returned for it (omitted, asked as a question, or a
+  plain load the context check missed) — the proposal has a safety concern
+  (`life_safety_mentioned`), so no possibly-safety mention of it is
+  clarifiable either (409 `safety_concern_unresolved`). The UI shows no
+  clarify action on a life-safety mention, with that explanation.
 - Never: 409 `safety_concern_unresolved` while any item of the proposal is
   `unsupported` as life-safety equipment (the server's reason, or a
   model-made unsupported item whose words are life-safety ones) — whatever
@@ -505,7 +515,8 @@ not life-safety by <name> on <date>: <reason> — not engineer-validated`
   `SavedProject.safety_clarification = {eligible, reason}`
   (`requires_account`, `not_permitted`, `proposal_author`,
   `requirements_derived`, `revision_already_approved`,
-  `revision_not_latest`, `safety_concern_unresolved`,
+  `revision_not_latest`, `mention_is_life_safety` (only life-safety
+  mentions are open), `safety_concern_unresolved`,
   `nothing_to_clarify`); an ineligible member sees why. A required reason
   (10–500); afterwards who, when and the reason. en/ar/he.
 
@@ -541,10 +552,28 @@ unchanged; no migration.
   open mentions needing review; a clarification is the way to record that
   a mention was harmless.
 - A clarification is a person's judgement: a member who may approve can
-  wrongly clarify a real life-safety mention when no item of the proposal
-  was itself flagged. Four-eyes, the reason, the printed `[CLARIFIED]` line
-  and the approval (a further member) are the controls; nothing validates
-  it.
+  wrongly clarify a possibly-safety word that was in fact about life-safety
+  equipment (life-safety-level mentions cannot be clarified). Four-eyes,
+  the reason, the printed `[CLARIFIED]` line and the approval (a further
+  member) are the controls; nothing validates it.
+
+**Final-review fixes (2026-11-04).** Small-capital Latin letters (U+1D00
+range small capitals, ꜰ U+A730, ꜱ U+A731, ʀ, ɪ, ɢ, ʟ, ʙ, ʜ, ɴ, ʏ, ꞯ) are
+folded as stated above. Review exports print a phrase, not the reason code,
+for a server-made unsupported item: "may be life-safety equipment; needs a
+person's safety review" (`possibly_life_safety`) and "names a
+manufacturer's part or catalogue number" (`product_number`); exports are
+English, as their other fixed lines are. The renderer guard's reference
+exports are unchanged, so the versions (`2026.11.04.2`,
+`2026.11.04.v2-17`) are not bumped again on this unreleased branch. Context
+also reads a clause after ";" (or Arabic "؛") with the one it continues,
+and follows a repeated untagged name of two or more words ("Pump one 15 kW
+… Pump one feeds the sprinklers") as a tag is followed. Still bypasses
+(reviewer's strict xfails in `app/tests/design/test_m6c_final_probes.py`):
+"it" not opening a sentence, note references ("see note 3"), standards
+instead of terms ("NFPA 20 listed"), and a one-word repeated name
+("Pump … Pump feeds the sprinklers": not followed, it would draw in every
+pump).
 
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 

@@ -71,6 +71,8 @@ CONFUSABLES: dict[str, str] = {
     "\u0280": "r", "\u1d07": "e", "\u0299": "b", "\u029c": "h", "\u1d0b": "k", "\u029f": "l",
     "\u1d0d": "m", "\u0274": "n", "\u1d0f": "o", "\u1d18": "p", "\ua731": "s", "\u1d1b": "t",
     "\u1d1c": "u", "\u1d20": "v", "\u1d21": "w", "\u028f": "y", "\u1d22": "z", "\u0138": "k",
+    "\u1d04": "c", "\u1d05": "d", "\u1d0a": "j", "\u1d0c": "l", "\u1d03": "b", "\u1d29": "p",
+    "\u0262": "g", "\ua730": "f", "\ua7af": "q", "\u1d7b": "i", "\u1d7e": "u",
     # Arabic letter variants (hamza seats, alef maqsura, teh marbuta)
     "\u0623": "\u0627", "\u0625": "\u0627", "\u0622": "\u0627", "\u0671": "\u0627",
     "\u0649": "\u064a", "\u0629": "\u0647",

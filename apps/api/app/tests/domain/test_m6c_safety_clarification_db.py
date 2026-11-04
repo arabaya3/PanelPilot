@@ -411,7 +411,12 @@ def test_a_life_safety_item_blocks_every_clarification(
     }
     for mention in _mentions(record):
         refused = _clarify(as_("reviewer"), pid, 1, mention["subject"]["mention_id"])
-        _refused(refused, 409, "safety_concern_unresolved")
+        expected = (
+            "mention_is_life_safety"
+            if mention["code"] == "ai_life_safety_mentioned"
+            else "safety_concern_unresolved"
+        )
+        _refused(refused, 409, expected)
     assert _record(engine, pid) == record
 
 

@@ -21,7 +21,6 @@ DETECTION_BYPASSES = [
     "f1re pump",
     "spr1nkler pump",
     "sprinkIer pump",  # Latin capital I for l
-    "ꜰire pump",  # U+A730 small capital F is not folded (other small capitals are)
     # Other languages and scripts.
     "Feuerlöschpumpe",
     "bomba contra incendios",
@@ -49,18 +48,38 @@ def test_detection_bypass(text: str) -> None:
     assert safety_terms.level_of(text) is not None
 
 
-ITEM_BYPASSES = [
-    # A possibly-safety word after ';' is another sentence: the load stays a load.
+ITEM_FOLLOWED = [
+    # A clause after ';' is read with the one it continues.
     ("Pump 15 kW on MDB; standby.", "Pump 15 kW on MDB"),
+    # The same untagged name repeated later is followed as a tag is.
+    (
+        "Pump one 15 kW on MDB. Lighting 2 kW on MDB. Pump one feeds the sprinklers.",
+        "Pump one 15 kW on MDB",
+    ),
+]
+
+
+@pytest.mark.parametrize(("text", "head"), ITEM_FOLLOWED)
+def test_item_context_followed(text: str, head: str) -> None:
+    payload = {
+        "items": [item(text, head, "l1", "load", board="MDB", description="Pump", kind="motor")]
+    }
+    items, _ = ai_intake.check_output(payload, text, ["MDB"])
+    assert items[0]["kind"] == "unsupported"
+
+
+def test_small_capitals_are_folded() -> None:
+    assert safety_terms.level_of("\ua730ire pump") == "life_safety"
+    assert (
+        safety_terms.level_of("\ua730\u026a\u0280\u1d07 \u1d18\u1d1c\u1d0d\u1d18") == "life_safety"
+    )
+
+
+ITEM_BYPASSES = [
     # "it" not opening a sentence, two sentences later.
     (
         "Pump 15 kW on MDB. Lighting 2 kW. Heating 3 kW. Also, it serves the sprinkler system.",
         "Pump 15 kW on MDB",
-    ),
-    # The same untagged name repeated later ("Pump one" is not a tag).
-    (
-        "Pump one 15 kW on MDB. Lighting 2 kW on MDB. Pump one feeds the sprinklers.",
-        "Pump one 15 kW on MDB",
     ),
     # A note reference.
     ("Pump 15 kW on MDB. See note 3. Note 3: this pump is the fire pump.", "Pump 15 kW on MDB"),
@@ -83,10 +102,6 @@ def _ai_block(text: str, items: list[dict[str, object]]) -> dict[str, object]:
     return {"proposal": {"input_text": text, "items": items}, "decisions": []}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a life-safety mention with no unsupported item can be clarified away (§6.10 last bullet)",
-)
 @pytest.mark.parametrize(
     "items",
     [

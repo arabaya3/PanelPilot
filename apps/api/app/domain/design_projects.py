@@ -2957,6 +2957,12 @@ _CLARIFY_REFUSALS: dict[str, tuple[type[PanelPilotError], str, str]] = {
         "an item of this proposal is life-safety equipment, or a possibly-safety item "
         "is undecided; no mention can be clarified",
     ),
+    "mention_is_life_safety": (
+        ConflictError,
+        "mention_is_life_safety",
+        "a life-safety mention is never clarified; it stays open on this proposal "
+        "(remove the text and request a new proposal)",
+    ),
     "nothing_to_clarify": (
         NotFoundError,
         "mention_not_found",
@@ -2972,8 +2978,13 @@ def _clarify_blocker(
     user: CurrentUser,
     *,
     may_approve: bool,
+    target: str | None = None,
 ) -> str | None:
     """Why ``user`` may not clarify a mention of this revision's record now, or ``None``.
+
+    Only a ``possibly``-level mention is ever clarifiable: a life-safety one
+    is ``mention_is_life_safety`` for good (``target``: the mention asked
+    for; without one, whether any open mention could be).
 
     The order is the order the endpoint checks in: who (account, permission),
     then the revision (derived, approved, latest), then the proposal (a
@@ -2992,8 +3003,20 @@ def _clarify_blocker(
     if row.number != latest:
         return "revision_not_latest"
     ai = record.get("ai")
-    if not any((o.get("subject") or {}).get("mention_id") for o in record.get("open_items", [])):
+    open_by_code = {
+        str((o.get("subject") or {}).get("mention_id")): o["code"]
+        for o in record.get("open_items", [])
+        if (o.get("subject") or {}).get("mention_id")
+    }
+    if target is not None:
+        if target not in open_by_code:
+            return "nothing_to_clarify"
+        if open_by_code[target] != ai_intake.POSSIBLY_SAFETY_MENTIONED:
+            return "mention_is_life_safety"
+    elif not open_by_code:
         return "nothing_to_clarify"
+    elif ai_intake.POSSIBLY_SAFETY_MENTIONED not in open_by_code.values():
+        return "mention_is_life_safety"
     if ai_intake.safety_concern(ai) is not None:
         return "safety_concern_unresolved"
     creator = str(((ai or {}).get("proposal") or {}).get("created_by_user_id") or "")
@@ -3069,13 +3092,14 @@ def clarify_mention(
             except AuthorizationError:
                 may = False
         record = _stored_record(row)
-        blocker = _clarify_blocker(record, row, project.revision_count, user, may_approve=may)
-        if blocker is None and record is not None:
-            open_ids = {
-                (o.get("subject") or {}).get("mention_id") for o in record.get("open_items", [])
-            }
-            if request.mention_id not in open_ids:
-                blocker = "nothing_to_clarify"
+        blocker = _clarify_blocker(
+            record,
+            row,
+            project.revision_count,
+            user,
+            may_approve=may,
+            target=request.mention_id,
+        )
         if blocker is not None or record is None:
             kind, code, message = _CLARIFY_REFUSALS[blocker or "requirements_derived"]
             params: dict[str, Any] = {"revision": number}

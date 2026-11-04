@@ -360,8 +360,16 @@ export function RequirementsView({
   }
 
   /** The clarify action of one mention, or why the caller cannot clarify it. */
-  function mentionAction(mention: string) {
+  function mentionAction(mention: string, code: string) {
     if (previewed !== null || opened === null || safetyClarification === null) return null;
+    // A life-safety mention is never clarified: it stays open on this proposal.
+    if (code === 'ai_life_safety_mentioned') {
+      return (
+        <p className="w-full text-xs text-text-muted" data-testid={`clarify-never-${mention}`}>
+          {t('clarify.neverLifeSafety')}
+        </p>
+      );
+    }
     if (!safetyClarification.eligible) {
       const why = safetyClarification.reason ?? '';
       return (
@@ -855,7 +863,7 @@ export function RequirementsView({
                         )}
                         {MENTION_CODES.has(item.code) &&
                           item.subject.mention_id &&
-                          mentionAction(item.subject.mention_id)}
+                          mentionAction(item.subject.mention_id, item.code)}
                       </li>
                     );
                   })}

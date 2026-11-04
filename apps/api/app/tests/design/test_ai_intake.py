@@ -287,3 +287,24 @@ def test_a_life_safety_mention_anywhere_is_an_open_item_no_decision_closes() -> 
         "out of scope and not designed; check that no placed load is that equipment"
     )
     assert ai_intake.open_items({"proposal": {"items": [], "input_text": TEXT}}) == []
+
+
+def test_an_unsupported_line_prints_a_phrase_not_a_reason_code() -> None:
+    block = {
+        "proposal": {
+            "input_text": "Standby pump",
+            "items": [
+                {
+                    "id": "i1",
+                    "kind": "unsupported",
+                    "quote": "Standby pump",
+                    "value": {"text": "Standby pump", "reason": ai_intake.POSSIBLY_REASON},
+                }
+            ],
+        }
+    }
+    line = ai_intake.open_item_line(block, {"code": "ai_unsupported", "subject": {"item_id": "i1"}})
+    assert line == (
+        "[OPEN] Not covered by this design (from AI intake): Standby pump"
+        " — may be life-safety equipment; needs a person's safety review"
+    )

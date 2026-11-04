@@ -64,7 +64,6 @@ def _items(kind: str) -> list[dict[str, Any]]:
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="a real life-safety mention can be clarified away")
 @pytest.mark.parametrize("kind", ["omitted", "question", "missed_as_load"])
 def test_a_life_safety_mention_cannot_be_clarified_away(
     engine: Engine, as_: Any, provider: StubProvider, kind: str
@@ -77,3 +76,6 @@ def test_a_life_safety_mention_cannot_be_clarified_away(
         as_("reviewer"), pid, 1, mention["subject"]["mention_id"], "Sprinklers are by others."
     )
     assert done.status_code == 409, done.text[:300]
+    assert done.json()["code"] == "mention_is_life_safety"
+    # It stays open, and the exports keep printing it.
+    assert [m["code"] for m in _mentions(_record(engine, pid))] == ["ai_life_safety_mentioned"]
