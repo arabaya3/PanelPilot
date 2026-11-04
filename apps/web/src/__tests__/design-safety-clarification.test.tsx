@@ -133,7 +133,7 @@ describe('clarifying a safety mention', () => {
   it.each([
     ['not_permitted', 'Only a member who may approve revisions'],
     ['proposal_author', 'You created this AI proposal'],
-    ['safety_concern_unresolved', 'An item of this proposal is life-safety equipment'],
+    ['safety_concern_unresolved', 'the description mentions life-safety equipment'],
     ['revision_already_approved', 'This revision is approved'],
   ])('says why an ineligible member cannot clarify (%s)', (reason, text) => {
     view({ safetyClarification: { eligible: false, reason } });

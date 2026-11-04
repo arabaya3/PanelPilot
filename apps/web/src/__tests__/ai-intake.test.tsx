@@ -145,6 +145,21 @@ describe('describe the project', () => {
     expect(within(rejected).queryByRole('button')).toBeNull();
   });
 
+  it('says an unsupported item’s reason in words, never as the server’s code', () => {
+    const base = proposal();
+    const items = base.items.map((item) =>
+      item.id === 'i-fire'
+        ? { ...item, value: { text: 'Standby pump', reason: 'possibly_life_safety' } }
+        : item,
+    );
+    renderApp(<Harness initial={{ ...base, items }} />);
+    const group = screen.getByTestId('ai-group-unsupported').textContent;
+    expect(group).toContain(
+      'May be life-safety equipment: needs a person’s safety review'.replace('’', "'"),
+    );
+    expect(group).not.toContain('possibly_life_safety');
+  });
+
   it('shows each item’s quoted source, its fields, and highlights its span', () => {
     renderApp(<Harness initial={proposal()} />);
     expect(screen.getByTestId('ai-quote-i-pump').textContent).toBe('Pump P1 7.5 kW three phase');

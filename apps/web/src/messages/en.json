@@ -1090,7 +1090,7 @@
       "clarification_requires_account": "Sign in to clarify a safety mention.",
       "clarification_not_permitted": "Only a member who may approve revisions can clarify a safety mention.",
       "clarification_by_proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
-      "safety_concern_unresolved": "An item of this proposal is life-safety equipment, or a possibly-safety item is undecided: no mention can be clarified.",
+      "safety_concern_unresolved": "This proposal still has an unresolved safety concern: the description mentions life-safety equipment, an item is life-safety equipment, or a possibly-safety item is undecided. No mention can be clarified.",
       "mention_not_found": "That safety mention is not open on this revision.",
       "mention_is_life_safety": "That mention names life-safety equipment: it is never clarified and stays open on this proposal."
     },
@@ -1512,7 +1512,7 @@
           "requirements_derived": "Save a new revision to clarify safety mentions.",
           "revision_already_approved": "This revision is approved; its record does not change.",
           "revision_not_latest": "Safety mentions are clarified on the latest revision only.",
-          "safety_concern_unresolved": "An item of this proposal is life-safety equipment, or a possibly-safety item is undecided: no mention can be clarified.",
+          "safety_concern_unresolved": "This proposal still has an unresolved safety concern: the description mentions life-safety equipment, an item is life-safety equipment, or a possibly-safety item is undecided. No mention can be clarified.",
           "nothing_to_clarify": "No safety mention is open.",
           "other": "You cannot clarify safety mentions on this revision.",
           "mention_is_life_safety": "A life-safety mention is never clarified: it stays open on this proposal. To remove it, delete the text from the description and request a new proposal."
@@ -1611,6 +1611,8 @@
         "sameBoard": "A board cannot feed itself."
       },
       "reason": {
+        "possibly_life_safety": "May be life-safety equipment: needs a person's safety review",
+        "product_number": "Names a manufacturer's part or catalogue number",
         "missing": "A value is missing",
         "ambiguous": "The description is ambiguous",
         "contradictory": "The description contradicts itself"
