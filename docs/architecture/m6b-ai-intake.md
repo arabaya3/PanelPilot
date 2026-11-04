@@ -734,10 +734,64 @@ per tenant, input_text NULL, redacted_at, redacted_by, reason)`.
   export to. Deletion must be described as "removed from PanelPilot's live
   database", never as erasure.
 
+### 7.6 Deletion truth table, removed accounts, deployment limits (M6d, 2026-11-04)
+
+Deletion here always means **removed from PanelPilot's live database**,
+never erasure. The page says so in the AI step (`design.ai.deletionNote`,
+under the consent box) and on the delete button (`design.ai.discardNote`,
+which now names backups and the provider; it previously said "from
+PanelPilot" without qualification).
+
+| What                                                                                                        | Deletable?              | How / why not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unused proposal (description, items, decisions, consent)                                                    | **Yes**                 | The author's `DELETE …/ai-proposals/{id}`; the daily `purge-ai-proposals` job after `AI_INTAKE_UNUSED_RETENTION_DAYS`. Not by the tenant owner (403 `ai_proposal_not_yours`, open decision).                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Used proposal (applied by a saved revision)                                                                 | **No**                  | 409 `ai_proposal_used`; never purged, even after its revision is deleted (`used_at` kept).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Description, quotes, decisions, clarifications copied into a saved or approved revision's `requirements.ai` | **No**                  | Inside `requirements_sha256`; approvals bind to it (integrity). Redaction design: §7.4, not built.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Exports already downloaded                                                                                  | **No**                  | Files outside the system (open-item quotes ≤120 chars, matched terms, clarification reasons, display names).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Browser `sessionStorage` draft (`panelpilot.design.draft`, incl. `ai.description`)                          | The user's browser      | Removed on save (the draft is no longer dirty), discard, dismissing the restore offer, trial change and sign-out; gone when the tab closes. Not reachable by the server.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Application logs                                                                                            | Nothing to delete       | Verified by grep of every logger call in `app/ai`, `design_ai.py`, `ai_intake.py`, `ai_intake_usage.py`: ids and counts only, never description, prompt or output; provider exception messages are fixed strings. **Fixed here:** with `LOG_LEVEL=DEBUG` the OpenAI/Anthropic SDKs and httpx log request options (the full prompt) at DEBUG; `configure_logging` now holds `anthropic`, `openai`, `httpx`, `httpcore` at INFO or above (`test_debug_level_keeps_the_model_sdks_request_bodies_out_of_the_log`). An unhandled 500 logs a traceback (exception text, not request bodies or locals). Log retention is the platform's. |
+| Database backups                                                                                            | **No** (not by the app) | Outside the app; their retention is **not known** to this codebase. A delete or purge reaches them only when they age out.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Provider-side copies                                                                                        | **No** (not by us)      | **Unverified; no zero-data-retention is claimed.** What is sent: `SYSTEM_PROMPT`, one user message (board names + description), model id, `max_tokens`, the tool schema, `tool_choice` (asserted). No retention flag is configured: the Anthropic call sets none; the OpenAI path (`LLM_PROVIDER` defaults to `openai`) maps to Chat Completions and sends no `store`, `user` or `metadata` field. What each provider retains is under its API terms and the deployment's agreement, not visible here.                                                                                                                             |
+
+**A removed (deactivated) account** — `test_ai_intake_removed_account_db.py`,
+through the real `team.remove` and the production liveness check
+(`auth.resolve_caller`, run by `get_current_user` on every request):
+
+- Every AI intake call, read, decision and delete by it is **401** at
+  authentication: nothing is counted, charged or sent. An unexpired token
+  does not help. No code change was needed.
+- A call already in flight when it is removed runs to its end (it was
+  authorised and counted at its start) and may store its proposal; its lease
+  is released by that call's `finally` (or lapses at `lease_expires_at`). The
+  lease is per `(tenant, account)` and holds up no other account.
+- Its unused proposals **stay** (visible to the tenant's members, deletable
+  by nobody but the retention purge, which removes them on schedule); its
+  used proposals stay; its decisions and clarifications in saved revisions
+  stay byte-identical (asserted).
+- Its `ai_intake_usage` row stays (counts only).
+
+**Deployment limits, not engineering decisions.**
+`AI_INTAKE_CALLS_PER_USER_PER_MONTH` (100) and
+`AI_INTAKE_UNUSED_RETENTION_DAYS` (30) are deployment settings. There is no
+owner-configurable, audited tenant-settings mechanism to hang a per-tenant
+override on: `company_settings` is the engineering design profile (strictly
+validated by `profile.load_profile`, plan-gated by `Feature.COMPANY_SETTINGS`,
+editable by owner or admin, recording only the last saver), and `billing.Plan`
+holds only the pooled tenant allowance. Adding one is not a small additive
+change (table or JSON field, endpoint, permission, audit trail, UI), so it is
+**recommended, not built**: a tenant-scoped `ai_intake_policy` (nullable
+`calls_per_user_per_month`, `unused_retention_days`), owner-only, each value
+validated server-side as `1 ≤ value ≤ deployment ceiling` (lower only,
+never raise), every change appended to an audit row (who, when, old, new);
+`acquire` would use `min(deployment, tenant)`, the purge
+`min(deployment, tenant)` days per tenant. No pricing is implied.
+
 ### 7.5 Open owner decisions (S2/S3)
 
 - The per-account default (100/month) and whether it varies by plan or role.
 - The unused-proposal retention (30 days).
+- Whether to build a per-tenant, owner-lowerable cap and retention (§7.6).
+- The backup retention period, so the deletion note can name it.
 - Whether a tenant owner (not only the author) may delete a member's unused
   proposal; whether account deletion should delete or anonymise that
   account's unused proposals (and add the foreign key, §6.8).

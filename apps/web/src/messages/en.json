@@ -1644,7 +1644,8 @@
       "remaining": "{count, plural, =0 {You have no AI proposal requests left this month.} one {You have # AI proposal request left this month.} other {You have # AI proposal requests left this month.}}",
       "discard": "Delete these proposals",
       "discarding": "Deleting…",
-      "discardNote": "Deletes them and the stored description from PanelPilot. Rows already placed in the editor stay, as your own entries. A copy the AI provider keeps under its own terms is not affected."
+      "discardNote": "Deletes them and the stored description from PanelPilot's live database. Rows already placed in the editor stay, as your own entries. Database backups keep a copy until they expire, and a copy the AI provider keeps under its own terms is not affected.",
+      "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms."
     }
   },
   "files": {

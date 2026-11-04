@@ -687,6 +687,9 @@ export function AiIntake({
             />
             <span>{t('consent')}</span>
           </label>
+          <p className="text-xs text-text-muted" data-testid="ai-deletion-note">
+            {t('deletionNote')}
+          </p>
           <button
             type="button"
             className="btn btn-primary self-start"

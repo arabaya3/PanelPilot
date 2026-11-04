@@ -102,6 +102,16 @@ describe('describe the project', () => {
     expect(document.querySelector('input[type="file"]')).toBeNull();
   });
 
+  it('says what can and cannot be deleted, and never claims full erasure', () => {
+    renderApp(<Harness />);
+    const note = screen.getByTestId('ai-deletion-note').textContent;
+    expect(note).toContain('proposals you have not used');
+    expect(note).toContain('files already exported');
+    expect(note).toContain('database backups');
+    expect(note).toContain('AI provider');
+    expect(note.toLowerCase()).not.toContain('permanently');
+  });
+
   it('counts characters and refuses to send more than the limit', () => {
     renderApp(<Harness />);
     fireEvent.change(description(), { target: { value: 'x'.repeat(8001) } });
