@@ -1802,6 +1802,15 @@ class ApproveRevisionRequest(StrictModel):
     note: Annotated[
         str, StringConstraints(strip_whitespace=True, max_length=_APPROVAL_NOTE_TEXT)
     ] = ""
+    #: The approver confirms they read what a review approval covers and does
+    #: not (``app.design.approval_scope``): strictly ``true``, else 422.
+    scope_confirmed: StrictBool
+
+    @model_validator(mode="after")
+    def _scope_confirmed(self) -> ApproveRevisionRequest:
+        if self.scope_confirmed is not True:
+            raise ValueError("confirm what a review approval covers (scope_confirmed: true)")
+        return self
 
 
 class ProjectSummary(BaseModel):
@@ -1846,6 +1855,14 @@ class RequirementSubject(BaseModel):
     item_id: str | None = None
     mention_id: str | None = None
     term: str | None = None
+    #: ``ai_conflicting_values`` (M6d): the field, how it conflicts
+    #: (``items_disagree`` or ``changed_in_editor``) and the values.
+    other_item_id: str | None = None
+    field: str | None = None
+    kind: str | None = None
+    ai_value: str | None = None
+    other_value: str | None = None
+    entered_value: str | None = None
 
 
 class RequirementBoard(BaseModel):
@@ -1926,6 +1943,7 @@ class RequirementOpenItem(BaseModel):
         "ai_unsupported",
         "ai_life_safety_mentioned",
         "ai_possibly_life_safety",
+        "ai_conflicting_values",
     ]
     subject: RequirementSubject
 
@@ -2063,6 +2081,8 @@ class AiPlacementRecord(BaseModel):
     board_ref: str | None = None
     load_ref: str | None = None
     changed_in_editor: list[str] = Field(default_factory=list)
+    #: What the row held instead, by changed field (M6d), printed as an open item.
+    entered: dict[str, str] = Field(default_factory=dict)
 
 
 class SafetyMention(BaseModel):
@@ -2084,6 +2104,23 @@ class SafetyClarification(BaseModel):
 
     mention_id: str
     statement: Literal["not_life_safety"]
+    reason: str
+    by_user_id: str
+    by_name: str
+    at: str
+
+
+class SafetyResolution(BaseModel):
+    """A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
+
+    ``excluded_from_scope``: the requirement is real and not covered by this
+    revision. ``false_positive``: the detected text is not a life-safety
+    requirement. Who and when are the server's; it validates nothing.
+    """
+
+    target_kind: Literal["mention", "item"]
+    target_id: str
+    resolution: Literal["excluded_from_scope", "false_positive"]
     reason: str
     by_user_id: str
     by_name: str
@@ -2170,6 +2207,7 @@ class RequirementsAi(BaseModel):
     applied_in_revision: int | None = None
     applied_at: str | None = None
     clarifications: list[SafetyClarification] = Field(default_factory=list)
+    resolutions: list[SafetyResolution] = Field(default_factory=list)
 
 
 class SafetyClarificationRequest(StrictModel):
@@ -2194,6 +2232,93 @@ class SafetyClarificationRequest(StrictModel):
         if not 10 <= len(self.reason) <= 500:
             raise ValueError("the reason holds 10 to 500 characters")
         return self
+
+
+class SafetyResolutionRequest(StrictModel):
+    """Resolve one safety concern of the latest revision's record (four-eyes, M6d).
+
+    Exactly one of ``mention_id`` and ``item_id``. Who and when are the
+    server's (any such field is 422).
+
+    Attributes:
+        mention_id: A detected mention (``m`` and 16 hex digits).
+        item_id: A proposal item unsupported as (possibly) life-safety.
+        resolution: ``excluded_from_scope`` or ``false_positive``.
+        reason: Why, in the resolver's words: 10 to 500 characters once
+            whitespace is collapsed.
+    """
+
+    mention_id: str | None = Field(default=None, pattern=r"^m[0-9a-f]{16}$")
+    item_id: str | None = Field(default=None, pattern=r"^i[0-9]{1,4}$")
+    resolution: Literal["excluded_from_scope", "false_positive"]
+    reason: str = Field(max_length=2000)
+
+    @model_validator(mode="after")
+    def _checked(self) -> SafetyResolutionRequest:
+        if (self.mention_id is None) == (self.item_id is None):
+            raise ValueError("name exactly one of mention_id and item_id")
+        self.reason = " ".join(self.reason.split())
+        if not 10 <= len(self.reason) <= 500:
+            raise ValueError("the reason holds 10 to 500 characters")
+        return self
+
+
+class SafetyConcern(BaseModel):
+    """One safety concern of a revision's record, and how it stands (M6d).
+
+    Attributes:
+        kind: ``mention`` or ``item``.
+        target_id: The mention id or item id a resolution names.
+        level: ``life_safety`` or ``possibly``.
+        code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+            ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+        label: The term or item text.
+        start: Offset in the description.
+        end: Offset after it.
+        resolved: Whether it holds no approval now (a resolution in force, or
+            a possibly-safety item whose words were all judged false positives).
+        resolution: The resolution in force on it, if any.
+        false_positive_refusal: Why it may not be a false positive (``item``,
+            ``life_safety_item_overlaps``), or ``None``.
+    """
+
+    kind: Literal["mention", "item"]
+    target_id: str
+    level: Literal["life_safety", "possibly"]
+    code: str
+    label: str
+    start: int
+    end: int
+    resolved: bool
+    resolution: SafetyResolution | None = None
+    false_positive_refusal: str | None = None
+
+
+class SafetyResolutionEligibility(BaseModel):
+    """Whether the caller may resolve safety concerns on this revision now, and if not, why.
+
+    ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
+    ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
+    ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
+    again on every request.
+    """
+
+    eligible: bool
+    reason: str | None = None
+
+
+class ApprovalHeld(BaseModel):
+    """Why the revision cannot be approved now: unresolved safety concerns (M6d).
+
+    Attributes:
+        code: ``approval_blocked_by_safety``.
+        count: How many concerns are unresolved.
+        codes: Their concern codes, sorted, distinct.
+    """
+
+    code: str = "approval_blocked_by_safety"
+    count: int
+    codes: list[str]
 
 
 class SafetyClarificationEligibility(BaseModel):
@@ -2368,6 +2493,15 @@ class SavedProject(BaseModel):
     author_established: bool = False
     is_author: bool = False
     safety_clarification: SafetyClarificationEligibility | None = None
+    #: M6d: every safety concern of the revision's stored record, how each
+    #: stands; who may resolve them; and why it cannot be approved now.
+    safety_concerns: list[SafetyConcern] = Field(default_factory=list)
+    safety_resolution: SafetyResolutionEligibility | None = None
+    approval_held: ApprovalHeld | None = None
+    #: The scope statement an approval now confirms; and the one this
+    #: revision's approval confirmed (``None``: none, or not approved).
+    approval_scope_version: str | None = None
+    approved_scope_version: str | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

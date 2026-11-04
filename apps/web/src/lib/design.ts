@@ -759,7 +759,39 @@ export function answerQuestion(
 }
 
 /**
- * Clarify one safety mention of the latest revision as not life-safety:
+ * Resolve one safety concern of the latest revision (M6d):
+ * `POST /api/v1/design/projects/{id}/revisions/{n}/requirements/safety-resolutions`,
+ * body `{mention_id | item_id, resolution, reason}`. `excluded_from_scope`: the
+ * requirement is real and not covered by this revision. `false_positive`: the
+ * detected text is not a life-safety requirement. Who and when are the server's.
+ */
+export function resolveSafetyConcern(
+  options: Transport & {
+    id: string;
+    revision: number;
+    concern: Pick<SafetyConcern, 'kind' | 'target_id'>;
+    resolution: SafetyResolutionKind;
+    reason: string;
+  },
+): Promise<AnswerOutcome> {
+  const { id, revision, concern, resolution, reason } = options;
+  return call<AnswerOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-resolutions`,
+    {
+      [concern.kind === 'mention' ? 'mention_id' : 'item_id']: concern.target_id,
+      resolution,
+      reason,
+    },
+    (payload) => {
+      const requirements = requirementsOf(payload);
+      return requirements ? { kind: 'recorded', requirements } : null;
+    },
+  );
+}
+
+/**
+ * Deprecated (M6c): clarify one safety mention of the latest revision as not life-safety:
  * `POST /api/v1/design/projects/{id}/revisions/{n}/requirements/safety-clarifications`.
  * Who and when are the server's; the page sends the mention, the statement and a reason.
  */
@@ -862,13 +894,14 @@ export async function exportRevision(
  * display name. `note` is an optional note to the approval, never an identity.
  */
 export function approveRevision(
-  options: Transport & { id: string; revision: number; note?: string },
+  options: Transport & { id: string; revision: number; note?: string; scopeConfirmed: true },
 ): Promise<ProjectOutcome> {
-  const { id, revision, note = '' } = options;
+  const { id, revision, note = '', scopeConfirmed } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
-    { note },
+    // The approver ticked what a review approval covers and does not (M6d).
+    { note, scope_confirmed: scopeConfirmed },
     saved,
   );
 }
@@ -1054,6 +1087,42 @@ export function safetyClarificationOf(
     eligible: eligible === true,
     reason: typeof reason === 'string' ? reason : null,
   };
+}
+
+/** The two resolutions of a safety concern (M6d). */
+export type SafetyResolutionKind = 'excluded_from_scope' | 'false_positive';
+/** One safety concern of the revision open, and how it stands, as the server says. */
+export type SafetyConcern = components['schemas']['SafetyConcern'];
+/** Why the revision open cannot be approved: unresolved safety concerns. */
+export type ApprovalHeld = { count: number; codes: string[] };
+/** Whether the caller may resolve safety concerns now, as the server says. */
+export type SafetyResolutionEligibility = { eligible: boolean; reason: string | null };
+
+/** The server's safety concerns of a saved project (none when it sent none). */
+export function safetyConcernsOf(project: object | null | undefined): SafetyConcern[] {
+  const list = (project as { safety_concerns?: unknown } | null | undefined)?.safety_concerns;
+  return Array.isArray(list) ? (list as SafetyConcern[]) : [];
+}
+
+/** The server's approval hold of a saved project, if it sent one. */
+export function approvalHeldOf(project: object | null | undefined): ApprovalHeld | null {
+  const held = (project as { approval_held?: unknown } | null | undefined)?.approval_held;
+  if (typeof held !== 'object' || held === null) return null;
+  const { count, codes } = held as { count?: unknown; codes?: unknown };
+  return {
+    count: typeof count === 'number' ? count : 0,
+    codes: Array.isArray(codes) ? codes.filter((c): c is string => typeof c === 'string') : [],
+  };
+}
+
+/** The server's flag for the resolve actions, if it sent one. */
+export function safetyResolutionOf(
+  project: object | null | undefined,
+): SafetyResolutionEligibility | null {
+  const flag = (project as { safety_resolution?: unknown } | null | undefined)?.safety_resolution;
+  if (typeof flag !== 'object' || flag === null) return null;
+  const { eligible, reason } = flag as { eligible?: unknown; reason?: unknown };
+  return { eligible: eligible === true, reason: typeof reason === 'string' ? reason : null };
 }
 
 /** Where a confirmed item sits in the editor when saved. */

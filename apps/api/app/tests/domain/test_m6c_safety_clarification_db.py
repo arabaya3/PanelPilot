@@ -263,10 +263,11 @@ def test_a_reviewer_clarifies_a_mention_and_exports_print_it(
     lines = requirements.open_item_lines(stored) + requirements.acknowledged_lines(
         stored, name_of=lambda _id: "a team member"
     )
-    clarified = [line for line in lines if line.startswith("[CLARIFIED]")]
+    # M6d: a clarification in force prints as a false positive.
+    clarified = [line for line in lines if line.startswith("[FALSE POSITIVE]")]
     assert clarified == [
-        f"[CLARIFIED] 'emergency' judged not life-safety by a team member on {entry['at'][:10]}: "
-        "The door label lists a phone number. — not engineer-validated"
+        f"[FALSE POSITIVE] 'emergency' judged not a life-safety requirement by a team member on "
+        f"{entry['at'][:10]}: The door label lists a phone number. — not engineer-validated"
     ]
     assert not any("ai_possibly" in line or "may refer" in line for line in lines)
 
@@ -348,8 +349,12 @@ def test_a_proposal_of_unknown_creator_is_refused_as_the_creators(
 def test_approved_non_latest_and_derived_are_refused(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
+    # M6d: an unresolved mention holds approval; a revision with no mention
+    # is approved, then a clarification of the carried mention is refused.
     pid, _ = _saved(as_, provider)
     mid = _mentions(_record(engine, pid))[0]["subject"]["mention_id"]
+    _refused(_approve(as_("reviewer"), pid, 1), 409, "approval_blocked_by_safety")
+    assert _clarify(as_("owner"), pid, 1, mid).status_code == 200
     assert _approve(as_("reviewer"), pid, 1).status_code == 200
     approved = _clarify(as_("owner"), pid, 1, mid)
     _refused(approved, 409, "revision_already_approved")
@@ -571,9 +576,10 @@ def test_a_forged_clarification_rehashed_after_approval_makes_it_not_current(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
     pid, _ = _saved(as_, provider)
+    mid = _mentions(_record(engine, pid))[0]["subject"]["mention_id"]
+    assert _clarify(as_("owner"), pid, 1, mid).status_code == 200
     assert _approve(as_("reviewer"), pid, 1).status_code == 200
     record = copy.deepcopy(revision_row(engine, pid, 1)["requirements"])
-    mid = _mentions(record)[0]["subject"]["mention_id"]
     record["ai"]["clarifications"] = [
         {
             "mention_id": mid,
@@ -645,7 +651,8 @@ def test_a_clarification_queued_behind_an_approval_is_refused(
                 time.sleep(0.02)
     for thread in threads:
         thread.join()
-    assert results["approve"].status_code == 200, results["approve"].text[:400]
-    assert results["clarify"].status_code == 409
-    assert _code(results["clarify"]) == "revision_already_approved"
+    # M6d: the approval is held by the open mention, so it records nothing;
+    # the clarification queued behind it records.
+    _refused(results["approve"], 409, "approval_blocked_by_safety")
+    assert results["clarify"].status_code == 200, results["clarify"].text[:400]
     assert AI  # the proposal route the fixtures drive

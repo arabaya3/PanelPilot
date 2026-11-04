@@ -203,6 +203,11 @@ findings}`. Saves nothing, reads no project.
 
 ### 5.4 Approval
 
+- **M6d:** an approval also requires `scope_confirmed: true` and is refused
+  409 `approval_blocked_by_safety` while the stored record holds an unresolved
+  safety concern; acknowledgements never resolve one. See
+  `m6b-ai-intake.md` §6.11.
+
 - An approval binds the requirements record: `approved_requirements_sha256`
   is set with it, under the revision lock, after the record's hash is checked
   (the hash of JSON `null` for a revision without a stored record). Opened

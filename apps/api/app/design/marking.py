@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import json
 import textwrap
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -34,6 +35,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import BaseDocTemplate, Flowable, Paragraph, Spacer
 
+from app.design import approval_scope
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
 from app.design.sheet import (
@@ -89,6 +91,12 @@ class ExportMark:
     #: The revision's requirements lines (M6a): its open items (``[OPEN] …``)
     #: and acknowledged assumptions, printed after the findings.
     requirements: tuple[str, ...] = field(default_factory=tuple)
+    #: What a review approval covers and does not (M6d), printed after the
+    #: requirements lines on every review export.
+    scope: tuple[str, ...] = field(default_factory=lambda: tuple(approval_scope.statement_lines()))
+    #: The JSON export's ``approval`` block (``approval_scope.block``);
+    #: ``None`` prints an unapproved one with no exclusions.
+    approval: Mapping[str, Any] | None = None
 
     @property
     def banner(self) -> str:
@@ -126,7 +134,7 @@ def finding_lines(mark: ExportMark) -> list[str]:
         )
         wrapped = textwrap.wrap(text, _LINE_CHARS, subsequent_indent="    ") or [text]
         lines.extend(wrapped)
-    for text in mark.requirements:
+    for text in (*mark.requirements, *mark.scope):
         lines.extend(textwrap.wrap(text, _LINE_CHARS, subsequent_indent="    ") or [text])
     return lines
 
@@ -342,6 +350,13 @@ def mark_json(project_json: str, mark: ExportMark) -> bytes:
         "export_status": {"label": mark.label, "identity": mark.identity},
         "findings": [found.model_dump(mode="json") for found in mark.findings],
         **({"requirements": list(mark.requirements)} if mark.requirements else {}),
+        "approval": dict(
+            mark.approval
+            if mark.approval is not None
+            else approval_scope.block(
+                approved=False, scope_version=None, excluded=(), false_positives=()
+            )
+        ),
         "project": json.loads(project_json),
     }
     return json.dumps(envelope, indent=2, ensure_ascii=False).encode("utf-8")

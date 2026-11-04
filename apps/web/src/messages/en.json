@@ -1092,7 +1092,15 @@
       "clarification_by_proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
       "safety_concern_unresolved": "This proposal still has an unresolved safety concern: the description mentions life-safety equipment, an item is life-safety equipment, or a possibly-safety item is undecided. No mention can be clarified.",
       "mention_not_found": "That safety mention is not open on this revision.",
-      "mention_is_life_safety": "That mention names life-safety equipment: it is never clarified and stays open on this proposal."
+      "mention_is_life_safety": "That mention names life-safety equipment: it is never clarified and stays open on this proposal.",
+      "approval_blocked_by_safety": "This revision has unresolved safety concerns. Each life-safety or possibly-safety mention and item must be excluded from scope or judged a false positive by another member before approval.",
+      "safety_resolution_requires_account": "Resolving a safety concern requires a signed-in account.",
+      "safety_resolution_not_permitted": "Only a member who may approve revisions can resolve a safety concern.",
+      "safety_resolution_by_proposal_author": "You created this AI proposal: another member must resolve its safety concerns.",
+      "safety_resolution_by_revision_author": "You saved this revision: another member must resolve its safety concerns.",
+      "safety_target_not_found": "That safety concern is not on this revision.",
+      "safety_concern_already_resolved": "That safety concern is already resolved; a resolution is never replaced.",
+      "false_positive_not_allowed": "This cannot be a false positive: the proposal reads it as life-safety equipment. Record it as excluded from scope instead."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1142,14 +1150,74 @@
       "approveHeld": {
         "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",
         "notValidated": "Revision {revision} is not validated: save again to validate it before approving.",
-        "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval."
+        "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval.",
+        "safety": "{count, plural, one {# safety concern is} other {# safety concerns are}} unresolved: each must be excluded from scope or judged a false positive by another member before approval."
       },
       "approveSelfAuthored": "A different team member must approve this revision.",
       "authorUnknown": "The server holds no author for this revision (author unknown); none is guessed.",
       "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it. The new revision records you as its author; it does not show who first entered this design.",
       "resave": "Save as a new revision for review",
       "resaved": "Saved revision {from} again as revision {revision}, for a different team member to approve.",
-      "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision."
+      "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision.",
+      "scope": {
+        "title": "What a review approval covers",
+        "covers": "A review approval is a review of this revision's study under PanelPilot's default rules.",
+        "notCoveredIntro": "It does not cover:",
+        "notCovered": {
+          "control": "control circuits",
+          "wiring": "board-to-board wiring",
+          "openOrExcluded": "items listed as open or excluded from scope",
+          "lifeSafety": "life-safety systems",
+          "standards": "standards compliance",
+          "accuracy": "electrical accuracy",
+          "execution": "execution"
+        },
+        "notValidation": "It is not engineer validation.",
+        "excludedTitle": "Excluded from scope (not designed or reviewed here):",
+        "falsePositivesTitle": "Judged not life-safety requirements (false positives, not engineer-validated):",
+        "confirm": "I have read what this approval covers and does not cover, including the items excluded from scope."
+      },
+      "safety": {
+        "title": "Safety concerns",
+        "held": "{count, plural, one {# unresolved safety concern holds} other {# unresolved safety concerns hold}} approval.",
+        "allResolved": "Every safety concern is resolved; the resolutions print on review exports.",
+        "detectionLimit": "Keyword and model detection cannot find every life-safety requirement. A resolution is a person's judgement, not engineer validation.",
+        "level": {
+          "life_safety": "Life-safety",
+          "possibly": "Possibly life-safety"
+        },
+        "kind": {
+          "mention": "in the description",
+          "item": "proposal item"
+        },
+        "exclude": "Exclude from scope",
+        "falsePositive": "Not a life-safety requirement",
+        "noFalsePositive": {
+          "item": "An item is never a false positive: exclude it from scope, or resolve its words.",
+          "overlaps": "The proposal reads this text as life-safety equipment: it can only be excluded from scope."
+        },
+        "meansExclude": "You record that this requirement is real and is not covered by this revision (for example, designed separately by the fire-protection contractor). It prints on every review export as excluded from scope. It never becomes a load.",
+        "meansFalsePositive": "You record that this text is not a life-safety requirement (for example, a street name). Your name, the date and reason print on every review export. This is not engineer validation.",
+        "reason": "Reason (required)",
+        "reasonHint": "{min} to {max} characters ({length} now).",
+        "submit": "Record resolution",
+        "cancel": "Cancel",
+        "done": "Resolution recorded.",
+        "resolvedExcluded": "Excluded from scope by {name} on {date}: {reason}",
+        "resolvedFalsePositive": "Judged not a life-safety requirement by {name} on {date}: {reason} (not engineer-validated)",
+        "resolvedByWords": "Resolved: the words it was raised for were judged not life-safety. It stays not covered by this design.",
+        "ineligible": {
+          "requires_account": "Sign in to resolve a safety concern.",
+          "not_permitted": "Only a member who may approve revisions (owner, administrator or reviewer) can resolve a safety concern.",
+          "proposal_author": "You created this AI proposal: another member must resolve its safety concerns.",
+          "revision_author": "You saved this revision: another member must resolve its safety concerns.",
+          "requirements_derived": "Save a new revision to resolve safety concerns.",
+          "revision_already_approved": "This revision is approved; its record does not change.",
+          "revision_not_latest": "Safety concerns are resolved on the latest revision only.",
+          "nothing_to_resolve": "No safety concern is open.",
+          "other": "You cannot resolve safety concerns on this revision."
+        }
+      }
     },
     "readiness": {
       "title": "Status",
@@ -1644,7 +1712,8 @@
       "remaining": "{count, plural, =0 {You have no AI proposal requests left this month.} one {You have # AI proposal request left this month.} other {You have # AI proposal requests left this month.}}",
       "discard": "Delete these proposals",
       "discarding": "Deleting…",
-      "discardNote": "Deletes them and the stored description from PanelPilot. Rows already placed in the editor stay, as your own entries. A copy the AI provider keeps under its own terms is not affected."
+      "discardNote": "Deletes them and the stored description from PanelPilot's live database. Rows already placed in the editor stay, as your own entries. Database backups keep a copy until they expire, and a copy the AI provider keeps under its own terms is not affected.",
+      "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms."
     }
   },
   "files": {

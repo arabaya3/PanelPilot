@@ -39,7 +39,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 
 from app.design import safety_terms, snapshot
@@ -404,6 +404,12 @@ class QuestionValue(_Strict):
     text: str = Field(min_length=1, max_length=MAX_STRING)
     about: str | None = Field(default=None, max_length=40)
     reason: Literal["missing", "ambiguous", "contradictory"]
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _alias(cls, value: Any) -> Any:
+        # "conflict" (a model's natural word) is "contradictory".
+        return "contradictory" if value == "conflict" else value
 
 
 class UnsupportedValue(_Strict):
@@ -972,11 +978,14 @@ def place(
             )
         board = request.boards[b]
         changed: list[str] = []
+        entered: dict[str, str] = {}
         if kind == "board":
             if confirmed.get("name") != board.name:
                 changed.append("name")
+                entered["name"] = str(board.name)
             if "fed_from" in confirmed and confirmed.get("fed_from") != board.fed_from:
                 changed.append("fed_from")
+                entered["fed_from"] = str(board.fed_from)
         elif kind == "load":
             assert li is not None
             row = board.loads[li]
@@ -1000,6 +1009,7 @@ def place(
                     differs = str(proposed) != str(current)
                 if differs:
                     changed.append(field)
+                    entered[field] = "" if current is None else str(current)
         else:
             assert li is not None
             if confirmed.get("need") not in control.get((b, li), ()):
@@ -1010,6 +1020,8 @@ def place(
                 "board_index": b,
                 "load_index": li,
                 "changed_in_editor": changed,
+                # What the row holds instead, so exports can print both values.
+                **({"entered": entered} if entered else {}),
             }
         )
     return out
@@ -1057,8 +1069,34 @@ def mention_views(text: str) -> list[dict[str, Any]]:
     ]
 
 
+def _life_safety_item(item: Mapping[str, Any]) -> bool:
+    """Whether an ``unsupported`` item is life-safety equipment.
+
+    The server's reason, or a model-made unsupported item whose words are
+    life-safety ones (never the ``possibly_life_safety`` reason).
+    """
+    if item.get("kind") != "unsupported":
+        return False
+    value = item.get("value") or {}
+    reason = str(value.get("reason", ""))
+    return reason == OUT_OF_SCOPE_REASON or (
+        reason != POSSIBLY_REASON and life_safety(f"{value.get('text', '')} {reason}")
+    )
+
+
+def _possibly_item(item: Mapping[str, Any]) -> bool:
+    """Whether an item was turned ``unsupported`` for an ambiguous (possibly-safety) word."""
+    return (
+        item.get("kind") == "unsupported"
+        and str((item.get("value") or {}).get("reason", "")) == POSSIBLY_REASON
+    )
+
+
 def safety_concern(ai: Mapping[str, Any] | None) -> str | None:
-    """Why no mention of this proposal may be clarified now, or ``None``.
+    """Why no mention of this proposal may be clarified by the M6c route, or ``None``.
+
+    The deprecated ``safety-clarifications`` route's gate, unchanged (its
+    entries, ``ai.clarifications``, are read as false positives under it).
 
     ``life_safety_item``: an item is ``unsupported`` as life-safety equipment
     (the server's reason, or a model's unsupported item whose words are
@@ -1077,35 +1115,198 @@ def safety_concern(ai: Mapping[str, Any] | None) -> str | None:
     latest = latest_decisions(ai.get("decisions", []))
     undecided = False
     for item in (ai.get("proposal") or {}).get("items", []):
-        if item.get("kind") != "unsupported":
-            continue
-        value = item.get("value") or {}
-        reason = str(value.get("reason", ""))
-        if reason == OUT_OF_SCOPE_REASON or (
-            reason != POSSIBLY_REASON and life_safety(f"{value.get('text', '')} {reason}")
-        ):
+        if _life_safety_item(item):
             return "life_safety_item"
-        if reason == POSSIBLY_REASON and str(item["id"]) not in latest:
+        if _possibly_item(item) and str(item["id"]) not in latest:
             undecided = True
     return "possibly_safety_undecided" if undecided else None
 
 
-def clarifications_in_force(ai: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
-    """The block's clarifications that count, by mention id.
+# --------------------------------------------------------------------------- #
+# Safety concerns and their two resolutions (M6d)
+# --------------------------------------------------------------------------- #
 
-    One counts while its mention is still detected in the description (same
-    id: same level, term and offset) and nothing in the proposal is a safety
-    concern (:func:`safety_concern`); the first recorded for a mention holds.
+#: The requirement is real and is not covered by this revision (designed or
+#: reviewed elsewhere, e.g. by the fire-protection contractor).
+EXCLUDED_FROM_SCOPE = "excluded_from_scope"
+#: The detected text is not a life-safety requirement ("Fire Station Road").
+FALSE_POSITIVE = "false_positive"
+RESOLUTIONS = (EXCLUDED_FROM_SCOPE, FALSE_POSITIVE)
+
+#: The concern code of an item unsupported as life-safety equipment.
+LIFE_SAFETY_ITEM = "ai_life_safety_item"
+#: The concern code of an item unsupported for a possibly-safety word.
+POSSIBLY_SAFETY_ITEM = "ai_possibly_life_safety_item"
+
+
+class SafetyTarget(BaseModel):
+    """One safety concern of an applied proposal: a detected mention or an unsupported item.
+
+    Attributes:
+        kind: ``mention`` (a detected span of the description) or ``item``
+            (a proposal item ``unsupported`` as (possibly) life-safety).
+        target_id: The mention's ``mention_id`` or the item's ``id``.
+        level: ``life_safety`` or ``possibly``.
+        code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+            ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+        label: The term (a mention) or the item's text, as printed.
+        start: Offset in the description (an item: its quoted span).
+        end: Offset after it.
     """
-    if not ai or safety_concern(ai) is not None:
-        return {}
-    detected = {m.mention_id for m in input_mentions(ai)}
-    out: dict[str, Mapping[str, Any]] = {}
-    for entry in ai.get("clarifications", []) or []:
-        mid = str(entry.get("mention_id", ""))
-        if mid in detected and mid not in out and entry.get("statement") == NOT_LIFE_SAFETY:
-            out[mid] = entry
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["mention", "item"]
+    target_id: str
+    level: Literal["life_safety", "possibly"]
+    code: str
+    label: str
+    start: int
+    end: int
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """``(kind, target_id)``."""
+        return (self.kind, self.target_id)
+
+
+def safety_targets(ai: Mapping[str, Any] | None) -> list[SafetyTarget]:
+    """Every safety concern of an applied proposal, mentions first, resolved or not."""
+    if not ai:
+        return []
+    out = [
+        SafetyTarget(
+            kind="mention",
+            target_id=m.mention_id,
+            level=m.level,
+            code=LIFE_SAFETY_MENTIONED if m.level == "life_safety" else POSSIBLY_SAFETY_MENTIONED,
+            label=m.term,
+            start=m.start,
+            end=m.end,
+        )
+        for m in input_mentions(ai)
+    ]
+    for item in (ai.get("proposal") or {}).get("items", []):
+        level: Literal["life_safety", "possibly"] | None = (
+            "life_safety"
+            if _life_safety_item(item)
+            else "possibly" if _possibly_item(item) else None
+        )
+        if level is None:
+            continue
+        source = item.get("source") or {}
+        out.append(
+            SafetyTarget(
+                kind="item",
+                target_id=str(item["id"]),
+                level=level,
+                code=LIFE_SAFETY_ITEM if level == "life_safety" else POSSIBLY_SAFETY_ITEM,
+                label=_short(str((item.get("value") or {}).get("text", "")), 120),
+                start=int(source.get("start", 0)),
+                end=int(source.get("end", 0)),
+            )
+        )
     return out
+
+
+def _overlap(a: SafetyTarget, b: SafetyTarget) -> bool:
+    return a.start < b.end and b.start < a.end
+
+
+def false_positive_refusal(ai: Mapping[str, Any] | None, target: SafetyTarget) -> str | None:
+    """Why ``target`` may not be resolved as a false positive, or ``None``.
+
+    ``item``: an item is never a false positive (a person may only exclude
+    it from scope; a possibly-safety item follows its mentions, see
+    :func:`unresolved_safety`). ``life_safety_item_overlaps``: a life-safety
+    mention whose span overlaps an item the proposal holds as life-safety
+    equipment (proposed or turned unsupported from that text) is real by the
+    proposal's own reading: exclude it from scope instead.
+    """
+    if target.kind == "item":
+        return "item"
+    if target.level == "life_safety" and any(
+        other.kind == "item" and other.level == "life_safety" and _overlap(target, other)
+        for other in safety_targets(ai)
+    ):
+        return "life_safety_item_overlaps"
+    return None
+
+
+def resolutions_in_force(ai: Mapping[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
+    """The resolutions that count, by ``(kind, target_id)``; the first recorded for a target holds.
+
+    One counts while its target is still a concern of the block (same id)
+    and its resolution is allowed for it now (:func:`false_positive_refusal`).
+    An M6c clarification (``ai.clarifications``, deprecated) counts as a
+    false positive of a possibly-safety mention under its own rule (no
+    :func:`safety_concern` on the block).
+    """
+    if not ai:
+        return {}
+    targets = {t.key: t for t in safety_targets(ai)}
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for entry in ai.get("resolutions", []) or []:
+        key = (str(entry.get("target_kind", "")), str(entry.get("target_id", "")))
+        target = targets.get(key)
+        resolution = entry.get("resolution")
+        if target is None or key in out or resolution not in RESOLUTIONS:
+            continue
+        if resolution == FALSE_POSITIVE and false_positive_refusal(ai, target) is not None:
+            continue
+        out[key] = dict(entry)
+    if safety_concern(ai) is None:
+        for entry in ai.get("clarifications", []) or []:
+            key = ("mention", str(entry.get("mention_id", "")))
+            target = targets.get(key)
+            if (
+                target is None
+                or key in out
+                or target.level != "possibly"
+                or entry.get("statement") != NOT_LIFE_SAFETY
+            ):
+                continue
+            out[key] = {
+                **entry,
+                "target_kind": "mention",
+                "target_id": target.target_id,
+                "resolution": FALSE_POSITIVE,
+            }
+    return out
+
+
+def unresolved_safety(ai: Mapping[str, Any] | None) -> list[SafetyTarget]:
+    """The safety concerns no resolution in force covers: what holds a review approval.
+
+    A possibly-safety item is resolved by its own exclusion from scope, or
+    when every possibly-safety mention of the description (there is at
+    least one, and no life-safety one) is a false positive in force: the
+    ambiguous words it was turned unsupported for were all judged harmless.
+    It then stays an ``unsupported`` item (not covered, never a load).
+    """
+    targets = safety_targets(ai)
+    resolved = resolutions_in_force(ai)
+    mentions = [t for t in targets if t.kind == "mention"]
+    words_harmless = (
+        bool(mentions)
+        and all(t.level == "possibly" for t in mentions)
+        and all(resolved.get(t.key, {}).get("resolution") == FALSE_POSITIVE for t in mentions)
+    )
+    return [
+        t
+        for t in targets
+        if t.key not in resolved
+        and not (t.kind == "item" and t.level == "possibly" and words_harmless)
+    ]
+
+
+def clarifications_in_force(ai: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
+    """The false positives in force of mentions, by mention id (legacy name)."""
+    return {
+        tid: entry
+        for (kind, tid), entry in resolutions_in_force(ai).items()
+        if kind == "mention" and entry.get("resolution") == FALSE_POSITIVE
+    }
 
 
 def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
@@ -1116,11 +1317,11 @@ def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     # The safety net that needs no linking: the description names (or may
     # name) life-safety equipment somewhere, one open item per mention. No
-    # decision closes one; only a clarification in force does (four-eyes,
+    # decision closes one; only a resolution in force does (four-eyes,
     # recorded on the block, printed on every review export).
-    clarified = clarifications_in_force(ai)
+    resolved = resolutions_in_force(ai)
     for mention in input_mentions(ai):
-        if mention.mention_id in clarified:
+        if ("mention", mention.mention_id) in resolved:
             continue
         out.append(
             {
@@ -1138,39 +1339,129 @@ def open_items(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         code = None
         if item["kind"] == "question" and not rejected:
             code = "ai_question"
-        elif item["kind"] == "unsupported" and not rejected:
+        elif (
+            item["kind"] == "unsupported"
+            and not rejected
+            # An item excluded from scope prints as excluded, not open.
+            and ("item", str(item["id"])) not in resolved
+        ):
             code = "ai_unsupported"
         elif item["kind"] in PLACEABLE_KINDS and decision is None:
             code = "ai_item_unreviewed"
         if code is not None:
             out.append({"code": code, "subject": {"item_id": str(item["id"])}})
+    out += conflicting_values(ai)
     return out
 
 
-def clarified_lines(
+#: Two confirmed items placed on one row disagree, or the row was changed in
+#: the editor after an item was accepted. Open, never silent; not a safety hold.
+CONFLICTING_VALUES = "ai_conflicting_values"
+
+
+def _shown(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+def conflicting_values(ai: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """The ``ai_conflicting_values`` open items of a block's placements."""
+    if not ai:
+        return []
+    items = {str(i["id"]): i for i in (ai.get("proposal") or {}).get("items", [])}
+    latest = latest_decisions(ai.get("decisions", []))
+    out: list[dict[str, Any]] = []
+    by_row: dict[tuple[int, Any], list[tuple[str, dict[str, Any]]]] = {}
+    for placement in ai.get("placements", []) or []:
+        item_id = str(placement.get("item_id"))
+        item = items.get(item_id)
+        if item is None:
+            continue
+        confirmed = decided_value(item, latest.get(item_id)) or {}
+        if item.get("kind") in ("board", "load"):
+            by_row.setdefault(
+                (int(placement.get("board_index", 0)), placement.get("load_index")), []
+            ).append((item_id, confirmed))
+        entered = placement.get("entered") or {}
+        for field in placement.get("changed_in_editor", []) or []:
+            out.append(
+                {
+                    "code": CONFLICTING_VALUES,
+                    "subject": {
+                        "item_id": item_id,
+                        "field": str(field),
+                        "kind": "changed_in_editor",
+                        "ai_value": _shown(confirmed.get(field)),
+                        "entered_value": (
+                            _shown(entered[field]) if field in entered else "not recorded"
+                        ),
+                    },
+                }
+            )
+    for placed in by_row.values():
+        for n, (first, a) in enumerate(placed):
+            for second, b in placed[n + 1 :]:
+                for field in sorted(set(a) & set(b)):
+                    same = (
+                        _same(a[field], b[field])
+                        if field in NUMERIC_FIELDS
+                        else str(a[field]) == str(b[field])
+                    )
+                    if not same:
+                        out.append(
+                            {
+                                "code": CONFLICTING_VALUES,
+                                "subject": {
+                                    "item_id": first,
+                                    "other_item_id": second,
+                                    "field": field,
+                                    "kind": "items_disagree",
+                                    "ai_value": _shown(a[field]),
+                                    "other_value": _shown(b[field]),
+                                },
+                            }
+                        )
+    return out
+
+
+def resolution_lines(
     ai: Mapping[str, Any] | None, name_of: Callable[[str | None], str] | None = None
 ) -> list[str]:
-    """What a review export prints for each clarification in force.
+    """What a review export (and the approval scope) prints for each resolution in force.
 
     Args:
         ai: The record's ``ai`` block.
-        name_of: Who a clarification names, from its ``by_user_id`` (an
-            export never prints an email); ``None`` prints the recorded ``by_name``.
+        name_of: Who a resolution names, from its ``by_user_id`` (an export
+            never prints an email); ``None`` prints the recorded ``by_name``.
     """
     lines = []
-    terms = {m.mention_id: m.term for m in input_mentions(ai)}
-    for mid, entry in clarifications_in_force(ai).items():
+    targets = {t.key: t for t in safety_targets(ai)}
+    for key, entry in resolutions_in_force(ai).items():
         who = (
             name_of(entry.get("by_user_id"))
             if name_of
             else (entry.get("by_name") or "unknown account")
         )
-        lines.append(
-            f"[CLARIFIED] '{terms.get(mid, '?')}' judged not life-safety by {who} on "
-            f"{str(entry.get('at') or '')[:10]}: {_short(str(entry.get('reason', '')), 500)}"
-            " — not engineer-validated"
-        )
+        label = targets[key].label if key in targets else "?"
+        when = str(entry.get("at") or "")[:10]
+        reason = _short(str(entry.get("reason", "")), 500)
+        if entry.get("resolution") == EXCLUDED_FROM_SCOPE:
+            lines.append(
+                f"[EXCLUDED FROM SCOPE] '{label}' — not designed or reviewed here: {reason} "
+                f"(recorded by {who} on {when})"
+            )
+        else:
+            lines.append(
+                f"[FALSE POSITIVE] '{label}' judged not a life-safety requirement by {who} on "
+                f"{when}: {reason} — not engineer-validated"
+            )
     return lines
+
+
+def clarified_lines(
+    ai: Mapping[str, Any] | None, name_of: Callable[[str | None], str] | None = None
+) -> list[str]:
+    """Legacy name of :func:`resolution_lines`."""
+    return resolution_lines(ai, name_of)
 
 
 #: What an export prints for a server-set reason code, in place of the code.
@@ -1200,8 +1491,24 @@ def open_item_line(ai: Mapping[str, Any] | None, item: Mapping[str, Any]) -> str
             f"[OPEN] The description may refer to life-safety equipment ('{term}'): "
             "needs a person's safety review; not designed"
         )
-    wanted = (item.get("subject") or {}).get("item_id")
+    subject = item.get("subject") or {}
     items = (ai.get("proposal") or {}).get("items", [])
+    if item["code"] == CONFLICTING_VALUES:
+        quotes = {str(i["id"]): _short(str(i.get("quote", "")), 80) for i in items}
+        if subject.get("kind") == "items_disagree":
+            return (
+                f"[OPEN] Conflicting values for {subject.get('field')}: "
+                f"{subject.get('ai_value')} (“{quotes.get(str(subject.get('item_id')), '?')}”) and "
+                f"{subject.get('other_value')} "
+                f"(“{quotes.get(str(subject.get('other_item_id')), '?')}”) were both accepted "
+                "for one row; confirm which applies"
+            )
+        return (
+            f"[OPEN] Changed in the editor after acceptance: {subject.get('field')}, AI value "
+            f"{subject.get('ai_value')} (“{quotes.get(str(subject.get('item_id')), '?')}”), "
+            f"entered value {subject.get('entered_value')}"
+        )
+    wanted = subject.get("item_id")
     found = next((i for i in items if str(i["id"]) == wanted), None)
     if found is None:
         return None

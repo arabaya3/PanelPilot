@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.ai import intake_proposer
 from app.core.errors import (
+    AuthenticationError,
     AuthorizationError,
     BadGatewayError,
     ConflictError,
@@ -51,6 +52,7 @@ from app.models.schemas.design import (
     ProjectDesignRequest,
 )
 from app.models.tables.design_ai_proposals import DesignAiProposalRow
+from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 
 logger = structlog.get_logger(__name__)
@@ -251,6 +253,24 @@ def _release_detached(bind: Any, lease: ai_intake_usage.Lease) -> None:
         logger.warning("design.ai_lease_not_released", tenant_id=str(lease.tenant_id))
 
 
+def _require_live_account(session: Session, tenant: uuid.UUID, account: uuid.UUID) -> None:
+    """Refuse (401) unless the account is still an active member of an active tenant."""
+    active = session.scalar(
+        select(User.is_active)
+        .where(User.id == account, User.tenant_id == tenant)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    live_tenant = session.scalar(
+        select(TenantRow.is_active)
+        .where(TenantRow.id == tenant)
+        .execution_options(populate_existing=True)
+    )
+    if not active or not live_tenant:
+        logger.info("design.ai_proposal_dropped_account_inactive", tenant_id=str(tenant))
+        raise AuthenticationError("account is not active")
+
+
 def _ask_and_store(
     *,
     session: Session,
@@ -301,6 +321,13 @@ def _ask_and_store(
         "prompt_version": str(answer.prompt_version)[:64],
     }
     try:
+        # The account may have been removed (or its tenant deactivated) while
+        # the provider answered: the same liveness rule as authentication
+        # (``auth.resolve_caller``), read under a share lock so a concurrent
+        # removal (``FOR UPDATE``) either finishes first or waits for this
+        # store. A removed account stores nothing; the call stays counted, as
+        # it reached the provider.
+        _require_live_account(session, tenant, account)
         now = datetime.now(UTC)
         row = DesignAiProposalRow(
             tenant_id=tenant,

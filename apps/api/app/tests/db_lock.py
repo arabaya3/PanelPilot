@@ -28,7 +28,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import NullPool
 
-from app.tests import db_target
+from app.tests import db_owner, db_target
 
 #: Prefix of the lock key and of the holder's ``application_name``.
 _TAG = "panelpilot-pytest"
@@ -39,6 +39,11 @@ _holder: Any = None
 
 class DatabaseInUseError(RuntimeError):
     """Another pytest session already holds the configured database."""
+
+
+def lock_key(database: str) -> str:
+    """The advisory lock's key text for ``database`` (hashed by Postgres)."""
+    return f"{_TAG}:{database}"
 
 
 def _application_name() -> str:
@@ -59,6 +64,8 @@ def claim(url: str) -> bool:
 
     Raises:
         DatabaseInUseError: Another session holds the lock on this database.
+        db_owner.DatabaseNotOwnedError: Another worktree owns it, or it holds
+            data and no owner marker.
     """
     global _holder
     parsed = db_target.require_disposable(url)
@@ -77,7 +84,7 @@ def claim(url: str) -> bool:
     conn.execution_options(isolation_level="AUTOCOMMIT")
     got: bool = conn.execute(
         text("SELECT pg_try_advisory_lock(hashtext(:k))"),
-        {"k": f"{_TAG}:{parsed.database}"},
+        {"k": lock_key(str(parsed.database))},
     ).scalar_one()
     if not got:
         holders = conn.execute(
@@ -99,6 +106,16 @@ def claim(url: str) -> bool:
             f"[{who}]; nothing was truncated. Give this worktree its own "
             "panelpilot_test_* database (see docs/testing/parallel-test-runs.md)."
         )
+    # Holding the lock is not owning the database: an idle database of
+    # another worktree is refused too, before anything is collected
+    # (app.tests.db_owner). Checked under the lock, so two fresh runs cannot
+    # both claim it.
+    try:
+        db_owner.require_owned(conn, str(parsed.database))
+    except BaseException:
+        conn.close()
+        engine.dispose()
+        raise
     _holder = conn
     return True
 

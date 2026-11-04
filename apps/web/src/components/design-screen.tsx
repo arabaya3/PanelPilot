@@ -138,7 +138,8 @@ import {
   openProject,
   permits,
   requirementsOf,
-  safetyClarificationOf,
+  safetyConcernsOf,
+  safetyResolutionOf,
   suggestSchedule,
   getAiProposal,
   type AiItem,
@@ -149,7 +150,6 @@ import {
   type ControlNeed,
   type previewRequirements,
   type RequirementsRecord,
-  type SafetyClarificationEligibility,
   type BoardDesignResponse,
   type SavedProject,
   type DesignOutcome,
@@ -500,9 +500,6 @@ function DesignWorkspace({
   const [controlNeeds, setControlNeeds] = useState<Record<number, ControlNeed[]>>({});
   // The requirements record the server stored with the revision open.
   const [savedRequirements, setSavedRequirements] = useState<RequirementsRecord | null>(null);
-  // M6c: whether the caller may clarify a safety mention of the revision open (server flag).
-  const [safetyClarification, setSafetyClarification] =
-    useState<SafetyClarificationEligibility | null>(null);
   // M6b: the typed description, the proposal open and the control needs placed from it.
   const [aiDescription, setAiDescription] = useState('');
   const [aiProposal, setAiProposal] = useState<AiProposal | null>(null);
@@ -1017,10 +1014,11 @@ function DesignWorkspace({
       isAuthor: isAuthorOf(project),
       authorUnknown: (project as { author_unknown?: unknown }).author_unknown === true,
       authorEstablished: authorEstablishedOf(project),
+      safetyConcerns: safetyConcernsOf(project),
+      safetyResolution: safetyResolutionOf(project),
     });
     const requirements = requirementsOf(project);
     setSavedRequirements(requirements);
-    setSafetyClarification(safetyClarificationOf(project));
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
     setOpenedSchema(project.snapshot_schema);
@@ -1850,7 +1848,9 @@ function DesignWorkspace({
               request={complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null}
               opened={opened ? { id: opened.id, revision: opened.revision } : null}
               savedRecord={savedRequirements}
-              safetyClarification={safetyClarification}
+              // M6d: resolutions live on the approval panel; the M6c clarify
+              // action (deprecated route) is no longer offered here.
+              safetyClarification={null}
               findings={validation?.findings ?? []}
               onProject={forOwner((project: SavedProject, action: 'answer' | 'acknowledge') => {
                 // An answer is a new revision with the value typed in: the form takes it.
