@@ -1843,6 +1843,8 @@ class RequirementSubject(BaseModel):
     control_ref: str | None = None
     supply_board_ref: str | None = None
     item_id: str | None = None
+    mention_id: str | None = None
+    term: str | None = None
 
 
 class RequirementBoard(BaseModel):
@@ -1909,7 +1911,10 @@ class RequirementOpenItem(BaseModel):
     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
     the user did not reject; the subject's ``item_id`` names the item. A
     description mentioning life-safety equipment anywhere adds
-    ``ai_life_safety_mentioned`` (no subject), which no decision closes.
+    ``ai_life_safety_mentioned``, and a word that may be about life safety
+    ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
+    one per mention (subject ``mention_id`` and ``term``). No decision closes
+    either; a clarification in force does (``SafetyClarificationRequest``).
     """
 
     code: Literal[
@@ -1919,6 +1924,7 @@ class RequirementOpenItem(BaseModel):
         "ai_question",
         "ai_unsupported",
         "ai_life_safety_mentioned",
+        "ai_possibly_life_safety",
     ]
     subject: RequirementSubject
 
@@ -2058,6 +2064,31 @@ class AiPlacementRecord(BaseModel):
     changed_in_editor: list[str] = Field(default_factory=list)
 
 
+class SafetyMention(BaseModel):
+    """A life-safety or possibly-safety term detected in a description (keyword detection)."""
+
+    mention_id: str
+    level: Literal["life_safety", "possibly"]
+    term: str
+    start: int
+    end: int
+
+
+class SafetyClarification(BaseModel):
+    """A person's statement that one mention is not about life-safety equipment.
+
+    Append-only on the record's ``ai`` block; who and when are the server's.
+    It validates nothing: exports print it as not engineer-validated.
+    """
+
+    mention_id: str
+    statement: Literal["not_life_safety"]
+    reason: str
+    by_user_id: str
+    by_name: str
+    at: str
+
+
 class AiProposal(BaseModel):
     """An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
 
@@ -2070,6 +2101,8 @@ class AiProposal(BaseModel):
             life-safety equipment somewhere; a save records the open item
             ``ai_life_safety_mentioned``. Shown beside the proposal, never
             dismissed.
+        safety_mentions: Every life-safety (``life_safety``) and
+            possibly-safety (``possibly``) term detected, with its offsets.
     """
 
     id: str
@@ -2088,6 +2121,7 @@ class AiProposal(BaseModel):
     used_by_revision_id: str | None = None
     proposal_sha256: str
     life_safety_mentioned: bool = False
+    safety_mentions: list[SafetyMention] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -2126,6 +2160,45 @@ class RequirementsAi(BaseModel):
     placements: list[AiPlacementRecord] = Field(default_factory=list)
     applied_in_revision: int | None = None
     applied_at: str | None = None
+    clarifications: list[SafetyClarification] = Field(default_factory=list)
+
+
+class SafetyClarificationRequest(StrictModel):
+    """Clarify one mention of a revision's record as not life-safety (four-eyes).
+
+    Who and when are the server's (any such field is 422).
+
+    Attributes:
+        mention_id: The open item's ``subject.mention_id``.
+        statement: Only ``not_life_safety``.
+        reason: Why, in the clarifier's words: 10 to 500 characters, not
+            counting surrounding whitespace.
+    """
+
+    mention_id: str = Field(pattern=r"^m[0-9a-f]{16}$")
+    statement: Literal["not_life_safety"]
+    reason: str = Field(max_length=2000)
+
+    @model_validator(mode="after")
+    def _reason_length(self) -> SafetyClarificationRequest:
+        self.reason = " ".join(self.reason.split())
+        if not 10 <= len(self.reason) <= 500:
+            raise ValueError("the reason holds 10 to 500 characters")
+        return self
+
+
+class SafetyClarificationEligibility(BaseModel):
+    """Whether the caller may clarify a mention on this revision now, and if not, why.
+
+    ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
+    permission), ``proposal_author`` (the caller's account created the AI
+    proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
+    ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
+    The server checks again on every request.
+    """
+
+    eligible: bool
+    reason: str | None = None
 
 
 class AiProposalRequest(StrictModel):
@@ -2281,6 +2354,7 @@ class SavedProject(BaseModel):
     author_unknown: bool = False
     author_established: bool = False
     is_author: bool = False
+    safety_clarification: SafetyClarificationEligibility | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

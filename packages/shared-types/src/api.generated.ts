@@ -712,6 +712,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-clarifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clarify Safety Mention
+     * @description Clarify one (possibly) life-safety mention as not life-safety: four-eyes, append-only.
+     */
+    post: operations['clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}': {
     parameters: {
       query?: never;
@@ -1593,6 +1613,8 @@ export interface components {
      *             life-safety equipment somewhere; a save records the open item
      *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
      *             dismissed.
+     *         safety_mentions: Every life-safety (``life_safety``) and
+     *             possibly-safety (``possibly``) term detected, with its offsets.
      */
     AiProposal: {
       /** Id */
@@ -1636,6 +1658,8 @@ export interface components {
        * @default false
        */
       life_safety_mentioned: boolean;
+      /** Safety Mentions */
+      safety_mentions?: components['schemas']['SafetyMention'][];
     };
     /**
      * AiProposalItem
@@ -5004,7 +5028,10 @@ export interface components {
      *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
      *     the user did not reject; the subject's ``item_id`` names the item. A
      *     description mentioning life-safety equipment anywhere adds
-     *     ``ai_life_safety_mentioned`` (no subject), which no decision closes.
+     *     ``ai_life_safety_mentioned``, and a word that may be about life safety
+     *     ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
+     *     one per mention (subject ``mention_id`` and ``term``). No decision closes
+     *     either; a clarification in force does (``SafetyClarificationRequest``).
      */
     RequirementOpenItem: {
       /**
@@ -5017,7 +5044,8 @@ export interface components {
         | 'ai_item_unreviewed'
         | 'ai_question'
         | 'ai_unsupported'
-        | 'ai_life_safety_mentioned';
+        | 'ai_life_safety_mentioned'
+        | 'ai_possibly_life_safety';
       subject: components['schemas']['RequirementSubject'];
     };
     /**
@@ -5075,6 +5103,10 @@ export interface components {
       supply_board_ref?: string | null;
       /** Item Id */
       item_id?: string | null;
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Term */
+      term?: string | null;
     };
     /**
      * RequirementTrace
@@ -5106,6 +5138,8 @@ export interface components {
       applied_in_revision?: number | null;
       /** Applied At */
       applied_at?: string | null;
+      /** Clarifications */
+      clarifications?: components['schemas']['SafetyClarification'][];
     };
     /**
      * RequirementsInput
@@ -5447,6 +5481,88 @@ export interface components {
       author_established: boolean;
     };
     /**
+     * SafetyClarification
+     * @description A person's statement that one mention is not about life-safety equipment.
+     *
+     *     Append-only on the record's ``ai`` block; who and when are the server's.
+     *     It validates nothing: exports print it as not engineer-validated.
+     */
+    SafetyClarification: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Statement
+       * @constant
+       */
+      statement: 'not_life_safety';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyClarificationEligibility
+     * @description Whether the caller may clarify a mention on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
+     *     permission), ``proposal_author`` (the caller's account created the AI
+     *     proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
+     *     ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
+     *     The server checks again on every request.
+     */
+    SafetyClarificationEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyClarificationRequest
+     * @description Clarify one mention of a revision's record as not life-safety (four-eyes).
+     *
+     *     Who and when are the server's (any such field is 422).
+     *
+     *     Attributes:
+     *         mention_id: The open item's ``subject.mention_id``.
+     *         statement: Only ``not_life_safety``.
+     *         reason: Why, in the clarifier's words: 10 to 500 characters, not
+     *             counting surrounding whitespace.
+     */
+    SafetyClarificationRequest: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Statement
+       * @constant
+       */
+      statement: 'not_life_safety';
+      /** Reason */
+      reason: string;
+    };
+    /**
+     * SafetyMention
+     * @description A life-safety or possibly-safety term detected in a description (keyword detection).
+     */
+    SafetyMention: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Term */
+      term: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /**
      * SaveCompanySettings
      * @description Company settings to save.
      *
@@ -5586,6 +5702,7 @@ export interface components {
        * @default false
        */
       is_author: boolean;
+      safety_clarification?: components['schemas']['SafetyClarificationEligibility'] | null;
     };
     /**
      * ScheduleSuggestionRequest
@@ -7543,6 +7660,63 @@ export interface operations {
         content?: never;
       };
       /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `question_not_answerable`, `question_answered`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SafetyClarificationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description `clarification_requires_account`, `clarification_not_permitted`, `clarification_by_proposal_author` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_found` or `mention_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_unresolved`, `snapshot_integrity_failed` */
       409: {
         headers: {
           [name: string]: unknown;
