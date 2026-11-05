@@ -1083,7 +1083,28 @@
       "acknowledgement_requires_account": "Acknowledging an assumption needs a signed-in account; a trial cannot.",
       "assumption_acknowledged": "Assumption acknowledged — not engineer-validated.",
       "approval_author_not_established": "Revision {revision} records no saving account, so who saved it cannot be established and its approval could not be shown to be independent. Save it as a new revision for review; a different member then approves that.",
-      "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot."
+      "resave_requires_account": "Saving a revision for review needs a signed-in account; a trial cannot.",
+      "ai_item_not_confirmed": "An AI-proposed row was saved without an accepted decision. Accept or edit it in the proposals, or remove the row.",
+      "ai_proposal_used": "These AI proposals were already used by a saved revision. Request new proposals, or continue by hand.",
+      "ai_proposal_not_found": "The AI proposals this save refers to are no longer available. Request new ones, or continue by hand.",
+      "clarification_requires_account": "Sign in to clarify a safety mention.",
+      "clarification_not_permitted": "Only a member who may approve revisions can clarify a safety mention.",
+      "clarification_by_proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
+      "safety_concern_unresolved": "This proposal still has an unresolved safety concern: the description mentions life-safety equipment, an item is life-safety equipment, or a possibly-safety item is undecided. No mention can be clarified.",
+      "mention_not_found": "That safety mention is not open on this revision.",
+      "mention_is_life_safety": "That mention names life-safety equipment: it is never clarified and stays open on this proposal.",
+      "approval_blocked_by_safety": "This revision has unresolved safety concerns. Each life-safety or possibly-safety mention and item must be excluded from scope or judged a false positive by another member before approval.",
+      "safety_resolution_requires_account": "Resolving a safety concern requires a signed-in account.",
+      "safety_resolution_not_permitted": "Only a member who may approve revisions can resolve a safety concern.",
+      "safety_resolution_by_proposal_author": "You created this AI proposal: another member must resolve its safety concerns.",
+      "safety_resolution_by_revision_author": "You saved this revision: another member must resolve its safety concerns.",
+      "safety_target_not_found": "That safety concern is not on this revision.",
+      "safety_concern_already_resolved": "That safety concern is already resolved; a resolution is never replaced.",
+      "false_positive_not_allowed": "This cannot be a false positive: the proposal reads it as life-safety equipment. Record it as excluded from scope instead.",
+      "exclusion_not_allowed": "A board or load still in the request cannot be excluded from scope: remove it from the request and save a new revision, then record the exclusion.",
+      "clarification_route_retired": "Clarifications are retired: record a resolution (excluded from scope or false positive) instead.",
+      "exclusion_confirmation_incomplete": "Confirm every candidate load of the request (not this equipment) before excluding this concern.",
+      "exclusion_confirmation_extra": "That list names a load that is not a candidate for this exclusion; list exactly the candidate loads shown."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1133,14 +1154,84 @@
       "approveHeld": {
         "stale": "The rules or company profile changed since revision {revision}; save a new revision to approve it.",
         "notValidated": "Revision {revision} is not validated: save again to validate it before approving.",
-        "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval."
+        "blocking": "{count, plural, one {# blocking finding must} other {# blocking findings must}} be resolved, and a new revision saved, before approval.",
+        "safety": "{count, plural, one {# safety concern is} other {# safety concerns are}} unresolved: each must be excluded from scope or judged a false positive by another member before approval."
       },
       "approveSelfAuthored": "A different team member must approve this revision.",
       "authorUnknown": "The server holds no author for this revision (author unknown); none is guessed.",
       "authorNotEstablished": "Approval is held: the server cannot establish who saved revision {revision} (it was saved before accounts were recorded with revisions). Save it as a new revision for review; a different team member can then approve it. The new revision records you as its author; it does not show who first entered this design.",
       "resave": "Save as a new revision for review",
       "resaved": "Saved revision {from} again as revision {revision}, for a different team member to approve.",
-      "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision."
+      "resaveRefused": "Nothing was saved. Correct this in the editor, then save a new revision.",
+      "scope": {
+        "title": "What a review approval covers",
+        "covers": "A review approval is a review of this revision's study under PanelPilot's default rules.",
+        "notCoveredIntro": "It does not cover:",
+        "notCovered": {
+          "control": "control circuits",
+          "wiring": "board-to-board wiring",
+          "openOrExcluded": "items listed as open or excluded from scope",
+          "lifeSafety": "life-safety systems",
+          "standards": "standards compliance",
+          "accuracy": "electrical accuracy",
+          "execution": "execution"
+        },
+        "notValidation": "It is not engineer validation.",
+        "excludedTitle": "Excluded from scope (not designed or reviewed here):",
+        "falsePositivesTitle": "Judged not life-safety requirements (false positives, not engineer-validated):",
+        "confirm": "I have read what this approval covers and does not cover, including the items excluded from scope."
+      },
+      "safety": {
+        "title": "Safety concerns",
+        "held": "{count, plural, one {# unresolved safety concern holds} other {# unresolved safety concerns hold}} approval.",
+        "allResolved": "Every safety concern is resolved; the resolutions print on review exports.",
+        "detectionLimit": "Keyword and model detection cannot find every life-safety requirement. A resolution is a person's judgement, not engineer validation.",
+        "level": {
+          "life_safety": "Life-safety",
+          "possibly": "Possibly life-safety"
+        },
+        "kind": {
+          "mention": "in the description",
+          "item": "proposal item",
+          "request": "in the request"
+        },
+        "exclude": "Exclude from scope",
+        "falsePositive": "Not a life-safety requirement",
+        "noFalsePositive": {
+          "item": "An item is never a false positive: exclude it from scope, or resolve its words.",
+          "overlaps": "The proposal reads this text as life-safety equipment: it can only be excluded from scope.",
+          "lifeSafety": "Text that names life-safety equipment is never a false positive: exclude it from scope."
+        },
+        "meansExclude": "You record that this requirement is real and is not covered by this revision (for example, designed separately by the fire-protection contractor). It prints on every review export as excluded from scope. It never becomes a load.",
+        "meansFalsePositive": "You record that this text is not a life-safety requirement (for example, a street name). Your name, the date and reason print on every review export. This is not engineer validation.",
+        "reason": "Reason (required)",
+        "reasonHint": "{min} to {max} characters ({length} now).",
+        "submit": "Record resolution",
+        "cancel": "Cancel",
+        "done": "Resolution recorded.",
+        "resolvedExcluded": "Excluded from scope by {name} on {date}: {reason}",
+        "resolvedFalsePositive": "Judged not a life-safety requirement by {name} on {date}: {reason} (not engineer-validated)",
+        "resolvedByWords": "Resolved: the words it was raised for were judged not life-safety. It stays not covered by this design.",
+        "ineligible": {
+          "requires_account": "Sign in to resolve a safety concern.",
+          "not_permitted": "Only a member who may approve revisions (owner, administrator or reviewer) can resolve a safety concern.",
+          "proposal_author": "You created this AI proposal: another member must resolve its safety concerns.",
+          "revision_author": "You saved this revision: another member must resolve its safety concerns.",
+          "requirements_derived": "Save a new revision to resolve safety concerns.",
+          "revision_already_approved": "This revision is approved; its record does not change.",
+          "revision_not_latest": "Safety concerns are resolved on the latest revision only.",
+          "nothing_to_resolve": "No safety concern is open.",
+          "other": "You cannot resolve safety concerns on this revision."
+        },
+        "raisedOn": "raised on revision {revision}",
+        "removeFromRequest": "This board or load names life-safety equipment and is still in the request, where it would be drawn as an ordinary load. It cannot be resolved: remove it from the request and save a new revision, then record its exclusion.",
+        "confirmLoads": {
+          "title": "Confirm, load by load, that none of these is that equipment",
+          "means": "Matching cannot find every renamed, re-powered, moved or split load, so every load of the request is listed, board by board. Excluding this concern records your confirmation, for each one, that it is not the equipment the concern names. Your name, the date and this list print on every review export. This is not engineer validation.",
+          "none": "The request draws no candidate load: nothing to confirm.",
+          "load": "{board} › {description} ({power} kW) is not that equipment"
+        }
+      }
     },
     "readiness": {
       "title": "Status",
@@ -1412,7 +1503,12 @@
       "controlIntro": "Tick what each load needs to be controlled by. These are recorded as requirements only; no control circuit is drawn from them.",
       "need": {
         "start_stop": "Start/stop",
-        "running_indicator": "Running indicator"
+        "running_indicator": "Running indicator",
+        "fault_indicator": "Fault indicator",
+        "hand_off_auto": "Hand/off/auto",
+        "remote_control": "Remote control",
+        "interlock": "Interlock",
+        "timed": "Timed"
       },
       "controlStatus": "Status",
       "controlNotDesigned": "Control circuit not designed yet",
@@ -1429,7 +1525,12 @@
       "itemOpen": "Open",
       "item": {
         "control_not_designed": "Control circuit not designed yet",
-        "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled"
+        "inter_board_wiring_not_modelled": "Board-to-board wiring not modelled",
+        "ai_item_unreviewed": "AI proposal not reviewed",
+        "ai_question": "Question from the AI proposal",
+        "ai_unsupported": "Described but not supported",
+        "ai_life_safety_mentioned": "Description mentions life-safety equipment (out of scope, not designed)",
+        "ai_possibly_life_safety": "Description may refer to life-safety equipment (needs a safety review, not designed)"
       },
       "state": {
         "open": "Open",
@@ -1473,7 +1574,161 @@
       "saveChangesFirst": "Save your changes first: an answer is saved as a new revision from the one stored.",
       "derivedSaveNew": "Save a new revision to record answers.",
       "needsControlled": "Tick “PLC switched” on this load first: a control need is recorded only for a load the PLC switches.",
-      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused."
+      "needsNotControlled": "Not PLC switched: tick “PLC switched” or clear these needs, or the save is refused.",
+      "clarify": {
+        "action": "Clarify as not life-safety",
+        "means": "You state that this word, as used here, is not about fire-pump or life-safety equipment. Your name, the date and your reason are recorded and printed on review exports. This is not engineer validation, and it never makes an item a supported load.",
+        "reason": "Reason (required)",
+        "reasonHint": "{min} to {max} characters ({length} now).",
+        "submit": "Record clarification",
+        "cancel": "Cancel",
+        "done": "Clarification recorded on revision {revision}.",
+        "title": "Clarified safety mentions",
+        "limits": "Keyword detection cannot recognise every safety requirement: it finds listed words only. A clarification is a person’s judgement, not engineer validation.",
+        "badge": "Clarified",
+        "by": "Judged not life-safety by {name} on {date}:",
+        "ineligible": {
+          "requires_account": "Sign in to clarify a safety mention.",
+          "not_permitted": "Only a member who may approve revisions (owner, administrator or reviewer) can clarify a safety mention.",
+          "proposal_author": "You created this AI proposal: another member must clarify its safety mentions.",
+          "requirements_derived": "Save a new revision to clarify safety mentions.",
+          "revision_already_approved": "This revision is approved; its record does not change.",
+          "revision_not_latest": "Safety mentions are clarified on the latest revision only.",
+          "safety_concern_unresolved": "This proposal still has an unresolved safety concern: the description mentions life-safety equipment, an item is life-safety equipment, or a possibly-safety item is undecided. No mention can be clarified.",
+          "nothing_to_clarify": "No safety mention is open.",
+          "other": "You cannot clarify safety mentions on this revision.",
+          "mention_is_life_safety": "A life-safety mention is never clarified: it stays open on this proposal. To remove it, delete the text from the description and request a new proposal."
+        },
+        "neverLifeSafety": "A life-safety mention is never clarified: it stays open on this proposal. To remove it, delete the text from the description and request a new proposal."
+      }
+    },
+    "ai": {
+      "title": "Describe the project",
+      "notice": "Type a plain description and ask for proposals. Proposals are unconfirmed suggestions, not designed or validated: only what you accept goes into the editor. Only the text typed here is sent to the AI provider — no files, attachments or documents.",
+      "label": "Project description",
+      "count": "{count} / {max} characters",
+      "request": "Request proposals",
+      "requestAgain": "Request new proposals",
+      "requestAgainNote": "A new request replaces these proposals; rows already placed in the editor stay, as your own entries.",
+      "requesting": "Requesting proposals…",
+      "retry": "Retry",
+      "continueManually": "Continue manually",
+      "nothingChanged": "Nothing in the editor, your draft or your description was changed.",
+      "reviewTitle": "Proposals to review",
+      "unconfirmed": "Unconfirmed suggestions read from your description. They are not designed, checked or validated. Accept, edit or reject each one; only accepted or edited items are placed in the editor.",
+      "provenance": "Proposed by {provider} · {model}",
+      "original": "Your description, as sent",
+      "kind": {
+        "board": "Boards ({count})",
+        "load": "Loads ({count})",
+        "control_need": "Control needs ({count})",
+        "question": "Questions ({count})",
+        "unsupported": "Not supported ({count})",
+        "server_rejected": "Refused by the server ({count})"
+      },
+      "boardSupplyNote": "A description gives no supply: a placed board starts with the voltage empty. Set its supply in the load schedule.",
+      "serverRejectedNote": "These proposed items failed the server's checks and cannot be accepted.",
+      "rejectedReason": "Reason:",
+      "status": {
+        "proposed": "Proposed",
+        "accepted": "Accepted",
+        "edited": "Edited",
+        "rejected": "Rejected",
+        "server_rejected": "Refused"
+      },
+      "recording": "Recording…",
+      "inEditor": "In the editor",
+      "showInText": "Show in description",
+      "field": {
+        "name": "Board name",
+        "fed_from": "Fed from",
+        "board": "Board",
+        "description": "Description",
+        "kind": "Load type",
+        "power_kw": "Power (kW)",
+        "phases": "Phases",
+        "power_factor": "Power factor",
+        "length_m": "Length (m)",
+        "controlled": "PLC switched",
+        "load": "Load",
+        "need": "Control need",
+        "text": "Text",
+        "about": "About",
+        "reason": "Reason"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "someone": "a team member",
+      "decidedBy": {
+        "accept": "Accepted by {name} at {date}",
+        "edit": "Edited by {name} at {date}",
+        "reject": "Rejected by {name} at {date}"
+      },
+      "problem": {
+        "missing": "Edit it first to give: {fields}. Nothing is filled in for you.",
+        "boardNotInEditor": "Board {board} is not in the editor yet. Accept that board first, or edit this item.",
+        "boardExists": "A board named {board} is already in the editor.",
+        "loadNotPlaced": "Place the load it is for first.",
+        "notPlaceable": "This item cannot be placed in the editor."
+      },
+      "accept": "Accept",
+      "edit": "Edit",
+      "reject": "Reject",
+      "place": "Place in editor",
+      "placedLocked": "Placed in the editor. You can change the row there; remove the row to change this decision.",
+      "editOf": "Edit proposal: {quote}",
+      "choose": "Choose…",
+      "notStated": "Not stated",
+      "saveEdit": "Save edit",
+      "cancelEdit": "Cancel",
+      "editError": {
+        "required": "Required.",
+        "tooLong": "At most 200 characters.",
+        "number": "Enter a number.",
+        "positive": "Must be more than zero.",
+        "powerFactor": "At most 1.",
+        "phases": "1 or 3.",
+        "kind": "Choose a load type.",
+        "need": "Choose a control need.",
+        "sameBoard": "A board cannot feed itself."
+      },
+      "reason": {
+        "possibly_life_safety": "May be life-safety equipment: needs a person's safety review",
+        "product_number": "Names a manufacturer's part or catalogue number",
+        "missing": "A value is missing",
+        "ambiguous": "The description is ambiguous",
+        "contradictory": "The description contradicts itself"
+      },
+      "error": {
+        "ai_unavailable": "The AI service is not available right now. Try again later, or continue by hand.",
+        "ai_proposal_malformed": "The AI service answered with something that could not be used. Try again, or continue by hand.",
+        "ai_timeout": "The AI service took too long to answer. Try again, or continue by hand.",
+        "ai_input_too_long": "The description is longer than {max} characters. Shorten it and try again.",
+        "ai_input_empty": "Type a description first.",
+        "ai_requires_account": "AI proposals need a signed-in account. Sign in, or continue by hand.",
+        "ai_proposal_used": "These proposals were used by a saved revision and can no longer be changed. Request new proposals, or continue by hand.",
+        "ai_proposal_not_found": "These proposals are no longer available. Request new ones, or continue by hand.",
+        "ai_consent_required": "Confirm that the description may be sent to the AI provider, then try again.",
+        "ai_request_in_flight": "Proposals you asked for are still being prepared, perhaps in another tab. Wait for them to finish, then try again.",
+        "ai_user_limit_exceeded": "You have used your {limit} AI proposal requests for {period}. The allowance resets at the start of next month; you can continue by hand.",
+        "ai_proposal_not_yours": "Only the person who asked for these proposals can delete them."
+      },
+      "saved": {
+        "title": "AI-assisted entries",
+        "note": "Entries in this revision were proposed by AI from the description below and confirmed by the people named. Confirmed is not engineer-validated.",
+        "decisions": "Decisions",
+        "noDecisions": "No proposal was decided.",
+        "changed": "(changed in the editor: {fields})"
+      },
+      "lifeSafetyMentioned": "The description mentions fire-pump or life-safety equipment. It is out of scope and not designed: check that no load you place is that equipment. This stays an open item on the saved revision.",
+      "possiblySafety": "The description uses words that may refer to life-safety equipment (for example “emergency”, “standby”, “alarm”). Items so worded are not supported loads: each stays open for a safety review.",
+      "consent": "I understand that the description typed here, and the names of the boards already in the editor, are sent to the AI provider to prepare proposals.",
+      "remaining": "{count, plural, =0 {You have no AI proposal requests left this month.} one {You have # AI proposal request left this month.} other {You have # AI proposal requests left this month.}}",
+      "discard": "Delete these proposals",
+      "discarding": "Deleting…",
+      "discardNote": "Deletes them and the stored description from PanelPilot's live database. Rows already placed in the editor stay, as your own entries. Database backups keep a copy until they expire, and a copy the AI provider keeps under its own terms is not affected.",
+      "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms.",
+      "accountInactive": "Your account is no longer active in this team, so the AI request was not saved. Ask the team owner."
     }
   },
   "files": {

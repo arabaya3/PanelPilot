@@ -114,6 +114,13 @@ class Settings(BaseSettings):
     # Model calls one tenant may make per UTC calendar month, across
     # diagnosis, photo recognition and PLC generation. Unset for no ceiling.
     model_calls_per_month: int | None = Field(default=1000, ge=1)
+    # AI-assisted intake calls one account may make per UTC calendar month, in
+    # its tenant (M6b S2), on top of the tenant's ceiling above. Unset for no
+    # per-account cap. The default is an open owner decision.
+    ai_intake_calls_per_user_per_month: int | None = Field(default=100, ge=1)
+    # Days an AI intake proposal no saved revision applied is kept before the
+    # ``purge-ai-proposals`` job deletes it (M6b S3). An open owner decision.
+    ai_intake_unused_retention_days: int = Field(default=30, ge=1)
     # Whether each plan's limits apply (app.domain.billing). Off until a way
     # to pay exists: until then every account may use every feature, under
     # MODEL_CALLS_PER_MONTH.

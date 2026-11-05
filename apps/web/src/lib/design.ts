@@ -102,7 +102,12 @@ export type TooLarge = { path: string; max: string };
 
 /** A text field the server refused as too long, and the most it takes. */
 export type TooLong = { path: string; max: number };
-type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
+/**
+ * A 401: the session is not (or no longer) valid. `code: 'account_inactive'`
+ * when the server says the account was removed from the team or deactivated
+ * (it answers with that code), which no sign-in renewal fixes.
+ */
+type Failure = Refusal | { kind: 'unauthorized'; code?: string } | { kind: 'failed' };
 
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
 export type ExportOutcome = { kind: 'exported'; blob: Blob; filename: string } | Failure;
@@ -276,6 +281,8 @@ async function call<T>(
   accept: (payload: object) => T | null,
   extra?: (response: Response) => T | null,
   method: 'POST' | 'PUT' | 'GET' | 'DELETE' = 'POST',
+  /** Further statuses whose body is a coded refusal (the AI routes' 502, 503 and 504). */
+  alsoRefused: readonly number[] = [],
 ): Promise<T | Failure> {
   const { token, fetchImpl = fetch, endpoint = defaultEndpoint } = transport;
   const isForm = body instanceof FormData;
@@ -295,13 +302,18 @@ async function call<T>(
   } catch {
     return { kind: 'failed' };
   }
-  if (response.status === 401) return { kind: 'unauthorized' };
+  if (response.status === 401) {
+    const body = (await readJson(response)) as { code?: unknown } | null;
+    return body?.code === 'account_inactive'
+      ? { kind: 'unauthorized', code: 'account_inactive' }
+      : { kind: 'unauthorized' };
+  }
   const special = extra?.(response);
   if (special) return special;
   // 429 too: the design routes' per-address budget, said with a code; 404, a
   // saved project that is not (or no longer) there; and 409, a revision that
   // cannot be approved or exported as it stands (`revision_stale`, ...).
-  if (REFUSED.includes(response.status)) {
+  if (REFUSED.includes(response.status) || alsoRefused.includes(response.status)) {
     const refusal = refusalOf(await readJson(response));
     const wait = Number(response.headers.get('Retry-After'));
     return response.status === 429 && Number.isFinite(wait) && wait > 0
@@ -581,11 +593,22 @@ export function reviseProject(
  * from them. Boards and loads travel in the request itself.
  */
 export type RequirementsInput = {
-  intake: 'guided' | 'table' | 'import';
+  intake: 'guided' | 'table' | 'import' | 'ai';
   control: Array<{ board_index: number; load_index: number; needs: ControlNeed[] }>;
+  /** With `intake: "ai"` only (M6b): the proposal the save used and where its confirmed items sit. */
+  ai?: { proposal_id: string; placements: AiPlacement[] };
 };
 
-export const CONTROL_NEEDS = ['start_stop', 'running_indicator'] as const;
+/** The seven control needs the server records (M6a `ControlNeed`), in its order. */
+export const CONTROL_NEEDS = [
+  'start_stop',
+  'running_indicator',
+  'fault_indicator',
+  'hand_off_auto',
+  'remote_control',
+  'interlock',
+  'timed',
+] as const;
 export type ControlNeed = (typeof CONTROL_NEEDS)[number];
 
 export type RequirementSubject = {
@@ -593,6 +616,11 @@ export type RequirementSubject = {
   load_ref?: string | null;
   control_ref?: string | null;
   supply_board_ref?: string | null;
+  /** An AI proposal item an open item is about (M6b `ai_*` open items). */
+  item_id?: string | null;
+  /** A (possibly) life-safety mention of the description (M6c), and its term as detection read it. */
+  mention_id?: string | null;
+  term?: string | null;
 };
 
 /** A question the server derived: a value left empty, or an assumption the design made. */
@@ -639,6 +667,8 @@ export type RequirementsRecord = {
   open_items: Array<{ code: string; subject: RequirementSubject }>;
   /** `design_ref` is null where the design was refused. */
   trace: Array<{ requirement_ref: string; design_ref: string | null }>;
+  /** M6b: the AI proposal the revision was saved from, its decisions and placements. */
+  ai?: AiRecord | null;
 };
 
 /** A saved project's requirements record, where the server returned one. */
@@ -663,6 +693,7 @@ function normalRecord(record: Partial<RequirementsRecord>): RequirementsRecord {
     open_items: record.open_items ?? [],
     trace: record.trace ?? [],
     acknowledgements: record.acknowledgements ?? [],
+    ...(record.ai && typeof record.ai === 'object' ? { ai: record.ai } : {}),
   };
 }
 
@@ -731,6 +762,69 @@ export function answerQuestion(
     (payload) => {
       const project = saved(payload);
       if (project) return project;
+      const requirements = requirementsOf(payload);
+      return requirements ? { kind: 'recorded', requirements } : null;
+    },
+  );
+}
+
+/**
+ * Resolve one safety concern of the latest revision (M6d):
+ * `POST /api/v1/design/projects/{id}/revisions/{n}/requirements/safety-resolutions`,
+ * body `{mention_id | item_id, resolution, reason}`. `excluded_from_scope`: the
+ * requirement is real and not covered by this revision. `false_positive`: the
+ * detected text is not a life-safety requirement. Who and when are the server's.
+ */
+export function resolveSafetyConcern(
+  options: Transport & {
+    id: string;
+    revision: number;
+    concern: Pick<SafetyConcern, 'kind' | 'target_id'> & { proposal_id?: string | null };
+    resolution: SafetyResolutionKind;
+    reason: string;
+    /** M6e: every candidate load confirmed not to be the excluded equipment. */
+    notThisEquipment?: LoadRef[];
+  },
+): Promise<AnswerOutcome> {
+  const { id, revision, concern, resolution, reason, notThisEquipment } = options;
+  return call<AnswerOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-resolutions`,
+    {
+      [concern.kind === 'mention'
+        ? 'mention_id'
+        : concern.kind === 'item'
+          ? 'item_id'
+          : 'request_id']: concern.target_id,
+      // A carried AI concern names its proposal (M6e); a request one names none.
+      ...(concern.kind !== 'request' && concern.proposal_id
+        ? { proposal_id: concern.proposal_id }
+        : {}),
+      resolution,
+      reason,
+      ...(notThisEquipment ? { not_this_equipment: notThisEquipment } : {}),
+    },
+    (payload) => {
+      const requirements = requirementsOf(payload);
+      return requirements ? { kind: 'recorded', requirements } : null;
+    },
+  );
+}
+
+/**
+ * Deprecated (M6c): clarify one safety mention of the latest revision as not life-safety:
+ * `POST /api/v1/design/projects/{id}/revisions/{n}/requirements/safety-clarifications`.
+ * Who and when are the server's; the page sends the mention, the statement and a reason.
+ */
+export function clarifySafetyMention(
+  options: Transport & { id: string; revision: number; mention: string; reason: string },
+): Promise<AnswerOutcome> {
+  const { id, revision, mention, reason } = options;
+  return call<AnswerOutcome>(
+    options,
+    `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-clarifications`,
+    { mention_id: mention, statement: 'not_life_safety', reason },
+    (payload) => {
       const requirements = requirementsOf(payload);
       return requirements ? { kind: 'recorded', requirements } : null;
     },
@@ -821,13 +915,14 @@ export async function exportRevision(
  * display name. `note` is an optional note to the approval, never an identity.
  */
 export function approveRevision(
-  options: Transport & { id: string; revision: number; note?: string },
+  options: Transport & { id: string; revision: number; note?: string; scopeConfirmed: true },
 ): Promise<ProjectOutcome> {
-  const { id, revision, note = '' } = options;
+  const { id, revision, note = '', scopeConfirmed } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/approval`,
-    { note },
+    // The approver ticked what a review approval covers and does not (M6d).
+    { note, scope_confirmed: scopeConfirmed },
     saved,
   );
 }
@@ -906,5 +1001,320 @@ export function readMarkups(
   if (options.profile) body.append('profile', JSON.stringify(options.profile));
   return call(options, '/api/v1/design/markups', body, (payload) =>
     has(payload, 'markups', 'matched') ? { kind: 'read', report: payload as MarkupReport } : null,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// M6b: AI-assisted requirements intake (`docs/architecture/m6b-ai-intake.md`).
+// The model proposes; nothing here is designed or validated. Only items the
+// designer accepts or edits reach the editor, and only the editor's rows
+// reach the request.
+
+/** The most characters a description may have (422 `ai_input_too_long` above it). */
+export const AI_DESCRIPTION_LIMIT = 8000;
+
+export const AI_ITEM_KINDS = ['board', 'load', 'control_need', 'question', 'unsupported'] as const;
+export type AiItemKind = (typeof AI_ITEM_KINDS)[number];
+
+/** Character offsets into the stored description (Unicode code points, as the server counts). */
+export type AiSource = { start: number; end: number };
+
+export type AiItem = {
+  id: string;
+  kind: AiItemKind;
+  source: AiSource;
+  /** The described text the item was read from, as the server quoted it. */
+  quote: string;
+  /** The fields the item proposes; only those its kind may set. */
+  value: Record<string, unknown>;
+};
+
+/** An item the server refused to keep (bad offsets, a number not in its span, ...). */
+export type AiRejectedItem = {
+  kind?: string | null;
+  source?: AiSource | null;
+  quote?: string | null;
+  value?: Record<string, unknown> | null;
+  reason: string;
+};
+
+/** One recorded decision; who and when are the server's. */
+export type AiDecision = {
+  item_id: string;
+  decision: 'accept' | 'reject' | 'edit';
+  value?: Record<string, unknown> | null;
+  by_user_id?: string | null;
+  by_name?: string | null;
+  at: string;
+};
+
+/** `pp-ai-proposal/1` as the API returns it. */
+export type AiProposal = {
+  id: string;
+  input_text: string;
+  provider: string;
+  model: string;
+  prompt_version?: string;
+  created_at?: string;
+  created_by_user_id?: string | null;
+  items: AiItem[];
+  server_rejected: AiRejectedItem[];
+  /** Append-only: a later decision on an item supersedes an earlier one. */
+  decisions: AiDecision[];
+  used_by_revision_id?: string | null;
+  proposal_sha256?: string;
+  /** The description names fire-pump or life-safety equipment somewhere (never dismissed). */
+  life_safety_mentioned?: boolean;
+  /** Every life-safety and possibly-safety term keyword detection found (M6c). */
+  safety_mentions?: SafetyMention[];
+  /** When, and by whom, sending the description to the AI provider was acknowledged. */
+  ai_consent_at?: string | null;
+  ai_consent_by_user_id?: string | null;
+  /** On the response that created it only: the caller's AI calls left this month (null: no cap). */
+  calls_remaining?: number | null;
+};
+
+/** A term detection found: `life_safety`, or `possibly` (an ambiguous word needing review). */
+export type SafetyMention = {
+  mention_id: string;
+  level: 'life_safety' | 'possibly';
+  term: string;
+  start: number;
+  end: number;
+};
+
+/** A mention a second member judged not life-safety: recorded, never engineer-validated. */
+export type SafetyClarification = {
+  mention_id: string;
+  statement: 'not_life_safety';
+  reason: string;
+  by_user_id: string;
+  by_name: string;
+  at: string;
+};
+
+/** Whether the caller may clarify a mention on the revision open, as the server says. */
+export type SafetyClarificationEligibility = { eligible: boolean; reason?: string | null };
+
+/** The server's flag on a saved project, if it sent one. */
+export function safetyClarificationOf(
+  project: object | null | undefined,
+): SafetyClarificationEligibility | null {
+  const flag = (project as { safety_clarification?: unknown } | null | undefined)
+    ?.safety_clarification;
+  if (typeof flag !== 'object' || flag === null) return null;
+  const { eligible, reason } = flag as { eligible?: unknown; reason?: unknown };
+  return {
+    eligible: eligible === true,
+    reason: typeof reason === 'string' ? reason : null,
+  };
+}
+
+/** One load of the request, by its board's name and its position there. */
+export type LoadRef = { board: string; load_index: number };
+
+/** The two resolutions of a safety concern (M6d). */
+export type SafetyResolutionKind = 'excluded_from_scope' | 'false_positive';
+/** One safety concern of the revision open, and how it stands, as the server says. */
+export type SafetyConcern = components['schemas']['SafetyConcern'];
+/** Why the revision open cannot be approved: unresolved safety concerns. */
+export type ApprovalHeld = { count: number; codes: string[] };
+/** Whether the caller may resolve safety concerns now, as the server says. */
+export type SafetyResolutionEligibility = { eligible: boolean; reason: string | null };
+
+/** The server's safety concerns of a saved project (none when it sent none). */
+export function safetyConcernsOf(project: object | null | undefined): SafetyConcern[] {
+  const list = (project as { safety_concerns?: unknown } | null | undefined)?.safety_concerns;
+  return Array.isArray(list) ? (list as SafetyConcern[]) : [];
+}
+
+/** The server's approval hold of a saved project, if it sent one. */
+export function approvalHeldOf(project: object | null | undefined): ApprovalHeld | null {
+  const held = (project as { approval_held?: unknown } | null | undefined)?.approval_held;
+  if (typeof held !== 'object' || held === null) return null;
+  const { count, codes } = held as { count?: unknown; codes?: unknown };
+  return {
+    count: typeof count === 'number' ? count : 0,
+    codes: Array.isArray(codes) ? codes.filter((c): c is string => typeof c === 'string') : [],
+  };
+}
+
+/** The server's flag for the resolve actions, if it sent one. */
+export function safetyResolutionOf(
+  project: object | null | undefined,
+): SafetyResolutionEligibility | null {
+  const flag = (project as { safety_resolution?: unknown } | null | undefined)?.safety_resolution;
+  if (typeof flag !== 'object' || flag === null) return null;
+  const { eligible, reason } = flag as { eligible?: unknown; reason?: unknown };
+  return { eligible: eligible === true, reason: typeof reason === 'string' ? reason : null };
+}
+
+/** Where a confirmed item sits in the editor when saved. */
+export type AiPlacement = { item_id: string; board_index: number; load_index?: number };
+
+/** The `ai` block of a saved revision's requirements record. */
+export type AiRecord = {
+  proposal: Partial<AiProposal>;
+  decisions?: AiDecision[];
+  placements?: Array<AiPlacement & { changed_in_editor?: string[] }>;
+  /** Append-only clarifications of safety mentions (M6c). */
+  clarifications?: SafetyClarification[];
+};
+
+export type AiProposalOutcome = { kind: 'proposed'; proposal: AiProposal } | Failure;
+
+/** The status code each AI failure answers with, for a body that carries no code. */
+const AI_STATUS_CODES: Readonly<Record<number, string>> = {
+  502: 'ai_proposal_malformed',
+  503: 'ai_unavailable',
+  504: 'ai_timeout',
+};
+
+function proposalOf(payload: object): AiProposal | null {
+  const value = payload as Partial<AiProposal>;
+  if (typeof value.id !== 'string' || !Array.isArray(value.items)) return null;
+  if (typeof value.input_text !== 'string') return null;
+  return {
+    ...value,
+    id: value.id,
+    input_text: value.input_text,
+    provider: typeof value.provider === 'string' ? value.provider : '',
+    model: typeof value.model === 'string' ? value.model : '',
+    items: value.items,
+    server_rejected: Array.isArray(value.server_rejected) ? value.server_rejected : [],
+    decisions: Array.isArray(value.decisions) ? value.decisions : [],
+  };
+}
+
+/** A 502/503/504 the provider answered without a code is still said by its code. */
+async function aiCall<T extends { kind: string }>(
+  transport: Transport,
+  endpoint: string,
+  body: unknown,
+  accept: (payload: object) => T | null,
+  method: 'POST' | 'GET' = 'POST',
+): Promise<T | Failure> {
+  let status = 0;
+  const watched: Transport = {
+    ...transport,
+    fetchImpl: async (...args: Parameters<typeof fetch>) => {
+      const response = await (transport.fetchImpl ?? fetch)(...args);
+      status = response.status;
+      return response;
+    },
+  };
+  const outcome = await call<T>(
+    watched,
+    endpoint,
+    method === 'GET' ? undefined : body,
+    accept,
+    undefined,
+    method,
+    [502, 503, 504],
+  );
+  const code = AI_STATUS_CODES[status];
+  if (code !== undefined && outcome.kind === 'refused' && !(outcome as Refusal).code) {
+    return { ...(outcome as Refusal), code };
+  }
+  if (code !== undefined && outcome.kind === 'failed') {
+    return { kind: 'refused', detail: '', code };
+  }
+  return outcome;
+}
+
+const AI_PROPOSALS = `${PROJECTS}/requirements/ai-proposals`;
+
+/**
+ * Ask for proposals from a typed description:
+ * `POST /api/v1/design/projects/requirements/ai-proposals`, body
+ * `{description, request?, ai_consent}`. Only the typed text (and the current
+ * draft, so the model can name existing boards) is sent; never a file. The
+ * server refuses (`ai_consent_required`) unless `consent` is true: the user
+ * acknowledged that the text goes to the AI provider.
+ */
+export function requestAiProposal(
+  options: Transport & {
+    description: string;
+    request?: ProjectDesignRequest | null;
+    consent: boolean;
+  },
+): Promise<AiProposalOutcome> {
+  const { description, request, consent } = options;
+  return aiCall<AiProposalOutcome>(
+    options,
+    AI_PROPOSALS,
+    request ? { description, request, ai_consent: consent } : { description, ai_consent: consent },
+    (payload) => {
+      const proposal = proposalOf(payload);
+      return proposal ? { kind: 'proposed', proposal } : null;
+    },
+  );
+}
+
+/**
+ * Delete one of the caller's own proposals that no saved revision applied:
+ * `DELETE /api/v1/design/projects/requirements/ai-proposals/{id}`.
+ */
+export function deleteAiProposal(options: Transport & { id: string }): Promise<DeleteOutcome> {
+  return call<DeleteOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(options.id)}`,
+    undefined,
+    () => null,
+    (response) => (response.status === 204 ? { kind: 'deleted' } : null),
+    'DELETE',
+  );
+}
+
+/** `GET /api/v1/design/projects/requirements/ai-proposals/{id}`. */
+export function getAiProposal(options: Transport & { id: string }): Promise<AiProposalOutcome> {
+  return aiCall<AiProposalOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(options.id)}`,
+    undefined,
+    (payload) => {
+      const proposal = proposalOf(payload);
+      return proposal ? { kind: 'proposed', proposal } : null;
+    },
+    'GET',
+  );
+}
+
+/**
+ * Record a decision on one item:
+ * `POST …/ai-proposals/{id}/items/{item_id}/decision`, strict body
+ * `{"decision": "accept" | "reject"}` or `{"decision": "edit", "value": {...}}`.
+ * The server records who and when; the page sends neither. It answers with
+ * the proposal as now stored (or, failing that, the decision it recorded).
+ */
+export function decideAiItem(
+  options: Transport & {
+    proposal: AiProposal;
+    item: string;
+    decision: 'accept' | 'reject' | 'edit';
+    value?: Record<string, unknown>;
+  },
+): Promise<AiProposalOutcome> {
+  const { proposal, item, decision, value } = options;
+  return aiCall<AiProposalOutcome>(
+    options,
+    `${AI_PROPOSALS}/${encodeURIComponent(proposal.id)}/items/${encodeURIComponent(item)}/decision`,
+    decision === 'edit' ? { decision, value } : { decision },
+    (payload) => {
+      const stored = proposalOf(payload);
+      if (stored) return { kind: 'proposed', proposal: stored };
+      const recorded = payload as Partial<AiDecision>;
+      if (
+        recorded.item_id === item &&
+        recorded.decision === decision &&
+        typeof recorded.at === 'string'
+      ) {
+        return {
+          kind: 'proposed',
+          proposal: { ...proposal, decisions: [...proposal.decisions, recorded as AiDecision] },
+        };
+      }
+      return null;
+    },
   );
 }

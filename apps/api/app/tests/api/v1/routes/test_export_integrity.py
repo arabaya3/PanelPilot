@@ -334,7 +334,7 @@ def approve(client: TestClient, project_id: str, number: int, note: str | None =
     """Approve as the caller. The body names no one: only an optional note."""
     return client.post(
         f"/design/projects/{project_id}/revisions/{number}/approval",
-        json={} if note is None else {"note": note},
+        json={"scope_confirmed": True} if note is None else {"note": note, "scope_confirmed": True},
     )
 
 
@@ -1078,7 +1078,9 @@ def test_huge_revision_number_is_refused_not_500(client: TestClient, number: str
     saved = save(client)
     pid = saved["id"]
     responses = {
-        "approval": client.post(f"/design/projects/{pid}/revisions/{number}/approval", json={}),
+        "approval": client.post(
+            f"/design/projects/{pid}/revisions/{number}/approval", json={"scope_confirmed": True}
+        ),
         "export": client.post(
             f"/design/projects/{pid}/revisions/{number}/export", json={"format": "pdf"}
         ),

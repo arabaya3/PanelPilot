@@ -1,6 +1,7 @@
 import type { components } from '@panelpilot/shared-types';
 
-import type { Refusal, SavedProject } from '@/lib/design';
+import { approvalHeldOf } from '@/lib/design';
+import type { ApprovalHeld, Refusal, SavedProject } from '@/lib/design';
 
 /**
  * Where a saved revision stands on the way to an execution package, and the
@@ -38,6 +39,8 @@ export type RevisionValidation = {
   approvalCurrent: boolean | null;
   /** What changed since the approval, when it no longer counts. */
   approvalChanged: string[];
+  /** M6d: unresolved safety concerns hold approval (the server's `approval_held`). */
+  approvalHeld?: ApprovalHeld | null;
 };
 
 const SEVERITIES: readonly FindingSeverity[] = ['blocking', 'warning', 'info'];
@@ -66,6 +69,7 @@ export function validationOf(project: SavedProject): RevisionValidation {
     executionBlockers: project.execution_blockers ?? [],
     approvalCurrent: project.approval_current ?? null,
     approvalChanged: project.approval_changed ?? [],
+    approvalHeld: approvalHeldOf(project),
   };
 }
 
@@ -104,7 +108,8 @@ export type Readiness = {
   blockingCount: number;
 };
 
-export type ApprovalBlocker = 'unsaved' | 'dirty' | 'stale' | 'notValidated' | 'blocking';
+export type ApprovalBlocker =
+  'unsaved' | 'dirty' | 'stale' | 'notValidated' | 'blocking' | 'safety';
 
 /**
  * Where the work stands.
@@ -145,6 +150,8 @@ export function readinessOf(input: {
     if (stale) approvalBlockers.push('stale');
     if (!validated) approvalBlockers.push('notValidated');
     else if (blockingCount > 0) approvalBlockers.push('blocking');
+    // M6d: an unresolved safety concern holds approval (the server refuses too).
+    if (opened.approval === null && validation?.approvalHeld) approvalBlockers.push('safety');
   }
   const moved = dirty || stale;
 

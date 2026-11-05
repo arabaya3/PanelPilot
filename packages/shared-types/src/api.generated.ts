@@ -632,6 +632,70 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/design/projects/requirements/ai-proposals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create Ai Proposal
+     * @description Propose requirement entries from a description (M6b). A paid model call; designs nothing.
+     */
+    post: operations['create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Ai Proposal
+     * @description One of the tenant's AI proposals, with each item's decision state.
+     */
+    get: operations['get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Ai Proposal
+     * @description Delete one of the caller's own proposals that no saved revision applied (S3).
+     */
+    delete: operations['delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Decide Ai Item
+     * @description Accept, reject or edit one proposal item; append-only, who and when the server's.
+     */
+    post: operations['decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/design/projects/{project_id}/revisions/{number}/questions/{question_id}': {
     parameters: {
       query?: never;
@@ -646,6 +710,46 @@ export interface paths {
      * @description Answer a question (201, a new revision) or acknowledge it (200, this revision's record).
      */
     post: operations['answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-clarifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clarify Safety Mention
+     * @description Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing.
+     */
+    post: operations['clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-resolutions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Safety Concern
+     * @description Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only.
+     */
+    post: operations['resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1369,6 +1473,364 @@ export interface components {
       requirements: components['schemas']['RequirementsRecord'];
     };
     /**
+     * AiAppliedProposal
+     * @description The applied proposal as a record keeps it: its immutable part and provenance.
+     */
+    AiAppliedProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+    };
+    /**
+     * AiDecision
+     * @description One decision on an item, append-only; the latest per item holds.
+     *
+     *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
+     *     account and its clock.
+     */
+    AiDecision: {
+      /** Item Id */
+      item_id: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * AiDecisionRequest
+     * @description A decision on one proposal item. Who and when are the server's (any such field is 422).
+     *
+     *     Attributes:
+     *         decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
+     *             it to ``value`` (checked against the item kind's fields).
+     *         value: The edited value, for ``edit`` only.
+     */
+    AiDecisionRequest: {
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiItem
+     * @description One item of an AI proposal, as the server kept it after its checks (M6b).
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``, by its place in the output).
+     *         kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
+     *         source: Where in the description it was read.
+     *         quote: The description's text at ``source``.
+     *         value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
+     *         value_spans: For each numeric field, where its literal stands.
+     */
+    AiItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+    };
+    /**
+     * AiPlacement
+     * @description Where one confirmed AI proposal item was placed in the request (M6b).
+     *
+     *     Attributes:
+     *         item_id: The proposal item.
+     *         board_index: The board's index in ``request.boards`` (a ``board``
+     *             item's board; a ``load`` or ``control_need`` item's load's board).
+     *         load_index: The load's index in that board's ``loads``: given for a
+     *             ``load`` or ``control_need`` item, never for a ``board`` item.
+     */
+    AiPlacement: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+    };
+    /**
+     * AiPlacementRecord
+     * @description Where a confirmed item went, as the save recorded it.
+     *
+     *     Attributes:
+     *         changed_in_editor: The item's fields the row differs on from the
+     *             decided value: the user edited after confirming.
+     */
+    AiPlacementRecord: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+      /** Board Ref */
+      board_ref?: string | null;
+      /** Load Ref */
+      load_ref?: string | null;
+      /** Changed In Editor */
+      changed_in_editor?: string[];
+      /** Entered */
+      entered?: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * AiProposal
+     * @description An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
+     *
+     *     Attributes:
+     *         proposal_sha256: The canonical hash of its immutable part (input,
+     *             provider, model, prompt version, items, server_rejected).
+     *         used_by_revision_id: The revision that applied it; it then takes no
+     *             more decisions (``ai_proposal_used``) and no second save.
+     *         life_safety_mentioned: The description names fire-pump or
+     *             life-safety equipment somewhere; a save records the open item
+     *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
+     *             dismissed.
+     *         safety_mentions: Every life-safety (``life_safety``) and
+     *             possibly-safety (``possibly``) term detected, with its offsets.
+     *         ai_consent_at: When the caller acknowledged that the description is
+     *             sent to the model provider; ``ai_consent_by_user_id`` who.
+     *             Null on proposals made before the acknowledgement was asked.
+     *         calls_remaining: On the response that created it only: the caller's
+     *             AI intake calls left this month (``None`` with no per-account cap).
+     */
+    AiProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiProposalItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /**
+       * Used
+       * @default false
+       */
+      used: boolean;
+      /** Used By Revision Id */
+      used_by_revision_id?: string | null;
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+      /**
+       * Life Safety Mentioned
+       * @default false
+       */
+      life_safety_mentioned: boolean;
+      /** Safety Mentions */
+      safety_mentions?: components['schemas']['SafetyMention'][];
+      /** Ai Consent At */
+      ai_consent_at?: string | null;
+      /** Ai Consent By User Id */
+      ai_consent_by_user_id?: string | null;
+      /** Calls Remaining */
+      calls_remaining?: number | null;
+    };
+    /**
+     * AiProposalItem
+     * @description An item with where the user's decisions leave it.
+     *
+     *     Attributes:
+     *         state: ``proposed`` until decided; the latest decision otherwise.
+     *         decided_value: The value an ``accept`` (the item's own) or ``edit``
+     *             (the user's) confirmed; ``None`` while proposed or rejected.
+     */
+    AiProposalItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+      /**
+       * State
+       * @default proposed
+       * @enum {string}
+       */
+      state: 'proposed' | 'accepted' | 'edited' | 'rejected';
+      /** Decided Value */
+      decided_value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiProposalRequest
+     * @description A description to propose requirement entries from; nothing is designed.
+     *
+     *     Attributes:
+     *         description: Typed text only, at most 8 000 characters
+     *             (``ai_input_too_long``), not empty (``ai_input_empty``).
+     *         request: The editor's current draft, read only for its board names
+     *             so the model can name existing boards; never stored, never
+     *             taken as confirmed.
+     *         ai_consent: The caller acknowledges that the description (and the
+     *             board names) is sent to the AI model provider; without it the
+     *             request is 422 ``ai_consent_required`` and nothing is sent.
+     */
+    AiProposalRequest: {
+      /** Description */
+      description: string;
+      /** Request */
+      request?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Ai Consent
+       * @default false
+       */
+      ai_consent: boolean;
+    };
+    /**
+     * AiRejected
+     * @description An output item the server's checks refused, kept and shown, never dropped.
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``).
+     *         kind: Its kind, when it named a known one.
+     *         source: Its span, when it gave a readable one.
+     *         quote: The description's text at the span, when it lies in the input.
+     *         value: What it proposed, as sent (bounded).
+     *         reason: Why it was refused (``offsets_outside_input``,
+     *             ``value_not_in_text``, ``invalid_value``,
+     *             ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
+     *         detail: Which field or reference, in English.
+     */
+    AiRejected: {
+      /** Id */
+      id: string;
+      /** Kind */
+      kind?: string | null;
+      source?: components['schemas']['AiSource'] | null;
+      /** Quote */
+      quote?: string | null;
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Detail
+       * @default
+       */
+      detail: string;
+    };
+    /**
+     * AiRequirementsInput
+     * @description The AI proposal a save applies (M6b): which proposal, and where its items went.
+     *
+     *     The server checks, under the project lock, that the proposal is the
+     *     caller's tenant's and unused, that every placed item's latest decision is
+     *     ``accept`` or ``edit`` and that its row exists. Who decided and when are
+     *     read from the proposal, never from here.
+     *
+     *     Attributes:
+     *         proposal_id: The proposal.
+     *         placements: Each confirmed item inserted into the editor, by place.
+     */
+    AiRequirementsInput: {
+      /** Proposal Id */
+      proposal_id: string;
+      /** Placements */
+      placements?: components['schemas']['AiPlacement'][];
+    };
+    /**
+     * AiSource
+     * @description A span of the stored description: ``input_text[start:end]``.
+     */
+    AiSource: {
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /**
      * AppliedFactor
      * @description A derating or correction factor, with the clause it came from.
      */
@@ -1378,6 +1840,26 @@ export interface components {
       /** Value */
       value: string;
       source: components['schemas']['Citation'];
+    };
+    /**
+     * ApprovalHeld
+     * @description Why the revision cannot be approved now: unresolved safety concerns (M6d).
+     *
+     *     Attributes:
+     *         code: ``approval_blocked_by_safety``.
+     *         count: How many concerns are unresolved.
+     *         codes: Their concern codes, sorted, distinct.
+     */
+    ApprovalHeld: {
+      /**
+       * Code
+       * @default approval_blocked_by_safety
+       */
+      code: string;
+      /** Count */
+      count: number;
+      /** Codes */
+      codes: string[];
     };
     /**
      * ApproveRevisionRequest
@@ -1397,6 +1879,8 @@ export interface components {
        * @default
        */
       note: string;
+      /** Scope Confirmed */
+      scope_confirmed: boolean;
     };
     /**
      * Board
@@ -2123,6 +2607,31 @@ export interface components {
       configuration: {
         [key: string]: unknown;
       };
+    };
+    /**
+     * ConfirmedLoad
+     * @description A load a resolver confirmed is not the excluded equipment, as it stood then.
+     */
+    ConfirmedLoad: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /**
+       * Power Kw
+       * @default
+       */
+      power_kw: string;
+      /**
+       * Kind
+       * @default
+       */
+      kind: string;
     };
     /**
      * ControlNeed
@@ -3518,6 +4027,16 @@ export interface components {
       | 'spare'
       | 'other';
     /**
+     * LoadRef
+     * @description One load of the request: its board's name and its position on that board.
+     */
+    LoadRef: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+    };
+    /**
      * LoadScheduleImport
      * @description A load schedule read from a consultant's file.
      *
@@ -4606,14 +5125,32 @@ export interface components {
     };
     /**
      * RequirementOpenItem
-     * @description What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``.
+     * @description What this slice does not design or settle.
+     *
+     *     ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
+     *     an AI proposal item left undecided (``ai_item_unreviewed``), or a
+     *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
+     *     the user did not reject; the subject's ``item_id`` names the item. A
+     *     description mentioning life-safety equipment anywhere adds
+     *     ``ai_life_safety_mentioned``, and a word that may be about life safety
+     *     ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
+     *     one per mention (subject ``mention_id`` and ``term``). No decision closes
+     *     either; a clarification in force does (``SafetyClarificationRequest``).
      */
     RequirementOpenItem: {
       /**
        * Code
        * @enum {string}
        */
-      code: 'control_not_designed' | 'inter_board_wiring_not_modelled';
+      code:
+        | 'control_not_designed'
+        | 'inter_board_wiring_not_modelled'
+        | 'ai_item_unreviewed'
+        | 'ai_question'
+        | 'ai_unsupported'
+        | 'ai_life_safety_mentioned'
+        | 'ai_possibly_life_safety'
+        | 'ai_conflicting_values';
       subject: components['schemas']['RequirementSubject'];
     };
     /**
@@ -4669,6 +5206,24 @@ export interface components {
       control_ref?: string | null;
       /** Supply Board Ref */
       supply_board_ref?: string | null;
+      /** Item Id */
+      item_id?: string | null;
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Term */
+      term?: string | null;
+      /** Other Item Id */
+      other_item_id?: string | null;
+      /** Field */
+      field?: string | null;
+      /** Kind */
+      kind?: string | null;
+      /** Ai Value */
+      ai_value?: string | null;
+      /** Other Value */
+      other_value?: string | null;
+      /** Entered Value */
+      entered_value?: string | null;
     };
     /**
      * RequirementTrace
@@ -4681,6 +5236,31 @@ export interface components {
       design_ref?: string | null;
     };
     /**
+     * RequirementsAi
+     * @description A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
+     *
+     *     Attributes:
+     *         applied_in_revision: The revision whose save applied it; a later
+     *             revision carries the block unchanged (its indices are that
+     *             revision's), never re-applying it.
+     *         applied_at: When that save applied it (server clock).
+     */
+    RequirementsAi: {
+      proposal: components['schemas']['AiAppliedProposal'];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /** Placements */
+      placements?: components['schemas']['AiPlacementRecord'][];
+      /** Applied In Revision */
+      applied_in_revision?: number | null;
+      /** Applied At */
+      applied_at?: string | null;
+      /** Clarifications */
+      clarifications?: components['schemas']['SafetyClarification'][];
+      /** Resolutions */
+      resolutions?: components['schemas']['SafetyResolution'][];
+    };
+    /**
      * RequirementsInput
      * @description What the guided intake adds to a project's request (M6a, ``pp-req/1``).
      *
@@ -4689,8 +5269,10 @@ export interface components {
      *     are the server's, never sent.
      *
      *     Attributes:
-     *         intake: How the loads were entered (``ai`` is reserved, refused).
+     *         intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
      *         control: The control needs of controlled loads.
+     *         ai: The AI proposal applied and where its confirmed items were
+     *             placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
      */
     RequirementsInput: {
       /**
@@ -4698,9 +5280,10 @@ export interface components {
        * @default guided
        * @enum {string}
        */
-      intake: 'guided' | 'table' | 'import';
+      intake: 'guided' | 'table' | 'import' | 'ai';
       /** Control */
       control?: components['schemas']['ControlRequirementInput'][];
+      ai?: components['schemas']['AiRequirementsInput'] | null;
     };
     /**
      * RequirementsPreview
@@ -4735,6 +5318,9 @@ export interface components {
      *         acknowledgements: Every acknowledgement recorded, append-only.
      *         resaved_from: On a revision saved by ``…/resave``, the revision whose
      *             stored request it re-designed; absent otherwise.
+     *         ai: The AI proposal the request was entered from (M6b): the whole
+     *             proposal, its decisions and where its items were placed. Carried
+     *             unchanged to later revisions as the request's provenance.
      */
     RequirementsRecord: {
       /**
@@ -4769,6 +5355,9 @@ export interface components {
       }[];
       /** Resaved From */
       resaved_from?: number | null;
+      ai?: components['schemas']['RequirementsAi'] | null;
+      /** Safety Resolutions */
+      safety_resolutions?: components['schemas']['SafetyResolution'][];
     };
     /**
      * ResolveEscalationRequest
@@ -5013,6 +5602,210 @@ export interface components {
       author_established: boolean;
     };
     /**
+     * SafetyClarification
+     * @description A person's statement that one mention is not about life-safety equipment.
+     *
+     *     Append-only on the record's ``ai`` block; who and when are the server's.
+     *     It validates nothing: exports print it as not engineer-validated.
+     */
+    SafetyClarification: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Statement
+       * @constant
+       */
+      statement: 'not_life_safety';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyClarificationEligibility
+     * @description Whether the caller may clarify a mention on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
+     *     permission), ``proposal_author`` (the caller's account created the AI
+     *     proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
+     *     ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
+     *     The server checks again on every request.
+     */
+    SafetyClarificationEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyConcern
+     * @description One safety concern of a revision's record, and how it stands (M6d).
+     *
+     *     Attributes:
+     *         kind: ``mention`` or ``item``.
+     *         target_id: The mention id or item id a resolution names.
+     *         level: ``life_safety`` or ``possibly``.
+     *         code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+     *             ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+     *         label: The term or item text.
+     *         start: Offset in the description.
+     *         end: Offset after it.
+     *         resolved: Whether it holds no approval now (a resolution in force, or
+     *             a possibly-safety item whose words were all judged false positives).
+     *         resolution: The resolution in force on it, if any.
+     *         false_positive_refusal: Why it may not be a false positive (``item``,
+     *             ``life_safety_item_overlaps``), or ``None``.
+     */
+    SafetyConcern: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'mention' | 'item' | 'request';
+      /** Target Id */
+      target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Code */
+      code: string;
+      /** Label */
+      label: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+      /** Resolved */
+      resolved: boolean;
+      resolution?: components['schemas']['SafetyResolution'] | null;
+      /** False Positive Refusal */
+      false_positive_refusal?: string | null;
+      /** Exclusion Refusal */
+      exclusion_refusal?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
+      /**
+       * Carried
+       * @default false
+       */
+      carried: boolean;
+      /** Where */
+      where?: string | null;
+      /** Confirmation Candidates */
+      confirmation_candidates?: components['schemas']['ConfirmedLoad'][] | null;
+    };
+    /**
+     * SafetyMention
+     * @description A life-safety or possibly-safety term detected in a description (keyword detection).
+     */
+    SafetyMention: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Term */
+      term: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /**
+     * SafetyResolution
+     * @description A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
+     *
+     *     ``excluded_from_scope``: the requirement is real and not covered by this
+     *     revision. ``false_positive``: the detected text is not a life-safety
+     *     requirement. Who and when are the server's; it validates nothing.
+     */
+    SafetyResolution: {
+      /**
+       * Target Kind
+       * @enum {string}
+       */
+      target_kind: 'mention' | 'item' | 'request';
+      /** Target Id */
+      target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
+      /** Confirmed Loads */
+      confirmed_loads?: components['schemas']['ConfirmedLoad'][] | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyResolutionEligibility
+     * @description Whether the caller may resolve safety concerns on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
+     *     ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
+     *     ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
+     *     again on every request.
+     */
+    SafetyResolutionEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyResolutionRequest
+     * @description Resolve one safety concern of the latest revision's record (four-eyes, M6d).
+     *
+     *     Exactly one of ``mention_id`` and ``item_id``. Who and when are the
+     *     server's (any such field is 422).
+     *
+     *     Attributes:
+     *         mention_id: A detected mention (``m`` and 16 hex digits).
+     *         item_id: A proposal item unsupported as (possibly) life-safety.
+     *         resolution: ``excluded_from_scope`` or ``false_positive``.
+     *         reason: Why, in the resolver's words: 10 to 500 characters once
+     *             whitespace is collapsed.
+     */
+    SafetyResolutionRequest: {
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Item Id */
+      item_id?: string | null;
+      /** Request Id */
+      request_id?: string | null;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /** Not This Equipment */
+      not_this_equipment?: components['schemas']['LoadRef'][] | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
+    };
+    /**
      * SaveCompanySettings
      * @description Company settings to save.
      *
@@ -5152,6 +5945,15 @@ export interface components {
        * @default false
        */
       is_author: boolean;
+      safety_clarification?: components['schemas']['SafetyClarificationEligibility'] | null;
+      /** Safety Concerns */
+      safety_concerns?: components['schemas']['SafetyConcern'][];
+      safety_resolution?: components['schemas']['SafetyResolutionEligibility'] | null;
+      approval_held?: components['schemas']['ApprovalHeld'] | null;
+      /** Approval Scope Version */
+      approval_scope_version?: string | null;
+      /** Approved Scope Version */
+      approved_scope_version?: string | null;
     };
     /**
      * ScheduleSuggestionRequest
@@ -6900,6 +7702,229 @@ export interface operations {
       };
     };
   };
+  create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiProposalRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_request_in_flight` (the account's other call) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_consent_required`, `ai_input_empty`, `ai_input_too_long` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded` */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_malformed` */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_unavailable` */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_timeout` */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_requires_account`, `ai_proposal_not_yours` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` (part of a saved revision's record) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiDecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_edit_not_valid`, `ai_decisions_full`, or a who/when field */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post: {
     parameters: {
       query?: never;
@@ -6943,6 +7968,95 @@ export interface operations {
         content?: never;
       };
       /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `question_not_answerable`, `question_answered`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description `clarification_route_retired` */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SafetyResolutionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description `safety_resolution_requires_account`, `safety_resolution_not_permitted`, `safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_found` or `safety_target_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_already_resolved`, `false_positive_not_allowed`, `snapshot_integrity_failed` */
       409: {
         headers: {
           [name: string]: unknown;

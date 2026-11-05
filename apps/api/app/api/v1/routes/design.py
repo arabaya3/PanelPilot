@@ -5,7 +5,7 @@ Routes never call ``app.design`` directly — they call the domain service.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Response, UploadFile
@@ -16,10 +16,14 @@ from app.api.deps import (
     enforce_design_rate_limit,
     enforce_trial_rate_limit,
 )
-from app.domain import company_settings, design_projects, model_budget
+from app.core.errors import GoneError
+from app.domain import company_settings, design_ai, design_projects, model_budget
 from app.domain import design as design_domain
 from app.models.schemas.design import (
     AcknowledgedRequirements,
+    AiDecisionRequest,
+    AiProposal,
+    AiProposalRequest,
     ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
@@ -43,6 +47,7 @@ from app.models.schemas.design import (
     RequirementsPreviewRequest,
     ReviseProjectRequest,
     RevisionExportRequest,
+    SafetyResolutionRequest,
     SaveCompanySettings,
     SavedProject,
     SaveProjectRequest,
@@ -194,10 +199,94 @@ def save_project(
     responses={422: {"description": "As a save refuses the request, or the design's refusal"}},
 )
 def preview_requirements(
-    payload: RequirementsPreviewRequest, user: CurrentUserDep
+    payload: RequirementsPreviewRequest, user: CurrentUserDep, session: SessionDep
 ) -> RequirementsPreview:
     """The requirements record and design a guided input would be saved with; nothing is saved."""
-    return design_projects.preview_requirements(user=user, request=payload)
+    return design_projects.preview_requirements(user=user, request=payload, session=session)
+
+
+_AI_ERRORS: dict[int | str, dict[str, Any]] = {
+    403: {"description": "`ai_requires_account` (a trial)"},
+    404: {"description": "`ai_proposal_not_found` (also another tenant's)"},
+}
+
+
+@router.post(
+    "/projects/requirements/ai-proposals",
+    response_model=AiProposal,
+    status_code=201,
+    # The design routes' per-address budget (the router's), plus the
+    # per-address trial limit every paid model call carries.
+    dependencies=[Depends(enforce_trial_rate_limit)],
+    responses={
+        403: {"description": "`ai_requires_account` (a trial)"},
+        409: {"description": "`ai_request_in_flight` (the account's other call)"},
+        422: {"description": "`ai_consent_required`, `ai_input_empty`, `ai_input_too_long`"},
+        429: {"description": "`rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded`"},
+        502: {"description": "`ai_proposal_malformed`"},
+        503: {"description": "`ai_unavailable`"},
+        504: {"description": "`ai_timeout`"},
+    },
+)
+def create_ai_proposal(
+    payload: AiProposalRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    provider: Annotated[Any, Depends(design_ai.get_proposal_provider)],
+) -> AiProposal:
+    """Propose requirement entries from a description (M6b). A paid model call; designs nothing."""
+    return design_ai.create_proposal(session=session, user=user, request=payload, provider=provider)
+
+
+@router.get(
+    "/projects/requirements/ai-proposals/{proposal_id}",
+    response_model=AiProposal,
+    responses=_AI_ERRORS,
+)
+def get_ai_proposal(
+    proposal_id: Annotated[str, Path(max_length=64)], user: CurrentUserDep, session: SessionDep
+) -> AiProposal:
+    """One of the tenant's AI proposals, with each item's decision state."""
+    return design_ai.get_proposal(session=session, user=user, proposal_id=proposal_id)
+
+
+@router.delete(
+    "/projects/requirements/ai-proposals/{proposal_id}",
+    status_code=204,
+    responses={
+        **_AI_ERRORS,
+        403: {"description": "`ai_requires_account`, `ai_proposal_not_yours`"},
+        409: {"description": "`ai_proposal_used` (part of a saved revision's record)"},
+    },
+)
+def delete_ai_proposal(
+    proposal_id: Annotated[str, Path(max_length=64)], user: CurrentUserDep, session: SessionDep
+) -> Response:
+    """Delete one of the caller's own proposals that no saved revision applied (S3)."""
+    design_ai.delete_proposal(session=session, user=user, proposal_id=proposal_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision",
+    response_model=AiProposal,
+    responses={
+        **_AI_ERRORS,
+        409: {"description": "`ai_proposal_used`"},
+        422: {"description": "`ai_edit_not_valid`, `ai_decisions_full`, or a who/when field"},
+    },
+)
+def decide_ai_item(
+    proposal_id: Annotated[str, Path(max_length=64)],
+    item_id: Annotated[str, Path(max_length=40)],
+    payload: AiDecisionRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> AiProposal:
+    """Accept, reject or edit one proposal item; append-only, who and when the server's."""
+    return design_ai.decide(
+        session=session, user=user, proposal_id=proposal_id, item_id=item_id, decision=payload
+    )
 
 
 @router.post(
@@ -240,6 +329,56 @@ def answer_question(
     if isinstance(result, AcknowledgedRequirements):
         response.status_code = 200
     return result
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/requirements/safety-clarifications",
+    status_code=410,
+    responses={410: {"description": "`clarification_route_retired`"}},
+)
+def clarify_safety_mention(
+    project_id: str,  # noqa: ARG001
+    number: int,  # noqa: ARG001
+    user: CurrentUserDep,  # noqa: ARG001  (a signed-in caller only)
+) -> None:
+    """Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing."""
+    raise GoneError(
+        "this route is retired; record a resolution with POST …/requirements/safety-resolutions",
+        code="clarification_route_retired",
+    )
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/requirements/safety-resolutions",
+    response_model=AcknowledgedRequirements,
+    responses={
+        403: {
+            "description": (
+                "`safety_resolution_requires_account`, `safety_resolution_not_permitted`, "
+                "`safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author`"
+            )
+        },
+        404: {"description": "`revision_not_found` or `safety_target_not_found`"},
+        409: {
+            "description": (
+                "`requirements_derived`, `revision_already_approved`, `revision_not_latest`, "
+                "`safety_concern_already_resolved`, `false_positive_not_allowed`, "
+                "`snapshot_integrity_failed`"
+            )
+        },
+    },
+)
+def resolve_safety_concern(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    payload: SafetyResolutionRequest,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> AcknowledgedRequirements:
+    """Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only."""
+    return design_projects.resolve_safety_concern(
+        session=session, user=user, project_id=project_id, number=number, request=payload
+    )
 
 
 @router.get("/projects/{project_id}", response_model=SavedProject)

@@ -142,6 +142,10 @@ def _openai_embedder(api_key: str, model: str) -> Embedder:
     """
     import openai
 
+    from app.core.logging import quiet_sdk_loggers
+
+    quiet_sdk_loggers()  # its import may have read OPENAI_LOG=debug
+
     client = openai.OpenAI(
         api_key=api_key, timeout=EMBEDDING_TIMEOUT_S, max_retries=EMBEDDING_MAX_RETRIES
     )

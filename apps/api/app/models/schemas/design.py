@@ -31,6 +31,7 @@ from pydantic import (
     SerializationInfo,
     SerializeAsAny,
     SerializerFunctionWrapHandler,
+    StrictBool,
     StringConstraints,
     field_serializer,
     model_validator,
@@ -1365,6 +1366,39 @@ class ControlRequirementInput(StrictModel):
         return self
 
 
+class AiPlacement(StrictModel):
+    """Where one confirmed AI proposal item was placed in the request (M6b).
+
+    Attributes:
+        item_id: The proposal item.
+        board_index: The board's index in ``request.boards`` (a ``board``
+            item's board; a ``load`` or ``control_need`` item's load's board).
+        load_index: The load's index in that board's ``loads``: given for a
+            ``load`` or ``control_need`` item, never for a ``board`` item.
+    """
+
+    item_id: str = Field(min_length=1, max_length=40)
+    board_index: int = Field(ge=0, le=99)
+    load_index: int | None = Field(default=None, ge=0, le=499)
+
+
+class AiRequirementsInput(StrictModel):
+    """The AI proposal a save applies (M6b): which proposal, and where its items went.
+
+    The server checks, under the project lock, that the proposal is the
+    caller's tenant's and unused, that every placed item's latest decision is
+    ``accept`` or ``edit`` and that its row exists. Who decided and when are
+    read from the proposal, never from here.
+
+    Attributes:
+        proposal_id: The proposal.
+        placements: Each confirmed item inserted into the editor, by place.
+    """
+
+    proposal_id: str = Field(min_length=1, max_length=64)
+    placements: list[AiPlacement] = Field(default_factory=list, max_length=500)
+
+
 class RequirementsInput(StrictModel):
     """What the guided intake adds to a project's request (M6a, ``pp-req/1``).
 
@@ -1373,12 +1407,23 @@ class RequirementsInput(StrictModel):
     are the server's, never sent.
 
     Attributes:
-        intake: How the loads were entered (``ai`` is reserved, refused).
+        intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
         control: The control needs of controlled loads.
+        ai: The AI proposal applied and where its confirmed items were
+            placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
     """
 
-    intake: Literal["guided", "table", "import"] = "guided"
+    intake: Literal["guided", "table", "import", "ai"] = "guided"
     control: list[ControlRequirementInput] = Field(default_factory=list, max_length=500)
+    ai: AiRequirementsInput | None = None
+
+    @model_validator(mode="after")
+    def _ai_with_its_block(self) -> RequirementsInput:
+        # ``intake: "ai"`` is accepted only with the proposal it applies (M6b),
+        # and a proposal only under ``intake: "ai"``.
+        if (self.intake == "ai") != (self.ai is not None):
+            raise ValueError('intake "ai" is given with its "ai" block, and only then')
+        return self
 
 
 class RequirementsPreviewRequest(StrictModel):
@@ -1757,6 +1802,15 @@ class ApproveRevisionRequest(StrictModel):
     note: Annotated[
         str, StringConstraints(strip_whitespace=True, max_length=_APPROVAL_NOTE_TEXT)
     ] = ""
+    #: The approver confirms they read what a review approval covers and does
+    #: not (``app.design.approval_scope``): strictly ``true``, else 422.
+    scope_confirmed: StrictBool
+
+    @model_validator(mode="after")
+    def _scope_confirmed(self) -> ApproveRevisionRequest:
+        if self.scope_confirmed is not True:
+            raise ValueError("confirm what a review approval covers (scope_confirmed: true)")
+        return self
 
 
 class ProjectSummary(BaseModel):
@@ -1798,6 +1852,17 @@ class RequirementSubject(BaseModel):
     load_ref: str | None = None
     control_ref: str | None = None
     supply_board_ref: str | None = None
+    item_id: str | None = None
+    mention_id: str | None = None
+    term: str | None = None
+    #: ``ai_conflicting_values`` (M6d): the field, how it conflicts
+    #: (``items_disagree`` or ``changed_in_editor``) and the values.
+    other_item_id: str | None = None
+    field: str | None = None
+    kind: str | None = None
+    ai_value: str | None = None
+    other_value: str | None = None
+    entered_value: str | None = None
 
 
 class RequirementBoard(BaseModel):
@@ -1857,9 +1922,29 @@ class RequirementQuestion(BaseModel):
 
 
 class RequirementOpenItem(BaseModel):
-    """What this slice does not design: ``control_not_designed`` or ``inter_board_wiring_not_modelled``."""
+    """What this slice does not design or settle.
 
-    code: Literal["control_not_designed", "inter_board_wiring_not_modelled"]
+    ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
+    an AI proposal item left undecided (``ai_item_unreviewed``), or a
+    ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
+    the user did not reject; the subject's ``item_id`` names the item. A
+    description mentioning life-safety equipment anywhere adds
+    ``ai_life_safety_mentioned``, and a word that may be about life safety
+    ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
+    one per mention (subject ``mention_id`` and ``term``). No decision closes
+    either; a clarification in force does (``SafetyClarificationRequest``).
+    """
+
+    code: Literal[
+        "control_not_designed",
+        "inter_board_wiring_not_modelled",
+        "ai_item_unreviewed",
+        "ai_question",
+        "ai_unsupported",
+        "ai_life_safety_mentioned",
+        "ai_possibly_life_safety",
+        "ai_conflicting_values",
+    ]
     subject: RequirementSubject
 
 
@@ -1868,6 +1953,470 @@ class RequirementTrace(BaseModel):
 
     requirement_ref: str
     design_ref: str | None = None
+
+
+AiItemKind = Literal["board", "load", "control_need", "question", "unsupported"]
+
+#: The numeric fields of a proposal value: stored as decimal strings (the
+#: canonical hash takes no float), sent to the client as JSON numbers.
+_AI_NUMBERS = ("power_kw", "power_factor", "length_m")
+
+
+def _ai_numbers(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    out = dict(value)
+    for field in _AI_NUMBERS:
+        if isinstance(out.get(field), str):
+            try:
+                number = Decimal(out[field])
+            except ArithmeticError:
+                continue
+            out[field] = int(number) if number == number.to_integral_value() else float(number)
+    return out
+
+
+class AiSource(BaseModel):
+    """A span of the stored description: ``input_text[start:end]``."""
+
+    start: int
+    end: int
+
+
+class AiItem(BaseModel):
+    """One item of an AI proposal, as the server kept it after its checks (M6b).
+
+    Attributes:
+        id: The server's id for it (``i<n>``, by its place in the output).
+        kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
+        source: Where in the description it was read.
+        quote: The description's text at ``source``.
+        value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
+        value_spans: For each numeric field, where its literal stands.
+    """
+
+    id: str
+    kind: AiItemKind
+    source: AiSource
+    quote: str
+    value: dict[str, Any]
+    value_spans: dict[str, AiSource] = Field(default_factory=dict)
+
+    @field_serializer("value")
+    def _value_numbers(self, value: dict[str, Any]) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiProposalItem(AiItem):
+    """An item with where the user's decisions leave it.
+
+    Attributes:
+        state: ``proposed`` until decided; the latest decision otherwise.
+        decided_value: The value an ``accept`` (the item's own) or ``edit``
+            (the user's) confirmed; ``None`` while proposed or rejected.
+    """
+
+    state: Literal["proposed", "accepted", "edited", "rejected"] = "proposed"
+    decided_value: dict[str, Any] | None = None
+
+    @field_serializer("decided_value")
+    def _decided_numbers(self, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiRejected(BaseModel):
+    """An output item the server's checks refused, kept and shown, never dropped.
+
+    Attributes:
+        id: The server's id for it (``i<n>``).
+        kind: Its kind, when it named a known one.
+        source: Its span, when it gave a readable one.
+        quote: The description's text at the span, when it lies in the input.
+        value: What it proposed, as sent (bounded).
+        reason: Why it was refused (``offsets_outside_input``,
+            ``value_not_in_text``, ``invalid_value``,
+            ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
+        detail: Which field or reference, in English.
+    """
+
+    id: str
+    kind: str | None = None
+    source: AiSource | None = None
+    quote: str | None = None
+    value: dict[str, Any] | None = None
+    reason: str
+    detail: str = ""
+
+
+class AiDecision(BaseModel):
+    """One decision on an item, append-only; the latest per item holds.
+
+    ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
+    account and its clock.
+    """
+
+    item_id: str
+    decision: Literal["accept", "reject", "edit"]
+    value: dict[str, Any] | None = None
+    by_user_id: str
+    by_name: str
+    at: str
+
+    @field_serializer("value")
+    def _value_numbers(self, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        return _ai_numbers(value)
+
+
+class AiPlacementRecord(BaseModel):
+    """Where a confirmed item went, as the save recorded it.
+
+    Attributes:
+        changed_in_editor: The item's fields the row differs on from the
+            decided value: the user edited after confirming.
+    """
+
+    item_id: str
+    board_index: int
+    load_index: int | None = None
+    board_ref: str | None = None
+    load_ref: str | None = None
+    changed_in_editor: list[str] = Field(default_factory=list)
+    #: What the row held instead, by changed field (M6d), printed as an open item.
+    entered: dict[str, str] = Field(default_factory=dict)
+
+
+class SafetyMention(BaseModel):
+    """A life-safety or possibly-safety term detected in a description (keyword detection)."""
+
+    mention_id: str
+    level: Literal["life_safety", "possibly"]
+    term: str
+    start: int
+    end: int
+
+
+class SafetyClarification(BaseModel):
+    """A person's statement that one mention is not about life-safety equipment.
+
+    Append-only on the record's ``ai`` block; who and when are the server's.
+    It validates nothing: exports print it as not engineer-validated.
+    """
+
+    mention_id: str
+    statement: Literal["not_life_safety"]
+    reason: str
+    by_user_id: str
+    by_name: str
+    at: str
+
+
+class SafetyResolution(BaseModel):
+    """A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
+
+    ``excluded_from_scope``: the requirement is real and not covered by this
+    revision. ``false_positive``: the detected text is not a life-safety
+    requirement. Who and when are the server's; it validates nothing.
+    """
+
+    target_kind: Literal["mention", "item", "request"]
+    target_id: str
+    #: The AI proposal an AI concern belongs to (M6e); ``None`` for a request one.
+    proposal_id: str | None = None
+    #: The revision the concern was first raised on (M6e).
+    raised_on: int | None = None
+    #: The loads the resolver confirmed are not the excluded equipment (M6e).
+    confirmed_loads: list[ConfirmedLoad] | None = None
+    resolution: Literal["excluded_from_scope", "false_positive"]
+    reason: str
+    by_user_id: str
+    by_name: str
+    at: str
+
+
+class AiProposal(BaseModel):
+    """An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
+
+    Attributes:
+        proposal_sha256: The canonical hash of its immutable part (input,
+            provider, model, prompt version, items, server_rejected).
+        used_by_revision_id: The revision that applied it; it then takes no
+            more decisions (``ai_proposal_used``) and no second save.
+        life_safety_mentioned: The description names fire-pump or
+            life-safety equipment somewhere; a save records the open item
+            ``ai_life_safety_mentioned``. Shown beside the proposal, never
+            dismissed.
+        safety_mentions: Every life-safety (``life_safety``) and
+            possibly-safety (``possibly``) term detected, with its offsets.
+        ai_consent_at: When the caller acknowledged that the description is
+            sent to the model provider; ``ai_consent_by_user_id`` who.
+            Null on proposals made before the acknowledgement was asked.
+        calls_remaining: On the response that created it only: the caller's
+            AI intake calls left this month (``None`` with no per-account cap).
+    """
+
+    id: str
+    schema_: str = Field(default="pp-ai-proposal/1", alias="schema")
+    created_at: str
+    created_by_user_id: str | None = None
+    input_text: str
+    input_sha256: str
+    provider: str
+    model: str
+    prompt_version: str
+    items: list[AiProposalItem] = Field(default_factory=list)
+    server_rejected: list[AiRejected] = Field(default_factory=list)
+    decisions: list[AiDecision] = Field(default_factory=list)
+    used: bool = False
+    used_by_revision_id: str | None = None
+    proposal_sha256: str
+    life_safety_mentioned: bool = False
+    safety_mentions: list[SafetyMention] = Field(default_factory=list)
+    ai_consent_at: str | None = None
+    ai_consent_by_user_id: str | None = None
+    calls_remaining: int | None = None
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class AiAppliedProposal(BaseModel):
+    """The applied proposal as a record keeps it: its immutable part and provenance."""
+
+    id: str
+    schema_: str = Field(default="pp-ai-proposal/1", alias="schema")
+    created_at: str
+    created_by_user_id: str | None = None
+    input_text: str
+    input_sha256: str
+    provider: str
+    model: str
+    prompt_version: str
+    items: list[AiItem] = Field(default_factory=list)
+    server_rejected: list[AiRejected] = Field(default_factory=list)
+    proposal_sha256: str
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class RequirementsAi(BaseModel):
+    """A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
+
+    Attributes:
+        applied_in_revision: The revision whose save applied it; a later
+            revision carries the block unchanged (its indices are that
+            revision's), never re-applying it.
+        applied_at: When that save applied it (server clock).
+    """
+
+    proposal: AiAppliedProposal
+    decisions: list[AiDecision] = Field(default_factory=list)
+    placements: list[AiPlacementRecord] = Field(default_factory=list)
+    applied_in_revision: int | None = None
+    applied_at: str | None = None
+    clarifications: list[SafetyClarification] = Field(default_factory=list)
+    resolutions: list[SafetyResolution] = Field(default_factory=list)
+
+
+class SafetyClarificationRequest(StrictModel):
+    """Clarify one mention of a revision's record as not life-safety (four-eyes).
+
+    Who and when are the server's (any such field is 422).
+
+    Attributes:
+        mention_id: The open item's ``subject.mention_id``.
+        statement: Only ``not_life_safety``.
+        reason: Why, in the clarifier's words: 10 to 500 characters, not
+            counting surrounding whitespace.
+    """
+
+    mention_id: str = Field(pattern=r"^m[0-9a-f]{16}$")
+    statement: Literal["not_life_safety"]
+    reason: str = Field(max_length=2000)
+
+    @model_validator(mode="after")
+    def _reason_length(self) -> SafetyClarificationRequest:
+        self.reason = " ".join(self.reason.split())
+        if not 10 <= len(self.reason) <= 500:
+            raise ValueError("the reason holds 10 to 500 characters")
+        return self
+
+
+class LoadRef(StrictModel):
+    """One load of the request: its board's name and its position on that board."""
+
+    board: str = Field(max_length=200)
+    load_index: int = Field(ge=0, le=10_000)
+
+
+class ConfirmedLoad(BaseModel):
+    """A load a resolver confirmed is not the excluded equipment, as it stood then."""
+
+    board: str
+    load_index: int
+    description: str = ""
+    power_kw: str = ""
+    kind: str = ""
+
+
+class SafetyResolutionRequest(StrictModel):
+    """Resolve one safety concern of the latest revision's record (four-eyes, M6d).
+
+    Exactly one of ``mention_id`` and ``item_id``. Who and when are the
+    server's (any such field is 422).
+
+    Attributes:
+        mention_id: A detected mention (``m`` and 16 hex digits).
+        item_id: A proposal item unsupported as (possibly) life-safety.
+        resolution: ``excluded_from_scope`` or ``false_positive``.
+        reason: Why, in the resolver's words: 10 to 500 characters once
+            whitespace is collapsed.
+    """
+
+    mention_id: str | None = Field(default=None, pattern=r"^m[0-9a-f]{16}$")
+    item_id: str | None = Field(default=None, pattern=r"^i[0-9]{1,4}$")
+    #: A request concern (M6e): ``r`` and 16 hex digits.
+    request_id: str | None = Field(default=None, pattern=r"^r[0-9a-f]{16}$")
+    #: The AI proposal of a mention or item carried from an earlier revision.
+    proposal_id: str | None = Field(default=None, max_length=64)
+    #: Excluding a carried life-safety concern (M6e): every candidate load of
+    #: the request (``SafetyConcern.confirmation_candidates``), each confirmed
+    #: not to be that equipment. Exactly the candidates: missing ones are 409
+    #: ``exclusion_confirmation_incomplete``, others 422.
+    not_this_equipment: list[LoadRef] | None = Field(default=None, max_length=500)
+    resolution: Literal["excluded_from_scope", "false_positive"]
+    reason: str = Field(max_length=2000)
+
+    @model_validator(mode="after")
+    def _checked(self) -> SafetyResolutionRequest:
+        named = [x for x in (self.mention_id, self.item_id, self.request_id) if x is not None]
+        if len(named) != 1:
+            raise ValueError("name exactly one of mention_id, item_id and request_id")
+        if self.request_id is not None and self.proposal_id is not None:
+            raise ValueError("a request concern names no proposal")
+        self.reason = " ".join(self.reason.split())
+        if not 10 <= len(self.reason) <= 500:
+            raise ValueError("the reason holds 10 to 500 characters")
+        return self
+
+
+class SafetyConcern(BaseModel):
+    """One safety concern of a revision's record, and how it stands (M6d).
+
+    Attributes:
+        kind: ``mention`` or ``item``.
+        target_id: The mention id or item id a resolution names.
+        level: ``life_safety`` or ``possibly``.
+        code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+            ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+        label: The term or item text.
+        start: Offset in the description.
+        end: Offset after it.
+        resolved: Whether it holds no approval now (a resolution in force, or
+            a possibly-safety item whose words were all judged false positives).
+        resolution: The resolution in force on it, if any.
+        false_positive_refusal: Why it may not be a false positive (``item``,
+            ``life_safety_item_overlaps``), or ``None``.
+    """
+
+    kind: Literal["mention", "item", "request"]
+    target_id: str
+    proposal_id: str | None = None
+    level: Literal["life_safety", "possibly"]
+    code: str
+    label: str
+    start: int
+    end: int
+    resolved: bool
+    resolution: SafetyResolution | None = None
+    false_positive_refusal: str | None = None
+    #: Why it may not be excluded (``in_request``: remove it from the request).
+    exclusion_refusal: str | None = None
+    #: The revision it was first raised on, and whether only an earlier one holds it.
+    raised_on: int | None = None
+    carried: bool = False
+    #: Where in the request (a request concern): the board, ``board > load`` or field.
+    where: str | None = None
+    #: Excluding it needs every one of these loads confirmed not to be that
+    #: equipment (``not_this_equipment``); ``None`` when no confirmation is asked.
+    confirmation_candidates: list[ConfirmedLoad] | None = None
+
+
+class SafetyResolutionEligibility(BaseModel):
+    """Whether the caller may resolve safety concerns on this revision now, and if not, why.
+
+    ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
+    ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
+    ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
+    again on every request.
+    """
+
+    eligible: bool
+    reason: str | None = None
+
+
+class ApprovalHeld(BaseModel):
+    """Why the revision cannot be approved now: unresolved safety concerns (M6d).
+
+    Attributes:
+        code: ``approval_blocked_by_safety``.
+        count: How many concerns are unresolved.
+        codes: Their concern codes, sorted, distinct.
+    """
+
+    code: str = "approval_blocked_by_safety"
+    count: int
+    codes: list[str]
+
+
+class SafetyClarificationEligibility(BaseModel):
+    """Whether the caller may clarify a mention on this revision now, and if not, why.
+
+    ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
+    permission), ``proposal_author`` (the caller's account created the AI
+    proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
+    ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
+    The server checks again on every request.
+    """
+
+    eligible: bool
+    reason: str | None = None
+
+
+class AiProposalRequest(StrictModel):
+    """A description to propose requirement entries from; nothing is designed.
+
+    Attributes:
+        description: Typed text only, at most 8 000 characters
+            (``ai_input_too_long``), not empty (``ai_input_empty``).
+        request: The editor's current draft, read only for its board names
+            so the model can name existing boards; never stored, never
+            taken as confirmed.
+        ai_consent: The caller acknowledges that the description (and the
+            board names) is sent to the AI model provider; without it the
+            request is 422 ``ai_consent_required`` and nothing is sent.
+    """
+
+    description: str = Field(max_length=100_000)
+    request: dict[str, Any] | None = None
+    ai_consent: StrictBool = False
+
+
+class AiDecisionRequest(StrictModel):
+    """A decision on one proposal item. Who and when are the server's (any such field is 422).
+
+    Attributes:
+        decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
+            it to ``value`` (checked against the item kind's fields).
+        value: The edited value, for ``edit`` only.
+    """
+
+    decision: Literal["accept", "reject", "edit"]
+    value: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _value_for_edit(self) -> AiDecisionRequest:
+        if (self.decision == "edit") != (self.value is not None):
+            raise ValueError("an edit gives a value, and only an edit")
+        return self
 
 
 class RequirementsRecord(BaseModel):
@@ -1880,6 +2429,9 @@ class RequirementsRecord(BaseModel):
         acknowledgements: Every acknowledgement recorded, append-only.
         resaved_from: On a revision saved by ``…/resave``, the revision whose
             stored request it re-designed; absent otherwise.
+        ai: The AI proposal the request was entered from (M6b): the whole
+            proposal, its decisions and where its items were placed. Carried
+            unchanged to later revisions as the request's provenance.
     """
 
     schema_: str = Field(default="pp-req/1", alias="schema")
@@ -1894,6 +2446,9 @@ class RequirementsRecord(BaseModel):
     trace: list[RequirementTrace] = Field(default_factory=list)
     acknowledgements: list[dict[str, str]] = Field(default_factory=list)
     resaved_from: int | None = None
+    ai: RequirementsAi | None = None
+    #: Resolutions of safety concerns (M6e): append-only, carried forward.
+    safety_resolutions: list[SafetyResolution] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
@@ -1985,6 +2540,16 @@ class SavedProject(BaseModel):
     author_unknown: bool = False
     author_established: bool = False
     is_author: bool = False
+    safety_clarification: SafetyClarificationEligibility | None = None
+    #: M6d: every safety concern of the revision's stored record, how each
+    #: stands; who may resolve them; and why it cannot be approved now.
+    safety_concerns: list[SafetyConcern] = Field(default_factory=list)
+    safety_resolution: SafetyResolutionEligibility | None = None
+    approval_held: ApprovalHeld | None = None
+    #: The scope statement an approval now confirms; and the one this
+    #: revision's approval confirmed (``None``: none, or not approved).
+    approval_scope_version: str | None = None
+    approved_scope_version: str | None = None
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is

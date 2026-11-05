@@ -32,6 +32,7 @@ def test_the_real_crontab_parses_and_names_only_registered_jobs() -> None:
         "expire-stale-sources",
         "crawl",
         "crawl",
+        "purge-ai-proposals",
     ]
     for entry in entries:
         assert jobs.get_job(entry.args[0]).name == entry.args[0]

@@ -428,6 +428,7 @@ describe('approval', () => {
   it('is unavailable to a trial, which has no account, and says why', async () => {
     renderScreen();
     await openStored();
+    confirmScope();
     const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
     expect(approve.disabled).toBe(true);
     expect(projects().getByTestId('approve-held-trial').textContent).toBe(
@@ -442,6 +443,7 @@ describe('approval', () => {
     renderScreen({ account: true });
     await openStored();
     type(overviewField('Approval note (optional)'), 'A. Engineer');
+    confirmScope();
     const approve = projects().getByText<HTMLButtonElement>('Approve revision 1');
     expect(approve.disabled).toBe(false);
 
@@ -497,6 +499,7 @@ describe('approval', () => {
     expect(screen.queryByTestId('design-stale')).toBeNull();
 
     type(overviewField('Approval note (optional)'), 'A. Engineer');
+    confirmScope();
     fireEvent.click(projects().getByText('Approve revision 1'));
     await waitFor(() => {
       expect(api.approve).toHaveBeenCalledTimes(1);
@@ -669,3 +672,10 @@ describe('a save after designing', () => {
     expect(screen.queryByTestId('design-export-pdf')).toBeNull();
   });
 });
+
+/** M6d: tick every approval-scope confirmation on the page (the Approve button waits for it). */
+function confirmScope() {
+  for (const box of screen.queryAllByTestId<HTMLInputElement>('scope-confirm')) {
+    if (!box.checked) fireEvent.click(box);
+  }
+}

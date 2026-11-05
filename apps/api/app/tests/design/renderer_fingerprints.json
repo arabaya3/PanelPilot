@@ -1,33 +1,33 @@
 {
-  "renderer_version": "2026.11.03.3",
+  "renderer_version": "2026.11.04.9",
   "variants": {
     "basic": {
-      "pdf": "772eb7db3bb409eeb4686ea458b4703ddb2b2e957101dfa308f3398b9aae388a",
-      "calculations_pdf": "0e0f5f45f0cc0497052c2028dd606ee5442c0febf6d36ad6b5e61167c96b4023",
-      "quotation_pdf": "3445e019b6a95483349f943a9fae1d23c70f76120989cb8a801e338b760103fc",
-      "dxf": "81c04e884b6ce8349ed87665c7bda3f4877c812aa01a52e338ffe2d5f88ae167",
-      "json": "f932575a4ddd93bbfbe0caa5729ad45a6d843df8bf3c7a59006e0bc30e3859ad"
+      "pdf": "8cf0da029ac75ad5b0d26352349eb4f45a49e2aa179e8d23c0f6da1aae854f50",
+      "calculations_pdf": "5fc2adb4d89927204b4996b223b9d7e8050945920f54686625fce793b6a85b1b",
+      "quotation_pdf": "f269949017a197c7385101176114f50c6b7a0255b9a51eb30207de051079b310",
+      "dxf": "242660adda0de0e5f4d75c78490566725b75e543c167c862953824347a653e45",
+      "json": "bed8d029e6ebddae146f2dcf85e474cef525b467b02bb06cfe2d0fc62a23fbc1"
     },
     "motor": {
-      "pdf": "bab1acad7155a759834dca4ef6013149270ee5db9bba68e4c7752503a4f3aa73",
-      "calculations_pdf": "00cf424513487b9dd8aa85b8c3b5f6c506d586d99e4578879a596d6ddc6b72dd",
-      "quotation_pdf": "dec23ed9c15f4b3236a639c6065868f7a01c915819cead2b5f4d51231d635932",
-      "dxf": "93ca42f56c19f13000d56bc050b370fed30c7bbb10ae228c749c3cee0a31e648",
-      "json": "4ad2c29672ac66b509f996fcc73bb2d8ae42c08bc974cfcb06a9c0124d48ac10"
+      "pdf": "2b1f52d8ceb17567aea68802bc901e525cc397716c87cb4d855af3cd53ba75c8",
+      "calculations_pdf": "4a0cec28e0160bc222fd84fb6593fce97741ee80ecc62012880ee2b0824b1805",
+      "quotation_pdf": "089d46436c9ae8dae30269895607eaa06b4102ea9d16739696d21798e96cca6b",
+      "dxf": "254869be86f6ecf02d26cb93c7a1739d53b8bab7a790d8d9c1368c8d2d3049e8",
+      "json": "4755024d2cd7bafd594a72b83480856b25a34e03a3db17a1bf399ef9c289f405"
     },
     "arabic": {
-      "pdf": "6181ae94517c8542175ed02474bcd943ff76349a343e65881899add3ec822bed",
-      "calculations_pdf": "3114b883984cde6057ca008469774f4aa688a5cbd140e9f902e2f3f5b85414eb",
-      "quotation_pdf": "a0b279e29b422925d277a435409ea1bb8c2a8e8ccc501ecf7d6a545f1c22bdf9",
-      "dxf": "d9f8e808904f11334ff72719ff0da4d8daeee0c9c6ca61e64f22358ae16fbef7",
-      "json": "dfdc8e547220309ff7c4e620637ffe8ccfd6aa60d1895bfd76c62edf5681f398"
+      "pdf": "18073c1075ca5997ddad5604e20c18e5db4e605b6f42bfa54aa1417cfb6f3313",
+      "calculations_pdf": "5282f82ee47818731fbcff876cca975f8f2ede9e233f451d065ffc2c3da9d7b0",
+      "quotation_pdf": "566748b3f3e96b1fbf557d9109fc91f67cd95da36f4514ec232c0b5863f53178",
+      "dxf": "df446d25683b7be2f2b50bbf1cc29e2641531019087e142868cdf25ef28a54a9",
+      "json": "be1e103c460bb224203703a7ad8b5f39dad06cd6c26d535f6ee76e2ec91b5d6d"
     },
     "hebrew": {
-      "pdf": "90dc9ac3a0830cf2c194ece4213da58e564a8343c0726d13a495b018458f4bc2",
-      "calculations_pdf": "8a9cf4fe6f0c237952d097cd2c7637f44cc73d6fc5533cab06c4eb9d1ed2f170",
-      "quotation_pdf": "55d1e16c0146fcd0031a9c97f4e858131a1fc511469f6772c5dcf5d1cd013481",
-      "dxf": "16bc141844a09616dd889974142181cbdcd79f092cc6c9500445d9cc6de50d96",
-      "json": "453210c03d71d31e9ded1008c2a6a66c1e9dbe1c5eb858593d48aac1d01f7b60"
+      "pdf": "120b05701c2b0bc96559aea19b6b1cdb0d9573a4f32ddbec2668b3617e698c75",
+      "calculations_pdf": "258a1b4b704bfdc7f5f9ef4d912692e76717a5fb2c4380b0c4a5937c332fed73",
+      "quotation_pdf": "d59b7ffdd485af81debbf4dcd4277af811909cf855e34e9379e32c6e98ba9c6b",
+      "dxf": "06126558cedd29920726885a64e2b5437a8001381366e626c10ded457c1888f2",
+      "json": "4a6b1a89ba537d4ce59cbc1a947b4edf8d6b3c03fa1196d9c5ac01581d8b69f8"
     }
   }
 }

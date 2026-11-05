@@ -110,6 +110,7 @@ class TooManyRequestsError(PanelPilotError):
         *,
         retry_after_seconds: int | None = None,
         code: str = "rate_limited",
+        params: Mapping[str, object] | None = None,
     ) -> None:
         """Record the message and, when known, how long to wait.
 
@@ -120,8 +121,9 @@ class TooManyRequestsError(PanelPilotError):
             code: Which limit was hit. A subclass names its own, so a page can
                 tell "wait a few minutes" apart from "the month is used up" --
                 both are 429s, and only the code says which one applies.
+            params: The values the message names (a limit, a period).
         """
-        super().__init__(message, code=code)
+        super().__init__(message, code=code, params=params)
         self.retry_after_seconds = retry_after_seconds
 
 
@@ -133,12 +135,28 @@ class ServiceUnavailableError(PanelPilotError):
     """
 
 
+class BadGatewayError(PanelPilotError):
+    """A dependency answered, but with something unusable (a model's malformed output).
+
+    502 rather than 422: the caller's request was sound; what came back from
+    upstream was not, and retrying may give a usable answer.
+    """
+
+
+class GatewayTimeoutError(PanelPilotError):
+    """A dependency did not answer in time (a model call past its read timeout)."""
+
+
 class NotImplementedYetError(PanelPilotError):
     """The endpoint exists in the contract but its behaviour does not yet.
 
     Raised instead of ``NotImplementedError`` so a stub answers 501 with a
     reason, rather than an anonymous 500 that reads as the server breaking.
     """
+
+
+class GoneError(PanelPilotError):
+    """An endpoint that existed and was retired: it does nothing now (410)."""
 
 
 # The single place mapping domain failures to HTTP. Adding an error type
@@ -154,7 +172,10 @@ STATUS_BY_ERROR: dict[type[PanelPilotError], HTTPStatus] = {
     PromotionError: HTTPStatus.CONFLICT,
     TooManyRequestsError: HTTPStatus.TOO_MANY_REQUESTS,
     ServiceUnavailableError: HTTPStatus.SERVICE_UNAVAILABLE,
+    BadGatewayError: HTTPStatus.BAD_GATEWAY,
+    GatewayTimeoutError: HTTPStatus.GATEWAY_TIMEOUT,
     NotImplementedYetError: HTTPStatus.NOT_IMPLEMENTED,
+    GoneError: HTTPStatus.GONE,
 }
 
 
