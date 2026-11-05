@@ -229,12 +229,15 @@ def test_concerns_carried_from_revisions_1_and_2_each_need_their_own_confirmatio
     entries = revision_row(engine, pid, 3)["requirements"]["safety_resolutions"]
     assert len(entries) == 2
     for e in entries:
-        assert e["by_user_id"] and e["at"] and e["by_name"]
+        assert e["by_user_id"]
+        assert e["at"]
+        assert e["by_name"]
         assert {x["description"] for x in e["confirmed_loads"]} >= {"P-1", "P-2"}
     assert approve(as_("owner"), pid, 3).status_code == 200
     printed = _pdf_text(_export(as_("owner"), pid, "pdf", 3).content)
     assert printed.count("confirmed these loads are not that equipment:") == 2
-    assert "P-1 (15 kW)" in printed and "P-2 (11 kW)" in printed
+    assert "P-1 (15 kW)" in printed
+    assert "P-2 (11 kW)" in printed
 
 
 def test_a_false_positive_takes_no_load_list_and_an_exclusion_needs_one(as_: Any) -> None:
@@ -244,7 +247,10 @@ def test_a_false_positive_takes_no_load_list_and_an_exclusion_needs_one(as_: Any
     assert c["level"] == "possibly"
     # Possibly-level: no per-load confirmation asked; listing loads anyway is 422.
     assert not c.get("confirmation_candidates")
-    body = {**_body(c, "false_positive"), "not_this_equipment": [{"board": "DB-2", "load_index": 0}]}
+    body = {
+        **_body(c, "false_positive"),
+        "not_this_equipment": [{"board": "DB-2", "load_index": 0}],
+    }
     assert code(as_("reviewer").post(_url(pid, 2), json=body)) == "exclusion_confirmation_extra"
     assert _resolve(as_, "reviewer", pid, 2, c, resolution="false_positive").status_code == 200
     assert approve(as_("owner"), pid, 2).status_code == 200
@@ -317,7 +323,8 @@ def test_the_approved_exports_list_exactly_the_confirmed_loads(engine: Engine, a
     printed = _pdf_text(_export(as_("owner"), pid, "pdf", 2).content)
     listed = printed.split("confirmed these loads are not that equipment:", 1)[1]
     listed = listed.split("— not engineer-validated", 1)[0]
-    assert "P-1 (15 kW)" in listed and "Hall (9 kW)" in listed
+    assert "P-1 (15 kW)" in listed
+    assert "Hall (9 kW)" in listed
     assert "Office lighting" not in listed
     exported = _export(as_("owner"), pid, "json", 2)
     assert exported.status_code == 200, exported.text[:300]
@@ -325,7 +332,9 @@ def test_the_approved_exports_list_exactly_the_confirmed_loads(engine: Engine, a
     approval = doc["approval"] if "approval" in doc else doc.get("design", {}).get("approval")
     assert approval["engineer_validated"] is False
     joined = " ".join(map(str, approval["excluded_from_scope"]))
-    assert "P-1" in joined and "Hall" in joined and "Office lighting" not in joined
+    assert "P-1" in joined
+    assert "Hall" in joined
+    assert "Office lighting" not in joined
 
 
 @pytest.mark.parametrize("tamper", ["drop_a_load", "rename_a_load", "remove_confirmation"])
@@ -349,7 +358,8 @@ def test_a_rehashed_confirmation_makes_the_approval_not_current(
     pdf = _export(as_("owner"), pid, "pdf", 2)
     assert pdf.status_code == 200, pdf.text[:300]
     printed = _pdf_text(pdf.content)
-    assert "not approved" in printed and "confirmed this scope" not in printed
+    assert "not approved" in printed
+    assert "confirmed this scope" not in printed
 
 
 # --------------------------------------------------------------------------- #
@@ -415,14 +425,14 @@ def test_no_approved_export_implies_validation_or_execution_readiness(
     pid = _approved_with_confirmation(engine, as_)
     extra: dict[str, Any] = {"pricing": PRICING} if fmt == "quotation_pdf" else {}
     exported = _export(as_("owner"), pid, fmt, 2, **extra)
-    if fmt in V2_ONLY and exported.status_code in (409, 422) and "pp-design/2" not in str(
-        os.environ.get("DESIGN_SNAPSHOT_SCHEMA")
+    if (
+        fmt in V2_ONLY
+        and exported.status_code in (409, 422)
+        and "pp-design/2" not in str(os.environ.get("DESIGN_SNAPSHOT_SCHEMA"))
     ):
         pytest.skip(f"{fmt} is a pp-design/2 export")
     assert exported.status_code == 200, exported.text[:300]
-    body = (
-        _pdf_text(exported.content) if exported.content[:4] == b"%PDF" else exported.text
-    )
+    body = _pdf_text(exported.content) if exported.content[:4] == b"%PDF" else exported.text
     if fmt != "dxf":
         assert "[SCOPE]" in body or "does_not_cover" in body
     assert _positive(body) == [], fmt
@@ -448,25 +458,28 @@ def _waiting(engine: Engine, holder: Any, count: int) -> None:
     deadline = time.monotonic() + 20
     with engine.connect() as probe:
         while time.monotonic() < deadline:
-            n = probe.execute(
+            n: int = probe.execute(
                 text(
                     "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' "
                     "AND datname = current_database() AND pid <> :h "
                     "AND query LIKE 'SELECT design_projects.%'"
                 ),
                 {"h": pid},
-            ).scalar()
+            ).scalar_one()
             # pg_stat_activity is a per-transaction snapshot: end it each time.
             probe.commit()
             if n >= count:
                 return
             time.sleep(0.05)
         rows = probe.execute(
-            text("SELECT pid, state, wait_event_type, left(query, 80) FROM pg_stat_activity "
-                 "WHERE datname = current_database()")
+            text(
+                "SELECT pid, state, wait_event_type, left(query, 80) FROM pg_stat_activity "
+                "WHERE datname = current_database()"
+            )
         ).all()
-    raise AssertionError(f"{rows} holder={pid} "
-                         f"fewer than {count} backends waited on the held project lock")
+    raise AssertionError(
+        f"{rows} holder={pid}: fewer than {count} backends waited on the held project lock"
+    )
 
 
 def _start(results: dict[str, Any], name: str, call: Callable[[], Any]) -> threading.Thread:
@@ -486,9 +499,7 @@ def _two_carried(as_: Any) -> tuple[str, list[dict[str, Any]]]:
     return pid, found
 
 
-def test_two_members_resolving_two_concerns_at_once_both_survive(
-    engine: Engine, as_: Any
-) -> None:
+def test_two_members_resolving_two_concerns_at_once_both_survive(engine: Engine, as_: Any) -> None:
     pid, (a, b) = _two_carried(as_)
     results: dict[str, Any] = {}
     conn, tx = _hold_project(engine, pid)
