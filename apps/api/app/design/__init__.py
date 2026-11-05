@@ -20,7 +20,7 @@ CATALOGUE_VERSION = "none"
 #: the content of its reference exports changes and this does not. What is
 #: material is set out in ``docs/design-readiness/phase-1-export-integrity.md``
 #: ("Renderer version").
-RENDERER_VERSION = "2026.11.04.4"
+RENDERER_VERSION = "2026.11.04.5"
 
 #: The renderer version of each snapshot schema, by schema marker: what an
 #: approval of a revision stored in that schema records and is compared with.
@@ -33,7 +33,7 @@ RENDERER_VERSION = "2026.11.04.4"
 #: (``tests/design/test_renderer_version.py`` holds both to their fingerprints).
 RENDERER_VERSIONS: dict[str, str] = {
     "pp-design/1": RENDERER_VERSION,
-    "pp-design/2": "2026.11.04.v2-19",
+    "pp-design/2": "2026.11.04.v2-20",
 }
 
 
