@@ -137,6 +137,8 @@ def test_a_removed_account_can_no_longer_call_decide_or_delete(
         c.client.delete(f"{AI}/{unused['id']}", headers=c.headers),
     ]
     assert [r.status_code for r in refused] == [401] * 4
+    # The code a client says "no longer active in this team" by (never the wording).
+    assert {r.json().get("code") for r in refused} == {"account_inactive"}
     assert len(provider.calls) == asked_before
     assert _usage(engine, engineer)[0] == calls_before
 
@@ -220,6 +222,7 @@ def test_an_account_removed_while_the_provider_answers_stores_nothing(
         # The tenants are shared by the module's tests.
         _set_tenant_active(engine, engineer.tenant_id, True)
     assert late.status_code == 401, late.text[:400]
+    assert late.json().get("code") == "account_inactive"
     assert removed_mid_call == [True]
     assert len(slow.calls) == 1
     # Nothing stored; the call stays counted (it reached the provider); the

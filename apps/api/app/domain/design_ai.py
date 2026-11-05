@@ -273,7 +273,7 @@ def _require_live_account(session: Session, tenant: uuid.UUID, account: uuid.UUI
     )
     if not active or not live_tenant:
         logger.info("design.ai_proposal_dropped_account_inactive", tenant_id=str(tenant))
-        raise AuthenticationError("account is not active")
+        raise AuthenticationError("account is not active", code="account_inactive")
 
 
 def _ask_and_store(

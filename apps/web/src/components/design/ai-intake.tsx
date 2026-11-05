@@ -61,8 +61,14 @@ const AI_CODES = new Set([
 
 type Failure = {
   message: string;
-  retry: () => void;
+  /** Absent: nothing to retry (the account is no longer active in this team). */
+  retry?: () => void;
 };
+
+/** A 401 saying the account is no longer active in this team (`account_inactive`). */
+function inactive(outcome: { kind: string; code?: string }): boolean {
+  return outcome.kind === 'unauthorized' && outcome.code === 'account_inactive';
+}
 
 type Impls = {
   request?: typeof requestAiProposal;
@@ -187,6 +193,12 @@ export function AiIntake({
       onProposal(outcome.proposal);
       return;
     }
+    if (inactive(outcome)) {
+      // Removed or deactivated while the request ran: renewing the session
+      // cannot help, and nothing was saved; the description stays as typed.
+      setFailure({ message: t('accountInactive') });
+      return;
+    }
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
     setFailure({ message: failureText(outcome), retry: () => void requestProposals() });
   }
@@ -202,6 +214,10 @@ export function AiIntake({
       setEditing(null);
       setShown(null);
       onDiscard?.();
+      return;
+    }
+    if (inactive(outcome)) {
+      setFailure({ message: t('accountInactive') });
       return;
     }
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
@@ -231,6 +247,10 @@ export function AiIntake({
     });
     setPending(null);
     if (outcome.kind !== 'proposed') {
+      if (inactive(outcome)) {
+        setItemFailure({ item: item.id, message: t('accountInactive') });
+        return;
+      }
       if (outcome.kind === 'unauthorized') onUnauthorized?.();
       setItemFailure({
         item: item.id,
@@ -621,9 +641,11 @@ export function AiIntake({
           >
             <p className="text-sm text-severity-critical">{failed.message}</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-sm btn-secondary" onClick={failed.retry}>
-                {t('retry')}
-              </button>
+              {failed.retry && (
+                <button type="button" className="btn btn-sm btn-secondary" onClick={failed.retry}>
+                  {t('retry')}
+                </button>
+              )}
               <button type="button" className="btn btn-sm btn-ghost" onClick={continueManually}>
                 {t('continueManually')}
               </button>
@@ -710,14 +732,16 @@ export function AiIntake({
               <p className="text-sm text-severity-critical">{failure.message}</p>
               <p className="text-xs text-text-muted">{t('nothingChanged')}</p>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  data-testid="ai-retry"
-                  onClick={failure.retry}
-                >
-                  {t('retry')}
-                </button>
+                {failure.retry && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    data-testid="ai-retry"
+                    onClick={failure.retry}
+                  >
+                    {t('retry')}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-sm btn-ghost"

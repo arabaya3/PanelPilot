@@ -9,14 +9,14 @@ import { AiIntake } from '@/components/design/ai-intake';
 import type { PlaceProblem } from '@/components/design/ai-intake-model';
 import { RequirementsView } from '@/components/design/requirements-view';
 import { blankBoard } from '@/components/design/schedule';
-import type {
-  AiItem,
-  AiProposal,
-  AiProposalOutcome,
-  decideAiItem,
-  deleteAiProposal,
+import {
   requestAiProposal,
-  RequirementsRecord,
+  type AiItem,
+  type AiProposal,
+  type AiProposalOutcome,
+  type decideAiItem,
+  type deleteAiProposal,
+  type RequirementsRecord,
 } from '@/lib/design';
 
 /** M6b: the "Describe the project" step and the proposals review, on their own. */
@@ -31,6 +31,7 @@ type Props = {
   placed?: Set<string>;
   token?: string | null;
   description?: string;
+  onUnauthorized?: () => void;
 };
 
 function Harness({
@@ -43,6 +44,7 @@ function Harness({
   placed = new Set(),
   token = 'tok',
   description: start = '',
+  onUnauthorized,
 }: Props) {
   const [description, setDescription] = useState(start);
   const [current, setCurrent] = useState<AiProposal | null>(initial);
@@ -67,6 +69,7 @@ function Harness({
           onDiscard?.();
         }}
         impls={{ request, decide, discard }}
+        {...(onUnauthorized ? { onUnauthorized } : {})}
       />
     </>
   );
@@ -633,5 +636,81 @@ describe('consent, per-account limits and deleting a proposal (S2/S3)', () => {
   it('a used proposal cannot be deleted from here', () => {
     renderApp(<Harness initial={{ ...proposal(), used_by_revision_id: 'r1' }} />);
     expect(screen.queryByTestId('ai-discard')).toBeNull();
+  });
+});
+
+describe('an account removed while its AI request runs', () => {
+  const INACTIVE = { kind: 'unauthorized', code: 'account_inactive' } as const;
+
+  it.each([
+    ['en', 'no longer active in this team'],
+    ['ar', 'لم يعد حسابك نشطًا'],
+    ['he', 'כבר אינו פעיל בצוות'],
+  ] as const)('says so with no Retry and keeps the description (%s)', async (locale, words) => {
+    const request = vi.fn<typeof requestAiProposal>().mockResolvedValue(INACTIVE);
+    const onUnauthorized = vi.fn();
+    renderApp(
+      <Harness request={request} description="My typed text" onUnauthorized={onUnauthorized} />,
+      { locale },
+    );
+    agree();
+    fireEvent.click(screen.getByTestId('ai-request'));
+    const error = await screen.findByTestId('ai-error');
+    expect(error.textContent).toContain(words);
+    expect(screen.queryByTestId('ai-retry')).toBeNull();
+    expect(description().value).toBe('My typed text');
+    // Not a session to renew: the generic sign-in notice is not raised.
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('a decision says so with no Retry, the item stays proposed', async () => {
+    const decide = vi.fn<typeof decideAiItem>().mockResolvedValue(INACTIVE);
+    const onUnauthorized = vi.fn();
+    renderApp(<Harness initial={proposal()} decide={decide} onUnauthorized={onUnauthorized} />);
+    fireEvent.click(screen.getByTestId('ai-accept-i-board'));
+    const error = await screen.findByTestId('ai-item-error-i-board');
+    expect(error.textContent).toContain('no longer active in this team');
+    expect(within(error).queryByText('Retry')).toBeNull();
+    expect(screen.getByTestId('ai-status-i-board').textContent).toBe('Proposed');
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('a plain 401 is still a session to renew, with Retry', async () => {
+    const request = vi.fn<typeof requestAiProposal>().mockResolvedValue({ kind: 'unauthorized' });
+    const onUnauthorized = vi.fn();
+    renderApp(<Harness request={request} description="x" onUnauthorized={onUnauthorized} />);
+    agree();
+    fireEvent.click(screen.getByTestId('ai-request'));
+    await screen.findByTestId('ai-error');
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('ai-retry')).toBeTruthy();
+  });
+
+  it('reads the code from the 401 body, not its wording', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'anything', code: 'account_inactive' }), {
+        status: 401,
+      }),
+    );
+    const outcome = await requestAiProposal({
+      token: 't',
+      fetchImpl,
+      description: 'x',
+      request: null,
+      consent: true,
+    });
+    expect(outcome).toEqual({ kind: 'unauthorized', code: 'account_inactive' });
+    fetchImpl.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'account is not active' }), { status: 401 }),
+    );
+    expect(
+      await requestAiProposal({
+        token: 't',
+        fetchImpl,
+        description: 'x',
+        request: null,
+        consent: true,
+      }),
+    ).toEqual({ kind: 'unauthorized' });
   });
 });

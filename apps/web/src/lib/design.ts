@@ -102,7 +102,12 @@ export type TooLarge = { path: string; max: string };
 
 /** A text field the server refused as too long, and the most it takes. */
 export type TooLong = { path: string; max: number };
-type Failure = Refusal | { kind: 'unauthorized' } | { kind: 'failed' };
+/**
+ * A 401: the session is not (or no longer) valid. `code: 'account_inactive'`
+ * when the server says the account was removed from the team or deactivated
+ * (it answers with that code), which no sign-in renewal fixes.
+ */
+type Failure = Refusal | { kind: 'unauthorized'; code?: string } | { kind: 'failed' };
 
 export type DesignOutcome = { kind: 'designed'; response: BoardDesignResponse } | Failure;
 export type ExportOutcome = { kind: 'exported'; blob: Blob; filename: string } | Failure;
@@ -297,7 +302,12 @@ async function call<T>(
   } catch {
     return { kind: 'failed' };
   }
-  if (response.status === 401) return { kind: 'unauthorized' };
+  if (response.status === 401) {
+    const body = (await readJson(response)) as { code?: unknown } | null;
+    return body?.code === 'account_inactive'
+      ? { kind: 'unauthorized', code: 'account_inactive' }
+      : { kind: 'unauthorized' };
+  }
   const special = extra?.(response);
   if (special) return special;
   // 429 too: the design routes' per-address budget, said with a code; 404, a

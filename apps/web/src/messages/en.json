@@ -1727,7 +1727,8 @@
       "discard": "Delete these proposals",
       "discarding": "Deleting…",
       "discardNote": "Deletes them and the stored description from PanelPilot's live database. Rows already placed in the editor stay, as your own entries. Database backups keep a copy until they expire, and a copy the AI provider keeps under its own terms is not affected.",
-      "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms."
+      "deletionNote": "What can be deleted: proposals you have not used in a saved revision (here, or automatically after a retention period). What cannot: a description and decisions saved in a revision (they are part of its checked record), files already exported, database backups until they expire, and anything the AI provider keeps under its own terms.",
+      "accountInactive": "Your account is no longer active in this team, so the AI request was not saved. Ask the team owner."
     }
   },
   "files": {
