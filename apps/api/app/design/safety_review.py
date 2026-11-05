@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from app.design import ai_intake, safety_terms
@@ -86,11 +87,54 @@ class Concern:
     board: str | None = None
     load_index: int | None = None
     overlaps_life_safety_item: bool = field(default=False, compare=False)
+    #: The drawn rows it is tied to, as ``(board, load index, power_kw, kind)``
+    #: of the revision that raised it: a request load, or rows an AI item
+    #: overlapping its span was placed on.
+    rows: tuple[tuple[str, int, str, str], ...] = field(default=(), compare=False)
+    #: A carried concern whose row the request checked still draws (same
+    #: board and position, or same board, power and kind): not excludable.
+    still_in_request: bool = field(default=False, compare=False)
 
     @property
     def key(self) -> tuple[str, str, str]:
         """``(kind, target_id, proposal_id or "")``: how a resolution names it."""
         return (self.kind, self.target_id, self.proposal_id or "")
+
+
+def _number(value: Any) -> str:
+    try:
+        return str(Decimal(str(value)).normalize())
+    except (InvalidOperation, ValueError):
+        return str(value or "")
+
+
+def _row(board: str, index: int, load: Mapping[str, Any]) -> tuple[str, int, str, str]:
+    return (board, index, _number(load.get("power_kw")), str(load.get("load") or ""))
+
+
+def drawn_rows(request: Mapping[str, Any] | None) -> list[tuple[str, int, str, str]]:
+    """Every load row of a request as ``(board, index, power_kw, kind)``."""
+    out: list[tuple[str, int, str, str]] = []
+    if not isinstance(request, Mapping):
+        return out
+    for board in request.get("boards") or []:
+        if not isinstance(board, Mapping):
+            continue
+        for index, load in enumerate(board.get("loads") or []):
+            if isinstance(load, Mapping):
+                out.append(_row(str(board.get("name") or ""), index, load))
+    return out
+
+
+def _still_drawn(
+    rows: Iterable[tuple[str, int, str, str]], now: Sequence[tuple[str, int, str, str]]
+) -> bool:
+    """Whether any of ``rows`` matches a row drawn now: same board and position, or same board, power and kind."""
+    for board, index, power, kind in rows:
+        for b, i, p, k in now:
+            if b == board and (i == index or (p == power and k == kind and p)):
+                return True
+    return False
 
 
 def _request_id(level: str, place: str, text: str, term: str, start: int) -> str:
@@ -111,6 +155,7 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
         where: str,
         board: str | None = None,
         load_index: int | None = None,
+        rows: tuple[tuple[str, int, str, str], ...] = (),
     ) -> None:
         if not isinstance(text, str) or not text.strip():
             return
@@ -133,6 +178,7 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
                     where=where,
                     board=board,
                     load_index=load_index,
+                    rows=rows,
                 )
             )
 
@@ -154,19 +200,47 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
                     f"{name} \u203a {description}",
                     board=name,
                     load_index=index,
+                    rows=(_row(name, index, load),),
                 )
     return out
 
 
-def ai_concerns(ai: Mapping[str, Any] | None, number: int) -> list[Concern]:
-    """An AI block's concerns (``ai_intake.safety_targets``), tagged with its proposal."""
+def ai_concerns(
+    ai: Mapping[str, Any] | None, number: int, request: Mapping[str, Any] | None = None
+) -> list[Concern]:
+    """An AI block's concerns (``ai_intake.safety_targets``), tagged with its proposal.
+
+    Each is tied to the rows of ``request`` (the revision's own) that an AI
+    item overlapping its span was placed on.
+    """
     if not ai:
         return []
     proposal = str((ai.get("proposal") or {}).get("id") or "")
     targets = ai_intake.safety_targets(ai)
+    items = {str(i["id"]): i for i in (ai.get("proposal") or {}).get("items", [])}
+    boards = [b for b in ((request or {}).get("boards") or []) if isinstance(b, Mapping)]
+    placed: list[tuple[int, int, tuple[str, int, str, str]]] = []
+    for placement in ai.get("placements", []) or []:
+        item = items.get(str(placement.get("item_id")))
+        li = placement.get("load_index")
+        bi = int(placement.get("board_index", -1))
+        if item is None or li is None or not 0 <= bi < len(boards):
+            continue
+        loads = boards[bi].get("loads") or []
+        if not 0 <= int(li) < len(loads):
+            continue
+        source = item.get("source") or {}
+        placed.append(
+            (
+                int(source.get("start", 0)),
+                int(source.get("end", 0)),
+                _row(str(boards[bi].get("name") or ""), int(li), loads[int(li)]),
+            )
+        )
     out = []
     for t in targets:
         overlaps = t.kind == "mention" and ai_intake.false_positive_refusal(ai, t) is not None
+        rows = tuple(row for a, b, row in placed if a < t.end and t.start < b)
         out.append(
             Concern(
                 kind=t.kind,
@@ -180,6 +254,7 @@ def ai_concerns(ai: Mapping[str, Any] | None, number: int) -> list[Concern]:
                 raised_on=number,
                 present=True,
                 overlaps_life_safety_item=overlaps,
+                rows=rows,
             )
         )
     return out
@@ -200,7 +275,8 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
     A concern held by ``current`` is ``present`` and dated by the earliest
     revision that raised it; one only an earlier revision raised is carried.
     """
-    own_ai = ai_concerns((current.record or {}).get("ai"), current.number)
+    own_ai = ai_concerns((current.record or {}).get("ai"), current.number, current.request)
+    now = drawn_rows(current.request)
     own_req = request_concerns(current.request, current.number)
     first: dict[tuple[str, str, str], int] = {}
     carried: dict[tuple[str, str, str], Concern] = {}
@@ -208,7 +284,7 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
         if stored.number >= current.number:
             continue
         for c in (
-            *ai_concerns((stored.record or {}).get("ai"), stored.number),
+            *ai_concerns((stored.record or {}).get("ai"), stored.number, stored.request),
             *request_concerns(stored.request, stored.number),
         ):
             first.setdefault(c.key, stored.number)
@@ -223,7 +299,8 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
     for key, c in carried.items():
         if key not in seen:
             seen.add(key)
-            out.append(_dated(c, first[key], False))
+            moved = _dated(c, first[key], False)
+            out.append(Concern(**{**moved.__dict__, "still_in_request": _still_drawn(c.rows, now)}))
     return out
 
 
@@ -243,6 +320,12 @@ def refusal(concern: Concern, resolution: str) -> str | None:
       removed from the request (a new revision), after which the carried
       concern is excluded from scope. A possibly-safety board or load still in
       the request may only be a false positive (``in_request``).
+    * A carried board or load concern (an earlier request's load, or rows an
+      earlier AI item was placed on) is not excluded while the request
+      checked still draws a matching row (``still_in_request``): same board
+      and same position, or same board, power and kind. Renaming the load
+      is not removing it. Deliberately over-inclusive: a row moved into the
+      removed load's position matches too.
     * ``false_positive``: never an AI item (``item``); never a life-safety
       request concern (``life_safety``); a life-safety AI mention only when
       no item of its proposal is life-safety equipment from an overlapping
@@ -250,7 +333,10 @@ def refusal(concern: Concern, resolution: str) -> str | None:
     """
     in_design = concern.kind == "request" and concern.present and concern.place in ("board", "load")
     if resolution == EXCLUDED_FROM_SCOPE:
-        return "in_request" if in_design else None
+        if in_design:
+            return "in_request"
+        # Renamed, not removed: the row it was raised for is still drawn.
+        return "still_in_request" if concern.still_in_request else None
     if concern.kind == "item":
         return "item"
     if concern.kind == "request":

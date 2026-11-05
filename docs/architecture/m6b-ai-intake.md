@@ -770,6 +770,31 @@ reason}`; `proposal_id` names the proposal of a concern carried from an
 - The panel's hold message counts the unresolved safety concerns (it showed
   the blocking-findings count).
 
+- **Renamed, not removed (re-check of 06427a8).** A carried board or load
+  concern — an earlier request's load, or rows an earlier AI item overlapping
+  the concern was placed on — is not excluded while the request still draws a
+  matching row: same board and same load position, or same board, `power_kw`
+  and kind. 409 `exclusion_not_allowed`, `reason: still_in_request`;
+  `SafetyConcern.exclusion_refusal` says so and the approval stays held.
+  Renaming "Fire pump" to "FP-1" is not removing it. Deliberately
+  over-inclusive: a different load moved into the removed load's position
+  matches too (reorder, or remove the row last). A recorded exclusion stops
+  counting if a matching row comes back.
+- **Resolver names.** Request and carried resolutions (record-level
+  `safety_resolutions`) print the resolver's display name, as `ai.resolutions`
+  do ("a team member" only for an account with none).
+- **Project and board names.** Text such as a project named "fire-pump room"
+  raises a request life-safety concern; being life-safety level it can only be
+  excluded from scope, never a false positive (deliberate: the detector
+  cannot tell a room name from equipment). A possibly-level name ("Fire
+  Station Road") may be a false positive.
+- **Remaining limits (strict xfails in `test_m6e_review_probes_db.py`).** A
+  new project copying a request with the load already renamed ("FP-1") has no
+  history and no keyword, and is approvable; evasive spellings ("f i r e
+  pump") and standards instead of terms ("to NFPA 20") are not detected;
+  free text inside a v2 connection configuration (component and template
+  names) is not scanned. Detection narrows; it never proves absence.
+
 Renderers (owner decision): v1 `2026.11.04.3` → `2026.11.04.4`, v2
 `2026.11.04.v2-18` → `2026.11.04.v2-19`. The guard's reference exports are
 unchanged (they hold no requirements record, exclusions or request concerns;

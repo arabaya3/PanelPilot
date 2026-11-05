@@ -133,11 +133,6 @@ def test_removing_the_load_carries_the_concern_until_excluded(as_: Any) -> None:
     assert approve(as_("owner"), pid, 2).status_code == 200
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding at 06427a8: renaming 'Fire pump' to 'FP-1' makes the concern 'carried' "
-    "(not present), so it may be excluded from scope while the 15 kW load is still drawn",
-)
 def test_renaming_the_load_does_not_allow_excluding_what_is_still_drawn(as_: Any) -> None:
     pid = _manual(as_, lighting(), motor("Fire pump", "15"))
     revised = _revise(as_, pid, request({**board(), "loads": [lighting(), motor("FP-1", "15")]}))

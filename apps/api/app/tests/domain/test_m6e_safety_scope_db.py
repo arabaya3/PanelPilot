@@ -153,7 +153,7 @@ def test_a_fresh_proposal_without_the_pump_keeps_the_earlier_concerns(
 def test_a_manual_fire_pump_load_holds_approval_until_removed_then_excluded(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
-    pid = _manual(as_, ["Fire pump FP-1", "Office lighting"])
+    pid = _manual(as_, ["Booster pump", "Fire pump FP-1"])
     (concern,) = _concerns(as_, pid, 1)
     assert concern["kind"] == "request"
     assert concern["code"] == "request_life_safety"
@@ -169,19 +169,37 @@ def test_a_manual_fire_pump_load_holds_approval_until_removed_then_excluded(
     _refused(
         _post(as_, pid, 1, concern, "false_positive", FP_REASON), 409, "false_positive_not_allowed"
     )
-    # Removed in revision 2: the carried concern is excluded, then approval.
+    # Renamed in revision 2: still drawn, so not excludable (M6e re-check).
     request = copy.deepcopy(revision_row(engine, pid, 1)["request"])
-    request["boards"][0]["loads"][0]["description"] = "Booster pump"
+    request["boards"][0]["loads"][1]["description"] = "FP-1"
     _revise(as_, pid, request)
-    (carried,) = _concerns(as_, pid, 2)
+    (renamed,) = _concerns(as_, pid, 2)
+    assert renamed["carried"] is True
+    assert renamed["exclusion_refusal"] == "still_in_request"
+    refused = _refused(
+        _post(as_, pid, 2, renamed, "excluded_from_scope", EXCLUDE_REASON),
+        409,
+        "exclusion_not_allowed",
+    )
+    assert refused["params"]["reason"] == "still_in_request"
+    _held(_approve(as_("owner"), pid, 2), {"request_life_safety"})
+    # Removed in revision 3: the carried concern is excluded, then approval.
+    del request["boards"][0]["loads"][1]
+    _revise(as_, pid, request)
+    (carried,) = _concerns(as_, pid, 3)
     assert carried["carried"] is True
     assert carried["raised_on"] == 1
-    _held(_approve(as_("owner"), pid, 2), {"request_life_safety"})
-    done = _post(as_, pid, 2, carried, "excluded_from_scope", EXCLUDE_REASON)
+    assert carried["exclusion_refusal"] is None
+    _held(_approve(as_("owner"), pid, 3), {"request_life_safety"})
+    done = _post(as_, pid, 3, carried, "excluded_from_scope", EXCLUDE_REASON)
     assert done.status_code == 200, done.text[:400]
-    assert _approve(as_("owner"), pid, 2).status_code == 200
-    printed = _pdf_text(_export(as_("owner"), pid, "pdf", 2).content)
+    assert _approve(as_("owner"), pid, 3).status_code == 200
+    printed = _pdf_text(_export(as_("owner"), pid, "pdf", 3).content)
     assert "[EXCLUDED FROM SCOPE] 'fire pump' (raised on revision 1)" in printed
+    # The resolver is named by display name, never "a team member" (M6e re-check).
+    reviewer = _open(as_("reviewer"), pid, 3)["approving_as"]
+    assert reviewer
+    assert f"(recorded by {reviewer} on" in printed
     assert "— not engineer-validated" in printed.replace("- ", "-")
 
 

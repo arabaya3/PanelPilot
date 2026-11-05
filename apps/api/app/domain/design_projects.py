@@ -2650,6 +2650,7 @@ def _acknowledgers(row: DesignRevisionRow) -> list[uuid.UUID]:
         *stored.get("acknowledgements", []),
         *(stored.get("ai") or {}).get("clarifications", []),
         *(stored.get("ai") or {}).get("resolutions", []),
+        *stored.get("safety_resolutions", []),
     ]:
         try:
             out.append(uuid.UUID(str(ack.get("by_user_id"))))
@@ -3354,8 +3355,14 @@ def resolve_safety_concern(
                         "equipment cannot be resolved: remove it from the request and save a new "
                         "revision, then record the exclusion"
                         if refusal == "in_request" and target.level == "life_safety"
-                        else "a possibly-safety board or load still in the request can only be "
-                        "judged a false positive; or remove it from the request"
+                        else (
+                            "the request still draws a load matching this concern (same board and "
+                            "position, or same board, power and kind): renaming it does not remove it; "
+                            "remove the load, or change it so none matches, then record the exclusion"
+                            if refusal == "still_in_request"
+                            else "a possibly-safety board or load still in the request can only be "
+                            "judged a false positive; or remove it from the request"
+                        )
                     )
                 ),
                 code=(
