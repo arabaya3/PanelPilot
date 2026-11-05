@@ -143,15 +143,10 @@ def test_an_other_kind_load_of_at_least_half_the_power_is_a_candidate(as_: Any) 
     _revise(as_, pid, boards([lighting(), other("Spare drive", "7.5")]))
     (c,) = _unresolved(as_, pid, 2)
     assert ("MDB", 1) in _refs(c)
-    assert ("MDB", 0) not in _refs(c)  # the 1 kW lighting
+    # M6f owner decision: every load is asked about, the 1 kW lighting too.
+    assert ("MDB", 0) in _refs(c)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="defect: safety_review.candidates_for (safety_review.py:153) asks about a non-motor "
-    "load only at >= half the flagged power; a 15 kW pump split into two 'other' 5 kW loads on "
-    "another board is never a candidate, so it is excluded with no question about it",
-)
 def test_a_pump_split_into_small_other_kind_loads_is_asked_about(as_: Any) -> None:
     pid = _new(as_, boards([lighting(), motor("Fire pump", "15")]))
     _revise(as_, pid, boards([lighting()], [other("P-7a", "5"), other("P-7b", "5")]))
@@ -159,13 +154,6 @@ def test_a_pump_split_into_small_other_kind_loads_is_asked_about(as_: Any) -> No
     assert {("DB-2", 0), ("DB-2", 1)} <= _refs(c), c["confirmation_candidates"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="defect: safety_review.concerns (safety_review.py:334-335) keeps the EARLIEST "
-    "revision's copy of a carried concern (setdefault), so its power and rows are revision 1's; "
-    "the pump re-powered to 4 kW 'other' on revision 2 and moved on revision 3 is not a "
-    "candidate (floor 15 kW from revision 1's 30 kW)",
-)
 def test_the_candidate_floor_follows_the_latest_power_of_the_flagged_load(as_: Any) -> None:
     pid = _new(as_, boards([lighting(), motor("Fire pump", "30")]))
     _revise(as_, pid, boards([lighting(), other("Fire pump", "4")]))
@@ -174,19 +162,17 @@ def test_the_candidate_floor_follows_the_latest_power_of_the_flagged_load(as_: A
     assert ("DB-2", 0) in _refs(c), c["confirmation_candidates"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="defect: the request concern id (safety_review._request_id, safety_review.py:202-205) "
-    "omits the board and position, so two 'Fire pump' loads on two boards are ONE concern with "
-    "the first's rows and power; the second renamed in place ('FP-2', 5 kW other) is neither "
-    "still_in_request nor a candidate, and the exclusion goes through without naming it",
-)
 def test_two_fire_pumps_on_two_boards_each_hold_their_own_row(as_: Any) -> None:
     pid = _new(as_, boards([lighting(), motor("Fire pump", "30")], [other("Fire pump", "5")]))
     _revise(as_, pid, boards([lighting()], [other("FP-2", "5")]))
-    (c,) = _unresolved(as_, pid, 2)
-    refused = c["exclusion_refusal"] == "still_in_request"
-    assert refused or ("DB-2", 0) in _refs(c), c
+    # M6f: one concern per board and position; the renamed second pump's
+    # concern is still drawn (still_in_request), the first's asks about every load.
+    found = {c["where"]: c for c in _unresolved(as_, pid, 2)}
+    assert len(found) == 2, found
+    second = next(c for w, c in found.items() if w.startswith("DB-2"))
+    first = next(c for w, c in found.items() if w.startswith("MDB"))
+    assert second["exclusion_refusal"] == "still_in_request"
+    assert ("DB-2", 0) in _refs(first)
 
 
 def test_the_unknown_power_rule_asks_about_motor_like_and_1kw_loads() -> None:
@@ -196,9 +182,8 @@ def test_the_unknown_power_rule_asks_about_motor_like_and_1kw_loads() -> None:
         [{**motor("Fan F", "0.37"), "load": "fan", "starter": None}],
     )
     got = {(b, i) for b, i, *_ in safety_review.candidates_for("", req)}
-    assert got == {("MDB", 2), ("DB-2", 0)}
-    # A 0.75 kW 'other' pump is not asked about: the rule is a heuristic (recorded limit).
-    assert ("MDB", 1) not in got
+    # M6f owner decision: deliberately exhaustive, whatever the kind or power.
+    assert got == {("MDB", 0), ("MDB", 1), ("MDB", 2), ("DB-2", 0)}
 
 
 # --------------------------------------------------------------------------- #
@@ -307,7 +292,7 @@ def _approved_with_confirmation(engine: Engine, as_: Any) -> str:
     pid = _new(as_, boards([lighting(), motor("Fire pump", "15")]))
     _revise(as_, pid, boards([lighting()], [motor("P-1", "15"), lighting("Hall", "9")]))
     (c,) = _unresolved(as_, pid, 2)
-    assert _refs(c) == {("DB-2", 0), ("DB-2", 1)}
+    assert _refs(c) == {("MDB", 0), ("DB-2", 0), ("DB-2", 1)}
     assert _resolve(as_, "reviewer", pid, 2, c).status_code == 200
     assert approve(as_("owner"), pid, 2).status_code == 200
     return pid
@@ -316,16 +301,15 @@ def _approved_with_confirmation(engine: Engine, as_: Any) -> str:
 def test_the_approved_exports_list_exactly_the_confirmed_loads(engine: Engine, as_: Any) -> None:
     pid = _approved_with_confirmation(engine, as_)
     (entry,) = revision_row(engine, pid, 2)["requirements"]["safety_resolutions"]
-    assert [(x["board"], x["load_index"], x["description"]) for x in entry["confirmed_loads"]] == [
-        ("DB-2", 0, "P-1"),
-        ("DB-2", 1, "Hall"),
-    ]
+    assert sorted(
+        (x["board"], x["load_index"], x["description"]) for x in entry["confirmed_loads"]
+    ) == [("DB-2", 0, "P-1"), ("DB-2", 1, "Hall"), ("MDB", 0, "Office lighting")]
     printed = _pdf_text(_export(as_("owner"), pid, "pdf", 2).content)
     listed = printed.split("confirmed these loads are not that equipment:", 1)[1]
     listed = listed.split("— not engineer-validated", 1)[0]
     assert "P-1 (15 kW)" in listed
     assert "Hall (9 kW)" in listed
-    assert "Office lighting" not in listed
+    assert "Office lighting (1 kW)" in listed
     exported = _export(as_("owner"), pid, "json", 2)
     assert exported.status_code == 200, exported.text[:300]
     doc = exported.json()
@@ -334,7 +318,7 @@ def test_the_approved_exports_list_exactly_the_confirmed_loads(engine: Engine, a
     joined = " ".join(map(str, approval["excluded_from_scope"]))
     assert "P-1" in joined
     assert "Hall" in joined
-    assert "Office lighting" not in joined
+    assert "Office lighting" in joined
 
 
 @pytest.mark.parametrize("tamper", ["drop_a_load", "rename_a_load", "remove_confirmation"])

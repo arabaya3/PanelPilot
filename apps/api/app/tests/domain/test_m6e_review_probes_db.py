@@ -57,7 +57,9 @@ def _revise(as_: Any, pid: str, req: dict[str, Any], who: str = "engineer", **ex
     )
 
 
-def _resolve_all(as_: Any, pid: str, n: int, resolution: str = "excluded_from_scope") -> list[Any]:
+def _resolve_all(
+    as_: Any, pid: str, n: int, resolution: str = "excluded_from_scope", confirm: bool = False
+) -> list[Any]:
     out = []
     for c in _open(as_("reviewer"), pid, n)["safety_concerns"]:
         if c["resolved"]:
@@ -66,6 +68,12 @@ def _resolve_all(as_: Any, pid: str, n: int, resolution: str = "excluded_from_sc
         body = {key: c["target_id"], "resolution": resolution, "reason": REASON}
         if c.get("proposal_id") and c["kind"] != "request":
             body["proposal_id"] = c["proposal_id"]
+        if confirm and c.get("confirmation_candidates") is not None:
+            # M6e/M6f: the per-load confirmation (every load of the request).
+            body["not_this_equipment"] = [
+                {"board": x["board"], "load_index": x["load_index"]}
+                for x in c["confirmation_candidates"]
+            ]
         out.append(
             as_("reviewer").post(
                 f"/design/projects/{pid}/revisions/{n}/requirements/safety-resolutions", json=body
@@ -129,7 +137,7 @@ def test_removing_the_load_carries_the_concern_until_excluded(as_: Any) -> None:
     revised = _revise(as_, pid, request({**board(), "loads": [lighting()]}))
     assert revised.status_code == 201, revised.text[:300]
     assert code(approve(as_("owner"), pid, 2)) == "approval_blocked_by_safety"
-    assert all(r.status_code == 200 for r in _resolve_all(as_, pid, 2))
+    assert all(r.status_code == 200 for r in _resolve_all(as_, pid, 2, confirm=True))
     assert approve(as_("owner"), pid, 2).status_code == 200
 
 
@@ -288,8 +296,8 @@ def test_excluding_an_unmatched_pump_demands_a_recorded_per_load_confirmation(
     done = as_("reviewer").post(url, json={**body, "not_this_equipment": refs})
     assert done.status_code == 200, done.text[:300]
     (entry,) = revision_row(engine, pid, 2)["requirements"]["safety_resolutions"]
-    assert [x["description"] for x in entry["confirmed_loads"]] == [
+    assert sorted(x["description"] for x in entry["confirmed_loads"]) == sorted(
         x["description"] for x in candidates
-    ]
+    )
     assert entry["by_user_id"]
     assert approve(as_("owner"), pid, 2).status_code == 200

@@ -152,31 +152,45 @@ export function SafetyConcerns({
             {asked.length === 0 ? (
               <p className="text-xs text-text-muted">{t('confirmLoads.none')}</p>
             ) : (
-              asked.map((load) => {
-                const ref = `${load.board}\u0000${String(load.load_index)}`;
-                return (
-                  <label key={ref} className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={ticked.has(ref)}
-                      data-testid={`confirm-load-${load.board}-${String(load.load_index)}`}
-                      onChange={(event) => {
-                        const next = new Set(ticked);
-                        if (event.target.checked) next.add(ref);
-                        else next.delete(ref);
-                        setTicked(next);
-                      }}
-                    />
-                    <span>
-                      {t('confirmLoads.load', {
-                        board: load.board,
-                        description: load.description || '?',
-                        power: load.power_kw || '?',
-                      })}
-                    </span>
-                  </label>
-                );
-              })
+              // Grouped by board, one "confirm each" box per load: no select-all.
+              [...new Set(asked.map((load) => load.board))].map((board) => (
+                <div
+                  key={board}
+                  className="flex flex-col gap-1"
+                  data-testid={`confirm-board-${board}`}
+                >
+                  <p className="text-xs font-medium">
+                    <bdi>{board}</bdi>
+                  </p>
+                  {asked
+                    .filter((load) => load.board === board)
+                    .map((load) => {
+                      const ref = `${load.board}\u0000${String(load.load_index)}`;
+                      return (
+                        <label key={ref} className="flex items-start gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={ticked.has(ref)}
+                            data-testid={`confirm-load-${load.board}-${String(load.load_index)}`}
+                            onChange={(event) => {
+                              const next = new Set(ticked);
+                              if (event.target.checked) next.add(ref);
+                              else next.delete(ref);
+                              setTicked(next);
+                            }}
+                          />
+                          <span>
+                            {t('confirmLoads.load', {
+                              board: load.board,
+                              description: load.description || '?',
+                              power: load.power_kw || '?',
+                            })}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              ))
             )}
           </fieldset>
         )}

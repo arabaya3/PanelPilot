@@ -489,6 +489,10 @@ describe('M6e: the per-load confirmation of a carried exclusion', () => {
       const key = `request-${CARRIED_LOAD.target_id}`;
       fireEvent.click(screen.getByTestId(`resolve-exclude-${key}`));
       const box = screen.getByTestId(`resolve-confirm-${key}`);
+      // M6f: every load, grouped by board, each with its own box (no select-all).
+      expect(screen.getByTestId('confirm-board-MDB').textContent).toMatch(/Booster pump/);
+      expect(screen.getByTestId('confirm-board-DB-2').textContent).toMatch(/P-7/);
+      expect(box.querySelectorAll('input[type="checkbox"]')).toHaveLength(CANDIDATES.length);
       expect(box.textContent).toMatch(/P-7/);
       expect(box.textContent).toMatch(/18\.5/);
       if (locale !== 'en') expect(box.textContent).not.toMatch(/is not that equipment/);

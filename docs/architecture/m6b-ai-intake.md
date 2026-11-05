@@ -857,6 +857,37 @@ guard's reference exports are unchanged). Every approval recorded under
 `.5`/`v2-20` stops counting; `test_an_approval_recorded_before_the_m6e_bump_is_not_current`
 checks it with those versions.
 
+**M6f fixes (independent review of d40b551, owner decisions).** The power
+and kind filter on the confirmation candidates leaked: a pump split into
+small loads of another kind was never asked about, and a carried concern
+kept revision 1's power and rows, so re-powering it on revision 2 escaped
+the floor. Two loads with the same text on two boards were one concern.
+Now:
+
+- **Candidates are every load on every board of the request checked**,
+  whatever its kind or power — deliberately exhaustive (the kind/power rule
+  above is superseded). The panel lists them grouped by board, one "confirm
+  each" box per load, with no select-all shortcut. Missing loads are still 409
+  `exclusion_confirmation_incomplete`, others 422
+  `exclusion_confirmation_extra`, and an exclusion still stops counting when
+  the request's loads differ from those confirmed. A request of many loads asks
+  for many confirmations; that cost is accepted.
+- **`still_in_request` uses every copy.** A carried concern's rows are those
+  of every earlier revision in which it appeared (and its latest copy is
+  kept), so a match against any of them refuses the exclusion.
+- **Request concern ids include the board and the load position**
+  (`at`: board name and index; a board concern: its name). Two same-named
+  loads are two concerns; an unchanged row keeps its id. A resolution recorded
+  under the earlier id (no position) names no concern now: it stops counting
+  and the approval is held until the concern is resolved again — nothing is
+  silently resolved or revived. A load moved to another position is a new
+  concern (and the old position's is carried): over-inclusive by design.
+
+Fourth bump: v1 `2026.11.04.6` → `2026.11.04.7`, v2 `2026.11.04.v2-21` →
+`2026.11.04.v2-22` (exclusions now list every confirmed load); every approval
+recorded under `.6`/`v2-21` stops counting
+(`test_an_approval_recorded_before_the_m6e_bump_is_not_current`).
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)

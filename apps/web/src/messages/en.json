@@ -1227,7 +1227,7 @@
         "removeFromRequest": "This board or load names life-safety equipment and is still in the request, where it would be drawn as an ordinary load. It cannot be resolved: remove it from the request and save a new revision, then record its exclusion.",
         "confirmLoads": {
           "title": "Confirm, load by load, that none of these is that equipment",
-          "means": "Matching cannot find every renamed or moved load. Excluding this concern records your confirmation that each load below is not the equipment it names. Your name, the date and this list print on every review export. This is not engineer validation.",
+          "means": "Matching cannot find every renamed, re-powered, moved or split load, so every load of the request is listed, board by board. Excluding this concern records your confirmation, for each one, that it is not the equipment the concern names. Your name, the date and this list print on every review export. This is not engineer validation.",
           "none": "The request draws no candidate load: nothing to confirm.",
           "load": "{board} › {description} ({power} kW) is not that equipment"
         }

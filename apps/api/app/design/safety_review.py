@@ -52,9 +52,6 @@ Level = Literal["life_safety", "possibly"]
 #: A load of the request checked: ``(board, index, description, power_kw, kind)``.
 Candidate = tuple[str, int, str, str, str]
 
-#: Load kinds that may be the flagged pump or motor whatever their power.
-MOTOR_LIKE = ("motor", "fan", "lift")
-
 
 @dataclass(frozen=True)
 class Concern:
@@ -151,23 +148,14 @@ def load_rows(request: Mapping[str, Any] | None) -> list[Candidate]:
 def candidates_for(power: str, request: Mapping[str, Any] | None) -> tuple[Candidate, ...]:
     """The loads a person must confirm are not the flagged equipment before excluding it.
 
-    Every motor-like load (:data:`MOTOR_LIKE`) on any board, and every load on
-    any board of at least half the flagged load's power; with the flagged
-    power unknown, every motor-like load and every load of 1 kW or more.
+    Every load on every board of the request checked (M6f, owner decision):
+    deliberately exhaustive. Kind and power filters were tried and leaked (a
+    pump split into small loads of another kind, a pump re-powered between
+    revisions), so no load is left out of the question. ``power`` is kept
+    for the caller's record and no longer filters.
     """
-    try:
-        floor = Decimal(power) / 2 if power else Decimal(1)
-    except InvalidOperation:
-        floor = Decimal(1)
-    out = []
-    for row in load_rows(request):
-        try:
-            kw = Decimal(row[3]) if row[3] else None
-        except InvalidOperation:
-            kw = None
-        if row[4] in MOTOR_LIKE or (kw is not None and kw >= floor):
-            out.append(row)
-    return tuple(out)
+    del power
+    return tuple(load_rows(request))
 
 
 def drawn_rows(request: Mapping[str, Any] | None) -> list[tuple[str, int, str, str]]:
@@ -195,9 +183,17 @@ def _still_drawn(
     return False
 
 
-def _request_id(level: str, place: str, text: str, term: str, start: int) -> str:
+def _request_id(level: str, place: str, text: str, term: str, start: int, at: str = "") -> str:
+    """A request concern's id: level, place, where (board and load position), text, term, offset.
+
+    ``at`` (M6f) is the board's name and the load's index for a load and the board's name for a
+    board, so two same-named loads on two boards, or two rows of one board,
+    are two concerns. An unchanged row keeps its id. Resolutions recorded
+    under the earlier id (no position) name no concern now: they stop
+    counting and the approval is held until it is resolved again.
+    """
     norm = " ".join(text.casefold().split())
-    digest = hashlib.sha256(f"{level}\x00{place}\x00{norm}\x00{term}\x00{start}".encode())
+    digest = hashlib.sha256(f"{level}\x00{place}\x00{at}\x00{norm}\x00{term}\x00{start}".encode())
     return "r" + digest.hexdigest()[:16]
 
 
@@ -218,11 +214,12 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
     ) -> None:
         if not isinstance(text, str) or not text.strip():
             return
+        at = f"{board}\x00{load_index}" if load_index is not None else (board or "")
         for m in safety_terms.mentions(text):
             out.append(
                 Concern(
                     kind="request",
-                    target_id=_request_id(m.level, place, text, m.term, m.start),
+                    target_id=_request_id(m.level, place, text, m.term, m.start, at),
                     proposal_id=None,
                     level=m.level,
                     code=(
@@ -349,6 +346,7 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
     own_req = request_concerns(current.request, current.number)
     first: dict[tuple[str, str, str], int] = {}
     carried: dict[tuple[str, str, str], Concern] = {}
+    every_rows: dict[tuple[str, str, str], set[tuple[str, int, str, str]]] = {}
     for stored in sorted(earlier, key=lambda s: s.number):
         if stored.number >= current.number:
             continue
@@ -357,7 +355,10 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
             *request_concerns(stored.request, stored.number),
         ):
             first.setdefault(c.key, stored.number)
-            carried.setdefault(c.key, c)
+            # Every revision's copy: still_in_request is held to the rows the
+            # flagged load had in each one, and the latest copy is kept (M6f).
+            every_rows.setdefault(c.key, set()).update(c.rows)
+            carried[c.key] = c
     out: list[Concern] = []
     seen: set[tuple[str, str, str]] = set()
     for c in (*own_ai, *own_req):
@@ -374,7 +375,8 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
                 Concern(
                     **{
                         **moved.__dict__,
-                        "still_in_request": _still_drawn(c.rows, now),
+                        "rows": tuple(sorted(every_rows.get(key, set(c.rows)))),
+                        "still_in_request": _still_drawn(every_rows.get(key, set(c.rows)), now),
                         "needs_confirmation": needs,
                         "candidates": candidates_for(c.power, current.request) if needs else (),
                     }
