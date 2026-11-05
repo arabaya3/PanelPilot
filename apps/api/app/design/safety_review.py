@@ -365,7 +365,23 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
         if c.key in seen:
             continue
         seen.add(c.key)
-        out.append(_dated(c, first.get(c.key, c.raised_on), True))
+        own = _dated(c, first.get(c.key, c.raised_on), True)
+        # M6f re-check: the revision's own life-safety concerns need the same
+        # every-load confirmation as carried ones (the pump may be typed in
+        # under another name); project information excepted.
+        needs = c.level == "life_safety" and not (c.place or "").startswith("info.")
+        rows = set(c.rows) | every_rows.get(c.key, set())
+        out.append(
+            Concern(
+                **{
+                    **own.__dict__,
+                    "rows": tuple(sorted(rows)),
+                    "still_in_request": c.kind != "request" and _still_drawn(rows, now),
+                    "needs_confirmation": needs,
+                    "candidates": candidates_for(c.power, current.request) if needs else (),
+                }
+            )
+        )
     for key, c in carried.items():
         if key not in seen:
             seen.add(key)

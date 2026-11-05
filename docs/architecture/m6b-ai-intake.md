@@ -888,6 +888,27 @@ Fourth bump: v1 `2026.11.04.6` → `2026.11.04.7`, v2 `2026.11.04.v2-21` →
 recorded under `.6`/`v2-21` stops counting
 (`test_an_approval_recorded_before_the_m6e_bump_is_not_current`).
 
+**Own concerns too (re-check of c0d93ea).** The every-load confirmation
+applied only to concerns carried from earlier revisions, so a revision's
+**own** life-safety AI mention or item ("Fire pump FP-1 15 kW", unsupported,
+never placed) could be excluded with no load list while the pump stood in the
+request typed in by hand as "P-7" — on revision 1 too. Now every exclusion of
+a life-safety-level concern — own or carried; AI mention, AI item, request
+board or load — needs the every-load confirmation, and `still_in_request`
+applies wherever a row is known (an AI concern's placed rows, now and in
+earlier revisions). A life-safety board or load still in the request stays
+unresolvable (`in_request`). **Project-information fields** (project name,
+number, customer, consultant, contractor) are not asked about: they draw no
+load, and excluding one asks for no load list. Possibly-level concerns are
+unchanged (false positive, or exclusion without a list).
+
+Fifth bump: v1 `2026.11.04.7` → `2026.11.04.8`, v2 `2026.11.04.v2-22` →
+`2026.11.04.v2-23` (exclusions of own concerns now print the confirmed
+loads); every approval recorded under `.7`/`v2-22` stops counting. An
+exclusion of an own life-safety concern recorded before this change carries
+no confirmation, so (unless the request draws no load) it stops counting and the approval is held until it is
+confirmed.
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)

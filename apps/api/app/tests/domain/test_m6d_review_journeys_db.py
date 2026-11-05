@@ -177,9 +177,13 @@ def resolve(
     **extra: Any,
 ) -> Any:
     """Assumed shape of the coming resolution route (adapt once the real one is known)."""
+    from app.tests.domain.test_m6d_safety_resolution_db import with_confirmation
+
+    body = {**subject, "resolution": resolution, "reason": reason, **extra}
     return c.post(
         f"/design/projects/{pid}/revisions/{n}/requirements/safety-resolutions",
-        json={**subject, "resolution": resolution, "reason": reason, **extra},
+        # M6f: an exclusion of a life-safety concern confirms every load.
+        json=with_confirmation(c, pid, n, body),
     )
 
 

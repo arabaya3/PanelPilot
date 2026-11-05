@@ -147,8 +147,33 @@ def _resolve(
     if item is not None:
         body["item_id"] = item
     return c.post(
-        f"/design/projects/{pid}/revisions/{n}/requirements/safety-resolutions", json=body
+        f"/design/projects/{pid}/revisions/{n}/requirements/safety-resolutions",
+        json=with_confirmation(c, pid, n, body),
     )
+
+
+def with_confirmation(c: Any, pid: str, n: int, body: dict[str, Any]) -> dict[str, Any]:
+    """An exclusion body with every candidate load confirmed, as the server asks (M6e/M6f).
+
+    Left as it is when the body names its own list, is not an exclusion, or
+    the caller cannot read the project (its refusal is then the server's).
+    """
+    if body.get("resolution") != "excluded_from_scope" or "not_this_equipment" in body:
+        return body
+    opened = c.get(f"/design/projects/{pid}", params={"revision": n})
+    if opened.status_code != 200:
+        return body
+    target = body.get("mention_id") or body.get("item_id") or body.get("request_id")
+    for concern in opened.json().get("safety_concerns") or []:
+        asked = concern.get("confirmation_candidates")
+        if concern["target_id"] == target and asked is not None:
+            return {
+                **body,
+                "not_this_equipment": [
+                    {"board": x["board"], "load_index": x["load_index"]} for x in asked
+                ],
+            }
+    return body
 
 
 def _concerns(c: _As, pid: str, n: int = 1) -> list[dict[str, Any]]:

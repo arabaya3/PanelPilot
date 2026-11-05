@@ -232,13 +232,6 @@ def test_rtl_approved_exports_imply_no_validation_or_readiness(
         assert "not engineer-validated" in printed or "engineer validation" in printed
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="defect at c0d93ea: safety_review.concerns asks for the per-load confirmation only "
-    "for CARRIED concerns (needs_confirmation is set in the carried branch only, "
-    "safety_review.py ~line 371); the revision's own AI pump mention/item is excluded with no "
-    "load list and no still_in_request check while the request draws the pump as 'P-7' 15 kW",
-)
 def test_own_ai_pump_concerns_with_the_pump_typed_in_by_another_name_need_confirmation(
     engine: Engine, as_: Any, provider: StubProvider
 ) -> None:
@@ -253,3 +246,23 @@ def test_own_ai_pump_concerns_with_the_pump_typed_in_by_another_name_need_confir
     # Expected: the exclusion asks about P-7 (or refuses), so it is not approved silently.
     asked = all(c.get("confirmation_candidates") for c in ai)
     assert asked or approved != 200, (results, approved)
+
+
+def test_own_ai_pump_concerns_on_revision_1_need_confirmation(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    """M6f re-check: the revision's own life-safety concerns ask for every load, on revision 1 too."""
+    pid, _ = _fire(as_, provider)
+    ai = [c for c in _unresolved(as_, pid, 1) if c["kind"] in ("mention", "item")]
+    assert ai
+    for c in ai:
+        assert c["carried"] is False
+        assert c["confirmation_candidates"] is not None, c
+        bare = {k: v for k, v in _body(c).items() if k != "not_this_equipment"}
+        refused = as_("reviewer").post(_url(pid, 1), json=bare)
+        if c["confirmation_candidates"]:
+            assert code(refused) == "exclusion_confirmation_incomplete", refused.text[:300]
+    for c in ai:
+        assert _resolve(as_, "reviewer", pid, 1, c).status_code == 200
+    entries = revision_row(engine, pid, 1)["requirements"]["ai"]["resolutions"]
+    assert all("confirmed_loads" in e for e in entries)
