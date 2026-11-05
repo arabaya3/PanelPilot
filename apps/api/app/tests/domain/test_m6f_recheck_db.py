@@ -295,3 +295,32 @@ def test_a_project_info_fire_pump_with_the_pump_drawn_renamed_asks_about_the_loa
     assert (
         c.get("confirmation_candidates") or done.status_code != 200 or (approved.status_code != 200)
     )
+
+
+def test_a_zero_load_exclusion_stops_counting_once_loads_appear(as_: Any) -> None:
+    pid = _new(as_, boards([lighting(), motor("Fire pump", "15")]))
+    empty = as_().post(
+        f"/design/projects/{pid}/revisions",
+        json={"request": request({**board(), "loads": []}), "note": "r"},
+    )
+    if empty.status_code != 201:
+        pytest.skip("a request with no load is not saved")
+    (c,) = _unresolved(as_, pid, 2)
+    assert _resolve(as_, "reviewer", pid, 2, c).status_code == 200
+    _revise(as_, pid, boards([lighting()], [motor("P-7", "15")]))
+    (again,) = _unresolved(as_, pid, 3)
+    assert {("MDB", 0), ("DB-2", 0)} <= _refs(again)
+    assert code(approve(as_("owner"), pid, 3)) == "approval_blocked_by_safety"
+
+
+@pytest.mark.parametrize("field", ["name", "number", "customer", "consultant", "contractor"])
+def test_every_life_safety_project_field_asks_about_every_load(as_: Any, field: str) -> None:
+    req = boards([lighting()], [motor("P-7", "15")])
+    req["info"][field] = "Fire pump house"
+    pid = _new(as_, req)
+    (c,) = _unresolved(as_, pid, 1)
+    assert _refs(c) == {("MDB", 0), ("DB-2", 0)}
+    bare = {k: v for k, v in _body(c).items() if k != "not_this_equipment"}
+    assert code(as_("reviewer").post(_url(pid, 1), json=bare)) == (
+        "exclusion_confirmation_incomplete"
+    )
