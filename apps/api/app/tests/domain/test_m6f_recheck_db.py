@@ -266,3 +266,38 @@ def test_own_ai_pump_concerns_on_revision_1_need_confirmation(
         assert _resolve(as_, "reviewer", pid, 1, c).status_code == 200
     entries = revision_row(engine, pid, 1)["requirements"]["ai"]["resolutions"]
     assert all("confirmed_loads" in e for e in entries)
+
+
+def test_a_zero_load_request_keeps_no_drawn_pump_to_confirm(as_: Any) -> None:
+    """The 'unless the request draws no load' case: an empty candidate set is all there is."""
+    pid = _new(as_, boards([lighting(), motor("Fire pump", "15")]))
+    revised = as_().post(
+        f"/design/projects/{pid}/revisions",
+        json={"request": request({**board(), "loads": []}), "note": "r"},
+    )
+    if revised.status_code != 201:
+        assert revised.status_code == 422, revised.text[:300]
+        return  # a request with no load is not saved: the case cannot arise
+    (c,) = _unresolved(as_, pid, 2)
+    assert c["confirmation_candidates"] == []
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="residual path at ba22276 (documented owner decision, m6b-ai-intake.md 'Project-"
+    "information fields ... not asked about'): a project named 'Fire pump house upgrade' whose "
+    "only load is 'P-7' 15 kW motor is excluded with no load list and approved",
+)
+def test_a_project_info_fire_pump_with_the_pump_drawn_renamed_asks_about_the_loads(
+    as_: Any,
+) -> None:
+    req = boards([lighting()], [motor("P-7", "15")])
+    req["info"]["name"] = "Fire pump house upgrade"
+    pid = _new(as_, req)
+    (c,) = _unresolved(as_, pid, 1)
+    assert c["where"].startswith("project")
+    done = _resolve(as_, "reviewer", pid, 1, c)
+    approved = approve(as_("owner"), pid, 1)
+    assert (
+        c.get("confirmation_candidates") or done.status_code != 200 or (approved.status_code != 200)
+    )
