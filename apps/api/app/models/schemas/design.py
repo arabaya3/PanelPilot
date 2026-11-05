@@ -2124,6 +2124,8 @@ class SafetyResolution(BaseModel):
     proposal_id: str | None = None
     #: The revision the concern was first raised on (M6e).
     raised_on: int | None = None
+    #: The loads the resolver confirmed are not the excluded equipment (M6e).
+    confirmed_loads: list[ConfirmedLoad] | None = None
     resolution: Literal["excluded_from_scope", "false_positive"]
     reason: str
     by_user_id: str
@@ -2238,6 +2240,23 @@ class SafetyClarificationRequest(StrictModel):
         return self
 
 
+class LoadRef(StrictModel):
+    """One load of the request: its board's name and its position on that board."""
+
+    board: str = Field(max_length=200)
+    load_index: int = Field(ge=0, le=10_000)
+
+
+class ConfirmedLoad(BaseModel):
+    """A load a resolver confirmed is not the excluded equipment, as it stood then."""
+
+    board: str
+    load_index: int
+    description: str = ""
+    power_kw: str = ""
+    kind: str = ""
+
+
 class SafetyResolutionRequest(StrictModel):
     """Resolve one safety concern of the latest revision's record (four-eyes, M6d).
 
@@ -2258,6 +2277,11 @@ class SafetyResolutionRequest(StrictModel):
     request_id: str | None = Field(default=None, pattern=r"^r[0-9a-f]{16}$")
     #: The AI proposal of a mention or item carried from an earlier revision.
     proposal_id: str | None = Field(default=None, max_length=64)
+    #: Excluding a carried life-safety concern (M6e): every candidate load of
+    #: the request (``SafetyConcern.confirmation_candidates``), each confirmed
+    #: not to be that equipment. Exactly the candidates: missing ones are 409
+    #: ``exclusion_confirmation_incomplete``, others 422.
+    not_this_equipment: list[LoadRef] | None = Field(default=None, max_length=500)
     resolution: Literal["excluded_from_scope", "false_positive"]
     reason: str = Field(max_length=2000)
 
@@ -2311,6 +2335,9 @@ class SafetyConcern(BaseModel):
     carried: bool = False
     #: Where in the request (a request concern): the board, ``board > load`` or field.
     where: str | None = None
+    #: Excluding it needs every one of these loads confirmed not to be that
+    #: equipment (``not_this_equipment``); ``None`` when no confirmation is asked.
+    confirmation_candidates: list[ConfirmedLoad] | None = None
 
 
 class SafetyResolutionEligibility(BaseModel):

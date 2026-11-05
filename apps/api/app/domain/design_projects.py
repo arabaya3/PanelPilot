@@ -96,6 +96,7 @@ from app.models.schemas.design import (
     BoardDesignResponse,
     ConfigurationReview,
     ConfigurationValidateRequest,
+    ConfirmedLoad,
     DesignFinding,
     DesignProject,
     ExportFormat,
@@ -3081,6 +3082,13 @@ def _open_items_shown(
     return out
 
 
+def _confirmed(row: safety_review.Candidate) -> ConfirmedLoad:
+    board, index, description, power, kind = row
+    return ConfirmedLoad(
+        board=board, load_index=index, description=description, power_kw=power, kind=kind
+    )
+
+
 def _safety_concerns(
     found: Sequence[safety_review.Concern], record: Mapping[str, Any] | None
 ) -> list[SafetyConcern]:
@@ -3116,6 +3124,9 @@ def _safety_concerns(
                 raised_on=c.raised_on,
                 carried=not c.present,
                 where=c.where,
+                confirmation_candidates=(
+                    [_confirmed(row) for row in c.candidates] if c.needs_confirmation else None
+                ),
             )
         )
     return out
@@ -3372,6 +3383,35 @@ def resolve_safety_concern(
                 ),
                 params={"revision": number, "reason": refusal},
             )
+        confirmed: list[dict[str, Any]] | None = None
+        listed = {(r.board, r.load_index) for r in request.not_this_equipment or []}
+        wanted = (
+            {(c[0], c[1]): c for c in target.candidates}
+            if target.needs_confirmation and request.resolution == safety_review.EXCLUDED_FROM_SCOPE
+            else {}
+        )
+        extra = sorted(listed - set(wanted))
+        if extra:
+            raise ValidationError(
+                "not_this_equipment lists loads that are not candidates for this exclusion",
+                code="exclusion_confirmation_extra",
+                params={"extra": ",".join(f"{b}:{i}" for b, i in extra)},
+            )
+        if wanted:
+            missing = sorted(set(wanted) - listed)
+            if missing:
+                raise ConflictError(
+                    "confirm that every candidate load of the request is not this equipment "
+                    "(not_this_equipment) before excluding it",
+                    code="exclusion_confirmation_incomplete",
+                    params={
+                        "revision": number,
+                        "missing": ",".join(f"{b}:{i}" for b, i in missing),
+                    },
+                )
+            confirmed = [_confirmed(wanted[key]).model_dump() for key in sorted(wanted)]
+        elif target.needs_confirmation and request.resolution == safety_review.EXCLUDED_FROM_SCOPE:
+            confirmed = []
         named = _display_names(session, project.tenant_id, [], also=account)
         by = (
             (named.by_id.get(account) if account is not None else None)
@@ -3388,6 +3428,7 @@ def resolve_safety_concern(
             "by_user_id": user.id,
             "by_name": by,
             "at": datetime.now(UTC).isoformat(),
+            **({"confirmed_loads": confirmed} if confirmed is not None else {}),
         }
         record = dict(record)
         if target.kind != "request" and target.present and target.proposal_id == current:

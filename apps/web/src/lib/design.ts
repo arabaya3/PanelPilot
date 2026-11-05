@@ -772,9 +772,11 @@ export function resolveSafetyConcern(
     concern: Pick<SafetyConcern, 'kind' | 'target_id'> & { proposal_id?: string | null };
     resolution: SafetyResolutionKind;
     reason: string;
+    /** M6e: every candidate load confirmed not to be the excluded equipment. */
+    notThisEquipment?: LoadRef[];
   },
 ): Promise<AnswerOutcome> {
-  const { id, revision, concern, resolution, reason } = options;
+  const { id, revision, concern, resolution, reason, notThisEquipment } = options;
   return call<AnswerOutcome>(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions/${String(revision)}/requirements/safety-resolutions`,
@@ -790,6 +792,7 @@ export function resolveSafetyConcern(
         : {}),
       resolution,
       reason,
+      ...(notThisEquipment ? { not_this_equipment: notThisEquipment } : {}),
     },
     (payload) => {
       const requirements = requirementsOf(payload);
@@ -1096,6 +1099,9 @@ export function safetyClarificationOf(
     reason: typeof reason === 'string' ? reason : null,
   };
 }
+
+/** One load of the request, by its board's name and its position there. */
+export type LoadRef = { board: string; load_index: number };
 
 /** The two resolutions of a safety concern (M6d). */
 export type SafetyResolutionKind = 'excluded_from_scope' | 'false_positive';

@@ -26,6 +26,7 @@ import {
   type ProjectPage,
   type Refusal,
   type RequirementsInput,
+  type LoadRef,
   type SafetyConcern,
   type SafetyResolutionEligibility,
   type SafetyResolutionKind,
@@ -402,6 +403,7 @@ export function ProjectsPanel({
     concern: SafetyConcern,
     resolution: SafetyResolutionKind,
     reason: string,
+    notThisEquipment?: LoadRef[],
   ): Promise<string | null> {
     if (opened === null) return null;
     const outcome = await resolve({
@@ -411,6 +413,7 @@ export function ProjectsPanel({
       concern,
       resolution,
       reason,
+      ...(notThisEquipment ? { notThisEquipment } : {}),
     });
     if (outcome.kind === 'unauthorized') onUnauthorized?.();
     if (outcome.kind !== 'recorded') return say(outcome);

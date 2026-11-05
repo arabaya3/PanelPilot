@@ -220,17 +220,11 @@ def test_a_configuration_naming_life_safety_equipment(
 # --------------------------------------------------------------------------- #
 
 
-def _two_boards(mdb_loads: list[dict[str, Any]], db2_loads: list[dict[str, Any]]) -> dict:
+def _two_boards(mdb_loads: list[dict[str, Any]], db2_loads: list[dict[str, Any]]) -> dict[str, Any]:
     mdb = {**board(), "loads": mdb_loads}
     db2 = {**board("DB-2", fed_from="MDB"), "loads": db2_loads}
     return request(mdb, db2) if db2_loads else request(mdb)
 
-
-_BYPASS = pytest.mark.xfail(
-    strict=True,
-    reason="finding at fbe3bd2: the match is same board+position or same board+power+kind; "
-    "this variant draws the fire pump unmatched, so its carried concern is excluded and approved",
-)
 
 VARIANTS = {
     "rename_power_same_position": ([lighting(), motor("FP-1", "18.5")], []),
@@ -255,9 +249,9 @@ VARIANTS = {
         "rename_power_same_position",
         "rename_kind_same_position",
         "reorder_power",
-        pytest.param("only_row_power", marks=_BYPASS),
-        pytest.param("move_to_other_board", marks=_BYPASS),
-        pytest.param("split_on_other_board", marks=_BYPASS),
+        "only_row_power",
+        "move_to_other_board",
+        "split_on_other_board",
         "split_same_board_new_positions",
     ],
 )
@@ -271,3 +265,31 @@ def test_a_still_drawn_fire_pump_cannot_be_excluded(as_: Any, variant: str) -> N
     assert any(r.status_code == 409 for r in resolved) or approved.status_code == 409, [
         r.status_code for r in resolved
     ]
+
+
+@pytest.mark.parametrize(
+    "variant", ["only_row_power", "move_to_other_board", "split_on_other_board"]
+)
+def test_excluding_an_unmatched_pump_demands_a_recorded_per_load_confirmation(
+    engine: Engine, as_: Any, variant: str
+) -> None:
+    """M6e: matching cannot be complete; excluding asks a person to confirm every candidate load."""
+    pid = _manual(as_, lighting(), motor("Fire pump", "15"))
+    revised = _revise(as_, pid, _two_boards(*VARIANTS[variant]))
+    assert revised.status_code == 201, revised.text[:300]
+    (c,) = [x for x in _open(as_("reviewer"), pid, 2)["safety_concerns"] if not x["resolved"]]
+    candidates = c["confirmation_candidates"]
+    assert any(x["description"].startswith("FP-1") for x in candidates), candidates
+    url = f"/design/projects/{pid}/revisions/2/requirements/safety-resolutions"
+    body = {"request_id": c["target_id"], "resolution": "excluded_from_scope", "reason": REASON}
+    demanded = as_("reviewer").post(url, json=body)
+    assert code(demanded) == "exclusion_confirmation_incomplete", demanded.text[:300]
+    refs = [{"board": x["board"], "load_index": x["load_index"]} for x in candidates]
+    done = as_("reviewer").post(url, json={**body, "not_this_equipment": refs})
+    assert done.status_code == 200, done.text[:300]
+    (entry,) = revision_row(engine, pid, 2)["requirements"]["safety_resolutions"]
+    assert [x["description"] for x in entry["confirmed_loads"]] == [
+        x["description"] for x in candidates
+    ]
+    assert entry["by_user_id"]
+    assert approve(as_("owner"), pid, 2).status_code == 200

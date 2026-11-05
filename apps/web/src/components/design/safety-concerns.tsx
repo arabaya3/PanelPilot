@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import type {
+  LoadRef,
   SafetyConcern,
   SafetyResolutionEligibility,
   SafetyResolutionKind,
@@ -31,12 +32,16 @@ export function SafetyConcerns({
     concern: SafetyConcern,
     resolution: SafetyResolutionKind,
     reason: string,
+    /** The candidate loads confirmed not to be that equipment (an exclusion that asks). */
+    notThisEquipment?: LoadRef[],
   ) => Promise<string | null>;
 }) {
   const t = useTranslations('design.projects.safety');
   const id = useId();
   const [open, setOpen] = useState<{ key: string; resolution: SafetyResolutionKind } | null>(null);
   const [reason, setReason] = useState('');
+  // M6e: the candidate loads ticked as "not this equipment", by board and index.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   if (concerns.length === 0) return null;
@@ -47,11 +52,18 @@ export function SafetyConcerns({
     if (working || text.length < REASON_MIN || text.length > REASON_MAX) return;
     setWorking(true);
     setMessage(null);
-    const refused = await onResolve(concern, resolution, text);
+    const asked = resolution === 'excluded_from_scope' ? concern.confirmation_candidates : null;
+    const refused = await onResolve(
+      concern,
+      resolution,
+      text,
+      ...(asked ? [asked.map((load) => ({ board: load.board, load_index: load.load_index }))] : []),
+    );
     setWorking(false);
     if (refused === null) {
       setOpen(null);
       setReason('');
+      setTicked(new Set());
       setMessage(t('done'));
     } else setMessage(refused);
   }
@@ -87,6 +99,7 @@ export function SafetyConcerns({
               onClick={() => {
                 setOpen({ key, resolution: 'excluded_from_scope' });
                 setReason('');
+                setTicked(new Set());
               }}
             >
               {t('exclude')}
@@ -121,12 +134,52 @@ export function SafetyConcerns({
     }
     const field = `${id}-${key}`;
     const length = reason.trim().length;
-    const valid = length >= REASON_MIN && length <= REASON_MAX;
+    const asked =
+      open.resolution === 'excluded_from_scope' ? (concern.confirmation_candidates ?? null) : null;
+    const allTicked =
+      asked === null ||
+      asked.every((load) => ticked.has(`${load.board}\u0000${String(load.load_index)}`));
+    const valid = length >= REASON_MIN && length <= REASON_MAX && allTicked;
     return (
       <div className="flex flex-col gap-2" data-testid={`resolve-form-${key}`}>
         <p className="text-xs text-text-muted">
           {t(open.resolution === 'excluded_from_scope' ? 'meansExclude' : 'meansFalsePositive')}
         </p>
+        {asked !== null && (
+          <fieldset className="flex flex-col gap-1" data-testid={`resolve-confirm-${key}`}>
+            <legend className="text-sm font-medium">{t('confirmLoads.title')}</legend>
+            <p className="text-xs text-text-muted">{t('confirmLoads.means')}</p>
+            {asked.length === 0 ? (
+              <p className="text-xs text-text-muted">{t('confirmLoads.none')}</p>
+            ) : (
+              asked.map((load) => {
+                const ref = `${load.board}\u0000${String(load.load_index)}`;
+                return (
+                  <label key={ref} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={ticked.has(ref)}
+                      data-testid={`confirm-load-${load.board}-${String(load.load_index)}`}
+                      onChange={(event) => {
+                        const next = new Set(ticked);
+                        if (event.target.checked) next.add(ref);
+                        else next.delete(ref);
+                        setTicked(next);
+                      }}
+                    />
+                    <span>
+                      {t('confirmLoads.load', {
+                        board: load.board,
+                        description: load.description || '?',
+                        power: load.power_kw || '?',
+                      })}
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </fieldset>
+        )}
         <label htmlFor={field} className="text-sm font-medium">
           {t('reason')}
         </label>

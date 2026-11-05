@@ -1102,7 +1102,9 @@
       "safety_concern_already_resolved": "That safety concern is already resolved; a resolution is never replaced.",
       "false_positive_not_allowed": "This cannot be a false positive: the proposal reads it as life-safety equipment. Record it as excluded from scope instead.",
       "exclusion_not_allowed": "A board or load still in the request cannot be excluded from scope: remove it from the request and save a new revision, then record the exclusion.",
-      "clarification_route_retired": "Clarifications are retired: record a resolution (excluded from scope or false positive) instead."
+      "clarification_route_retired": "Clarifications are retired: record a resolution (excluded from scope or false positive) instead.",
+      "exclusion_confirmation_incomplete": "Confirm every candidate load of the request (not this equipment) before excluding this concern.",
+      "exclusion_confirmation_extra": "That list names a load that is not a candidate for this exclusion; list exactly the candidate loads shown."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1222,7 +1224,13 @@
           "other": "You cannot resolve safety concerns on this revision."
         },
         "raisedOn": "raised on revision {revision}",
-        "removeFromRequest": "This board or load names life-safety equipment and is still in the request, where it would be drawn as an ordinary load. It cannot be resolved: remove it from the request and save a new revision, then record its exclusion."
+        "removeFromRequest": "This board or load names life-safety equipment and is still in the request, where it would be drawn as an ordinary load. It cannot be resolved: remove it from the request and save a new revision, then record its exclusion.",
+        "confirmLoads": {
+          "title": "Confirm, load by load, that none of these is that equipment",
+          "means": "Matching cannot find every renamed or moved load. Excluding this concern records your confirmation that each load below is not the equipment it names. Your name, the date and this list print on every review export. This is not engineer validation.",
+          "none": "The request draws no candidate load: nothing to confirm.",
+          "load": "{board} › {description} ({power} kW) is not that equipment"
+        }
       }
     },
     "readiness": {

@@ -2609,6 +2609,31 @@ export interface components {
       };
     };
     /**
+     * ConfirmedLoad
+     * @description A load a resolver confirmed is not the excluded equipment, as it stood then.
+     */
+    ConfirmedLoad: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /**
+       * Power Kw
+       * @default
+       */
+      power_kw: string;
+      /**
+       * Kind
+       * @default
+       */
+      kind: string;
+    };
+    /**
      * ControlNeed
      * @description What a controlled load needs from its control, recorded as a requirement only (M6a).
      *
@@ -4001,6 +4026,16 @@ export interface components {
       | 'data'
       | 'spare'
       | 'other';
+    /**
+     * LoadRef
+     * @description One load of the request: its board's name and its position on that board.
+     */
+    LoadRef: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+    };
     /**
      * LoadScheduleImport
      * @description A load schedule read from a consultant's file.
@@ -5664,6 +5699,8 @@ export interface components {
       carried: boolean;
       /** Where */
       where?: string | null;
+      /** Confirmation Candidates */
+      confirmation_candidates?: components['schemas']['ConfirmedLoad'][] | null;
     };
     /**
      * SafetyMention
@@ -5704,6 +5741,8 @@ export interface components {
       proposal_id?: string | null;
       /** Raised On */
       raised_on?: number | null;
+      /** Confirmed Loads */
+      confirmed_loads?: components['schemas']['ConfirmedLoad'][] | null;
       /**
        * Resolution
        * @enum {string}
@@ -5756,6 +5795,8 @@ export interface components {
       request_id?: string | null;
       /** Proposal Id */
       proposal_id?: string | null;
+      /** Not This Equipment */
+      not_this_equipment?: components['schemas']['LoadRef'][] | null;
       /**
        * Resolution
        * @enum {string}

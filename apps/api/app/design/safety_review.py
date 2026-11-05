@@ -28,6 +28,7 @@ requirement; nothing here is engineer validation.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -46,6 +47,13 @@ INFO_FIELDS = ("name", "number", "customer", "consultant", "contractor")
 
 Kind = Literal["mention", "item", "request"]
 Level = Literal["life_safety", "possibly"]
+
+
+#: A load of the request checked: ``(board, index, description, power_kw, kind)``.
+Candidate = tuple[str, int, str, str, str]
+
+#: Load kinds that may be the flagged pump or motor whatever their power.
+MOTOR_LIKE = ("motor", "fan", "lift")
 
 
 @dataclass(frozen=True)
@@ -94,6 +102,12 @@ class Concern:
     #: A carried concern whose row the request checked still draws (same
     #: board and position, or same board, power and kind): not excludable.
     still_in_request: bool = field(default=False, compare=False)
+    #: The flagged load's power (``power_kw``, normalised), "" when unknown.
+    power: str = field(default="", compare=False)
+    #: A carried life-safety concern whose exclusion needs the per-load
+    #: confirmation, and the request's candidate loads it must list.
+    needs_confirmation: bool = field(default=False, compare=False)
+    candidates: tuple[Candidate, ...] = field(default=(), compare=False)
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -110,6 +124,50 @@ def _number(value: Any) -> str:
 
 def _row(board: str, index: int, load: Mapping[str, Any]) -> tuple[str, int, str, str]:
     return (board, index, _number(load.get("power_kw")), str(load.get("load") or ""))
+
+
+def load_rows(request: Mapping[str, Any] | None) -> list[Candidate]:
+    """Every load of a request as ``(board, index, description, power_kw, kind)``."""
+    out: list[Candidate] = []
+    if not isinstance(request, Mapping):
+        return out
+    for board in request.get("boards") or []:
+        if not isinstance(board, Mapping):
+            continue
+        for index, load in enumerate(board.get("loads") or []):
+            if isinstance(load, Mapping):
+                out.append(
+                    (
+                        str(board.get("name") or ""),
+                        index,
+                        str(load.get("description") or ""),
+                        _number(load.get("power_kw")),
+                        str(load.get("load") or ""),
+                    )
+                )
+    return out
+
+
+def candidates_for(power: str, request: Mapping[str, Any] | None) -> tuple[Candidate, ...]:
+    """The loads a person must confirm are not the flagged equipment before excluding it.
+
+    Every motor-like load (:data:`MOTOR_LIKE`) on any board, and every load on
+    any board of at least half the flagged load's power; with the flagged
+    power unknown, every motor-like load and every load of 1 kW or more.
+    """
+    try:
+        floor = Decimal(power) / 2 if power else Decimal(1)
+    except InvalidOperation:
+        floor = Decimal(1)
+    out = []
+    for row in load_rows(request):
+        try:
+            kw = Decimal(row[3]) if row[3] else None
+        except InvalidOperation:
+            kw = None
+        if row[4] in MOTOR_LIKE or (kw is not None and kw >= floor):
+            out.append(row)
+    return tuple(out)
 
 
 def drawn_rows(request: Mapping[str, Any] | None) -> list[tuple[str, int, str, str]]:
@@ -156,6 +214,7 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
         board: str | None = None,
         load_index: int | None = None,
         rows: tuple[tuple[str, int, str, str], ...] = (),
+        power: str = "",
     ) -> None:
         if not isinstance(text, str) or not text.strip():
             return
@@ -179,6 +238,7 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
                     board=board,
                     load_index=load_index,
                     rows=rows,
+                    power=power,
                 )
             )
 
@@ -201,6 +261,7 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
                     board=name,
                     load_index=index,
                     rows=(_row(name, index, load),),
+                    power=_number(load.get("power_kw")) if load.get("power_kw") is not None else "",
                 )
     return out
 
@@ -241,6 +302,13 @@ def ai_concerns(
     for t in targets:
         overlaps = t.kind == "mention" and ai_intake.false_positive_refusal(ai, t) is not None
         rows = tuple(row for a, b, row in placed if a < t.end and t.start < b)
+        item = items.get(t.target_id) if t.kind == "item" else None
+        stated = ((item or {}).get("value") or {}).get("power_kw")
+        if stated is None and item is not None:
+            # A server-made unsupported item keeps only text: its quote may state the power.
+            match = re.search(r"(\d+(?:\.\d+)?)\s*kW", str(item.get("quote") or ""), re.I)
+            stated = match.group(1) if match else None
+        power = _number(stated) if stated is not None else next((r[2] for r in rows if r[2]), "")
         out.append(
             Concern(
                 kind=t.kind,
@@ -255,6 +323,7 @@ def ai_concerns(
                 present=True,
                 overlaps_life_safety_item=overlaps,
                 rows=rows,
+                power=power,
             )
         )
     return out
@@ -300,7 +369,17 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
         if key not in seen:
             seen.add(key)
             moved = _dated(c, first[key], False)
-            out.append(Concern(**{**moved.__dict__, "still_in_request": _still_drawn(c.rows, now)}))
+            needs = c.level == "life_safety" and not (c.place or "").startswith("info.")
+            out.append(
+                Concern(
+                    **{
+                        **moved.__dict__,
+                        "still_in_request": _still_drawn(c.rows, now),
+                        "needs_confirmation": needs,
+                        "candidates": candidates_for(c.power, current.request) if needs else (),
+                    }
+                )
+            )
     return out
 
 
@@ -397,6 +476,13 @@ def resolutions_in_force(
             continue
         if refusal(concern, str(entry["resolution"])) is not None:
             continue
+        if (
+            entry.get("resolution") == EXCLUDED_FROM_SCOPE
+            and concern.needs_confirmation
+            and confirmed_set(entry) != set(concern.candidates)
+        ):
+            # The request changed since the confirmation: confirm again.
+            continue
         out[key] = entry
     return out
 
@@ -451,6 +537,37 @@ def open_lines(found: Sequence[Concern], record: Mapping[str, Any] | None) -> li
     return lines
 
 
+def confirmed_set(entry: Mapping[str, Any]) -> set[Candidate]:
+    """The loads an exclusion's resolver confirmed are not the equipment, as candidates."""
+    out: set[Candidate] = set()
+    for load in entry.get("confirmed_loads") or []:
+        out.add(
+            (
+                str(load.get("board") or ""),
+                int(load.get("load_index", -1)),
+                str(load.get("description") or ""),
+                str(load.get("power_kw") or ""),
+                str(load.get("kind") or ""),
+            )
+        )
+    return out
+
+
+def _confirmed_text(entry: Mapping[str, Any], who: str) -> str:
+    loads = entry.get("confirmed_loads")
+    if loads is None:
+        return ""
+    listed = (
+        "; ".join(
+            f"{x.get('board')} \u203a {x.get('description') or '?'}"
+            + (f" ({x.get('power_kw')} kW)" if x.get("power_kw") else "")
+            for x in loads
+        )
+        or "none drawn"
+    )
+    return f"; {who} confirmed these loads are not that equipment: {listed}"
+
+
 def resolution_lines(
     found: Sequence[Concern],
     record: Mapping[str, Any] | None,
@@ -472,7 +589,8 @@ def resolution_lines(
         if entry.get("resolution") == EXCLUDED_FROM_SCOPE:
             lines.append(
                 f"[EXCLUDED FROM SCOPE] '{c.label}'{raised} — not designed or reviewed here: "
-                f"{reason} (recorded by {who} on {when}) — not engineer-validated"
+                f"{reason} (recorded by {who} on {when}){_confirmed_text(entry, who)}"
+                " — not engineer-validated"
             )
         else:
             lines.append(

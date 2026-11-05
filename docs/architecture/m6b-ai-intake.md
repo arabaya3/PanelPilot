@@ -815,6 +815,48 @@ drawn (`still_in_request` did not exist then). Every approval recorded under
 `.4`/`v2-19` therefore stops counting, as above; the same test checks it with
 the previous versions.
 
+**Per-load confirmation (re-check of fbe3bd2, owner decision).** No matching
+rule can find every renamed, re-powered, moved or split load: the review
+showed the pump moved to the sole row with a new power, to another board, or
+split across another board escaping `still_in_request`. The hard refusal
+stays, and excluding a **carried life-safety concern** (a request load or
+board, or an AI mention or item, raised on an earlier revision; not project
+information) now also needs a person's recorded, load-by-load judgement:
+
+- `SafetyConcern.confirmation_candidates` lists every load of the current
+  request that might be that equipment: every motor-like load (`motor`, `fan`,
+  `lift`) on any board, and every load on any board of at least half the
+  flagged load's `power_kw` (from the earlier request row, the AI item's value
+  or quote, or the row it was placed on). With the flagged power unknown:
+  every motor-like load and every load of 1 kW or more.
+- The exclusion body carries `not_this_equipment: [{board, load_index}]`
+  covering the candidates exactly: missing ones are 409
+  `exclusion_confirmation_incomplete` (`params.missing` as `board:index`),
+  any other ref 422 `exclusion_confirmation_extra`.
+- Stored with the resolution as `confirmed_loads` (board, index,
+  description, power, kind as they stood), covered by `requirements_sha256`;
+  printed: `[EXCLUDED FROM SCOPE] '<term>' (raised on revision n) — not
+designed or reviewed here: <reason> (recorded by <name> on <date>); <name>
+confirmed these loads are not that equipment: <board › load (kW)>; … — not
+engineer-validated` ("none drawn" when there was no candidate).
+- If the request later differs so the candidate set is not the one
+  confirmed, the exclusion stops counting and the approval is held until
+  someone confirms again.
+- The panel's exclusion form lists the candidates with checkboxes; all must
+  be ticked before it can be sent (en/ar/he).
+
+This is an **auditable human judgement, not detection**: a member who
+falsely confirms that the moved pump is not the pump can still exclude it.
+What the change buys is that the judgement is asked for explicitly, per load,
+names the load, and is recorded and printed with who made it; four-eyes and
+the approval (a further member) remain the controls.
+
+Third bump: v1 `2026.11.04.5` → `2026.11.04.6`, v2 `2026.11.04.v2-20` →
+`2026.11.04.v2-21` (the exclusion lines now print the confirmed loads; the
+guard's reference exports are unchanged). Every approval recorded under
+`.5`/`v2-20` stops counting; `test_an_approval_recorded_before_the_m6e_bump_is_not_current`
+checks it with those versions.
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)

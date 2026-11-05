@@ -450,3 +450,92 @@ describe('M6e: request and carried concerns', () => {
     expect(bodies[1]).toMatchObject({ mention_id: MENTION.target_id, proposal_id: 'p-old' });
   });
 });
+
+describe('M6e: the per-load confirmation of a carried exclusion', () => {
+  const CANDIDATES = [
+    { board: 'MDB', load_index: 0, description: 'Booster pump', power_kw: '5.5', kind: 'motor' },
+    { board: 'DB-2', load_index: 0, description: 'P-7', power_kw: '18.5', kind: 'motor' },
+  ];
+  const CARRIED_LOAD: SafetyConcern = {
+    kind: 'request',
+    target_id: 'r1111111111111111',
+    level: 'life_safety',
+    code: 'request_life_safety',
+    label: 'fire pump',
+    start: 0,
+    end: 9,
+    resolved: false,
+    resolution: null,
+    false_positive_refusal: 'life_safety',
+    exclusion_refusal: null,
+    carried: true,
+    raised_on: 1,
+    where: 'MDB › Fire pump',
+    confirmation_candidates: CANDIDATES,
+  };
+
+  it.each(['en', 'ar', 'he'] as const)(
+    'lists every candidate load and waits until all are ticked (%s)',
+    async (locale) => {
+      const onResolve = vi.fn().mockResolvedValue(null);
+      renderApp(
+        <SafetyConcerns
+          concerns={[CARRIED_LOAD]}
+          eligibility={{ eligible: true, reason: null }}
+          onResolve={onResolve}
+        />,
+        { locale },
+      );
+      const key = `request-${CARRIED_LOAD.target_id}`;
+      fireEvent.click(screen.getByTestId(`resolve-exclude-${key}`));
+      const box = screen.getByTestId(`resolve-confirm-${key}`);
+      expect(box.textContent).toMatch(/P-7/);
+      expect(box.textContent).toMatch(/18\.5/);
+      if (locale !== 'en') expect(box.textContent).not.toMatch(/is not that equipment/);
+      fireEvent.change(screen.getByTestId(`resolve-reason-${key}`), {
+        target: { value: 'Designed separately by the fire-protection contractor.' },
+      });
+      const submit = screen.getByTestId<HTMLButtonElement>(`resolve-submit-${key}`);
+      expect(submit.disabled).toBe(true);
+      fireEvent.click(screen.getByTestId('confirm-load-MDB-0'));
+      expect(submit.disabled).toBe(true);
+      fireEvent.click(screen.getByTestId('confirm-load-DB-2-0'));
+      expect(submit.disabled).toBe(false);
+      fireEvent.click(submit);
+      await waitFor(() => {
+        expect(onResolve).toHaveBeenCalledWith(
+          CARRIED_LOAD,
+          'excluded_from_scope',
+          'Designed separately by the fire-protection contractor.',
+          [
+            { board: 'MDB', load_index: 0 },
+            { board: 'DB-2', load_index: 0 },
+          ],
+        );
+      });
+    },
+  );
+
+  it('sends the confirmed loads to the server', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ requirements: { schema: 'pp-req/1' } }), { status: 200 }),
+      );
+    await resolveSafetyConcern({
+      token: 't',
+      fetchImpl,
+      id: 'p1',
+      revision: 2,
+      concern: CARRIED_LOAD,
+      resolution: 'excluded_from_scope',
+      reason: 'Designed elsewhere by others.',
+      notThisEquipment: [{ board: 'DB-2', load_index: 0 }],
+    });
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      request_id: CARRIED_LOAD.target_id,
+      not_this_equipment: [{ board: 'DB-2', load_index: 0 }],
+    });
+  });
+});

@@ -86,12 +86,26 @@ def _concerns(as_: Any, pid: str, n: int) -> list[dict[str, Any]]:
     return found
 
 
-def _post(as_: Any, pid: str, n: int, c: dict[str, Any], resolution: str, reason: str) -> Any:
+def _post(
+    as_: Any,
+    pid: str,
+    n: int,
+    c: dict[str, Any],
+    resolution: str,
+    reason: str,
+    confirm: bool = True,
+) -> Any:
+    """Resolve ``c``; an exclusion asked for confirmation confirms every candidate (``confirm``)."""
     body: dict[str, Any] = {"resolution": resolution, "reason": reason}
     key = {"mention": "mention_id", "item": "item_id", "request": "request_id"}[c["kind"]]
     body[key] = c["target_id"]
     if c["kind"] != "request" and c.get("carried"):
         body["proposal_id"] = c["proposal_id"]
+    if confirm and resolution == "excluded_from_scope" and c.get("confirmation_candidates"):
+        body["not_this_equipment"] = [
+            {"board": x["board"], "load_index": x["load_index"]}
+            for x in c["confirmation_candidates"]
+        ]
     return as_("reviewer").post(
         f"/design/projects/{pid}/revisions/{n}/requirements/safety-resolutions", json=body
     )
@@ -335,7 +349,7 @@ def test_one_load_placed_on_two_rows_with_different_values_is_open(
 # --------------------------------------------------------------------------- #
 
 #: The renderer versions before M6e, by snapshot schema mode.
-BEFORE_M6E = {None: "2026.11.04.4", "pp-design/2": "2026.11.04.v2-19"}
+BEFORE_M6E = {None: "2026.11.04.5", "pp-design/2": "2026.11.04.v2-20"}
 
 
 def test_an_approval_recorded_before_the_m6e_bump_is_not_current(
@@ -352,3 +366,74 @@ def test_an_approval_recorded_before_the_m6e_bump_is_not_current(
     assert opened["approval_current"] is False
     assert "renderer_version" in opened["approval_changed"]
     _refused(_export(as_("reviewer"), pid, "pdf"), 409, "revision_stale")
+
+
+# --------------------------------------------------------------------------- #
+# The per-load confirmation of a carried life-safety exclusion
+# --------------------------------------------------------------------------- #
+
+
+def test_excluding_a_moved_pump_demands_and_records_a_per_load_confirmation(
+    engine: Engine, as_: Any, provider: StubProvider
+) -> None:
+    pid = _manual(as_, ["Booster pump", "Fire pump FP-1"])
+    request = copy.deepcopy(revision_row(engine, pid, 1)["request"])
+    # The pump moves to another board under a new name and power: unmatched.
+    pump = {**request["boards"][0]["loads"][0], "description": "P-7", "power_kw": "18.5"}
+    del request["boards"][0]["loads"][1]
+    request["boards"].append(
+        {**copy.deepcopy(request["boards"][0]), "name": "DB-2", "loads": [pump]}
+    )
+    request["boards"][1]["fed_from"] = "MDB"
+    revised = as_().post(
+        f"/design/projects/{pid}/revisions", json={"request": request, "note": "r2"}
+    )
+    if revised.status_code != 201:
+        request["boards"][1].pop("fed_from", None)
+        revised = as_().post(
+            f"/design/projects/{pid}/revisions", json={"request": request, "note": "r2"}
+        )
+    assert revised.status_code == 201, revised.text[:400]
+    (c,) = _concerns(as_, pid, 2)
+    assert c["exclusion_refusal"] is None
+    listed = {(x["board"], x["load_index"]) for x in c["confirmation_candidates"]}
+    assert ("DB-2", 0) in listed
+    # Without the confirmation: 409 naming the missing loads.
+    refused = _refused(
+        _post(as_, pid, 2, c, "excluded_from_scope", EXCLUDE_REASON, confirm=False),
+        409,
+        "exclusion_confirmation_incomplete",
+    )
+    assert "DB-2:0" in refused["params"]["missing"]
+    # A load that is not a candidate: 422.
+    body = {
+        "request_id": c["target_id"],
+        "resolution": "excluded_from_scope",
+        "reason": EXCLUDE_REASON,
+        "not_this_equipment": [
+            *({"board": b, "load_index": i} for b, i in listed),
+            {"board": "MDB", "load_index": 99},
+        ],
+    }
+    url = f"/design/projects/{pid}/revisions/2/requirements/safety-resolutions"
+    assert as_("reviewer").post(url, json=body).status_code == 422
+    _held(_approve(as_("owner"), pid, 2), {"request_life_safety"})
+    # Confirmed in full (falsely, here): recorded with the loads, printed, approvable.
+    done = _post(as_, pid, 2, c, "excluded_from_scope", EXCLUDE_REASON)
+    assert done.status_code == 200, done.text[:400]
+    (entry,) = revision_row(engine, pid, 2)["requirements"]["safety_resolutions"]
+    assert {(x["board"], x["load_index"]) for x in entry["confirmed_loads"]} == listed
+    assert any(
+        x["description"] == "P-7" and x["power_kw"] == "18.5" for x in entry["confirmed_loads"]
+    )
+    assert _approve(as_("owner"), pid, 2).status_code == 200
+    printed = _pdf_text(_export(as_("owner"), pid, "pdf", 2).content)
+    assert "confirmed these loads are not that equipment:" in printed
+    assert "P-7 (18.5 kW)" in printed
+    # The request changes: the confirmation no longer covers it; confirm again.
+    request["boards"][1]["loads"].append({**pump, "description": "P-8"})
+    revised = as_().post(
+        f"/design/projects/{pid}/revisions", json={"request": request, "note": "r3"}
+    )
+    assert revised.status_code == 201, revised.text[:400]
+    _held(_approve(as_("owner"), pid, 3), {"request_life_safety"})
