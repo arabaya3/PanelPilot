@@ -806,6 +806,15 @@ granted while a request or carried concern was not yet seen. Each such
 revision is saved again and approved by another member. Test:
 `test_an_approval_recorded_before_the_m6e_bump_is_not_current`.
 
+Second bump after the rename-then-exclude fix (owner decision): v1
+`2026.11.04.4` → `2026.11.04.5`, v2 `2026.11.04.v2-19` → `2026.11.04.v2-20`.
+The guard did not require it (its reference exports are unchanged), but the
+export text changed (resolver names on request and carried resolutions) and an
+approval granted under `.4`/`v2-19` could have excluded a load that is still
+drawn (`still_in_request` did not exist then). Every approval recorded under
+`.4`/`v2-19` therefore stops counting, as above; the same test checks it with
+the previous versions.
+
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
 ### 7.1 Per-account usage control (S2)
