@@ -349,7 +349,7 @@ def test_one_load_placed_on_two_rows_with_different_values_is_open(
 # --------------------------------------------------------------------------- #
 
 #: The renderer versions before M6e, by snapshot schema mode.
-BEFORE_M6E = {None: "2026.11.04.7", "pp-design/2": "2026.11.04.v2-22"}
+BEFORE_M6E = {None: "2026.11.04.8", "pp-design/2": "2026.11.04.v2-23"}
 
 
 def test_an_approval_recorded_before_the_m6e_bump_is_not_current(

@@ -368,8 +368,9 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
         own = _dated(c, first.get(c.key, c.raised_on), True)
         # M6f re-check: the revision's own life-safety concerns need the same
         # every-load confirmation as carried ones (the pump may be typed in
-        # under another name); project information excepted.
-        needs = c.level == "life_safety" and not (c.place or "").startswith("info.")
+        # under another name); project information too (M6f: a project named
+        # "Fire pump house" may draw the pump under another name).
+        needs = c.level == "life_safety"
         rows = set(c.rows) | every_rows.get(c.key, set())
         out.append(
             Concern(
@@ -386,7 +387,7 @@ def concerns(current: Stored, earlier: Iterable[Stored]) -> list[Concern]:
         if key not in seen:
             seen.add(key)
             moved = _dated(c, first[key], False)
-            needs = c.level == "life_safety" and not (c.place or "").startswith("info.")
+            needs = c.level == "life_safety"
             out.append(
                 Concern(
                     **{

@@ -282,12 +282,6 @@ def test_a_zero_load_request_keeps_no_drawn_pump_to_confirm(as_: Any) -> None:
     assert c["confirmation_candidates"] == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="residual path at ba22276 (documented owner decision, m6b-ai-intake.md 'Project-"
-    "information fields ... not asked about'): a project named 'Fire pump house upgrade' whose "
-    "only load is 'P-7' 15 kW motor is excluded with no load list and approved",
-)
 def test_a_project_info_fire_pump_with_the_pump_drawn_renamed_asks_about_the_loads(
     as_: Any,
 ) -> None:

@@ -897,9 +897,7 @@ a life-safety-level concern — own or carried; AI mention, AI item, request
 board or load — needs the every-load confirmation, and `still_in_request`
 applies wherever a row is known (an AI concern's placed rows, now and in
 earlier revisions). A life-safety board or load still in the request stays
-unresolvable (`in_request`). **Project-information fields** (project name,
-number, customer, consultant, contractor) are not asked about: they draw no
-load, and excluding one asks for no load list. Possibly-level concerns are
+unresolvable (`in_request`). (Project-information fields were exempt here; superseded below: they ask too.) Possibly-level concerns are
 unchanged (false positive, or exclusion without a list).
 
 Fifth bump: v1 `2026.11.04.7` → `2026.11.04.8`, v2 `2026.11.04.v2-22` →
@@ -908,6 +906,23 @@ loads); every approval recorded under `.7`/`v2-22` stops counting. An
 exclusion of an own life-safety concern recorded before this change carries
 no confirmation, so (unless the request draws no load) it stops counting and the approval is held until it is
 confirmed.
+
+**Project information too (re-check of ba22276).** A life-safety concern from
+a project-information field (a project named "Fire pump house upgrade" with
+the pump drawn as "P-7" 15 kW on DB-2) was excluded with no load list. Now
+every life-safety-level concern, project information included, needs the
+every-load confirmation (candidates: every load on every board). **Zero
+loads:** a request that draws no load asks for no box; the exclusion is
+recorded with an empty list and prints "none drawn", and stops counting as
+soon as a load is added. **Known limit:** possibly-level concerns ("standby",
+"emergency", "Fire Station Road") ask for no load list — a false positive or
+an exclusion records only who, when and why.
+
+Sixth bump: v1 `2026.11.04.8` → `2026.11.04.9`, v2 `2026.11.04.v2-23` →
+`2026.11.04.v2-24` (such exclusions now print the confirmed loads); every
+approval recorded under `.8`/`v2-23` stops counting, and a project-information
+exclusion recorded before this change (no confirmation) stops counting unless
+the request draws no load.
 
 ## 7. Usage controls, retention and privacy (S2/S3, 2026-11-04)
 
