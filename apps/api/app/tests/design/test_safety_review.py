@@ -48,14 +48,19 @@ def test_what_each_resolution_may_resolve() -> None:
     assert sr.refusal(maybe, sr.EXCLUDED_FROM_SCOPE) == "in_request"
     assert sr.refusal(maybe, sr.FALSE_POSITIVE) is None
     (gone,) = sr.concerns(
-        sr.Stored(2, _request("Lighting"), None), [sr.Stored(1, _request("Fire pump"), None)]
+        sr.Stored(2, _request(), None), [sr.Stored(1, _request("Fire pump"), None)]
     )
     assert sr.refusal(gone, sr.EXCLUDED_FROM_SCOPE) is None
+    # Renamed, not removed: the same row is still drawn.
+    (renamed,) = sr.concerns(
+        sr.Stored(2, _request("FP-1"), None), [sr.Stored(1, _request("Fire pump"), None)]
+    )
+    assert sr.refusal(renamed, sr.EXCLUDED_FROM_SCOPE) == "still_in_request"
 
 
 def test_lines_name_the_revision_and_are_never_validated() -> None:
     (gone,) = sr.concerns(
-        sr.Stored(2, _request("Lighting"), None), [sr.Stored(1, _request("Fire pump"), None)]
+        sr.Stored(2, _request(), None), [sr.Stored(1, _request("Fire pump"), None)]
     )
     (line,) = sr.open_lines([gone], None)
     assert line.startswith("[OPEN] Safety concern (raised on revision 1): 'fire pump'")
