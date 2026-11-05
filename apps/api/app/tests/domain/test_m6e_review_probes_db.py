@@ -213,3 +213,61 @@ def test_a_configuration_naming_life_safety_equipment(
         pytest.xfail(f"no free text accepted in the configuration ({revised.status_code})")
     approved = approve(as_("reviewer"), pid, 2)
     assert approved.status_code == 409, ("configuration text not scanned", replaced[:5])
+
+
+# --------------------------------------------------------------------------- #
+# fbe3bd2: rename-then-exclude variants (a still-drawn fire pump must not be excludable)
+# --------------------------------------------------------------------------- #
+
+
+def _two_boards(mdb_loads: list[dict[str, Any]], db2_loads: list[dict[str, Any]]) -> dict:
+    mdb = {**board(), "loads": mdb_loads}
+    db2 = {**board("DB-2", fed_from="MDB"), "loads": db2_loads}
+    return request(mdb, db2) if db2_loads else request(mdb)
+
+
+_BYPASS = pytest.mark.xfail(
+    strict=True,
+    reason="finding at fbe3bd2: the match is same board+position or same board+power+kind; "
+    "this variant draws the fire pump unmatched, so its carried concern is excluded and approved",
+)
+
+VARIANTS = {
+    "rename_power_same_position": ([lighting(), motor("FP-1", "18.5")], []),
+    "rename_kind_same_position": (
+        [lighting(), {**lighting("FP-1", "15"), "phases": 3}],
+        [],
+    ),
+    "reorder_power": ([motor("FP-1", "18.5"), lighting()], []),
+    "only_row_power": ([motor("FP-1", "18.5")], []),
+    "move_to_other_board": ([lighting()], [motor("FP-1", "15")]),
+    "split_on_other_board": ([lighting()], [motor("FP-1a", "7.5"), motor("FP-1b", "7.5")]),
+    "split_same_board_new_positions": (
+        [motor("FP-1a", "7.5"), lighting(), lighting("Spare"), motor("FP-1b", "7.5")],
+        [],
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "rename_power_same_position",
+        "rename_kind_same_position",
+        "reorder_power",
+        pytest.param("only_row_power", marks=_BYPASS),
+        pytest.param("move_to_other_board", marks=_BYPASS),
+        pytest.param("split_on_other_board", marks=_BYPASS),
+        "split_same_board_new_positions",
+    ],
+)
+def test_a_still_drawn_fire_pump_cannot_be_excluded(as_: Any, variant: str) -> None:
+    pid = _manual(as_, lighting(), motor("Fire pump", "15"))
+    revised = _revise(as_, pid, _two_boards(*VARIANTS[variant]))
+    assert revised.status_code == 201, revised.text[:300]
+    assert code(approve(as_("owner"), pid, 2)) == "approval_blocked_by_safety"
+    resolved = _resolve_all(as_, pid, 2)
+    approved = approve(as_("owner"), pid, 2)
+    assert any(r.status_code == 409 for r in resolved) or approved.status_code == 409, [
+        r.status_code for r in resolved
+    ]
