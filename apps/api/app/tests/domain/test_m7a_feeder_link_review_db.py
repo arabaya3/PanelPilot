@@ -9,10 +9,9 @@ The example is SYNTHETIC: a main board ``MB-1`` feeding a sub-board ``SB-1``.
 Every name, label, terminal marking and value here is test data, not a real
 installation, marking convention or engineering value.
 
-Tests of behaviour the contract adds are strict ``xfail`` (``PENDING``) until
-the feature exists, so an accidental pass is reported. The compatibility tests
-(v1/v2 revisions under a v3 deployment) and the v1/v2 open item are not marked
-where they describe behaviour that must already hold.
+Written as strict xfail before the feature existed; after integration
+(f93690c) every marker was removed because each test passes for real. Shape
+helpers follow the as-built notes (contract section 8).
 """
 
 from __future__ import annotations
@@ -46,13 +45,8 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     revision_row,
     update_row,
 )
+from app.tests.design.model.v2_support import CONFIGS
 from app.tests.domain import review_support
-
-PENDING = pytest.mark.xfail(
-    strict=True,
-    reason="M7a feeder links (pp-design/3) not implemented yet: "
-    "docs/architecture/m7a-feeder-link.md",
-)
 
 V3 = "pp-design/3"
 ATTRIBUTES = (
@@ -107,43 +101,41 @@ REQUEST: dict[str, Any] = {
     ],
 }
 
-_PROVENANCE = {"source": "synthetic test data", "author": "m7a reviewer", "created": "2026-11-10"}
-_REVIEW: dict[str, Any] = {
-    "status": "unreviewed",
-    "reviewer": None,
-    "reviewed_at": None,
-    "standards": [],
-    "scope_note": None,
-}
-BAR = "tenant/synth-m7a-bar/v1"
+#: SYNTHETIC configuration, adapted from the committed held-out radial case
+#: (test data): one bar and one strip on each board, bound to circuit c1 of
+#: MB-1 and of SB-1. Markings are illustrative labels, not a convention.
+_HELDOUT = CONFIGS["heldout_radial"]["configuration"]
+BAR = "tenant/synth-heldout-bar/v1"
 
-#: SYNTHETIC configuration: one bar on each board, its terminals optional (so
-#: no required terminal blocks approval). Markings are illustrative labels.
+
+def _binding(board: str, strip: str, mark: str) -> dict[str, Any]:
+    return {
+        "id": f"r-{board.lower()}",
+        "pattern": "tenant/synth-heldout-radial/v1",
+        "board": board,
+        "circuit": "c1",
+        "slots": {"mcb": {"device": "c1-breaker"}, "bar": {"component": f"bar-{board.lower()}"}},
+        "strips": {"s": strip},
+        "markings": {"out": f"{mark}a", "bridge": f"{mark}b"},
+        "cable": None,
+        "wires": {},
+    }
+
+
 CONFIGURATION: dict[str, Any] = {
-    "name": "synthetic m7a two-board bars",
+    "name": "synthetic m7a two-board radial",
     "_comment": "SYNTHETIC TEST DATA. Markings are illustrative labels only.",
-    "templates": [
-        {
-            "ref": BAR,
-            "function": "busbar",
-            "terminals": [
-                {"id": "t1", "marking": "T1", "kind": "busbar", "required": False, "group": None},
-                {"id": "t2", "marking": "T2", "kind": "busbar", "required": False, "group": None},
-            ],
-            "contact_groups": [],
-            "parameters": [],
-            "provenance": _PROVENANCE,
-            "review": _REVIEW,
-            "restricted_scope": [],
-        }
+    "templates": copy.deepcopy(_HELDOUT["templates"]),
+    "patterns": copy.deepcopy(_HELDOUT["patterns"]),
+    "strips": [
+        {"id": "XM", "board": "MB-1", "designation": None, "template": None},
+        {"id": "XS", "board": "SB-1", "designation": None, "template": None},
     ],
-    "patterns": [],
-    "strips": [],
     "components": [
-        {"id": "mbbar", "board": "MB-1", "template": BAR, "designation": None},
-        {"id": "sbbar", "board": "SB-1", "template": BAR, "designation": None},
+        {"id": f"bar-{b.lower()}", "board": b, "template": BAR, "designation": None}
+        for b in ("MB-1", "SB-1")
     ],
-    "bindings": [],
+    "bindings": [_binding("MB-1", "XM", "M1"), _binding("SB-1", "XS", "S1")],
 }
 
 Switch = Callable[[str | None], None]
@@ -279,14 +271,14 @@ def _link_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [f for f in findings if f["code"] in LINK_CODES]
 
 
-def _terminal(stored: dict[str, Any], board: str, terminal: str = "t1") -> dict[str, Any]:
-    """A TerminalRef to the synthetic bar on ``board``, by its id in the stored model."""
-    component = next(
-        c
-        for c in stored["model"]["components"]
-        if c["board_id"] == board and c["template_ref"] == BAR
+def _terminal(opened: dict[str, Any], board: str) -> dict[str, Any]:
+    """A TerminalRef on ``board``: the first component terminal of the open revision's schedule."""
+    row = next(
+        t
+        for t in opened["model_v2"]["terminals"]
+        if t["board_id"] == board and t["owner_kind"] == "component"
     )
-    return {"component": component["id"], "terminal": terminal}
+    return {"component": row["owner_id"], "terminal": row["terminal_id"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -294,7 +286,6 @@ def _terminal(stored: dict[str, Any], board: str, terminal: str = "t1") -> dict[
 # --------------------------------------------------------------------------- #
 
 
-@PENDING
 def test_v3_derives_exactly_one_link_per_feeder_with_every_attribute_unset(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -323,7 +314,6 @@ def test_v3_derives_exactly_one_link_per_feeder_with_every_attribute_unset(
     assert _only_link(revision_row(engine, again["id"], 1)["design_snapshot"])["id"] == link["id"]
 
 
-@PENDING
 def test_save_with_feeder_links_then_reopen_keeps_the_same_snapshot_hash(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -359,7 +349,6 @@ def test_save_with_feeder_links_then_reopen_keeps_the_same_snapshot_hash(
     assert _links(second)[0]["ends"] == link["ends"]
 
 
-@PENDING
 def test_designer_values_never_appear_as_link_attributes(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -390,7 +379,6 @@ def test_designer_values_never_appear_as_link_attributes(
 # --------------------------------------------------------------------------- #
 
 
-@PENDING
 @pytest.mark.parametrize(
     ("entries", "code"),
     [
@@ -413,7 +401,6 @@ def test_a_wrong_board_entry_is_refused_and_nothing_is_saved(
     assert not listed.get("items", listed if isinstance(listed, list) else [])
 
 
-@PENDING
 @pytest.mark.parametrize(
     "forged",
     [
@@ -433,7 +420,6 @@ def test_client_sent_provenance_is_refused(
     assert response.status_code == 422, response.text[:500]
 
 
-@PENDING
 @pytest.mark.parametrize(
     "attributes",
     [{"cores": 0}, {"cores": 101}, {"cross_section_mm2": "0"}, {"length_m": "-1"}],
@@ -457,10 +443,9 @@ def _configured_project(
     saved = _saved(client, _request())
     revised = _revise(client, saved["id"], _request(), CONFIGURATION)
     assert revised.status_code == 201, revised.text[:800]
-    return saved["id"], revision_row(engine, saved["id"], 2)["design_snapshot"]
+    return saved["id"], _opened(client, saved["id"], 2)
 
 
-@PENDING
 def test_terminal_ends_resolve_and_off_board_or_unknown_terminals_are_refused(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -493,7 +478,6 @@ def test_terminal_ends_resolve_and_off_board_or_unknown_terminals_are_refused(
 # --------------------------------------------------------------------------- #
 
 
-@PENDING
 def test_a_discrepancy_shows_both_values_and_leaves_the_calculation_byte_identical(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -533,7 +517,6 @@ def test_a_discrepancy_shows_both_values_and_leaves_the_calculation_byte_identic
 _COMPLETE = re.compile(r"(?<![a-z])complete(?:d|ly)?\b", re.IGNORECASE)
 
 
-@PENDING
 def test_an_incomplete_link_is_never_reported_complete(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -601,7 +584,6 @@ def test_inter_board_wiring_not_modelled_stays_for_v1_and_v2(
     assert "links" not in stored
 
 
-@PENDING
 def test_v3_link_replaces_the_open_item_for_its_feeder(
     client: TestClient, switch: Switch, people: _People
 ) -> None:
@@ -617,7 +599,6 @@ def test_v3_link_replaces_the_open_item_for_its_feeder(
 # --------------------------------------------------------------------------- #
 
 
-@PENDING
 def test_another_tenant_gets_404_for_a_linked_revision(
     client: TestClient,
     engine: Engine,
@@ -637,7 +618,6 @@ def test_another_tenant_gets_404_for_a_linked_revision(
     assert _revise(client, saved["id"], _request([{"fed_board": "SB-1"}])).status_code == 404
 
 
-@PENDING
 def test_a_tampered_link_is_an_integrity_failure(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -656,7 +636,6 @@ def test_a_tampered_link_is_an_integrity_failure(
     _refused(approve(client, saved["id"], 1), 409, "snapshot_integrity_failed")
 
 
-@PENDING
 def test_a_rehashed_tamper_after_approval_is_not_a_current_approval(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -678,7 +657,6 @@ def test_a_rehashed_tamper_after_approval_is_not_a_current_approval(
         assert "REVIEW-APPROVED" not in _words(exported).upper().replace(" ", "-")
 
 
-@PENDING
 @pytest.mark.parametrize(
     "where",
     ["from_label", "to_label", "number", "colour"],
@@ -700,7 +678,6 @@ def test_life_safety_words_in_a_link_text_hold_approval(
     _refused(approve(client, saved["id"], 1), 409, "approval_blocked_by_safety")
 
 
-@PENDING
 def test_execution_and_restricted_exports_of_a_linked_revision_are_refused(
     client: TestClient, switch: Switch, people: _People
 ) -> None:
@@ -727,7 +704,6 @@ COMPAT_FORMATS = ("pdf", "calculations_pdf", "json", "dxf")
 V2_FORMATS = ("wire_schedule_pdf", "terminal_schedule_pdf", "connection_drawing_pdf")
 
 
-@PENDING
 def test_v1_and_v2_revisions_open_export_and_stay_approved_under_v3(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
