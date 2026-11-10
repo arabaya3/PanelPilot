@@ -4,9324 +4,9457 @@
  */
 
 export interface paths {
-    "/api/v1/health/live": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Liveness */
-        get: operations["liveness_api_v1_health_live_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/health/ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Readiness */
-        get: operations["readiness_api_v1_health_ready_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/signup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Signup */
-        post: operations["signup_api_v1_auth_signup_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/trial": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start Trial
-         * @description Begin an anonymous trial.
-         *
-         *     Takes no body and no credentials — requiring either would put a form in
-         *     front of the product, which is the funnel this deliberately does not have.
-         */
-        post: operations["start_trial_api_v1_auth_trial_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/trial/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resume Trial
-         * @description Mint a fresh access token for a trial this browser already started.
-         *
-         *     Shares the trial-start budget: to an abuser, resuming a known trial and
-         *     starting a new one are the same request.
-         */
-        post: operations["resume_trial_api_v1_auth_trial_resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Login
-         * @description Sign in: the access token in the body, the refresh token in the session cookie.
-         */
-        post: operations["login_api_v1_auth_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/session/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh
-         * @description Exchange the refresh cookie for a new access token, rotating the cookie.
-         *
-         *     The page sends its access token too, when it holds one: proof that it is
-         *     the session's own holder, which lets a jar a late Set-Cookie moved back
-         *     one rotation recover (see `auth.refresh`). It is optional, and an
-         *     expired or foreign one is no proof rather than a refusal.
-         *
-         *     What a page calls on load to find out whether this browser is signed in,
-         *     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
-         *     clears the cookie, so the browser stops sending a dead credential.
-         *
-         *     The JSON-body refresh this replaced was used by the web app only; there
-         *     is no non-browser client, so it was removed rather than kept beside the
-         *     cookie.
-         */
-        post: operations["refresh_api_v1_auth_session_refresh_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/session/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout
-         * @description Sign out: end this sign-in on the server and clear the cookie.
-         *
-         *     Ends the session the access token names and the one the cookie belongs
-         *     to: their refresh tokens stop refreshing, and every access token of the
-         *     session is refused from the next request, not at its expiry. Other
-         *     sign-ins of the account are left alone. Works with only the cookie, since
-         *     the access token may already have expired. Always 204, so a retry never
-         *     fails and the answer says nothing about either credential.
-         */
-        post: operations["logout_api_v1_auth_session_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/session/logout-everywhere": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Logout Everywhere
-         * @description End every sign-in of the caller's account, on every device, and clear the cookie.
-         *
-         *     Needs a live access token: ending other devices' sessions is a deliberate
-         *     act of the signed-in account, not something a cookie alone may ask for.
-         */
-        post: operations["logout_everywhere_api_v1_auth_session_logout_everywhere_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/quota": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Quota */
-        get: operations["quota_api_v1_auth_quota_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/diagnostics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Diagnosis */
-        post: operations["create_diagnosis_api_v1_diagnostics_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/diagnostics/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Stream Diagnosis
-         * @description Stream one diagnostic turn as server-sent events.
-         *
-         *     The final ``result`` event carries the complete response; the events
-         *     before it report progress only. See ``app.models.schemas.streaming`` for
-         *     why no partial answer is ever streamed.
-         */
-        post: operations["stream_diagnosis_api_v1_diagnostics_stream_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/diagnostics/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Diagnostic Session */
-        get: operations["get_diagnostic_session_api_v1_diagnostics__session_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Diagnostic Sessions
-         * @description List the caller's conversations, most recently active first.
-         *
-         *     `limit` is bounded here as well as in the domain so an out-of-range value
-         *     is a 422 naming the field, rather than being silently clamped to something
-         *     the caller did not ask for.
-         */
-        get: operations["list_diagnostic_sessions_api_v1_sessions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/plans": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Plans
-         * @description Every plan and its price; public, for the pricing page.
-         */
-        get: operations["plans_api_v1_billing_plans_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/entitlements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Entitlements
-         * @description What the caller's account is on and has used.
-         */
-        get: operations["entitlements_api_v1_billing_entitlements_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/billing/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request Plan
-         * @description Ask to move the caller's account to a plan; an operator activates it.
-         */
-        post: operations["request_plan_api_v1_billing_request_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/calculations/cable-sizing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Size Cable */
-        post: operations["size_cable_api_v1_calculations_cable_sizing_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/calculations/drive-ranges": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Drive Ranges */
-        get: operations["list_drive_ranges_api_v1_calculations_drive_ranges_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/calculations/vfd-selection": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Select Vfd */
-        post: operations["select_vfd_api_v1_calculations_vfd_selection_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/calculations/panel-bom": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Build Panel Bom */
-        post: operations["build_panel_bom_api_v1_calculations_panel_bom_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/distribution-board": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Design Distribution Board */
-        post: operations["design_distribution_board_api_v1_design_distribution_board_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/project": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Design Project
-         * @description Design a project of boards, each sub-board's feeder sized from its design.
-         */
-        post: operations["design_project_api_v1_design_project_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Export Design */
-        post: operations["export_design_api_v1_design_export_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/load-schedule/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Load Schedule
-         * @description Read a consultant's load schedule (.xlsx, .csv or .pdf) into loads.
-         */
-        post: operations["import_load_schedule_api_v1_design_load_schedule_import_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/load-schedule/suggest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Suggest Load Schedule
-         * @description Draft a load schedule from a plain description. Each call is a paid model request.
-         */
-        post: operations["suggest_load_schedule_api_v1_design_load_schedule_suggest_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/quotation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Price Design
-         * @description Price an unsaved design as a provisional estimate, with its findings.
-         *
-         *     Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
-         *     revision (``POST /design/projects/{id}/revisions/{n}/export``).
-         */
-        post: operations["price_design_api_v1_design_quotation_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/price-list/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import Price List
-         * @description Read a company's price list (.xlsx or .csv).
-         */
-        post: operations["import_price_list_api_v1_design_price_list_import_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/plc": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Write Plc Program
-         * @description Write and check the control program for the PLC-switched circuits.
-         */
-        post: operations["write_plc_program_api_v1_design_plc_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Projects
-         * @description List the caller's saved projects, most recently saved first.
-         */
-        get: operations["list_projects_api_v1_design_projects_get"];
-        put?: never;
-        /**
-         * Save Project
-         * @description Save a new project as its first revision.
-         */
-        post: operations["save_project_api_v1_design_projects_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/requirements/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Requirements
-         * @description The requirements record and design a guided input would be saved with; nothing is saved.
-         */
-        post: operations["preview_requirements_api_v1_design_projects_requirements_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/requirements/ai-proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Ai Proposal
-         * @description Propose requirement entries from a description (M6b). A paid model call; designs nothing.
-         */
-        post: operations["create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/requirements/ai-proposals/{proposal_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Ai Proposal
-         * @description One of the tenant's AI proposals, with each item's decision state.
-         */
-        get: operations["get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Ai Proposal
-         * @description Delete one of the caller's own proposals that no saved revision applied (S3).
-         */
-        delete: operations["delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decide Ai Item
-         * @description Accept, reject or edit one proposal item; append-only, who and when the server's.
-         */
-        post: operations["decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/questions/{question_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Answer Question
-         * @description Answer a question (201, a new revision) or acknowledge it (200, this revision's record).
-         */
-        post: operations["answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-clarifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Clarify Safety Mention
-         * @description Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing.
-         */
-        post: operations["clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-resolutions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve Safety Concern
-         * @description Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only.
-         */
-        post: operations["resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Open Project
-         * @description Open a saved project at its latest revision, or the one asked for.
-         */
-        get: operations["open_project_api_v1_design_projects__project_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Project
-         * @description Delete a saved project and all its revisions.
-         */
-        delete: operations["delete_project_api_v1_design_projects__project_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Revise Project
-         * @description Save a new revision of a project.
-         */
-        post: operations["revise_project_api_v1_design_projects__project_id__revisions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/configuration/validate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Validate Configuration
-         * @description Compose a configuration with the latest revision, designed now; nothing is saved.
-         */
-        post: operations["validate_configuration_api_v1_design_projects__project_id__configuration_validate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/resave": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resave Revision
-         * @description Save a revision's stored request again as the caller's new revision, for independent review.
-         */
-        post: operations["resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/approval": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Approve Revision
-         * @description Approve one revision of a saved project, once; it then cannot be deleted.
-         */
-        post: operations["approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/projects/{project_id}/revisions/{number}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Export Revision
-         * @description Export a saved revision from the design the server stored and checked for it.
-         */
-        post: operations["export_revision_api_v1_design_projects__project_id__revisions__number__export_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/markets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Markets
-         * @description Every market and its supply defaults; public, for a new visitor's board.
-         */
-        get: operations["list_markets_api_v1_design_markets_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/company-settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Company Settings
-         * @description The caller's company profile settings, as saved.
-         */
-        get: operations["get_company_settings_api_v1_design_company_settings_get"];
-        /**
-         * Save Company Settings
-         * @description Save the caller's company profile settings, refused if a design would refuse them.
-         */
-        put: operations["save_company_settings_api_v1_design_company_settings_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/design/markups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Read Markups
-         * @description Read a reviewer's marks off a drawing set PDF, placed on this project's drawings.
-         */
-        post: operations["read_markups_api_v1_design_markups_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Search Documents
-         * @description Search the documentation corpus.
-         *
-         *     Raises:
-         *         AuthorizationError: 403 if a non-reviewer asks for staging.
-         *         ValidationError: 422 on a blank query.
-         *         ServiceUnavailableError: 503 if retrieval fails.
-         */
-        post: operations["search_documents_api_v1_search_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/team": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Team
-         * @description The caller's team and its seats.
-         */
-        get: operations["get_team_api_v1_team_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/team/invitations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Invitations
-         * @description The invitations still open.
-         */
-        get: operations["list_invitations_api_v1_team_invitations_get"];
-        put?: never;
-        /**
-         * Invite
-         * @description Invite a colleague; the token is shown this once, for the owner to send.
-         */
-        post: operations["invite_api_v1_team_invitations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/team/invitations/{invitation_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke
-         * @description Withdraw an open invitation.
-         */
-        delete: operations["revoke_api_v1_team_invitations__invitation_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/team/members/{member_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove
-         * @description Take a member out of the team.
-         */
-        delete: operations["remove_api_v1_team_members__member_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/team/owner": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transfer Ownership
-         * @description Hand the tenant's ownership to another active member; the owner only.
-         */
-        post: operations["transfer_ownership_api_v1_team_owner_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/engineering-reviews/decisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Decisions
-         * @description Every decision on a subject, this tenant's and global, newest first.
-         */
-        get: operations["list_decisions_api_v1_engineering_reviews_decisions_get"];
-        put?: never;
-        /**
-         * Record Decision
-         * @description Record a decision; a designated reviewer only.
-         */
-        post: operations["record_decision_api_v1_engineering_reviews_decisions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/engineering-reviews/reviewers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Reviewers
-         * @description The current designations; the owner or an admin.
-         */
-        get: operations["list_reviewers_api_v1_engineering_reviews_reviewers_get"];
-        put?: never;
-        /**
-         * Designate
-         * @description Designate an account as a qualified engineering reviewer; the owner only.
-         */
-        post: operations["designate_api_v1_engineering_reviews_reviewers_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/engineering-reviews/reviewers/{member_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke
-         * @description Revoke a designation; the owner only. Decisions already recorded stay.
-         */
-        delete: operations["revoke_api_v1_engineering_reviews_reviewers__member_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ingestion/crawl-jobs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Crawl Job */
-        post: operations["create_crawl_job_api_v1_ingestion_crawl_jobs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ingestion/crawl-jobs/{job_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Crawl Job */
-        get: operations["get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/queue/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * My Queue
-         * @description Return the caller's outstanding batch.
-         */
-        get: operations["my_queue_api_v1_verification_queue_me_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/items/{item_id}/label": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Label Item
-         * @description Record the caller's label for one item.
-         *
-         *     Raises:
-         *         HTTPException: 404 if the item does not exist, 403 if it belongs to
-         *             another verifier, 422 if an escalating label carries no note.
-         */
-        post: operations["label_item_api_v1_verification_items__item_id__label_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/escalations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Escalations
-         * @description Return every item awaiting lead review.
-         *
-         *     Raises:
-         *         HTTPException: 403 unless the caller holds the reviewer role.
-         *
-         *     Gated because an escalation names content a verifier believed wrong, and
-         *     the queue spans every verifier's work. AI-012's rule is that these are
-         *     resolved by a lead rather than by whoever raised them, which only holds if
-         *     the view is restricted to leads.
-         */
-        get: operations["list_escalations_api_v1_verification_escalations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/escalations/{item_id}/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resolve Escalation
-         * @description Settle an escalated item: uphold it, or take it over to judge again.
-         *
-         *     Raises:
-         *         AuthorizationError: 403 unless the caller is a reviewer other than
-         *             whoever escalated the item.
-         *         NotFoundError: 404 if there is no such item.
-         *         ValidationError: 422 if the note is blank or the item is not escalated.
-         */
-        post: operations["resolve_escalation_api_v1_verification_escalations__item_id__resolve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/stale-documents": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Stale Documents
-         * @description Return live documents whose source changed or withdrew them.
-         *
-         *     Raises:
-         *         AuthorizationError: 403 unless the caller holds the reviewer role.
-         */
-        get: operations["list_stale_documents_api_v1_verification_stale_documents_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/stale-documents/{document_id}/dismiss": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Dismiss Stale Document
-         * @description Record that an upstream change is harmless, and why.
-         *
-         *     Raises:
-         *         AuthorizationError: 403 unless the caller holds the reviewer role.
-         *         NotFoundError: 404 if there is no such flag.
-         *         ValidationError: 422 if the note is blank or the flag is not open.
-         */
-        post: operations["dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/verification/stale-documents/{document_id}/retract": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Retract Stale Document
-         * @description Take the flagged document's passages out of live answers, and say why.
-         *
-         *     Raises:
-         *         AuthorizationError: 403 unless the caller holds the reviewer role.
-         *         NotFoundError: 404 if there is no such flag, or nothing live cites it.
-         *         ValidationError: 422 if the note is blank or the flag is already closed.
-         *         PromotionError: 409 if the production delete failed; nothing was recorded.
-         */
-        post: operations["retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/feedback/flag": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Flag Answer
-         * @description Record a flagged answer and queue it for verification.
-         *
-         *     A missing turn and another tenant's turn are both 404, decided by the
-         *     domain's ``FlaggedTurnNotFoundError`` and mapped centrally — not here.
-         */
-        post: operations["flag_answer_api_v1_feedback_flag_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/plc/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate
-         * @description Generate PLC code for a description, with its validation verdict.
-         *
-         *     Signed in, as a trial or an account, and rate-limited like search: each
-         *     call is a paid model request.
-         *
-         *     Raises:
-         *         HTTPException: 422 if the request cannot be generated as asked.
-         *         ServiceUnavailableError: 503 if the model could not be reached.
-         *         ModelBudgetExceededError: 429 if the month's model calls are spent.
-         */
-        post: operations["generate_api_v1_plc_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/plc/review": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Review
-         * @description Validate code the caller already has.
-         */
-        post: operations["review_api_v1_plc_review_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/images": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Image
-         * @description Accept a photo of an equipment display and read the fault code off it.
-         *
-         *     The declared content type is deliberately not passed on: the domain
-         *     sniffs the bytes, and forwarding a client-supplied type would invite a
-         *     future reader to trust it.
-         */
-        post: operations["upload_image_api_v1_images_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
+  '/api/v1/health/live': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Liveness */
+    get: operations['liveness_api_v1_health_live_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/health/ready': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Readiness */
+    get: operations['readiness_api_v1_health_ready_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/signup': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Signup */
+    post: operations['signup_api_v1_auth_signup_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/trial': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start Trial
+     * @description Begin an anonymous trial.
+     *
+     *     Takes no body and no credentials — requiring either would put a form in
+     *     front of the product, which is the funnel this deliberately does not have.
+     */
+    post: operations['start_trial_api_v1_auth_trial_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/trial/resume': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resume Trial
+     * @description Mint a fresh access token for a trial this browser already started.
+     *
+     *     Shares the trial-start budget: to an abuser, resuming a known trial and
+     *     starting a new one are the same request.
+     */
+    post: operations['resume_trial_api_v1_auth_trial_resume_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/login': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Login
+     * @description Sign in: the access token in the body, the refresh token in the session cookie.
+     */
+    post: operations['login_api_v1_auth_login_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/refresh': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Refresh
+     * @description Exchange the refresh cookie for a new access token, rotating the cookie.
+     *
+     *     The page sends its access token too, when it holds one: proof that it is
+     *     the session's own holder, which lets a jar a late Set-Cookie moved back
+     *     one rotation recover (see `auth.refresh`). It is optional, and an
+     *     expired or foreign one is no proof rather than a refusal.
+     *
+     *     What a page calls on load to find out whether this browser is signed in,
+     *     and after a 401. No cookie, or one that no longer refreshes, is a 401 and
+     *     clears the cookie, so the browser stops sending a dead credential.
+     *
+     *     The JSON-body refresh this replaced was used by the web app only; there
+     *     is no non-browser client, so it was removed rather than kept beside the
+     *     cookie.
+     */
+    post: operations['refresh_api_v1_auth_session_refresh_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout
+     * @description Sign out: end this sign-in on the server and clear the cookie.
+     *
+     *     Ends the session the access token names and the one the cookie belongs
+     *     to: their refresh tokens stop refreshing, and every access token of the
+     *     session is refused from the next request, not at its expiry. Other
+     *     sign-ins of the account are left alone. Works with only the cookie, since
+     *     the access token may already have expired. Always 204, so a retry never
+     *     fails and the answer says nothing about either credential.
+     */
+    post: operations['logout_api_v1_auth_session_logout_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/session/logout-everywhere': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Logout Everywhere
+     * @description End every sign-in of the caller's account, on every device, and clear the cookie.
+     *
+     *     Needs a live access token: ending other devices' sessions is a deliberate
+     *     act of the signed-in account, not something a cookie alone may ask for.
+     */
+    post: operations['logout_everywhere_api_v1_auth_session_logout_everywhere_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/quota': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Quota */
+    get: operations['quota_api_v1_auth_quota_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/diagnostics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Diagnosis */
+    post: operations['create_diagnosis_api_v1_diagnostics_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/diagnostics/stream': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stream Diagnosis
+     * @description Stream one diagnostic turn as server-sent events.
+     *
+     *     The final ``result`` event carries the complete response; the events
+     *     before it report progress only. See ``app.models.schemas.streaming`` for
+     *     why no partial answer is ever streamed.
+     */
+    post: operations['stream_diagnosis_api_v1_diagnostics_stream_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/diagnostics/{session_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Diagnostic Session */
+    get: operations['get_diagnostic_session_api_v1_diagnostics__session_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/sessions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Diagnostic Sessions
+     * @description List the caller's conversations, most recently active first.
+     *
+     *     `limit` is bounded here as well as in the domain so an out-of-range value
+     *     is a 422 naming the field, rather than being silently clamped to something
+     *     the caller did not ask for.
+     */
+    get: operations['list_diagnostic_sessions_api_v1_sessions_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/billing/plans': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Plans
+     * @description Every plan and its price; public, for the pricing page.
+     */
+    get: operations['plans_api_v1_billing_plans_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/billing/entitlements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Entitlements
+     * @description What the caller's account is on and has used.
+     */
+    get: operations['entitlements_api_v1_billing_entitlements_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/billing/request': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request Plan
+     * @description Ask to move the caller's account to a plan; an operator activates it.
+     */
+    post: operations['request_plan_api_v1_billing_request_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/calculations/cable-sizing': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Size Cable */
+    post: operations['size_cable_api_v1_calculations_cable_sizing_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/calculations/drive-ranges': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Drive Ranges */
+    get: operations['list_drive_ranges_api_v1_calculations_drive_ranges_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/calculations/vfd-selection': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Select Vfd */
+    post: operations['select_vfd_api_v1_calculations_vfd_selection_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/calculations/panel-bom': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Build Panel Bom */
+    post: operations['build_panel_bom_api_v1_calculations_panel_bom_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/distribution-board': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Design Distribution Board */
+    post: operations['design_distribution_board_api_v1_design_distribution_board_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/project': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Design Project
+     * @description Design a project of boards, each sub-board's feeder sized from its design.
+     */
+    post: operations['design_project_api_v1_design_project_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Export Design */
+    post: operations['export_design_api_v1_design_export_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/load-schedule/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Load Schedule
+     * @description Read a consultant's load schedule (.xlsx, .csv or .pdf) into loads.
+     */
+    post: operations['import_load_schedule_api_v1_design_load_schedule_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/load-schedule/suggest': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Suggest Load Schedule
+     * @description Draft a load schedule from a plain description. Each call is a paid model request.
+     */
+    post: operations['suggest_load_schedule_api_v1_design_load_schedule_suggest_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/quotation': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Price Design
+     * @description Price an unsaved design as a provisional estimate, with its findings.
+     *
+     *     Never a quotation: a quotation is the ``quotation_pdf`` export of a saved
+     *     revision (``POST /design/projects/{id}/revisions/{n}/export``).
+     */
+    post: operations['price_design_api_v1_design_quotation_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/price-list/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Price List
+     * @description Read a company's price list (.xlsx or .csv).
+     */
+    post: operations['import_price_list_api_v1_design_price_list_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/plc': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Write Plc Program
+     * @description Write and check the control program for the PLC-switched circuits.
+     */
+    post: operations['write_plc_program_api_v1_design_plc_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Projects
+     * @description List the caller's saved projects, most recently saved first.
+     */
+    get: operations['list_projects_api_v1_design_projects_get'];
+    put?: never;
+    /**
+     * Save Project
+     * @description Save a new project as its first revision.
+     */
+    post: operations['save_project_api_v1_design_projects_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Requirements
+     * @description The requirements record and design a guided input would be saved with; nothing is saved.
+     */
+    post: operations['preview_requirements_api_v1_design_projects_requirements_preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create Ai Proposal
+     * @description Propose requirement entries from a description (M6b). A paid model call; designs nothing.
+     */
+    post: operations['create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Ai Proposal
+     * @description One of the tenant's AI proposals, with each item's decision state.
+     */
+    get: operations['get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Ai Proposal
+     * @description Delete one of the caller's own proposals that no saved revision applied (S3).
+     */
+    delete: operations['delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/requirements/ai-proposals/{proposal_id}/items/{item_id}/decision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Decide Ai Item
+     * @description Accept, reject or edit one proposal item; append-only, who and when the server's.
+     */
+    post: operations['decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/questions/{question_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Answer Question
+     * @description Answer a question (201, a new revision) or acknowledge it (200, this revision's record).
+     */
+    post: operations['answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-clarifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clarify Safety Mention
+     * @description Retired (M6e): use ``safety-resolutions``. Stored clarifications keep printing.
+     */
+    post: operations['clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/requirements/safety-resolutions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Safety Concern
+     * @description Resolve one safety concern as excluded from scope or a false positive: four-eyes, append-only.
+     */
+    post: operations['resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Open Project
+     * @description Open a saved project at its latest revision, or the one asked for.
+     */
+    get: operations['open_project_api_v1_design_projects__project_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Project
+     * @description Delete a saved project and all its revisions.
+     */
+    delete: operations['delete_project_api_v1_design_projects__project_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revise Project
+     * @description Save a new revision of a project.
+     */
+    post: operations['revise_project_api_v1_design_projects__project_id__revisions_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/configuration/validate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Validate Configuration
+     * @description Compose a configuration with the latest revision, designed now; nothing is saved.
+     */
+    post: operations['validate_configuration_api_v1_design_projects__project_id__configuration_validate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/resave': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resave Revision
+     * @description Save a revision's stored request again as the caller's new revision, for independent review.
+     */
+    post: operations['resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/approval': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve Revision
+     * @description Approve one revision of a saved project, once; it then cannot be deleted.
+     */
+    post: operations['approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/projects/{project_id}/revisions/{number}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Export Revision
+     * @description Export a saved revision from the design the server stored and checked for it.
+     */
+    post: operations['export_revision_api_v1_design_projects__project_id__revisions__number__export_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/markets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Markets
+     * @description Every market and its supply defaults; public, for a new visitor's board.
+     */
+    get: operations['list_markets_api_v1_design_markets_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/company-settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Company Settings
+     * @description The caller's company profile settings, as saved.
+     */
+    get: operations['get_company_settings_api_v1_design_company_settings_get'];
+    /**
+     * Save Company Settings
+     * @description Save the caller's company profile settings, refused if a design would refuse them.
+     */
+    put: operations['save_company_settings_api_v1_design_company_settings_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/design/markups': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Read Markups
+     * @description Read a reviewer's marks off a drawing set PDF, placed on this project's drawings.
+     */
+    post: operations['read_markups_api_v1_design_markups_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/search': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Search Documents
+     * @description Search the documentation corpus.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 if a non-reviewer asks for staging.
+     *         ValidationError: 422 on a blank query.
+     *         ServiceUnavailableError: 503 if retrieval fails.
+     */
+    post: operations['search_documents_api_v1_search_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Team
+     * @description The caller's team and its seats.
+     */
+    get: operations['get_team_api_v1_team_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/invitations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Invitations
+     * @description The invitations still open.
+     */
+    get: operations['list_invitations_api_v1_team_invitations_get'];
+    put?: never;
+    /**
+     * Invite
+     * @description Invite a colleague; the token is shown this once, for the owner to send.
+     */
+    post: operations['invite_api_v1_team_invitations_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/invitations/{invitation_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke
+     * @description Withdraw an open invitation.
+     */
+    delete: operations['revoke_api_v1_team_invitations__invitation_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/members/{member_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove
+     * @description Take a member out of the team.
+     */
+    delete: operations['remove_api_v1_team_members__member_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/team/owner': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Transfer Ownership
+     * @description Hand the tenant's ownership to another active member; the owner only.
+     */
+    post: operations['transfer_ownership_api_v1_team_owner_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/engineering-reviews/decisions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Decisions
+     * @description Every decision on a subject, this tenant's and global, newest first.
+     */
+    get: operations['list_decisions_api_v1_engineering_reviews_decisions_get'];
+    put?: never;
+    /**
+     * Record Decision
+     * @description Record a decision; a designated reviewer only.
+     */
+    post: operations['record_decision_api_v1_engineering_reviews_decisions_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/engineering-reviews/reviewers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Reviewers
+     * @description The current designations; the owner or an admin.
+     */
+    get: operations['list_reviewers_api_v1_engineering_reviews_reviewers_get'];
+    put?: never;
+    /**
+     * Designate
+     * @description Designate an account as a qualified engineering reviewer; the owner only.
+     */
+    post: operations['designate_api_v1_engineering_reviews_reviewers_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/engineering-reviews/reviewers/{member_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke
+     * @description Revoke a designation; the owner only. Decisions already recorded stay.
+     */
+    delete: operations['revoke_api_v1_engineering_reviews_reviewers__member_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ingestion/crawl-jobs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Crawl Job */
+    post: operations['create_crawl_job_api_v1_ingestion_crawl_jobs_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ingestion/crawl-jobs/{job_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Crawl Job */
+    get: operations['get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/queue/me': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Queue
+     * @description Return the caller's outstanding batch.
+     */
+    get: operations['my_queue_api_v1_verification_queue_me_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/items/{item_id}/label': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Label Item
+     * @description Record the caller's label for one item.
+     *
+     *     Raises:
+     *         HTTPException: 404 if the item does not exist, 403 if it belongs to
+     *             another verifier, 422 if an escalating label carries no note.
+     */
+    post: operations['label_item_api_v1_verification_items__item_id__label_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/escalations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Escalations
+     * @description Return every item awaiting lead review.
+     *
+     *     Raises:
+     *         HTTPException: 403 unless the caller holds the reviewer role.
+     *
+     *     Gated because an escalation names content a verifier believed wrong, and
+     *     the queue spans every verifier's work. AI-012's rule is that these are
+     *     resolved by a lead rather than by whoever raised them, which only holds if
+     *     the view is restricted to leads.
+     */
+    get: operations['list_escalations_api_v1_verification_escalations_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/escalations/{item_id}/resolve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve Escalation
+     * @description Settle an escalated item: uphold it, or take it over to judge again.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller is a reviewer other than
+     *             whoever escalated the item.
+     *         NotFoundError: 404 if there is no such item.
+     *         ValidationError: 422 if the note is blank or the item is not escalated.
+     */
+    post: operations['resolve_escalation_api_v1_verification_escalations__item_id__resolve_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/stale-documents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Stale Documents
+     * @description Return live documents whose source changed or withdrew them.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     */
+    get: operations['list_stale_documents_api_v1_verification_stale_documents_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/stale-documents/{document_id}/dismiss': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Dismiss Stale Document
+     * @description Record that an upstream change is harmless, and why.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     *         NotFoundError: 404 if there is no such flag.
+     *         ValidationError: 422 if the note is blank or the flag is not open.
+     */
+    post: operations['dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/verification/stale-documents/{document_id}/retract': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Retract Stale Document
+     * @description Take the flagged document's passages out of live answers, and say why.
+     *
+     *     Raises:
+     *         AuthorizationError: 403 unless the caller holds the reviewer role.
+     *         NotFoundError: 404 if there is no such flag, or nothing live cites it.
+     *         ValidationError: 422 if the note is blank or the flag is already closed.
+     *         PromotionError: 409 if the production delete failed; nothing was recorded.
+     */
+    post: operations['retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/feedback/flag': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Flag Answer
+     * @description Record a flagged answer and queue it for verification.
+     *
+     *     A missing turn and another tenant's turn are both 404, decided by the
+     *     domain's ``FlaggedTurnNotFoundError`` and mapped centrally — not here.
+     */
+    post: operations['flag_answer_api_v1_feedback_flag_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/plc/generate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Generate
+     * @description Generate PLC code for a description, with its validation verdict.
+     *
+     *     Signed in, as a trial or an account, and rate-limited like search: each
+     *     call is a paid model request.
+     *
+     *     Raises:
+     *         HTTPException: 422 if the request cannot be generated as asked.
+     *         ServiceUnavailableError: 503 if the model could not be reached.
+     *         ModelBudgetExceededError: 429 if the month's model calls are spent.
+     */
+    post: operations['generate_api_v1_plc_generate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/plc/review': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Review
+     * @description Validate code the caller already has.
+     */
+    post: operations['review_api_v1_plc_review_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/images': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Upload Image
+     * @description Accept a photo of an equipment display and read the fault code off it.
+     *
+     *     The declared content type is deliberately not passed on: the domain
+     *     sniffs the bytes, and forwarding a client-supplied type would invite a
+     *     future reader to trust it.
+     */
+    post: operations['upload_image_api_v1_images_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /**
-         * AccessToken
-         * @description The access token a sign-in, signup or refresh answers with.
-         *
-         *     The refresh token travels only in the HttpOnly session cookie (see
-         *     ``app.api.v1.routes.auth``). The access token is held in the page's memory
-         *     and nowhere else.
-         */
-        AccessToken: {
-            /** Access Token */
-            access_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-            /** Expires In */
-            expires_in: number;
-        };
-        /**
-         * AcknowledgedRequirements
-         * @description The revision's requirements record after an acknowledgement.
-         */
-        AcknowledgedRequirements: {
-            requirements: components["schemas"]["RequirementsRecord"];
-        };
-        /**
-         * AiAppliedProposal
-         * @description The applied proposal as a record keeps it: its immutable part and provenance.
-         */
-        AiAppliedProposal: {
-            /** Id */
-            id: string;
-            /**
-             * Schema
-             * @default pp-ai-proposal/1
-             */
-            schema: string;
-            /** Created At */
-            created_at: string;
-            /** Created By User Id */
-            created_by_user_id?: string | null;
-            /** Input Text */
-            input_text: string;
-            /** Input Sha256 */
-            input_sha256: string;
-            /** Provider */
-            provider: string;
-            /** Model */
-            model: string;
-            /** Prompt Version */
-            prompt_version: string;
-            /** Items */
-            items?: components["schemas"]["AiItem"][];
-            /** Server Rejected */
-            server_rejected?: components["schemas"]["AiRejected"][];
-            /** Proposal Sha256 */
-            proposal_sha256: string;
-        };
-        /**
-         * AiDecision
-         * @description One decision on an item, append-only; the latest per item holds.
-         *
-         *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
-         *     account and its clock.
-         */
-        AiDecision: {
-            /** Item Id */
-            item_id: string;
-            /**
-             * Decision
-             * @enum {string}
-             */
-            decision: "accept" | "reject" | "edit";
-            /** Value */
-            value?: {
-                [key: string]: unknown;
-            } | null;
-            /** By User Id */
-            by_user_id: string;
-            /** By Name */
-            by_name: string;
-            /** At */
-            at: string;
-        };
-        /**
-         * AiDecisionRequest
-         * @description A decision on one proposal item. Who and when are the server's (any such field is 422).
-         *
-         *     Attributes:
-         *         decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
-         *             it to ``value`` (checked against the item kind's fields).
-         *         value: The edited value, for ``edit`` only.
-         */
-        AiDecisionRequest: {
-            /**
-             * Decision
-             * @enum {string}
-             */
-            decision: "accept" | "reject" | "edit";
-            /** Value */
-            value?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * AiItem
-         * @description One item of an AI proposal, as the server kept it after its checks (M6b).
-         *
-         *     Attributes:
-         *         id: The server's id for it (``i<n>``, by its place in the output).
-         *         kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
-         *         source: Where in the description it was read.
-         *         quote: The description's text at ``source``.
-         *         value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
-         *         value_spans: For each numeric field, where its literal stands.
-         */
-        AiItem: {
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "board" | "load" | "control_need" | "question" | "unsupported";
-            source: components["schemas"]["AiSource"];
-            /** Quote */
-            quote: string;
-            /** Value */
-            value: {
-                [key: string]: unknown;
-            } | null;
-            /** Value Spans */
-            value_spans?: {
-                [key: string]: components["schemas"]["AiSource"];
-            };
-        };
-        /**
-         * AiPlacement
-         * @description Where one confirmed AI proposal item was placed in the request (M6b).
-         *
-         *     Attributes:
-         *         item_id: The proposal item.
-         *         board_index: The board's index in ``request.boards`` (a ``board``
-         *             item's board; a ``load`` or ``control_need`` item's load's board).
-         *         load_index: The load's index in that board's ``loads``: given for a
-         *             ``load`` or ``control_need`` item, never for a ``board`` item.
-         */
-        AiPlacement: {
-            /** Item Id */
-            item_id: string;
-            /** Board Index */
-            board_index: number;
-            /** Load Index */
-            load_index?: number | null;
-        };
-        /**
-         * AiPlacementRecord
-         * @description Where a confirmed item went, as the save recorded it.
-         *
-         *     Attributes:
-         *         changed_in_editor: The item's fields the row differs on from the
-         *             decided value: the user edited after confirming.
-         */
-        AiPlacementRecord: {
-            /** Item Id */
-            item_id: string;
-            /** Board Index */
-            board_index: number;
-            /** Load Index */
-            load_index?: number | null;
-            /** Board Ref */
-            board_ref?: string | null;
-            /** Load Ref */
-            load_ref?: string | null;
-            /** Changed In Editor */
-            changed_in_editor?: string[];
-            /** Entered */
-            entered?: {
-                [key: string]: string;
-            };
-        };
-        /**
-         * AiProposal
-         * @description An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
-         *
-         *     Attributes:
-         *         proposal_sha256: The canonical hash of its immutable part (input,
-         *             provider, model, prompt version, items, server_rejected).
-         *         used_by_revision_id: The revision that applied it; it then takes no
-         *             more decisions (``ai_proposal_used``) and no second save.
-         *         life_safety_mentioned: The description names fire-pump or
-         *             life-safety equipment somewhere; a save records the open item
-         *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
-         *             dismissed.
-         *         safety_mentions: Every life-safety (``life_safety``) and
-         *             possibly-safety (``possibly``) term detected, with its offsets.
-         *         ai_consent_at: When the caller acknowledged that the description is
-         *             sent to the model provider; ``ai_consent_by_user_id`` who.
-         *             Null on proposals made before the acknowledgement was asked.
-         *         calls_remaining: On the response that created it only: the caller's
-         *             AI intake calls left this month (``None`` with no per-account cap).
-         */
-        AiProposal: {
-            /** Id */
-            id: string;
-            /**
-             * Schema
-             * @default pp-ai-proposal/1
-             */
-            schema: string;
-            /** Created At */
-            created_at: string;
-            /** Created By User Id */
-            created_by_user_id?: string | null;
-            /** Input Text */
-            input_text: string;
-            /** Input Sha256 */
-            input_sha256: string;
-            /** Provider */
-            provider: string;
-            /** Model */
-            model: string;
-            /** Prompt Version */
-            prompt_version: string;
-            /** Items */
-            items?: components["schemas"]["AiProposalItem"][];
-            /** Server Rejected */
-            server_rejected?: components["schemas"]["AiRejected"][];
-            /** Decisions */
-            decisions?: components["schemas"]["AiDecision"][];
-            /**
-             * Used
-             * @default false
-             */
-            used: boolean;
-            /** Used By Revision Id */
-            used_by_revision_id?: string | null;
-            /** Proposal Sha256 */
-            proposal_sha256: string;
-            /**
-             * Life Safety Mentioned
-             * @default false
-             */
-            life_safety_mentioned: boolean;
-            /** Safety Mentions */
-            safety_mentions?: components["schemas"]["SafetyMention"][];
-            /** Ai Consent At */
-            ai_consent_at?: string | null;
-            /** Ai Consent By User Id */
-            ai_consent_by_user_id?: string | null;
-            /** Calls Remaining */
-            calls_remaining?: number | null;
-        };
-        /**
-         * AiProposalItem
-         * @description An item with where the user's decisions leave it.
-         *
-         *     Attributes:
-         *         state: ``proposed`` until decided; the latest decision otherwise.
-         *         decided_value: The value an ``accept`` (the item's own) or ``edit``
-         *             (the user's) confirmed; ``None`` while proposed or rejected.
-         */
-        AiProposalItem: {
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "board" | "load" | "control_need" | "question" | "unsupported";
-            source: components["schemas"]["AiSource"];
-            /** Quote */
-            quote: string;
-            /** Value */
-            value: {
-                [key: string]: unknown;
-            } | null;
-            /** Value Spans */
-            value_spans?: {
-                [key: string]: components["schemas"]["AiSource"];
-            };
-            /**
-             * State
-             * @default proposed
-             * @enum {string}
-             */
-            state: "proposed" | "accepted" | "edited" | "rejected";
-            /** Decided Value */
-            decided_value?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * AiProposalRequest
-         * @description A description to propose requirement entries from; nothing is designed.
-         *
-         *     Attributes:
-         *         description: Typed text only, at most 8 000 characters
-         *             (``ai_input_too_long``), not empty (``ai_input_empty``).
-         *         request: The editor's current draft, read only for its board names
-         *             so the model can name existing boards; never stored, never
-         *             taken as confirmed.
-         *         ai_consent: The caller acknowledges that the description (and the
-         *             board names) is sent to the AI model provider; without it the
-         *             request is 422 ``ai_consent_required`` and nothing is sent.
-         */
-        AiProposalRequest: {
-            /** Description */
-            description: string;
-            /** Request */
-            request?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Ai Consent
-             * @default false
-             */
-            ai_consent: boolean;
-        };
-        /**
-         * AiRejected
-         * @description An output item the server's checks refused, kept and shown, never dropped.
-         *
-         *     Attributes:
-         *         id: The server's id for it (``i<n>``).
-         *         kind: Its kind, when it named a known one.
-         *         source: Its span, when it gave a readable one.
-         *         quote: The description's text at the span, when it lies in the input.
-         *         value: What it proposed, as sent (bounded).
-         *         reason: Why it was refused (``offsets_outside_input``,
-         *             ``value_not_in_text``, ``invalid_value``,
-         *             ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
-         *         detail: Which field or reference, in English.
-         */
-        AiRejected: {
-            /** Id */
-            id: string;
-            /** Kind */
-            kind?: string | null;
-            source?: components["schemas"]["AiSource"] | null;
-            /** Quote */
-            quote?: string | null;
-            /** Value */
-            value?: {
-                [key: string]: unknown;
-            } | null;
-            /** Reason */
-            reason: string;
-            /**
-             * Detail
-             * @default
-             */
-            detail: string;
-        };
-        /**
-         * AiRequirementsInput
-         * @description The AI proposal a save applies (M6b): which proposal, and where its items went.
-         *
-         *     The server checks, under the project lock, that the proposal is the
-         *     caller's tenant's and unused, that every placed item's latest decision is
-         *     ``accept`` or ``edit`` and that its row exists. Who decided and when are
-         *     read from the proposal, never from here.
-         *
-         *     Attributes:
-         *         proposal_id: The proposal.
-         *         placements: Each confirmed item inserted into the editor, by place.
-         */
-        AiRequirementsInput: {
-            /** Proposal Id */
-            proposal_id: string;
-            /** Placements */
-            placements?: components["schemas"]["AiPlacement"][];
-        };
-        /**
-         * AiSource
-         * @description A span of the stored description: ``input_text[start:end]``.
-         */
-        AiSource: {
-            /** Start */
-            start: number;
-            /** End */
-            end: number;
-        };
-        /**
-         * AppliedFactor
-         * @description A derating or correction factor, with the clause it came from.
-         */
-        AppliedFactor: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: string;
-            source: components["schemas"]["Citation"];
-        };
-        /**
-         * ApprovalHeld
-         * @description Why the revision cannot be approved now: unresolved safety concerns (M6d).
-         *
-         *     Attributes:
-         *         code: ``approval_blocked_by_safety``.
-         *         count: How many concerns are unresolved.
-         *         codes: Their concern codes, sorted, distinct.
-         */
-        ApprovalHeld: {
-            /**
-             * Code
-             * @default approval_blocked_by_safety
-             */
-            code: string;
-            /** Count */
-            count: number;
-            /** Codes */
-            codes: string[];
-        };
-        /**
-         * ApproveRevisionRequest
-         * @description An engineer's approval of one revision.
-         *
-         *     The approver is the signed-in account, never anything the request says: a
-         *     field naming one (``approver``) is refused with 422, as any other field
-         *     this model does not define.
-         *
-         *     Attributes:
-         *         note: An optional note to the approval, printed labelled "Approval
-         *             note", never where the approver is named.
-         */
-        ApproveRevisionRequest: {
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            /** Scope Confirmed */
-            scope_confirmed: boolean;
-        };
-        /**
-         * Board
-         * @description One panel or distribution board.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project.
-         *         name: As the project names it ("DBG-HALL").
-         *         function: Its IEC 81346 function aspect; defaults to the name.
-         *         location: Its IEC 81346 location aspect, where given.
-         *         supply: The incoming supply.
-         *         incomer_ids: The incoming devices, in order from the supply.
-         *         devices: Every device in the board.
-         *         cables: Every outgoing cable.
-         *         circuits: The outgoing circuits, in the order they are drawn.
-         *         notes: What the design could not settle, for the reviewer.
-         *         fed_from: The board that supplies this one, within the project.
-         */
-        "Board-Input": {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Function */
-            function?: string | null;
-            /** Location */
-            location?: string | null;
-            supply?: components["schemas"]["Supply-Input"];
-            /** Incomer Ids */
-            incomer_ids?: string[];
-            /** Devices */
-            devices?: components["schemas"]["Device-Input"][];
-            /** Cables */
-            cables?: components["schemas"]["Cable-Input"][];
-            /** Circuits */
-            circuits?: components["schemas"]["Circuit-Input"][];
-            /** Notes */
-            notes?: components["schemas"]["DesignNote"][];
-            /** Fed From */
-            fed_from?: string | null;
-        };
-        /**
-         * Board
-         * @description One panel or distribution board.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project.
-         *         name: As the project names it ("DBG-HALL").
-         *         function: Its IEC 81346 function aspect; defaults to the name.
-         *         location: Its IEC 81346 location aspect, where given.
-         *         supply: The incoming supply.
-         *         incomer_ids: The incoming devices, in order from the supply.
-         *         devices: Every device in the board.
-         *         cables: Every outgoing cable.
-         *         circuits: The outgoing circuits, in the order they are drawn.
-         *         notes: What the design could not settle, for the reviewer.
-         *         fed_from: The board that supplies this one, within the project.
-         */
-        "Board-Output": {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Function */
-            function?: string | null;
-            /** Location */
-            location?: string | null;
-            supply?: components["schemas"]["Supply-Output"];
-            /** Incomer Ids */
-            incomer_ids?: string[];
-            /** Devices */
-            devices?: components["schemas"]["Device-Output"][];
-            /** Cables */
-            cables?: components["schemas"]["Cable-Output"][];
-            /** Circuits */
-            circuits?: components["schemas"]["Circuit-Output"][];
-            /** Notes */
-            notes?: components["schemas"]["DesignNote"][];
-            /** Fed From */
-            fed_from?: string | null;
-        };
-        /**
-         * BoardDesignRequest
-         * @description A distribution board to design, under a company's profile.
-         *
-         *     Attributes:
-         *         info: Title-block data for the project.
-         *         board: The board's load schedule and conditions.
-         *         profile: The company's profile settings (only what differs from the
-         *             default); ``None`` designs under the default profile.
-         */
-        BoardDesignRequest: {
-            info: components["schemas"]["ProjectInfo"];
-            board: components["schemas"]["DistributionBoardRequest-Input"];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * BoardDesignResponse
-         * @description A designed board, issued under the profile it was designed with.
-         *
-         *     Attributes:
-         *         project: The project, designated.
-         *         profile: The profile applied, in full.
-         */
-        BoardDesignResponse: {
-            project: components["schemas"]["DesignProject-Output"];
-            profile: components["schemas"]["CompanyProfile"];
-        };
-        /** Body_import_load_schedule_api_v1_design_load_schedule_import_post */
-        Body_import_load_schedule_api_v1_design_load_schedule_import_post: {
-            /** File */
-            file: string;
-        };
-        /** Body_import_price_list_api_v1_design_price_list_import_post */
-        Body_import_price_list_api_v1_design_price_list_import_post: {
-            /** File */
-            file: string;
-        };
-        /** Body_read_markups_api_v1_design_markups_post */
-        Body_read_markups_api_v1_design_markups_post: {
-            /** File */
-            file: string;
-            /** Project */
-            project?: string | null;
-            /** Profile */
-            profile?: string | null;
-        };
-        /** Body_upload_image_api_v1_images_post */
-        Body_upload_image_api_v1_images_post: {
-            /** File */
-            file: string;
-        };
-        /**
-         * BomLine
-         * @description One line of a bill of materials.
-         */
-        BomLine: {
-            /** Part Reference */
-            part_reference: string;
-            /** Description */
-            description: string;
-            /** Quantity */
-            quantity: number;
-            source: components["schemas"]["Citation"];
-            kind: components["schemas"]["BomLineKind"];
-            /**
-             * Details
-             * @default {}
-             */
-            details: {
-                [key: string]: string;
-            };
-        };
-        /**
-         * BomLineKind
-         * @description What a BOM line is, so a page can describe it in its own language.
-         * @enum {string}
-         */
-        BomLineKind: "drive" | "breaker" | "contactor" | "overload" | "fuse" | "cable" | "terminal" | "enclosure" | "cooling";
-        /**
-         * BomNote
-         * @description What a BOM leaves out, as a key a page can translate.
-         * @enum {string}
-         */
-        BomNote: "not_included" | "fuse_min_short_circuit" | "terminals_copper_only" | "incomplete_dissipation" | "fault_level_assumed" | "drive_fuses_not_listed" | "feeder_breaking_capacity";
-        /**
-         * Cable
-         * @description An outgoing cable.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project.
-         *         designation: Assigned from the company profile.
-         *         cores: Number of cores, protective conductor included.
-         *         cross_section_mm2: Of each line conductor.
-         *         material: "Cu" or "Al".
-         *         insulation: "PVC" or "XLPE".
-         *         length_m: Where known.
-         *         part_key: The cable type, where selected.
-         *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
-         *             (kA)²s, for its insulation and material; of one run, where it
-         *             runs in parallel.
-         *         parallel: How many identical cables run in parallel, each with every
-         *             core; 1 for a single cable.
-         */
-        "Cable-Input": {
-            /** Id */
-            id: string;
-            designation?: components["schemas"]["Designation"] | null;
-            /** Cores */
-            cores: number;
-            /** Cross Section Mm2 */
-            cross_section_mm2: number | string;
-            /**
-             * Material
-             * @default Cu
-             */
-            material: string;
-            /**
-             * Insulation
-             * @default PVC
-             */
-            insulation: string;
-            /** Length M */
-            length_m?: number | string | null;
-            /** Part Key */
-            part_key?: string | null;
-            /** Withstand Ka2S */
-            withstand_ka2s?: number | string | null;
-            /**
-             * Parallel
-             * @default 1
-             */
-            parallel: number;
-        };
-        /**
-         * Cable
-         * @description An outgoing cable.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project.
-         *         designation: Assigned from the company profile.
-         *         cores: Number of cores, protective conductor included.
-         *         cross_section_mm2: Of each line conductor.
-         *         material: "Cu" or "Al".
-         *         insulation: "PVC" or "XLPE".
-         *         length_m: Where known.
-         *         part_key: The cable type, where selected.
-         *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
-         *             (kA)²s, for its insulation and material; of one run, where it
-         *             runs in parallel.
-         *         parallel: How many identical cables run in parallel, each with every
-         *             core; 1 for a single cable.
-         */
-        "Cable-Output": {
-            /** Id */
-            id: string;
-            designation?: components["schemas"]["Designation"] | null;
-            /** Cores */
-            cores: number;
-            /** Cross Section Mm2 */
-            cross_section_mm2: string;
-            /**
-             * Material
-             * @default Cu
-             */
-            material: string;
-            /**
-             * Insulation
-             * @default PVC
-             */
-            insulation: string;
-            /** Length M */
-            length_m?: string | null;
-            /** Part Key */
-            part_key?: string | null;
-            /** Withstand Ka2S */
-            withstand_ka2s?: string | null;
-            /**
-             * Parallel
-             * @default 1
-             */
-            parallel: number;
-        };
-        /**
-         * CableSizingRequest
-         * @description Inputs for a feeder cable sizing.
-         */
-        CableSizingRequest: {
-            /** Design Current A */
-            design_current_a: number | string;
-            /** Length M */
-            length_m: number | string;
-            /** Supply Voltage V */
-            supply_voltage_v: number | string;
-            installation_method: components["schemas"]["InstallationMethod"];
-            /** Ambient Temp C */
-            ambient_temp_c: number | string;
-            /**
-             * Grouped Circuits
-             * @default 1
-             */
-            grouped_circuits: number;
-            /** @default copper */
-            conductor_material: components["schemas"]["ConductorMaterial"];
-            /**
-             * Insulation Rating C
-             * @default 90
-             */
-            insulation_rating_c: number;
-            /**
-             * Power Factor
-             * @default 0.8
-             */
-            power_factor: number | string;
-            /**
-             * Three Phase
-             * @default true
-             */
-            three_phase: boolean;
-        };
-        /**
-         * CableSizingResponse
-         * @description Cable sizing as returned to the caller.
-         */
-        CableSizingResponse: {
-            result: components["schemas"]["CableSizingResult"];
-            /** Voltage Drop V */
-            voltage_drop_v: string;
-            /** Voltage Drop Percent */
-            voltage_drop_percent: string;
-            /** Sources */
-            sources: components["schemas"]["Citation"][];
-        };
-        /**
-         * CableSizingResult
-         * @description Output of the pure sizing function.
-         */
-        CableSizingResult: {
-            /** Cross Section Mm2 */
-            cross_section_mm2: string;
-            /** Derated Ampacity A */
-            derated_ampacity_a: string;
-            /** Applied Factors */
-            applied_factors: components["schemas"]["AppliedFactor"][];
-        };
-        /**
-         * Circuit
-         * @description An outgoing circuit.
-         *
-         *     A load, the devices that switch and protect it, and the cable feeding it.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the board.
-         *         description: What it feeds, as the load schedule names it.
-         *         load: The kind of load.
-         *         power_kw: Installed power.
-         *         design_current_a: Ib.
-         *         phase: The line conductor(s) it is connected to.
-         *         upstream_id: The device this circuit is fed from (a residual current
-         *             device, say); ``None`` when it hangs off the busbar directly.
-         *         device_ids: The circuit's own devices, in order from the busbar.
-         *         cable_id: Its outgoing cable, where it has one.
-         *         feeds: The board it supplies, for a feeder to a sub-board.
-         *         starter: How the motor it feeds is started, for a motor circuit.
-         *         voltage_drop_percent: The drop along its own cable, where its length
-         *             is known; the board's notes add what feeds the board.
-         *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
-         *             board's ``Ze`` are known and its breaker disconnects by it.
-         */
-        "Circuit-Input": {
-            /** Id */
-            id: string;
-            /** Description */
-            description: string;
-            load: components["schemas"]["LoadKind"];
-            /** Power Kw */
-            power_kw: number | string;
-            /** Design Current A */
-            design_current_a: number | string;
-            phase: components["schemas"]["Phase"];
-            /** Upstream Id */
-            upstream_id?: string | null;
-            /** Device Ids */
-            device_ids?: string[];
-            /** Cable Id */
-            cable_id?: string | null;
-            /** Feeds */
-            feeds?: string | null;
-            starter?: components["schemas"]["MotorStarter"] | null;
-            /** Voltage Drop Percent */
-            voltage_drop_percent?: number | string | null;
-            /** Earth Loop Ohm */
-            earth_loop_ohm?: number | string | null;
-        };
-        /**
-         * Circuit
-         * @description An outgoing circuit.
-         *
-         *     A load, the devices that switch and protect it, and the cable feeding it.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the board.
-         *         description: What it feeds, as the load schedule names it.
-         *         load: The kind of load.
-         *         power_kw: Installed power.
-         *         design_current_a: Ib.
-         *         phase: The line conductor(s) it is connected to.
-         *         upstream_id: The device this circuit is fed from (a residual current
-         *             device, say); ``None`` when it hangs off the busbar directly.
-         *         device_ids: The circuit's own devices, in order from the busbar.
-         *         cable_id: Its outgoing cable, where it has one.
-         *         feeds: The board it supplies, for a feeder to a sub-board.
-         *         starter: How the motor it feeds is started, for a motor circuit.
-         *         voltage_drop_percent: The drop along its own cable, where its length
-         *             is known; the board's notes add what feeds the board.
-         *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
-         *             board's ``Ze`` are known and its breaker disconnects by it.
-         */
-        "Circuit-Output": {
-            /** Id */
-            id: string;
-            /** Description */
-            description: string;
-            load: components["schemas"]["LoadKind"];
-            /** Power Kw */
-            power_kw: string;
-            /** Design Current A */
-            design_current_a: string;
-            phase: components["schemas"]["Phase"];
-            /** Upstream Id */
-            upstream_id?: string | null;
-            /** Device Ids */
-            device_ids?: string[];
-            /** Cable Id */
-            cable_id?: string | null;
-            /** Feeds */
-            feeds?: string | null;
-            starter?: components["schemas"]["MotorStarter"] | null;
-            /** Voltage Drop Percent */
-            voltage_drop_percent?: string | null;
-            /** Earth Loop Ohm */
-            earth_loop_ohm?: string | null;
-        };
-        /**
-         * CircuitRule
-         * @description A company's rule for one kind of load.
-         *
-         *     Attributes:
-         *         breaker_a: The circuit-breaker rating used for this kind of load,
-         *             where the company fixes one rather than sizing from the load.
-         *         curve: The tripping characteristic.
-         *         residual_current_ma: The residual current device sensitivity this
-         *             kind of load is grouped under; ``None`` for none.
-         *         cable_mm2: The minimum cable cross-section for this kind of load.
-         */
-        CircuitRule: {
-            /** Breaker A */
-            breaker_a?: string | null;
-            /**
-             * Curve
-             * @default C
-             */
-            curve: string;
-            /** Residual Current Ma */
-            residual_current_ma?: string | null;
-            /** Cable Mm2 */
-            cable_mm2?: string | null;
-        };
-        /**
-         * Citation
-         * @description A resolvable pointer back into a source document.
-         */
-        Citation: {
-            /** Document Id */
-            document_id: string;
-            /** Document Title */
-            document_title: string;
-            /** Manufacturer */
-            manufacturer: string;
-            /** Page */
-            page?: number | null;
-            /** Section */
-            section?: string | null;
-        };
-        /**
-         * CompanyProfile
-         * @description How one company issues a design.
-         *
-         *     Naming, numbering, title block, page order, brands and design rules. A
-         *     project is designed once; issuing it under another profile changes only
-         *     what this model governs.
-         *
-         *     Attributes:
-         *         key: Unique identifier.
-         *         name: The company's name, as the title block prints it.
-         *         language: Drawing language ("en", "ar").
-         *         letters: The product-aspect letter for each kind of device.
-         *         start_number: The first number of each letter's sequence.
-         *         title_fields: The title block's fields, in order.
-         *         page_order: The drawing set's pages, in order.
-         *         wire_numbering: How wires are numbered.
-         *         preferred_manufacturers: For each device kind, the manufacturers to
-         *             choose from, most preferred first.
-         *         circuit_rules: The company's rule for each kind of load.
-         *         max_circuits_per_rcd: How many outgoing circuits one residual current
-         *             device may protect.
-         *         max_points_per_circuit: How many points of a kind share a final
-         *             circuit; a kind not listed gets a circuit per point.
-         *         max_kw_per_circuit: The most power a final circuit of a kind may
-         *             carry, which can split points further than the count does.
-         *         spare_ways_percent: Spare outgoing ways to leave, as a share of the
-         *             circuits.
-         *         max_phase_imbalance_percent: The largest difference between the most
-         *             and least loaded line conductors, as a share of the most loaded.
-         *         discrimination_ratio: How many times the largest breaker after it each
-         *             breaker is rated at least, for overload discrimination.
-         *         max_voltage_drop_percent: The largest voltage drop from the origin of
-         *             the installation to a load, by kind of load; a kind not listed
-         *             takes ``default_max_voltage_drop_percent``. The defaults are IEC
-         *             60364-5-52 Annex G (Table G.52.1) for a public LV supply.
-         *         default_max_voltage_drop_percent: The limit for any other load.
-         *         max_starting_voltage_drop_percent: The largest drop from the origin
-         *             to a motor's terminals while it starts.
-         *         rail_widths_mm: The DIN-rail width of one pole of each kind of
-         *             device, from the datasheets of the ranges the company fits. A
-         *             kind not given has no width on the layout; the default holds only
-         *             what is sourced: ABB S200 miniature breakers and F200 RCCBs,
-         *             17.5 mm a pole (35 mm 2P, 70 mm 4P;
-         *             ABB's 2020 residual current device catalogue, A_ELSB_Cat 2020_2 p. 8,
-         *             gives 72 mm for the 4P 125 A).
-         *         usable_rail_mm: The usable rail length per row of the company's
-         *             enclosure; a row longer than this continues on the next.
-         *         demand_factors: The share of each kind of load's design current
-         *             taken as running at once, for rating incomers and feeders; a
-         *             kind not listed counts in full. Empty assumes no diversity.
-         *         market: The country the company designs for (ISO 3166-1 alpha-2,
-         *             ``app.design.markets``); its code's stated rules apply under the
-         *             company's own. Empty for IEC 60364 as the default applies it.
-         *         rules_confirmed_by: Who confirmed the design rules. Empty while they
-         *             are this software's defaults, which the drawing then says.
-         */
-        CompanyProfile: {
-            /** Key */
-            key: string;
-            /** Name */
-            name: string;
-            /**
-             * Language
-             * @default en
-             */
-            language: string;
-            /**
-             * Market
-             * @default
-             */
-            market: string;
-            /** Letters */
-            letters: {
-                [key: string]: string;
-            };
-            /**
-             * Start Number
-             * @default 1
-             */
-            start_number: number;
-            /** Title Fields */
-            title_fields: components["schemas"]["TitleField"][];
-            /** Page Order */
-            page_order: components["schemas"]["PageKind"][];
-            /** @default potential */
-            wire_numbering: components["schemas"]["WireNumbering"];
-            /** Preferred Manufacturers */
-            preferred_manufacturers?: {
-                [key: string]: string[];
-            };
-            /** Circuit Rules */
-            circuit_rules?: {
-                [key: string]: components["schemas"]["CircuitRule"];
-            };
-            /**
-             * Max Circuits Per Rcd
-             * @default 6
-             */
-            max_circuits_per_rcd: number;
-            /** Max Points Per Circuit */
-            max_points_per_circuit?: {
-                [key: string]: number;
-            };
-            /** Max Kw Per Circuit */
-            max_kw_per_circuit?: {
-                [key: string]: string;
-            };
-            /**
-             * Spare Ways Percent
-             * @default 20
-             */
-            spare_ways_percent: string;
-            /**
-             * Max Phase Imbalance Percent
-             * @default 10
-             */
-            max_phase_imbalance_percent: string;
-            /**
-             * Discrimination Ratio
-             * @default 1.6
-             */
-            discrimination_ratio: string;
-            /** Max Voltage Drop Percent */
-            max_voltage_drop_percent?: {
-                [key: string]: string;
-            };
-            /**
-             * Default Max Voltage Drop Percent
-             * @default 5
-             */
-            default_max_voltage_drop_percent: string;
-            /**
-             * Max Starting Voltage Drop Percent
-             * @default 15
-             */
-            max_starting_voltage_drop_percent: string;
-            /** Rail Widths Mm */
-            rail_widths_mm?: {
-                [key: string]: string;
-            };
-            /** Usable Rail Mm */
-            usable_rail_mm?: string | null;
-            /** Demand Factors */
-            demand_factors?: {
-                [key: string]: string;
-            };
-            /**
-             * Rules Confirmed By
-             * @default
-             */
-            rules_confirmed_by: string;
-        };
-        /**
-         * CompanySettings
-         * @description A tenant's saved company profile settings.
-         *
-         *     Attributes:
-         *         settings: What the company does differently from the default
-         *             profile; ``None`` while none are saved.
-         *         updated_by: Who saved them last.
-         *         updated_at: When, ISO 8601.
-         *         permissions: What the caller may do with them
-         *             (``edit_company_settings``, or nothing: every member reads them).
-         */
-        CompanySettings: {
-            /** Settings */
-            settings?: {
-                [key: string]: unknown;
-            } | null;
-            /**
-             * Updated By
-             * @default
-             */
-            updated_by: string;
-            /** Updated At */
-            updated_at?: string | null;
-            /** Permissions */
-            permissions?: components["schemas"]["Permission"][];
-        };
-        /**
-         * ConductorMaterial
-         * @description Conductor metal.
-         * @enum {string}
-         */
-        ConductorMaterial: "copper" | "aluminium";
-        /**
-         * ConfidenceBreakdown
-         * @description Overall confidence with the per-signal components behind it.
-         */
-        ConfidenceBreakdown: {
-            /** Overall */
-            overall: number;
-            /** Retrieval Score */
-            retrieval_score: number;
-            /** Passage Agreement */
-            passage_agreement: number;
-            /** Citation Density */
-            citation_density: number;
-        };
-        /**
-         * ConfigurationReview
-         * @description What a configuration would compose to against a project's latest revision.
-         *
-         *     Nothing is saved. ``saveable`` says whether this deployment stores a
-         *     configured revision (``DESIGN_SNAPSHOT_SCHEMA`` is ``pp-design/2``).
-         *
-         *     Attributes:
-         *         based_on_revision: The revision whose request was designed.
-         *         snapshot_schema: Always ``pp-design/2``.
-         *         written_schema: What this deployment writes new revisions in.
-         *         saveable: Whether a revision with this configuration could be saved here.
-         *         snapshot_sha256: The hash the composed snapshot would be stored under.
-         *         findings: Every finding the save would record (v1 checks and structural).
-         *         model: The composed model.
-         */
-        ConfigurationReview: {
-            /** Based On Revision */
-            based_on_revision: number;
-            /** Snapshot Schema */
-            snapshot_schema: string;
-            /** Written Schema */
-            written_schema: string;
-            /** Saveable */
-            saveable: boolean;
-            /** Snapshot Sha256 */
-            snapshot_sha256: string;
-            /** Findings */
-            findings: components["schemas"]["DesignFinding"][];
-            model: components["schemas"]["V2ModelSummary"];
-        };
-        /**
-         * ConfigurationValidateRequest
-         * @description A configuration to try against a project's latest revision; nothing is saved.
-         *
-         *     Attributes:
-         *         configuration: As for ``ReviseProjectRequest.configuration``.
-         */
-        ConfigurationValidateRequest: {
-            /** Configuration */
-            configuration: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * ConfirmedLoad
-         * @description A load a resolver confirmed is not the excluded equipment, as it stood then.
-         */
-        ConfirmedLoad: {
-            /** Board */
-            board: string;
-            /** Load Index */
-            load_index: number;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Power Kw
-             * @default
-             */
-            power_kw: string;
-            /**
-             * Kind
-             * @default
-             */
-            kind: string;
-        };
-        /**
-         * ControlNeed
-         * @description What a controlled load needs from its control, recorded as a requirement only (M6a).
-         *
-         *     Nothing here is designed: the designer's only control model stays the
-         *     load's ``controlled`` flag, and each need is an open item
-         *     (``control_not_designed``).
-         * @enum {string}
-         */
-        ControlNeed: "start_stop" | "running_indicator" | "fault_indicator" | "hand_off_auto" | "remote_control" | "interlock" | "timed";
-        /**
-         * ControlRequirementInput
-         * @description The control needs of one load, by its place in the request.
-         *
-         *     Attributes:
-         *         board_index: The board's index in ``request.boards``.
-         *         load_index: The load's index in that board's ``loads``; the load
-         *             must be ``controlled`` (``control_need_requires_controlled``).
-         *         needs: What its control must do, each once.
-         */
-        ControlRequirementInput: {
-            /** Board Index */
-            board_index: number;
-            /** Load Index */
-            load_index: number;
-            /** Needs */
-            needs: components["schemas"]["ControlNeed"][];
-        };
-        /**
-         * CrawlJobRequest
-         * @description Request to queue a crawl.
-         *
-         *     Attributes:
-         *         source_id: Which allow-listed source to crawl.
-         *         seed_urls: Listing pages to discover documents from.
-         *         document_urls: Documents to fetch directly, skipping discovery. For
-         *             sources whose listings cannot be crawled — ABB's is a JavaScript
-         *             application serving no links — while the documents themselves are
-         *             plainly fetchable. Supplying these skips discovery and nothing
-         *             else: robots.txt, hashing, parsing and human verification all
-         *             still apply.
-         *         max_depth: How deep to follow listings.
-         *
-         *     At least one of ``seed_urls`` or ``document_urls`` must be present; a
-         *     request carrying neither has nothing to fetch, and the domain refuses it
-         *     rather than recording an empty run as a success.
-         *
-         *     Both lists are capped (``MAX_SEED_URLS``, ``MAX_DOCUMENT_URLS``). Each URL
-         *     is a request the crawler makes, so an uncapped list is an uncapped crawl
-         *     one POST away; the crawler also caps total fetches per run, but refusing
-         *     an oversized request outright tells the caller rather than silently
-         *     crawling a prefix of it.
-         */
-        CrawlJobRequest: {
-            /** Source Id */
-            source_id: string;
-            /**
-             * Seed Urls
-             * @default []
-             */
-            seed_urls: string[];
-            /**
-             * Document Urls
-             * @default []
-             */
-            document_urls: string[];
-            /**
-             * Max Depth
-             * @default 2
-             */
-            max_depth: number;
-        };
-        /**
-         * CrawlJobResponse
-         * @description A crawl job and where it has got to.
-         *
-         *     Attributes:
-         *         id: The job, for polling ``GET /ingestion/crawl-jobs/{id}``.
-         *         status: ``queued`` until the worker picks it up.
-         *         error: Why it failed, when it did.
-         */
-        CrawlJobResponse: {
-            /** Id */
-            id: string;
-            status: components["schemas"]["CrawlJobStatus"];
-            /** Error */
-            error?: string | null;
-        };
-        /**
-         * CrawlJobStatus
-         * @description Lifecycle state of a crawl job.
-         * @enum {string}
-         */
-        CrawlJobStatus: "queued" | "running" | "succeeded" | "failed";
-        /**
-         * DecisionOut
-         * @description One recorded decision.
-         *
-         *     Attributes:
-         *         id: The record.
-         *         scope: ``tenant`` or ``global``.
-         *         subject_kind: What was reviewed.
-         *         subject_ref: Its ref.
-         *         subject_digest: Its digest.
-         *         decision: What was decided.
-         *         reviewer: For a tenant decision the reviewer's account id; for a
-         *             global one the label the operator recorded.
-         *         qualification_statement: As the owner supplied it; not verified.
-         *         standards: As the reviewer named them.
-         *         reason: Why.
-         *         recorded_at: When.
-         *         current: Whether it is the decision that applies for its scope and
-         *             digest: the newest one whose reviewer still counts.
-         *         reviewer_standing: ``designated``, ``revoked`` (the owner revoked the
-         *             designation) or ``inactive`` (the account is deactivated): a
-         *             decision counts only while ``designated``; ``operator`` for a
-         *             global decision.
-         *         independence_checked: Whether the server checked that the reviewer
-         *             is not the definition's author; ``False`` where it knows none.
-         *         independence: That, said plainly.
-         */
-        DecisionOut: {
-            /** Id */
-            id: string;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "tenant" | "global";
-            /**
-             * Subject Kind
-             * @enum {string}
-             */
-            subject_kind: "template" | "pattern" | "rule";
-            /** Subject Ref */
-            subject_ref: string;
-            /** Subject Digest */
-            subject_digest: string;
-            /**
-             * Decision
-             * @enum {string}
-             */
-            decision: "approved" | "rejected" | "withdrawn";
-            /** Reviewer */
-            reviewer: string;
-            /** Qualification Statement */
-            qualification_statement: string;
-            /** Standards */
-            standards: string[];
-            /** Reason */
-            reason: string;
-            /**
-             * Recorded At
-             * Format: date-time
-             */
-            recorded_at: string;
-            /** Current */
-            current: boolean;
-            /**
-             * Reviewer Standing
-             * @enum {string}
-             */
-            reviewer_standing: "designated" | "revoked" | "inactive" | "operator";
-            /** Independence Checked */
-            independence_checked: boolean;
-            /** Independence */
-            independence: string;
-        };
-        /**
-         * DecisionRequest
-         * @description Record a decision on one definition, bound to its digest.
-         *
-         *     Attributes:
-         *         subject_kind: ``template``, ``pattern`` or ``rule``.
-         *         subject_ref: ``<scope>/<id>/v<version>``.
-         *         subject_digest: The SHA-256 of the definition reviewed (for a template
-         *             or pattern, with its review unset).
-         *         decision: ``approved``, ``rejected`` or ``withdrawn``.
-         *         standards: The standards the reviewer relied on, as they name them.
-         *         reason: Why.
-         */
-        DecisionRequest: {
-            /**
-             * Subject Kind
-             * @enum {string}
-             */
-            subject_kind: "template" | "pattern" | "rule";
-            /** Subject Ref */
-            subject_ref: string;
-            /** Subject Digest */
-            subject_digest: string;
-            /**
-             * Decision
-             * @enum {string}
-             */
-            decision: "approved" | "rejected" | "withdrawn";
-            /** Standards */
-            standards?: string[];
-            /** Reason */
-            reason: string;
-        };
-        /**
-         * DependencyState
-         * @description Reachability of a dependency.
-         * @enum {string}
-         */
-        DependencyState: "up" | "down";
-        /**
-         * DesignExportRequest
-         * @description A project to export, possibly edited since it was designed.
-         *
-         *     Attributes:
-         *         project: The project.
-         *         profile: The company's profile settings; ``None`` for the default.
-         *         format: The file to produce.
-         *         pricing: The company's prices, for a quotation export.
-         */
-        DesignExportRequest: {
-            project: components["schemas"]["DesignProject-Input"];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-            format: components["schemas"]["ExportFormat"];
-            pricing?: components["schemas"]["PricingSettings"] | null;
-        };
-        /**
-         * DesignFinding
-         * @description One thing a check of a design found, with where to fix it.
-         *
-         *     Attributes:
-         *         code: Stable identifier: a ``DesignNote`` code, or an integrity
-         *             check's own (``app.design.integrity``).
-         *         severity: From ``app.design.findings_policy``.
-         *         board_id: The board it is on, where it is on one.
-         *         circuit_id: The circuit, where it is about one.
-         *         device_id: The device, where it is about one.
-         *         values: The values it names, as text.
-         *         message: In English; the page renders ``code`` in the reader's language.
-         *         requires_engineering_confirmation: Whether an engineer must confirm
-         *             it before the design is relied on.
-         *         source: The rule it comes from, or ``"policy"`` where the severity is
-         *             this service's classification rather than a cited rule's.
-         */
-        DesignFinding: {
-            /** Code */
-            code: string;
-            severity: components["schemas"]["app__models__schemas__design__FindingSeverity"];
-            /** Board Id */
-            board_id?: string | null;
-            /** Circuit Id */
-            circuit_id?: string | null;
-            /** Device Id */
-            device_id?: string | null;
-            /** Values */
-            values?: {
-                [key: string]: string;
-            };
-            /** Message */
-            message: string;
-            /**
-             * Requires Engineering Confirmation
-             * @default false
-             */
-            requires_engineering_confirmation: boolean;
-            /** Source */
-            source: string;
-        };
-        /**
-         * DesignNote
-         * @description Something the design tells its reviewer.
-         *
-         *     Attributes:
-         *         code: Stable identifier, which the page renders in the reader's
-         *             language (``app.design.notes``).
-         *         params: The values the note names, as text.
-         *         text: The note in English, for the drawing set and as a fallback.
-         */
-        DesignNote: {
-            /** Code */
-            code: string;
-            /** Params */
-            params?: {
-                [key: string]: string;
-            };
-            /** Text */
-            text: string;
-        };
-        /**
-         * DesignProject
-         * @description A whole design: what every output is generated from.
-         *
-         *     Attributes:
-         *         info: Title-block data.
-         *         profile: The key of the company profile the project is issued under.
-         *         boards: The boards, in the order they are drawn.
-         *         parts: Every part any device or cable refers to.
-         */
-        "DesignProject-Input": {
-            info: components["schemas"]["ProjectInfo"];
-            /**
-             * Profile
-             * @default iec-default
-             */
-            profile: string;
-            /** Boards */
-            boards?: components["schemas"]["Board-Input"][];
-            /** Parts */
-            parts?: components["schemas"]["Part-Input"][];
-        };
-        /**
-         * DesignProject
-         * @description A whole design: what every output is generated from.
-         *
-         *     Attributes:
-         *         info: Title-block data.
-         *         profile: The key of the company profile the project is issued under.
-         *         boards: The boards, in the order they are drawn.
-         *         parts: Every part any device or cable refers to.
-         */
-        "DesignProject-Output": {
-            info: components["schemas"]["ProjectInfo"];
-            /**
-             * Profile
-             * @default iec-default
-             */
-            profile: string;
-            /** Boards */
-            boards?: components["schemas"]["Board-Output"][];
-            /** Parts */
-            parts?: components["schemas"]["Part-Output"][];
-        };
-        /**
-         * DesignateRequest
-         * @description The owner designates an account as a qualified engineering reviewer.
-         *
-         *     Attributes:
-         *         member_id: An active account of the tenant.
-         *         qualification_statement: The owner's statement of the engineer's
-         *             qualification, recorded verbatim and never verified by the server.
-         */
-        DesignateRequest: {
-            /** Member Id */
-            member_id: string;
-            /** Qualification Statement */
-            qualification_statement: string;
-        };
-        /**
-         * Designation
-         * @description An IEC 81346-1 reference designation.
-         *
-         *     Attributes:
-         *         function: The function aspect, without its ``=`` prefix ("DB1").
-         *         location: The location aspect, without its ``+`` prefix ("HALL").
-         *         product: The product aspect, without its ``-`` prefix ("Q12").
-         */
-        Designation: {
-            /** Function */
-            function?: string | null;
-            /** Location */
-            location?: string | null;
-            /** Product */
-            product: string;
-        };
-        /**
-         * Device
-         * @description One device in a board.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project; connections refer to it.
-         *         kind: What the device does.
-         *         designation: Assigned from the company profile; ``None`` until then.
-         *         part_key: The part it is built from; ``None`` for a device whose part
-         *             has not been selected yet (it is listed as such, never guessed).
-         *         poles: Number of poles, where it has any.
-         *         rated_current_a: In, for switching and protective devices.
-         *         residual_current_ma: IΔn, for a residual current device.
-         *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
-         *         breaking_capacity_ka: Rated short-circuit breaking capacity.
-         *         description: A short function text for the drawing.
-         *         upstream_id: The device that feeds this one (a group breaker feeding
-         *             a residual current device, say); ``None`` for the busbar.
-         */
-        "Device-Input": {
-            /** Id */
-            id: string;
-            kind: components["schemas"]["DeviceKind"];
-            designation?: components["schemas"]["Designation"] | null;
-            /** Part Key */
-            part_key?: string | null;
-            /** Poles */
-            poles?: number | null;
-            /** Rated Current A */
-            rated_current_a?: number | string | null;
-            /** Residual Current Ma */
-            residual_current_ma?: number | string | null;
-            /** Curve */
-            curve?: string | null;
-            /** Breaking Capacity Ka */
-            breaking_capacity_ka?: number | string | null;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Upstream Id */
-            upstream_id?: string | null;
-        };
-        /**
-         * Device
-         * @description One device in a board.
-         *
-         *     Attributes:
-         *         id: Stable identifier within the project; connections refer to it.
-         *         kind: What the device does.
-         *         designation: Assigned from the company profile; ``None`` until then.
-         *         part_key: The part it is built from; ``None`` for a device whose part
-         *             has not been selected yet (it is listed as such, never guessed).
-         *         poles: Number of poles, where it has any.
-         *         rated_current_a: In, for switching and protective devices.
-         *         residual_current_ma: IΔn, for a residual current device.
-         *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
-         *         breaking_capacity_ka: Rated short-circuit breaking capacity.
-         *         description: A short function text for the drawing.
-         *         upstream_id: The device that feeds this one (a group breaker feeding
-         *             a residual current device, say); ``None`` for the busbar.
-         */
-        "Device-Output": {
-            /** Id */
-            id: string;
-            kind: components["schemas"]["DeviceKind"];
-            designation?: components["schemas"]["Designation"] | null;
-            /** Part Key */
-            part_key?: string | null;
-            /** Poles */
-            poles?: number | null;
-            /** Rated Current A */
-            rated_current_a?: string | null;
-            /** Residual Current Ma */
-            residual_current_ma?: string | null;
-            /** Curve */
-            curve?: string | null;
-            /** Breaking Capacity Ka */
-            breaking_capacity_ka?: string | null;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Upstream Id */
-            upstream_id?: string | null;
-        };
-        /**
-         * DeviceKind
-         * @description What a device does, which decides its designation letter.
-         * @enum {string}
-         */
-        DeviceKind: "circuit_breaker" | "residual_current_device" | "switch_disconnector" | "contactor" | "overload_relay" | "fuse" | "surge_protector" | "drive" | "motor" | "relay" | "bus_actuator" | "power_supply" | "meter" | "indicator_lamp" | "terminal_strip" | "cable" | "busbar" | "other";
-        /**
-         * DiagnosisStep
-         * @description One step an engineer should carry out.
-         *
-         *     Attributes:
-         *         order: 1-indexed position. Explicit rather than implied by array index
-         *             so a step cannot be silently reordered by a serialisation layer.
-         *         instruction: What to do, in one imperative sentence.
-         *         rationale: Why this step, so the engineer can judge whether it applies
-         *             to their situation rather than following blindly.
-         *         citation_ids: Passage ids supporting this step. Required, non-empty,
-         *             and deduplicated — a step with no source is exactly what
-         *             cite-or-refuse exists to prevent, and the same id repeated would
-         *             overstate how much evidence there is.
-         *         severity: Urgency of this step. Required rather than defaulted: a
-         *             missing severity defaulting to ``INFO`` would render an arc-flash
-         *             warning in the same colour as a note.
-         */
-        DiagnosisStep: {
-            /** Order */
-            order: number;
-            /** Instruction */
-            instruction: string;
-            /** Rationale */
-            rationale: string;
-            /** Citation Ids */
-            citation_ids: string[];
-            severity: components["schemas"]["Severity"];
-        };
-        /**
-         * DiagnosticRequest
-         * @description A single diagnostic question.
-         *
-         *     Attributes:
-         *         session_id: The conversation to append to, or ``None`` to start one.
-         *         symptom: What the engineer is describing.
-         *         equipment: Optional context about the unit.
-         *         locale: The language to answer in. Explicit on every request rather
-         *             than defaulted server-side: a default means a caller that forgot
-         *             to send one gets English, which for an Arabic-speaking engineer
-         *             looks like working software until someone reads the answer.
-         */
-        DiagnosticRequest: {
-            /** Session Id */
-            session_id?: string | null;
-            /** Symptom */
-            symptom: string;
-            equipment?: components["schemas"]["EquipmentContext"] | null;
-            /** @default en */
-            locale: components["schemas"]["Locale"];
-        };
-        /**
-         * DiagnosticResponse
-         * @description A completed diagnostic turn as returned to the caller.
-         *
-         *     This is the type the frontend renders, and the schema constraining
-         *     generation is derived from the ``StructuredDiagnosis`` embedded here — the
-         *     same model, not a copy of it. That is what makes "the constraint and the rendered type
-         *     cannot drift" true rather than aspirational: there is one definition, and
-         *     ``packages/shared-types`` regenerates its TypeScript from this schema.
-         *
-         *     Attributes:
-         *         session_id: The conversation this turn belongs to.
-         *         answer: Prose form of the answer, with resolved citations. Absent on a
-         *             refusal — a required-but-empty answer object would be one more
-         *             thing the frontend has to inspect before deciding what to show.
-         *         diagnosis: The structured form, when the model produced schema-valid
-         *             output. ``None`` on a refusal, which is the only case where the
-         *             frontend renders the refusal template instead of the card.
-         *         confidence: Per-signal confidence behind the decision.
-         *         low_confidence: Whether to show the uncertainty banner.
-         *         refusal_message: Rendered refusal text, present exactly when
-         *             ``diagnosis`` is absent.
-         *         turn_id: The stored turn, so the engineer can report this answer as
-         *             wrong (``POST /feedback/flag``). ``None`` only before it is stored.
-         *         evidence: The passages the answer was drawn from -- the ones that
-         *             cleared the confidence threshold and were offered for citation.
-         *             Sent back with a flag, so a reviewer judges the answer against the
-         *             text it was built on, not whatever the index returns by then.
-         *             Empty on a refusal, and on a turn replayed from history, whose
-         *             passages were not stored.
-         *         refusal_citations: On a refusal, the closest passage the guardrail
-         *             found -- shown so the engineer can judge it, and explicitly not
-         *             support for any answer. Empty when nothing came close enough to
-         *             name, on an answer, and on a turn replayed from history. The
-         *             refusal text never claims a citation itself: whether one is shown
-         *             is decided by this list alone, so the words cannot promise a
-         *             reference the response does not carry.
-         */
-        DiagnosticResponse: {
-            /** Session Id */
-            session_id: string;
-            answer?: components["schemas"]["VerifiedAnswer"] | null;
-            diagnosis?: components["schemas"]["StructuredDiagnosis"] | null;
-            confidence: components["schemas"]["ConfidenceBreakdown"];
-            /** Low Confidence */
-            low_confidence: boolean;
-            /** Refusal Message */
-            refusal_message?: string | null;
-            /** Turn Id */
-            turn_id?: string | null;
-            /** Evidence */
-            evidence?: components["schemas"]["RetrievedPassage"][];
-            /** Refusal Citations */
-            refusal_citations?: components["schemas"]["Citation"][];
-        };
-        /**
-         * DiagnosticSession
-         * @description A diagnostic conversation and its ordered turns.
-         */
-        DiagnosticSession: {
-            /** Id */
-            id: string;
-            /** Turns */
-            turns: components["schemas"]["DiagnosticTurn"][];
-        };
-        /**
-         * DiagnosticSessionPage
-         * @description One page of the conversation history.
-         *
-         *     Attributes:
-         *         sessions: The page's rows, most recently updated first.
-         *         next_cursor: Opaque cursor for the following page, or ``None`` when
-         *             this is the last one. Callers must treat it as opaque and pass it
-         *             back unmodified; its encoding is an implementation detail that may
-         *             change without a version bump.
-         */
-        DiagnosticSessionPage: {
-            /** Sessions */
-            sessions: components["schemas"]["DiagnosticSessionSummary"][];
-            /** Next Cursor */
-            next_cursor?: string | null;
-        };
-        /**
-         * DiagnosticSessionSummary
-         * @description One row in the conversation history sidebar.
-         *
-         *     A summary rather than the session itself: the sidebar shows what a
-         *     conversation *was about* so an engineer can recognise yesterday's problem,
-         *     and shipping every turn to draw a list would send the whole history of
-         *     every session to render a few lines of text.
-         *
-         *     Attributes:
-         *         id: The session id, used to fetch the full conversation on selection.
-         *         title: The first question asked, which is what makes a session
-         *             recognisable. Truncated for display. ``None`` before the first
-         *             question: the client names an untitled conversation in the
-         *             engineer's language, which a string chosen here could not.
-         *         equipment_model: The model this conversation was about, when a turn
-         *             recorded one. ``None`` where no turn identified equipment; the
-         *             sidebar shows the title alone rather than a guessed brand.
-         *         turn_count: How many exchanges the session holds.
-         *         created_at: When the conversation started.
-         *         updated_at: When it was last added to. The list is ordered by this,
-         *             because "yesterday's session" is the one last worked on rather
-         *             than the one first opened.
-         */
-        DiagnosticSessionSummary: {
-            /** Id */
-            id: string;
-            /** Title */
-            title: string | null;
-            /** Equipment Model */
-            equipment_model?: string | null;
-            /** Turn Count */
-            turn_count: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * DiagnosticTurn
-         * @description One stored exchange in a session.
-         */
-        DiagnosticTurn: {
-            request: components["schemas"]["DiagnosticRequest"];
-            response: components["schemas"]["DiagnosticResponse"];
-        };
-        /**
-         * DismissStaleRequest
-         * @description A reviewer's reason for dismissing a stale-document flag.
-         */
-        DismissStaleRequest: {
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-        };
-        /**
-         * DisplayVerdict
-         * @description Whether the photo shows what the engineer thinks it shows.
-         * @enum {string}
-         */
-        DisplayVerdict: "fault_display" | "not_a_fault_display" | "unreadable";
-        /**
-         * DistributionBoardRequest
-         * @description What a distribution board is designed from.
-         *
-         *     Attributes:
-         *         name: The board's name ("DBG-HALL").
-         *         location: Its IEC 81346 location aspect, where given.
-         *         supply: The incoming supply.
-         *         loads: The load schedule, in the order the circuits are drawn.
-         *         conditions: How the outgoing cables are run.
-         *         fed_from: The board whose feeder supplies this one; ``None`` for a
-         *             board fed from the utility or a main switchboard outside the
-         *             project.
-         *         feeder_length_m: The route length of the cable feeding this board
-         *             from ``fed_from``, for that feeder's voltage drop.
-         */
-        "DistributionBoardRequest-Input": {
-            /** Name */
-            name: string;
-            /** Location */
-            location?: string | null;
-            supply?: components["schemas"]["Supply-Input"];
-            /** Loads */
-            loads: components["schemas"]["LoadInput-Input"][];
-            conditions?: components["schemas"]["InstallationConditions-Input"];
-            /** Fed From */
-            fed_from?: string | null;
-            /** Feeder Length M */
-            feeder_length_m?: number | string | null;
-        };
-        /**
-         * DistributionBoardRequest
-         * @description What a distribution board is designed from.
-         *
-         *     Attributes:
-         *         name: The board's name ("DBG-HALL").
-         *         location: Its IEC 81346 location aspect, where given.
-         *         supply: The incoming supply.
-         *         loads: The load schedule, in the order the circuits are drawn.
-         *         conditions: How the outgoing cables are run.
-         *         fed_from: The board whose feeder supplies this one; ``None`` for a
-         *             board fed from the utility or a main switchboard outside the
-         *             project.
-         *         feeder_length_m: The route length of the cable feeding this board
-         *             from ``fed_from``, for that feeder's voltage drop.
-         */
-        "DistributionBoardRequest-Output": {
-            /** Name */
-            name: string;
-            /** Location */
-            location?: string | null;
-            supply?: components["schemas"]["Supply-Output"];
-            /** Loads */
-            loads: components["schemas"]["LoadInput-Output"][];
-            conditions?: components["schemas"]["InstallationConditions-Output"];
-            /** Fed From */
-            fed_from?: string | null;
-            /** Feeder Length M */
-            feeder_length_m?: string | null;
-        };
-        /**
-         * DriveRangeSummary
-         * @description A drive series selection can choose from.
-         */
-        DriveRangeSummary: {
-            /** Key */
-            key: string;
-            /** Manufacturer */
-            manufacturer: string;
-            /** Series */
-            series: string;
-            /** Bands */
-            bands: components["schemas"]["SupplyBand"][];
-            /** Heavy Duty */
-            heavy_duty: boolean;
-            source: components["schemas"]["Citation"];
-        };
-        /**
-         * DutyClass
-         * @description Drive duty rating.
-         * @enum {string}
-         */
-        DutyClass: "normal" | "heavy";
-        /**
-         * EnclosureConstraints
-         * @description Physical and vendor constraints on the enclosure.
-         */
-        EnclosureConstraints: {
-            /** Width Mm */
-            width_mm: number;
-            /** Height Mm */
-            height_mm: number;
-            /** Depth Mm */
-            depth_mm: number;
-            /** Ingress Rating */
-            ingress_rating: string;
-            placement: components["schemas"]["EnclosurePlacement"];
-            cable_installation_method: components["schemas"]["InstallationMethod"];
-            /**
-             * Supply Voltage V
-             * @default 400
-             */
-            supply_voltage_v: number | string;
-            /** @default copper */
-            cable_material: components["schemas"]["ConductorMaterial"];
-            /** Fault Level Ka */
-            fault_level_ka?: number | string | null;
-            /**
-             * Preferred Vendors
-             * @default []
-             */
-            preferred_vendors: string[];
-            /** Drive Range */
-            drive_range?: string | null;
-            /**
-             * Ambient Temp C
-             * @default 35
-             */
-            ambient_temp_c: number | string;
-            /**
-             * Max Internal Temp C
-             * @default 50
-             */
-            max_internal_temp_c: number | string;
-        };
-        /**
-         * EnclosurePlacement
-         * @description How an enclosure stands, per IEC 60890's effective-area formulas.
-         * @enum {string}
-         */
-        EnclosurePlacement: "single_free_standing" | "single_wall" | "suite_end_free_standing" | "suite_end_wall" | "suite_middle_free_standing" | "suite_middle_wall" | "suite_middle_wall_covered_roof";
-        /**
-         * Entitlements
-         * @description What the caller's account is on, and what it has used.
-         *
-         *     Attributes:
-         *         plan: The plan in force.
-         *         interval: How it is billed.
-         *         status: "free", "active" or "expired".
-         *         current_period_end: Until when a paid plan holds (ISO 8601).
-         *         seats: The accounts paid for.
-         *         seats_used: The accounts the tenant holds.
-         *         model_calls_per_month: The pooled AI allowance; ``None`` for none.
-         *         model_calls_used: Calls made this month.
-         *         saved_projects: The projects it may keep; ``None`` for no limit.
-         *         saved_projects_used: The projects it keeps.
-         *         features: What it switches on.
-         *         enforced: Whether the plan's limits are applied yet; until billing
-         *             opens, every account may use every feature.
-         *         requested_plan: A plan asked for and not yet active.
-         *         requested_interval: Its interval.
-         *         requested_seats: Its seats.
-         */
-        Entitlements: {
-            plan: components["schemas"]["PlanKey"];
-            interval: components["schemas"]["Interval"];
-            /** Status */
-            status: string;
-            /** Current Period End */
-            current_period_end?: string | null;
-            /** Seats */
-            seats: number;
-            /** Seats Used */
-            seats_used: number;
-            /** Model Calls Per Month */
-            model_calls_per_month: number | null;
-            /** Model Calls Used */
-            model_calls_used: number;
-            /** Saved Projects */
-            saved_projects: number | null;
-            /** Saved Projects Used */
-            saved_projects_used: number;
-            /** Features */
-            features: components["schemas"]["Feature"][];
-            /** Enforced */
-            enforced: boolean;
-            requested_plan?: components["schemas"]["PlanKey"] | null;
-            requested_interval?: components["schemas"]["Interval"] | null;
-            /** Requested Seats */
-            requested_seats?: number | null;
-        };
-        /**
-         * EquipmentContext
-         * @description What the engineer is working on.
-         */
-        EquipmentContext: {
-            /** Manufacturer */
-            manufacturer?: string | null;
-            /** Model */
-            model?: string | null;
-            /**
-             * Fault Codes
-             * @default []
-             */
-            fault_codes: string[];
-        };
-        /**
-         * EscalationPage
-         * @description Items awaiting lead-engineer review.
-         */
-        EscalationPage: {
-            /** Items */
-            items: components["schemas"]["QueueItem"][];
-        };
-        /**
-         * ExportFormat
-         * @description A file a project can be exported as.
-         * @enum {string}
-         */
-        ExportFormat: "pdf" | "dxf" | "qet" | "aml" | "devices_csv" | "parts_csv" | "cables_csv" | "circuits_csv" | "terminals_csv" | "eplan_devices_csv" | "ace_components_csv" | "ace_terminals_csv" | "quotation_pdf" | "calculations_pdf" | "quotation_csv" | "plc_st" | "plc_io_csv" | "json" | "terminal_schedule_pdf" | "wire_schedule_pdf" | "connection_drawing_pdf";
-        /**
-         * ExportPurpose
-         * @description What a saved revision is exported for.
-         * @enum {string}
-         */
-        ExportPurpose: "review" | "execution";
-        /**
-         * ExportStatus
-         * @description What a saved revision can be exported as now.
-         * @enum {string}
-         */
-        ExportStatus: "not_validated" | "stale" | "blocked" | "draft" | "review_approved";
-        /**
-         * FaultRecognitionResult
-         * @description What the model saw.
-         *
-         *     Attributes:
-         *         verdict: Whether this is a readable fault display at all. Checked
-         *             before any field is read.
-         *         fault_code: The code shown, e.g. "F0001".
-         *         brand: The manufacturer, if visibly identifiable — usually only when a
-         *             logo is in frame.
-         *         model: The equipment model, if visibly identifiable.
-         *         note: What the model saw when the verdict is not ``FAULT_DISPLAY``,
-         *             so the engineer is told what to do instead of just "no".
-         */
-        FaultRecognitionResult: {
-            verdict: components["schemas"]["DisplayVerdict"];
-            fault_code?: components["schemas"]["RecognisedField"];
-            brand?: components["schemas"]["RecognisedField"];
-            model?: components["schemas"]["RecognisedField"];
-            /** Note */
-            note?: string | null;
-        };
-        /**
-         * Feature
-         * @description What a plan may switch on beyond designing a board.
-         * @enum {string}
-         */
-        Feature: "ecad_export" | "company_settings" | "approval_workflow" | "quotation";
-        /**
-         * FeederLinkAttributesInput
-         * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
-         *
-         *     Values are checked by type and range only, and never defaulted: no
-         *     designer value is copied in, and none changes the calculation.
-         */
-        "FeederLinkAttributesInput-Input": {
-            /** Cores */
-            cores?: number | null;
-            /** Cross Section Mm2 */
-            cross_section_mm2?: number | string | null;
-            /** Material */
-            material?: string | null;
-            /** Insulation */
-            insulation?: string | null;
-            /** Length M */
-            length_m?: number | string | null;
-            /** Number */
-            number?: string | null;
-            /** Colour */
-            colour?: string | null;
-        };
-        /**
-         * FeederLinkAttributesInput
-         * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
-         *
-         *     Values are checked by type and range only, and never defaulted: no
-         *     designer value is copied in, and none changes the calculation.
-         */
-        "FeederLinkAttributesInput-Output": {
-            /** Cores */
-            cores?: number | null;
-            /** Cross Section Mm2 */
-            cross_section_mm2?: string | null;
-            /** Material */
-            material?: string | null;
-            /** Insulation */
-            insulation?: string | null;
-            /** Length M */
-            length_m?: string | null;
-            /** Number */
-            number?: string | null;
-            /** Colour */
-            colour?: string | null;
-        };
-        /**
-         * FeederLinkEndInput
-         * @description One end of a feeder link as entered: a modelled terminal, a free-text label, both or neither.
-         *
-         *     Attributes:
-         *         terminal: A terminal of that end's board (the supply board for
-         *             ``from_end``, the fed board for ``to_end``).
-         *         label: The user's own designation of the end; printed as the user's
-         *             text, never as a connected terminal.
-         */
-        FeederLinkEndInput: {
-            terminal?: components["schemas"]["FeederLinkTerminal"] | null;
-            /** Label */
-            label?: string | null;
-        };
-        /**
-         * FeederLinkInput
-         * @description What the user entered for the link of one server-owned feeder (M7a).
-         *
-         *     Attributes:
-         *         fed_board: The board the feeder supplies (it has ``fed_from``).
-         *         from_end: The end on the supply board.
-         *         to_end: The end on the fed board.
-         *         attributes: The known cable/conductor properties.
-         *
-         *     Provenance (who entered it, when) is the server's, set on save; a client
-         *     cannot send it.
-         */
-        "FeederLinkInput-Input": {
-            /** Fed Board */
-            fed_board: string;
-            from_end?: components["schemas"]["FeederLinkEndInput"] | null;
-            to_end?: components["schemas"]["FeederLinkEndInput"] | null;
-            attributes?: components["schemas"]["FeederLinkAttributesInput-Input"] | null;
-        };
-        /**
-         * FeederLinkInput
-         * @description What the user entered for the link of one server-owned feeder (M7a).
-         *
-         *     Attributes:
-         *         fed_board: The board the feeder supplies (it has ``fed_from``).
-         *         from_end: The end on the supply board.
-         *         to_end: The end on the fed board.
-         *         attributes: The known cable/conductor properties.
-         *
-         *     Provenance (who entered it, when) is the server's, set on save; a client
-         *     cannot send it.
-         */
-        "FeederLinkInput-Output": {
-            /** Fed Board */
-            fed_board: string;
-            from_end?: components["schemas"]["FeederLinkEndInput"] | null;
-            to_end?: components["schemas"]["FeederLinkEndInput"] | null;
-            attributes?: components["schemas"]["FeederLinkAttributesInput-Output"] | null;
-        };
-        /**
-         * FeederLinkTerminal
-         * @description A modelled terminal: of a component (``component``, ``terminal``) or a strip point (``point``, ``side``).
-         *
-         *     Exactly one of the two pairs is given; both name the saved model's ids.
-         */
-        FeederLinkTerminal: {
-            /** Component */
-            component?: string | null;
-            /** Terminal */
-            terminal?: string | null;
-            /** Point */
-            point?: string | null;
-            /** Side */
-            side?: ("inner" | "outer") | null;
-        };
-        /**
-         * FlagRequest
-         * @description A user reporting an answer as wrong.
-         *
-         *     The retrieved passages come from the client because they are what the user
-         *     was actually shown. Re-running retrieval server-side would return whatever
-         *     the index holds now, which is the one thing AI-014 says must not happen.
-         */
-        FlagRequest: {
-            /**
-             * Message Id
-             * Format: uuid
-             */
-            message_id: string;
-            /** Reason */
-            reason?: string | null;
-            /** Retrieved */
-            retrieved?: components["schemas"]["RetrievedPassage"][];
-        };
-        /**
-         * FlagResponse
-         * @description Confirmation that a flag was recorded and queued.
-         */
-        FlagResponse: {
-            /**
-             * Flag Id
-             * Format: uuid
-             */
-            flag_id: string;
-            /** Queued */
-            queued: boolean;
-        };
-        /**
-         * FlaggedAnswerView
-         * @description An answer an engineer reported as wrong, as they saw it.
-         *
-         *     ``passages`` is ``None`` when the stored context cannot be read, which is
-         *     not the same as an answer built on nothing and must not be shown as one.
-         */
-        FlaggedAnswerView: {
-            /** Question */
-            question: string;
-            /** Answer */
-            answer: string;
-            /** Reason */
-            reason: string | null;
-            /** Passages */
-            passages: components["schemas"]["RetrievedPassage"][] | null;
-            /**
-             * Flagged At
-             * Format: date-time
-             */
-            flagged_at: string;
-        };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /**
-         * HealthResponse
-         * @description Result of a liveness or readiness probe.
-         */
-        HealthResponse: {
-            status: components["schemas"]["DependencyState"];
-            /**
-             * Dependencies
-             * @default {}
-             */
-            dependencies: {
-                [key: string]: components["schemas"]["DependencyState"];
-            };
-        };
-        /**
-         * ImageUploadResponse
-         * @description What an upload returns.
-         *
-         *     Attributes:
-         *         image_id: The handle to pass to the chat endpoint.
-         *         recognition: What AI-008 read off the photo, or ``None`` when the
-         *             recogniser could not produce a report. Absent is not an error: the
-         *             image is stored either way, and the engineer can still describe
-         *             the fault in words.
-         */
-        ImageUploadResponse: {
-            /** Image Id */
-            image_id: string;
-            recognition?: components["schemas"]["FaultRecognitionResult"] | null;
-        };
-        /**
-         * InstallationConditions
-         * @description How the outgoing cables are run, for their sizing.
-         *
-         *     Attributes:
-         *         installation_method: IEC 60364-5-52 reference method.
-         *         ambient_temp_c: Air temperature around the cables.
-         *         grouped_circuits: Loaded circuits run together.
-         *         conductor_material: Copper or aluminium.
-         *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
-         */
-        "InstallationConditions-Input": {
-            /** @default B1 */
-            installation_method: components["schemas"]["InstallationMethod"];
-            /**
-             * Ambient Temp C
-             * @default 30
-             */
-            ambient_temp_c: number | string;
-            /**
-             * Grouped Circuits
-             * @default 1
-             */
-            grouped_circuits: number;
-            /** @default copper */
-            conductor_material: components["schemas"]["ConductorMaterial"];
-            /**
-             * Insulation Rating C
-             * @default 70
-             */
-            insulation_rating_c: number;
-        };
-        /**
-         * InstallationConditions
-         * @description How the outgoing cables are run, for their sizing.
-         *
-         *     Attributes:
-         *         installation_method: IEC 60364-5-52 reference method.
-         *         ambient_temp_c: Air temperature around the cables.
-         *         grouped_circuits: Loaded circuits run together.
-         *         conductor_material: Copper or aluminium.
-         *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
-         */
-        "InstallationConditions-Output": {
-            /** @default B1 */
-            installation_method: components["schemas"]["InstallationMethod"];
-            /**
-             * Ambient Temp C
-             * @default 30
-             */
-            ambient_temp_c: string;
-            /**
-             * Grouped Circuits
-             * @default 1
-             */
-            grouped_circuits: number;
-            /** @default copper */
-            conductor_material: components["schemas"]["ConductorMaterial"];
-            /**
-             * Insulation Rating C
-             * @default 70
-             */
-            insulation_rating_c: number;
-        };
-        /**
-         * InstallationMethod
-         * @description IEC 60364-5-52 reference installation method.
-         * @enum {string}
-         */
-        InstallationMethod: "A1" | "A2" | "B1" | "B2" | "C" | "D1" | "D2" | "E" | "F" | "G";
-        /**
-         * InterBoardLinkView
-         * @description A ``pp-design/3`` feeder link between two boards, as stored (M7a); review content only.
-         */
-        InterBoardLinkView: {
-            /** Id */
-            id: string;
-            /**
-             * Origin
-             * @constant
-             */
-            origin: "derived";
-            feeder: components["schemas"]["LinkFeederView"];
-            /** Ends */
-            ends: components["schemas"]["LinkEndView"][];
-            carrier: components["schemas"]["LinkCarrierView"];
-            attributes: components["schemas"]["LinkAttributesView"];
-            provenance: components["schemas"]["LinkProvenanceView"];
-        };
-        /**
-         * Interval
-         * @description How often a subscription is billed.
-         * @enum {string}
-         */
-        Interval: "monthly" | "annual";
-        /**
-         * InvitationCreated
-         * @description A new invitation, with the token to send: shown this once.
-         *
-         *     Attributes:
-         *         id: The invitation.
-         *         email: Who it is for.
-         *         token: What the colleague signs up with.
-         *         expires_at: When it lapses (ISO 8601).
-         */
-        InvitationCreated: {
-            /** Id */
-            id: string;
-            /** Email */
-            email: string;
-            /** Token */
-            token: string;
-            /** Expires At */
-            expires_at: string;
-        };
-        /**
-         * InvitationOut
-         * @description An invitation still open.
-         *
-         *     Attributes:
-         *         id: The invitation.
-         *         email: Who it is for.
-         *         invited_by: Who sent it.
-         *         expires_at: When it lapses (ISO 8601).
-         */
-        InvitationOut: {
-            /** Id */
-            id: string;
-            /** Email */
-            email: string;
-            /** Invited By */
-            invited_by: string;
-            /** Expires At */
-            expires_at: string;
-        };
-        /**
-         * InviteRequest
-         * @description Invite a colleague by email.
-         */
-        InviteRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-        };
-        /**
-         * LabelRequest
-         * @description A verifier's judgement on one item.
-         */
-        LabelRequest: {
-            label: components["schemas"]["VerificationLabel"];
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-        };
-        /**
-         * LabelResponse
-         * @description The outcome of recording a label.
-         */
-        LabelResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Status */
-            status: string;
-            /** Label */
-            label: string | null;
-        };
-        /**
-         * LadderBlock
-         * @description A function block on a rung — a timer, a counter, a comparison.
-         *
-         *     Attributes:
-         *         kind: The block type as the vendor names it (``TON``, ``CTU``, ...).
-         *         tag: The block's instance name.
-         *         parameters: Its settings, as label/value pairs. Rendered as text
-         *             inside the block rather than interpreted, because a timer preset
-         *             means nothing to a renderer and everything to the engineer
-         *             reading it.
-         */
-        LadderBlock: {
-            /** Kind */
-            kind: string;
-            /** Tag */
-            tag: string;
-            /** Parameters */
-            parameters?: {
-                [key: string]: string;
-            };
-        };
-        /**
-         * LadderBranch
-         * @description Parallel paths across one part of a rung.
-         *
-         *     Attributes:
-         *         paths: Each path's elements in series. Any of them conducting makes
-         *             the branch conduct — this is an OR.
-         *
-         *     The construct that makes ladder ladder. A start/stop seal-in circuit is a
-         *     branch, and a renderer that only draws series contacts cannot draw the
-         *     single most common rung in the trade.
-         */
-        LadderBranch: {
-            /** Paths */
-            paths: (components["schemas"]["LadderContact"] | components["schemas"]["LadderBlock"] | components["schemas"]["LadderBranch"])[][];
-        };
-        /**
-         * LadderContact
-         * @description One contact or coil on a rung.
-         *
-         *     Attributes:
-         *         tag: The symbol it reads or writes.
-         *         kind: ``no`` (normally open), ``nc`` (normally closed), or ``coil``.
-         */
-        LadderContact: {
-            /** Tag */
-            tag: string;
-            /** Kind */
-            kind: string;
-        };
-        /**
-         * LadderRung
-         * @description One rung, as FE-009 draws it.
-         *
-         *     Attributes:
-         *         comment: What the rung is for.
-         *         elements: What sits on the rung, left to right. Contacts, function
-         *             blocks, and parallel branches.
-         *         output: The coil the rung drives.
-         */
-        LadderRung: {
-            /** Comment */
-            comment: string;
-            /** Elements */
-            elements?: (components["schemas"]["LadderContact"] | components["schemas"]["LadderBlock"] | components["schemas"]["LadderBranch"])[];
-            output: components["schemas"]["LadderContact"];
-        };
-        /**
-         * LinkAttributeView
-         * @description A link attribute: the user's value, or ``null`` with source ``unset`` (never a designer value).
-         *
-         *     ``cores`` is an integer; ``cross_section_mm2`` and ``length_m`` are
-         *     decimal strings; the others are the user's text.
-         */
-        LinkAttributeView: {
-            /** Value */
-            value: number | string | null;
-            /**
-             * Source
-             * @enum {string}
-             */
-            source: "user" | "unset";
-        };
-        /**
-         * LinkAttributesView
-         * @description Every attribute a feeder link records, each the user's or unset.
-         */
-        LinkAttributesView: {
-            cores: components["schemas"]["LinkAttributeView"];
-            cross_section_mm2: components["schemas"]["LinkAttributeView"];
-            material: components["schemas"]["LinkAttributeView"];
-            insulation: components["schemas"]["LinkAttributeView"];
-            length_m: components["schemas"]["LinkAttributeView"];
-            number: components["schemas"]["LinkAttributeView"];
-            colour: components["schemas"]["LinkAttributeView"];
-        };
-        /**
-         * LinkCarrierView
-         * @description What carries a link: the feeder circuit's cable, or ``unknown``.
-         */
-        LinkCarrierView: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "cable" | "unknown";
-            /** Cable Id */
-            cable_id: string | null;
-        };
-        /**
-         * LinkEndView
-         * @description One end of a feeder link: resolved exactly when a modelled terminal is set.
-         */
-        LinkEndView: {
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "from" | "to";
-            /** Board */
-            board: string;
-            terminal: components["schemas"]["LinkTerminalView"] | null;
-            /** Label */
-            label: string | null;
-            /**
-             * Resolution
-             * @enum {string}
-             */
-            resolution: "resolved" | "unresolved";
-        };
-        /**
-         * LinkFeederView
-         * @description The server-owned feeder a link records (from ``fed_from``); boards by id.
-         */
-        LinkFeederView: {
-            /** Supply Board */
-            supply_board: string;
-            /** Fed Board */
-            fed_board: string;
-            /** Circuit Id */
-            circuit_id: string;
-        };
-        /**
-         * LinkProvenanceView
-         * @description Who entered a link's values and when, set by the server on save; ``null`` when nobody did.
-         */
-        LinkProvenanceView: {
-            /** Requirement Ref */
-            requirement_ref: string;
-            /** Entered By User Id */
-            entered_by_user_id: string | null;
-            /** Entered At */
-            entered_at: string | null;
-        };
-        /**
-         * LinkTerminalView
-         * @description A modelled terminal: ``{component, terminal}`` or ``{point, side}``.
-         */
-        LinkTerminalView: {
-            /** Component */
-            component?: string | null;
-            /** Terminal */
-            terminal?: string | null;
-            /** Point */
-            point?: string | null;
-            /** Side */
-            side?: ("inner" | "outer") | null;
-        };
-        /**
-         * LoadInput
-         * @description One line of a distribution board's load schedule.
-         *
-         *     Attributes:
-         *         description: What it feeds ("Sockets - hall east").
-         *         load: The kind of load, which picks the company's rule for it.
-         *         power_kw: Installed active power.
-         *         phases: 1 or 3.
-         *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
-         *             load-current table is drawn up for, and the board says so.
-         *         controlled: Switched by a contactor the PLC drives, rather than
-         *             live whenever its breaker is closed.
-         *         feeds: The board this circuit feeds, for a feeder to a sub-board;
-         *             set by the project design, not typed in.
-         *         starter: For a three-phase motor, how it is started; its
-         *             ``power_kw`` is then the motor's shaft power.
-         *         length_m: The cable's route length, one way. Given, the cable is
-         *             checked (and if need be enlarged) for voltage drop.
-         */
-        "LoadInput-Input": {
-            /** Description */
-            description: string;
-            load: components["schemas"]["LoadKind"];
-            /** Power Kw */
-            power_kw: number | string;
-            /**
-             * Phases
-             * @default 1
-             */
-            phases: number;
-            /** Power Factor */
-            power_factor?: number | string | null;
-            /**
-             * Controlled
-             * @default false
-             */
-            controlled: boolean;
-            /** Feeds */
-            feeds?: string | null;
-            starter?: components["schemas"]["MotorStarter"] | null;
-            /** Length M */
-            length_m?: number | string | null;
-        };
-        /**
-         * LoadInput
-         * @description One line of a distribution board's load schedule.
-         *
-         *     Attributes:
-         *         description: What it feeds ("Sockets - hall east").
-         *         load: The kind of load, which picks the company's rule for it.
-         *         power_kw: Installed active power.
-         *         phases: 1 or 3.
-         *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
-         *             load-current table is drawn up for, and the board says so.
-         *         controlled: Switched by a contactor the PLC drives, rather than
-         *             live whenever its breaker is closed.
-         *         feeds: The board this circuit feeds, for a feeder to a sub-board;
-         *             set by the project design, not typed in.
-         *         starter: For a three-phase motor, how it is started; its
-         *             ``power_kw`` is then the motor's shaft power.
-         *         length_m: The cable's route length, one way. Given, the cable is
-         *             checked (and if need be enlarged) for voltage drop.
-         */
-        "LoadInput-Output": {
-            /** Description */
-            description: string;
-            load: components["schemas"]["LoadKind"];
-            /** Power Kw */
-            power_kw: string;
-            /**
-             * Phases
-             * @default 1
-             */
-            phases: number;
-            /** Power Factor */
-            power_factor?: string | null;
-            /**
-             * Controlled
-             * @default false
-             */
-            controlled: boolean;
-            /** Feeds */
-            feeds?: string | null;
-            starter?: components["schemas"]["MotorStarter"] | null;
-            /** Length M */
-            length_m?: string | null;
-        };
-        /**
-         * LoadKind
-         * @description What a circuit feeds.
-         *
-         *     Company rules (breaker size, residual current sensitivity) are set per
-         *     kind in the profile.
-         * @enum {string}
-         */
-        LoadKind: "lighting" | "socket" | "air_conditioning" | "water_heater" | "motor" | "fan" | "kitchen" | "lift" | "sub_board" | "control" | "data" | "spare" | "other";
-        /**
-         * LoadRef
-         * @description One load of the request: its board's name and its position on that board.
-         */
-        LoadRef: {
-            /** Board */
-            board: string;
-            /** Load Index */
-            load_index: number;
-        };
-        /**
-         * LoadScheduleImport
-         * @description A load schedule read from a consultant's file.
-         *
-         *     Attributes:
-         *         loads: The loads read, in the schedule's order.
-         *         warnings: Every row skipped and every assumption made, by row.
-         *         rows_read: Data rows found below the header.
-         */
-        LoadScheduleImport: {
-            /** Loads */
-            loads: components["schemas"]["LoadInput-Output"][];
-            /** Warnings */
-            warnings: components["schemas"]["DesignNote"][];
-            /** Rows Read */
-            rows_read: number;
-        };
-        /**
-         * LoadScheduleItem
-         * @description One load on a panel's schedule.
-         */
-        LoadScheduleItem: {
-            /** Tag */
-            tag: string;
-            /** Description */
-            description: string;
-            /** Power Kw */
-            power_kw?: number | string | null;
-            /** Current A */
-            current_a?: number | string | null;
-            /** Dissipation W */
-            dissipation_w?: number | string | null;
-            /**
-             * Variable Speed
-             * @default false
-             */
-            variable_speed: boolean;
-            start?: components["schemas"]["StartType"] | null;
-        };
-        /**
-         * LoadScheduleSuggestion
-         * @description A proposed load schedule, for the engineer to check before designing.
-         *
-         *     Attributes:
-         *         loads: The proposed circuits.
-         *         assumptions: Every assumption, per circuit and overall.
-         */
-        LoadScheduleSuggestion: {
-            /** Loads */
-            loads: components["schemas"]["LoadInput-Output"][];
-            /** Assumptions */
-            assumptions: components["schemas"]["DesignNote"][];
-        };
-        /**
-         * Locale
-         * @description A language a response may be generated in.
-         *
-         *     Deliberately a closed set. An open string would let a caller pass anything
-         *     and get whatever the model felt like, which for a language the corpus does
-         *     not support is worse than refusing.
-         * @enum {string}
-         */
-        Locale: "en" | "ar" | "he";
-        /**
-         * LoginRequest
-         * @description Exchange credentials for a token pair.
-         */
-        LoginRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-        };
-        /**
-         * MarketInfo
-         * @description A market's supply and stated rules, for a new board's defaults.
-         *
-         *     Attributes:
-         *         code: ISO 3166-1 alpha-2.
-         *         name: In English.
-         *         voltage_v: Line to line, three-phase.
-         *         phase_voltage_v: Line to neutral.
-         *         frequency_hz: 50 or 60.
-         *         earthing: The usual earthing system.
-         *         currency: ISO 4217, for a quotation.
-         *         regulation: The code a design there answers to.
-         *         max_voltage_drop_percent: Its stated limit for every load, if any.
-         *         rcd_every_final_circuit: Whether it asks 30 mA on every final circuit.
-         *         languages: Customary drawing languages, first preferred.
-         */
-        MarketInfo: {
-            /** Code */
-            code: string;
-            /** Name */
-            name: string;
-            /** Voltage V */
-            voltage_v: number;
-            /** Phase Voltage V */
-            phase_voltage_v: number;
-            /** Frequency Hz */
-            frequency_hz: number;
-            /** Earthing */
-            earthing: string;
-            /** Currency */
-            currency: string;
-            /** Regulation */
-            regulation: string;
-            /** Max Voltage Drop Percent */
-            max_voltage_drop_percent: string | null;
-            /** Rcd Every Final Circuit */
-            rcd_every_final_circuit: boolean;
-            /** Languages */
-            languages: string[];
-        };
-        /**
-         * MarkupCandidate
-         * @description A circuit a comment on a residual current group may mean.
-         *
-         *     Attributes:
-         *         circuit: Its description, as the schedule names it.
-         *         load_index: Its place in the board's schedule.
-         */
-        MarkupCandidate: {
-            /** Circuit */
-            circuit: string;
-            /** Load Index */
-            load_index: number;
-        };
-        /**
-         * MarkupItem
-         * @description One reviewer's mark read off a drawing set PDF.
-         *
-         *     Attributes:
-         *         page: Its page, from 1.
-         *         kind: The PDF annotation type.
-         *         author: Who made it, where the PDF says.
-         *         text: What it says.
-         *         sheet: The page's title, where the PDF is this project's drawing set.
-         *         board: The board the page draws, likewise.
-         *         near: The label nearest the mark, likewise.
-         *         suggestion: The change to the schedule it asks for, where it sits on
-         *             a circuit and says one the schedule holds; offered, never applied.
-         */
-        MarkupItem: {
-            /** Page */
-            page: number;
-            /** Kind */
-            kind: string;
-            /** Author */
-            author: string;
-            /** Text */
-            text: string;
-            /** Sheet */
-            sheet: string;
-            /** Board */
-            board: string;
-            /** Near */
-            near: string;
-            suggestion?: components["schemas"]["MarkupSuggestion"] | null;
-        };
-        /**
-         * MarkupReport
-         * @description The marks on a reviewed drawing set.
-         *
-         *     Attributes:
-         *         markups: Every mark with text, in page order.
-         *         matched: Whether the PDF's pages are this project's drawing set, so
-         *             each mark could be placed on its board and label.
-         */
-        MarkupReport: {
-            /** Markups */
-            markups: components["schemas"]["MarkupItem"][];
-            /** Matched */
-            matched: boolean;
-        };
-        /**
-         * MarkupSuggestion
-         * @description A change to the load schedule a reviewer's comment asks for.
-         *
-         *     Attributes:
-         *         board: The board whose schedule changes.
-         *         circuit: The circuit's description, as the schedule names it.
-         *         load_index: Its place in that board's schedule; ``None`` for a change
-         *             to the board itself (a feeder length).
-         *         field: What changes.
-         *         value: Its new value; ``None`` for a removal.
-         *         candidates: For a comment on a group of several circuits, each one
-         *             it may mean, for the engineer to pick; ``circuit`` is then empty.
-         */
-        MarkupSuggestion: {
-            /** Board */
-            board: string;
-            /** Circuit */
-            circuit: string;
-            /** Load Index */
-            load_index?: number | null;
-            /**
-             * Field
-             * @enum {string}
-             */
-            field: "remove" | "power_kw" | "length_m" | "power_factor" | "phases" | "starter" | "feeder_length_m";
-            /** Value */
-            value?: string | null;
-            /** Candidates */
-            candidates?: components["schemas"]["MarkupCandidate"][];
-        };
-        /**
-         * Member
-         * @description One account in the team.
-         *
-         *     Attributes:
-         *         id: The account.
-         *         email: Its address.
-         *         full_name: Its name, if given.
-         *         owner: Whether it is the tenant's recorded owner.
-         */
-        Member: {
-            /** Id */
-            id: string;
-            /** Email */
-            email: string;
-            /** Full Name */
-            full_name?: string | null;
-            /** Owner */
-            owner: boolean;
-        };
-        /**
-         * MotorStarter
-         * @description How a motor is started.
-         * @enum {string}
-         */
-        MotorStarter: "dol" | "star_delta" | "drive";
-        /**
-         * PageKind
-         * @description A kind of page in a drawing set.
-         * @enum {string}
-         */
-        PageKind: "title" | "safety" | "contents" | "layout" | "single_line" | "distribution" | "notes" | "terminals" | "cables" | "parts";
-        /**
-         * PanelBomRequest
-         * @description Inputs for BOM generation.
-         */
-        PanelBomRequest: {
-            /** Loads */
-            loads: components["schemas"]["LoadScheduleItem"][];
-            constraints: components["schemas"]["EnclosureConstraints"];
-        };
-        /**
-         * PanelBomResponse
-         * @description BOM as returned to the caller.
-         */
-        PanelBomResponse: {
-            result: components["schemas"]["PanelBomResult"];
-            /** Sources */
-            sources: components["schemas"]["Citation"][];
-        };
-        /**
-         * PanelBomResult
-         * @description Output of the pure BOM function.
-         */
-        PanelBomResult: {
-            /** Lines */
-            lines: components["schemas"]["BomLine"][];
-            /** Heat Load W */
-            heat_load_w: string;
-            /** Cooling Required W */
-            cooling_required_w: string;
-            /**
-             * Notes
-             * @default []
-             */
-            notes: string[];
-            /**
-             * Note Keys
-             * @default []
-             */
-            note_keys: components["schemas"]["BomNote"][];
-        };
-        /**
-         * Part
-         * @description An orderable article.
-         *
-         *     Attributes:
-         *         key: Unique within the project; how devices refer to the part.
-         *         manufacturer: As the manufacturer names itself.
-         *         type_number: The manufacturer's type designation.
-         *         order_number: The number an order is placed with, where it differs.
-         *         description: What it is, in the catalogue's words.
-         *         source: Where the data came from (catalogue, page), so a reviewer
-         *             can check it.
-         *         width_mm: Mounting width, for layout. ``None`` when not known.
-         */
-        "Part-Input": {
-            /** Key */
-            key: string;
-            /** Manufacturer */
-            manufacturer: string;
-            /** Type Number */
-            type_number: string;
-            /** Order Number */
-            order_number?: string | null;
-            /** Description */
-            description: string;
-            /** Source */
-            source?: string | null;
-            /** Width Mm */
-            width_mm?: number | string | null;
-        };
-        /**
-         * Part
-         * @description An orderable article.
-         *
-         *     Attributes:
-         *         key: Unique within the project; how devices refer to the part.
-         *         manufacturer: As the manufacturer names itself.
-         *         type_number: The manufacturer's type designation.
-         *         order_number: The number an order is placed with, where it differs.
-         *         description: What it is, in the catalogue's words.
-         *         source: Where the data came from (catalogue, page), so a reviewer
-         *             can check it.
-         *         width_mm: Mounting width, for layout. ``None`` when not known.
-         */
-        "Part-Output": {
-            /** Key */
-            key: string;
-            /** Manufacturer */
-            manufacturer: string;
-            /** Type Number */
-            type_number: string;
-            /** Order Number */
-            order_number?: string | null;
-            /** Description */
-            description: string;
-            /** Source */
-            source?: string | null;
-            /** Width Mm */
-            width_mm?: string | null;
-        };
-        /**
-         * Permission
-         * @description An action the server checks the caller may take (``app.domain.permissions``).
-         *
-         *     Sent to the client so it can hide or disable what it may not do; the
-         *     server checks it again on every request regardless.
-         * @enum {string}
-         */
-        Permission: "approve_revision" | "delete_project" | "edit_company_settings" | "review_engineering_definitions";
-        /**
-         * Phase
-         * @description A line conductor, or all three.
-         * @enum {string}
-         */
-        Phase: "L1" | "L2" | "L3" | "L1L2L3";
-        /**
-         * PlanCatalogue
-         * @description Every plan, cheapest first.
-         *
-         *     Attributes:
-         *         plans: The plans.
-         *         currency: The currency prices are in.
-         *         annual_months_charged: Months charged for a year paid at once.
-         */
-        PlanCatalogue: {
-            /** Plans */
-            plans: components["schemas"]["PlanOut"][];
-            /**
-             * Currency
-             * @default USD
-             */
-            currency: string;
-            /** Annual Months Charged */
-            annual_months_charged: number;
-        };
-        /**
-         * PlanKey
-         * @description The plans, by the key stored on a subscription.
-         * @enum {string}
-         */
-        PlanKey: "free" | "engineer" | "team" | "company" | "enterprise";
-        /**
-         * PlanOut
-         * @description One plan, as the pricing page shows it.
-         *
-         *     Attributes:
-         *         key: Its key.
-         *         monthly_usd: The price a month for the seats included, billed monthly;
-         *             ``None`` where it is agreed per customer.
-         *         annual_usd: The price a year for the seats included, billed annually.
-         *         seats_included: The accounts the price covers.
-         *         extra_seat_usd: The price a month of each further seat, if sold.
-         *         max_seats: The most accounts it holds.
-         *         model_calls_per_month: The pooled AI allowance a month.
-         *         saved_projects: The projects it may keep; ``None`` for no limit.
-         *         features: What it switches on.
-         */
-        PlanOut: {
-            key: components["schemas"]["PlanKey"];
-            /** Monthly Usd */
-            monthly_usd: string | null;
-            /** Annual Usd */
-            annual_usd: string | null;
-            /** Seats Included */
-            seats_included: number;
-            /** Extra Seat Usd */
-            extra_seat_usd: string | null;
-            /** Max Seats */
-            max_seats: number | null;
-            /** Model Calls Per Month */
-            model_calls_per_month: number | null;
-            /** Saved Projects */
-            saved_projects: number | null;
-            /** Features */
-            features: components["schemas"]["Feature"][];
-        };
-        /**
-         * PlanRequest
-         * @description Ask to move the account to a plan.
-         *
-         *     Attributes:
-         *         plan: The plan.
-         *         interval: Monthly or annual.
-         *         seats: The accounts to pay for.
-         */
-        PlanRequest: {
-            plan: components["schemas"]["PlanKey"];
-            /** @default monthly */
-            interval: components["schemas"]["Interval"];
-            /**
-             * Seats
-             * @default 1
-             */
-            seats: number;
-        };
-        /**
-         * PlcDialect
-         * @description Which vendor's flavour a request targets.
-         *
-         *     Vendor matters because the dialects genuinely differ — Siemens SCL is not
-         *     Rockwell's ST, and code valid in one is not always valid in the other. A
-         *     validator that ignored the distinction would be reporting on a language
-         *     nobody actually runs.
-         * @enum {string}
-         */
-        PlcDialect: "iec-61131-3" | "siemens-scl" | "rockwell-st" | "codesys-st";
-        /**
-         * PlcGenerationRequest
-         * @description A request to generate PLC code.
-         */
-        PlcGenerationRequest: {
-            /** Description */
-            description: string;
-            /** @default iec-61131-3 */
-            dialect: components["schemas"]["PlcDialect"];
-            /** @default structured-text */
-            language: components["schemas"]["PlcLanguage"];
-        };
-        /**
-         * PlcGenerationResult
-         * @description Generated code, with the verdict on it.
-         *
-         *     Attributes:
-         *         language: What was produced.
-         *         dialect: What it targets.
-         *         source: Structured Text, when that is what was asked for.
-         *         rungs: Ladder rungs, when that is what was asked for.
-         *         validation: The validation pass over the generated code. Always
-         *             present — generation that skipped validation would be exactly the
-         *             plausible-looking unchecked output this task exists to prevent.
-         */
-        PlcGenerationResult: {
-            language: components["schemas"]["PlcLanguage"];
-            dialect: components["schemas"]["PlcDialect"];
-            /** Source */
-            source?: string | null;
-            /** Rungs */
-            rungs?: components["schemas"]["LadderRung"][];
-            validation: components["schemas"]["PlcValidationResult"];
-        };
-        /**
-         * PlcIoPoint
-         * @description One point on a control program's I/O list.
-         *
-         *     Attributes:
-         *         tag: The variable name in the program.
-         *         direction: "input" or "output".
-         *         board: The board it belongs to; empty for shared inputs.
-         *         device: The designation of the device it drives or reports.
-         *         description: What it is, for the wiring list.
-         */
-        PlcIoPoint: {
-            /** Tag */
-            tag: string;
-            /** Direction */
-            direction: string;
-            /** Board */
-            board: string;
-            /** Device */
-            device: string;
-            /** Description */
-            description: string;
-        };
-        /**
-         * PlcLanguage
-         * @description What form the output takes.
-         * @enum {string}
-         */
-        PlcLanguage: "structured-text" | "ladder";
-        /**
-         * PlcProgramRequest
-         * @description A project whose PLC-switched circuits need a control program.
-         *
-         *     Attributes:
-         *         project: The designed project.
-         *         profile: The company's profile settings; ``None`` for the default.
-         */
-        PlcProgramRequest: {
-            project: components["schemas"]["DesignProject-Input"];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * PlcProgramResponse
-         * @description The control program for a project, and the checker's verdict on it.
-         *
-         *     Attributes:
-         *         name: The program unit's name.
-         *         source: The IEC 61131-3 Structured Text.
-         *         io: Every input and output, shared inputs first.
-         *         validation: The parser-based checker's verdict on ``source``.
-         */
-        PlcProgramResponse: {
-            /** Name */
-            name: string;
-            /** Source */
-            source: string;
-            /** Io */
-            io: components["schemas"]["PlcIoPoint"][];
-            validation: components["schemas"]["PlcValidationResult"];
-        };
-        /**
-         * PlcValidationRequest
-         * @description A request to validate code the caller already has.
-         *
-         *     Separate from generation because BE-010's review endpoint validates code
-         *     an engineer wrote, where no generation happens at all.
-         */
-        PlcValidationRequest: {
-            /** Source */
-            source: string;
-            /** @default iec-61131-3 */
-            dialect: components["schemas"]["PlcDialect"];
-        };
-        /**
-         * PlcValidationResult
-         * @description The outcome of validating one piece of code.
-         *
-         *     Attributes:
-         *         status: Valid, invalid, or unverifiable.
-         *         findings: What was found. May be non-empty on a ``VALID`` result when
-         *             every finding is a warning.
-         *         dialect: What it was checked as.
-         *         checked_by: What did the checking, named so a reader can judge how
-         *             much the result is worth.
-         */
-        PlcValidationResult: {
-            status: components["schemas"]["ValidationStatus"];
-            /** Findings */
-            findings?: components["schemas"]["ValidationFinding"][];
-            dialect: components["schemas"]["PlcDialect"];
-            /** Checked By */
-            checked_by: string;
-        };
-        /**
-         * PriceListEntry
-         * @description One price from a company's price list.
-         *
-         *     Attributes:
-         *         key: What it prices: a manufacturer's order number or type number,
-         *             or a rating key ("circuit_breaker:1P:C16",
-         *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
-         *             metre) for a device whose article is not chosen yet.
-         *         description: The supplier's description, kept with the price. It
-         *             never names a quotation line: a line is the designed item's.
-         *         unit_price: Price of one, or of one metre for a cable.
-         */
-        "PriceListEntry-Input": {
-            /** Key */
-            key: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Unit Price */
-            unit_price: number | string;
-        };
-        /**
-         * PriceListEntry
-         * @description One price from a company's price list.
-         *
-         *     Attributes:
-         *         key: What it prices: a manufacturer's order number or type number,
-         *             or a rating key ("circuit_breaker:1P:C16",
-         *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
-         *             metre) for a device whose article is not chosen yet.
-         *         description: The supplier's description, kept with the price. It
-         *             never names a quotation line: a line is the designed item's.
-         *         unit_price: Price of one, or of one metre for a cable.
-         */
-        "PriceListEntry-Output": {
-            /** Key */
-            key: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /** Unit Price */
-            unit_price: string;
-        };
-        /**
-         * PricingSettings
-         * @description How a company prices a board.
-         *
-         *     Attributes:
-         *         currency: Printed beside every amount: an ISO 4217 code.
-         *         price_list: The company's prices.
-         *         cable_length_m: The length priced for an outgoing cable whose own
-         *             length is not given; ``None`` leaves such cables unpriced.
-         *         labour_per_circuit: Wiring and testing, per outgoing circuit.
-         *         labour_per_board: Assembly and testing, per board.
-         *         enclosure_price: The enclosure, busbars and accessories, per board.
-         *         markup_percent: Added to materials and labour.
-         *         vat_percent: Added last.
-         */
-        PricingSettings: {
-            /**
-             * Currency
-             * @default JOD
-             */
-            currency: string;
-            /** Price List */
-            price_list?: components["schemas"]["PriceListEntry-Input"][];
-            /** Cable Length M */
-            cable_length_m?: number | string | null;
-            /**
-             * Labour Per Circuit
-             * @default 0
-             */
-            labour_per_circuit: number | string;
-            /**
-             * Labour Per Board
-             * @default 0
-             */
-            labour_per_board: number | string;
-            /**
-             * Enclosure Price
-             * @default 0
-             */
-            enclosure_price: number | string;
-            /**
-             * Markup Percent
-             * @default 0
-             */
-            markup_percent: number | string;
-            /**
-             * Vat Percent
-             * @default 0
-             */
-            vat_percent: number | string;
-        };
-        /**
-         * ProjectDesignRequest
-         * @description A project of one or more boards to design, under a company's profile.
-         *
-         *     Attributes:
-         *         info: Title-block data for the project.
-         *         boards: Each board's schedule. A board naming another in
-         *             ``fed_from`` gets a feeder in that board, sized from its own
-         *             design, so sub-boards need no hand-entered load.
-         *         profile: The company's profile settings; ``None`` for the default.
-         */
-        "ProjectDesignRequest-Input": {
-            info: components["schemas"]["ProjectInfo"];
-            /** Boards */
-            boards: components["schemas"]["DistributionBoardRequest-Input"][];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-            /** Feeder Links */
-            feeder_links?: components["schemas"]["FeederLinkInput-Input"][] | null;
-        };
-        /**
-         * ProjectDesignRequest
-         * @description A project of one or more boards to design, under a company's profile.
-         *
-         *     Attributes:
-         *         info: Title-block data for the project.
-         *         boards: Each board's schedule. A board naming another in
-         *             ``fed_from`` gets a feeder in that board, sized from its own
-         *             design, so sub-boards need no hand-entered load.
-         *         profile: The company's profile settings; ``None`` for the default.
-         */
-        "ProjectDesignRequest-Output": {
-            info: components["schemas"]["ProjectInfo"];
-            /** Boards */
-            boards: components["schemas"]["DistributionBoardRequest-Output"][];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-            /** Feeder Links */
-            feeder_links?: components["schemas"]["FeederLinkInput-Output"][] | null;
-        };
-        /**
-         * ProjectInfo
-         * @description What the title block prints.
-         *
-         *     Attributes:
-         *         name: Project name.
-         *         number: The company's job number.
-         *         customer: Owner or customer.
-         *         consultant: Consultant, where there is one.
-         *         contractor: Contractor, where there is one.
-         *         revisions: Issues of the drawing set, oldest first.
-         */
-        ProjectInfo: {
-            /** Name */
-            name: string;
-            /**
-             * Number
-             * @default
-             */
-            number: string;
-            /**
-             * Customer
-             * @default
-             */
-            customer: string;
-            /**
-             * Consultant
-             * @default
-             */
-            consultant: string;
-            /**
-             * Contractor
-             * @default
-             */
-            contractor: string;
-            /** Revisions */
-            revisions?: components["schemas"]["Revision"][];
-        };
-        /**
-         * ProjectPage
-         * @description One page of saved projects, most recently saved first.
-         *
-         *     Attributes:
-         *         projects: The page.
-         *         next_cursor: Pass back for the next page; ``None`` on the last.
-         *         permissions: What the caller may do to a project
-         *             (``app.domain.permissions``), for the client to hide what it
-         *             may not; the server checks again on every request.
-         */
-        ProjectPage: {
-            /** Projects */
-            projects: components["schemas"]["ProjectSummary"][];
-            /** Next Cursor */
-            next_cursor?: string | null;
-            /** Permissions */
-            permissions?: components["schemas"]["Permission"][];
-        };
-        /**
-         * ProjectSummary
-         * @description One saved project as the project list shows it.
-         *
-         *     Attributes:
-         *         id: Its identifier.
-         *         name: Its name.
-         *         revisions: How many revisions it has.
-         *         updated_at: When its latest revision was saved, ISO 8601.
-         */
-        ProjectSummary: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Revisions */
-            revisions: number;
-            /** Updated At */
-            updated_at: string;
-        };
-        /**
-         * QuestionAction
-         * @description An answer to, or acknowledgement of, one question of a revision's record.
-         *
-         *     Who and when are the server's: a body naming either is refused (422).
-         *
-         *     Attributes:
-         *         action: ``answer`` supplies the value, saved as typed input in a new
-         *             revision; ``acknowledge`` accepts the stated assumption.
-         *         value: The value, for ``answer`` only.
-         */
-        QuestionAction: {
-            /**
-             * Action
-             * @enum {string}
-             */
-            action: "answer" | "acknowledge";
-            /** Value */
-            value?: number | string | null;
-        };
-        /**
-         * QueueItem
-         * @description One item in a verifier's queue, with what the verifier checks it against.
-         *
-         *     A crawled chunk (``origin`` ``crawl``): ``content`` is its text and
-         *     ``source_url``/``page``/``section`` say where it came from, all ``None``
-         *     when the staged chunk cannot be read; the console then says so rather than
-         *     inviting a label on unseen text.
-         *
-         *     A reported answer (``origin`` ``user-flag``): ``flag`` carries the
-         *     question, the answer, the reporter's reason and the passages behind it.
-         */
-        QueueItem: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Chunk Id */
-            chunk_id: string | null;
-            /** Status */
-            status: string;
-            /** Assigned At */
-            assigned_at: string | null;
-            /** Content */
-            content?: string | null;
-            /** Source Url */
-            source_url?: string | null;
-            /** Page */
-            page?: number | null;
-            /** Section */
-            section?: string | null;
-            /**
-             * Origin
-             * @default crawl
-             */
-            origin: string;
-            flag?: components["schemas"]["FlaggedAnswerView"] | null;
-            /** Label */
-            label?: string | null;
-            /** Note */
-            note?: string | null;
-            /**
-             * Assigned To You
-             * @default false
-             */
-            assigned_to_you: boolean;
-        };
-        /**
-         * QueuePage
-         * @description A verifier's outstanding batch.
-         */
-        QueuePage: {
-            /** Items */
-            items: components["schemas"]["QueueItem"][];
-        };
-        /**
-         * QuotaStatus
-         * @description Free-tier usage, as counted on the server.
-         */
-        QuotaStatus: {
-            /** Questions Used */
-            questions_used: number;
-            /** Question Limit */
-            question_limit: number;
-            /** Questions Remaining */
-            questions_remaining: number;
-        };
-        /**
-         * QuotationEstimate
-         * @description A provisional estimate: a project the client sent, priced and checked.
-         *
-         *     Nothing in it is persisted, approved or issued. The project is the
-         *     client's, so it is re-designated and integrity-checked on the server and
-         *     its findings are returned beside the prices: a tampered rating is a
-         *     blocking finding here, as on a draft export. It carries no revision,
-         *     checker or approver.
-         *
-         *     Attributes:
-         *         status: Always ``"provisional_estimate"``.
-         *         label: In English; the page renders ``status`` in the reader's language.
-         *         findings: The integrity checks and notes on the project as sent.
-         *         blocking: Whether any finding is blocking.
-         */
-        QuotationEstimate: {
-            /** Currency */
-            currency: string;
-            /** Lines */
-            lines: components["schemas"]["QuotationLine"][];
-            /** Materials */
-            materials: string;
-            /** Labour */
-            labour: string;
-            /** Markup */
-            markup: string;
-            /** Vat */
-            vat: string;
-            /** Total */
-            total: string;
-            /** Unpriced */
-            unpriced: string[];
-            /** Complete */
-            complete: boolean;
-            /**
-             * Status
-             * @default provisional_estimate
-             * @constant
-             */
-            status: "provisional_estimate";
-            /**
-             * Label
-             * @default Provisional estimate: not a quotation, not for execution. Priced from an unsaved design sent by the browser; a quotation is exported from a saved revision.
-             */
-            label: string;
-            /** Findings */
-            findings: components["schemas"]["DesignFinding"][];
-            /** Blocking */
-            blocking: boolean;
-        };
-        /**
-         * QuotationLine
-         * @description One line of a quotation.
-         *
-         *     Attributes:
-         *         description: What it is.
-         *         designations: The devices or cables it covers.
-         *         quantity: How many, or metres for a cable.
-         *         unit: "pcs" or "m".
-         *         key: The price-list key it was matched by, or would be.
-         *         unit_price: ``None`` when the price list has no price for it.
-         *         total: ``None`` when unpriced.
-         *         missing: Why it is unpriced: "price" (not in the price list) or
-         *             "length" (a cable with no length); ``None`` when priced.
-         */
-        QuotationLine: {
-            /** Description */
-            description: string;
-            /** Designations */
-            designations: string[];
-            /** Quantity */
-            quantity: string;
-            /** Unit */
-            unit: string;
-            /** Key */
-            key: string;
-            /** Unit Price */
-            unit_price: string | null;
-            /** Total */
-            total: string | null;
-            /** Missing */
-            missing?: ("price" | "length") | null;
-        };
-        /**
-         * QuotationRequest
-         * @description A project to price.
-         *
-         *     Attributes:
-         *         project: The designed project.
-         *         profile: The company's profile settings; ``None`` for the default.
-         *         pricing: The company's prices and rates.
-         */
-        QuotationRequest: {
-            project: components["schemas"]["DesignProject-Input"];
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-            pricing: components["schemas"]["PricingSettings"];
-        };
-        /**
-         * RecognisedField
-         * @description One extracted value and how sure the model is of it.
-         *
-         *     Attributes:
-         *         value: What was read, verbatim off the screen. ``None`` when the field
-         *             is not visible — which is ordinary, not an error: a fault display
-         *             usually shows a code and rarely shows the manufacturer.
-         *         confidence: How sure the model is, in [0, 1]. Meaningless without
-         *             ``value``, and validated as absent in that case.
-         */
-        RecognisedField: {
-            /** Value */
-            value?: string | null;
-            /**
-             * Confidence
-             * @default 0
-             */
-            confidence: number;
-        };
-        /**
-         * RequirementBoard
-         * @description A board of the record.
-         */
-        RequirementBoard: {
-            /** Ref */
-            ref: string;
-            /** Name */
-            name: string;
-            /** Fed From Ref */
-            fed_from_ref?: string | null;
-        };
-        /**
-         * RequirementControl
-         * @description A controlled load's control needs, recorded only: ``not_designed``.
-         */
-        RequirementControl: {
-            /** Ref */
-            ref: string;
-            /** Board Ref */
-            board_ref: string;
-            /** Load Ref */
-            load_ref: string;
-            /** Needs */
-            needs: string[];
-            /**
-             * Status
-             * @default not_designed
-             * @constant
-             */
-            status: "not_designed";
-        };
-        /**
-         * RequirementFeeder
-         * @description A feeder the designer generated from a sub-board's "Fed from"; never typed.
-         */
-        RequirementFeeder: {
-            /** Ref */
-            ref: string;
-            /** Board Ref */
-            board_ref: string;
-            /** Supply Board Ref */
-            supply_board_ref: string;
-            /**
-             * Source
-             * @default generated
-             * @constant
-             */
-            source: "generated";
-        };
-        /**
-         * RequirementLoad
-         * @description A load of the record, as the user entered it (``typed`` or ``imported``).
-         */
-        RequirementLoad: {
-            /** Ref */
-            ref: string;
-            /** Board Ref */
-            board_ref: string;
-            /** Description */
-            description: string;
-            /** Source */
-            source: string;
-        };
-        /**
-         * RequirementOpenItem
-         * @description What this slice does not design or settle.
-         *
-         *     ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
-         *     an AI proposal item left undecided (``ai_item_unreviewed``), or a
-         *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
-         *     the user did not reject; the subject's ``item_id`` names the item. A
-         *     description mentioning life-safety equipment anywhere adds
-         *     ``ai_life_safety_mentioned``, and a word that may be about life safety
-         *     ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
-         *     one per mention (subject ``mention_id`` and ``term``). No decision closes
-         *     either; a clarification in force does (``SafetyClarificationRequest``).
-         */
-        RequirementOpenItem: {
-            /**
-             * Code
-             * @enum {string}
-             */
-            code: "control_not_designed" | "inter_board_wiring_not_modelled" | "ai_item_unreviewed" | "ai_question" | "ai_unsupported" | "ai_life_safety_mentioned" | "ai_possibly_life_safety" | "ai_conflicting_values";
-            subject: components["schemas"]["RequirementSubject"];
-        };
-        /**
-         * RequirementQuestion
-         * @description A question the server derived from an empty input or an assumption finding.
-         *
-         *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in account and
-         *     its clock when answered or acknowledged; ``None`` while open.
-         */
-        RequirementQuestion: {
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "missing_value" | "assumption";
-            subject: components["schemas"]["RequirementSubject"];
-            /** Field */
-            field?: string | null;
-            /** Finding Code */
-            finding_code?: string | null;
-            /**
-             * Answerable
-             * @default false
-             */
-            answerable: boolean;
-            /**
-             * State
-             * @default open
-             * @enum {string}
-             */
-            state: "open" | "answered" | "acknowledged";
-            /** Answer */
-            answer?: string | null;
-            /** By User Id */
-            by_user_id?: string | null;
-            /** By Name */
-            by_name?: string | null;
-            /** At */
-            at?: string | null;
-        };
-        /**
-         * RequirementSubject
-         * @description What a question or open item is about: a board, and a load or control on it.
-         */
-        RequirementSubject: {
-            /** Board Ref */
-            board_ref?: string | null;
-            /** Load Ref */
-            load_ref?: string | null;
-            /** Control Ref */
-            control_ref?: string | null;
-            /** Supply Board Ref */
-            supply_board_ref?: string | null;
-            /** Item Id */
-            item_id?: string | null;
-            /** Mention Id */
-            mention_id?: string | null;
-            /** Term */
-            term?: string | null;
-            /** Other Item Id */
-            other_item_id?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Kind */
-            kind?: string | null;
-            /** Ai Value */
-            ai_value?: string | null;
-            /** Other Value */
-            other_value?: string | null;
-            /** Entered Value */
-            entered_value?: string | null;
-        };
-        /**
-         * RequirementTrace
-         * @description A load or generated feeder, and the design element it became (``None`` if refused).
-         */
-        RequirementTrace: {
-            /** Requirement Ref */
-            requirement_ref: string;
-            /** Design Ref */
-            design_ref?: string | null;
-        };
-        /**
-         * RequirementsAi
-         * @description A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
-         *
-         *     Attributes:
-         *         applied_in_revision: The revision whose save applied it; a later
-         *             revision carries the block unchanged (its indices are that
-         *             revision's), never re-applying it.
-         *         applied_at: When that save applied it (server clock).
-         */
-        RequirementsAi: {
-            proposal: components["schemas"]["AiAppliedProposal"];
-            /** Decisions */
-            decisions?: components["schemas"]["AiDecision"][];
-            /** Placements */
-            placements?: components["schemas"]["AiPlacementRecord"][];
-            /** Applied In Revision */
-            applied_in_revision?: number | null;
-            /** Applied At */
-            applied_at?: string | null;
-            /** Clarifications */
-            clarifications?: components["schemas"]["SafetyClarification"][];
-            /** Resolutions */
-            resolutions?: components["schemas"]["SafetyResolution"][];
-        };
-        /**
-         * RequirementsInput
-         * @description What the guided intake adds to a project's request (M6a, ``pp-req/1``).
-         *
-         *     The boards and loads are the request's own; this adds how they were
-         *     entered and the control needs. Questions, open items, refs and the trace
-         *     are the server's, never sent.
-         *
-         *     Attributes:
-         *         intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
-         *         control: The control needs of controlled loads.
-         *         ai: The AI proposal applied and where its confirmed items were
-         *             placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
-         */
-        RequirementsInput: {
-            /**
-             * Intake
-             * @default guided
-             * @enum {string}
-             */
-            intake: "guided" | "table" | "import" | "ai";
-            /** Control */
-            control?: components["schemas"]["ControlRequirementInput"][];
-            ai?: components["schemas"]["AiRequirementsInput"] | null;
-        };
-        /**
-         * RequirementsPreview
-         * @description The requirements record a guided input would be stored with, and its design; nothing saved.
-         */
-        RequirementsPreview: {
-            requirements: components["schemas"]["RequirementsRecord"];
-            design: components["schemas"]["BoardDesignResponse"];
-            /** Findings */
-            findings?: components["schemas"]["DesignFinding"][];
-        };
-        /**
-         * RequirementsPreviewRequest
-         * @description A project and its guided input, to preview the requirements record; nothing is saved.
-         *
-         *     Attributes:
-         *         request: The project as entered.
-         *         requirements_input: The guided input.
-         */
-        RequirementsPreviewRequest: {
-            request: components["schemas"]["ProjectDesignRequest-Input"];
-            requirements_input?: components["schemas"]["RequirementsInput"];
-        };
-        /**
-         * RequirementsRecord
-         * @description A revision's requirements record, ``pp-req/1`` (M6a).
-         *
-         *     Attributes:
-         *         derived: ``True`` for an older revision with no stored record: built
-         *             now from its request and findings; it never counts as
-         *             acknowledged and cannot be acknowledged (``requirements_derived``).
-         *         acknowledgements: Every acknowledgement recorded, append-only.
-         *         resaved_from: On a revision saved by ``…/resave``, the revision whose
-         *             stored request it re-designed; absent otherwise.
-         *         ai: The AI proposal the request was entered from (M6b): the whole
-         *             proposal, its decisions and where its items were placed. Carried
-         *             unchanged to later revisions as the request's provenance.
-         */
-        RequirementsRecord: {
-            /**
-             * Schema
-             * @default pp-req/1
-             */
-            schema: string;
-            /** Intake */
-            intake: string;
-            /**
-             * Derived
-             * @default false
-             */
-            derived: boolean;
-            /** Boards */
-            boards?: components["schemas"]["RequirementBoard"][];
-            /** Loads */
-            loads?: components["schemas"]["RequirementLoad"][];
-            /** Feeders */
-            feeders?: components["schemas"]["RequirementFeeder"][];
-            /** Control */
-            control?: components["schemas"]["RequirementControl"][];
-            /** Questions */
-            questions?: components["schemas"]["RequirementQuestion"][];
-            /** Open Items */
-            open_items?: components["schemas"]["RequirementOpenItem"][];
-            /** Trace */
-            trace?: components["schemas"]["RequirementTrace"][];
-            /** Acknowledgements */
-            acknowledgements?: {
-                [key: string]: string;
-            }[];
-            /** Resaved From */
-            resaved_from?: number | null;
-            ai?: components["schemas"]["RequirementsAi"] | null;
-            /** Safety Resolutions */
-            safety_resolutions?: components["schemas"]["SafetyResolution"][];
-        };
-        /**
-         * ResolveEscalationRequest
-         * @description A lead's resolution of one escalated item.
-         *
-         *     ``upheld``: the escalation stands. ``taken-over``: the lead judges the
-         *     item again themselves, from their own queue.
-         */
-        ResolveEscalationRequest: {
-            /**
-             * Outcome
-             * @enum {string}
-             */
-            outcome: "upheld" | "taken-over";
-            /** Note */
-            note: string;
-        };
-        /**
-         * RetrievedPassage
-         * @description One passage returned by retrieval, with its citation and score.
-         */
-        RetrievedPassage: {
-            /** Id */
-            id: string;
-            /** Text */
-            text: string;
-            /** Score */
-            score: number;
-            citation: components["schemas"]["Citation"];
-            /** Similarity */
-            similarity?: number | null;
-            /**
-             * Anchored
-             * @default false
-             */
-            anchored: boolean;
-        };
-        /**
-         * ReviewerOut
-         * @description A current designation.
-         *
-         *     Attributes:
-         *         member_id: The account.
-         *         full_name: Its name, if given.
-         *         qualification_statement: As the owner supplied it.
-         *         granted_by: The account that granted it.
-         *         granted_at: When.
-         */
-        ReviewerOut: {
-            /** Member Id */
-            member_id: string;
-            /** Full Name */
-            full_name?: string | null;
-            /** Qualification Statement */
-            qualification_statement: string;
-            /** Granted By */
-            granted_by: string;
-            /**
-             * Granted At
-             * Format: date-time
-             */
-            granted_at: string;
-        };
-        /**
-         * ReviseProjectRequest
-         * @description A new revision of a saved project.
-         *
-         *     Attributes:
-         *         request: The project as entered now.
-         *         note: What changed, for the revision list.
-         *         requirements_input: As for ``SaveProjectRequest``.
-         *         configuration: Templates, connection patterns, strips, components and
-         *             bindings to compose with the server's design, as data
-         *             (``app.design.model.compose``); ``None`` for none. Only a
-         *             ``pp-design/2`` deployment stores one (``configuration_requires_v2``
-         *             otherwise). Bounded and checked by
-         *             ``app.domain.design_configuration``: a client never claims a
-         *             review, and defines ``tenant`` refs only.
-         */
-        ReviseProjectRequest: {
-            request: components["schemas"]["ProjectDesignRequest-Input"];
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            requirements_input?: components["schemas"]["RequirementsInput"] | null;
-            /** Configuration */
-            configuration?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * Revision
-         * @description One issue of the drawing set.
-         *
-         *     Attributes:
-         *         index: "01", "A", as the company numbers them.
-         *         date: ISO date.
-         *         description: What changed.
-         *         drawn_by: Initials or name.
-         *         checked_by: Initials or name.
-         *         approved_by: Initials or name. On a saved revision, the approving
-         *             account's display name (or "a team member"), set by the server.
-         *         approval_note: The note added to that approval, set by the server;
-         *             never who approved.
-         */
-        Revision: {
-            /** Index */
-            index: string;
-            /** Date */
-            date: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Drawn By
-             * @default
-             */
-            drawn_by: string;
-            /**
-             * Checked By
-             * @default
-             */
-            checked_by: string;
-            /**
-             * Approved By
-             * @default
-             */
-            approved_by: string;
-            /**
-             * Approval Note
-             * @default
-             */
-            approval_note: string;
-        };
-        /**
-         * RevisionExportRequest
-         * @description A saved revision to export, from the design the server stored for it.
-         *
-         *     Attributes:
-         *         format: The file to produce.
-         *         pricing: The company's prices, for a quotation export.
-         *         purpose: Review, or execution (always refused for now).
-         */
-        RevisionExportRequest: {
-            format: components["schemas"]["ExportFormat"];
-            pricing?: components["schemas"]["PricingSettings"] | null;
-            /** @default review */
-            purpose: components["schemas"]["ExportPurpose"];
-        };
-        /**
-         * RevisionSummary
-         * @description One revision as the revision list shows it.
-         *
-         *     Attributes:
-         *         number: 1 for the first save, then in order.
-         *         note: What it is.
-         *         author: The display name of the account that saved it, read from
-         *             the tenant's users when the response is built; ``""`` when that
-         *             account has no display name. Never its email.
-         *         created_at: When, ISO 8601.
-         *         approved_by: The approver as every export prints it: the approving
-         *             account's display name, or "a team member" when it has none or
-         *             is not recorded (an approval made before accounts were). Never
-         *             a name typed at approval. ``None`` while it is not approved.
-         *         approved_at: When, ISO 8601.
-         *         approver_account_recorded: Whether the server recorded the
-         *             signed-in account that approved it (from the approver's token,
-         *             never from the request). ``False`` while it is not approved, and
-         *             for an approval recorded before accounts were.
-         *         approver_name: That account's display name, read from the tenant's
-         *             users when the response is built; ``None`` when no account is
-         *             recorded or it has no display name, which a client shows as "a
-         *             team member". The account's email, kept in the database as the
-         *             audit identity, is never sent.
-         *         approval_note: The note added at approval, if any; never an identity.
-         *         validated: Whether the server designed it from its request when it
-         *             was saved, and holds that design intact; ``False`` for an older
-         *             one, and for one whose stored design fails integrity (hash,
-         *             read, review status, findings) or is in an unknown schema.
-         *         export_status: What it can be exported as now.
-         *         approval_current: Whether its approval still counts: of the design
-         *             it holds, under the policy that applies now (the resolved profile
-         *             hash, the rules and catalogue versions and the findings
-         *             classification it was granted under). ``None`` while it is not
-         *             approved. The tenant's company settings are not part of it.
-         *         approval_changed: What changed since the approval, when it no longer
-         *             counts: ``snapshot``, ``profile``, ``rules_version``,
-         *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
-         *             ``requirements`` (the requirements record is not the one approved,
-         *             or the approval predates binding it: NULL is not bound),
-         *             ``review_decisions`` (a review decision recorded since, M3).
-         *         author_unknown: It records no author at all (neither account nor email).
-         *         author_established: It records the saving account's id. Only then can
-         *             it be approved (``approval_author_not_established`` otherwise).
-         */
-        RevisionSummary: {
-            /** Number */
-            number: number;
-            /** Note */
-            note: string;
-            /** Author */
-            author: string;
-            /** Created At */
-            created_at: string;
-            /** Approved By */
-            approved_by?: string | null;
-            /** Approved At */
-            approved_at?: string | null;
-            /**
-             * Approver Account Recorded
-             * @default false
-             */
-            approver_account_recorded: boolean;
-            /** Approver Name */
-            approver_name?: string | null;
-            /** Approval Note */
-            approval_note?: string | null;
-            /**
-             * Validated
-             * @default false
-             */
-            validated: boolean;
-            /** @default not_validated */
-            export_status: components["schemas"]["ExportStatus"];
-            /** Approval Current */
-            approval_current?: boolean | null;
-            /** Approval Changed */
-            approval_changed?: string[];
-            /**
-             * Author Unknown
-             * @default false
-             */
-            author_unknown: boolean;
-            /**
-             * Author Established
-             * @default false
-             */
-            author_established: boolean;
-        };
-        /**
-         * SafetyClarification
-         * @description A person's statement that one mention is not about life-safety equipment.
-         *
-         *     Append-only on the record's ``ai`` block; who and when are the server's.
-         *     It validates nothing: exports print it as not engineer-validated.
-         */
-        SafetyClarification: {
-            /** Mention Id */
-            mention_id: string;
-            /**
-             * Statement
-             * @constant
-             */
-            statement: "not_life_safety";
-            /** Reason */
-            reason: string;
-            /** By User Id */
-            by_user_id: string;
-            /** By Name */
-            by_name: string;
-            /** At */
-            at: string;
-        };
-        /**
-         * SafetyClarificationEligibility
-         * @description Whether the caller may clarify a mention on this revision now, and if not, why.
-         *
-         *     ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
-         *     permission), ``proposal_author`` (the caller's account created the AI
-         *     proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
-         *     ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
-         *     The server checks again on every request.
-         */
-        SafetyClarificationEligibility: {
-            /** Eligible */
-            eligible: boolean;
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
-         * SafetyConcern
-         * @description One safety concern of a revision's record, and how it stands (M6d).
-         *
-         *     Attributes:
-         *         kind: ``mention`` or ``item``.
-         *         target_id: The mention id or item id a resolution names.
-         *         level: ``life_safety`` or ``possibly``.
-         *         code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
-         *             ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
-         *         label: The term or item text.
-         *         start: Offset in the description.
-         *         end: Offset after it.
-         *         resolved: Whether it holds no approval now (a resolution in force, or
-         *             a possibly-safety item whose words were all judged false positives).
-         *         resolution: The resolution in force on it, if any.
-         *         false_positive_refusal: Why it may not be a false positive (``item``,
-         *             ``life_safety_item_overlaps``), or ``None``.
-         */
-        SafetyConcern: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "mention" | "item" | "request";
-            /** Target Id */
-            target_id: string;
-            /** Proposal Id */
-            proposal_id?: string | null;
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "life_safety" | "possibly";
-            /** Code */
-            code: string;
-            /** Label */
-            label: string;
-            /** Start */
-            start: number;
-            /** End */
-            end: number;
-            /** Resolved */
-            resolved: boolean;
-            resolution?: components["schemas"]["SafetyResolution"] | null;
-            /** False Positive Refusal */
-            false_positive_refusal?: string | null;
-            /** Exclusion Refusal */
-            exclusion_refusal?: string | null;
-            /** Raised On */
-            raised_on?: number | null;
-            /**
-             * Carried
-             * @default false
-             */
-            carried: boolean;
-            /** Where */
-            where?: string | null;
-            /** Confirmation Candidates */
-            confirmation_candidates?: components["schemas"]["ConfirmedLoad"][] | null;
-        };
-        /**
-         * SafetyMention
-         * @description A life-safety or possibly-safety term detected in a description (keyword detection).
-         */
-        SafetyMention: {
-            /** Mention Id */
-            mention_id: string;
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "life_safety" | "possibly";
-            /** Term */
-            term: string;
-            /** Start */
-            start: number;
-            /** End */
-            end: number;
-        };
-        /**
-         * SafetyResolution
-         * @description A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
-         *
-         *     ``excluded_from_scope``: the requirement is real and not covered by this
-         *     revision. ``false_positive``: the detected text is not a life-safety
-         *     requirement. Who and when are the server's; it validates nothing.
-         */
-        SafetyResolution: {
-            /**
-             * Target Kind
-             * @enum {string}
-             */
-            target_kind: "mention" | "item" | "request";
-            /** Target Id */
-            target_id: string;
-            /** Proposal Id */
-            proposal_id?: string | null;
-            /** Raised On */
-            raised_on?: number | null;
-            /** Confirmed Loads */
-            confirmed_loads?: components["schemas"]["ConfirmedLoad"][] | null;
-            /**
-             * Resolution
-             * @enum {string}
-             */
-            resolution: "excluded_from_scope" | "false_positive";
-            /** Reason */
-            reason: string;
-            /** By User Id */
-            by_user_id: string;
-            /** By Name */
-            by_name: string;
-            /** At */
-            at: string;
-        };
-        /**
-         * SafetyResolutionEligibility
-         * @description Whether the caller may resolve safety concerns on this revision now, and if not, why.
-         *
-         *     ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
-         *     ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
-         *     ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
-         *     again on every request.
-         */
-        SafetyResolutionEligibility: {
-            /** Eligible */
-            eligible: boolean;
-            /** Reason */
-            reason?: string | null;
-        };
-        /**
-         * SafetyResolutionRequest
-         * @description Resolve one safety concern of the latest revision's record (four-eyes, M6d).
-         *
-         *     Exactly one of ``mention_id`` and ``item_id``. Who and when are the
-         *     server's (any such field is 422).
-         *
-         *     Attributes:
-         *         mention_id: A detected mention (``m`` and 16 hex digits).
-         *         item_id: A proposal item unsupported as (possibly) life-safety.
-         *         resolution: ``excluded_from_scope`` or ``false_positive``.
-         *         reason: Why, in the resolver's words: 10 to 500 characters once
-         *             whitespace is collapsed.
-         */
-        SafetyResolutionRequest: {
-            /** Mention Id */
-            mention_id?: string | null;
-            /** Item Id */
-            item_id?: string | null;
-            /** Request Id */
-            request_id?: string | null;
-            /** Proposal Id */
-            proposal_id?: string | null;
-            /** Not This Equipment */
-            not_this_equipment?: components["schemas"]["LoadRef"][] | null;
-            /**
-             * Resolution
-             * @enum {string}
-             */
-            resolution: "excluded_from_scope" | "false_positive";
-            /** Reason */
-            reason: string;
-        };
-        /**
-         * SaveCompanySettings
-         * @description Company settings to save.
-         *
-         *     Attributes:
-         *         settings: What the company does differently from the default profile.
-         */
-        SaveCompanySettings: {
-            /** Settings */
-            settings: {
-                [key: string]: unknown;
-            };
-        };
-        /**
-         * SaveProjectRequest
-         * @description A new project to save, as its first revision.
-         *
-         *     Attributes:
-         *         name: What the project is listed as.
-         *         request: The project as entered.
-         *         note: What this revision is, for the revision list.
-         *         requirements_input: The guided input (M6a); the server builds and
-         *             stores the revision's requirements record from it.
-         */
-        SaveProjectRequest: {
-            /** Name */
-            name: string;
-            request: components["schemas"]["ProjectDesignRequest-Input"];
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            requirements_input?: components["schemas"]["RequirementsInput"] | null;
-        };
-        /**
-         * SavedProject
-         * @description A saved project, its revisions, and one revision's request.
-         *
-         *     Attributes:
-         *         id: Its identifier.
-         *         name: Its name.
-         *         revisions: Every revision, oldest first.
-         *         revision: The number of the revision ``request`` is.
-         *         request: That revision as entered.
-         *         findings: What the checks found in the design the server built for
-         *             that revision when it was saved; empty for an older revision.
-         *         validated: Whether that revision holds a server-built design that
-         *             passes its integrity checks (``False`` when it fails them or is
-         *             in an unknown schema; ``export_status`` is then ``not_validated``).
-         *         snapshot_sha256: The SHA-256 of that design's canonical JSON.
-         *         rules_version: The calculation rules it was designed under.
-         *         approved_snapshot_sha256: The design its approval is bound to;
-         *             ``None`` while it is not approved (or approved before approvals
-         *             were bound to a design).
-         *         export_status: What it can be exported as now.
-         *         approval_current: Whether its approval still counts: of the design
-         *             it holds, under the policy that applies now (the resolved profile
-         *             hash, the rules and catalogue versions and the findings
-         *             classification it was granted under). ``None`` while it is not
-         *             approved. The tenant's company settings are not part of it.
-         *         approval_changed: What changed since the approval, when it no longer
-         *             counts: ``snapshot``, ``profile``, ``rules_version``,
-         *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
-         *             ``requirements`` (the requirements record is not the one approved,
-         *             or the approval predates binding it: NULL is not bound),
-         *             ``review_decisions`` (a review decision recorded since, M3).
-         *         execution_blockers: Why it cannot be exported for execution: the
-         *             parts of an execution package this service does not produce yet,
-         *             then ``approval`` and each blocking finding's code, as they apply.
-         *         approving_as: The signed-in caller's display name, as an approval
-         *             they made now would name them; ``None`` when they have none,
-         *             which a client shows as "a team member". Never their email.
-         *         permissions: What the caller may do to this project
-         *             (``app.domain.permissions``); the server checks again on every
-         *             request.
-         *         model_v2: For a ``pp-design/2`` revision whose snapshot reads, its
-         *             components, nets, wires (each value with its source), schedules
-         *             and structural findings, for review; ``None`` otherwise.
-         *         snapshot_schema: The schema its stored design names, identified from
-         *             the stored JSON without reading it (``pp-design/1`` or
-         *             ``pp-design/2``); ``None`` when there is none or it names no
-         *             schema this server knows. It says nothing about whether the design
-         *             reads or passes its integrity check (see ``export_status`` and the
-         *             findings).
-         */
-        SavedProject: {
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-            /** Revisions */
-            revisions: components["schemas"]["RevisionSummary"][];
-            /** Revision */
-            revision: number;
-            request: components["schemas"]["ProjectDesignRequest-Output"];
-            /** Findings */
-            findings?: components["schemas"]["DesignFinding"][];
-            /**
-             * Validated
-             * @default false
-             */
-            validated: boolean;
-            /** Snapshot Sha256 */
-            snapshot_sha256?: string | null;
-            /** Rules Version */
-            rules_version?: string | null;
-            /** Approved Snapshot Sha256 */
-            approved_snapshot_sha256?: string | null;
-            /** Approval Current */
-            approval_current?: boolean | null;
-            /** Approval Changed */
-            approval_changed?: string[];
-            /** @default not_validated */
-            export_status: components["schemas"]["ExportStatus"];
-            /** Execution Blockers */
-            execution_blockers?: string[];
-            /** Approving As */
-            approving_as?: string | null;
-            /** Permissions */
-            permissions?: components["schemas"]["Permission"][];
-            model_v2?: components["schemas"]["V2ModelSummary"] | null;
-            /** Links */
-            links?: components["schemas"]["InterBoardLinkView"][] | null;
-            /** Written Schema */
-            written_schema?: string | null;
-            /** Snapshot Schema */
-            snapshot_schema?: string | null;
-            requirements?: components["schemas"]["RequirementsRecord"] | null;
-            /**
-             * Author Unknown
-             * @default false
-             */
-            author_unknown: boolean;
-            /**
-             * Author Established
-             * @default false
-             */
-            author_established: boolean;
-            /**
-             * Is Author
-             * @default false
-             */
-            is_author: boolean;
-            safety_clarification?: components["schemas"]["SafetyClarificationEligibility"] | null;
-            /** Safety Concerns */
-            safety_concerns?: components["schemas"]["SafetyConcern"][];
-            safety_resolution?: components["schemas"]["SafetyResolutionEligibility"] | null;
-            approval_held?: components["schemas"]["ApprovalHeld"] | null;
-            /** Approval Scope Version */
-            approval_scope_version?: string | null;
-            /** Approved Scope Version */
-            approved_scope_version?: string | null;
-        };
-        /**
-         * ScheduleSuggestionRequest
-         * @description A plain description of what a board feeds.
-         *
-         *     Attributes:
-         *         description: "A hall with 20 sockets, 30 lights and two 2-ton ACs".
-         *         supply_phases: The board's supply, so three-phase loads are only
-         *             proposed where there is three-phase.
-         *         profile: The company's settings, whose points-per-circuit rule
-         *             splits the points into circuits.
-         */
-        ScheduleSuggestionRequest: {
-            /** Description */
-            description: string;
-            /**
-             * Supply Phases
-             * @default 3
-             */
-            supply_phases: number;
-            /** Profile */
-            profile?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        /**
-         * SearchFilters
-         * @description Optional restrictions applied to a search.
-         */
-        SearchFilters: {
-            /**
-             * Manufacturers
-             * @default []
-             */
-            manufacturers: string[];
-            /**
-             * Document Types
-             * @default []
-             */
-            document_types: string[];
-            /** Published After */
-            published_after?: string | null;
-        };
-        /**
-         * SearchRequest
-         * @description A search issued by a caller.
-         */
-        SearchRequest: {
-            /** Query */
-            query: string;
-            filters?: components["schemas"]["SearchFilters"] | null;
-            /** Top K */
-            top_k?: number | null;
-            /**
-             * Corpus
-             * @default production
-             * @enum {string}
-             */
-            corpus: "production" | "staging";
-        };
-        /**
-         * SearchResponse
-         * @description Ranked search results.
-         */
-        SearchResponse: {
-            /** Passages */
-            passages: components["schemas"]["RetrievedPassage"][];
-            /** Total */
-            total: number;
-        };
-        /**
-         * Severity
-         * @description How urgent a finding is.
-         *
-         *     A closed set: the frontend renders each with its own colour token, so a
-         *     free-text severity would arrive as an unstyled string.
-         * @enum {string}
-         */
-        Severity: "critical" | "warning" | "info";
-        /**
-         * SignupRequest
-         * @description Create an account, optionally claiming an anonymous trial session.
-         */
-        SignupRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-            /** Full Name */
-            full_name?: string | null;
-            /** Claim Session Id */
-            claim_session_id?: string | null;
-            /** Claim Secret */
-            claim_secret?: string | null;
-            /** Invite Token */
-            invite_token?: string | null;
-        };
-        /**
-         * StaleDocument
-         * @description A live document whose source now serves something other than what was verified.
-         *
-         *     ``upstream_hash`` is ``None`` when the source withdrew it. The review
-         *     fields are set only on a dismissed flag.
-         */
-        StaleDocument: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Source Url */
-            source_url: string;
-            /** Source Id */
-            source_id: string;
-            /** Reason */
-            reason: string;
-            /** Status */
-            status: string;
-            /** Published Hashes */
-            published_hashes: string[];
-            /** Upstream Hash */
-            upstream_hash: string | null;
-            /**
-             * First Flagged At
-             * Format: date-time
-             */
-            first_flagged_at: string;
-            /**
-             * Last Checked At
-             * Format: date-time
-             */
-            last_checked_at: string;
-            /** Reviewed At */
-            reviewed_at?: string | null;
-            /** Review Note */
-            review_note?: string | null;
-        };
-        /**
-         * StaleDocumentPage
-         * @description Stale-document flags in one status.
-         */
-        StaleDocumentPage: {
-            /** Items */
-            items: components["schemas"]["StaleDocument"][];
-        };
-        /**
-         * StartType
-         * @description How a motor is started, which picks its coordination table.
-         * @enum {string}
-         */
-        StartType: "dol" | "star_delta" | "dol_heavy";
-        /**
-         * StructuredDiagnosis
-         * @description A complete diagnostic response, as constrained at generation time.
-         *
-         *     Attributes:
-         *         summary: One-paragraph answer to the engineer's question.
-         *         summary_citation_ids: Passages supporting the summary. Required for the
-         *             same reason as a step's.
-         *         steps: Ordered actions. Non-empty: a diagnosis with no action is not a
-         *             diagnosis, and the refuse path exists for when there is nothing to
-         *             say.
-         *         severity: Overall urgency, for the card header. Required, as a step's is.
-         *         equipment_model: The model this diagnosis applies to, echoed back so an
-         *             engineer can see the assistant understood which unit they meant.
-         */
-        StructuredDiagnosis: {
-            /** Summary */
-            summary: string;
-            /** Summary Citation Ids */
-            summary_citation_ids: string[];
-            /** Steps */
-            steps: components["schemas"]["DiagnosisStep"][];
-            severity: components["schemas"]["Severity"];
-            /** Equipment Model */
-            equipment_model?: string | null;
-        };
-        /**
-         * Supply
-         * @description The board's incoming supply.
-         *
-         *     Attributes:
-         *         voltage_v: Line-to-line voltage.
-         *         phases: 1 or 3.
-         *         frequency_hz: 50 or 60.
-         *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
-         *         fault_level_ka: Prospective short-circuit current at the board.
-         *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
-         *             board, as measured or as the supplier declares it. Given, each
-         *             circuit is checked for disconnection on an earth fault.
-         */
-        "Supply-Input": {
-            /**
-             * Voltage V
-             * @default 400
-             */
-            voltage_v: number | string;
-            /**
-             * Phases
-             * @default 3
-             */
-            phases: number;
-            /**
-             * Frequency Hz
-             * @default 50
-             */
-            frequency_hz: number | string;
-            /**
-             * Earthing
-             * @default TN-S
-             */
-            earthing: string;
-            /** Fault Level Ka */
-            fault_level_ka?: number | string | null;
-            /** Earth Loop Ohm */
-            earth_loop_ohm?: number | string | null;
-        };
-        /**
-         * Supply
-         * @description The board's incoming supply.
-         *
-         *     Attributes:
-         *         voltage_v: Line-to-line voltage.
-         *         phases: 1 or 3.
-         *         frequency_hz: 50 or 60.
-         *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
-         *         fault_level_ka: Prospective short-circuit current at the board.
-         *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
-         *             board, as measured or as the supplier declares it. Given, each
-         *             circuit is checked for disconnection on an earth fault.
-         */
-        "Supply-Output": {
-            /**
-             * Voltage V
-             * @default 400
-             */
-            voltage_v: string;
-            /**
-             * Phases
-             * @default 3
-             */
-            phases: number;
-            /**
-             * Frequency Hz
-             * @default 50
-             */
-            frequency_hz: string;
-            /**
-             * Earthing
-             * @default TN-S
-             */
-            earthing: string;
-            /** Fault Level Ka */
-            fault_level_ka?: string | null;
-            /** Earth Loop Ohm */
-            earth_loop_ohm?: string | null;
-        };
-        /**
-         * SupplyBand
-         * @description A supply voltage band a range is rated for.
-         */
-        SupplyBand: {
-            /** Low V */
-            low_v: string;
-            /** High V */
-            high_v: string;
-        };
-        /**
-         * Team
-         * @description The caller's team.
-         *
-         *     Attributes:
-         *         members: Its active accounts, the owner first.
-         *         owner: Whether the caller manages it: the owner, or an admin.
-         *         owns: Whether the caller is the recorded owner, the one account
-         *             that may transfer ownership.
-         *         seats: The seats the plan holds; ``None`` while billing is not
-         *             enforced.
-         *         seats_taken: Members plus invitations still open.
-         */
-        Team: {
-            /** Members */
-            members: components["schemas"]["Member"][];
-            /** Owner */
-            owner: boolean;
-            /** Owns */
-            owns: boolean;
-            /** Seats */
-            seats: number | null;
-            /** Seats Taken */
-            seats_taken: number;
-        };
-        /**
-         * TitleField
-         * @description A field a title block can print.
-         * @enum {string}
-         */
-        TitleField: "project_name" | "project_number" | "board_name" | "customer" | "consultant" | "contractor" | "page_title" | "page_number" | "revision" | "drawn_by" | "checked_by" | "approved_by" | "date" | "company";
-        /**
-         * TransferOwnershipRequest
-         * @description Hand the tenant's ownership to another active member.
-         */
-        TransferOwnershipRequest: {
-            /** Member Id */
-            member_id: string;
-        };
-        /**
-         * TrialResumeRequest
-         * @description Get a fresh access token for a trial this browser already started.
-         *
-         *     The pair ``POST /auth/trial`` returned. The secret is what proves the
-         *     caller is that browser: the session id alone is not a credential.
-         */
-        TrialResumeRequest: {
-            /** Session Id */
-            session_id: string;
-            /** Claim Secret */
-            claim_secret: string;
-        };
-        /**
-         * TrialStart
-         * @description A newly started anonymous trial.
-         *
-         *     ``session_id`` and ``claim_secret`` are the pair FE-008's client already
-         *     expects; the field names are snake_case because that client reads them by
-         *     those exact names.
-         *
-         *     ``access_token`` is carried alongside them because a trial has to be able
-         *     to *ask something* — every diagnostics route authenticates, and a trial
-         *     that cannot call one is a landing page that collects a question and does
-         *     nothing with it. The token is scoped to the provisional tenant the trial
-         *     created, so it can do no more than the trial itself may.
-         *
-         *     The secret is returned exactly once, here. Only its hash is stored, so it
-         *     cannot be re-read or recovered later — losing it means starting a new
-         *     trial, which is the safe direction.
-         *
-         *     ``conversation_id`` is the diagnostic session the trial opened. The client
-         *     asks its first question in it: without the id, the first question opened a
-         *     second conversation and left this one in the history, empty, as "New
-         *     conversation". Distinct from ``session_id``, which names the anonymous
-         *     session and is what a signup claims.
-         */
-        TrialStart: {
-            /** Session Id */
-            session_id: string;
-            /** Claim Secret */
-            claim_secret: string;
-            /** Conversation Id */
-            conversation_id: string;
-            /** Access Token */
-            access_token: string;
-            /**
-             * Token Type
-             * @default bearer
-             */
-            token_type: string;
-            /** Expires In */
-            expires_in: number;
-            /** Questions Remaining */
-            questions_remaining: number;
-        };
-        /**
-         * V2Component
-         * @description A component instance.
-         *
-         *     Attributes:
-         *         id: Its id.
-         *         board_id: Its board.
-         *         designation: Its product designation, as the data gives it, or ``None``.
-         *         template_ref: Its template.
-         *         legacy_device_id: The v1 device it mirrors (the server's design), or ``None``.
-         *         pattern_refs: The patterns whose bindings created or joined it.
-         *         source: ``data`` for a server-designed device, ``configuration`` otherwise.
-         */
-        V2Component: {
-            /** Id */
-            id: string;
-            /** Board Id */
-            board_id: string;
-            /** Designation */
-            designation: string | null;
-            /** Template Ref */
-            template_ref: string;
-            /** Legacy Device Id */
-            legacy_device_id: string | null;
-            /** Pattern Refs */
-            pattern_refs: string[];
-            /** Source */
-            source: string;
-        };
-        /**
-         * V2Connection
-         * @description A connection between two members of a net.
-         */
-        V2Connection: {
-            /** Id */
-            id: string;
-            /** Net Id */
-            net_id: string;
-            /** Start */
-            start: string;
-            /** End */
-            end: string;
-            /** Via */
-            via: string;
-            /** Cable Core */
-            cable_core: string | null;
-            /** Pattern Ref */
-            pattern_ref: string | null;
-        };
-        /**
-         * V2Definition
-         * @description An embedded template or connection pattern, as the review shows it.
-         *
-         *     Attributes:
-         *         ref: Its ref.
-         *         kind: ``template`` or ``pattern``.
-         *         review_status: ``unreviewed``, ``approved`` or ``rejected``, as the server's
-         *             recorded decisions for its exact digest give it (M3); never more.
-         *         provenance_source: The source its provenance documents, or ``None``.
-         *         restricted_scope: For a template, the uses it may not be executed for.
-         */
-        V2Definition: {
-            /** Ref */
-            ref: string;
-            /** Kind */
-            kind: string;
-            /** Review Status */
-            review_status: string;
-            /** Provenance Source */
-            provenance_source?: string | null;
-            /** Restricted Scope */
-            restricted_scope?: string[];
-        };
-        /**
-         * V2Finding
-         * @description A ``pp-design/2`` structural finding with its effects.
-         *
-         *     Attributes:
-         *         code: Its code (``findings_v2``).
-         *         severity: ``blocking`` or ``warning`` (``findings_v2.SEVERITIES``).
-         *         message: In English.
-         *         location: The ids it is about.
-         *         unresolved: Whether it records missing information.
-         *         blocks_approval: Whether design-review approval is refused while it stands.
-         *         blocks_execution: Whether it is an execution blocker in itself.
-         *         requires_engineering_confirmation: Whether an engineer must confirm it.
-         */
-        V2Finding: {
-            /** Code */
-            code: string;
-            /** Severity */
-            severity: string;
-            /** Message */
-            message: string;
-            /** Location */
-            location: {
-                [key: string]: string;
-            };
-            /** Unresolved */
-            unresolved: boolean;
-            /** Blocks Approval */
-            blocks_approval: boolean;
-            /** Blocks Execution */
-            blocks_execution: boolean;
-            /** Requires Engineering Confirmation */
-            requires_engineering_confirmation: boolean;
-        };
-        /**
-         * V2ModelSummary
-         * @description A ``pp-design/2`` model as a review shows it; review content only.
-         *
-         *     Attributes:
-         *         definitions: The embedded templates and patterns with their review status.
-         *         components: Every component.
-         *         strips: Every terminal strip, with its points.
-         *         nets: Every net.
-         *         connections: Every connection.
-         *         wires: The wire schedule's rows, each value with its source.
-         *         terminals: The terminal schedule's rows.
-         *         findings: Every structural finding, with its effects.
-         */
-        V2ModelSummary: {
-            /** Definitions */
-            definitions: components["schemas"]["V2Definition"][];
-            /** Components */
-            components: components["schemas"]["V2Component"][];
-            /** Strips */
-            strips: components["schemas"]["V2Strip"][];
-            /** Nets */
-            nets: components["schemas"]["V2Net"][];
-            /** Connections */
-            connections: components["schemas"]["V2Connection"][];
-            /** Wires */
-            wires: components["schemas"]["V2WireRow"][];
-            /** Terminals */
-            terminals: components["schemas"]["V2TerminalRow"][];
-            /** Findings */
-            findings: components["schemas"]["V2Finding"][];
-        };
-        /**
-         * V2Net
-         * @description A net: its members' labels and where it came from (``origin``).
-         */
-        V2Net: {
-            /** Id */
-            id: string;
-            /** Board Id */
-            board_id: string;
-            /** Signal */
-            signal: string;
-            /** Origin */
-            origin: string;
-            /** Members */
-            members: string[];
-            /** Pattern Refs */
-            pattern_refs: string[];
-        };
-        /**
-         * V2Strip
-         * @description A terminal strip and its points.
-         */
-        V2Strip: {
-            /** Id */
-            id: string;
-            /** Board Id */
-            board_id: string;
-            /** Designation */
-            designation: string | null;
-            /** Template Ref */
-            template_ref: string | null;
-            /** Points */
-            points: components["schemas"]["V2StripPoint"][];
-        };
-        /**
-         * V2StripPoint
-         * @description One strip point.
-         */
-        V2StripPoint: {
-            /** Id */
-            id: string;
-            /** Position */
-            position: number;
-            /** Level */
-            level: number;
-            /** Marking */
-            marking: string;
-            /** Kind */
-            kind: string;
-            /** Pattern Ref */
-            pattern_ref: string | null;
-        };
-        /**
-         * V2TerminalRow
-         * @description One row of the terminal schedule (``schedules.terminal_schedule``).
-         */
-        V2TerminalRow: {
-            /** Board Id */
-            board_id: string;
-            /** Owner Kind */
-            owner_kind: string;
-            /** Owner Id */
-            owner_id: string;
-            /** Designation */
-            designation: string | null;
-            /** Terminal Id */
-            terminal_id: string;
-            /** Marking */
-            marking: string;
-            /** Side */
-            side: string | null;
-            /** Position */
-            position: number | null;
-            /** Level */
-            level: number | null;
-            /** Kind */
-            kind: string;
-            required: components["schemas"]["V2Value"];
-            /** Net Id */
-            net_id: string | null;
-            /** Signal */
-            signal: string | null;
-            /** Connected To */
-            connected_to: string[];
-            /** Template Ref */
-            template_ref: string | null;
-            /** Pattern Refs */
-            pattern_refs: string[];
-            /** Net Origin */
-            net_origin: string | null;
-            /** Flags */
-            flags: string[];
-        };
-        /**
-         * V2Value
-         * @description A value as reviewed, with where it came from.
-         *
-         *     Attributes:
-         *         value: The value as text; ``None`` when the model holds none.
-         *         source: ``user``, ``data``, ``assumption``, or ``unresolved`` (no value).
-         *         assumption_id: The assumption record, exactly when ``source`` is ``assumption``.
-         *         assumption_statement: What that record states.
-         */
-        V2Value: {
-            /** Value */
-            value: string | null;
-            /** Source */
-            source: string;
-            /** Assumption Id */
-            assumption_id?: string | null;
-            /** Assumption Statement */
-            assumption_statement?: string | null;
-        };
-        /**
-         * V2WireRow
-         * @description One row of the wire schedule (``schedules.wire_schedule``).
-         */
-        V2WireRow: {
-            /** Board Id */
-            board_id: string;
-            /** Wire Id */
-            wire_id: string;
-            /** Connection Id */
-            connection_id: string;
-            /** Start */
-            start: string;
-            /** End */
-            end: string;
-            /** Net Id */
-            net_id: string;
-            /** Signal */
-            signal: string;
-            number: components["schemas"]["V2Value"];
-            cross_section_mm2: components["schemas"]["V2Value"];
-            colour: components["schemas"]["V2Value"];
-            /** Pattern Ref */
-            pattern_ref: string | null;
-            /** Flags */
-            flags: string[];
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
-        };
-        /**
-         * ValidationFinding
-         * @description One problem found in a piece of code.
-         *
-         *     Attributes:
-         *         code: Stable machine-readable identifier, so a UI can group findings
-         *             without matching on prose.
-         *         message: What is wrong, in the terms an engineer would use.
-         *         severity: Whether this blocks a ``ready`` status.
-         *         line: Where, when known. Absent for whole-program findings.
-         */
-        ValidationFinding: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            severity: components["schemas"]["app__models__schemas__plc__FindingSeverity"];
-            /** Line */
-            line?: number | null;
-        };
-        /**
-         * ValidationStatus
-         * @description The outcome of a validation pass.
-         *
-         *     ``INCOMPLETE`` is the load-bearing member and the reason this is not a
-         *     boolean. AI-009 is explicit: tooling that cannot fully parse a dialect
-         *     must say so rather than pass. An unverifiable result and a verified-correct
-         *     one are different things, and collapsing them is how unchecked code
-         *     acquires a tick.
-         * @enum {string}
-         */
-        ValidationStatus: "valid" | "invalid" | "incomplete";
-        /**
-         * VerificationLabel
-         * @description A verifier's judgement on one chunk.
-         *
-         *     Deliberately three values, not a numeric confidence. A scale invites
-         *     averaging, and there is no meaningful average of "the source says 63 A"
-         *     and "the source does not mention this" — the second is a citation failure
-         *     whatever the first says.
-         * @enum {string}
-         */
-        VerificationLabel: "correct" | "incorrect" | "uncertain";
-        /**
-         * VerifiedAnswer
-         * @description An answer whose every citation resolves to supplied evidence.
-         *
-         *     Attributes:
-         *         text: The prose answer. Non-blank for the same reason the structured
-         *             summary is: "   " renders as an empty card.
-         *         citations: Resolved citations backing the text.
-         */
-        VerifiedAnswer: {
-            /** Text */
-            text: string;
-            /** Citations */
-            citations: components["schemas"]["Citation"][];
-        };
-        /**
-         * VfdSelectionRequest
-         * @description Inputs for a drive selection.
-         */
-        VfdSelectionRequest: {
-            /** Motor Power Kw */
-            motor_power_kw: number | string;
-            /** Supply Voltage V */
-            supply_voltage_v: number | string;
-            /** Motor Efficiency */
-            motor_efficiency: number | string;
-            /** Motor Power Factor */
-            motor_power_factor: number | string;
-            /** @default normal */
-            duty_class: components["schemas"]["DutyClass"];
-            /**
-             * Altitude M
-             * @default 0
-             */
-            altitude_m: number | string;
-            /**
-             * Ambient Temp C
-             * @default 40
-             */
-            ambient_temp_c: number | string;
-            /** Drive Range */
-            drive_range?: string | null;
-        };
-        /**
-         * VfdSelectionResponse
-         * @description Drive selection as returned to the caller.
-         */
-        VfdSelectionResponse: {
-            result: components["schemas"]["VfdSelectionResult"];
-            /** Motor Current A */
-            motor_current_a: string;
-            /** Sources */
-            sources: components["schemas"]["Citation"][];
-        };
-        /**
-         * VfdSelectionResult
-         * @description Output of the pure selection function.
-         */
-        VfdSelectionResult: {
-            /** Frame Reference */
-            frame_reference: string;
-            /** Rated Output Current A */
-            rated_output_current_a: string;
-            /** Applied Factors */
-            applied_factors: components["schemas"]["AppliedFactor"][];
-            /**
-             * Drive Range
-             * @default abb-acs880-01
-             */
-            drive_range: string;
-            /**
-             * Manufacturer
-             * @default ABB
-             */
-            manufacturer: string;
-            /**
-             * Series
-             * @default ACS880-01
-             */
-            series: string;
-        };
-        /**
-         * WireNumbering
-         * @description How wires are numbered.
-         * @enum {string}
-         */
-        WireNumbering: "potential" | "sequential" | "source_target";
-        /**
-         * FindingSeverity
-         * @description How much a finding stands in the way of issuing a design.
-         * @enum {string}
-         */
-        app__models__schemas__design__FindingSeverity: "blocking" | "warning" | "info";
-        /**
-         * FindingSeverity
-         * @description How much a finding matters.
-         * @enum {string}
-         */
-        app__models__schemas__plc__FindingSeverity: "error" | "warning";
+  schemas: {
+    /**
+     * AccessToken
+     * @description The access token a sign-in, signup or refresh answers with.
+     *
+     *     The refresh token travels only in the HttpOnly session cookie (see
+     *     ``app.api.v1.routes.auth``). The access token is held in the page's memory
+     *     and nowhere else.
+     */
+    AccessToken: {
+      /** Access Token */
+      access_token: string;
+      /**
+       * Token Type
+       * @default bearer
+       */
+      token_type: string;
+      /** Expires In */
+      expires_in: number;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    /**
+     * AcknowledgedRequirements
+     * @description The revision's requirements record after an acknowledgement.
+     */
+    AcknowledgedRequirements: {
+      requirements: components['schemas']['RequirementsRecord'];
+    };
+    /**
+     * AiAppliedProposal
+     * @description The applied proposal as a record keeps it: its immutable part and provenance.
+     */
+    AiAppliedProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+    };
+    /**
+     * AiDecision
+     * @description One decision on an item, append-only; the latest per item holds.
+     *
+     *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in
+     *     account and its clock.
+     */
+    AiDecision: {
+      /** Item Id */
+      item_id: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * AiDecisionRequest
+     * @description A decision on one proposal item. Who and when are the server's (any such field is 422).
+     *
+     *     Attributes:
+     *         decision: ``accept`` the item as proposed, ``reject`` it, or ``edit``
+     *             it to ``value`` (checked against the item kind's fields).
+     *         value: The edited value, for ``edit`` only.
+     */
+    AiDecisionRequest: {
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'accept' | 'reject' | 'edit';
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiItem
+     * @description One item of an AI proposal, as the server kept it after its checks (M6b).
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``, by its place in the output).
+     *         kind: ``board``, ``load``, ``control_need``, ``question`` or ``unsupported``.
+     *         source: Where in the description it was read.
+     *         quote: The description's text at ``source``.
+     *         value: The fields it proposes, by kind (``m6b-ai-intake.md`` §1).
+     *         value_spans: For each numeric field, where its literal stands.
+     */
+    AiItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+    };
+    /**
+     * AiPlacement
+     * @description Where one confirmed AI proposal item was placed in the request (M6b).
+     *
+     *     Attributes:
+     *         item_id: The proposal item.
+     *         board_index: The board's index in ``request.boards`` (a ``board``
+     *             item's board; a ``load`` or ``control_need`` item's load's board).
+     *         load_index: The load's index in that board's ``loads``: given for a
+     *             ``load`` or ``control_need`` item, never for a ``board`` item.
+     */
+    AiPlacement: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+    };
+    /**
+     * AiPlacementRecord
+     * @description Where a confirmed item went, as the save recorded it.
+     *
+     *     Attributes:
+     *         changed_in_editor: The item's fields the row differs on from the
+     *             decided value: the user edited after confirming.
+     */
+    AiPlacementRecord: {
+      /** Item Id */
+      item_id: string;
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index?: number | null;
+      /** Board Ref */
+      board_ref?: string | null;
+      /** Load Ref */
+      load_ref?: string | null;
+      /** Changed In Editor */
+      changed_in_editor?: string[];
+      /** Entered */
+      entered?: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * AiProposal
+     * @description An AI proposal ``pp-ai-proposal/1`` (M6b): what the model proposed, checked.
+     *
+     *     Attributes:
+     *         proposal_sha256: The canonical hash of its immutable part (input,
+     *             provider, model, prompt version, items, server_rejected).
+     *         used_by_revision_id: The revision that applied it; it then takes no
+     *             more decisions (``ai_proposal_used``) and no second save.
+     *         life_safety_mentioned: The description names fire-pump or
+     *             life-safety equipment somewhere; a save records the open item
+     *             ``ai_life_safety_mentioned``. Shown beside the proposal, never
+     *             dismissed.
+     *         safety_mentions: Every life-safety (``life_safety``) and
+     *             possibly-safety (``possibly``) term detected, with its offsets.
+     *         ai_consent_at: When the caller acknowledged that the description is
+     *             sent to the model provider; ``ai_consent_by_user_id`` who.
+     *             Null on proposals made before the acknowledgement was asked.
+     *         calls_remaining: On the response that created it only: the caller's
+     *             AI intake calls left this month (``None`` with no per-account cap).
+     */
+    AiProposal: {
+      /** Id */
+      id: string;
+      /**
+       * Schema
+       * @default pp-ai-proposal/1
+       */
+      schema: string;
+      /** Created At */
+      created_at: string;
+      /** Created By User Id */
+      created_by_user_id?: string | null;
+      /** Input Text */
+      input_text: string;
+      /** Input Sha256 */
+      input_sha256: string;
+      /** Provider */
+      provider: string;
+      /** Model */
+      model: string;
+      /** Prompt Version */
+      prompt_version: string;
+      /** Items */
+      items?: components['schemas']['AiProposalItem'][];
+      /** Server Rejected */
+      server_rejected?: components['schemas']['AiRejected'][];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /**
+       * Used
+       * @default false
+       */
+      used: boolean;
+      /** Used By Revision Id */
+      used_by_revision_id?: string | null;
+      /** Proposal Sha256 */
+      proposal_sha256: string;
+      /**
+       * Life Safety Mentioned
+       * @default false
+       */
+      life_safety_mentioned: boolean;
+      /** Safety Mentions */
+      safety_mentions?: components['schemas']['SafetyMention'][];
+      /** Ai Consent At */
+      ai_consent_at?: string | null;
+      /** Ai Consent By User Id */
+      ai_consent_by_user_id?: string | null;
+      /** Calls Remaining */
+      calls_remaining?: number | null;
+    };
+    /**
+     * AiProposalItem
+     * @description An item with where the user's decisions leave it.
+     *
+     *     Attributes:
+     *         state: ``proposed`` until decided; the latest decision otherwise.
+     *         decided_value: The value an ``accept`` (the item's own) or ``edit``
+     *             (the user's) confirmed; ``None`` while proposed or rejected.
+     */
+    AiProposalItem: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'board' | 'load' | 'control_need' | 'question' | 'unsupported';
+      source: components['schemas']['AiSource'];
+      /** Quote */
+      quote: string;
+      /** Value */
+      value: {
+        [key: string]: unknown;
+      } | null;
+      /** Value Spans */
+      value_spans?: {
+        [key: string]: components['schemas']['AiSource'];
+      };
+      /**
+       * State
+       * @default proposed
+       * @enum {string}
+       */
+      state: 'proposed' | 'accepted' | 'edited' | 'rejected';
+      /** Decided Value */
+      decided_value?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * AiProposalRequest
+     * @description A description to propose requirement entries from; nothing is designed.
+     *
+     *     Attributes:
+     *         description: Typed text only, at most 8 000 characters
+     *             (``ai_input_too_long``), not empty (``ai_input_empty``).
+     *         request: The editor's current draft, read only for its board names
+     *             so the model can name existing boards; never stored, never
+     *             taken as confirmed.
+     *         ai_consent: The caller acknowledges that the description (and the
+     *             board names) is sent to the AI model provider; without it the
+     *             request is 422 ``ai_consent_required`` and nothing is sent.
+     */
+    AiProposalRequest: {
+      /** Description */
+      description: string;
+      /** Request */
+      request?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Ai Consent
+       * @default false
+       */
+      ai_consent: boolean;
+    };
+    /**
+     * AiRejected
+     * @description An output item the server's checks refused, kept and shown, never dropped.
+     *
+     *     Attributes:
+     *         id: The server's id for it (``i<n>``).
+     *         kind: Its kind, when it named a known one.
+     *         source: Its span, when it gave a readable one.
+     *         quote: The description's text at the span, when it lies in the input.
+     *         value: What it proposed, as sent (bounded).
+     *         reason: Why it was refused (``offsets_outside_input``,
+     *             ``value_not_in_text``, ``invalid_value``,
+     *             ``reference_unresolved``, ``duplicate_id``, ``span_too_long``).
+     *         detail: Which field or reference, in English.
+     */
+    AiRejected: {
+      /** Id */
+      id: string;
+      /** Kind */
+      kind?: string | null;
+      source?: components['schemas']['AiSource'] | null;
+      /** Quote */
+      quote?: string | null;
+      /** Value */
+      value?: {
+        [key: string]: unknown;
+      } | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Detail
+       * @default
+       */
+      detail: string;
+    };
+    /**
+     * AiRequirementsInput
+     * @description The AI proposal a save applies (M6b): which proposal, and where its items went.
+     *
+     *     The server checks, under the project lock, that the proposal is the
+     *     caller's tenant's and unused, that every placed item's latest decision is
+     *     ``accept`` or ``edit`` and that its row exists. Who decided and when are
+     *     read from the proposal, never from here.
+     *
+     *     Attributes:
+     *         proposal_id: The proposal.
+     *         placements: Each confirmed item inserted into the editor, by place.
+     */
+    AiRequirementsInput: {
+      /** Proposal Id */
+      proposal_id: string;
+      /** Placements */
+      placements?: components['schemas']['AiPlacement'][];
+    };
+    /**
+     * AiSource
+     * @description A span of the stored description: ``input_text[start:end]``.
+     */
+    AiSource: {
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /**
+     * AppliedFactor
+     * @description A derating or correction factor, with the clause it came from.
+     */
+    AppliedFactor: {
+      /** Name */
+      name: string;
+      /** Value */
+      value: string;
+      source: components['schemas']['Citation'];
+    };
+    /**
+     * ApprovalHeld
+     * @description Why the revision cannot be approved now: unresolved safety concerns (M6d).
+     *
+     *     Attributes:
+     *         code: ``approval_blocked_by_safety``.
+     *         count: How many concerns are unresolved.
+     *         codes: Their concern codes, sorted, distinct.
+     */
+    ApprovalHeld: {
+      /**
+       * Code
+       * @default approval_blocked_by_safety
+       */
+      code: string;
+      /** Count */
+      count: number;
+      /** Codes */
+      codes: string[];
+    };
+    /**
+     * ApproveRevisionRequest
+     * @description An engineer's approval of one revision.
+     *
+     *     The approver is the signed-in account, never anything the request says: a
+     *     field naming one (``approver``) is refused with 422, as any other field
+     *     this model does not define.
+     *
+     *     Attributes:
+     *         note: An optional note to the approval, printed labelled "Approval
+     *             note", never where the approver is named.
+     */
+    ApproveRevisionRequest: {
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+      /** Scope Confirmed */
+      scope_confirmed: boolean;
+    };
+    /**
+     * Board
+     * @description One panel or distribution board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         name: As the project names it ("DBG-HALL").
+     *         function: Its IEC 81346 function aspect; defaults to the name.
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         incomer_ids: The incoming devices, in order from the supply.
+     *         devices: Every device in the board.
+     *         cables: Every outgoing cable.
+     *         circuits: The outgoing circuits, in the order they are drawn.
+     *         notes: What the design could not settle, for the reviewer.
+     *         fed_from: The board that supplies this one, within the project.
+     */
+    'Board-Input': {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Input'];
+      /** Incomer Ids */
+      incomer_ids?: string[];
+      /** Devices */
+      devices?: components['schemas']['Device-Input'][];
+      /** Cables */
+      cables?: components['schemas']['Cable-Input'][];
+      /** Circuits */
+      circuits?: components['schemas']['Circuit-Input'][];
+      /** Notes */
+      notes?: components['schemas']['DesignNote'][];
+      /** Fed From */
+      fed_from?: string | null;
+    };
+    /**
+     * Board
+     * @description One panel or distribution board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         name: As the project names it ("DBG-HALL").
+     *         function: Its IEC 81346 function aspect; defaults to the name.
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         incomer_ids: The incoming devices, in order from the supply.
+     *         devices: Every device in the board.
+     *         cables: Every outgoing cable.
+     *         circuits: The outgoing circuits, in the order they are drawn.
+     *         notes: What the design could not settle, for the reviewer.
+     *         fed_from: The board that supplies this one, within the project.
+     */
+    'Board-Output': {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Output'];
+      /** Incomer Ids */
+      incomer_ids?: string[];
+      /** Devices */
+      devices?: components['schemas']['Device-Output'][];
+      /** Cables */
+      cables?: components['schemas']['Cable-Output'][];
+      /** Circuits */
+      circuits?: components['schemas']['Circuit-Output'][];
+      /** Notes */
+      notes?: components['schemas']['DesignNote'][];
+      /** Fed From */
+      fed_from?: string | null;
+    };
+    /**
+     * BoardDesignRequest
+     * @description A distribution board to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         board: The board's load schedule and conditions.
+     *         profile: The company's profile settings (only what differs from the
+     *             default); ``None`` designs under the default profile.
+     */
+    BoardDesignRequest: {
+      info: components['schemas']['ProjectInfo'];
+      board: components['schemas']['DistributionBoardRequest-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * BoardDesignResponse
+     * @description A designed board, issued under the profile it was designed with.
+     *
+     *     Attributes:
+     *         project: The project, designated.
+     *         profile: The profile applied, in full.
+     */
+    BoardDesignResponse: {
+      project: components['schemas']['DesignProject-Output'];
+      profile: components['schemas']['CompanyProfile'];
+    };
+    /** Body_import_load_schedule_api_v1_design_load_schedule_import_post */
+    Body_import_load_schedule_api_v1_design_load_schedule_import_post: {
+      /** File */
+      file: string;
+    };
+    /** Body_import_price_list_api_v1_design_price_list_import_post */
+    Body_import_price_list_api_v1_design_price_list_import_post: {
+      /** File */
+      file: string;
+    };
+    /** Body_read_markups_api_v1_design_markups_post */
+    Body_read_markups_api_v1_design_markups_post: {
+      /** File */
+      file: string;
+      /** Project */
+      project?: string | null;
+      /** Profile */
+      profile?: string | null;
+    };
+    /** Body_upload_image_api_v1_images_post */
+    Body_upload_image_api_v1_images_post: {
+      /** File */
+      file: string;
+    };
+    /**
+     * BomLine
+     * @description One line of a bill of materials.
+     */
+    BomLine: {
+      /** Part Reference */
+      part_reference: string;
+      /** Description */
+      description: string;
+      /** Quantity */
+      quantity: number;
+      source: components['schemas']['Citation'];
+      kind: components['schemas']['BomLineKind'];
+      /**
+       * Details
+       * @default {}
+       */
+      details: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * BomLineKind
+     * @description What a BOM line is, so a page can describe it in its own language.
+     * @enum {string}
+     */
+    BomLineKind:
+      | 'drive'
+      | 'breaker'
+      | 'contactor'
+      | 'overload'
+      | 'fuse'
+      | 'cable'
+      | 'terminal'
+      | 'enclosure'
+      | 'cooling';
+    /**
+     * BomNote
+     * @description What a BOM leaves out, as a key a page can translate.
+     * @enum {string}
+     */
+    BomNote:
+      | 'not_included'
+      | 'fuse_min_short_circuit'
+      | 'terminals_copper_only'
+      | 'incomplete_dissipation'
+      | 'fault_level_assumed'
+      | 'drive_fuses_not_listed'
+      | 'feeder_breaking_capacity';
+    /**
+     * Cable
+     * @description An outgoing cable.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         designation: Assigned from the company profile.
+     *         cores: Number of cores, protective conductor included.
+     *         cross_section_mm2: Of each line conductor.
+     *         material: "Cu" or "Al".
+     *         insulation: "PVC" or "XLPE".
+     *         length_m: Where known.
+     *         part_key: The cable type, where selected.
+     *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
+     *             (kA)²s, for its insulation and material; of one run, where it
+     *             runs in parallel.
+     *         parallel: How many identical cables run in parallel, each with every
+     *             core; 1 for a single cable.
+     */
+    'Cable-Input': {
+      /** Id */
+      id: string;
+      designation?: components['schemas']['Designation'] | null;
+      /** Cores */
+      cores: number;
+      /** Cross Section Mm2 */
+      cross_section_mm2: number | string;
+      /**
+       * Material
+       * @default Cu
+       */
+      material: string;
+      /**
+       * Insulation
+       * @default PVC
+       */
+      insulation: string;
+      /** Length M */
+      length_m?: number | string | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Withstand Ka2S */
+      withstand_ka2s?: number | string | null;
+      /**
+       * Parallel
+       * @default 1
+       */
+      parallel: number;
+    };
+    /**
+     * Cable
+     * @description An outgoing cable.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project.
+     *         designation: Assigned from the company profile.
+     *         cores: Number of cores, protective conductor included.
+     *         cross_section_mm2: Of each line conductor.
+     *         material: "Cu" or "Al".
+     *         insulation: "PVC" or "XLPE".
+     *         length_m: Where known.
+     *         part_key: The cable type, where selected.
+     *         withstand_ka2s: The let-through energy it withstands, ``k²S²``, in
+     *             (kA)²s, for its insulation and material; of one run, where it
+     *             runs in parallel.
+     *         parallel: How many identical cables run in parallel, each with every
+     *             core; 1 for a single cable.
+     */
+    'Cable-Output': {
+      /** Id */
+      id: string;
+      designation?: components['schemas']['Designation'] | null;
+      /** Cores */
+      cores: number;
+      /** Cross Section Mm2 */
+      cross_section_mm2: string;
+      /**
+       * Material
+       * @default Cu
+       */
+      material: string;
+      /**
+       * Insulation
+       * @default PVC
+       */
+      insulation: string;
+      /** Length M */
+      length_m?: string | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Withstand Ka2S */
+      withstand_ka2s?: string | null;
+      /**
+       * Parallel
+       * @default 1
+       */
+      parallel: number;
+    };
+    /**
+     * CableSizingRequest
+     * @description Inputs for a feeder cable sizing.
+     */
+    CableSizingRequest: {
+      /** Design Current A */
+      design_current_a: number | string;
+      /** Length M */
+      length_m: number | string;
+      /** Supply Voltage V */
+      supply_voltage_v: number | string;
+      installation_method: components['schemas']['InstallationMethod'];
+      /** Ambient Temp C */
+      ambient_temp_c: number | string;
+      /**
+       * Grouped Circuits
+       * @default 1
+       */
+      grouped_circuits: number;
+      /** @default copper */
+      conductor_material: components['schemas']['ConductorMaterial'];
+      /**
+       * Insulation Rating C
+       * @default 90
+       */
+      insulation_rating_c: number;
+      /**
+       * Power Factor
+       * @default 0.8
+       */
+      power_factor: number | string;
+      /**
+       * Three Phase
+       * @default true
+       */
+      three_phase: boolean;
+    };
+    /**
+     * CableSizingResponse
+     * @description Cable sizing as returned to the caller.
+     */
+    CableSizingResponse: {
+      result: components['schemas']['CableSizingResult'];
+      /** Voltage Drop V */
+      voltage_drop_v: string;
+      /** Voltage Drop Percent */
+      voltage_drop_percent: string;
+      /** Sources */
+      sources: components['schemas']['Citation'][];
+    };
+    /**
+     * CableSizingResult
+     * @description Output of the pure sizing function.
+     */
+    CableSizingResult: {
+      /** Cross Section Mm2 */
+      cross_section_mm2: string;
+      /** Derated Ampacity A */
+      derated_ampacity_a: string;
+      /** Applied Factors */
+      applied_factors: components['schemas']['AppliedFactor'][];
+    };
+    /**
+     * Circuit
+     * @description An outgoing circuit.
+     *
+     *     A load, the devices that switch and protect it, and the cable feeding it.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the board.
+     *         description: What it feeds, as the load schedule names it.
+     *         load: The kind of load.
+     *         power_kw: Installed power.
+     *         design_current_a: Ib.
+     *         phase: The line conductor(s) it is connected to.
+     *         upstream_id: The device this circuit is fed from (a residual current
+     *             device, say); ``None`` when it hangs off the busbar directly.
+     *         device_ids: The circuit's own devices, in order from the busbar.
+     *         cable_id: Its outgoing cable, where it has one.
+     *         feeds: The board it supplies, for a feeder to a sub-board.
+     *         starter: How the motor it feeds is started, for a motor circuit.
+     *         voltage_drop_percent: The drop along its own cable, where its length
+     *             is known; the board's notes add what feeds the board.
+     *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
+     *             board's ``Ze`` are known and its breaker disconnects by it.
+     */
+    'Circuit-Input': {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: number | string;
+      /** Design Current A */
+      design_current_a: number | string;
+      phase: components['schemas']['Phase'];
+      /** Upstream Id */
+      upstream_id?: string | null;
+      /** Device Ids */
+      device_ids?: string[];
+      /** Cable Id */
+      cable_id?: string | null;
+      /** Feeds */
+      feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
+      /** Voltage Drop Percent */
+      voltage_drop_percent?: number | string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: number | string | null;
+    };
+    /**
+     * Circuit
+     * @description An outgoing circuit.
+     *
+     *     A load, the devices that switch and protect it, and the cable feeding it.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the board.
+     *         description: What it feeds, as the load schedule names it.
+     *         load: The kind of load.
+     *         power_kw: Installed power.
+     *         design_current_a: Ib.
+     *         phase: The line conductor(s) it is connected to.
+     *         upstream_id: The device this circuit is fed from (a residual current
+     *             device, say); ``None`` when it hangs off the busbar directly.
+     *         device_ids: The circuit's own devices, in order from the busbar.
+     *         cable_id: Its outgoing cable, where it has one.
+     *         feeds: The board it supplies, for a feeder to a sub-board.
+     *         starter: How the motor it feeds is started, for a motor circuit.
+     *         voltage_drop_percent: The drop along its own cable, where its length
+     *             is known; the board's notes add what feeds the board.
+     *         earth_loop_ohm: ``Zs`` at its far end, where its length and the
+     *             board's ``Ze`` are known and its breaker disconnects by it.
+     */
+    'Circuit-Output': {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: string;
+      /** Design Current A */
+      design_current_a: string;
+      phase: components['schemas']['Phase'];
+      /** Upstream Id */
+      upstream_id?: string | null;
+      /** Device Ids */
+      device_ids?: string[];
+      /** Cable Id */
+      cable_id?: string | null;
+      /** Feeds */
+      feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
+      /** Voltage Drop Percent */
+      voltage_drop_percent?: string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: string | null;
+    };
+    /**
+     * CircuitRule
+     * @description A company's rule for one kind of load.
+     *
+     *     Attributes:
+     *         breaker_a: The circuit-breaker rating used for this kind of load,
+     *             where the company fixes one rather than sizing from the load.
+     *         curve: The tripping characteristic.
+     *         residual_current_ma: The residual current device sensitivity this
+     *             kind of load is grouped under; ``None`` for none.
+     *         cable_mm2: The minimum cable cross-section for this kind of load.
+     */
+    CircuitRule: {
+      /** Breaker A */
+      breaker_a?: string | null;
+      /**
+       * Curve
+       * @default C
+       */
+      curve: string;
+      /** Residual Current Ma */
+      residual_current_ma?: string | null;
+      /** Cable Mm2 */
+      cable_mm2?: string | null;
+    };
+    /**
+     * Citation
+     * @description A resolvable pointer back into a source document.
+     */
+    Citation: {
+      /** Document Id */
+      document_id: string;
+      /** Document Title */
+      document_title: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Page */
+      page?: number | null;
+      /** Section */
+      section?: string | null;
+    };
+    /**
+     * CompanyProfile
+     * @description How one company issues a design.
+     *
+     *     Naming, numbering, title block, page order, brands and design rules. A
+     *     project is designed once; issuing it under another profile changes only
+     *     what this model governs.
+     *
+     *     Attributes:
+     *         key: Unique identifier.
+     *         name: The company's name, as the title block prints it.
+     *         language: Drawing language ("en", "ar").
+     *         letters: The product-aspect letter for each kind of device.
+     *         start_number: The first number of each letter's sequence.
+     *         title_fields: The title block's fields, in order.
+     *         page_order: The drawing set's pages, in order.
+     *         wire_numbering: How wires are numbered.
+     *         preferred_manufacturers: For each device kind, the manufacturers to
+     *             choose from, most preferred first.
+     *         circuit_rules: The company's rule for each kind of load.
+     *         max_circuits_per_rcd: How many outgoing circuits one residual current
+     *             device may protect.
+     *         max_points_per_circuit: How many points of a kind share a final
+     *             circuit; a kind not listed gets a circuit per point.
+     *         max_kw_per_circuit: The most power a final circuit of a kind may
+     *             carry, which can split points further than the count does.
+     *         spare_ways_percent: Spare outgoing ways to leave, as a share of the
+     *             circuits.
+     *         max_phase_imbalance_percent: The largest difference between the most
+     *             and least loaded line conductors, as a share of the most loaded.
+     *         discrimination_ratio: How many times the largest breaker after it each
+     *             breaker is rated at least, for overload discrimination.
+     *         max_voltage_drop_percent: The largest voltage drop from the origin of
+     *             the installation to a load, by kind of load; a kind not listed
+     *             takes ``default_max_voltage_drop_percent``. The defaults are IEC
+     *             60364-5-52 Annex G (Table G.52.1) for a public LV supply.
+     *         default_max_voltage_drop_percent: The limit for any other load.
+     *         max_starting_voltage_drop_percent: The largest drop from the origin
+     *             to a motor's terminals while it starts.
+     *         rail_widths_mm: The DIN-rail width of one pole of each kind of
+     *             device, from the datasheets of the ranges the company fits. A
+     *             kind not given has no width on the layout; the default holds only
+     *             what is sourced: ABB S200 miniature breakers and F200 RCCBs,
+     *             17.5 mm a pole (35 mm 2P, 70 mm 4P;
+     *             ABB's 2020 residual current device catalogue, A_ELSB_Cat 2020_2 p. 8,
+     *             gives 72 mm for the 4P 125 A).
+     *         usable_rail_mm: The usable rail length per row of the company's
+     *             enclosure; a row longer than this continues on the next.
+     *         demand_factors: The share of each kind of load's design current
+     *             taken as running at once, for rating incomers and feeders; a
+     *             kind not listed counts in full. Empty assumes no diversity.
+     *         market: The country the company designs for (ISO 3166-1 alpha-2,
+     *             ``app.design.markets``); its code's stated rules apply under the
+     *             company's own. Empty for IEC 60364 as the default applies it.
+     *         rules_confirmed_by: Who confirmed the design rules. Empty while they
+     *             are this software's defaults, which the drawing then says.
+     */
+    CompanyProfile: {
+      /** Key */
+      key: string;
+      /** Name */
+      name: string;
+      /**
+       * Language
+       * @default en
+       */
+      language: string;
+      /**
+       * Market
+       * @default
+       */
+      market: string;
+      /** Letters */
+      letters: {
+        [key: string]: string;
+      };
+      /**
+       * Start Number
+       * @default 1
+       */
+      start_number: number;
+      /** Title Fields */
+      title_fields: components['schemas']['TitleField'][];
+      /** Page Order */
+      page_order: components['schemas']['PageKind'][];
+      /** @default potential */
+      wire_numbering: components['schemas']['WireNumbering'];
+      /** Preferred Manufacturers */
+      preferred_manufacturers?: {
+        [key: string]: string[];
+      };
+      /** Circuit Rules */
+      circuit_rules?: {
+        [key: string]: components['schemas']['CircuitRule'];
+      };
+      /**
+       * Max Circuits Per Rcd
+       * @default 6
+       */
+      max_circuits_per_rcd: number;
+      /** Max Points Per Circuit */
+      max_points_per_circuit?: {
+        [key: string]: number;
+      };
+      /** Max Kw Per Circuit */
+      max_kw_per_circuit?: {
+        [key: string]: string;
+      };
+      /**
+       * Spare Ways Percent
+       * @default 20
+       */
+      spare_ways_percent: string;
+      /**
+       * Max Phase Imbalance Percent
+       * @default 10
+       */
+      max_phase_imbalance_percent: string;
+      /**
+       * Discrimination Ratio
+       * @default 1.6
+       */
+      discrimination_ratio: string;
+      /** Max Voltage Drop Percent */
+      max_voltage_drop_percent?: {
+        [key: string]: string;
+      };
+      /**
+       * Default Max Voltage Drop Percent
+       * @default 5
+       */
+      default_max_voltage_drop_percent: string;
+      /**
+       * Max Starting Voltage Drop Percent
+       * @default 15
+       */
+      max_starting_voltage_drop_percent: string;
+      /** Rail Widths Mm */
+      rail_widths_mm?: {
+        [key: string]: string;
+      };
+      /** Usable Rail Mm */
+      usable_rail_mm?: string | null;
+      /** Demand Factors */
+      demand_factors?: {
+        [key: string]: string;
+      };
+      /**
+       * Rules Confirmed By
+       * @default
+       */
+      rules_confirmed_by: string;
+    };
+    /**
+     * CompanySettings
+     * @description A tenant's saved company profile settings.
+     *
+     *     Attributes:
+     *         settings: What the company does differently from the default
+     *             profile; ``None`` while none are saved.
+     *         updated_by: Who saved them last.
+     *         updated_at: When, ISO 8601.
+     *         permissions: What the caller may do with them
+     *             (``edit_company_settings``, or nothing: every member reads them).
+     */
+    CompanySettings: {
+      /** Settings */
+      settings?: {
+        [key: string]: unknown;
+      } | null;
+      /**
+       * Updated By
+       * @default
+       */
+      updated_by: string;
+      /** Updated At */
+      updated_at?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
+    };
+    /**
+     * ConductorMaterial
+     * @description Conductor metal.
+     * @enum {string}
+     */
+    ConductorMaterial: 'copper' | 'aluminium';
+    /**
+     * ConfidenceBreakdown
+     * @description Overall confidence with the per-signal components behind it.
+     */
+    ConfidenceBreakdown: {
+      /** Overall */
+      overall: number;
+      /** Retrieval Score */
+      retrieval_score: number;
+      /** Passage Agreement */
+      passage_agreement: number;
+      /** Citation Density */
+      citation_density: number;
+    };
+    /**
+     * ConfigurationReview
+     * @description What a configuration would compose to against a project's latest revision.
+     *
+     *     Nothing is saved. ``saveable`` says whether this deployment stores a
+     *     configured revision (``DESIGN_SNAPSHOT_SCHEMA`` is ``pp-design/2``).
+     *
+     *     Attributes:
+     *         based_on_revision: The revision whose request was designed.
+     *         snapshot_schema: Always ``pp-design/2``.
+     *         written_schema: What this deployment writes new revisions in.
+     *         saveable: Whether a revision with this configuration could be saved here.
+     *         snapshot_sha256: The hash the composed snapshot would be stored under.
+     *         findings: Every finding the save would record (v1 checks and structural).
+     *         model: The composed model.
+     */
+    ConfigurationReview: {
+      /** Based On Revision */
+      based_on_revision: number;
+      /** Snapshot Schema */
+      snapshot_schema: string;
+      /** Written Schema */
+      written_schema: string;
+      /** Saveable */
+      saveable: boolean;
+      /** Snapshot Sha256 */
+      snapshot_sha256: string;
+      /** Findings */
+      findings: components['schemas']['DesignFinding'][];
+      model: components['schemas']['V2ModelSummary'];
+    };
+    /**
+     * ConfigurationValidateRequest
+     * @description A configuration to try against a project's latest revision; nothing is saved.
+     *
+     *     Attributes:
+     *         configuration: As for ``ReviseProjectRequest.configuration``.
+     */
+    ConfigurationValidateRequest: {
+      /** Configuration */
+      configuration: {
+        [key: string]: unknown;
+      };
+    };
+    /**
+     * ConfirmedLoad
+     * @description A load a resolver confirmed is not the excluded equipment, as it stood then.
+     */
+    ConfirmedLoad: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /**
+       * Power Kw
+       * @default
+       */
+      power_kw: string;
+      /**
+       * Kind
+       * @default
+       */
+      kind: string;
+    };
+    /**
+     * ControlNeed
+     * @description What a controlled load needs from its control, recorded as a requirement only (M6a).
+     *
+     *     Nothing here is designed: the designer's only control model stays the
+     *     load's ``controlled`` flag, and each need is an open item
+     *     (``control_not_designed``).
+     * @enum {string}
+     */
+    ControlNeed:
+      | 'start_stop'
+      | 'running_indicator'
+      | 'fault_indicator'
+      | 'hand_off_auto'
+      | 'remote_control'
+      | 'interlock'
+      | 'timed';
+    /**
+     * ControlRequirementInput
+     * @description The control needs of one load, by its place in the request.
+     *
+     *     Attributes:
+     *         board_index: The board's index in ``request.boards``.
+     *         load_index: The load's index in that board's ``loads``; the load
+     *             must be ``controlled`` (``control_need_requires_controlled``).
+     *         needs: What its control must do, each once.
+     */
+    ControlRequirementInput: {
+      /** Board Index */
+      board_index: number;
+      /** Load Index */
+      load_index: number;
+      /** Needs */
+      needs: components['schemas']['ControlNeed'][];
+    };
+    /**
+     * CrawlJobRequest
+     * @description Request to queue a crawl.
+     *
+     *     Attributes:
+     *         source_id: Which allow-listed source to crawl.
+     *         seed_urls: Listing pages to discover documents from.
+     *         document_urls: Documents to fetch directly, skipping discovery. For
+     *             sources whose listings cannot be crawled — ABB's is a JavaScript
+     *             application serving no links — while the documents themselves are
+     *             plainly fetchable. Supplying these skips discovery and nothing
+     *             else: robots.txt, hashing, parsing and human verification all
+     *             still apply.
+     *         max_depth: How deep to follow listings.
+     *
+     *     At least one of ``seed_urls`` or ``document_urls`` must be present; a
+     *     request carrying neither has nothing to fetch, and the domain refuses it
+     *     rather than recording an empty run as a success.
+     *
+     *     Both lists are capped (``MAX_SEED_URLS``, ``MAX_DOCUMENT_URLS``). Each URL
+     *     is a request the crawler makes, so an uncapped list is an uncapped crawl
+     *     one POST away; the crawler also caps total fetches per run, but refusing
+     *     an oversized request outright tells the caller rather than silently
+     *     crawling a prefix of it.
+     */
+    CrawlJobRequest: {
+      /** Source Id */
+      source_id: string;
+      /**
+       * Seed Urls
+       * @default []
+       */
+      seed_urls: string[];
+      /**
+       * Document Urls
+       * @default []
+       */
+      document_urls: string[];
+      /**
+       * Max Depth
+       * @default 2
+       */
+      max_depth: number;
+    };
+    /**
+     * CrawlJobResponse
+     * @description A crawl job and where it has got to.
+     *
+     *     Attributes:
+     *         id: The job, for polling ``GET /ingestion/crawl-jobs/{id}``.
+     *         status: ``queued`` until the worker picks it up.
+     *         error: Why it failed, when it did.
+     */
+    CrawlJobResponse: {
+      /** Id */
+      id: string;
+      status: components['schemas']['CrawlJobStatus'];
+      /** Error */
+      error?: string | null;
+    };
+    /**
+     * CrawlJobStatus
+     * @description Lifecycle state of a crawl job.
+     * @enum {string}
+     */
+    CrawlJobStatus: 'queued' | 'running' | 'succeeded' | 'failed';
+    /**
+     * DecisionOut
+     * @description One recorded decision.
+     *
+     *     Attributes:
+     *         id: The record.
+     *         scope: ``tenant`` or ``global``.
+     *         subject_kind: What was reviewed.
+     *         subject_ref: Its ref.
+     *         subject_digest: Its digest.
+     *         decision: What was decided.
+     *         reviewer: For a tenant decision the reviewer's account id; for a
+     *             global one the label the operator recorded.
+     *         qualification_statement: As the owner supplied it; not verified.
+     *         standards: As the reviewer named them.
+     *         reason: Why.
+     *         recorded_at: When.
+     *         current: Whether it is the decision that applies for its scope and
+     *             digest: the newest one whose reviewer still counts.
+     *         reviewer_standing: ``designated``, ``revoked`` (the owner revoked the
+     *             designation) or ``inactive`` (the account is deactivated): a
+     *             decision counts only while ``designated``; ``operator`` for a
+     *             global decision.
+     *         independence_checked: Whether the server checked that the reviewer
+     *             is not the definition's author; ``False`` where it knows none.
+     *         independence: That, said plainly.
+     */
+    DecisionOut: {
+      /** Id */
+      id: string;
+      /**
+       * Scope
+       * @enum {string}
+       */
+      scope: 'tenant' | 'global';
+      /**
+       * Subject Kind
+       * @enum {string}
+       */
+      subject_kind: 'template' | 'pattern' | 'rule';
+      /** Subject Ref */
+      subject_ref: string;
+      /** Subject Digest */
+      subject_digest: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'approved' | 'rejected' | 'withdrawn';
+      /** Reviewer */
+      reviewer: string;
+      /** Qualification Statement */
+      qualification_statement: string;
+      /** Standards */
+      standards: string[];
+      /** Reason */
+      reason: string;
+      /**
+       * Recorded At
+       * Format: date-time
+       */
+      recorded_at: string;
+      /** Current */
+      current: boolean;
+      /**
+       * Reviewer Standing
+       * @enum {string}
+       */
+      reviewer_standing: 'designated' | 'revoked' | 'inactive' | 'operator';
+      /** Independence Checked */
+      independence_checked: boolean;
+      /** Independence */
+      independence: string;
+    };
+    /**
+     * DecisionRequest
+     * @description Record a decision on one definition, bound to its digest.
+     *
+     *     Attributes:
+     *         subject_kind: ``template``, ``pattern`` or ``rule``.
+     *         subject_ref: ``<scope>/<id>/v<version>``.
+     *         subject_digest: The SHA-256 of the definition reviewed (for a template
+     *             or pattern, with its review unset).
+     *         decision: ``approved``, ``rejected`` or ``withdrawn``.
+     *         standards: The standards the reviewer relied on, as they name them.
+     *         reason: Why.
+     */
+    DecisionRequest: {
+      /**
+       * Subject Kind
+       * @enum {string}
+       */
+      subject_kind: 'template' | 'pattern' | 'rule';
+      /** Subject Ref */
+      subject_ref: string;
+      /** Subject Digest */
+      subject_digest: string;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: 'approved' | 'rejected' | 'withdrawn';
+      /** Standards */
+      standards?: string[];
+      /** Reason */
+      reason: string;
+    };
+    /**
+     * DependencyState
+     * @description Reachability of a dependency.
+     * @enum {string}
+     */
+    DependencyState: 'up' | 'down';
+    /**
+     * DesignExportRequest
+     * @description A project to export, possibly edited since it was designed.
+     *
+     *     Attributes:
+     *         project: The project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     *         format: The file to produce.
+     *         pricing: The company's prices, for a quotation export.
+     */
+    DesignExportRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      format: components['schemas']['ExportFormat'];
+      pricing?: components['schemas']['PricingSettings'] | null;
+    };
+    /**
+     * DesignFinding
+     * @description One thing a check of a design found, with where to fix it.
+     *
+     *     Attributes:
+     *         code: Stable identifier: a ``DesignNote`` code, or an integrity
+     *             check's own (``app.design.integrity``).
+     *         severity: From ``app.design.findings_policy``.
+     *         board_id: The board it is on, where it is on one.
+     *         circuit_id: The circuit, where it is about one.
+     *         device_id: The device, where it is about one.
+     *         values: The values it names, as text.
+     *         message: In English; the page renders ``code`` in the reader's language.
+     *         requires_engineering_confirmation: Whether an engineer must confirm
+     *             it before the design is relied on.
+     *         source: The rule it comes from, or ``"policy"`` where the severity is
+     *             this service's classification rather than a cited rule's.
+     */
+    DesignFinding: {
+      /** Code */
+      code: string;
+      severity: components['schemas']['app__models__schemas__design__FindingSeverity'];
+      /** Board Id */
+      board_id?: string | null;
+      /** Circuit Id */
+      circuit_id?: string | null;
+      /** Device Id */
+      device_id?: string | null;
+      /** Values */
+      values?: {
+        [key: string]: string;
+      };
+      /** Message */
+      message: string;
+      /**
+       * Requires Engineering Confirmation
+       * @default false
+       */
+      requires_engineering_confirmation: boolean;
+      /** Source */
+      source: string;
+    };
+    /**
+     * DesignNote
+     * @description Something the design tells its reviewer.
+     *
+     *     Attributes:
+     *         code: Stable identifier, which the page renders in the reader's
+     *             language (``app.design.notes``).
+     *         params: The values the note names, as text.
+     *         text: The note in English, for the drawing set and as a fallback.
+     */
+    DesignNote: {
+      /** Code */
+      code: string;
+      /** Params */
+      params?: {
+        [key: string]: string;
+      };
+      /** Text */
+      text: string;
+    };
+    /**
+     * DesignProject
+     * @description A whole design: what every output is generated from.
+     *
+     *     Attributes:
+     *         info: Title-block data.
+     *         profile: The key of the company profile the project is issued under.
+     *         boards: The boards, in the order they are drawn.
+     *         parts: Every part any device or cable refers to.
+     */
+    'DesignProject-Input': {
+      info: components['schemas']['ProjectInfo'];
+      /**
+       * Profile
+       * @default iec-default
+       */
+      profile: string;
+      /** Boards */
+      boards?: components['schemas']['Board-Input'][];
+      /** Parts */
+      parts?: components['schemas']['Part-Input'][];
+    };
+    /**
+     * DesignProject
+     * @description A whole design: what every output is generated from.
+     *
+     *     Attributes:
+     *         info: Title-block data.
+     *         profile: The key of the company profile the project is issued under.
+     *         boards: The boards, in the order they are drawn.
+     *         parts: Every part any device or cable refers to.
+     */
+    'DesignProject-Output': {
+      info: components['schemas']['ProjectInfo'];
+      /**
+       * Profile
+       * @default iec-default
+       */
+      profile: string;
+      /** Boards */
+      boards?: components['schemas']['Board-Output'][];
+      /** Parts */
+      parts?: components['schemas']['Part-Output'][];
+    };
+    /**
+     * DesignateRequest
+     * @description The owner designates an account as a qualified engineering reviewer.
+     *
+     *     Attributes:
+     *         member_id: An active account of the tenant.
+     *         qualification_statement: The owner's statement of the engineer's
+     *             qualification, recorded verbatim and never verified by the server.
+     */
+    DesignateRequest: {
+      /** Member Id */
+      member_id: string;
+      /** Qualification Statement */
+      qualification_statement: string;
+    };
+    /**
+     * Designation
+     * @description An IEC 81346-1 reference designation.
+     *
+     *     Attributes:
+     *         function: The function aspect, without its ``=`` prefix ("DB1").
+     *         location: The location aspect, without its ``+`` prefix ("HALL").
+     *         product: The product aspect, without its ``-`` prefix ("Q12").
+     */
+    Designation: {
+      /** Function */
+      function?: string | null;
+      /** Location */
+      location?: string | null;
+      /** Product */
+      product: string;
+    };
+    /**
+     * Device
+     * @description One device in a board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project; connections refer to it.
+     *         kind: What the device does.
+     *         designation: Assigned from the company profile; ``None`` until then.
+     *         part_key: The part it is built from; ``None`` for a device whose part
+     *             has not been selected yet (it is listed as such, never guessed).
+     *         poles: Number of poles, where it has any.
+     *         rated_current_a: In, for switching and protective devices.
+     *         residual_current_ma: IΔn, for a residual current device.
+     *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
+     *         breaking_capacity_ka: Rated short-circuit breaking capacity.
+     *         description: A short function text for the drawing.
+     *         upstream_id: The device that feeds this one (a group breaker feeding
+     *             a residual current device, say); ``None`` for the busbar.
+     */
+    'Device-Input': {
+      /** Id */
+      id: string;
+      kind: components['schemas']['DeviceKind'];
+      designation?: components['schemas']['Designation'] | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Poles */
+      poles?: number | null;
+      /** Rated Current A */
+      rated_current_a?: number | string | null;
+      /** Residual Current Ma */
+      residual_current_ma?: number | string | null;
+      /** Curve */
+      curve?: string | null;
+      /** Breaking Capacity Ka */
+      breaking_capacity_ka?: number | string | null;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Upstream Id */
+      upstream_id?: string | null;
+    };
+    /**
+     * Device
+     * @description One device in a board.
+     *
+     *     Attributes:
+     *         id: Stable identifier within the project; connections refer to it.
+     *         kind: What the device does.
+     *         designation: Assigned from the company profile; ``None`` until then.
+     *         part_key: The part it is built from; ``None`` for a device whose part
+     *             has not been selected yet (it is listed as such, never guessed).
+     *         poles: Number of poles, where it has any.
+     *         rated_current_a: In, for switching and protective devices.
+     *         residual_current_ma: IΔn, for a residual current device.
+     *         curve: Tripping characteristic of a circuit-breaker ("B", "C", "D").
+     *         breaking_capacity_ka: Rated short-circuit breaking capacity.
+     *         description: A short function text for the drawing.
+     *         upstream_id: The device that feeds this one (a group breaker feeding
+     *             a residual current device, say); ``None`` for the busbar.
+     */
+    'Device-Output': {
+      /** Id */
+      id: string;
+      kind: components['schemas']['DeviceKind'];
+      designation?: components['schemas']['Designation'] | null;
+      /** Part Key */
+      part_key?: string | null;
+      /** Poles */
+      poles?: number | null;
+      /** Rated Current A */
+      rated_current_a?: string | null;
+      /** Residual Current Ma */
+      residual_current_ma?: string | null;
+      /** Curve */
+      curve?: string | null;
+      /** Breaking Capacity Ka */
+      breaking_capacity_ka?: string | null;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Upstream Id */
+      upstream_id?: string | null;
+    };
+    /**
+     * DeviceKind
+     * @description What a device does, which decides its designation letter.
+     * @enum {string}
+     */
+    DeviceKind:
+      | 'circuit_breaker'
+      | 'residual_current_device'
+      | 'switch_disconnector'
+      | 'contactor'
+      | 'overload_relay'
+      | 'fuse'
+      | 'surge_protector'
+      | 'drive'
+      | 'motor'
+      | 'relay'
+      | 'bus_actuator'
+      | 'power_supply'
+      | 'meter'
+      | 'indicator_lamp'
+      | 'terminal_strip'
+      | 'cable'
+      | 'busbar'
+      | 'other';
+    /**
+     * DiagnosisStep
+     * @description One step an engineer should carry out.
+     *
+     *     Attributes:
+     *         order: 1-indexed position. Explicit rather than implied by array index
+     *             so a step cannot be silently reordered by a serialisation layer.
+     *         instruction: What to do, in one imperative sentence.
+     *         rationale: Why this step, so the engineer can judge whether it applies
+     *             to their situation rather than following blindly.
+     *         citation_ids: Passage ids supporting this step. Required, non-empty,
+     *             and deduplicated — a step with no source is exactly what
+     *             cite-or-refuse exists to prevent, and the same id repeated would
+     *             overstate how much evidence there is.
+     *         severity: Urgency of this step. Required rather than defaulted: a
+     *             missing severity defaulting to ``INFO`` would render an arc-flash
+     *             warning in the same colour as a note.
+     */
+    DiagnosisStep: {
+      /** Order */
+      order: number;
+      /** Instruction */
+      instruction: string;
+      /** Rationale */
+      rationale: string;
+      /** Citation Ids */
+      citation_ids: string[];
+      severity: components['schemas']['Severity'];
+    };
+    /**
+     * DiagnosticRequest
+     * @description A single diagnostic question.
+     *
+     *     Attributes:
+     *         session_id: The conversation to append to, or ``None`` to start one.
+     *         symptom: What the engineer is describing.
+     *         equipment: Optional context about the unit.
+     *         locale: The language to answer in. Explicit on every request rather
+     *             than defaulted server-side: a default means a caller that forgot
+     *             to send one gets English, which for an Arabic-speaking engineer
+     *             looks like working software until someone reads the answer.
+     */
+    DiagnosticRequest: {
+      /** Session Id */
+      session_id?: string | null;
+      /** Symptom */
+      symptom: string;
+      equipment?: components['schemas']['EquipmentContext'] | null;
+      /** @default en */
+      locale: components['schemas']['Locale'];
+    };
+    /**
+     * DiagnosticResponse
+     * @description A completed diagnostic turn as returned to the caller.
+     *
+     *     This is the type the frontend renders, and the schema constraining
+     *     generation is derived from the ``StructuredDiagnosis`` embedded here — the
+     *     same model, not a copy of it. That is what makes "the constraint and the rendered type
+     *     cannot drift" true rather than aspirational: there is one definition, and
+     *     ``packages/shared-types`` regenerates its TypeScript from this schema.
+     *
+     *     Attributes:
+     *         session_id: The conversation this turn belongs to.
+     *         answer: Prose form of the answer, with resolved citations. Absent on a
+     *             refusal — a required-but-empty answer object would be one more
+     *             thing the frontend has to inspect before deciding what to show.
+     *         diagnosis: The structured form, when the model produced schema-valid
+     *             output. ``None`` on a refusal, which is the only case where the
+     *             frontend renders the refusal template instead of the card.
+     *         confidence: Per-signal confidence behind the decision.
+     *         low_confidence: Whether to show the uncertainty banner.
+     *         refusal_message: Rendered refusal text, present exactly when
+     *             ``diagnosis`` is absent.
+     *         turn_id: The stored turn, so the engineer can report this answer as
+     *             wrong (``POST /feedback/flag``). ``None`` only before it is stored.
+     *         evidence: The passages the answer was drawn from -- the ones that
+     *             cleared the confidence threshold and were offered for citation.
+     *             Sent back with a flag, so a reviewer judges the answer against the
+     *             text it was built on, not whatever the index returns by then.
+     *             Empty on a refusal, and on a turn replayed from history, whose
+     *             passages were not stored.
+     *         refusal_citations: On a refusal, the closest passage the guardrail
+     *             found -- shown so the engineer can judge it, and explicitly not
+     *             support for any answer. Empty when nothing came close enough to
+     *             name, on an answer, and on a turn replayed from history. The
+     *             refusal text never claims a citation itself: whether one is shown
+     *             is decided by this list alone, so the words cannot promise a
+     *             reference the response does not carry.
+     */
+    DiagnosticResponse: {
+      /** Session Id */
+      session_id: string;
+      answer?: components['schemas']['VerifiedAnswer'] | null;
+      diagnosis?: components['schemas']['StructuredDiagnosis'] | null;
+      confidence: components['schemas']['ConfidenceBreakdown'];
+      /** Low Confidence */
+      low_confidence: boolean;
+      /** Refusal Message */
+      refusal_message?: string | null;
+      /** Turn Id */
+      turn_id?: string | null;
+      /** Evidence */
+      evidence?: components['schemas']['RetrievedPassage'][];
+      /** Refusal Citations */
+      refusal_citations?: components['schemas']['Citation'][];
+    };
+    /**
+     * DiagnosticSession
+     * @description A diagnostic conversation and its ordered turns.
+     */
+    DiagnosticSession: {
+      /** Id */
+      id: string;
+      /** Turns */
+      turns: components['schemas']['DiagnosticTurn'][];
+    };
+    /**
+     * DiagnosticSessionPage
+     * @description One page of the conversation history.
+     *
+     *     Attributes:
+     *         sessions: The page's rows, most recently updated first.
+     *         next_cursor: Opaque cursor for the following page, or ``None`` when
+     *             this is the last one. Callers must treat it as opaque and pass it
+     *             back unmodified; its encoding is an implementation detail that may
+     *             change without a version bump.
+     */
+    DiagnosticSessionPage: {
+      /** Sessions */
+      sessions: components['schemas']['DiagnosticSessionSummary'][];
+      /** Next Cursor */
+      next_cursor?: string | null;
+    };
+    /**
+     * DiagnosticSessionSummary
+     * @description One row in the conversation history sidebar.
+     *
+     *     A summary rather than the session itself: the sidebar shows what a
+     *     conversation *was about* so an engineer can recognise yesterday's problem,
+     *     and shipping every turn to draw a list would send the whole history of
+     *     every session to render a few lines of text.
+     *
+     *     Attributes:
+     *         id: The session id, used to fetch the full conversation on selection.
+     *         title: The first question asked, which is what makes a session
+     *             recognisable. Truncated for display. ``None`` before the first
+     *             question: the client names an untitled conversation in the
+     *             engineer's language, which a string chosen here could not.
+     *         equipment_model: The model this conversation was about, when a turn
+     *             recorded one. ``None`` where no turn identified equipment; the
+     *             sidebar shows the title alone rather than a guessed brand.
+     *         turn_count: How many exchanges the session holds.
+     *         created_at: When the conversation started.
+     *         updated_at: When it was last added to. The list is ordered by this,
+     *             because "yesterday's session" is the one last worked on rather
+     *             than the one first opened.
+     */
+    DiagnosticSessionSummary: {
+      /** Id */
+      id: string;
+      /** Title */
+      title: string | null;
+      /** Equipment Model */
+      equipment_model?: string | null;
+      /** Turn Count */
+      turn_count: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /**
+     * DiagnosticTurn
+     * @description One stored exchange in a session.
+     */
+    DiagnosticTurn: {
+      request: components['schemas']['DiagnosticRequest'];
+      response: components['schemas']['DiagnosticResponse'];
+    };
+    /**
+     * DismissStaleRequest
+     * @description A reviewer's reason for dismissing a stale-document flag.
+     */
+    DismissStaleRequest: {
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
+     * DisplayVerdict
+     * @description Whether the photo shows what the engineer thinks it shows.
+     * @enum {string}
+     */
+    DisplayVerdict: 'fault_display' | 'not_a_fault_display' | 'unreadable';
+    /**
+     * DistributionBoardRequest
+     * @description What a distribution board is designed from.
+     *
+     *     Attributes:
+     *         name: The board's name ("DBG-HALL").
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         loads: The load schedule, in the order the circuits are drawn.
+     *         conditions: How the outgoing cables are run.
+     *         fed_from: The board whose feeder supplies this one; ``None`` for a
+     *             board fed from the utility or a main switchboard outside the
+     *             project.
+     *         feeder_length_m: The route length of the cable feeding this board
+     *             from ``fed_from``, for that feeder's voltage drop.
+     */
+    'DistributionBoardRequest-Input': {
+      /** Name */
+      name: string;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Input'];
+      /** Loads */
+      loads: components['schemas']['LoadInput-Input'][];
+      conditions?: components['schemas']['InstallationConditions-Input'];
+      /** Fed From */
+      fed_from?: string | null;
+      /** Feeder Length M */
+      feeder_length_m?: number | string | null;
+    };
+    /**
+     * DistributionBoardRequest
+     * @description What a distribution board is designed from.
+     *
+     *     Attributes:
+     *         name: The board's name ("DBG-HALL").
+     *         location: Its IEC 81346 location aspect, where given.
+     *         supply: The incoming supply.
+     *         loads: The load schedule, in the order the circuits are drawn.
+     *         conditions: How the outgoing cables are run.
+     *         fed_from: The board whose feeder supplies this one; ``None`` for a
+     *             board fed from the utility or a main switchboard outside the
+     *             project.
+     *         feeder_length_m: The route length of the cable feeding this board
+     *             from ``fed_from``, for that feeder's voltage drop.
+     */
+    'DistributionBoardRequest-Output': {
+      /** Name */
+      name: string;
+      /** Location */
+      location?: string | null;
+      supply?: components['schemas']['Supply-Output'];
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      conditions?: components['schemas']['InstallationConditions-Output'];
+      /** Fed From */
+      fed_from?: string | null;
+      /** Feeder Length M */
+      feeder_length_m?: string | null;
+    };
+    /**
+     * DriveRangeSummary
+     * @description A drive series selection can choose from.
+     */
+    DriveRangeSummary: {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Series */
+      series: string;
+      /** Bands */
+      bands: components['schemas']['SupplyBand'][];
+      /** Heavy Duty */
+      heavy_duty: boolean;
+      source: components['schemas']['Citation'];
+    };
+    /**
+     * DutyClass
+     * @description Drive duty rating.
+     * @enum {string}
+     */
+    DutyClass: 'normal' | 'heavy';
+    /**
+     * EnclosureConstraints
+     * @description Physical and vendor constraints on the enclosure.
+     */
+    EnclosureConstraints: {
+      /** Width Mm */
+      width_mm: number;
+      /** Height Mm */
+      height_mm: number;
+      /** Depth Mm */
+      depth_mm: number;
+      /** Ingress Rating */
+      ingress_rating: string;
+      placement: components['schemas']['EnclosurePlacement'];
+      cable_installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Supply Voltage V
+       * @default 400
+       */
+      supply_voltage_v: number | string;
+      /** @default copper */
+      cable_material: components['schemas']['ConductorMaterial'];
+      /** Fault Level Ka */
+      fault_level_ka?: number | string | null;
+      /**
+       * Preferred Vendors
+       * @default []
+       */
+      preferred_vendors: string[];
+      /** Drive Range */
+      drive_range?: string | null;
+      /**
+       * Ambient Temp C
+       * @default 35
+       */
+      ambient_temp_c: number | string;
+      /**
+       * Max Internal Temp C
+       * @default 50
+       */
+      max_internal_temp_c: number | string;
+    };
+    /**
+     * EnclosurePlacement
+     * @description How an enclosure stands, per IEC 60890's effective-area formulas.
+     * @enum {string}
+     */
+    EnclosurePlacement:
+      | 'single_free_standing'
+      | 'single_wall'
+      | 'suite_end_free_standing'
+      | 'suite_end_wall'
+      | 'suite_middle_free_standing'
+      | 'suite_middle_wall'
+      | 'suite_middle_wall_covered_roof';
+    /**
+     * Entitlements
+     * @description What the caller's account is on, and what it has used.
+     *
+     *     Attributes:
+     *         plan: The plan in force.
+     *         interval: How it is billed.
+     *         status: "free", "active" or "expired".
+     *         current_period_end: Until when a paid plan holds (ISO 8601).
+     *         seats: The accounts paid for.
+     *         seats_used: The accounts the tenant holds.
+     *         model_calls_per_month: The pooled AI allowance; ``None`` for none.
+     *         model_calls_used: Calls made this month.
+     *         saved_projects: The projects it may keep; ``None`` for no limit.
+     *         saved_projects_used: The projects it keeps.
+     *         features: What it switches on.
+     *         enforced: Whether the plan's limits are applied yet; until billing
+     *             opens, every account may use every feature.
+     *         requested_plan: A plan asked for and not yet active.
+     *         requested_interval: Its interval.
+     *         requested_seats: Its seats.
+     */
+    Entitlements: {
+      plan: components['schemas']['PlanKey'];
+      interval: components['schemas']['Interval'];
+      /** Status */
+      status: string;
+      /** Current Period End */
+      current_period_end?: string | null;
+      /** Seats */
+      seats: number;
+      /** Seats Used */
+      seats_used: number;
+      /** Model Calls Per Month */
+      model_calls_per_month: number | null;
+      /** Model Calls Used */
+      model_calls_used: number;
+      /** Saved Projects */
+      saved_projects: number | null;
+      /** Saved Projects Used */
+      saved_projects_used: number;
+      /** Features */
+      features: components['schemas']['Feature'][];
+      /** Enforced */
+      enforced: boolean;
+      requested_plan?: components['schemas']['PlanKey'] | null;
+      requested_interval?: components['schemas']['Interval'] | null;
+      /** Requested Seats */
+      requested_seats?: number | null;
+    };
+    /**
+     * EquipmentContext
+     * @description What the engineer is working on.
+     */
+    EquipmentContext: {
+      /** Manufacturer */
+      manufacturer?: string | null;
+      /** Model */
+      model?: string | null;
+      /**
+       * Fault Codes
+       * @default []
+       */
+      fault_codes: string[];
+    };
+    /**
+     * EscalationPage
+     * @description Items awaiting lead-engineer review.
+     */
+    EscalationPage: {
+      /** Items */
+      items: components['schemas']['QueueItem'][];
+    };
+    /**
+     * ExportFormat
+     * @description A file a project can be exported as.
+     * @enum {string}
+     */
+    ExportFormat:
+      | 'pdf'
+      | 'dxf'
+      | 'qet'
+      | 'aml'
+      | 'devices_csv'
+      | 'parts_csv'
+      | 'cables_csv'
+      | 'circuits_csv'
+      | 'terminals_csv'
+      | 'eplan_devices_csv'
+      | 'ace_components_csv'
+      | 'ace_terminals_csv'
+      | 'quotation_pdf'
+      | 'calculations_pdf'
+      | 'quotation_csv'
+      | 'plc_st'
+      | 'plc_io_csv'
+      | 'json'
+      | 'terminal_schedule_pdf'
+      | 'wire_schedule_pdf'
+      | 'connection_drawing_pdf';
+    /**
+     * ExportPurpose
+     * @description What a saved revision is exported for.
+     * @enum {string}
+     */
+    ExportPurpose: 'review' | 'execution';
+    /**
+     * ExportStatus
+     * @description What a saved revision can be exported as now.
+     * @enum {string}
+     */
+    ExportStatus: 'not_validated' | 'stale' | 'blocked' | 'draft' | 'review_approved';
+    /**
+     * FaultRecognitionResult
+     * @description What the model saw.
+     *
+     *     Attributes:
+     *         verdict: Whether this is a readable fault display at all. Checked
+     *             before any field is read.
+     *         fault_code: The code shown, e.g. "F0001".
+     *         brand: The manufacturer, if visibly identifiable — usually only when a
+     *             logo is in frame.
+     *         model: The equipment model, if visibly identifiable.
+     *         note: What the model saw when the verdict is not ``FAULT_DISPLAY``,
+     *             so the engineer is told what to do instead of just "no".
+     */
+    FaultRecognitionResult: {
+      verdict: components['schemas']['DisplayVerdict'];
+      fault_code?: components['schemas']['RecognisedField'];
+      brand?: components['schemas']['RecognisedField'];
+      model?: components['schemas']['RecognisedField'];
+      /** Note */
+      note?: string | null;
+    };
+    /**
+     * Feature
+     * @description What a plan may switch on beyond designing a board.
+     * @enum {string}
+     */
+    Feature: 'ecad_export' | 'company_settings' | 'approval_workflow' | 'quotation';
+    /**
+     * FeederLinkAttributesInput
+     * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
+     *
+     *     Values are checked by type and range only, and never defaulted: no
+     *     designer value is copied in, and none changes the calculation.
+     */
+    'FeederLinkAttributesInput-Input': {
+      /** Cores */
+      cores?: number | null;
+      /** Cross Section Mm2 */
+      cross_section_mm2?: number | string | null;
+      /** Material */
+      material?: string | null;
+      /** Insulation */
+      insulation?: string | null;
+      /** Length M */
+      length_m?: number | string | null;
+      /** Number */
+      number?: string | null;
+      /** Colour */
+      colour?: string | null;
+    };
+    /**
+     * FeederLinkAttributesInput
+     * @description The cable/conductor properties of a feeder link the user knows; absent is unset.
+     *
+     *     Values are checked by type and range only, and never defaulted: no
+     *     designer value is copied in, and none changes the calculation.
+     */
+    'FeederLinkAttributesInput-Output': {
+      /** Cores */
+      cores?: number | null;
+      /** Cross Section Mm2 */
+      cross_section_mm2?: string | null;
+      /** Material */
+      material?: string | null;
+      /** Insulation */
+      insulation?: string | null;
+      /** Length M */
+      length_m?: string | null;
+      /** Number */
+      number?: string | null;
+      /** Colour */
+      colour?: string | null;
+    };
+    /**
+     * FeederLinkEndInput
+     * @description One end of a feeder link as entered: a modelled terminal, a free-text label, both or neither.
+     *
+     *     Attributes:
+     *         terminal: A terminal of that end's board (the supply board for
+     *             ``from_end``, the fed board for ``to_end``).
+     *         label: The user's own designation of the end; printed as the user's
+     *             text, never as a connected terminal.
+     */
+    FeederLinkEndInput: {
+      terminal?: components['schemas']['FeederLinkTerminal'] | null;
+      /** Label */
+      label?: string | null;
+    };
+    /**
+     * FeederLinkInput
+     * @description What the user entered for the link of one server-owned feeder (M7a).
+     *
+     *     Attributes:
+     *         fed_board: The board the feeder supplies (it has ``fed_from``).
+     *         from_end: The end on the supply board.
+     *         to_end: The end on the fed board.
+     *         attributes: The known cable/conductor properties.
+     *
+     *     Provenance (who entered it, when) is the server's, set on save; a client
+     *     cannot send it.
+     */
+    'FeederLinkInput-Input': {
+      /** Fed Board */
+      fed_board: string;
+      from_end?: components['schemas']['FeederLinkEndInput'] | null;
+      to_end?: components['schemas']['FeederLinkEndInput'] | null;
+      attributes?: components['schemas']['FeederLinkAttributesInput-Input'] | null;
+    };
+    /**
+     * FeederLinkInput
+     * @description What the user entered for the link of one server-owned feeder (M7a).
+     *
+     *     Attributes:
+     *         fed_board: The board the feeder supplies (it has ``fed_from``).
+     *         from_end: The end on the supply board.
+     *         to_end: The end on the fed board.
+     *         attributes: The known cable/conductor properties.
+     *
+     *     Provenance (who entered it, when) is the server's, set on save; a client
+     *     cannot send it.
+     */
+    'FeederLinkInput-Output': {
+      /** Fed Board */
+      fed_board: string;
+      from_end?: components['schemas']['FeederLinkEndInput'] | null;
+      to_end?: components['schemas']['FeederLinkEndInput'] | null;
+      attributes?: components['schemas']['FeederLinkAttributesInput-Output'] | null;
+    };
+    /**
+     * FeederLinkTerminal
+     * @description A modelled terminal: of a component (``component``, ``terminal``) or a strip point (``point``, ``side``).
+     *
+     *     Exactly one of the two pairs is given; both name the saved model's ids.
+     */
+    FeederLinkTerminal: {
+      /** Component */
+      component?: string | null;
+      /** Terminal */
+      terminal?: string | null;
+      /** Point */
+      point?: string | null;
+      /** Side */
+      side?: ('inner' | 'outer') | null;
+    };
+    /**
+     * FlagRequest
+     * @description A user reporting an answer as wrong.
+     *
+     *     The retrieved passages come from the client because they are what the user
+     *     was actually shown. Re-running retrieval server-side would return whatever
+     *     the index holds now, which is the one thing AI-014 says must not happen.
+     */
+    FlagRequest: {
+      /**
+       * Message Id
+       * Format: uuid
+       */
+      message_id: string;
+      /** Reason */
+      reason?: string | null;
+      /** Retrieved */
+      retrieved?: components['schemas']['RetrievedPassage'][];
+    };
+    /**
+     * FlagResponse
+     * @description Confirmation that a flag was recorded and queued.
+     */
+    FlagResponse: {
+      /**
+       * Flag Id
+       * Format: uuid
+       */
+      flag_id: string;
+      /** Queued */
+      queued: boolean;
+    };
+    /**
+     * FlaggedAnswerView
+     * @description An answer an engineer reported as wrong, as they saw it.
+     *
+     *     ``passages`` is ``None`` when the stored context cannot be read, which is
+     *     not the same as an answer built on nothing and must not be shown as one.
+     */
+    FlaggedAnswerView: {
+      /** Question */
+      question: string;
+      /** Answer */
+      answer: string;
+      /** Reason */
+      reason: string | null;
+      /** Passages */
+      passages: components['schemas']['RetrievedPassage'][] | null;
+      /**
+       * Flagged At
+       * Format: date-time
+       */
+      flagged_at: string;
+    };
+    /** HTTPValidationError */
+    HTTPValidationError: {
+      /** Detail */
+      detail?: components['schemas']['ValidationError'][];
+    };
+    /**
+     * HealthResponse
+     * @description Result of a liveness or readiness probe.
+     */
+    HealthResponse: {
+      status: components['schemas']['DependencyState'];
+      /**
+       * Dependencies
+       * @default {}
+       */
+      dependencies: {
+        [key: string]: components['schemas']['DependencyState'];
+      };
+    };
+    /**
+     * ImageUploadResponse
+     * @description What an upload returns.
+     *
+     *     Attributes:
+     *         image_id: The handle to pass to the chat endpoint.
+     *         recognition: What AI-008 read off the photo, or ``None`` when the
+     *             recogniser could not produce a report. Absent is not an error: the
+     *             image is stored either way, and the engineer can still describe
+     *             the fault in words.
+     */
+    ImageUploadResponse: {
+      /** Image Id */
+      image_id: string;
+      recognition?: components['schemas']['FaultRecognitionResult'] | null;
+    };
+    /**
+     * InstallationConditions
+     * @description How the outgoing cables are run, for their sizing.
+     *
+     *     Attributes:
+     *         installation_method: IEC 60364-5-52 reference method.
+     *         ambient_temp_c: Air temperature around the cables.
+     *         grouped_circuits: Loaded circuits run together.
+     *         conductor_material: Copper or aluminium.
+     *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
+     */
+    'InstallationConditions-Input': {
+      /** @default B1 */
+      installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Ambient Temp C
+       * @default 30
+       */
+      ambient_temp_c: number | string;
+      /**
+       * Grouped Circuits
+       * @default 1
+       */
+      grouped_circuits: number;
+      /** @default copper */
+      conductor_material: components['schemas']['ConductorMaterial'];
+      /**
+       * Insulation Rating C
+       * @default 70
+       */
+      insulation_rating_c: number;
+    };
+    /**
+     * InstallationConditions
+     * @description How the outgoing cables are run, for their sizing.
+     *
+     *     Attributes:
+     *         installation_method: IEC 60364-5-52 reference method.
+     *         ambient_temp_c: Air temperature around the cables.
+     *         grouped_circuits: Loaded circuits run together.
+     *         conductor_material: Copper or aluminium.
+     *         insulation_rating_c: 70 (PVC) or 90 (XLPE/EPR).
+     */
+    'InstallationConditions-Output': {
+      /** @default B1 */
+      installation_method: components['schemas']['InstallationMethod'];
+      /**
+       * Ambient Temp C
+       * @default 30
+       */
+      ambient_temp_c: string;
+      /**
+       * Grouped Circuits
+       * @default 1
+       */
+      grouped_circuits: number;
+      /** @default copper */
+      conductor_material: components['schemas']['ConductorMaterial'];
+      /**
+       * Insulation Rating C
+       * @default 70
+       */
+      insulation_rating_c: number;
+    };
+    /**
+     * InstallationMethod
+     * @description IEC 60364-5-52 reference installation method.
+     * @enum {string}
+     */
+    InstallationMethod: 'A1' | 'A2' | 'B1' | 'B2' | 'C' | 'D1' | 'D2' | 'E' | 'F' | 'G';
+    /**
+     * InterBoardLinkView
+     * @description A ``pp-design/3`` feeder link between two boards, as stored (M7a); review content only.
+     */
+    InterBoardLinkView: {
+      /** Id */
+      id: string;
+      /**
+       * Origin
+       * @constant
+       */
+      origin: 'derived';
+      feeder: components['schemas']['LinkFeederView'];
+      /** Ends */
+      ends: components['schemas']['LinkEndView'][];
+      carrier: components['schemas']['LinkCarrierView'];
+      attributes: components['schemas']['LinkAttributesView'];
+      provenance: components['schemas']['LinkProvenanceView'];
+    };
+    /**
+     * Interval
+     * @description How often a subscription is billed.
+     * @enum {string}
+     */
+    Interval: 'monthly' | 'annual';
+    /**
+     * InvitationCreated
+     * @description A new invitation, with the token to send: shown this once.
+     *
+     *     Attributes:
+     *         id: The invitation.
+     *         email: Who it is for.
+     *         token: What the colleague signs up with.
+     *         expires_at: When it lapses (ISO 8601).
+     */
+    InvitationCreated: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Token */
+      token: string;
+      /** Expires At */
+      expires_at: string;
+    };
+    /**
+     * InvitationOut
+     * @description An invitation still open.
+     *
+     *     Attributes:
+     *         id: The invitation.
+     *         email: Who it is for.
+     *         invited_by: Who sent it.
+     *         expires_at: When it lapses (ISO 8601).
+     */
+    InvitationOut: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Invited By */
+      invited_by: string;
+      /** Expires At */
+      expires_at: string;
+    };
+    /**
+     * InviteRequest
+     * @description Invite a colleague by email.
+     */
+    InviteRequest: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string;
+    };
+    /**
+     * LabelRequest
+     * @description A verifier's judgement on one item.
+     */
+    LabelRequest: {
+      label: components['schemas']['VerificationLabel'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /**
+     * LabelResponse
+     * @description The outcome of recording a label.
+     */
+    LabelResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Status */
+      status: string;
+      /** Label */
+      label: string | null;
+    };
+    /**
+     * LadderBlock
+     * @description A function block on a rung — a timer, a counter, a comparison.
+     *
+     *     Attributes:
+     *         kind: The block type as the vendor names it (``TON``, ``CTU``, ...).
+     *         tag: The block's instance name.
+     *         parameters: Its settings, as label/value pairs. Rendered as text
+     *             inside the block rather than interpreted, because a timer preset
+     *             means nothing to a renderer and everything to the engineer
+     *             reading it.
+     */
+    LadderBlock: {
+      /** Kind */
+      kind: string;
+      /** Tag */
+      tag: string;
+      /** Parameters */
+      parameters?: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * LadderBranch
+     * @description Parallel paths across one part of a rung.
+     *
+     *     Attributes:
+     *         paths: Each path's elements in series. Any of them conducting makes
+     *             the branch conduct — this is an OR.
+     *
+     *     The construct that makes ladder ladder. A start/stop seal-in circuit is a
+     *     branch, and a renderer that only draws series contacts cannot draw the
+     *     single most common rung in the trade.
+     */
+    LadderBranch: {
+      /** Paths */
+      paths: (
+        | components['schemas']['LadderContact']
+        | components['schemas']['LadderBlock']
+        | components['schemas']['LadderBranch']
+      )[][];
+    };
+    /**
+     * LadderContact
+     * @description One contact or coil on a rung.
+     *
+     *     Attributes:
+     *         tag: The symbol it reads or writes.
+     *         kind: ``no`` (normally open), ``nc`` (normally closed), or ``coil``.
+     */
+    LadderContact: {
+      /** Tag */
+      tag: string;
+      /** Kind */
+      kind: string;
+    };
+    /**
+     * LadderRung
+     * @description One rung, as FE-009 draws it.
+     *
+     *     Attributes:
+     *         comment: What the rung is for.
+     *         elements: What sits on the rung, left to right. Contacts, function
+     *             blocks, and parallel branches.
+     *         output: The coil the rung drives.
+     */
+    LadderRung: {
+      /** Comment */
+      comment: string;
+      /** Elements */
+      elements?: (
+        | components['schemas']['LadderContact']
+        | components['schemas']['LadderBlock']
+        | components['schemas']['LadderBranch']
+      )[];
+      output: components['schemas']['LadderContact'];
+    };
+    /**
+     * LinkAttributeView
+     * @description A link attribute: the user's value, or ``null`` with source ``unset`` (never a designer value).
+     *
+     *     ``cores`` is an integer; ``cross_section_mm2`` and ``length_m`` are
+     *     decimal strings; the others are the user's text.
+     */
+    LinkAttributeView: {
+      /** Value */
+      value: number | string | null;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: 'user' | 'unset';
+    };
+    /**
+     * LinkAttributesView
+     * @description Every attribute a feeder link records, each the user's or unset.
+     */
+    LinkAttributesView: {
+      cores: components['schemas']['LinkAttributeView'];
+      cross_section_mm2: components['schemas']['LinkAttributeView'];
+      material: components['schemas']['LinkAttributeView'];
+      insulation: components['schemas']['LinkAttributeView'];
+      length_m: components['schemas']['LinkAttributeView'];
+      number: components['schemas']['LinkAttributeView'];
+      colour: components['schemas']['LinkAttributeView'];
+    };
+    /**
+     * LinkCarrierView
+     * @description What carries a link: the feeder circuit's cable, or ``unknown``.
+     */
+    LinkCarrierView: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'cable' | 'unknown';
+      /** Cable Id */
+      cable_id: string | null;
+    };
+    /**
+     * LinkEndView
+     * @description One end of a feeder link: resolved exactly when a modelled terminal is set.
+     */
+    LinkEndView: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: 'from' | 'to';
+      /** Board */
+      board: string;
+      terminal: components['schemas']['LinkTerminalView'] | null;
+      /** Label */
+      label: string | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'resolved' | 'unresolved';
+    };
+    /**
+     * LinkFeederView
+     * @description The server-owned feeder a link records (from ``fed_from``); boards by id.
+     */
+    LinkFeederView: {
+      /** Supply Board */
+      supply_board: string;
+      /** Fed Board */
+      fed_board: string;
+      /** Circuit Id */
+      circuit_id: string;
+    };
+    /**
+     * LinkProvenanceView
+     * @description Who entered a link's values and when, set by the server on save; ``null`` when nobody did.
+     */
+    LinkProvenanceView: {
+      /** Requirement Ref */
+      requirement_ref: string;
+      /** Entered By User Id */
+      entered_by_user_id: string | null;
+      /** Entered At */
+      entered_at: string | null;
+    };
+    /**
+     * LinkTerminalView
+     * @description A modelled terminal: ``{component, terminal}`` or ``{point, side}``.
+     */
+    LinkTerminalView: {
+      /** Component */
+      component?: string | null;
+      /** Terminal */
+      terminal?: string | null;
+      /** Point */
+      point?: string | null;
+      /** Side */
+      side?: ('inner' | 'outer') | null;
+    };
+    /**
+     * LoadInput
+     * @description One line of a distribution board's load schedule.
+     *
+     *     Attributes:
+     *         description: What it feeds ("Sockets - hall east").
+     *         load: The kind of load, which picks the company's rule for it.
+     *         power_kw: Installed active power.
+     *         phases: 1 or 3.
+     *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
+     *             load-current table is drawn up for, and the board says so.
+     *         controlled: Switched by a contactor the PLC drives, rather than
+     *             live whenever its breaker is closed.
+     *         feeds: The board this circuit feeds, for a feeder to a sub-board;
+     *             set by the project design, not typed in.
+     *         starter: For a three-phase motor, how it is started; its
+     *             ``power_kw`` is then the motor's shaft power.
+     *         length_m: The cable's route length, one way. Given, the cable is
+     *             checked (and if need be enlarged) for voltage drop.
+     */
+    'LoadInput-Input': {
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: number | string;
+      /**
+       * Phases
+       * @default 1
+       */
+      phases: number;
+      /** Power Factor */
+      power_factor?: number | string | null;
+      /**
+       * Controlled
+       * @default false
+       */
+      controlled: boolean;
+      /** Feeds */
+      feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
+      /** Length M */
+      length_m?: number | string | null;
+    };
+    /**
+     * LoadInput
+     * @description One line of a distribution board's load schedule.
+     *
+     *     Attributes:
+     *         description: What it feeds ("Sockets - hall east").
+     *         load: The kind of load, which picks the company's rule for it.
+     *         power_kw: Installed active power.
+     *         phases: 1 or 3.
+     *         power_factor: cosφ. ``None`` assumes 0.9, the value the handbook's
+     *             load-current table is drawn up for, and the board says so.
+     *         controlled: Switched by a contactor the PLC drives, rather than
+     *             live whenever its breaker is closed.
+     *         feeds: The board this circuit feeds, for a feeder to a sub-board;
+     *             set by the project design, not typed in.
+     *         starter: For a three-phase motor, how it is started; its
+     *             ``power_kw`` is then the motor's shaft power.
+     *         length_m: The cable's route length, one way. Given, the cable is
+     *             checked (and if need be enlarged) for voltage drop.
+     */
+    'LoadInput-Output': {
+      /** Description */
+      description: string;
+      load: components['schemas']['LoadKind'];
+      /** Power Kw */
+      power_kw: string;
+      /**
+       * Phases
+       * @default 1
+       */
+      phases: number;
+      /** Power Factor */
+      power_factor?: string | null;
+      /**
+       * Controlled
+       * @default false
+       */
+      controlled: boolean;
+      /** Feeds */
+      feeds?: string | null;
+      starter?: components['schemas']['MotorStarter'] | null;
+      /** Length M */
+      length_m?: string | null;
+    };
+    /**
+     * LoadKind
+     * @description What a circuit feeds.
+     *
+     *     Company rules (breaker size, residual current sensitivity) are set per
+     *     kind in the profile.
+     * @enum {string}
+     */
+    LoadKind:
+      | 'lighting'
+      | 'socket'
+      | 'air_conditioning'
+      | 'water_heater'
+      | 'motor'
+      | 'fan'
+      | 'kitchen'
+      | 'lift'
+      | 'sub_board'
+      | 'control'
+      | 'data'
+      | 'spare'
+      | 'other';
+    /**
+     * LoadRef
+     * @description One load of the request: its board's name and its position on that board.
+     */
+    LoadRef: {
+      /** Board */
+      board: string;
+      /** Load Index */
+      load_index: number;
+    };
+    /**
+     * LoadScheduleImport
+     * @description A load schedule read from a consultant's file.
+     *
+     *     Attributes:
+     *         loads: The loads read, in the schedule's order.
+     *         warnings: Every row skipped and every assumption made, by row.
+     *         rows_read: Data rows found below the header.
+     */
+    LoadScheduleImport: {
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      /** Warnings */
+      warnings: components['schemas']['DesignNote'][];
+      /** Rows Read */
+      rows_read: number;
+    };
+    /**
+     * LoadScheduleItem
+     * @description One load on a panel's schedule.
+     */
+    LoadScheduleItem: {
+      /** Tag */
+      tag: string;
+      /** Description */
+      description: string;
+      /** Power Kw */
+      power_kw?: number | string | null;
+      /** Current A */
+      current_a?: number | string | null;
+      /** Dissipation W */
+      dissipation_w?: number | string | null;
+      /**
+       * Variable Speed
+       * @default false
+       */
+      variable_speed: boolean;
+      start?: components['schemas']['StartType'] | null;
+    };
+    /**
+     * LoadScheduleSuggestion
+     * @description A proposed load schedule, for the engineer to check before designing.
+     *
+     *     Attributes:
+     *         loads: The proposed circuits.
+     *         assumptions: Every assumption, per circuit and overall.
+     */
+    LoadScheduleSuggestion: {
+      /** Loads */
+      loads: components['schemas']['LoadInput-Output'][];
+      /** Assumptions */
+      assumptions: components['schemas']['DesignNote'][];
+    };
+    /**
+     * Locale
+     * @description A language a response may be generated in.
+     *
+     *     Deliberately a closed set. An open string would let a caller pass anything
+     *     and get whatever the model felt like, which for a language the corpus does
+     *     not support is worse than refusing.
+     * @enum {string}
+     */
+    Locale: 'en' | 'ar' | 'he';
+    /**
+     * LoginRequest
+     * @description Exchange credentials for a token pair.
+     */
+    LoginRequest: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string;
+      /** Password */
+      password: string;
+    };
+    /**
+     * MarketInfo
+     * @description A market's supply and stated rules, for a new board's defaults.
+     *
+     *     Attributes:
+     *         code: ISO 3166-1 alpha-2.
+     *         name: In English.
+     *         voltage_v: Line to line, three-phase.
+     *         phase_voltage_v: Line to neutral.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The usual earthing system.
+     *         currency: ISO 4217, for a quotation.
+     *         regulation: The code a design there answers to.
+     *         max_voltage_drop_percent: Its stated limit for every load, if any.
+     *         rcd_every_final_circuit: Whether it asks 30 mA on every final circuit.
+     *         languages: Customary drawing languages, first preferred.
+     */
+    MarketInfo: {
+      /** Code */
+      code: string;
+      /** Name */
+      name: string;
+      /** Voltage V */
+      voltage_v: number;
+      /** Phase Voltage V */
+      phase_voltage_v: number;
+      /** Frequency Hz */
+      frequency_hz: number;
+      /** Earthing */
+      earthing: string;
+      /** Currency */
+      currency: string;
+      /** Regulation */
+      regulation: string;
+      /** Max Voltage Drop Percent */
+      max_voltage_drop_percent: string | null;
+      /** Rcd Every Final Circuit */
+      rcd_every_final_circuit: boolean;
+      /** Languages */
+      languages: string[];
+    };
+    /**
+     * MarkupCandidate
+     * @description A circuit a comment on a residual current group may mean.
+     *
+     *     Attributes:
+     *         circuit: Its description, as the schedule names it.
+     *         load_index: Its place in the board's schedule.
+     */
+    MarkupCandidate: {
+      /** Circuit */
+      circuit: string;
+      /** Load Index */
+      load_index: number;
+    };
+    /**
+     * MarkupItem
+     * @description One reviewer's mark read off a drawing set PDF.
+     *
+     *     Attributes:
+     *         page: Its page, from 1.
+     *         kind: The PDF annotation type.
+     *         author: Who made it, where the PDF says.
+     *         text: What it says.
+     *         sheet: The page's title, where the PDF is this project's drawing set.
+     *         board: The board the page draws, likewise.
+     *         near: The label nearest the mark, likewise.
+     *         suggestion: The change to the schedule it asks for, where it sits on
+     *             a circuit and says one the schedule holds; offered, never applied.
+     */
+    MarkupItem: {
+      /** Page */
+      page: number;
+      /** Kind */
+      kind: string;
+      /** Author */
+      author: string;
+      /** Text */
+      text: string;
+      /** Sheet */
+      sheet: string;
+      /** Board */
+      board: string;
+      /** Near */
+      near: string;
+      suggestion?: components['schemas']['MarkupSuggestion'] | null;
+    };
+    /**
+     * MarkupReport
+     * @description The marks on a reviewed drawing set.
+     *
+     *     Attributes:
+     *         markups: Every mark with text, in page order.
+     *         matched: Whether the PDF's pages are this project's drawing set, so
+     *             each mark could be placed on its board and label.
+     */
+    MarkupReport: {
+      /** Markups */
+      markups: components['schemas']['MarkupItem'][];
+      /** Matched */
+      matched: boolean;
+    };
+    /**
+     * MarkupSuggestion
+     * @description A change to the load schedule a reviewer's comment asks for.
+     *
+     *     Attributes:
+     *         board: The board whose schedule changes.
+     *         circuit: The circuit's description, as the schedule names it.
+     *         load_index: Its place in that board's schedule; ``None`` for a change
+     *             to the board itself (a feeder length).
+     *         field: What changes.
+     *         value: Its new value; ``None`` for a removal.
+     *         candidates: For a comment on a group of several circuits, each one
+     *             it may mean, for the engineer to pick; ``circuit`` is then empty.
+     */
+    MarkupSuggestion: {
+      /** Board */
+      board: string;
+      /** Circuit */
+      circuit: string;
+      /** Load Index */
+      load_index?: number | null;
+      /**
+       * Field
+       * @enum {string}
+       */
+      field:
+        | 'remove'
+        | 'power_kw'
+        | 'length_m'
+        | 'power_factor'
+        | 'phases'
+        | 'starter'
+        | 'feeder_length_m';
+      /** Value */
+      value?: string | null;
+      /** Candidates */
+      candidates?: components['schemas']['MarkupCandidate'][];
+    };
+    /**
+     * Member
+     * @description One account in the team.
+     *
+     *     Attributes:
+     *         id: The account.
+     *         email: Its address.
+     *         full_name: Its name, if given.
+     *         owner: Whether it is the tenant's recorded owner.
+     */
+    Member: {
+      /** Id */
+      id: string;
+      /** Email */
+      email: string;
+      /** Full Name */
+      full_name?: string | null;
+      /** Owner */
+      owner: boolean;
+    };
+    /**
+     * MotorStarter
+     * @description How a motor is started.
+     * @enum {string}
+     */
+    MotorStarter: 'dol' | 'star_delta' | 'drive';
+    /**
+     * PageKind
+     * @description A kind of page in a drawing set.
+     * @enum {string}
+     */
+    PageKind:
+      | 'title'
+      | 'safety'
+      | 'contents'
+      | 'layout'
+      | 'single_line'
+      | 'distribution'
+      | 'notes'
+      | 'terminals'
+      | 'cables'
+      | 'parts';
+    /**
+     * PanelBomRequest
+     * @description Inputs for BOM generation.
+     */
+    PanelBomRequest: {
+      /** Loads */
+      loads: components['schemas']['LoadScheduleItem'][];
+      constraints: components['schemas']['EnclosureConstraints'];
+    };
+    /**
+     * PanelBomResponse
+     * @description BOM as returned to the caller.
+     */
+    PanelBomResponse: {
+      result: components['schemas']['PanelBomResult'];
+      /** Sources */
+      sources: components['schemas']['Citation'][];
+    };
+    /**
+     * PanelBomResult
+     * @description Output of the pure BOM function.
+     */
+    PanelBomResult: {
+      /** Lines */
+      lines: components['schemas']['BomLine'][];
+      /** Heat Load W */
+      heat_load_w: string;
+      /** Cooling Required W */
+      cooling_required_w: string;
+      /**
+       * Notes
+       * @default []
+       */
+      notes: string[];
+      /**
+       * Note Keys
+       * @default []
+       */
+      note_keys: components['schemas']['BomNote'][];
+    };
+    /**
+     * Part
+     * @description An orderable article.
+     *
+     *     Attributes:
+     *         key: Unique within the project; how devices refer to the part.
+     *         manufacturer: As the manufacturer names itself.
+     *         type_number: The manufacturer's type designation.
+     *         order_number: The number an order is placed with, where it differs.
+     *         description: What it is, in the catalogue's words.
+     *         source: Where the data came from (catalogue, page), so a reviewer
+     *             can check it.
+     *         width_mm: Mounting width, for layout. ``None`` when not known.
+     */
+    'Part-Input': {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Type Number */
+      type_number: string;
+      /** Order Number */
+      order_number?: string | null;
+      /** Description */
+      description: string;
+      /** Source */
+      source?: string | null;
+      /** Width Mm */
+      width_mm?: number | string | null;
+    };
+    /**
+     * Part
+     * @description An orderable article.
+     *
+     *     Attributes:
+     *         key: Unique within the project; how devices refer to the part.
+     *         manufacturer: As the manufacturer names itself.
+     *         type_number: The manufacturer's type designation.
+     *         order_number: The number an order is placed with, where it differs.
+     *         description: What it is, in the catalogue's words.
+     *         source: Where the data came from (catalogue, page), so a reviewer
+     *             can check it.
+     *         width_mm: Mounting width, for layout. ``None`` when not known.
+     */
+    'Part-Output': {
+      /** Key */
+      key: string;
+      /** Manufacturer */
+      manufacturer: string;
+      /** Type Number */
+      type_number: string;
+      /** Order Number */
+      order_number?: string | null;
+      /** Description */
+      description: string;
+      /** Source */
+      source?: string | null;
+      /** Width Mm */
+      width_mm?: string | null;
+    };
+    /**
+     * Permission
+     * @description An action the server checks the caller may take (``app.domain.permissions``).
+     *
+     *     Sent to the client so it can hide or disable what it may not do; the
+     *     server checks it again on every request regardless.
+     * @enum {string}
+     */
+    Permission:
+      | 'approve_revision'
+      | 'delete_project'
+      | 'edit_company_settings'
+      | 'review_engineering_definitions';
+    /**
+     * Phase
+     * @description A line conductor, or all three.
+     * @enum {string}
+     */
+    Phase: 'L1' | 'L2' | 'L3' | 'L1L2L3';
+    /**
+     * PlanCatalogue
+     * @description Every plan, cheapest first.
+     *
+     *     Attributes:
+     *         plans: The plans.
+     *         currency: The currency prices are in.
+     *         annual_months_charged: Months charged for a year paid at once.
+     */
+    PlanCatalogue: {
+      /** Plans */
+      plans: components['schemas']['PlanOut'][];
+      /**
+       * Currency
+       * @default USD
+       */
+      currency: string;
+      /** Annual Months Charged */
+      annual_months_charged: number;
+    };
+    /**
+     * PlanKey
+     * @description The plans, by the key stored on a subscription.
+     * @enum {string}
+     */
+    PlanKey: 'free' | 'engineer' | 'team' | 'company' | 'enterprise';
+    /**
+     * PlanOut
+     * @description One plan, as the pricing page shows it.
+     *
+     *     Attributes:
+     *         key: Its key.
+     *         monthly_usd: The price a month for the seats included, billed monthly;
+     *             ``None`` where it is agreed per customer.
+     *         annual_usd: The price a year for the seats included, billed annually.
+     *         seats_included: The accounts the price covers.
+     *         extra_seat_usd: The price a month of each further seat, if sold.
+     *         max_seats: The most accounts it holds.
+     *         model_calls_per_month: The pooled AI allowance a month.
+     *         saved_projects: The projects it may keep; ``None`` for no limit.
+     *         features: What it switches on.
+     */
+    PlanOut: {
+      key: components['schemas']['PlanKey'];
+      /** Monthly Usd */
+      monthly_usd: string | null;
+      /** Annual Usd */
+      annual_usd: string | null;
+      /** Seats Included */
+      seats_included: number;
+      /** Extra Seat Usd */
+      extra_seat_usd: string | null;
+      /** Max Seats */
+      max_seats: number | null;
+      /** Model Calls Per Month */
+      model_calls_per_month: number | null;
+      /** Saved Projects */
+      saved_projects: number | null;
+      /** Features */
+      features: components['schemas']['Feature'][];
+    };
+    /**
+     * PlanRequest
+     * @description Ask to move the account to a plan.
+     *
+     *     Attributes:
+     *         plan: The plan.
+     *         interval: Monthly or annual.
+     *         seats: The accounts to pay for.
+     */
+    PlanRequest: {
+      plan: components['schemas']['PlanKey'];
+      /** @default monthly */
+      interval: components['schemas']['Interval'];
+      /**
+       * Seats
+       * @default 1
+       */
+      seats: number;
+    };
+    /**
+     * PlcDialect
+     * @description Which vendor's flavour a request targets.
+     *
+     *     Vendor matters because the dialects genuinely differ — Siemens SCL is not
+     *     Rockwell's ST, and code valid in one is not always valid in the other. A
+     *     validator that ignored the distinction would be reporting on a language
+     *     nobody actually runs.
+     * @enum {string}
+     */
+    PlcDialect: 'iec-61131-3' | 'siemens-scl' | 'rockwell-st' | 'codesys-st';
+    /**
+     * PlcGenerationRequest
+     * @description A request to generate PLC code.
+     */
+    PlcGenerationRequest: {
+      /** Description */
+      description: string;
+      /** @default iec-61131-3 */
+      dialect: components['schemas']['PlcDialect'];
+      /** @default structured-text */
+      language: components['schemas']['PlcLanguage'];
+    };
+    /**
+     * PlcGenerationResult
+     * @description Generated code, with the verdict on it.
+     *
+     *     Attributes:
+     *         language: What was produced.
+     *         dialect: What it targets.
+     *         source: Structured Text, when that is what was asked for.
+     *         rungs: Ladder rungs, when that is what was asked for.
+     *         validation: The validation pass over the generated code. Always
+     *             present — generation that skipped validation would be exactly the
+     *             plausible-looking unchecked output this task exists to prevent.
+     */
+    PlcGenerationResult: {
+      language: components['schemas']['PlcLanguage'];
+      dialect: components['schemas']['PlcDialect'];
+      /** Source */
+      source?: string | null;
+      /** Rungs */
+      rungs?: components['schemas']['LadderRung'][];
+      validation: components['schemas']['PlcValidationResult'];
+    };
+    /**
+     * PlcIoPoint
+     * @description One point on a control program's I/O list.
+     *
+     *     Attributes:
+     *         tag: The variable name in the program.
+     *         direction: "input" or "output".
+     *         board: The board it belongs to; empty for shared inputs.
+     *         device: The designation of the device it drives or reports.
+     *         description: What it is, for the wiring list.
+     */
+    PlcIoPoint: {
+      /** Tag */
+      tag: string;
+      /** Direction */
+      direction: string;
+      /** Board */
+      board: string;
+      /** Device */
+      device: string;
+      /** Description */
+      description: string;
+    };
+    /**
+     * PlcLanguage
+     * @description What form the output takes.
+     * @enum {string}
+     */
+    PlcLanguage: 'structured-text' | 'ladder';
+    /**
+     * PlcProgramRequest
+     * @description A project whose PLC-switched circuits need a control program.
+     *
+     *     Attributes:
+     *         project: The designed project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    PlcProgramRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * PlcProgramResponse
+     * @description The control program for a project, and the checker's verdict on it.
+     *
+     *     Attributes:
+     *         name: The program unit's name.
+     *         source: The IEC 61131-3 Structured Text.
+     *         io: Every input and output, shared inputs first.
+     *         validation: The parser-based checker's verdict on ``source``.
+     */
+    PlcProgramResponse: {
+      /** Name */
+      name: string;
+      /** Source */
+      source: string;
+      /** Io */
+      io: components['schemas']['PlcIoPoint'][];
+      validation: components['schemas']['PlcValidationResult'];
+    };
+    /**
+     * PlcValidationRequest
+     * @description A request to validate code the caller already has.
+     *
+     *     Separate from generation because BE-010's review endpoint validates code
+     *     an engineer wrote, where no generation happens at all.
+     */
+    PlcValidationRequest: {
+      /** Source */
+      source: string;
+      /** @default iec-61131-3 */
+      dialect: components['schemas']['PlcDialect'];
+    };
+    /**
+     * PlcValidationResult
+     * @description The outcome of validating one piece of code.
+     *
+     *     Attributes:
+     *         status: Valid, invalid, or unverifiable.
+     *         findings: What was found. May be non-empty on a ``VALID`` result when
+     *             every finding is a warning.
+     *         dialect: What it was checked as.
+     *         checked_by: What did the checking, named so a reader can judge how
+     *             much the result is worth.
+     */
+    PlcValidationResult: {
+      status: components['schemas']['ValidationStatus'];
+      /** Findings */
+      findings?: components['schemas']['ValidationFinding'][];
+      dialect: components['schemas']['PlcDialect'];
+      /** Checked By */
+      checked_by: string;
+    };
+    /**
+     * PriceListEntry
+     * @description One price from a company's price list.
+     *
+     *     Attributes:
+     *         key: What it prices: a manufacturer's order number or type number,
+     *             or a rating key ("circuit_breaker:1P:C16",
+     *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
+     *             metre) for a device whose article is not chosen yet.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
+     *         unit_price: Price of one, or of one metre for a cable.
+     */
+    'PriceListEntry-Input': {
+      /** Key */
+      key: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Unit Price */
+      unit_price: number | string;
+    };
+    /**
+     * PriceListEntry
+     * @description One price from a company's price list.
+     *
+     *     Attributes:
+     *         key: What it prices: a manufacturer's order number or type number,
+     *             or a rating key ("circuit_breaker:1P:C16",
+     *             "residual_current_device:4P:40A:30mA", "cable:3G2.5:Cu:PVC" per
+     *             metre) for a device whose article is not chosen yet.
+     *         description: The supplier's description, kept with the price. It
+     *             never names a quotation line: a line is the designed item's.
+     *         unit_price: Price of one, or of one metre for a cable.
+     */
+    'PriceListEntry-Output': {
+      /** Key */
+      key: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Unit Price */
+      unit_price: string;
+    };
+    /**
+     * PricingSettings
+     * @description How a company prices a board.
+     *
+     *     Attributes:
+     *         currency: Printed beside every amount: an ISO 4217 code.
+     *         price_list: The company's prices.
+     *         cable_length_m: The length priced for an outgoing cable whose own
+     *             length is not given; ``None`` leaves such cables unpriced.
+     *         labour_per_circuit: Wiring and testing, per outgoing circuit.
+     *         labour_per_board: Assembly and testing, per board.
+     *         enclosure_price: The enclosure, busbars and accessories, per board.
+     *         markup_percent: Added to materials and labour.
+     *         vat_percent: Added last.
+     */
+    PricingSettings: {
+      /**
+       * Currency
+       * @default JOD
+       */
+      currency: string;
+      /** Price List */
+      price_list?: components['schemas']['PriceListEntry-Input'][];
+      /** Cable Length M */
+      cable_length_m?: number | string | null;
+      /**
+       * Labour Per Circuit
+       * @default 0
+       */
+      labour_per_circuit: number | string;
+      /**
+       * Labour Per Board
+       * @default 0
+       */
+      labour_per_board: number | string;
+      /**
+       * Enclosure Price
+       * @default 0
+       */
+      enclosure_price: number | string;
+      /**
+       * Markup Percent
+       * @default 0
+       */
+      markup_percent: number | string;
+      /**
+       * Vat Percent
+       * @default 0
+       */
+      vat_percent: number | string;
+    };
+    /**
+     * ProjectDesignRequest
+     * @description A project of one or more boards to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         boards: Each board's schedule. A board naming another in
+     *             ``fed_from`` gets a feeder in that board, sized from its own
+     *             design, so sub-boards need no hand-entered load.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    'ProjectDesignRequest-Input': {
+      info: components['schemas']['ProjectInfo'];
+      /** Boards */
+      boards: components['schemas']['DistributionBoardRequest-Input'][];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      /** Feeder Links */
+      feeder_links?: components['schemas']['FeederLinkInput-Input'][] | null;
+    };
+    /**
+     * ProjectDesignRequest
+     * @description A project of one or more boards to design, under a company's profile.
+     *
+     *     Attributes:
+     *         info: Title-block data for the project.
+     *         boards: Each board's schedule. A board naming another in
+     *             ``fed_from`` gets a feeder in that board, sized from its own
+     *             design, so sub-boards need no hand-entered load.
+     *         profile: The company's profile settings; ``None`` for the default.
+     */
+    'ProjectDesignRequest-Output': {
+      info: components['schemas']['ProjectInfo'];
+      /** Boards */
+      boards: components['schemas']['DistributionBoardRequest-Output'][];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      /** Feeder Links */
+      feeder_links?: components['schemas']['FeederLinkInput-Output'][] | null;
+    };
+    /**
+     * ProjectInfo
+     * @description What the title block prints.
+     *
+     *     Attributes:
+     *         name: Project name.
+     *         number: The company's job number.
+     *         customer: Owner or customer.
+     *         consultant: Consultant, where there is one.
+     *         contractor: Contractor, where there is one.
+     *         revisions: Issues of the drawing set, oldest first.
+     */
+    ProjectInfo: {
+      /** Name */
+      name: string;
+      /**
+       * Number
+       * @default
+       */
+      number: string;
+      /**
+       * Customer
+       * @default
+       */
+      customer: string;
+      /**
+       * Consultant
+       * @default
+       */
+      consultant: string;
+      /**
+       * Contractor
+       * @default
+       */
+      contractor: string;
+      /** Revisions */
+      revisions?: components['schemas']['Revision'][];
+    };
+    /**
+     * ProjectPage
+     * @description One page of saved projects, most recently saved first.
+     *
+     *     Attributes:
+     *         projects: The page.
+     *         next_cursor: Pass back for the next page; ``None`` on the last.
+     *         permissions: What the caller may do to a project
+     *             (``app.domain.permissions``), for the client to hide what it
+     *             may not; the server checks again on every request.
+     */
+    ProjectPage: {
+      /** Projects */
+      projects: components['schemas']['ProjectSummary'][];
+      /** Next Cursor */
+      next_cursor?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
+    };
+    /**
+     * ProjectSummary
+     * @description One saved project as the project list shows it.
+     *
+     *     Attributes:
+     *         id: Its identifier.
+     *         name: Its name.
+     *         revisions: How many revisions it has.
+     *         updated_at: When its latest revision was saved, ISO 8601.
+     */
+    ProjectSummary: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Revisions */
+      revisions: number;
+      /** Updated At */
+      updated_at: string;
+    };
+    /**
+     * QuestionAction
+     * @description An answer to, or acknowledgement of, one question of a revision's record.
+     *
+     *     Who and when are the server's: a body naming either is refused (422).
+     *
+     *     Attributes:
+     *         action: ``answer`` supplies the value, saved as typed input in a new
+     *             revision; ``acknowledge`` accepts the stated assumption.
+     *         value: The value, for ``answer`` only.
+     */
+    QuestionAction: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: 'answer' | 'acknowledge';
+      /** Value */
+      value?: number | string | null;
+    };
+    /**
+     * QueueItem
+     * @description One item in a verifier's queue, with what the verifier checks it against.
+     *
+     *     A crawled chunk (``origin`` ``crawl``): ``content`` is its text and
+     *     ``source_url``/``page``/``section`` say where it came from, all ``None``
+     *     when the staged chunk cannot be read; the console then says so rather than
+     *     inviting a label on unseen text.
+     *
+     *     A reported answer (``origin`` ``user-flag``): ``flag`` carries the
+     *     question, the answer, the reporter's reason and the passages behind it.
+     */
+    QueueItem: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Chunk Id */
+      chunk_id: string | null;
+      /** Status */
+      status: string;
+      /** Assigned At */
+      assigned_at: string | null;
+      /** Content */
+      content?: string | null;
+      /** Source Url */
+      source_url?: string | null;
+      /** Page */
+      page?: number | null;
+      /** Section */
+      section?: string | null;
+      /**
+       * Origin
+       * @default crawl
+       */
+      origin: string;
+      flag?: components['schemas']['FlaggedAnswerView'] | null;
+      /** Label */
+      label?: string | null;
+      /** Note */
+      note?: string | null;
+      /**
+       * Assigned To You
+       * @default false
+       */
+      assigned_to_you: boolean;
+    };
+    /**
+     * QueuePage
+     * @description A verifier's outstanding batch.
+     */
+    QueuePage: {
+      /** Items */
+      items: components['schemas']['QueueItem'][];
+    };
+    /**
+     * QuotaStatus
+     * @description Free-tier usage, as counted on the server.
+     */
+    QuotaStatus: {
+      /** Questions Used */
+      questions_used: number;
+      /** Question Limit */
+      question_limit: number;
+      /** Questions Remaining */
+      questions_remaining: number;
+    };
+    /**
+     * QuotationEstimate
+     * @description A provisional estimate: a project the client sent, priced and checked.
+     *
+     *     Nothing in it is persisted, approved or issued. The project is the
+     *     client's, so it is re-designated and integrity-checked on the server and
+     *     its findings are returned beside the prices: a tampered rating is a
+     *     blocking finding here, as on a draft export. It carries no revision,
+     *     checker or approver.
+     *
+     *     Attributes:
+     *         status: Always ``"provisional_estimate"``.
+     *         label: In English; the page renders ``status`` in the reader's language.
+     *         findings: The integrity checks and notes on the project as sent.
+     *         blocking: Whether any finding is blocking.
+     */
+    QuotationEstimate: {
+      /** Currency */
+      currency: string;
+      /** Lines */
+      lines: components['schemas']['QuotationLine'][];
+      /** Materials */
+      materials: string;
+      /** Labour */
+      labour: string;
+      /** Markup */
+      markup: string;
+      /** Vat */
+      vat: string;
+      /** Total */
+      total: string;
+      /** Unpriced */
+      unpriced: string[];
+      /** Complete */
+      complete: boolean;
+      /**
+       * Status
+       * @default provisional_estimate
+       * @constant
+       */
+      status: 'provisional_estimate';
+      /**
+       * Label
+       * @default Provisional estimate: not a quotation, not for execution. Priced from an unsaved design sent by the browser; a quotation is exported from a saved revision.
+       */
+      label: string;
+      /** Findings */
+      findings: components['schemas']['DesignFinding'][];
+      /** Blocking */
+      blocking: boolean;
+    };
+    /**
+     * QuotationLine
+     * @description One line of a quotation.
+     *
+     *     Attributes:
+     *         description: What it is.
+     *         designations: The devices or cables it covers.
+     *         quantity: How many, or metres for a cable.
+     *         unit: "pcs" or "m".
+     *         key: The price-list key it was matched by, or would be.
+     *         unit_price: ``None`` when the price list has no price for it.
+     *         total: ``None`` when unpriced.
+     *         missing: Why it is unpriced: "price" (not in the price list) or
+     *             "length" (a cable with no length); ``None`` when priced.
+     */
+    QuotationLine: {
+      /** Description */
+      description: string;
+      /** Designations */
+      designations: string[];
+      /** Quantity */
+      quantity: string;
+      /** Unit */
+      unit: string;
+      /** Key */
+      key: string;
+      /** Unit Price */
+      unit_price: string | null;
+      /** Total */
+      total: string | null;
+      /** Missing */
+      missing?: ('price' | 'length') | null;
+    };
+    /**
+     * QuotationRequest
+     * @description A project to price.
+     *
+     *     Attributes:
+     *         project: The designed project.
+     *         profile: The company's profile settings; ``None`` for the default.
+     *         pricing: The company's prices and rates.
+     */
+    QuotationRequest: {
+      project: components['schemas']['DesignProject-Input'];
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+      pricing: components['schemas']['PricingSettings'];
+    };
+    /**
+     * RecognisedField
+     * @description One extracted value and how sure the model is of it.
+     *
+     *     Attributes:
+     *         value: What was read, verbatim off the screen. ``None`` when the field
+     *             is not visible — which is ordinary, not an error: a fault display
+     *             usually shows a code and rarely shows the manufacturer.
+     *         confidence: How sure the model is, in [0, 1]. Meaningless without
+     *             ``value``, and validated as absent in that case.
+     */
+    RecognisedField: {
+      /** Value */
+      value?: string | null;
+      /**
+       * Confidence
+       * @default 0
+       */
+      confidence: number;
+    };
+    /**
+     * RequirementBoard
+     * @description A board of the record.
+     */
+    RequirementBoard: {
+      /** Ref */
+      ref: string;
+      /** Name */
+      name: string;
+      /** Fed From Ref */
+      fed_from_ref?: string | null;
+    };
+    /**
+     * RequirementControl
+     * @description A controlled load's control needs, recorded only: ``not_designed``.
+     */
+    RequirementControl: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Load Ref */
+      load_ref: string;
+      /** Needs */
+      needs: string[];
+      /**
+       * Status
+       * @default not_designed
+       * @constant
+       */
+      status: 'not_designed';
+    };
+    /**
+     * RequirementFeeder
+     * @description A feeder the designer generated from a sub-board's "Fed from"; never typed.
+     */
+    RequirementFeeder: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Supply Board Ref */
+      supply_board_ref: string;
+      /**
+       * Source
+       * @default generated
+       * @constant
+       */
+      source: 'generated';
+    };
+    /**
+     * RequirementLoad
+     * @description A load of the record, as the user entered it (``typed`` or ``imported``).
+     */
+    RequirementLoad: {
+      /** Ref */
+      ref: string;
+      /** Board Ref */
+      board_ref: string;
+      /** Description */
+      description: string;
+      /** Source */
+      source: string;
+    };
+    /**
+     * RequirementOpenItem
+     * @description What this slice does not design or settle.
+     *
+     *     ``control_not_designed``, ``inter_board_wiring_not_modelled``, and (M6b)
+     *     an AI proposal item left undecided (``ai_item_unreviewed``), or a
+     *     ``question`` (``ai_question``) or ``unsupported`` item (``ai_unsupported``)
+     *     the user did not reject; the subject's ``item_id`` names the item. A
+     *     description mentioning life-safety equipment anywhere adds
+     *     ``ai_life_safety_mentioned``, and a word that may be about life safety
+     *     ("emergency", "standby", "fire" alone) adds ``ai_possibly_life_safety``,
+     *     one per mention (subject ``mention_id`` and ``term``). No decision closes
+     *     either; a clarification in force does (``SafetyClarificationRequest``).
+     */
+    RequirementOpenItem: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | 'control_not_designed'
+        | 'inter_board_wiring_not_modelled'
+        | 'ai_item_unreviewed'
+        | 'ai_question'
+        | 'ai_unsupported'
+        | 'ai_life_safety_mentioned'
+        | 'ai_possibly_life_safety'
+        | 'ai_conflicting_values';
+      subject: components['schemas']['RequirementSubject'];
+    };
+    /**
+     * RequirementQuestion
+     * @description A question the server derived from an empty input or an assumption finding.
+     *
+     *     ``by_user_id``, ``by_name`` and ``at`` are the server's: the signed-in account and
+     *     its clock when answered or acknowledged; ``None`` while open.
+     */
+    RequirementQuestion: {
+      /** Id */
+      id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'missing_value' | 'assumption';
+      subject: components['schemas']['RequirementSubject'];
+      /** Field */
+      field?: string | null;
+      /** Finding Code */
+      finding_code?: string | null;
+      /**
+       * Answerable
+       * @default false
+       */
+      answerable: boolean;
+      /**
+       * State
+       * @default open
+       * @enum {string}
+       */
+      state: 'open' | 'answered' | 'acknowledged';
+      /** Answer */
+      answer?: string | null;
+      /** By User Id */
+      by_user_id?: string | null;
+      /** By Name */
+      by_name?: string | null;
+      /** At */
+      at?: string | null;
+    };
+    /**
+     * RequirementSubject
+     * @description What a question or open item is about: a board, and a load or control on it.
+     */
+    RequirementSubject: {
+      /** Board Ref */
+      board_ref?: string | null;
+      /** Load Ref */
+      load_ref?: string | null;
+      /** Control Ref */
+      control_ref?: string | null;
+      /** Supply Board Ref */
+      supply_board_ref?: string | null;
+      /** Item Id */
+      item_id?: string | null;
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Term */
+      term?: string | null;
+      /** Other Item Id */
+      other_item_id?: string | null;
+      /** Field */
+      field?: string | null;
+      /** Kind */
+      kind?: string | null;
+      /** Ai Value */
+      ai_value?: string | null;
+      /** Other Value */
+      other_value?: string | null;
+      /** Entered Value */
+      entered_value?: string | null;
+    };
+    /**
+     * RequirementTrace
+     * @description A load or generated feeder, and the design element it became (``None`` if refused).
+     */
+    RequirementTrace: {
+      /** Requirement Ref */
+      requirement_ref: string;
+      /** Design Ref */
+      design_ref?: string | null;
+    };
+    /**
+     * RequirementsAi
+     * @description A record's ``ai`` block: the applied proposal in full, its decisions, its placements.
+     *
+     *     Attributes:
+     *         applied_in_revision: The revision whose save applied it; a later
+     *             revision carries the block unchanged (its indices are that
+     *             revision's), never re-applying it.
+     *         applied_at: When that save applied it (server clock).
+     */
+    RequirementsAi: {
+      proposal: components['schemas']['AiAppliedProposal'];
+      /** Decisions */
+      decisions?: components['schemas']['AiDecision'][];
+      /** Placements */
+      placements?: components['schemas']['AiPlacementRecord'][];
+      /** Applied In Revision */
+      applied_in_revision?: number | null;
+      /** Applied At */
+      applied_at?: string | null;
+      /** Clarifications */
+      clarifications?: components['schemas']['SafetyClarification'][];
+      /** Resolutions */
+      resolutions?: components['schemas']['SafetyResolution'][];
+    };
+    /**
+     * RequirementsInput
+     * @description What the guided intake adds to a project's request (M6a, ``pp-req/1``).
+     *
+     *     The boards and loads are the request's own; this adds how they were
+     *     entered and the control needs. Questions, open items, refs and the trace
+     *     are the server's, never sent.
+     *
+     *     Attributes:
+     *         intake: How the loads were entered; ``ai`` only with ``ai`` (M6b).
+     *         control: The control needs of controlled loads.
+     *         ai: The AI proposal applied and where its confirmed items were
+     *             placed (M6b, ``docs/architecture/m6b-ai-intake.md``).
+     */
+    RequirementsInput: {
+      /**
+       * Intake
+       * @default guided
+       * @enum {string}
+       */
+      intake: 'guided' | 'table' | 'import' | 'ai';
+      /** Control */
+      control?: components['schemas']['ControlRequirementInput'][];
+      ai?: components['schemas']['AiRequirementsInput'] | null;
+    };
+    /**
+     * RequirementsPreview
+     * @description The requirements record a guided input would be stored with, and its design; nothing saved.
+     */
+    RequirementsPreview: {
+      requirements: components['schemas']['RequirementsRecord'];
+      design: components['schemas']['BoardDesignResponse'];
+      /** Findings */
+      findings?: components['schemas']['DesignFinding'][];
+    };
+    /**
+     * RequirementsPreviewRequest
+     * @description A project and its guided input, to preview the requirements record; nothing is saved.
+     *
+     *     Attributes:
+     *         request: The project as entered.
+     *         requirements_input: The guided input.
+     */
+    RequirementsPreviewRequest: {
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      requirements_input?: components['schemas']['RequirementsInput'];
+    };
+    /**
+     * RequirementsRecord
+     * @description A revision's requirements record, ``pp-req/1`` (M6a).
+     *
+     *     Attributes:
+     *         derived: ``True`` for an older revision with no stored record: built
+     *             now from its request and findings; it never counts as
+     *             acknowledged and cannot be acknowledged (``requirements_derived``).
+     *         acknowledgements: Every acknowledgement recorded, append-only.
+     *         resaved_from: On a revision saved by ``…/resave``, the revision whose
+     *             stored request it re-designed; absent otherwise.
+     *         ai: The AI proposal the request was entered from (M6b): the whole
+     *             proposal, its decisions and where its items were placed. Carried
+     *             unchanged to later revisions as the request's provenance.
+     */
+    RequirementsRecord: {
+      /**
+       * Schema
+       * @default pp-req/1
+       */
+      schema: string;
+      /** Intake */
+      intake: string;
+      /**
+       * Derived
+       * @default false
+       */
+      derived: boolean;
+      /** Boards */
+      boards?: components['schemas']['RequirementBoard'][];
+      /** Loads */
+      loads?: components['schemas']['RequirementLoad'][];
+      /** Feeders */
+      feeders?: components['schemas']['RequirementFeeder'][];
+      /** Control */
+      control?: components['schemas']['RequirementControl'][];
+      /** Questions */
+      questions?: components['schemas']['RequirementQuestion'][];
+      /** Open Items */
+      open_items?: components['schemas']['RequirementOpenItem'][];
+      /** Trace */
+      trace?: components['schemas']['RequirementTrace'][];
+      /** Acknowledgements */
+      acknowledgements?: {
+        [key: string]: string;
+      }[];
+      /** Resaved From */
+      resaved_from?: number | null;
+      ai?: components['schemas']['RequirementsAi'] | null;
+      /** Safety Resolutions */
+      safety_resolutions?: components['schemas']['SafetyResolution'][];
+    };
+    /**
+     * ResolveEscalationRequest
+     * @description A lead's resolution of one escalated item.
+     *
+     *     ``upheld``: the escalation stands. ``taken-over``: the lead judges the
+     *     item again themselves, from their own queue.
+     */
+    ResolveEscalationRequest: {
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: 'upheld' | 'taken-over';
+      /** Note */
+      note: string;
+    };
+    /**
+     * RetrievedPassage
+     * @description One passage returned by retrieval, with its citation and score.
+     */
+    RetrievedPassage: {
+      /** Id */
+      id: string;
+      /** Text */
+      text: string;
+      /** Score */
+      score: number;
+      citation: components['schemas']['Citation'];
+      /** Similarity */
+      similarity?: number | null;
+      /**
+       * Anchored
+       * @default false
+       */
+      anchored: boolean;
+    };
+    /**
+     * ReviewerOut
+     * @description A current designation.
+     *
+     *     Attributes:
+     *         member_id: The account.
+     *         full_name: Its name, if given.
+     *         qualification_statement: As the owner supplied it.
+     *         granted_by: The account that granted it.
+     *         granted_at: When.
+     */
+    ReviewerOut: {
+      /** Member Id */
+      member_id: string;
+      /** Full Name */
+      full_name?: string | null;
+      /** Qualification Statement */
+      qualification_statement: string;
+      /** Granted By */
+      granted_by: string;
+      /**
+       * Granted At
+       * Format: date-time
+       */
+      granted_at: string;
+    };
+    /**
+     * ReviseProjectRequest
+     * @description A new revision of a saved project.
+     *
+     *     Attributes:
+     *         request: The project as entered now.
+     *         note: What changed, for the revision list.
+     *         requirements_input: As for ``SaveProjectRequest``.
+     *         configuration: Templates, connection patterns, strips, components and
+     *             bindings to compose with the server's design, as data
+     *             (``app.design.model.compose``); ``None`` for none. Only a
+     *             ``pp-design/2`` deployment stores one (``configuration_requires_v2``
+     *             otherwise). Bounded and checked by
+     *             ``app.domain.design_configuration``: a client never claims a
+     *             review, and defines ``tenant`` refs only.
+     */
+    ReviseProjectRequest: {
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
+      /** Configuration */
+      configuration?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * Revision
+     * @description One issue of the drawing set.
+     *
+     *     Attributes:
+     *         index: "01", "A", as the company numbers them.
+     *         date: ISO date.
+     *         description: What changed.
+     *         drawn_by: Initials or name.
+     *         checked_by: Initials or name.
+     *         approved_by: Initials or name. On a saved revision, the approving
+     *             account's display name (or "a team member"), set by the server.
+     *         approval_note: The note added to that approval, set by the server;
+     *             never who approved.
+     */
+    Revision: {
+      /** Index */
+      index: string;
+      /** Date */
+      date: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /**
+       * Drawn By
+       * @default
+       */
+      drawn_by: string;
+      /**
+       * Checked By
+       * @default
+       */
+      checked_by: string;
+      /**
+       * Approved By
+       * @default
+       */
+      approved_by: string;
+      /**
+       * Approval Note
+       * @default
+       */
+      approval_note: string;
+    };
+    /**
+     * RevisionExportRequest
+     * @description A saved revision to export, from the design the server stored for it.
+     *
+     *     Attributes:
+     *         format: The file to produce.
+     *         pricing: The company's prices, for a quotation export.
+     *         purpose: Review, or execution (always refused for now).
+     */
+    RevisionExportRequest: {
+      format: components['schemas']['ExportFormat'];
+      pricing?: components['schemas']['PricingSettings'] | null;
+      /** @default review */
+      purpose: components['schemas']['ExportPurpose'];
+    };
+    /**
+     * RevisionSummary
+     * @description One revision as the revision list shows it.
+     *
+     *     Attributes:
+     *         number: 1 for the first save, then in order.
+     *         note: What it is.
+     *         author: The display name of the account that saved it, read from
+     *             the tenant's users when the response is built; ``""`` when that
+     *             account has no display name. Never its email.
+     *         created_at: When, ISO 8601.
+     *         approved_by: The approver as every export prints it: the approving
+     *             account's display name, or "a team member" when it has none or
+     *             is not recorded (an approval made before accounts were). Never
+     *             a name typed at approval. ``None`` while it is not approved.
+     *         approved_at: When, ISO 8601.
+     *         approver_account_recorded: Whether the server recorded the
+     *             signed-in account that approved it (from the approver's token,
+     *             never from the request). ``False`` while it is not approved, and
+     *             for an approval recorded before accounts were.
+     *         approver_name: That account's display name, read from the tenant's
+     *             users when the response is built; ``None`` when no account is
+     *             recorded or it has no display name, which a client shows as "a
+     *             team member". The account's email, kept in the database as the
+     *             audit identity, is never sent.
+     *         approval_note: The note added at approval, if any; never an identity.
+     *         validated: Whether the server designed it from its request when it
+     *             was saved, and holds that design intact; ``False`` for an older
+     *             one, and for one whose stored design fails integrity (hash,
+     *             read, review status, findings) or is in an unknown schema.
+     *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+     *             ``requirements`` (the requirements record is not the one approved,
+     *             or the approval predates binding it: NULL is not bound),
+     *             ``review_decisions`` (a review decision recorded since, M3).
+     *         author_unknown: It records no author at all (neither account nor email).
+     *         author_established: It records the saving account's id. Only then can
+     *             it be approved (``approval_author_not_established`` otherwise).
+     */
+    RevisionSummary: {
+      /** Number */
+      number: number;
+      /** Note */
+      note: string;
+      /** Author */
+      author: string;
+      /** Created At */
+      created_at: string;
+      /** Approved By */
+      approved_by?: string | null;
+      /** Approved At */
+      approved_at?: string | null;
+      /**
+       * Approver Account Recorded
+       * @default false
+       */
+      approver_account_recorded: boolean;
+      /** Approver Name */
+      approver_name?: string | null;
+      /** Approval Note */
+      approval_note?: string | null;
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
+      /**
+       * Author Unknown
+       * @default false
+       */
+      author_unknown: boolean;
+      /**
+       * Author Established
+       * @default false
+       */
+      author_established: boolean;
+    };
+    /**
+     * SafetyClarification
+     * @description A person's statement that one mention is not about life-safety equipment.
+     *
+     *     Append-only on the record's ``ai`` block; who and when are the server's.
+     *     It validates nothing: exports print it as not engineer-validated.
+     */
+    SafetyClarification: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Statement
+       * @constant
+       */
+      statement: 'not_life_safety';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyClarificationEligibility
+     * @description Whether the caller may clarify a mention on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted`` (no approve_revision
+     *     permission), ``proposal_author`` (the caller's account created the AI
+     *     proposal: four-eyes), ``requirements_derived``, ``revision_already_approved``,
+     *     ``revision_not_latest``, ``safety_concern_unresolved`` or ``nothing_to_clarify``.
+     *     The server checks again on every request.
+     */
+    SafetyClarificationEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyConcern
+     * @description One safety concern of a revision's record, and how it stands (M6d).
+     *
+     *     Attributes:
+     *         kind: ``mention`` or ``item``.
+     *         target_id: The mention id or item id a resolution names.
+     *         level: ``life_safety`` or ``possibly``.
+     *         code: ``ai_life_safety_mentioned``, ``ai_possibly_life_safety``,
+     *             ``ai_life_safety_item`` or ``ai_possibly_life_safety_item``.
+     *         label: The term or item text.
+     *         start: Offset in the description.
+     *         end: Offset after it.
+     *         resolved: Whether it holds no approval now (a resolution in force, or
+     *             a possibly-safety item whose words were all judged false positives).
+     *         resolution: The resolution in force on it, if any.
+     *         false_positive_refusal: Why it may not be a false positive (``item``,
+     *             ``life_safety_item_overlaps``), or ``None``.
+     */
+    SafetyConcern: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'mention' | 'item' | 'request';
+      /** Target Id */
+      target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Code */
+      code: string;
+      /** Label */
+      label: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+      /** Resolved */
+      resolved: boolean;
+      resolution?: components['schemas']['SafetyResolution'] | null;
+      /** False Positive Refusal */
+      false_positive_refusal?: string | null;
+      /** Exclusion Refusal */
+      exclusion_refusal?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
+      /**
+       * Carried
+       * @default false
+       */
+      carried: boolean;
+      /** Where */
+      where?: string | null;
+      /** Confirmation Candidates */
+      confirmation_candidates?: components['schemas']['ConfirmedLoad'][] | null;
+    };
+    /**
+     * SafetyMention
+     * @description A life-safety or possibly-safety term detected in a description (keyword detection).
+     */
+    SafetyMention: {
+      /** Mention Id */
+      mention_id: string;
+      /**
+       * Level
+       * @enum {string}
+       */
+      level: 'life_safety' | 'possibly';
+      /** Term */
+      term: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /**
+     * SafetyResolution
+     * @description A person's resolution of one safety concern (M6d): append-only on the ``ai`` block.
+     *
+     *     ``excluded_from_scope``: the requirement is real and not covered by this
+     *     revision. ``false_positive``: the detected text is not a life-safety
+     *     requirement. Who and when are the server's; it validates nothing.
+     */
+    SafetyResolution: {
+      /**
+       * Target Kind
+       * @enum {string}
+       */
+      target_kind: 'mention' | 'item' | 'request';
+      /** Target Id */
+      target_id: string;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /** Raised On */
+      raised_on?: number | null;
+      /** Confirmed Loads */
+      confirmed_loads?: components['schemas']['ConfirmedLoad'][] | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
+      /** By User Id */
+      by_user_id: string;
+      /** By Name */
+      by_name: string;
+      /** At */
+      at: string;
+    };
+    /**
+     * SafetyResolutionEligibility
+     * @description Whether the caller may resolve safety concerns on this revision now, and if not, why.
+     *
+     *     ``reason``: ``requires_account``, ``not_permitted``, ``requirements_derived``,
+     *     ``revision_already_approved``, ``revision_not_latest``, ``nothing_to_resolve``,
+     *     ``proposal_author`` or ``revision_author`` (four-eyes). The server checks
+     *     again on every request.
+     */
+    SafetyResolutionEligibility: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason?: string | null;
+    };
+    /**
+     * SafetyResolutionRequest
+     * @description Resolve one safety concern of the latest revision's record (four-eyes, M6d).
+     *
+     *     Exactly one of ``mention_id`` and ``item_id``. Who and when are the
+     *     server's (any such field is 422).
+     *
+     *     Attributes:
+     *         mention_id: A detected mention (``m`` and 16 hex digits).
+     *         item_id: A proposal item unsupported as (possibly) life-safety.
+     *         resolution: ``excluded_from_scope`` or ``false_positive``.
+     *         reason: Why, in the resolver's words: 10 to 500 characters once
+     *             whitespace is collapsed.
+     */
+    SafetyResolutionRequest: {
+      /** Mention Id */
+      mention_id?: string | null;
+      /** Item Id */
+      item_id?: string | null;
+      /** Request Id */
+      request_id?: string | null;
+      /** Proposal Id */
+      proposal_id?: string | null;
+      /** Not This Equipment */
+      not_this_equipment?: components['schemas']['LoadRef'][] | null;
+      /**
+       * Resolution
+       * @enum {string}
+       */
+      resolution: 'excluded_from_scope' | 'false_positive';
+      /** Reason */
+      reason: string;
+    };
+    /**
+     * SaveCompanySettings
+     * @description Company settings to save.
+     *
+     *     Attributes:
+     *         settings: What the company does differently from the default profile.
+     */
+    SaveCompanySettings: {
+      /** Settings */
+      settings: {
+        [key: string]: unknown;
+      };
+    };
+    /**
+     * SaveProjectRequest
+     * @description A new project to save, as its first revision.
+     *
+     *     Attributes:
+     *         name: What the project is listed as.
+     *         request: The project as entered.
+     *         note: What this revision is, for the revision list.
+     *         requirements_input: The guided input (M6a); the server builds and
+     *             stores the revision's requirements record from it.
+     */
+    SaveProjectRequest: {
+      /** Name */
+      name: string;
+      request: components['schemas']['ProjectDesignRequest-Input'];
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+      requirements_input?: components['schemas']['RequirementsInput'] | null;
+    };
+    /**
+     * SavedProject
+     * @description A saved project, its revisions, and one revision's request.
+     *
+     *     Attributes:
+     *         id: Its identifier.
+     *         name: Its name.
+     *         revisions: Every revision, oldest first.
+     *         revision: The number of the revision ``request`` is.
+     *         request: That revision as entered.
+     *         findings: What the checks found in the design the server built for
+     *             that revision when it was saved; empty for an older revision.
+     *         validated: Whether that revision holds a server-built design that
+     *             passes its integrity checks (``False`` when it fails them or is
+     *             in an unknown schema; ``export_status`` is then ``not_validated``).
+     *         snapshot_sha256: The SHA-256 of that design's canonical JSON.
+     *         rules_version: The calculation rules it was designed under.
+     *         approved_snapshot_sha256: The design its approval is bound to;
+     *             ``None`` while it is not approved (or approved before approvals
+     *             were bound to a design).
+     *         export_status: What it can be exported as now.
+     *         approval_current: Whether its approval still counts: of the design
+     *             it holds, under the policy that applies now (the resolved profile
+     *             hash, the rules and catalogue versions and the findings
+     *             classification it was granted under). ``None`` while it is not
+     *             approved. The tenant's company settings are not part of it.
+     *         approval_changed: What changed since the approval, when it no longer
+     *             counts: ``snapshot``, ``profile``, ``rules_version``,
+     *             ``catalogue_version``, ``findings_policy``, ``renderer_version``,
+     *             ``requirements`` (the requirements record is not the one approved,
+     *             or the approval predates binding it: NULL is not bound),
+     *             ``review_decisions`` (a review decision recorded since, M3).
+     *         execution_blockers: Why it cannot be exported for execution: the
+     *             parts of an execution package this service does not produce yet,
+     *             then ``approval`` and each blocking finding's code, as they apply.
+     *         approving_as: The signed-in caller's display name, as an approval
+     *             they made now would name them; ``None`` when they have none,
+     *             which a client shows as "a team member". Never their email.
+     *         permissions: What the caller may do to this project
+     *             (``app.domain.permissions``); the server checks again on every
+     *             request.
+     *         model_v2: For a ``pp-design/2`` revision whose snapshot reads, its
+     *             components, nets, wires (each value with its source), schedules
+     *             and structural findings, for review; ``None`` otherwise.
+     *         snapshot_schema: The schema its stored design names, identified from
+     *             the stored JSON without reading it (``pp-design/1`` or
+     *             ``pp-design/2``); ``None`` when there is none or it names no
+     *             schema this server knows. It says nothing about whether the design
+     *             reads or passes its integrity check (see ``export_status`` and the
+     *             findings).
+     */
+    SavedProject: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Revisions */
+      revisions: components['schemas']['RevisionSummary'][];
+      /** Revision */
+      revision: number;
+      request: components['schemas']['ProjectDesignRequest-Output'];
+      /** Findings */
+      findings?: components['schemas']['DesignFinding'][];
+      /**
+       * Validated
+       * @default false
+       */
+      validated: boolean;
+      /** Snapshot Sha256 */
+      snapshot_sha256?: string | null;
+      /** Rules Version */
+      rules_version?: string | null;
+      /** Approved Snapshot Sha256 */
+      approved_snapshot_sha256?: string | null;
+      /** Approval Current */
+      approval_current?: boolean | null;
+      /** Approval Changed */
+      approval_changed?: string[];
+      /** @default not_validated */
+      export_status: components['schemas']['ExportStatus'];
+      /** Execution Blockers */
+      execution_blockers?: string[];
+      /** Approving As */
+      approving_as?: string | null;
+      /** Permissions */
+      permissions?: components['schemas']['Permission'][];
+      model_v2?: components['schemas']['V2ModelSummary'] | null;
+      /** Links */
+      links?: components['schemas']['InterBoardLinkView'][] | null;
+      /** Written Schema */
+      written_schema?: string | null;
+      /** Snapshot Schema */
+      snapshot_schema?: string | null;
+      requirements?: components['schemas']['RequirementsRecord'] | null;
+      /**
+       * Author Unknown
+       * @default false
+       */
+      author_unknown: boolean;
+      /**
+       * Author Established
+       * @default false
+       */
+      author_established: boolean;
+      /**
+       * Is Author
+       * @default false
+       */
+      is_author: boolean;
+      safety_clarification?: components['schemas']['SafetyClarificationEligibility'] | null;
+      /** Safety Concerns */
+      safety_concerns?: components['schemas']['SafetyConcern'][];
+      safety_resolution?: components['schemas']['SafetyResolutionEligibility'] | null;
+      approval_held?: components['schemas']['ApprovalHeld'] | null;
+      /** Approval Scope Version */
+      approval_scope_version?: string | null;
+      /** Approved Scope Version */
+      approved_scope_version?: string | null;
+    };
+    /**
+     * ScheduleSuggestionRequest
+     * @description A plain description of what a board feeds.
+     *
+     *     Attributes:
+     *         description: "A hall with 20 sockets, 30 lights and two 2-ton ACs".
+     *         supply_phases: The board's supply, so three-phase loads are only
+     *             proposed where there is three-phase.
+     *         profile: The company's settings, whose points-per-circuit rule
+     *             splits the points into circuits.
+     */
+    ScheduleSuggestionRequest: {
+      /** Description */
+      description: string;
+      /**
+       * Supply Phases
+       * @default 3
+       */
+      supply_phases: number;
+      /** Profile */
+      profile?: {
+        [key: string]: unknown;
+      } | null;
+    };
+    /**
+     * SearchFilters
+     * @description Optional restrictions applied to a search.
+     */
+    SearchFilters: {
+      /**
+       * Manufacturers
+       * @default []
+       */
+      manufacturers: string[];
+      /**
+       * Document Types
+       * @default []
+       */
+      document_types: string[];
+      /** Published After */
+      published_after?: string | null;
+    };
+    /**
+     * SearchRequest
+     * @description A search issued by a caller.
+     */
+    SearchRequest: {
+      /** Query */
+      query: string;
+      filters?: components['schemas']['SearchFilters'] | null;
+      /** Top K */
+      top_k?: number | null;
+      /**
+       * Corpus
+       * @default production
+       * @enum {string}
+       */
+      corpus: 'production' | 'staging';
+    };
+    /**
+     * SearchResponse
+     * @description Ranked search results.
+     */
+    SearchResponse: {
+      /** Passages */
+      passages: components['schemas']['RetrievedPassage'][];
+      /** Total */
+      total: number;
+    };
+    /**
+     * Severity
+     * @description How urgent a finding is.
+     *
+     *     A closed set: the frontend renders each with its own colour token, so a
+     *     free-text severity would arrive as an unstyled string.
+     * @enum {string}
+     */
+    Severity: 'critical' | 'warning' | 'info';
+    /**
+     * SignupRequest
+     * @description Create an account, optionally claiming an anonymous trial session.
+     */
+    SignupRequest: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string;
+      /** Password */
+      password: string;
+      /** Full Name */
+      full_name?: string | null;
+      /** Claim Session Id */
+      claim_session_id?: string | null;
+      /** Claim Secret */
+      claim_secret?: string | null;
+      /** Invite Token */
+      invite_token?: string | null;
+    };
+    /**
+     * StaleDocument
+     * @description A live document whose source now serves something other than what was verified.
+     *
+     *     ``upstream_hash`` is ``None`` when the source withdrew it. The review
+     *     fields are set only on a dismissed flag.
+     */
+    StaleDocument: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Source Url */
+      source_url: string;
+      /** Source Id */
+      source_id: string;
+      /** Reason */
+      reason: string;
+      /** Status */
+      status: string;
+      /** Published Hashes */
+      published_hashes: string[];
+      /** Upstream Hash */
+      upstream_hash: string | null;
+      /**
+       * First Flagged At
+       * Format: date-time
+       */
+      first_flagged_at: string;
+      /**
+       * Last Checked At
+       * Format: date-time
+       */
+      last_checked_at: string;
+      /** Reviewed At */
+      reviewed_at?: string | null;
+      /** Review Note */
+      review_note?: string | null;
+    };
+    /**
+     * StaleDocumentPage
+     * @description Stale-document flags in one status.
+     */
+    StaleDocumentPage: {
+      /** Items */
+      items: components['schemas']['StaleDocument'][];
+    };
+    /**
+     * StartType
+     * @description How a motor is started, which picks its coordination table.
+     * @enum {string}
+     */
+    StartType: 'dol' | 'star_delta' | 'dol_heavy';
+    /**
+     * StructuredDiagnosis
+     * @description A complete diagnostic response, as constrained at generation time.
+     *
+     *     Attributes:
+     *         summary: One-paragraph answer to the engineer's question.
+     *         summary_citation_ids: Passages supporting the summary. Required for the
+     *             same reason as a step's.
+     *         steps: Ordered actions. Non-empty: a diagnosis with no action is not a
+     *             diagnosis, and the refuse path exists for when there is nothing to
+     *             say.
+     *         severity: Overall urgency, for the card header. Required, as a step's is.
+     *         equipment_model: The model this diagnosis applies to, echoed back so an
+     *             engineer can see the assistant understood which unit they meant.
+     */
+    StructuredDiagnosis: {
+      /** Summary */
+      summary: string;
+      /** Summary Citation Ids */
+      summary_citation_ids: string[];
+      /** Steps */
+      steps: components['schemas']['DiagnosisStep'][];
+      severity: components['schemas']['Severity'];
+      /** Equipment Model */
+      equipment_model?: string | null;
+    };
+    /**
+     * Supply
+     * @description The board's incoming supply.
+     *
+     *     Attributes:
+     *         voltage_v: Line-to-line voltage.
+     *         phases: 1 or 3.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
+     *         fault_level_ka: Prospective short-circuit current at the board.
+     *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
+     *             board, as measured or as the supplier declares it. Given, each
+     *             circuit is checked for disconnection on an earth fault.
+     */
+    'Supply-Input': {
+      /**
+       * Voltage V
+       * @default 400
+       */
+      voltage_v: number | string;
+      /**
+       * Phases
+       * @default 3
+       */
+      phases: number;
+      /**
+       * Frequency Hz
+       * @default 50
+       */
+      frequency_hz: number | string;
+      /**
+       * Earthing
+       * @default TN-S
+       */
+      earthing: string;
+      /** Fault Level Ka */
+      fault_level_ka?: number | string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: number | string | null;
+    };
+    /**
+     * Supply
+     * @description The board's incoming supply.
+     *
+     *     Attributes:
+     *         voltage_v: Line-to-line voltage.
+     *         phases: 1 or 3.
+     *         frequency_hz: 50 or 60.
+     *         earthing: The system earthing ("TN-S", "TN-C-S", "TT").
+     *         fault_level_ka: Prospective short-circuit current at the board.
+     *         earth_loop_ohm: ``Ze``, the earth fault loop impedance outside the
+     *             board, as measured or as the supplier declares it. Given, each
+     *             circuit is checked for disconnection on an earth fault.
+     */
+    'Supply-Output': {
+      /**
+       * Voltage V
+       * @default 400
+       */
+      voltage_v: string;
+      /**
+       * Phases
+       * @default 3
+       */
+      phases: number;
+      /**
+       * Frequency Hz
+       * @default 50
+       */
+      frequency_hz: string;
+      /**
+       * Earthing
+       * @default TN-S
+       */
+      earthing: string;
+      /** Fault Level Ka */
+      fault_level_ka?: string | null;
+      /** Earth Loop Ohm */
+      earth_loop_ohm?: string | null;
+    };
+    /**
+     * SupplyBand
+     * @description A supply voltage band a range is rated for.
+     */
+    SupplyBand: {
+      /** Low V */
+      low_v: string;
+      /** High V */
+      high_v: string;
+    };
+    /**
+     * Team
+     * @description The caller's team.
+     *
+     *     Attributes:
+     *         members: Its active accounts, the owner first.
+     *         owner: Whether the caller manages it: the owner, or an admin.
+     *         owns: Whether the caller is the recorded owner, the one account
+     *             that may transfer ownership.
+     *         seats: The seats the plan holds; ``None`` while billing is not
+     *             enforced.
+     *         seats_taken: Members plus invitations still open.
+     */
+    Team: {
+      /** Members */
+      members: components['schemas']['Member'][];
+      /** Owner */
+      owner: boolean;
+      /** Owns */
+      owns: boolean;
+      /** Seats */
+      seats: number | null;
+      /** Seats Taken */
+      seats_taken: number;
+    };
+    /**
+     * TitleField
+     * @description A field a title block can print.
+     * @enum {string}
+     */
+    TitleField:
+      | 'project_name'
+      | 'project_number'
+      | 'board_name'
+      | 'customer'
+      | 'consultant'
+      | 'contractor'
+      | 'page_title'
+      | 'page_number'
+      | 'revision'
+      | 'drawn_by'
+      | 'checked_by'
+      | 'approved_by'
+      | 'date'
+      | 'company';
+    /**
+     * TransferOwnershipRequest
+     * @description Hand the tenant's ownership to another active member.
+     */
+    TransferOwnershipRequest: {
+      /** Member Id */
+      member_id: string;
+    };
+    /**
+     * TrialResumeRequest
+     * @description Get a fresh access token for a trial this browser already started.
+     *
+     *     The pair ``POST /auth/trial`` returned. The secret is what proves the
+     *     caller is that browser: the session id alone is not a credential.
+     */
+    TrialResumeRequest: {
+      /** Session Id */
+      session_id: string;
+      /** Claim Secret */
+      claim_secret: string;
+    };
+    /**
+     * TrialStart
+     * @description A newly started anonymous trial.
+     *
+     *     ``session_id`` and ``claim_secret`` are the pair FE-008's client already
+     *     expects; the field names are snake_case because that client reads them by
+     *     those exact names.
+     *
+     *     ``access_token`` is carried alongside them because a trial has to be able
+     *     to *ask something* — every diagnostics route authenticates, and a trial
+     *     that cannot call one is a landing page that collects a question and does
+     *     nothing with it. The token is scoped to the provisional tenant the trial
+     *     created, so it can do no more than the trial itself may.
+     *
+     *     The secret is returned exactly once, here. Only its hash is stored, so it
+     *     cannot be re-read or recovered later — losing it means starting a new
+     *     trial, which is the safe direction.
+     *
+     *     ``conversation_id`` is the diagnostic session the trial opened. The client
+     *     asks its first question in it: without the id, the first question opened a
+     *     second conversation and left this one in the history, empty, as "New
+     *     conversation". Distinct from ``session_id``, which names the anonymous
+     *     session and is what a signup claims.
+     */
+    TrialStart: {
+      /** Session Id */
+      session_id: string;
+      /** Claim Secret */
+      claim_secret: string;
+      /** Conversation Id */
+      conversation_id: string;
+      /** Access Token */
+      access_token: string;
+      /**
+       * Token Type
+       * @default bearer
+       */
+      token_type: string;
+      /** Expires In */
+      expires_in: number;
+      /** Questions Remaining */
+      questions_remaining: number;
+    };
+    /**
+     * V2Component
+     * @description A component instance.
+     *
+     *     Attributes:
+     *         id: Its id.
+     *         board_id: Its board.
+     *         designation: Its product designation, as the data gives it, or ``None``.
+     *         template_ref: Its template.
+     *         legacy_device_id: The v1 device it mirrors (the server's design), or ``None``.
+     *         pattern_refs: The patterns whose bindings created or joined it.
+     *         source: ``data`` for a server-designed device, ``configuration`` otherwise.
+     */
+    V2Component: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Template Ref */
+      template_ref: string;
+      /** Legacy Device Id */
+      legacy_device_id: string | null;
+      /** Pattern Refs */
+      pattern_refs: string[];
+      /** Source */
+      source: string;
+    };
+    /**
+     * V2Connection
+     * @description A connection between two members of a net.
+     */
+    V2Connection: {
+      /** Id */
+      id: string;
+      /** Net Id */
+      net_id: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Via */
+      via: string;
+      /** Cable Core */
+      cable_core: string | null;
+      /** Pattern Ref */
+      pattern_ref: string | null;
+    };
+    /**
+     * V2Definition
+     * @description An embedded template or connection pattern, as the review shows it.
+     *
+     *     Attributes:
+     *         ref: Its ref.
+     *         kind: ``template`` or ``pattern``.
+     *         review_status: ``unreviewed``, ``approved`` or ``rejected``, as the server's
+     *             recorded decisions for its exact digest give it (M3); never more.
+     *         provenance_source: The source its provenance documents, or ``None``.
+     *         restricted_scope: For a template, the uses it may not be executed for.
+     */
+    V2Definition: {
+      /** Ref */
+      ref: string;
+      /** Kind */
+      kind: string;
+      /** Review Status */
+      review_status: string;
+      /** Provenance Source */
+      provenance_source?: string | null;
+      /** Restricted Scope */
+      restricted_scope?: string[];
+    };
+    /**
+     * V2Finding
+     * @description A ``pp-design/2`` structural finding with its effects.
+     *
+     *     Attributes:
+     *         code: Its code (``findings_v2``).
+     *         severity: ``blocking`` or ``warning`` (``findings_v2.SEVERITIES``).
+     *         message: In English.
+     *         location: The ids it is about.
+     *         unresolved: Whether it records missing information.
+     *         blocks_approval: Whether design-review approval is refused while it stands.
+     *         blocks_execution: Whether it is an execution blocker in itself.
+     *         requires_engineering_confirmation: Whether an engineer must confirm it.
+     */
+    V2Finding: {
+      /** Code */
+      code: string;
+      /** Severity */
+      severity: string;
+      /** Message */
+      message: string;
+      /** Location */
+      location: {
+        [key: string]: string;
+      };
+      /** Unresolved */
+      unresolved: boolean;
+      /** Blocks Approval */
+      blocks_approval: boolean;
+      /** Blocks Execution */
+      blocks_execution: boolean;
+      /** Requires Engineering Confirmation */
+      requires_engineering_confirmation: boolean;
+    };
+    /**
+     * V2ModelSummary
+     * @description A ``pp-design/2`` model as a review shows it; review content only.
+     *
+     *     Attributes:
+     *         definitions: The embedded templates and patterns with their review status.
+     *         components: Every component.
+     *         strips: Every terminal strip, with its points.
+     *         nets: Every net.
+     *         connections: Every connection.
+     *         wires: The wire schedule's rows, each value with its source.
+     *         terminals: The terminal schedule's rows.
+     *         findings: Every structural finding, with its effects.
+     */
+    V2ModelSummary: {
+      /** Definitions */
+      definitions: components['schemas']['V2Definition'][];
+      /** Components */
+      components: components['schemas']['V2Component'][];
+      /** Strips */
+      strips: components['schemas']['V2Strip'][];
+      /** Nets */
+      nets: components['schemas']['V2Net'][];
+      /** Connections */
+      connections: components['schemas']['V2Connection'][];
+      /** Wires */
+      wires: components['schemas']['V2WireRow'][];
+      /** Terminals */
+      terminals: components['schemas']['V2TerminalRow'][];
+      /** Findings */
+      findings: components['schemas']['V2Finding'][];
+    };
+    /**
+     * V2Net
+     * @description A net: its members' labels and where it came from (``origin``).
+     */
+    V2Net: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Signal */
+      signal: string;
+      /** Origin */
+      origin: string;
+      /** Members */
+      members: string[];
+      /** Pattern Refs */
+      pattern_refs: string[];
+    };
+    /**
+     * V2Strip
+     * @description A terminal strip and its points.
+     */
+    V2Strip: {
+      /** Id */
+      id: string;
+      /** Board Id */
+      board_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Template Ref */
+      template_ref: string | null;
+      /** Points */
+      points: components['schemas']['V2StripPoint'][];
+    };
+    /**
+     * V2StripPoint
+     * @description One strip point.
+     */
+    V2StripPoint: {
+      /** Id */
+      id: string;
+      /** Position */
+      position: number;
+      /** Level */
+      level: number;
+      /** Marking */
+      marking: string;
+      /** Kind */
+      kind: string;
+      /** Pattern Ref */
+      pattern_ref: string | null;
+    };
+    /**
+     * V2TerminalRow
+     * @description One row of the terminal schedule (``schedules.terminal_schedule``).
+     */
+    V2TerminalRow: {
+      /** Board Id */
+      board_id: string;
+      /** Owner Kind */
+      owner_kind: string;
+      /** Owner Id */
+      owner_id: string;
+      /** Designation */
+      designation: string | null;
+      /** Terminal Id */
+      terminal_id: string;
+      /** Marking */
+      marking: string;
+      /** Side */
+      side: string | null;
+      /** Position */
+      position: number | null;
+      /** Level */
+      level: number | null;
+      /** Kind */
+      kind: string;
+      required: components['schemas']['V2Value'];
+      /** Net Id */
+      net_id: string | null;
+      /** Signal */
+      signal: string | null;
+      /** Connected To */
+      connected_to: string[];
+      /** Template Ref */
+      template_ref: string | null;
+      /** Pattern Refs */
+      pattern_refs: string[];
+      /** Net Origin */
+      net_origin: string | null;
+      /** Flags */
+      flags: string[];
+    };
+    /**
+     * V2Value
+     * @description A value as reviewed, with where it came from.
+     *
+     *     Attributes:
+     *         value: The value as text; ``None`` when the model holds none.
+     *         source: ``user``, ``data``, ``assumption``, or ``unresolved`` (no value).
+     *         assumption_id: The assumption record, exactly when ``source`` is ``assumption``.
+     *         assumption_statement: What that record states.
+     */
+    V2Value: {
+      /** Value */
+      value: string | null;
+      /** Source */
+      source: string;
+      /** Assumption Id */
+      assumption_id?: string | null;
+      /** Assumption Statement */
+      assumption_statement?: string | null;
+    };
+    /**
+     * V2WireRow
+     * @description One row of the wire schedule (``schedules.wire_schedule``).
+     */
+    V2WireRow: {
+      /** Board Id */
+      board_id: string;
+      /** Wire Id */
+      wire_id: string;
+      /** Connection Id */
+      connection_id: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Net Id */
+      net_id: string;
+      /** Signal */
+      signal: string;
+      number: components['schemas']['V2Value'];
+      cross_section_mm2: components['schemas']['V2Value'];
+      colour: components['schemas']['V2Value'];
+      /** Pattern Ref */
+      pattern_ref: string | null;
+      /** Flags */
+      flags: string[];
+    };
+    /** ValidationError */
+    ValidationError: {
+      /** Location */
+      loc: (string | number)[];
+      /** Message */
+      msg: string;
+      /** Error Type */
+      type: string;
+      /** Input */
+      input?: unknown;
+      /** Context */
+      ctx?: Record<string, never>;
+    };
+    /**
+     * ValidationFinding
+     * @description One problem found in a piece of code.
+     *
+     *     Attributes:
+     *         code: Stable machine-readable identifier, so a UI can group findings
+     *             without matching on prose.
+     *         message: What is wrong, in the terms an engineer would use.
+     *         severity: Whether this blocks a ``ready`` status.
+     *         line: Where, when known. Absent for whole-program findings.
+     */
+    ValidationFinding: {
+      /** Code */
+      code: string;
+      /** Message */
+      message: string;
+      severity: components['schemas']['app__models__schemas__plc__FindingSeverity'];
+      /** Line */
+      line?: number | null;
+    };
+    /**
+     * ValidationStatus
+     * @description The outcome of a validation pass.
+     *
+     *     ``INCOMPLETE`` is the load-bearing member and the reason this is not a
+     *     boolean. AI-009 is explicit: tooling that cannot fully parse a dialect
+     *     must say so rather than pass. An unverifiable result and a verified-correct
+     *     one are different things, and collapsing them is how unchecked code
+     *     acquires a tick.
+     * @enum {string}
+     */
+    ValidationStatus: 'valid' | 'invalid' | 'incomplete';
+    /**
+     * VerificationLabel
+     * @description A verifier's judgement on one chunk.
+     *
+     *     Deliberately three values, not a numeric confidence. A scale invites
+     *     averaging, and there is no meaningful average of "the source says 63 A"
+     *     and "the source does not mention this" — the second is a citation failure
+     *     whatever the first says.
+     * @enum {string}
+     */
+    VerificationLabel: 'correct' | 'incorrect' | 'uncertain';
+    /**
+     * VerifiedAnswer
+     * @description An answer whose every citation resolves to supplied evidence.
+     *
+     *     Attributes:
+     *         text: The prose answer. Non-blank for the same reason the structured
+     *             summary is: "   " renders as an empty card.
+     *         citations: Resolved citations backing the text.
+     */
+    VerifiedAnswer: {
+      /** Text */
+      text: string;
+      /** Citations */
+      citations: components['schemas']['Citation'][];
+    };
+    /**
+     * VfdSelectionRequest
+     * @description Inputs for a drive selection.
+     */
+    VfdSelectionRequest: {
+      /** Motor Power Kw */
+      motor_power_kw: number | string;
+      /** Supply Voltage V */
+      supply_voltage_v: number | string;
+      /** Motor Efficiency */
+      motor_efficiency: number | string;
+      /** Motor Power Factor */
+      motor_power_factor: number | string;
+      /** @default normal */
+      duty_class: components['schemas']['DutyClass'];
+      /**
+       * Altitude M
+       * @default 0
+       */
+      altitude_m: number | string;
+      /**
+       * Ambient Temp C
+       * @default 40
+       */
+      ambient_temp_c: number | string;
+      /** Drive Range */
+      drive_range?: string | null;
+    };
+    /**
+     * VfdSelectionResponse
+     * @description Drive selection as returned to the caller.
+     */
+    VfdSelectionResponse: {
+      result: components['schemas']['VfdSelectionResult'];
+      /** Motor Current A */
+      motor_current_a: string;
+      /** Sources */
+      sources: components['schemas']['Citation'][];
+    };
+    /**
+     * VfdSelectionResult
+     * @description Output of the pure selection function.
+     */
+    VfdSelectionResult: {
+      /** Frame Reference */
+      frame_reference: string;
+      /** Rated Output Current A */
+      rated_output_current_a: string;
+      /** Applied Factors */
+      applied_factors: components['schemas']['AppliedFactor'][];
+      /**
+       * Drive Range
+       * @default abb-acs880-01
+       */
+      drive_range: string;
+      /**
+       * Manufacturer
+       * @default ABB
+       */
+      manufacturer: string;
+      /**
+       * Series
+       * @default ACS880-01
+       */
+      series: string;
+    };
+    /**
+     * WireNumbering
+     * @description How wires are numbered.
+     * @enum {string}
+     */
+    WireNumbering: 'potential' | 'sequential' | 'source_target';
+    /**
+     * FindingSeverity
+     * @description How much a finding stands in the way of issuing a design.
+     * @enum {string}
+     */
+    app__models__schemas__design__FindingSeverity: 'blocking' | 'warning' | 'info';
+    /**
+     * FindingSeverity
+     * @description How much a finding matters.
+     * @enum {string}
+     */
+    app__models__schemas__plc__FindingSeverity: 'error' | 'warning';
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    liveness_api_v1_health_live_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-        };
-    };
-    readiness_api_v1_health_ready_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-        };
-    };
-    signup_api_v1_auth_signup_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SignupRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccessToken"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    start_trial_api_v1_auth_trial_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrialStart"];
-                };
-            };
-        };
-    };
-    resume_trial_api_v1_auth_trial_resume_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TrialResumeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrialStart"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    login_api_v1_auth_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccessToken"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    refresh_api_v1_auth_session_refresh_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccessToken"];
-                };
-            };
-        };
-    };
-    logout_api_v1_auth_session_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    logout_everywhere_api_v1_auth_session_logout_everywhere_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    quota_api_v1_auth_quota_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QuotaStatus"];
-                };
-            };
-        };
-    };
-    create_diagnosis_api_v1_diagnostics_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DiagnosticRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiagnosticResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    stream_diagnosis_api_v1_diagnostics_stream_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DiagnosticRequest"];
-            };
-        };
-        responses: {
-            /** @description A stream of server-sent events. Progress events report the stage; the final `result` event carries the complete DiagnosticResponse. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": {
-                        /**
-                         * Event
-                         * @enum {string}
-                         */
-                        event: "retrieving" | "generated" | "refused" | "result";
-                        /** Data */
-                        data?: {
-                            [key: string]: unknown;
-                        };
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_diagnostic_session_api_v1_diagnostics__session_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiagnosticSession"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_diagnostic_sessions_api_v1_sessions_get: {
-        parameters: {
-            query?: {
-                cursor?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiagnosticSessionPage"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    plans_api_v1_billing_plans_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlanCatalogue"];
-                };
-            };
-        };
-    };
-    entitlements_api_v1_billing_entitlements_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Entitlements"];
-                };
-            };
-        };
-    };
-    request_plan_api_v1_billing_request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlanRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Entitlements"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    size_cable_api_v1_calculations_cable_sizing_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CableSizingRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CableSizingResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_drive_ranges_api_v1_calculations_drive_ranges_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DriveRangeSummary"][];
-                };
-            };
-        };
-    };
-    select_vfd_api_v1_calculations_vfd_selection_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VfdSelectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VfdSelectionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    build_panel_bom_api_v1_calculations_panel_bom_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PanelBomRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PanelBomResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    design_distribution_board_api_v1_design_distribution_board_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BoardDesignRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BoardDesignResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    design_project_api_v1_design_project_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProjectDesignRequest-Input"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BoardDesignResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_design_api_v1_design_export_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DesignExportRequest"];
-            };
-        };
-        responses: {
-            /** @description The exported file */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_load_schedule_api_v1_design_load_schedule_import_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_import_load_schedule_api_v1_design_load_schedule_import_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoadScheduleImport"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    suggest_load_schedule_api_v1_design_load_schedule_suggest_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ScheduleSuggestionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LoadScheduleSuggestion"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    price_design_api_v1_design_quotation_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QuotationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QuotationEstimate"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    import_price_list_api_v1_design_price_list_import_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_import_price_list_api_v1_design_price_list_import_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PriceListEntry-Output"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    write_plc_program_api_v1_design_plc_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlcProgramRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlcProgramResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_projects_api_v1_design_projects_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectPage"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    save_project_api_v1_design_projects_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveProjectRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_requirements_api_v1_design_projects_requirements_preview_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RequirementsPreviewRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RequirementsPreview"];
-                };
-            };
-            /** @description As a save refuses the request, or the design's refusal */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AiProposalRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AiProposal"];
-                };
-            };
-            /** @description `ai_requires_account` (a trial) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_request_in_flight` (the account's other call) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_consent_required`, `ai_input_empty`, `ai_input_too_long` */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded` */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_malformed` */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_unavailable` */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_timeout` */
-            504: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AiProposal"];
-                };
-            };
-            /** @description `ai_requires_account` (a trial) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_not_found` (also another tenant's) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_requires_account`, `ai_proposal_not_yours` */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_not_found` (also another tenant's) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_used` (part of a saved revision's record) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                proposal_id: string;
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AiDecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AiProposal"];
-                };
-            };
-            /** @description `ai_requires_account` (a trial) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_not_found` (also another tenant's) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_proposal_used` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `ai_edit_not_valid`, `ai_decisions_full`, or a who/when field */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-                question_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["QuestionAction"];
-            };
-        };
-        responses: {
-            /** @description Acknowledged: the revision's updated record */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AcknowledgedRequirements"];
-                };
-            };
-            /** @description Answered: the project at its new revision */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description `revision_not_found` or `question_not_found` */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `question_not_answerable`, `question_answered`, `snapshot_integrity_failed` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description `clarification_route_retired` */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SafetyResolutionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AcknowledgedRequirements"];
-                };
-            };
-            /** @description `safety_resolution_requires_account`, `safety_resolution_not_permitted`, `safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author` */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `revision_not_found` or `safety_target_not_found` */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_already_resolved`, `false_positive_not_allowed`, `snapshot_integrity_failed` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    open_project_api_v1_design_projects__project_id__get: {
-        parameters: {
-            query?: {
-                revision?: number | null;
-            };
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_project_api_v1_design_projects__project_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revise_project_api_v1_design_projects__project_id__revisions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReviseProjectRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    validate_configuration_api_v1_design_projects__project_id__configuration_validate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ConfigurationValidateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigurationReview"];
-                };
-            };
-            /** @description No such project is the caller's (`project_not_found`) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `revision_not_validated` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `configuration_too_large`, `configuration_claims_review`, `configuration_ref_reserved` or `configuration_refused` */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description `resave_requires_account` */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description No such revision is the caller's (`revision_not_found`) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `revision_not_validated`, `snapshot_integrity_failed` or `revision_conflict` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description As a revision save refuses the stored request, unchanged (e.g. `feeder_server_owned`, `sub_board_load_server_owned`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApproveRevisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedProject"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_revision_api_v1_design_projects__project_id__revisions__number__export_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                number: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RevisionExportRequest"];
-            };
-        };
-        responses: {
-            /** @description The exported file */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description No such revision is the caller's (`revision_not_found`) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description `revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, `revision_stale`, `export_format_unprotected`, `schedule_requires_v2`, or `execution_package_incomplete` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_markets_api_v1_design_markets_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarketInfo"][];
-                };
-            };
-        };
-    };
-    get_company_settings_api_v1_design_company_settings_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CompanySettings"];
-                };
-            };
-        };
-    };
-    save_company_settings_api_v1_design_company_settings_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveCompanySettings"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CompanySettings"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    read_markups_api_v1_design_markups_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_read_markups_api_v1_design_markups_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MarkupReport"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    search_documents_api_v1_search_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_team_api_v1_team_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Team"];
-                };
-            };
-        };
-    };
-    list_invitations_api_v1_team_invitations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvitationOut"][];
-                };
-            };
-        };
-    };
-    invite_api_v1_team_invitations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InviteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvitationCreated"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_api_v1_team_invitations__invitation_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                invitation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    remove_api_v1_team_members__member_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                member_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    transfer_ownership_api_v1_team_owner_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TransferOwnershipRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Team"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_decisions_api_v1_engineering_reviews_decisions_get: {
-        parameters: {
-            query: {
-                subject_kind: "template" | "pattern" | "rule";
-                subject_ref: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecisionOut"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    record_decision_api_v1_engineering_reviews_decisions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecisionOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_reviewers_api_v1_engineering_reviews_reviewers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewerOut"][];
-                };
-            };
-        };
-    };
-    designate_api_v1_engineering_reviews_reviewers_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DesignateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewerOut"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    revoke_api_v1_engineering_reviews_reviewers__member_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                member_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_crawl_job_api_v1_ingestion_crawl_jobs_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CrawlJobRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CrawlJobResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CrawlJobResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    my_queue_api_v1_verification_queue_me_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QueuePage"];
-                };
-            };
-        };
-    };
-    label_item_api_v1_verification_items__item_id__label_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LabelRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LabelResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_escalations_api_v1_verification_escalations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EscalationPage"];
-                };
-            };
-        };
-    };
-    resolve_escalation_api_v1_verification_escalations__item_id__resolve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ResolveEscalationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QueueItem"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_stale_documents_api_v1_verification_stale_documents_get: {
-        parameters: {
-            query?: {
-                status?: "open" | "dismissed" | "retracted" | "cleared";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StaleDocumentPage"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DismissStaleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StaleDocument"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DismissStaleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StaleDocument"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    flag_answer_api_v1_feedback_flag_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FlagRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FlagResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    generate_api_v1_plc_generate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlcGenerationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlcGenerationResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    review_api_v1_plc_review_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PlcValidationRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PlcValidationResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_image_api_v1_images_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_image_api_v1_images_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageUploadResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
+  liveness_api_v1_health_live_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HealthResponse'];
+        };
+      };
+    };
+  };
+  readiness_api_v1_health_ready_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HealthResponse'];
+        };
+      };
+    };
+  };
+  signup_api_v1_auth_signup_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SignupRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessToken'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_trial_api_v1_auth_trial_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TrialStart'];
+        };
+      };
+    };
+  };
+  resume_trial_api_v1_auth_trial_resume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TrialResumeRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TrialStart'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  login_api_v1_auth_login_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LoginRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessToken'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  refresh_api_v1_auth_session_refresh_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessToken'];
+        };
+      };
+    };
+  };
+  logout_api_v1_auth_session_logout_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  logout_everywhere_api_v1_auth_session_logout_everywhere_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  quota_api_v1_auth_quota_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QuotaStatus'];
+        };
+      };
+    };
+  };
+  create_diagnosis_api_v1_diagnostics_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DiagnosticRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiagnosticResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  stream_diagnosis_api_v1_diagnostics_stream_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DiagnosticRequest'];
+      };
+    };
+    responses: {
+      /** @description A stream of server-sent events. Progress events report the stage; the final `result` event carries the complete DiagnosticResponse. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'text/event-stream': {
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: 'retrieving' | 'generated' | 'refused' | 'result';
+            /** Data */
+            data?: {
+              [key: string]: unknown;
+            };
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_diagnostic_session_api_v1_diagnostics__session_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiagnosticSession'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_diagnostic_sessions_api_v1_sessions_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiagnosticSessionPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  plans_api_v1_billing_plans_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlanCatalogue'];
+        };
+      };
+    };
+  };
+  entitlements_api_v1_billing_entitlements_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Entitlements'];
+        };
+      };
+    };
+  };
+  request_plan_api_v1_billing_request_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlanRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Entitlements'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  size_cable_api_v1_calculations_cable_sizing_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CableSizingRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CableSizingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_drive_ranges_api_v1_calculations_drive_ranges_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DriveRangeSummary'][];
+        };
+      };
+    };
+  };
+  select_vfd_api_v1_calculations_vfd_selection_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['VfdSelectionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['VfdSelectionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  build_panel_bom_api_v1_calculations_panel_bom_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PanelBomRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PanelBomResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  design_distribution_board_api_v1_design_distribution_board_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BoardDesignRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BoardDesignResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  design_project_api_v1_design_project_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProjectDesignRequest-Input'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BoardDesignResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_design_api_v1_design_export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DesignExportRequest'];
+      };
+    };
+    responses: {
+      /** @description The exported file */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/octet-stream': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  import_load_schedule_api_v1_design_load_schedule_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_import_load_schedule_api_v1_design_load_schedule_import_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LoadScheduleImport'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  suggest_load_schedule_api_v1_design_load_schedule_suggest_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ScheduleSuggestionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LoadScheduleSuggestion'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  price_design_api_v1_design_quotation_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['QuotationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QuotationEstimate'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  import_price_list_api_v1_design_price_list_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_import_price_list_api_v1_design_price_list_import_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PriceListEntry-Output'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  write_plc_program_api_v1_design_plc_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcProgramRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcProgramResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_projects_api_v1_design_projects_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        cursor?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProjectPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  save_project_api_v1_design_projects_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveProjectRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preview_requirements_api_v1_design_projects_requirements_preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RequirementsPreviewRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RequirementsPreview'];
+        };
+      };
+      /** @description As a save refuses the request, or the design's refusal */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_ai_proposal_api_v1_design_projects_requirements_ai_proposals_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiProposalRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_request_in_flight` (the account's other call) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_consent_required`, `ai_input_empty`, `ai_input_too_long` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `rate_limited`, `ai_user_limit_exceeded`, `model_budget_exceeded` */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_malformed` */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_unavailable` */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_timeout` */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_ai_proposal_api_v1_design_projects_requirements_ai_proposals__proposal_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_requires_account`, `ai_proposal_not_yours` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` (part of a saved revision's record) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  decide_ai_item_api_v1_design_projects_requirements_ai_proposals__proposal_id__items__item_id__decision_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposal_id: string;
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiDecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AiProposal'];
+        };
+      };
+      /** @description `ai_requires_account` (a trial) */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_not_found` (also another tenant's) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_proposal_used` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `ai_edit_not_valid`, `ai_decisions_full`, or a who/when field */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  answer_question_api_v1_design_projects__project_id__revisions__number__questions__question_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+        question_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['QuestionAction'];
+      };
+    };
+    responses: {
+      /** @description Acknowledged: the revision's updated record */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description Answered: the project at its new revision */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description `revision_not_found` or `question_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `question_not_answerable`, `question_answered`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  clarify_safety_mention_api_v1_design_projects__project_id__revisions__number__requirements_safety_clarifications_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description `clarification_route_retired` */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  resolve_safety_concern_api_v1_design_projects__project_id__revisions__number__requirements_safety_resolutions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SafetyResolutionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AcknowledgedRequirements'];
+        };
+      };
+      /** @description `safety_resolution_requires_account`, `safety_resolution_not_permitted`, `safety_resolution_by_proposal_author`, `safety_resolution_by_revision_author` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_found` or `safety_target_not_found` */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `requirements_derived`, `revision_already_approved`, `revision_not_latest`, `safety_concern_already_resolved`, `false_positive_not_allowed`, `snapshot_integrity_failed` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  open_project_api_v1_design_projects__project_id__get: {
+    parameters: {
+      query?: {
+        revision?: number | null;
+      };
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_project_api_v1_design_projects__project_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revise_project_api_v1_design_projects__project_id__revisions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReviseProjectRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  validate_configuration_api_v1_design_projects__project_id__configuration_validate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ConfigurationValidateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConfigurationReview'];
+        };
+      };
+      /** @description No such project is the caller's (`project_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `configuration_too_large`, `configuration_claims_review`, `configuration_ref_reserved` or `configuration_refused` */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resave_revision_api_v1_design_projects__project_id__revisions__number__resave_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description `resave_requires_account` */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated`, `snapshot_integrity_failed` or `revision_conflict` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description As a revision save refuses the stored request, unchanged (e.g. `feeder_server_owned`, `sub_board_load_server_owned`) */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  approve_revision_api_v1_design_projects__project_id__revisions__number__approval_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ApproveRevisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SavedProject'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_revision_api_v1_design_projects__project_id__revisions__number__export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RevisionExportRequest'];
+      };
+    };
+    responses: {
+      /** @description The exported file */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/octet-stream': unknown;
+        };
+      };
+      /** @description No such revision is the caller's (`revision_not_found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description `revision_not_validated`, `snapshot_integrity_failed`, `snapshot_schema_unknown`, `revision_stale`, `export_format_unprotected`, `schedule_requires_v2`, or `execution_package_incomplete` */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_markets_api_v1_design_markets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MarketInfo'][];
+        };
+      };
+    };
+  };
+  get_company_settings_api_v1_design_company_settings_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanySettings'];
+        };
+      };
+    };
+  };
+  save_company_settings_api_v1_design_company_settings_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveCompanySettings'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CompanySettings'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  read_markups_api_v1_design_markups_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_read_markups_api_v1_design_markups_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MarkupReport'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  search_documents_api_v1_search_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SearchRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SearchResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_team_api_v1_team_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
+      };
+    };
+  };
+  list_invitations_api_v1_team_invitations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InvitationOut'][];
+        };
+      };
+    };
+  };
+  invite_api_v1_team_invitations_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InviteRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InvitationCreated'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revoke_api_v1_team_invitations__invitation_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        invitation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_api_v1_team_members__member_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  transfer_ownership_api_v1_team_owner_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TransferOwnershipRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Team'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_decisions_api_v1_engineering_reviews_decisions_get: {
+    parameters: {
+      query: {
+        subject_kind: 'template' | 'pattern' | 'rule';
+        subject_ref: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DecisionOut'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  record_decision_api_v1_engineering_reviews_decisions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DecisionRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DecisionOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_reviewers_api_v1_engineering_reviews_reviewers_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReviewerOut'][];
+        };
+      };
+    };
+  };
+  designate_api_v1_engineering_reviews_reviewers_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DesignateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReviewerOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  revoke_api_v1_engineering_reviews_reviewers__member_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_crawl_job_api_v1_ingestion_crawl_jobs_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CrawlJobRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CrawlJobResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_crawl_job_api_v1_ingestion_crawl_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CrawlJobResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  my_queue_api_v1_verification_queue_me_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QueuePage'];
+        };
+      };
+    };
+  };
+  label_item_api_v1_verification_items__item_id__label_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LabelRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LabelResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_escalations_api_v1_verification_escalations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EscalationPage'];
+        };
+      };
+    };
+  };
+  resolve_escalation_api_v1_verification_escalations__item_id__resolve_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ResolveEscalationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['QueueItem'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_stale_documents_api_v1_verification_stale_documents_get: {
+    parameters: {
+      query?: {
+        status?: 'open' | 'dismissed' | 'retracted' | 'cleared';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocumentPage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  dismiss_stale_document_api_v1_verification_stale_documents__document_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DismissStaleRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocument'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  retract_stale_document_api_v1_verification_stale_documents__document_id__retract_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DismissStaleRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StaleDocument'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  flag_answer_api_v1_feedback_flag_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FlagRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['FlagResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  generate_api_v1_plc_generate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcGenerationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcGenerationResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  review_api_v1_plc_review_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlcValidationRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlcValidationResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  upload_image_api_v1_images_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_upload_image_api_v1_images_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImageUploadResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
 }
