@@ -1104,7 +1104,12 @@
       "exclusion_not_allowed": "לא ניתן להחריג מההיקף לוח או עומס שעדיין בבקשה: הסר אותו מהבקשה ושמור גרסה חדשה, ואז רשום את ההחרגה.",
       "clarification_route_retired": "ההבהרות הופסקו: רשום פתרון (החרגה מההיקף או התראת שווא) במקומן.",
       "exclusion_confirmation_incomplete": "אשר כל עומס מועמד בבקשה (אינו ציוד זה) לפני החרגת חשש זה.",
-      "exclusion_confirmation_extra": "הרשימה מציינת עומס שאינו מועמד להחרגה זו; ציין בדיוק את העומסים המועמדים המוצגים."
+      "exclusion_confirmation_extra": "הרשימה מציינת עומס שאינו מועמד להחרגה זו; ציין בדיוק את העומסים המועמדים המוצגים.",
+      "link_end_off_board": "קצה חיבור מציין הדק של לוח אחר. בחרו הדק של הלוח של אותו קצה (הלוח המזין עבור „מ”, הלוח המוזן עבור „אל”).",
+      "link_terminal_unknown": "קצה חיבור מציין הדק שאינו קיים בתצורה. בחרו מהרשימה, או הקלידו תווית במקום.",
+      "link_duplicate": "להזנה יש שני חיבורים בבקשה. לכל לוח מוזן חיבור אחד.",
+      "link_not_a_feeder": "חיבור מציין לוח שאינו מוזן מלוח אחר. קבעו לו „מוזן מ”, או נקו את החיבור.",
+      "link_board_unknown": "חיבור מציין לוח שאינו בפרויקט."
     },
     "drawingLanguage": "שפת השרטוטים",
     "drawingLanguages": {
@@ -1966,5 +1971,65 @@
       "revision_not_validated": "הגרסה האחרונה כבר אינה עוברת בדיקה, ולכן אי אפשר להרכיב איתה את התצורה. שמרו קודם גרסה חדשה.",
       "other": "נדחה: {detail}"
     }
+  },
+  "feederLink": {
+    "panelTitle": "חיבורים בין לוחות",
+    "title": "חיבור בין לוחות: {from} ← {to}",
+    "intro": "מה שידוע לכם על החיבור מ־{from} אל {to}. כל השדות אופציונליים; שדה ריק נרשם „לא נמסר”. דבר כאן אינו משנה את חישוב ההזנה.",
+    "fromEnd": "קצה „מ” (לוח מזין {board})",
+    "toEnd": "קצה „אל” (לוח מוזן {board})",
+    "terminal": "הדק או נקודת פס ממודלים על {board}",
+    "terminalNone": "אין הדק ממודל",
+    "noTerminals": "הגרסה הפתוחה אינה ממדלת הדקים על {board}; אפשר להקליד תווית.",
+    "label": "התווית שלכם",
+    "labelNote": "נמסרה על ידיכם — אינה הדק ממודל.",
+    "endNotSet": "ההדק לא נקבע.",
+    "attributes": "תכונות ידועות של הכבל והמוליך",
+    "attr": {
+      "cores": "גידים",
+      "cross_section_mm2": "חתך (מ״מ²)",
+      "material": "חומר",
+      "insulation": "בידוד",
+      "length_m": "אורך (מ׳)",
+      "number": "מספר כבל",
+      "colour": "צבע"
+    },
+    "material": {
+      "copper": "נחושת",
+      "aluminium": "אלומיניום"
+    },
+    "notGiven": "לא נמסר",
+    "calculation": "בשימוש חישוב ההזנה: {value}",
+    "calculationNone": "בשימוש חישוב ההזנה: —",
+    "calculationNotRun": "תכננו את הפרויקט כדי לראות את הערכים שבהם השתמש חישוב ההזנה.",
+    "differs": "שונה",
+    "differsDetail": "הערך שלכם {user}; חישוב ההזנה {calc}.",
+    "problem": {
+      "cores": "מספר הגידים הוא מספר שלם מ־1 עד 100.",
+      "positive": "הזינו מספר גדול מ־0.",
+      "nonNegative": "הזינו מספר של 0 ומעלה."
+    },
+    "clear": "נקו חיבור זה",
+    "storedTitle": "חיבורים בין לוחות בגרסה {revision}",
+    "storedNone": "גרסה זו אינה מחזיקה חיבורים בין לוחות.",
+    "storedLink": "חיבור {id}: {from} ← {to}",
+    "endFrom": "מ־{board}",
+    "endTo": "אל {board}",
+    "endTerminal": "הדק {terminal}",
+    "endNotSetStored": "ההדק לא נקבע",
+    "endLabelStored": "„{label}” — תווית שמסר המשתמש, אינה הדק ממודל",
+    "sourceUser": "נמסר על ידי המשתמש",
+    "enteredBy": "הוזן {at}",
+    "findings": "ממצאים לחיבור זה",
+    "findingsNone": "לא נרשמו ממצאי חיבור.",
+    "finding": {
+      "link_endpoint_unresolved": "קצה שלא נקשר להדק ממודל: {end}.",
+      "link_endpoint_unresolved_plain": "אחד הקצוות לא נקשר להדק ממודל.",
+      "link_attribute_unset": "לא נמסר: {attributes}.",
+      "link_attribute_unset_plain": "חלק מתכונות הכבל לא נמסרו.",
+      "link_value_differs_from_calculation": "{attribute}: ערך המשתמש {user} (נמסר על ידי המשתמש); ערך חישוב ההזנה {calc} (בשימוש חישוב ההזנה).",
+      "link_value_differs_from_calculation_plain": "ערך שמסר המשתמש שונה מהערך שבו השתמש חישוב ההזנה."
+    },
+    "refusedHere": "השמירה נדחתה עבור חיבור זה: {reason}"
   }
 }
