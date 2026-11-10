@@ -98,8 +98,10 @@ def _ask(client: TestClient, project_id: str, number: int, qid: str, body: Any) 
 
 
 def test_a_saved_revision_stores_its_record_under_its_hash(
-    client: TestClient, engine: Engine
+    client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The open item is v1/v2 behaviour; pp-design/3 replaces it by the link (M7a tests).
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
     saved = _save(client, GUIDED, requirements_input=INPUT)
     record = saved["requirements"]
     assert record["schema"] == "pp-req/1"
@@ -244,7 +246,11 @@ def _words(response: Any) -> str:
     return " ".join(" ".join(pdf_pages(response.content)).split())
 
 
-def test_open_items_print_on_the_drawing_set_and_calculations(client: TestClient) -> None:
+def test_open_items_print_on_the_drawing_set_and_calculations(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The open item is v1/v2 behaviour; pp-design/3 replaces it by the link (M7a tests).
+    monkeypatch.setenv("DESIGN_SNAPSHOT_SCHEMA", "pp-design/1")
     saved = _save(client, GUIDED, requirements_input=INPUT)
     for fmt in ("pdf", "calculations_pdf"):
         words = _words(revision_export(client, saved["id"], 1, fmt))
