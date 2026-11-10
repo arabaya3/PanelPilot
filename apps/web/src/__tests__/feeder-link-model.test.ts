@@ -334,3 +334,17 @@ describe('a configured save with only link edits pending', () => {
     expect(designDiffers('stored', 'stored')).toBe(false);
   });
 });
+
+describe('a stored terminal as the API sends it', () => {
+  it('reads a strip point whose component pair is null as a strip point', async () => {
+    const { terminalText, isComponentTerminal } =
+      await import('@/components/design/feeder-link-model');
+    const fromApi = { component: null, terminal: null, point: 'p-1', side: 'outer' } as never;
+    expect(isComponentTerminal(fromApi)).toBe(false);
+    expect(terminalText(fromApi, null)).toBe('p-1 (outer)');
+    expect(terminalText(fromApi, null)).not.toContain('null');
+    const component = { component: 'k-1', terminal: 't-2', point: null, side: null } as never;
+    expect(isComponentTerminal(component)).toBe(true);
+    expect(terminalText(component, null)).toBe('k-1:t-2');
+  });
+});

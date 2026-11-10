@@ -71,9 +71,20 @@ export function isBlankLink(link: LinkForm | undefined): boolean {
   return ends && LINK_ATTRIBUTES.every((key) => link.attributes[key].trim() === '');
 }
 
+/**
+ * Whether a terminal names a component's terminal (not a strip point).
+ * The API sends both pairs with the unused one null, so the test is the
+ * value, not the key's presence.
+ */
+export function isComponentTerminal(
+  ref: TerminalRef,
+): ref is { component: string; terminal: string } {
+  return typeof (ref as { component?: unknown }).component === 'string';
+}
+
 /** A terminal as one string, for a select's value (and back). */
 export function encodeTerminal(ref: TerminalRef): string {
-  return 'component' in ref
+  return isComponentTerminal(ref)
     ? JSON.stringify({ component: ref.component, terminal: ref.terminal })
     : JSON.stringify({ point: ref.point, side: ref.side });
 }
@@ -125,21 +136,22 @@ export function terminalOptions(model: V2ModelSummary | null, board: string): Te
 export function terminalText(ref: TerminalRef, model: V2ModelSummary | null): string {
   if (model !== null) {
     for (const row of model.terminals) {
-      const same =
-        'component' in ref
-          ? row.owner_kind === 'component' &&
-            row.owner_id === ref.component &&
-            row.terminal_id === ref.terminal
-          : row.owner_kind === 'strip' && row.terminal_id === ref.point && row.side === ref.side;
+      const same = isComponentTerminal(ref)
+        ? row.owner_kind === 'component' &&
+          row.owner_id === ref.component &&
+          row.terminal_id === ref.terminal
+        : row.owner_kind === 'strip' && row.terminal_id === ref.point && row.side === ref.side;
       if (same) {
         const owner = row.designation ?? row.owner_id;
-        return 'component' in ref
+        return isComponentTerminal(ref)
           ? `${owner}:${row.marking}`
           : `${owner}:${row.marking} (${ref.side})`;
       }
     }
   }
-  return 'component' in ref ? `${ref.component}:${ref.terminal}` : `${ref.point} (${ref.side})`;
+  return isComponentTerminal(ref)
+    ? `${ref.component}:${ref.terminal}`
+    : `${ref.point} (${ref.side})`;
 }
 
 /** One entry of the request's `feeder_links`, exactly as the contract states it (§4). */
