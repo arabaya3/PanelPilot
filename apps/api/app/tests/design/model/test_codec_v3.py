@@ -47,7 +47,7 @@ def test_a_v3_snapshot_reads_back_with_one_link_per_feeder() -> None:
 
 def _altered(change: Any) -> dict[str, Any]:
     stored, _ = _stored()
-    out = copy.deepcopy(stored)
+    out: dict[str, Any] = copy.deepcopy(stored)
     change(out["model"]["links"])
     return out
 
