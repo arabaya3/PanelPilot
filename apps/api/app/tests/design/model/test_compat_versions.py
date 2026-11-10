@@ -29,7 +29,7 @@ from app.core.errors import ConflictError
 from app.design import marking, snapshot
 from app.design.model import versions
 from app.design.model.convert_v1 import from_v1
-from app.design.model.migrate_v2 import migrate_1_to_2
+from app.design.model.migrate_v2 import migrate_1_to_2, migrate_2_to_3
 from app.design.model.read import read_snapshot
 from app.domain import design as design_domain
 from app.domain import design_projects
@@ -220,7 +220,10 @@ def test_backwards_or_unknown_migrations_are_refused(source: str, target: str) -
 
 
 def test_the_default_registry_is_untouched_by_these_tests() -> None:
-    assert {(versions.V1, versions.V2): migrate_1_to_2} == versions.MIGRATIONS
+    assert {
+        (versions.V1, versions.V2): migrate_1_to_2,
+        (versions.V2, versions.V3): migrate_2_to_3,
+    } == versions.MIGRATIONS
 
 
 # --------------------------------------------------------------------------- #
