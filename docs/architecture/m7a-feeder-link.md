@@ -155,7 +155,7 @@ Shapes are as §3–§6, with these specifics and deviations:
   finding values are strings), `link_value_differs_from_calculation` (warning,
   no confirmation, never blocks approval; `attribute`, `user_value`,
   `user_source: user`, `calculation_value`, `calculation_source: feeder
-  calculation`). The first two are execution blockers. Text values compare
+calculation`). The first two are execution blockers. Text values compare
   case- and whitespace-insensitively. Calculation values: the feeder circuit's
   cable (supply board circuit with `feeds` = fed board): cores, cross-section,
   material, insulation, `length_m` (= `feeder_length_m`); a missing length is
@@ -167,7 +167,7 @@ Shapes are as §3–§6, with these specifics and deviations:
   deployment's switch). No `model_v3`; the v2 summary stays `model_v2`.
 - **Life safety**: link labels and material/insulation/number/colour are
   scanned as request text (place `link`, where `feeder link to <board> ›
-  <field>`); a life-safety term holds approval and cannot be excluded or
+<field>`); a life-safety term holds approval and cannot be excluded or
   marked false positive while in the request.
 - **Drawing**: flags are drawn on dedicated "Board-to-board links" sheets after
   the routed sheets (not inside the existing cross-reference sheets, whose

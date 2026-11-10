@@ -298,7 +298,16 @@ export function StoredLinks({
     }
     if (finding.code === 'link_attribute_unset') {
       const raw = params.attributes;
-      const list = Array.isArray(raw) ? raw.map((item) => attrName(text(item))).join(', ') : '';
+      // The API sends a comma-separated string (finding values are strings).
+      const items: unknown[] = Array.isArray(raw)
+        ? raw
+        : typeof raw === 'string'
+          ? raw.split(',').map((item) => item.trim())
+          : [];
+      const list = items
+        .filter((item) => text(item) !== '')
+        .map((item) => attrName(text(item)))
+        .join(', ');
       return list
         ? t('finding.link_attribute_unset', { attributes: list })
         : t('finding.link_attribute_unset_plain');

@@ -276,7 +276,8 @@ const FINDINGS = [
   {
     code: 'link_attribute_unset',
     board_id: 'DB1',
-    params: { link_id: 'l-3f2a', attributes: ['material', 'insulation'] },
+    // As the API sends it: finding values are strings.
+    params: { link_id: 'l-3f2a', attributes: 'material,insulation' },
   },
   {
     code: 'link_value_differs_from_calculation',
