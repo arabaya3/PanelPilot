@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
+from itertools import pairwise
 from types import SimpleNamespace
 
 from reportlab.lib import colors
@@ -34,6 +35,7 @@ from reportlab.pdfgen.canvas import Canvas
 from app.design.marking import ExportMark, finding_lines, pdf_page_stamp
 from app.design.model import connection_drawing as layout
 from app.design.model import connection_routing as routing
+from app.design.model import links as link_rows
 from app.design.model.entities import SymbolDef
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
@@ -506,6 +508,129 @@ def _draw_text_page(canvas: Canvas, title: str, lines: Sequence[str]) -> None:
         y -= _TEXT_LINE
 
 
+#: How many links one link sheet holds (M7a, ``pp-design/3``).
+LINKS_PER_SHEET = 4
+
+#: What every link sheet says of itself.
+LINK_SHEET_NOTE = (
+    "Board-to-board links, as the user entered them. A continuation flag stands at each end; "
+    "its far-board text comes from the link. A solid flag with a dot is a modelled terminal; "
+    'a dashed open flag reads "terminal NOT SET" and is not a connected terminal. A quoted '
+    "label is the user's text, not a modelled terminal. Attributes are the user's or "
+    '"not given"; no value is copied from the design, and none changes the calculation.'
+)
+
+
+def _flag(
+    canvas: Canvas, x: float, y: float, width: float, *, pointing_right: bool, resolved: bool
+) -> None:
+    """A continuation flag; dashed and open on its terminal side when the end is unresolved."""
+    h = 7 * mm
+    tip = 4 * mm
+    if pointing_right:
+        pts = [
+            (x, y),
+            (x + width - tip, y),
+            (x + width, y + h / 2),
+            (x + width - tip, y + h),
+            (x, y + h),
+        ]
+    else:
+        pts = [(x + width, y), (x + tip, y), (x, y + h / 2), (x + tip, y + h), (x + width, y + h)]
+    canvas.saveState()
+    canvas.setLineWidth(0.6)
+    if resolved:
+        path = canvas.beginPath()
+        path.moveTo(*pts[0])
+        for point in pts[1:]:
+            path.lineTo(*point)
+        path.close()
+        canvas.drawPath(path, stroke=1, fill=0)
+        dot_x = x if pointing_right else x + width
+        canvas.circle(dot_x, y + h / 2, 0.9 * mm, stroke=1, fill=1)
+    else:
+        canvas.setDash(*PLACEHOLDER_DASH)
+        canvas.setStrokeColor(_RED)
+        # Open on the terminal side: no edge where a terminal would connect.
+        for a, b in pairwise(pts):
+            canvas.line(a[0], a[1], b[0], b[1])
+    canvas.restoreState()
+
+
+def _link_block(
+    canvas: Canvas, row: link_rows.LinkRow, top: float, drawing: layout.DrawingSet
+) -> None:
+    """One link: a flag at each end, the link between them, its attributes and differences."""
+    left = _AREA_LEFT + 8 * mm
+    right = _AREA_RIGHT - 8 * mm
+    flag_w = 95 * mm
+    y = top - 14 * mm
+    _text(
+        canvas,
+        left,
+        top - 5 * mm,
+        f"Link {row.link_id}: {row.supply_board} to {row.fed_board} "
+        f"(feeder circuit {row.circuit_id}; {row.carrier})",
+        layout.BODY_PT + 1,
+        bold=True,
+    )
+    ends = (
+        (row.ends[0], left, True, row.fed_board),
+        (row.ends[1], right - flag_w, False, row.supply_board),
+    )
+    for end, x, pointing_right, far in ends:
+        _flag(canvas, x, y, flag_w, pointing_right=pointing_right, resolved=end.resolved)
+        inner = x + (3 * mm if pointing_right else 6 * mm)
+        room = flag_w - 9 * mm
+        if end.resolved:
+            text = _fit(
+                f"{end.board} {end.terminal}", room, layout.BODY_PT, False, "(in the wire schedule)"
+            )
+            _text(canvas, inner, y + 2.5 * mm, text)
+        else:
+            canvas.saveState()
+            canvas.setFillColor(_RED)
+            _text(canvas, inner, y + 2.5 * mm, f"{end.board} {end.terminal}", bold=True)
+            canvas.restoreState()
+        lines = [f"{end.role} end; continues to {far}"]
+        if end.key is not None and end.key in drawing.places:
+            lines.append(f"terminal drawn at {layout.where(drawing.places[end.key])}")
+        if end.label is not None:
+            lines += layout.wrap(end.label, flag_w, layout.BODY_PT)
+        ly = y - 3.4 * mm
+        for line in lines[:4]:
+            _text(canvas, x, ly, line)
+            ly -= _TEXT_LINE
+    canvas.saveState()
+    canvas.setDash(*LINK_DASH)
+    canvas.setLineWidth(0.4)
+    mid = y + 3.5 * mm
+    canvas.line(left + flag_w + 2 * mm, mid, right - flag_w - 2 * mm, mid)
+    canvas.restoreState()
+    attrs = "; ".join(f"{link_rows.ATTRIBUTE_NAMES[n]}: {t}" for n, t in row.attributes)
+    diffs = [link_rows.difference_text(*d) for d in row.differences]
+    ty = y - 3.4 * mm - 5 * _TEXT_LINE
+    for line in layout.wrap(attrs, _TEXT_ROOM, layout.BODY_PT)[:3]:
+        _text(canvas, left, ty, line)
+        ty -= _TEXT_LINE
+    for diff in diffs:
+        for line in layout.wrap(f"DIFFERS: {diff}", _TEXT_ROOM, layout.BODY_PT)[:2]:
+            _text(canvas, left, ty, line, bold=True)
+            ty -= _TEXT_LINE
+
+
+def _link_sheet(
+    canvas: Canvas, rows: Sequence[link_rows.LinkRow], drawing: layout.DrawingSet
+) -> None:
+    x = _AREA_LEFT + _TEXT_MARGIN
+    _text(canvas, x, _AREA_TOP - 6 * mm, "Board-to-board links", 10, bold=True)
+    for n, line in enumerate(layout.wrap(LINK_SHEET_NOTE, _TEXT_ROOM, layout.BODY_PT)[:3]):
+        _text(canvas, x, _AREA_TOP - 10 * mm - n * _TEXT_LINE, line)
+    band = (_AREA_TOP - 22 * mm - _AREA_BOTTOM) / LINKS_PER_SHEET
+    for n, row in enumerate(rows):
+        _link_block(canvas, row, _AREA_TOP - 20 * mm - n * band, drawing)
+
+
 def _routed_counts(routed: routing.RoutedSet) -> list[str]:
     reasons: dict[str, int] = {}
     for item in routed.unrouted:
@@ -524,6 +649,7 @@ def render_connection_drawing(
     header: DrawingHeader,
     mark: ExportMark,
     structural: Sequence[V2Finding],
+    links: Sequence[link_rows.LinkRow] = (),
 ) -> bytes:
     """The connection drawing as a PDF.
 
@@ -532,6 +658,9 @@ def render_connection_drawing(
         header: What the cover and every title block name.
         mark: The export's mark (label, identity, the design's other findings).
         structural: Every structural finding, with its effects.
+        links: A ``pp-design/3`` revision's links (``links.rows``), drawn on
+            link sheets after the routed sheets; none for v2, whose drawing
+            is then unchanged.
 
     Returns:
         The PDF's bytes.
@@ -542,6 +671,11 @@ def render_connection_drawing(
     last_m4 = last_drawing
     if routed_sheets:
         last_drawing = routed_sheets[-1].number
+    last_routed = last_drawing
+    link_pages = [
+        list(links[n : n + LINKS_PER_SHEET]) for n in range(0, len(links), LINKS_PER_SHEET)
+    ]
+    last_drawing += len(link_pages)
     open_items = [
         f"{item.kind}: {item.text}" + (f" ({layout.where(item.place)})" if item.place else "")
         for item in drawing.open_items
@@ -558,6 +692,11 @@ def render_connection_drawing(
     index_items += [
         f"Sheet {sheet.number}: routed sheet, board {sheet.board_id}: {len(sheet.lines)} line(s)"
         for sheet in routed_sheets
+    ]
+    index_items += [
+        f"Sheet {last_routed + 1 + n}: board-to-board links: "
+        + ", ".join(f"{r.supply_board} to {r.fed_board}" for r in page)
+        for n, page in enumerate(link_pages)
     ]
     finding_items = _marked_cuts(
         [
@@ -599,11 +738,18 @@ def render_connection_drawing(
             else "Drawing sheets: none"
         ),
         (
-            f"Routed sheets: {routed_sheets[0].number} to {last_drawing}"
+            f"Routed sheets: {routed_sheets[0].number} to {last_routed}"
             if routed_sheets
             else "Routed sheets: none"
         ),
         *(_routed_counts(routed) if routed is not None else []),
+        *(
+            [
+                f"Board-to-board link sheets: {last_routed + 1} to {last_drawing} ({len(links)} link(s))"
+            ]
+            if link_pages
+            else []
+        ),
         f"Terminals: {len(drawing.rows)}; nets: {len(drawing.nets)}; "
         f"connections: {len(drawing.connections)}; wires: {len(drawing.wire_rows)}; "
         f"open items: {len(drawing.open_items)}",
@@ -626,6 +772,10 @@ def render_connection_drawing(
     for sheet in routed_sheets:
         _sheet_frame(canvas, header, mark, sheet.number, total, sheet.board_id, grid=True)
         _routed(canvas, sheet)
+        canvas.showPage()
+    for n, page in enumerate(link_pages):
+        _sheet_frame(canvas, header, mark, last_routed + 1 + n, total, "", grid=True)
+        _link_sheet(canvas, page, drawing)
         canvas.showPage()
     for n, (title, lines) in enumerate(text_pages):
         _sheet_frame(canvas, header, mark, first_text + n, total, "", grid=False)

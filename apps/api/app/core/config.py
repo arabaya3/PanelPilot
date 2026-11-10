@@ -177,10 +177,11 @@ class Settings(BaseSettings):
     # --- Design snapshots --------------------------------------------------
     # The schema a newly saved design revision is written in. A closed set:
     # "pp-design/1" (the default, as in Phase 1 and M1) or "pp-design/2" (M2's
-    # components, terminals, nets and wires, enveloped). Anything else is
+    # components, terminals, nets and wires, enveloped) or "pp-design/3" (M7a:
+    # v2 plus the feeder links between boards). Anything else is
     # refused at startup. Both are always *read*; this decides only what a new
     # save or revision writes. Existing revisions are never rewritten.
-    design_snapshot_schema: Literal["pp-design/1", "pp-design/2"] = "pp-design/1"
+    design_snapshot_schema: Literal["pp-design/1", "pp-design/2", "pp-design/3"] = "pp-design/1"
 
     # --- Security ----------------------------------------------------------
     jwt_secret: SecretStr = Field(..., description="Signing key for issued access tokens.")
@@ -419,7 +420,7 @@ class _DesignSnapshotSwitch(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    design_snapshot_schema: Literal["pp-design/1", "pp-design/2"] = "pp-design/1"
+    design_snapshot_schema: Literal["pp-design/1", "pp-design/2", "pp-design/3"] = "pp-design/1"
 
 
 def design_snapshot_schema() -> str:
@@ -429,7 +430,7 @@ def design_snapshot_schema() -> str:
     so a test that changes it needs no cache to clear.
 
     Returns:
-        ``"pp-design/1"`` (the default) or ``"pp-design/2"``.
+        ``"pp-design/1"`` (the default), ``"pp-design/2"`` or ``"pp-design/3"``.
 
     Raises:
         ConfigurationError: If it is set to anything else.

@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
-from app.design.model import codec_v2, domain, entities, versions
+from app.design.model import codec_v2, codec_v3, domain, entities, versions
 from app.design.model.convert_v1 import from_v1
 from app.design.model.serialize import to_stored_v1
 from app.models.schemas.design import DesignProject
@@ -33,7 +33,9 @@ class VersionedModel:
         schema: The schema it was stored in.
         project: The design as v1, which today's renderers and checks take.
             For a v2 snapshot, the v1 design it holds under ``design``.
-        v2: The v2 model, for a v2 snapshot; ``None`` for v1.
+        v2: The v2 model, for a v2 snapshot, and the v2 part of a v3
+            snapshot (everything but its links); ``None`` for v1.
+        links: A v3 snapshot's feeder links between boards; empty otherwise.
 
     The domain model (:attr:`model`) is built on first use only: the read
     paths that gate approval and export take the v1 form, and should not pay
@@ -43,6 +45,7 @@ class VersionedModel:
     schema: str
     project: DesignProject
     v2: entities.DesignModelV2 | None = None
+    links: tuple[entities.InterBoardLink, ...] = ()
 
     @cached_property
     def model(self) -> domain.DesignModel:
@@ -78,7 +81,20 @@ def read_snapshot(stored: Any) -> VersionedModel:
         return VersionedModel(
             schema=schema, project=DesignProject.model_validate(content["design"]), v2=v2
         )
-    # ``identify`` refuses every schema but v1 and v2, so the payload is v1.
+    if schema == versions.V3:
+        try:
+            v2, links = codec_v3.parse_model(content)
+        except RecursionError as exc:
+            raise versions.SnapshotUnreadableError(
+                f"not a {schema} design: nested too deep"
+            ) from exc
+        return VersionedModel(
+            schema=schema,
+            project=DesignProject.model_validate(content["design"]),
+            v2=v2,
+            links=links,
+        )
+    # ``identify`` refuses every schema but v1, v2 and v3, so the payload is v1.
     try:
         project = DesignProject.model_validate(content)
     except PydanticValidationError as exc:

@@ -34,6 +34,10 @@ RENDERER_VERSION = "2026.11.04.9"
 RENDERER_VERSIONS: dict[str, str] = {
     "pp-design/1": RENDERER_VERSION,
     "pp-design/2": "2026.11.04.v2-24",
+    # M7a: a v3 export is a v2 export plus the board-to-board links (the wire
+    # schedule's section, the drawing's link sheets, the JSON's ``links``)
+    # and their findings. Bump it for any change of what a v3 export says.
+    "pp-design/3": "2026.11.10.v3-1",
 }
 
 
@@ -41,7 +45,7 @@ def renderer_version(schema: str) -> str:
     """The renderer version for a snapshot schema; :data:`RENDERER_VERSION` for v1.
 
     Args:
-        schema: A schema marker (``pp-design/1`` or ``pp-design/2``).
+        schema: A schema marker (``pp-design/1``, ``pp-design/2`` or ``pp-design/3``).
 
     Returns:
         Its renderer version.

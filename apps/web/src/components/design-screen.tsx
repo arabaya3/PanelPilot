@@ -44,6 +44,16 @@ import {
   requirementsInputOf,
 } from '@/components/design/requirements-view';
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import { FeederLinkForm, StoredLinks } from '@/components/design/feeder-link';
+import {
+  calculatedValues,
+  linkFindingsOf,
+  storedLinksOf,
+  writesLinks,
+  LINK_SCHEMA,
+  type LinkFinding,
+  type StoredLink,
+} from '@/components/design/feeder-link-model';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
   applySuggestion,
@@ -253,6 +263,35 @@ function parseProfile(text: string): Record<string, unknown> | null | 'invalid' 
  * the work. The drawing language counts only once the engineer picks one,
  * since until then it follows the page's language.
  */
+/**
+ * Whether two work snapshots differ in anything but the boards' feeder links.
+ *
+ * A link changes no calculation and no composed configuration (M7a), so a
+ * configured save, held while the design differs from the saved revision, may
+ * go ahead with only link edits pending: it stores them with the configuration
+ * it composes.
+ */
+export function designDiffers(snapshot: string, clean: string): boolean {
+  const strip = (text: string): string => {
+    try {
+      // Only each board's own `link`: a key of that name anywhere else is design.
+      const work = JSON.parse(text) as { boards?: unknown };
+      if (Array.isArray(work.boards)) {
+        work.boards = work.boards.map((board: unknown) => {
+          if (board === null || typeof board !== 'object') return board;
+          const { link: _link, ...rest } = board as Record<string, unknown>;
+          return rest;
+        });
+      }
+      return JSON.stringify(work);
+    } catch {
+      // Not a work snapshot (a placeholder): compared as it is.
+      return text;
+    }
+  };
+  return strip(snapshot) !== strip(clean);
+}
+
 export function snapshotOf(
   info: ProjectInfo,
   boards: BoardForm[],
@@ -463,6 +502,7 @@ function DesignWorkspace({
   const tc = useIsolatingTranslations('configuration');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
+  const tl = useIsolatingTranslations('feederLink');
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
@@ -523,6 +563,15 @@ function DesignWorkspace({
    * not a read of it): null when unknown, undefined from an older server.
    */
   const [openedSchema, setOpenedSchema] = useState<string | null | undefined>(undefined);
+  // M7a: whether the opened project says this deployment writes pp-design/3
+  // (only then is a feeder's link entered), the links its revision stores and
+  // their findings, and a save refusal about a link.
+  const [linksWritten, setLinksWritten] = useState(false);
+  const [openedLinks, setOpenedLinks] = useState<StoredLink[]>([]);
+  const [openedLinkFindings, setOpenedLinkFindings] = useState<LinkFinding[]>([]);
+  const [linkRefusal, setLinkRefusal] = useState<{ board: string | null; text: string } | null>(
+    null,
+  );
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
@@ -1022,6 +1071,10 @@ function DesignWorkspace({
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
     setOpenedSchema(project.snapshot_schema);
+    setLinksWritten(writesLinks(project));
+    setOpenedLinks(storedLinksOf(project));
+    setOpenedLinkFindings(linkFindingsOf(project.findings));
+    setLinkRefusal(null);
     // A save, an approval or an opening each answer with the revision as now
     // stored: its validation replaces whatever was known of the last one.
     setValidation(validationOf(project));
@@ -1792,6 +1845,11 @@ function DesignWorkspace({
                 onNoteChange={setRevisionNote}
                 onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
+                  setLinkRefusal(
+                    refusal.code?.startsWith('link_')
+                      ? { board: refusal.params?.fed_board ?? null, text: say(refusal) }
+                      : null,
+                  );
                 })}
                 onUnauthorized={forOwner(() => {
                   void reauthorize();
@@ -2032,6 +2090,36 @@ function DesignWorkspace({
                     </button>
                   )}
                 </fieldset>
+
+                {linksWritten && active.fedFrom !== '' && (
+                  <FeederLinkForm
+                    key={active.key}
+                    supplyBoard={active.fedFrom}
+                    fedBoard={active.name}
+                    value={active.link}
+                    onChange={(link) => {
+                      setBoards((current) =>
+                        current.map((board) => {
+                          if (board.key !== active.key) return board;
+                          const { link: _old, ...rest } = board;
+                          return link ? { ...rest, link } : rest;
+                        }),
+                      );
+                    }}
+                    model={openedModel}
+                    calculated={
+                      result.kind === 'designed'
+                        ? calculatedValues(result.response.project, active.fedFrom, active.name)
+                        : null
+                    }
+                    refusal={
+                      linkRefusal !== null &&
+                      (linkRefusal.board === null || linkRefusal.board === active.name)
+                        ? linkRefusal.text
+                        : null
+                    }
+                  />
+                )}
 
                 <fieldset className="panel flex min-w-0 flex-col gap-4 p-4 md:p-5">
                   <legend className="px-1 text-sm font-semibold">
@@ -2384,10 +2472,10 @@ function DesignWorkspace({
                     complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
                   }
                   note={revisionNote}
-                  dirty={dirty}
+                  dirty={designDiffers(snapshot, clean)}
                   onSaved={forOwner((project: SavedProject) => {
-                    // A configured save stores the form as it stands (it is
-                    // held while dirty), so it rebaselines a design made from
+                    // A configured save stores the form as it stands (held
+                    // while the design differs; link edits go with it), so it rebaselines a design made from
                     // it exactly as a plain save does.
                     rebaseOnSave.current = true;
                     onOpened(project, false);
@@ -2436,6 +2524,16 @@ function DesignWorkspace({
                 </p>
               </div>
             </Panel>
+            {opened && (openedSchema === LINK_SCHEMA || openedLinks.length > 0) && (
+              <Panel title={tl('panelTitle')} testId="opened-links">
+                <StoredLinks
+                  links={openedLinks}
+                  findings={openedLinkFindings}
+                  model={openedModel}
+                  revision={opened.revision}
+                />
+              </Panel>
+            )}
             {opened && validation?.validated && (
               <Panel title={t('findings.title')}>
                 <FindingsList

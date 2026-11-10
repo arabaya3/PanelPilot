@@ -13,7 +13,9 @@ How a version is identified (ADR-2, M1):
 * v1 is never enveloped: an envelope naming ``pp-design/1`` would give one
   design two byte forms and two hashes, so it is refused as unknown.
 
-Two schemas exist. ``pp-design/2`` (M2) is enveloped and adds templates,
+Three schemas exist. ``pp-design/3`` (M7a) is the v2 payload plus a
+top-level ``links`` collection (``migrate_2_to_3`` adds ``links: []``, for
+display only). ``pp-design/2`` (M2) is enveloped and adds templates,
 components, strips, nets, connections and wires to the v1 design, which it
 holds unchanged under ``design``. :data:`MIGRATIONS` holds the pure
 ``migrate_1_to_2``.
@@ -47,12 +49,15 @@ MODEL_KEY = "model"
 #: The M2 schema: the v1 design plus components, terminals, nets and wires.
 V2 = "pp-design/2"
 
+#: The M7a schema: the v2 payload plus the feeder links between boards.
+V3 = "pp-design/3"
+
 #: Schemas stored in an envelope: every schema after v1.
-ENVELOPED: frozenset[str] = frozenset({V2})
+ENVELOPED: frozenset[str] = frozenset({V2, V3})
 
 #: Every schema this software reads, oldest first: the declared migration order.
 #: Each adjacent pair has an entry in :data:`MIGRATIONS` (tested).
-ORDER: tuple[str, ...] = (V1, V2)
+ORDER: tuple[str, ...] = (V1, V2, V3)
 
 #: Every schema this software reads.
 KNOWN: frozenset[str] = frozenset(ORDER)
@@ -208,6 +213,7 @@ def migrate(
 
 # Registered last: the migration module needs nothing from this one, and
 # importing it here keeps the registry complete whenever ``versions`` is imported.
-from app.design.model.migrate_v2 import migrate_1_to_2  # noqa: E402
+from app.design.model.migrate_v2 import migrate_1_to_2, migrate_2_to_3  # noqa: E402
 
 MIGRATIONS[(V1, V2)] = migrate_1_to_2
+MIGRATIONS[(V2, V3)] = migrate_2_to_3
