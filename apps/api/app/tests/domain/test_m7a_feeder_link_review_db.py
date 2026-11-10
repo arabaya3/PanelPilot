@@ -765,3 +765,26 @@ def test_v1_and_v2_exports_are_byte_stable_before_v3(
             second = revision_export(client, project_id, 1, fmt)
             assert first.status_code == 200, (fmt, first.text[:300])
             assert first.content == second.content, fmt
+
+
+# --------------------------------------------------------------------------- #
+# Review findings on the integrated head (f93690c)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="review finding: the UI's material choice 'copper' is compared to the "
+    "designer's code 'Cu' and reported as a discrepancy (links.py _same)",
+)
+def test_choosing_the_ui_material_that_matches_the_calculation_is_not_a_discrepancy(
+    client: TestClient, engine: Engine, switch: Switch, people: _People
+) -> None:
+    switch(V3)
+    plain = _saved(client, _request())
+    cable = _feeder_cable(revision_row(engine, plain["id"], 1)["design_snapshot"])
+    assert cable["material"] == "Cu"
+    # "copper" is what the guided UI offers (LINK_MATERIALS) for this cable.
+    saved = _saved(client, _request([{"fed_board": "SB-1", "attributes": {"material": "copper"}}]))
+    codes = [f["code"] for f in revision_row(engine, saved["id"], 1)["findings"]]
+    assert "link_value_differs_from_calculation" not in codes
