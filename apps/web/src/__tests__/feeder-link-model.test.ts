@@ -312,3 +312,22 @@ describe('what the server says', () => {
     ]);
   });
 });
+
+describe('a configured save with only link edits pending', () => {
+  it('counts link edits as no change to the design, and anything else as one', async () => {
+    const { designDiffers } = await import('@/components/design-screen');
+    const base = { info: { name: 'SYN' }, boards: [{ name: 'SB-1', fed_from: 'MB-1', loads: [] }] };
+    const clean = JSON.stringify(base);
+    const linkOnly = JSON.stringify({
+      ...base,
+      boards: [{ ...base.boards[0], link: { from: { terminal: 'x' } } }],
+    });
+    const designChanged = JSON.stringify({
+      ...base,
+      boards: [{ ...base.boards[0], fed_from: 'MB-2' }],
+    });
+    expect(designDiffers(linkOnly, clean)).toBe(false);
+    expect(designDiffers(designChanged, clean)).toBe(true);
+    expect(designDiffers(clean, clean)).toBe(false);
+  });
+});

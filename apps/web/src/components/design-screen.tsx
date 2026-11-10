@@ -263,6 +263,22 @@ function parseProfile(text: string): Record<string, unknown> | null | 'invalid' 
  * the work. The drawing language counts only once the engineer picks one,
  * since until then it follows the page's language.
  */
+/**
+ * Whether two work snapshots differ in anything but the boards' feeder links.
+ *
+ * A link changes no calculation and no composed configuration (M7a), so a
+ * configured save, held while the design differs from the saved revision, may
+ * go ahead with only link edits pending: it stores them with the configuration
+ * it composes.
+ */
+export function designDiffers(snapshot: string, clean: string): boolean {
+  const strip = (text: string) =>
+    JSON.stringify(JSON.parse(text) as unknown, (key, value: unknown) =>
+      key === 'link' ? undefined : value,
+    );
+  return strip(snapshot) !== strip(clean);
+}
+
 export function snapshotOf(
   info: ProjectInfo,
   boards: BoardForm[],
@@ -2443,10 +2459,10 @@ function DesignWorkspace({
                     complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
                   }
                   note={revisionNote}
-                  dirty={dirty}
+                  dirty={designDiffers(snapshot, clean)}
                   onSaved={forOwner((project: SavedProject) => {
-                    // A configured save stores the form as it stands (it is
-                    // held while dirty), so it rebaselines a design made from
+                    // A configured save stores the form as it stands (held
+                    // while the design differs; link edits go with it), so it rebaselines a design made from
                     // it exactly as a plain save does.
                     rebaseOnSave.current = true;
                     onOpened(project, false);

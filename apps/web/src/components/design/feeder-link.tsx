@@ -289,11 +289,29 @@ export function StoredLinks({
     return t('endNotSetStored');
   }
 
+  // A stored material named in the reader's language where it is one the form offers.
+  function storedValue(key: LinkAttribute, value: unknown): string {
+    const plain = String(value);
+    if (key !== 'material') return plain;
+    const metal = { copper: 'copper', cu: 'copper', aluminium: 'aluminium', al: 'aluminium' }[
+      plain.trim().toLowerCase()
+    ] as 'copper' | 'aluminium' | undefined;
+    return metal ? t(`material.${metal}`) : plain;
+  }
+
   function findingText(finding: LinkFinding): string {
     // The API sends a finding's values as `values` (strings); older shapes as `params`.
     const params = finding.values ?? finding.params ?? {};
     if (finding.code === 'link_endpoint_unresolved') {
-      const end = text(params.end ?? params.role);
+      const raw = text(params.end ?? params.role);
+      const board = text(params.end_board);
+      // Said in the reader's language: "From MB-1", not the API's "from".
+      const end =
+        raw === 'from'
+          ? t('endFrom', { board }).trim()
+          : raw === 'to'
+            ? t('endTo', { board }).trim()
+            : raw;
       return end
         ? t('finding.link_endpoint_unresolved', { end })
         : t('finding.link_endpoint_unresolved_plain');
@@ -377,7 +395,7 @@ export function StoredLinks({
                     <dd>
                       {given ? (
                         <>
-                          <bdi>{String(attr.value)}</bdi>{' '}
+                          <bdi>{storedValue(key, attr.value)}</bdi>{' '}
                           <span className="text-text-muted">({t('sourceUser')})</span>
                         </>
                       ) : (

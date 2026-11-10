@@ -271,7 +271,7 @@ const FINDINGS = [
   {
     code: 'link_endpoint_unresolved',
     board_id: 'MDB',
-    values: { link_id: 'l-3f2a', end: 'to' },
+    values: { link_id: 'l-3f2a', end: 'to', end_board: 'DB1' },
   },
   {
     code: 'link_attribute_unset',
@@ -334,7 +334,7 @@ describe('a saved revision’s links', () => {
       .getByTestId('link-findings')
       .querySelectorAll('li');
     expect(Array.from(items).map((item) => item.textContent)).toEqual([
-      'End not resolved to a modelled terminal: to.',
+      'End not resolved to a modelled terminal: To DB1.',
       'Not given: Material, Insulation.',
       'Cross-section (mm²): user value 25 (given by user); feeder calculation value 16 (used by the feeder calculation).',
     ]);
@@ -633,5 +633,24 @@ describe('the workspace', () => {
       'Used by the feeder calculation: 5',
     );
     expect(link.getByTestId<HTMLInputElement>('link-input-cores').value).toBe('');
+  });
+});
+
+describe('stored values in the reader’s language', () => {
+  it('names a stored material in Arabic, and the unresolved end by its own words', () => {
+    const link = {
+      ...STORED,
+      attributes: { ...STORED.attributes, material: { value: 'copper', source: 'user' } },
+    };
+    renderApp(<StoredLinks links={[link]} findings={FINDINGS} model={null} revision={3} />, {
+      locale: 'ar',
+    });
+    const card = within(screen.getByTestId('stored-link-DB1'));
+    expect(card.getByTestId('stored-attr-material').textContent).toContain('نحاس');
+    expect(card.getByTestId('stored-attr-material').textContent).not.toContain('copper');
+    expect(
+      (card.getByTestId('link-findings').textContent ?? '').replace(/[\u2066-\u2069]/g, ''),
+    ).toContain('إلى DB1');
+    expect(card.getByTestId('link-findings').textContent).not.toMatch(/: to\b/);
   });
 });
