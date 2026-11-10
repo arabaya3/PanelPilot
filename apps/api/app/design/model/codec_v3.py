@@ -46,7 +46,10 @@ def _obj(value: Any, keys: tuple[str, ...], where: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         _bad(where, "is not an object")
     if set(value) != set(keys):
-        _bad(where, f"missing {sorted(set(keys) - set(value))}, unknown {sorted(set(value) - set(keys))}")
+        _bad(
+            where,
+            f"missing {sorted(set(keys) - set(value))}, unknown {sorted(set(value) - set(keys))}",
+        )
     return value
 
 
@@ -159,7 +162,7 @@ def _attribute(name: str, value: Any, where: str) -> entities.LinkAttribute:
     return entities.LinkAttribute(value=parsed, source="user")
 
 
-def dump_attribute(name: str, attribute: entities.LinkAttribute) -> dict[str, Any]:
+def dump_attribute(attribute: entities.LinkAttribute) -> dict[str, Any]:
     """The JSON of a link attribute (decimals as canonical strings, cores as an int)."""
     value = attribute.value
     if isinstance(value, Decimal):
@@ -246,7 +249,7 @@ def parse_links(value: Any, model: entities.DesignModelV2) -> tuple[entities.Int
                 origin=raw["origin"],
                 feeder=feeder,
                 ends=(ends[0], ends[1]),
-                carrier=entities.LinkCarrier(kind=want["kind"], cable_id=want["cable_id"]),
+                carrier=entities.LinkCarrier(kind=str(want["kind"]), cable_id=want["cable_id"]),
                 attributes=attributes,
                 provenance=entities.LinkProvenance(
                     requirement_ref=ref,
@@ -290,7 +293,7 @@ def dump_link(link: entities.InterBoardLink) -> dict[str, Any]:
             for end in link.ends
         ],
         "carrier": {"kind": link.carrier.kind, "cable_id": link.carrier.cable_id},
-        "attributes": {name: dump_attribute(name, value) for name, value in link.attributes},
+        "attributes": {name: dump_attribute(value) for name, value in link.attributes},
         "provenance": {
             "requirement_ref": link.provenance.requirement_ref,
             "entered_by_user_id": link.provenance.entered_by_user_id,
@@ -299,7 +302,9 @@ def dump_link(link: entities.InterBoardLink) -> dict[str, Any]:
     }
 
 
-def dump_links(links: tuple[entities.InterBoardLink, ...] | list[entities.InterBoardLink]) -> list[dict[str, Any]]:
+def dump_links(
+    links: tuple[entities.InterBoardLink, ...] | list[entities.InterBoardLink],
+) -> list[dict[str, Any]]:
     """The canonical ``links`` collection, sorted by id."""
     return [dump_link(link) for link in sorted(links, key=lambda x: x.id)]
 

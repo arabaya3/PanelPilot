@@ -462,9 +462,15 @@ V3_CASES = ("unentered", "entered")
 def v3_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[str, bytes]:
     """Every review export of a v3 design, as ``export_revision`` makes it."""
     from app.design import connection_drawing_pdf, schedule_pdf, snapshot
-    from app.design.model import codec_v3, connection_drawing, findings_v2, schedules, versions
+    from app.design.model import (
+        codec_v3,
+        connection_drawing,
+        findings_v2,
+        schedules,
+        versions,
+        write,
+    )
     from app.design.model import links as link_model
-    from app.design.model import write
     from app.design.model.read import read_snapshot
     from app.domain import design_configuration, design_projects
     from app.tests.design.model import m7a_support
@@ -473,9 +479,7 @@ def v3_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
     request = ProjectDesignRequest.model_validate(m7a_support.request())
     designed, company = design_domain.build_design(request)
     v1 = designed.model_dump(mode="json")
-    stored_v2 = write.snapshot_v2_from_v1(
-        v1, m7a_support.configuration() if configured else None
-    )
+    stored_v2 = write.snapshot_v2_from_v1(v1, m7a_support.configuration() if configured else None)
     model = read_snapshot(stored_v2).v2
     assert model is not None
     entered = None
@@ -629,10 +633,10 @@ def test_v3_exports_print_the_links_and_differ_with_the_entry() -> None:
     ):
         assert unentered[name.value] != entered[name.value], name
     exported = v3_exports("entered")
-    for name in ("wire_schedule_pdf", "connection_drawing_pdf"):
-        with pdfplumber.open(io.BytesIO(exported[name])) as pdf:
+    for doc in ("wire_schedule_pdf", "connection_drawing_pdf"):
+        with pdfplumber.open(io.BytesIO(exported[doc])) as pdf:
             text = " ".join(" ".join(page.extract_text() or "" for page in pdf.pages).split())
-        assert "Board-to-board links" in text, name
-        assert "link_value_differs_from_calculation" in text, name
+        assert "Board-to-board links" in text, doc
+        assert "link_value_differs_from_calculation" in text, doc
     body = json.loads(exported["json"])
     assert [link["feeder"]["fed_board"] for link in body["links"]] == ["SB-1"]

@@ -62,7 +62,11 @@ _PATTERN = {
             "connections": [{"from": 0, "to": 1, "via": "wire"}],
         }
     ],
-    "provenance": {"source": "synthetic test data", "author": "test suite", "created": "2026-11-10"},
+    "provenance": {
+        "source": "synthetic test data",
+        "author": "test suite",
+        "created": "2026-11-10",
+    },
     "review": copy.deepcopy(_BREAKER["review"]),
 }
 

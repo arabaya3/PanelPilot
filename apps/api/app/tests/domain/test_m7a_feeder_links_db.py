@@ -290,9 +290,7 @@ def test_schedule_drawing_and_json_show_the_same_link_values(
     assert "link_endpoint_unresolved" in {f["code"] for f in body["findings"]}
 
 
-def test_an_unresolved_end_is_never_drawn_as_a_terminal(
-    client: TestClient, switch: Switch
-) -> None:
+def test_an_unresolved_end_is_never_drawn_as_a_terminal(client: TestClient, switch: Switch) -> None:
     switch("pp-design/3")
     project_id = _saved(client, [LINK])
     drawing = revision_export(client, project_id, 1, "connection_drawing_pdf")
@@ -391,8 +389,12 @@ def test_a_differing_value_shows_both_and_changes_no_calculation(
     linked_id = _saved(client, [LINK])
     linked = revision_row(engine, linked_id, 1)
     # The design itself, every calculated value included, is unchanged.
-    assert linked["design_snapshot"]["model"]["design"] == plain["design_snapshot"]["model"]["design"]
-    differing = [f for f in linked["findings"] if f["code"] == "link_value_differs_from_calculation"]
+    assert (
+        linked["design_snapshot"]["model"]["design"] == plain["design_snapshot"]["model"]["design"]
+    )
+    differing = [
+        f for f in linked["findings"] if f["code"] == "link_value_differs_from_calculation"
+    ]
     by_attribute = {f["values"]["attribute"]: f for f in differing}
     assert set(by_attribute) == {"cores", "length_m"}
     cores = by_attribute["cores"]
@@ -401,8 +403,10 @@ def test_a_differing_value_shows_both_and_changes_no_calculation(
     assert cores["values"]["calculation_value"] == "5"
     assert cores["values"]["user_source"] == "user"
     assert cores["values"]["calculation_source"] == "feeder calculation"
-    assert "4" in cores["message"] and "5" in cores["message"]
-    assert "wrong" not in cores["message"].lower() and "correct" not in cores["message"].lower()
+    assert "4" in cores["message"]
+    assert "5" in cores["message"]
+    assert "wrong" not in cores["message"].lower()
+    assert "correct" not in cores["message"].lower()
     # It does not block approval by itself.
     assert approve(client, linked_id, 1).status_code == 200
     schedule = revision_export(client, linked_id, 1, "wire_schedule_pdf")
@@ -498,7 +502,11 @@ def test_v1_and_v2_revisions_open_and_export_byte_for_byte_under_v3(
     exports: dict[tuple[str, str], bytes] = {}
     opened_before: dict[str, dict[str, Any]] = {}
     projects: dict[str, tuple[str, tuple[str, ...]]] = {}
-    for schema, formats in (("pp-design/1", _V1_FORMATS), ("pp-design/2", _V2_FORMATS)):
+    cases: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("pp-design/1", _V1_FORMATS),
+        ("pp-design/2", _V2_FORMATS),
+    )
+    for schema, formats in cases:
         switch(schema)
         project_id = _saved(client, None)
         assert approve(client, project_id, 1).status_code == 200

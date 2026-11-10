@@ -162,6 +162,8 @@ def build(
             provenance, with its own timestamps and indices, never applied
             again.
 
+        linked: The fed boards whose feeder link a v3 design records (M7a).
+
     Returns:
         The record, JSON-shaped.
     """

@@ -77,13 +77,13 @@ from app.design import (
 from app.design import project as project_design
 from app.design.model import (
     anchoring,
+    codec_v3,
     connection_drawing,
     entities,
     findings_v2,
     schedules,
     versions,
 )
-from app.design.model import codec_v3
 from app.design.model import links as link_model
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1, snapshot_v3_from_v2
@@ -100,13 +100,13 @@ from app.models.schemas.design import (
     ConfigurationValidateRequest,
     ConfirmedLoad,
     DesignFinding,
-    InterBoardLinkView,
     DesignProject,
     ExportFormat,
     ExportPurpose,
     ExportStatus,
     FindingSeverity,
     InstallationConditions,
+    InterBoardLinkView,
     PricingSettings,
     ProjectDesignRequest,
     ProjectInfo,
@@ -2387,9 +2387,7 @@ def export_revision(
         mark=mark,
         estimate_for=_estimate_subject(project, row, approval_counts, applicable.renderer_version),
         # M7a: a v3 revision's JSON carries its links; v1 and v2 JSON is unchanged.
-        links=(
-            codec_v3.dump_links(read.links) if read.schema == versions.V3 else None
-        ),
+        links=(codec_v3.dump_links(read.links) if read.schema == versions.V3 else None),
     )
     logger.info(
         "design.revision_exported",

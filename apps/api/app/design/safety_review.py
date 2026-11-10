@@ -279,12 +279,12 @@ def request_concerns(request: Mapping[str, Any] | None, number: int) -> list[Con
         attributes = link.get("attributes")
         if isinstance(attributes, Mapping):
             texts += [(name, attributes.get(name)) for name in LINK_TEXT_FIELDS]
-        for field, text in texts:
+        for part, text in texts:
             scan(
                 text,
                 "link",
-                f"feeder link to {fed} \u203a {field}",
-                board=f"{fed}\x00{index}\x00{field}",
+                f"feeder link to {fed} \u203a {part}",
+                board=f"{fed}\x00{index}\x00{part}",
             )
     return out
 
@@ -455,7 +455,9 @@ def refusal(concern: Concern, resolution: str) -> str | None:
       no item of its proposal is life-safety equipment from an overlapping
       span (``life_safety_item_overlaps``).
     """
-    in_design = concern.kind == "request" and concern.present and concern.place in ("board", "load", "link")
+    in_design = (
+        concern.kind == "request" and concern.present and concern.place in ("board", "load", "link")
+    )
     if resolution == EXCLUDED_FROM_SCOPE:
         if in_design:
             return "in_request"

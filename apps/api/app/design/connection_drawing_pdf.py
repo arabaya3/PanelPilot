@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
+from itertools import pairwise
 from types import SimpleNamespace
 
 from reportlab.lib import colors
@@ -514,9 +515,9 @@ LINKS_PER_SHEET = 4
 LINK_SHEET_NOTE = (
     "Board-to-board links, as the user entered them. A continuation flag stands at each end; "
     "its far-board text comes from the link. A solid flag with a dot is a modelled terminal; "
-    "a dashed open flag reads \"terminal NOT SET\" and is not a connected terminal. A quoted "
+    'a dashed open flag reads "terminal NOT SET" and is not a connected terminal. A quoted '
     "label is the user's text, not a modelled terminal. Attributes are the user's or "
-    "\"not given\"; no value is copied from the design, and none changes the calculation."
+    '"not given"; no value is copied from the design, and none changes the calculation.'
 )
 
 
@@ -527,7 +528,13 @@ def _flag(
     h = 7 * mm
     tip = 4 * mm
     if pointing_right:
-        pts = [(x, y), (x + width - tip, y), (x + width, y + h / 2), (x + width - tip, y + h), (x, y + h)]
+        pts = [
+            (x, y),
+            (x + width - tip, y),
+            (x + width, y + h / 2),
+            (x + width - tip, y + h),
+            (x, y + h),
+        ]
     else:
         pts = [(x + width, y), (x + tip, y), (x, y + h / 2), (x + tip, y + h), (x + width, y + h)]
     canvas.saveState()
@@ -545,7 +552,7 @@ def _flag(
         canvas.setDash(*PLACEHOLDER_DASH)
         canvas.setStrokeColor(_RED)
         # Open on the terminal side: no edge where a terminal would connect.
-        for a, b in zip(pts, pts[1:], strict=False):
+        for a, b in pairwise(pts):
             canvas.line(a[0], a[1], b[0], b[1])
     canvas.restoreState()
 
@@ -567,13 +574,18 @@ def _link_block(
         layout.BODY_PT + 1,
         bold=True,
     )
-    ends = ((row.ends[0], left, True, row.fed_board), (row.ends[1], right - flag_w, False, row.supply_board))
+    ends = (
+        (row.ends[0], left, True, row.fed_board),
+        (row.ends[1], right - flag_w, False, row.supply_board),
+    )
     for end, x, pointing_right, far in ends:
         _flag(canvas, x, y, flag_w, pointing_right=pointing_right, resolved=end.resolved)
         inner = x + (3 * mm if pointing_right else 6 * mm)
         room = flag_w - 9 * mm
         if end.resolved:
-            text = _fit(f"{end.board} {end.terminal}", room, layout.BODY_PT, False, "(in the wire schedule)")
+            text = _fit(
+                f"{end.board} {end.terminal}", room, layout.BODY_PT, False, "(in the wire schedule)"
+            )
             _text(canvas, inner, y + 2.5 * mm, text)
         else:
             canvas.saveState()
@@ -732,7 +744,9 @@ def render_connection_drawing(
         ),
         *(_routed_counts(routed) if routed is not None else []),
         *(
-            [f"Board-to-board link sheets: {last_routed + 1} to {last_drawing} ({len(links)} link(s))"]
+            [
+                f"Board-to-board link sheets: {last_routed + 1} to {last_drawing} ({len(links)} link(s))"
+            ]
             if link_pages
             else []
         ),

@@ -354,9 +354,9 @@ def render_terminal_schedule(
 #: What the board-to-board links section says of itself (M7a, ``pp-design/3``).
 LINKS_NOTE = (
     "Each link records a feeder between two boards, as the user entered it. A terminal is a "
-    "modelled terminal of that end's board; \"terminal NOT SET\" means none is given. A label is "
+    'modelled terminal of that end\'s board; "terminal NOT SET" means none is given. A label is '
     "the user's own text, not a modelled terminal. Every attribute is the user's [user] or "
-    "\"not given\"; no value is copied from the design. Where a user value differs from the "
+    '"not given"; no value is copied from the design. Where a user value differs from the '
     "value the feeder calculation used, both are shown; the calculation is not changed and "
     "neither value is taken as right."
 )
