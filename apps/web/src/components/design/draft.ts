@@ -1,5 +1,6 @@
 import { CONTROL_NEEDS, type ControlNeed } from '@/lib/design';
 import { DESIGN_DRAFT_STORAGE_KEY } from '@/lib/trial';
+import { parseLink } from '@/components/design/feeder-link-model';
 import {
   DRAWING_LANGUAGES,
   EARTHING,
@@ -298,6 +299,8 @@ function parseBoard(value: unknown): BoardDraft | null {
     loads.push(load);
   }
   const aiItem = typeof value.aiItem === 'string' && value.aiItem !== '' ? value.aiItem : null;
+  // M7a: a feeder's link form; one this page did not write is left out.
+  const link = parseLink(value.link);
   return {
     ...text,
     phases,
@@ -305,6 +308,7 @@ function parseBoard(value: unknown): BoardDraft | null {
     ...(frequency ? { frequency } : {}),
     loads,
     ...(aiItem ? { aiItem } : {}),
+    ...(link ? { link } : {}),
   };
 }
 

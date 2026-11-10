@@ -44,6 +44,16 @@ import {
   requirementsInputOf,
 } from '@/components/design/requirements-view';
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import { FeederLinkForm, StoredLinks } from '@/components/design/feeder-link';
+import {
+  calculatedValues,
+  linkFindingsOf,
+  storedLinksOf,
+  writesLinks,
+  LINK_SCHEMA,
+  type LinkFinding,
+  type StoredLink,
+} from '@/components/design/feeder-link-model';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
   applySuggestion,
@@ -463,6 +473,7 @@ function DesignWorkspace({
   const tc = useIsolatingTranslations('configuration');
   const tUi = useTranslations('ui');
   const say = useOutcomeText();
+  const tl = useIsolatingTranslations('feederLink');
   const id = useId();
   const formId = `${id}-form`;
   const tabsBase = `${id}-view`;
@@ -523,6 +534,15 @@ function DesignWorkspace({
    * not a read of it): null when unknown, undefined from an older server.
    */
   const [openedSchema, setOpenedSchema] = useState<string | null | undefined>(undefined);
+  // M7a: whether the opened project says this deployment writes pp-design/3
+  // (only then is a feeder's link entered), the links its revision stores and
+  // their findings, and a save refusal about a link.
+  const [linksWritten, setLinksWritten] = useState(false);
+  const [openedLinks, setOpenedLinks] = useState<StoredLink[]>([]);
+  const [openedLinkFindings, setOpenedLinkFindings] = useState<LinkFinding[]>([]);
+  const [linkRefusal, setLinkRefusal] = useState<{ board: string | null; text: string } | null>(
+    null,
+  );
   // The opened revision's title-block revision list, which the form does not edit.
   const [titleRevisions, setTitleRevisions] = useState<TitleRevision[]>([]);
   // The saved project's revision history, as the API listed it when opened or saved.
@@ -1022,6 +1042,10 @@ function DesignWorkspace({
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
     setOpenedSchema(project.snapshot_schema);
+    setLinksWritten(writesLinks(project));
+    setOpenedLinks(storedLinksOf(project));
+    setOpenedLinkFindings(linkFindingsOf(project.findings));
+    setLinkRefusal(null);
     // A save, an approval or an opening each answer with the revision as now
     // stored: its validation replaces whatever was known of the last one.
     setValidation(validationOf(project));
@@ -1792,6 +1816,11 @@ function DesignWorkspace({
                 onNoteChange={setRevisionNote}
                 onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
+                  setLinkRefusal(
+                    refusal.code?.startsWith('link_')
+                      ? { board: refusal.params?.fed_board ?? null, text: say(refusal) }
+                      : null,
+                  );
                 })}
                 onUnauthorized={forOwner(() => {
                   void reauthorize();
@@ -2032,6 +2061,36 @@ function DesignWorkspace({
                     </button>
                   )}
                 </fieldset>
+
+                {linksWritten && active.fedFrom !== '' && (
+                  <FeederLinkForm
+                    key={active.key}
+                    supplyBoard={active.fedFrom}
+                    fedBoard={active.name}
+                    value={active.link}
+                    onChange={(link) => {
+                      setBoards((current) =>
+                        current.map((board) => {
+                          if (board.key !== active.key) return board;
+                          const { link: _old, ...rest } = board;
+                          return link ? { ...rest, link } : rest;
+                        }),
+                      );
+                    }}
+                    model={openedModel}
+                    calculated={
+                      result.kind === 'designed'
+                        ? calculatedValues(result.response.project, active.fedFrom, active.name)
+                        : null
+                    }
+                    refusal={
+                      linkRefusal !== null &&
+                      (linkRefusal.board === null || linkRefusal.board === active.name)
+                        ? linkRefusal.text
+                        : null
+                    }
+                  />
+                )}
 
                 <fieldset className="panel flex min-w-0 flex-col gap-4 p-4 md:p-5">
                   <legend className="px-1 text-sm font-semibold">
@@ -2436,6 +2495,16 @@ function DesignWorkspace({
                 </p>
               </div>
             </Panel>
+            {opened && (openedSchema === LINK_SCHEMA || openedLinks.length > 0) && (
+              <Panel title={tl('panelTitle')} testId="opened-links">
+                <StoredLinks
+                  links={openedLinks}
+                  findings={openedLinkFindings}
+                  model={openedModel}
+                  revision={opened.revision}
+                />
+              </Panel>
+            )}
             {opened && validation?.validated && (
               <Panel title={t('findings.title')}>
                 <FindingsList
