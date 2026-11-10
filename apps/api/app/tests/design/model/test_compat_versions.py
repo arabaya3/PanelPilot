@@ -71,10 +71,13 @@ def test_v1_and_v2_are_read_and_v1_is_still_written() -> None:
     Nothing a test registers may leak into the shipped registry.
     """
     assert versions.V1 == "pp-design/1"
-    assert frozenset({"pp-design/1", "pp-design/2"}) == versions.KNOWN
-    assert versions.LATEST == "pp-design/2"
+    assert frozenset({"pp-design/1", "pp-design/2", "pp-design/3"}) == versions.KNOWN
+    assert versions.LATEST == "pp-design/3"
     assert versions.WRITTEN_BY_DEFAULT == "pp-design/1"
-    assert set(versions.MIGRATIONS) == {("pp-design/1", "pp-design/2")}
+    assert set(versions.MIGRATIONS) == {
+        ("pp-design/1", "pp-design/2"),
+        ("pp-design/2", "pp-design/3"),
+    }
 
 
 @pytest.mark.parametrize(

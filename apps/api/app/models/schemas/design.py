@@ -2711,6 +2711,9 @@ class SavedProject(BaseModel):
     #: M7a: a ``pp-design/3`` revision's feeder links, as stored (shown when
     #: ``model_v2`` is); ``None`` for v1 and v2.
     links: list[InterBoardLinkView] | None = None
+    #: M7a: the schema this deployment writes new revisions in
+    #: (``DESIGN_SNAPSHOT_SCHEMA``); feeder links are entered only under pp-design/3.
+    written_schema: str | None = None
     snapshot_schema: str | None = None
     requirements: RequirementsRecord | None = None
     author_unknown: bool = False

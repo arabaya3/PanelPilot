@@ -84,7 +84,7 @@ def check_request(request: ProjectDesignRequest) -> None:
     boards = {board.name: board for board in request.boards}
     seen: set[str] = set()
     for index, entry in enumerate(request.feeder_links or []):
-        params = {"board": entry.fed_board, "link_index": index}
+        params = {"board": entry.fed_board, "fed_board": entry.fed_board, "link_index": index}
         board = boards.get(entry.fed_board)
         if board is None:
             raise ValidationError(
@@ -129,7 +129,13 @@ def _terminal(
         else entities.TerminalRef(point=given.point, side=given.side)
     )
     on = codec_v3.terminal_board(model, ref)
-    params = {"board": entry.fed_board, "link_index": index, "end": role, "end_board": board}
+    params = {
+        "board": entry.fed_board,
+        "fed_board": entry.fed_board,
+        "link_index": index,
+        "end": role,
+        "end_board": board,
+    }
     if on is None:
         raise ValidationError(
             f"feeder link {index + 1}, {role} end: the terminal is not a terminal of the "
@@ -328,7 +334,7 @@ def findings(
     for link in links:
         base = {
             "board_id": link.feeder.supply_board,
-            "link": link.id,
+            "link_id": link.id,
             "fed_board": link.feeder.fed_board,
         }
         for end in link.ends:

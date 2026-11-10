@@ -110,3 +110,71 @@ in the request, all optional fields:
 Links live inside the snapshot (and the request inside the requirements
 record), so `snapshot_sha256`, the requirements hash and the approval binding
 cover them unchanged. Links reference boards of the same project only.
+
+## 8. As built (backend, branch `m7a-api`)
+
+Shapes are as §3–§6, with these specifics and deviations:
+
+- **Envelope**: `{"schema": "pp-design/3", "model": {<every v2 key>, "links": [...]}}`.
+  The v2 part is read by the unchanged v2 codec; `links` by `codec_v3`, which
+  requires exactly one link per feeder of the design (none extra), the derived
+  id `l-<24 hex>` = `ids.derive("l", supply_board, fed_board)`, canonical JSON
+  and strict id order. A rehashed link that is not the derived one (e.g. an
+  attribute with source `data`) reads as unreadable → `snapshot_integrity_failed`.
+- **Boards are named by board id** in `feeder`, `ends[].board` (in this
+  designer a board's id is its name). Request `fed_board` is the board name.
+- **Attribute JSON**: `cores` is an int; `cross_section_mm2` and `length_m` are
+  canonical decimal strings (`"16"`, not `"16.00"`); others strings. The
+  request accepts decimals as strings or numbers. `attributes` is an object
+  with all seven keys, each `{value, source}`.
+- **TerminalRef** (request and stored): `{component, terminal}` or
+  `{point, side}`. From `model_v2.terminals`: owner_kind `component` →
+  `{component: owner_id, terminal: terminal_id}`; a strip point →
+  `{point: terminal_id, side}`; filter by `board_id`.
+- **Provenance**: `entered_by_user_id` (the saving account) and `entered_at`
+  (save time, ISO 8601 UTC, seconds) are set only when the link holds a
+  user-entered value (terminal, label or attribute); otherwise both `null`.
+  Not carried forward from an earlier revision: each save records its saver.
+  Client-sent `provenance` → 422 (unknown field, pydantic).
+- **Refusals** (422, `params`: `fed_board`, `board`, `link_index`; terminal
+  ones also `end`, `end_board`, and `terminal_board` for off-board):
+  `link_board_unknown`, `link_not_a_feeder`, `link_duplicate`,
+  `link_end_off_board`, `link_terminal_unknown`. Terminals are checked against
+  the model saved in the same request (with no configuration no terminal is
+  modelled, so any terminal is `link_terminal_unknown`). Added:
+  **409 `feeder_links_require_v3`** when `feeder_links` is sent and the switch
+  is not `pp-design/3` (params `written_schema`, `required_schema`). A
+  configuration is also accepted under v3. If the design itself is refused,
+  the revision is saved as before with no snapshot and no links.
+- **Request**: `feeder_links` is omitted from the stored request when not
+  sent (`exclude_if`), so v1/v2 requests store byte for byte as before.
+- **Findings** (source `integrity`, in `project.findings`, `values` are
+  strings): `link_endpoint_unresolved` (warning, confirm; `link_id`, `end`,
+  `end_board`, `board_id`, `fed_board`), `link_attribute_unset` (warning,
+  confirm; `attributes` is a **comma-separated string**, not a list, since
+  finding values are strings), `link_value_differs_from_calculation` (warning,
+  no confirmation, never blocks approval; `attribute`, `user_value`,
+  `user_source: user`, `calculation_value`, `calculation_source: feeder
+  calculation`). The first two are execution blockers. Text values compare
+  case- and whitespace-insensitively. Calculation values: the feeder circuit's
+  cable (supply board circuit with `feeds` = fed board): cores, cross-section,
+  material, insulation, `length_m` (= `feeder_length_m`); a missing length is
+  not compared.
+- **Open item**: in v3 records `inter_board_wiring_not_modelled` is left out
+  for each feeder that has a link (every feeder in v3); v1/v2 unchanged.
+- **Open revision**: `SavedProject.links` (InterBoardLink shape, `null` for
+  v1/v2, stale, or unreadable) and new `SavedProject.written_schema` (the
+  deployment's switch). No `model_v3`; the v2 summary stays `model_v2`.
+- **Life safety**: link labels and material/insulation/number/colour are
+  scanned as request text (place `link`, where `feeder link to <board> ›
+  <field>`); a life-safety term holds approval and cannot be excluded or
+  marked false positive while in the request.
+- **Drawing**: flags are drawn on dedicated "Board-to-board links" sheets after
+  the routed sheets (not inside the existing cross-reference sheets, whose
+  layout is unchanged): a solid flag with a dot for a resolved end (with the
+  sheet/zone where that terminal is drawn), a dashed open red flag reading
+  "terminal NOT SET" for an unresolved one; far-board text from the link.
+- **Renderer**: `RENDERER_VERSIONS["pp-design/3"] = "2026.11.10.v3-1"`; v1
+  `2026.11.04.9` and v2 `2026.11.04.v2-24` and their fingerprint files are
+  untouched; v3 fingerprints in `renderer_fingerprints_v3.json`.
+- **2→3 migration** (`links: []`) is display-only and never parsed as v3.
