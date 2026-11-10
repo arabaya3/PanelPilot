@@ -272,10 +272,16 @@ function parseProfile(text: string): Record<string, unknown> | null | 'invalid' 
  * it composes.
  */
 export function designDiffers(snapshot: string, clean: string): boolean {
-  const strip = (text: string) =>
-    JSON.stringify(JSON.parse(text) as unknown, (key, value: unknown) =>
-      key === 'link' ? undefined : value,
-    );
+  const strip = (text: string): string => {
+    try {
+      return JSON.stringify(JSON.parse(text) as unknown, (key, value: unknown) =>
+        key === 'link' ? undefined : value,
+      );
+    } catch {
+      // Not a work snapshot (a placeholder): compared as it is.
+      return text;
+    }
+  };
   return strip(snapshot) !== strip(clean);
 }
 

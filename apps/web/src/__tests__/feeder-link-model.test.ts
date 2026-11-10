@@ -329,5 +329,8 @@ describe('a configured save with only link edits pending', () => {
     expect(designDiffers(linkOnly, clean)).toBe(false);
     expect(designDiffers(designChanged, clean)).toBe(true);
     expect(designDiffers(clean, clean)).toBe(false);
+    // A placeholder that is not a work snapshot compares as text, never throws.
+    expect(designDiffers('stored', clean)).toBe(true);
+    expect(designDiffers('stored', 'stored')).toBe(false);
   });
 });

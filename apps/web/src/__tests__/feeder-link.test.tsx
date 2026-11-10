@@ -640,7 +640,7 @@ describe('stored values in the reader’s language', () => {
   it('names a stored material in Arabic, and the unresolved end by its own words', () => {
     const link = {
       ...STORED,
-      attributes: { ...STORED.attributes, material: { value: 'copper', source: 'user' } },
+      attributes: { ...STORED.attributes, material: { value: 'copper', source: 'user' as const } },
     };
     renderApp(<StoredLinks links={[link]} findings={FINDINGS} model={null} revision={3} />, {
       locale: 'ar',
@@ -648,9 +648,9 @@ describe('stored values in the reader’s language', () => {
     const card = within(screen.getByTestId('stored-link-DB1'));
     expect(card.getByTestId('stored-attr-material').textContent).toContain('نحاس');
     expect(card.getByTestId('stored-attr-material').textContent).not.toContain('copper');
-    expect(
-      (card.getByTestId('link-findings').textContent ?? '').replace(/[\u2066-\u2069]/g, ''),
-    ).toContain('إلى DB1');
+    expect(card.getByTestId('link-findings').textContent.replace(/[\u2066-\u2069]/g, '')).toContain(
+      'إلى DB1',
+    );
     expect(card.getByTestId('link-findings').textContent).not.toMatch(/: to\b/);
   });
 });
