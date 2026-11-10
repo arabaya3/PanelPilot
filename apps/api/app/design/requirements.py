@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -66,6 +66,22 @@ def question_id(kind: str, field: str | None, code: str | None, board: str, load
     """A question's stable id: a digest of what it asks about."""
     key = "|".join([kind, field or "", code or "", board, load])
     return "q-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def board_refs(request: ProjectDesignRequest, prior: Mapping[str, Any] | None) -> dict[str, str]:
+    """Each board's record ref, by name, as :func:`build` gives it (M7a: a link's requirement ref).
+
+    Args:
+        request: The request.
+        prior: The previous revision's record, if any.
+
+    Returns:
+        ``{board name: ref}``.
+    """
+    return {
+        board.name: ref
+        for board, ref in zip(request.boards, _board_refs(request, prior), strict=True)
+    }
 
 
 def _board_refs(request: ProjectDesignRequest, prior: Mapping[str, Any] | None) -> list[str]:
@@ -122,8 +138,13 @@ def build(
     answered: Sequence[Mapping[str, Any]] = (),
     derived: bool = False,
     ai: Mapping[str, Any] | None = None,
+    linked: Collection[str] = (),
 ) -> dict[str, Any]:
     """The requirements record of a request, as its revision stores it.
+
+    ``linked`` (M7a) names the fed boards whose feeder link the revision's
+    ``pp-design/3`` design records; their feeders get no
+    ``inter_board_wiring_not_modelled`` open item. Empty for v1 and v2.
 
     Args:
         request: The project as entered.
@@ -188,12 +209,16 @@ def build(
         }
         for item in control
     ]
+    # M7a: a feeder whose link a v3 revision records is not an open item; the
+    # link's own findings say what of it is not set (none says it is complete).
+    linked_refs = {by_name[name] for name in linked if name in by_name}
     open_items += [
         {
             "code": "inter_board_wiring_not_modelled",
             "subject": {"board_ref": f["board_ref"], "supply_board_ref": f["supply_board_ref"]},
         }
         for f in feeders
+        if f["board_ref"] not in linked_refs
     ]
     questions = _questions(request, board_refs, load_refs, findings)
     asked = {q["id"] for q in questions}

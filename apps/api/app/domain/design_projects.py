@@ -83,8 +83,10 @@ from app.design.model import (
     schedules,
     versions,
 )
+from app.design.model import codec_v3
+from app.design.model import links as link_model
 from app.design.model.read import VersionedModel, read_snapshot
-from app.design.model.write import snapshot_v2_from_v1
+from app.design.model.write import snapshot_v2_from_v1, snapshot_v3_from_v2
 from app.domain import billing, design_ai, design_configuration, engineering_reviews, permissions
 from app.domain import design as design_domain
 from app.domain.plans import Feature
@@ -98,6 +100,7 @@ from app.models.schemas.design import (
     ConfigurationValidateRequest,
     ConfirmedLoad,
     DesignFinding,
+    InterBoardLinkView,
     DesignProject,
     ExportFormat,
     ExportPurpose,
@@ -285,7 +288,7 @@ def _current_classification(
     except PydanticValidationError:
         return None
     conditions = {board.name: board.conditions for board in request.boards}
-    return _classified(_design_findings(read.project, conditions, read.v2))
+    return _classified(_design_findings(read.project, conditions, read.v2, read.links))
 
 
 #: Which ``pp-design/2`` structural findings an engineer must confirm. Their
@@ -348,16 +351,37 @@ def _design_findings(
     project: DesignProject,
     conditions: Mapping[str, InstallationConditions],
     v2: entities.DesignModelV2 | None,
+    links: Sequence[entities.InterBoardLink] = (),
 ) -> list[DesignFinding]:
-    """Every finding of a stored design: the v1 checks, then a v2 model's structural ones.
+    """Every finding of a stored design: the v1 checks, a v2 model's structural ones, its links'.
 
     A v1 snapshot (``v2`` is ``None``) gets exactly the findings it always
-    did, so no v1 revision's findings, fingerprint or staleness change.
+    did, so no v1 revision's findings, fingerprint or staleness change; a v2
+    snapshot holds no links, so its findings are unchanged too.
     """
     found = integrity.project_findings(project, conditions)
     if v2 is not None:
         found = [*found, *_v2_findings(v2)]
+        found = [*found, *_link_findings(v2, links)]
     return found
+
+
+def _link_findings(
+    model: entities.DesignModelV2, links: Sequence[entities.InterBoardLink]
+) -> list[DesignFinding]:
+    """A v3 model's link findings as stored findings (source ``integrity``); all warnings."""
+    return [
+        DesignFinding(
+            code=found.code,
+            severity=FindingSeverity(found.severity),
+            board_id=found.location.get("board_id"),
+            values={key: str(value) for key, value in sorted(found.location.items())},
+            message=found.message,
+            requires_engineering_confirmation=found.code in link_model.CONFIRM,
+            source="integrity",
+        )
+        for found in link_model.findings(model, links)
+    ]
 
 
 @dataclass(frozen=True)
@@ -856,7 +880,7 @@ def _anchored(read: VersionedModel, row: DesignRevisionRow) -> VersionedModel | 
         return None
     if model is read.v2:
         return read
-    return VersionedModel(schema=read.schema, project=read.project, v2=model)
+    return VersionedModel(schema=read.schema, project=read.project, v2=model, links=read.links)
 
 
 #: Why a stored design failed its integrity check, as a finding says it.
@@ -954,6 +978,7 @@ def _execution_blockers(checked: _Validation) -> list[str]:
                 found.code
                 for found in checked.findings
                 if found.code in findings_v2.EXECUTION_BLOCKING
+                or found.code in link_model.EXECUTION_BLOCKING
             }
         )
     )
@@ -978,7 +1003,7 @@ def _printed(findings: Sequence[DesignFinding], schema: str) -> list[DesignFindi
     them; that is the v2 renderer version. A v1 revision holds no structural
     finding, so it prints exactly what it always did.
     """
-    if schema == versions.V2:
+    if schema in (versions.V2, versions.V3):
         return list(findings)
     return [found for found in findings if not _structural(found)]
 
@@ -1003,6 +1028,11 @@ def _display_name(full_name: str | None) -> str | None:
     """
     name = (full_name or "").strip()
     return name if name and "@" not in name else None
+
+
+def _now_iso() -> str:
+    """Now, in UTC, as ISO 8601 to the second: when a save records feeder link values."""
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def _account_id(user: CurrentUser) -> uuid.UUID | None:
@@ -1209,10 +1239,20 @@ def _design_refused(exc: ValidationError) -> DesignFinding:
     )
 
 
+@dataclass(frozen=True)
+class _LinkEntry:
+    """Who saves a revision's feeder links, and the record refs they name (M7a)."""
+
+    board_refs: Mapping[str, str]
+    entered_by_user_id: str | None
+    entered_at: str | None
+
+
 def _validate(
     request: ProjectDesignRequest,
     configuration: Mapping[str, Any] | None = None,
     anchor: anchoring.ReviewAnchor = anchoring.EMPTY,
+    link_entry: _LinkEntry | None = None,
 ) -> dict[str, Any]:
     """Design a request on the server: the revision's snapshot columns.
 
@@ -1228,6 +1268,10 @@ def _validate(
     one: ``configuration_requires_v2``), and the design must not be refused:
     a configuration is never dropped while the revision is saved without it.
     """
+    written = _written_schema()
+    if request.feeder_links is not None:
+        _require_v3_writes(written)
+        link_model.check_request(request)
     if configuration is not None:
         _require_v2_writes()
         design_configuration.check_configuration(configuration)
@@ -1250,18 +1294,35 @@ def _validate(
     if configuration is not None:
         stored = design_configuration.compose_snapshot(stored, configuration)
         v2 = read_snapshot(stored).v2
-    elif _written_schema() == versions.V2:
+    elif written in (versions.V2, versions.V3):
         # No configuration: the v1 devices become components on their legacy
         # templates. Read back through the one reader, so what is stored is
         # what every later read sees.
         stored = snapshot_v2_from_v1(stored)
         v2 = read_snapshot(stored).v2
+    links: list[entities.InterBoardLink] = []
+    if written == versions.V3 and v2 is not None:
+        # M7a: one link per server-owned feeder, with what the user entered;
+        # its terminals are checked against the model it is stored with.
+        entry = link_entry or _LinkEntry(
+            board_refs=requirements.board_refs(request, None),
+            entered_by_user_id=None,
+            entered_at=None,
+        )
+        links = link_model.derive(
+            v2,
+            request.feeder_links,
+            entry.board_refs,
+            entered_by_user_id=entry.entered_by_user_id,
+            entered_at=entry.entered_at,
+        )
+        stored = snapshot_v3_from_v2(stored, links)
     # The findings of what every later read sees: its reviews anchored to the
     # server's decisions (a save writes only ``unreviewed``), so a revision
     # saved after a decision does not read as stale.
     if v2 is not None:
         v2 = anchoring.anchor_model(v2, anchor)
-    findings = _design_findings(designed, conditions, v2)
+    findings = _design_findings(designed, conditions, v2, links)
     return {
         "design_snapshot": stored,
         "snapshot_sha256": snapshot.sha256_of(stored),
@@ -1272,10 +1333,21 @@ def _validate(
     }
 
 
+def _require_v3_writes(written: str) -> None:
+    """Refuse feeder links where new revisions are not written in ``pp-design/3`` (M7a)."""
+    if written != versions.V3:
+        raise ConflictError(
+            f"this deployment writes revisions in {written}, which cannot hold feeder links; "
+            "they are stored only where DESIGN_SNAPSHOT_SCHEMA is pp-design/3",
+            code="feeder_links_require_v3",
+            params={"written_schema": written, "required_schema": versions.V3},
+        )
+
+
 def _require_v2_writes() -> None:
     """Refuse a configuration where new revisions are written in ``pp-design/1``."""
     written = _written_schema()
-    if written != versions.V2:
+    if written not in (versions.V2, versions.V3):
         raise ConflictError(
             f"this deployment writes revisions in {written}, which cannot hold a "
             "configuration; it is stored only where DESIGN_SNAPSHOT_SCHEMA is pp-design/2",
@@ -1304,15 +1376,34 @@ def _add_revision(
             params={"limit": str(MAX_REVISIONS)},
         )
     project.revision_count += 1
+    saving_account = _account_id(user) if user.email else None
     columns = _validate(
         request,
         configuration,
         engineering_reviews.anchor_for(session=session, tenant_id=tenant),
+        _LinkEntry(
+            board_refs=requirements.board_refs(request, prior),
+            entered_by_user_id=str(saving_account) if saving_account is not None else None,
+            entered_at=_now_iso(),
+        ),
     )
-    designed = (
-        read_snapshot(columns["design_snapshot"]).project
+    stored_read = (
+        read_snapshot(columns["design_snapshot"])
         if columns.get("design_snapshot") is not None
         else None
+    )
+    designed = stored_read.project if stored_read is not None else None
+    # M7a: in a v3 revision, a feeder with a link is recorded by the link and
+    # its findings, not by the open item ``inter_board_wiring_not_modelled``.
+    linked = (
+        frozenset(
+            board.name
+            for link in stored_read.links
+            for board in stored_read.project.boards
+            if board.id == link.feeder.fed_board
+        )
+        if stored_read is not None
+        else frozenset()
     )
     proposal = None
     ai_block = None
@@ -1335,6 +1426,7 @@ def _add_revision(
         prior=prior,
         answered=answered,
         ai=ai_block,
+        linked=linked,
     )
     if resaved_from is not None:
         # A pp-req/1 addition: the revision whose stored request this one re-designed.
@@ -1441,6 +1533,16 @@ def _opened(
             design_configuration.summary(checked.read.v2, _V2_CONFIRM)
             if checked.read is not None
             and checked.read.v2 is not None
+            and checked.status is not ExportStatus.STALE
+            else None
+        ),
+        links=(
+            [
+                InterBoardLinkView.model_validate(item)
+                for item in codec_v3.dump_links(checked.read.links)
+            ]
+            if checked.read is not None
+            and checked.read.schema == versions.V3
             and checked.status is not ExportStatus.STALE
             else None
         ),
@@ -2283,6 +2385,10 @@ def export_revision(
         # under its own renderer version; a v1 revision prints what it did.
         mark=mark,
         estimate_for=_estimate_subject(project, row, approval_counts, applicable.renderer_version),
+        # M7a: a v3 revision's JSON carries its links; v1 and v2 JSON is unchanged.
+        links=(
+            codec_v3.dump_links(read.links) if read.schema == versions.V3 else None
+        ),
     )
     logger.info(
         "design.revision_exported",
@@ -2345,6 +2451,9 @@ def _schedule_export(
         scope=mark.scope,
         approval=mark.approval,
     )
+    # M7a: a v3 revision's links, printed from one set of rows by both the
+    # wire schedule and the drawing; none for v2, whose files are unchanged.
+    link_rows = link_model.rows(model, read.links)
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
             connection_drawing.drawing_set(model),
@@ -2358,6 +2467,7 @@ def _schedule_export(
             ),
             plain,
             structural,
+            link_rows,
         )
         suffix = "connection-drawing.pdf"
     elif export_format is ExportFormat.TERMINAL_SCHEDULE_PDF:
@@ -2367,7 +2477,7 @@ def _schedule_export(
         suffix = "terminal-schedule.pdf"
     else:
         content = schedule_pdf.render_wire_schedule(
-            schedules.wire_schedule(model), header, plain, structural
+            schedules.wire_schedule(model), header, plain, structural, link_rows
         )
         suffix = "wire-schedule.pdf"
     return design_domain.exported_file(content, "application/pdf", project.name, suffix)
@@ -2442,7 +2552,7 @@ def validate_configuration(
         based_on_revision=latest.number,
         snapshot_schema=read.schema,
         written_schema=written,
-        saveable=written == versions.V2,
+        saveable=written in (versions.V2, versions.V3),
         snapshot_sha256=snapshot.sha256_of(stored),
         findings=_design_findings(read.project, conditions, model),
         model=design_configuration.summary(model, _V2_CONFIRM),

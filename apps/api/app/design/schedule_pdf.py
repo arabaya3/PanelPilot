@@ -38,6 +38,7 @@ from reportlab.platypus import (
 )
 
 from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
+from app.design.model import links as link_rows
 from app.design.model import schedules
 from app.design.pdf_fonts import font_for
 from app.design.rtl import has_rtl
@@ -252,6 +253,7 @@ def _render(
     structural: Sequence[V2Finding],
     styles: dict[str, ParagraphStyle],
     overflow: _Overflow,
+    extra: Sequence[object] = (),
 ) -> bytes:
     buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -282,6 +284,7 @@ def _render(
         ),
         Spacer(1, 3 * mm),
         table,
+        *extra,
     ]
     story.extend(_findings(structural, styles, overflow))
     story.extend(_long_values(overflow, styles))
@@ -348,11 +351,60 @@ def render_terminal_schedule(
     )
 
 
+#: What the board-to-board links section says of itself (M7a, ``pp-design/3``).
+LINKS_NOTE = (
+    "Each link records a feeder between two boards, as the user entered it. A terminal is a "
+    "modelled terminal of that end's board; \"terminal NOT SET\" means none is given. A label is "
+    "the user's own text, not a modelled terminal. Every attribute is the user's [user] or "
+    "\"not given\"; no value is copied from the design. Where a user value differs from the "
+    "value the feeder calculation used, both are shown; the calculation is not changed and "
+    "neither value is taken as right."
+)
+
+
+def _end_text(end: link_rows.EndRow) -> str:
+    text = f"{end.board}: {end.terminal}"
+    return text + (f"; {end.label}" if end.label is not None else "")
+
+
+def _links_section(
+    links: Sequence[link_rows.LinkRow], styles: dict[str, ParagraphStyle], overflow: _Overflow
+) -> list[object]:
+    """The wire schedule's "Board-to-board links" section: one row per link."""
+    body = [
+        [
+            row.link_id,
+            f"{row.supply_board} to {row.fed_board} (circuit {row.circuit_id}; {row.carrier})",
+            _end_text(row.ends[0]),
+            _end_text(row.ends[1]),
+            "; ".join(
+                f"{link_rows.ATTRIBUTE_NAMES[name]}: {text}" for name, text in row.attributes
+            ),
+            "; ".join(link_rows.difference_text(*d) for d in row.differences) or "—",
+        ]
+        for row in links
+    ]
+    return [
+        Spacer(1, 4 * mm),
+        _p(f"Board-to-board links ({len(links)})", styles["h2"]),
+        _p(LINKS_NOTE, styles["small"]),
+        Spacer(1, 2 * mm),
+        _table(
+            ("Link", "Boards", "From end", "To end", "Attributes [source]", "Differs from calc."),
+            body,
+            (30, 40, 44, 44, 60, 54),
+            styles,
+            overflow,
+        ),
+    ]
+
+
 def render_wire_schedule(
     rows: Sequence[schedules.WireRow],
     header: ScheduleHeader,
     mark: ExportMark,
     structural: Sequence[V2Finding],
+    links: Sequence[link_rows.LinkRow] = (),
 ) -> bytes:
     """The wire schedule as a PDF.
 
@@ -361,6 +413,8 @@ def render_wire_schedule(
         header: What the first page names.
         mark: The export's mark (label, identity, the design's other findings).
         structural: Every structural finding, with its effects.
+        links: A ``pp-design/3`` revision's links (``links.rows``); none
+            for v2, whose schedule is then unchanged.
 
     Returns:
         The PDF's bytes.
@@ -400,4 +454,7 @@ def render_wire_schedule(
         styles,
         overflow,
     )
-    return _render("Wire schedule (review only)", header, mark, table, structural, styles, overflow)
+    extra = _links_section(links, styles, overflow) if links else []
+    return _render(
+        "Wire schedule (review only)", header, mark, table, structural, styles, overflow, extra
+    )

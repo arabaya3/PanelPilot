@@ -34,6 +34,7 @@ from pydantic import (
     StrictBool,
     StringConstraints,
     field_serializer,
+    field_validator,
     model_validator,
 )
 
@@ -851,6 +852,94 @@ class BoardDesignRequest(StrictModel):
     profile: dict[str, Any] | None = None
 
 
+#: The longest user text a feeder link holds (a label, material, insulation, number, colour).
+LINK_TEXT_MAX = 200
+
+
+def _link_text(value: str | None) -> str | None:
+    if value is not None and not value.strip():
+        raise ValueError("a link text is not blank")
+    return value
+
+
+class FeederLinkTerminal(StrictModel):
+    """A modelled terminal: of a component (``component``, ``terminal``) or a strip point (``point``, ``side``).
+
+    Exactly one of the two pairs is given; both name the saved model's ids.
+    """
+
+    component: str | None = Field(default=None, min_length=1, max_length=200)
+    terminal: str | None = Field(default=None, min_length=1, max_length=200)
+    point: str | None = Field(default=None, min_length=1, max_length=200)
+    side: Literal["inner", "outer"] | None = None
+
+    @model_validator(mode="after")
+    def _one_pair(self) -> FeederLinkTerminal:
+        component = self.component is not None and self.terminal is not None
+        point = self.point is not None and self.side is not None
+        loose = [self.component, self.terminal, self.point, self.side].count(None)
+        if not (component or point) or loose != 2:
+            raise ValueError("a terminal is {component, terminal} or {point, side}")
+        return self
+
+
+class FeederLinkEndInput(StrictModel):
+    """One end of a feeder link as entered: a modelled terminal, a free-text label, both or neither.
+
+    Attributes:
+        terminal: A terminal of that end's board (the supply board for
+            ``from_end``, the fed board for ``to_end``).
+        label: The user's own designation of the end; printed as the user's
+            text, never as a connected terminal.
+    """
+
+    terminal: FeederLinkTerminal | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=LINK_TEXT_MAX)
+
+    _label = field_validator("label")(_link_text)
+
+
+class FeederLinkAttributesInput(StrictModel):
+    """The cable/conductor properties of a feeder link the user knows; absent is unset.
+
+    Values are checked by type and range only, and never defaulted: no
+    designer value is copied in, and none changes the calculation.
+    """
+
+    cores: int | None = Field(default=None, ge=1, le=100)
+    cross_section_mm2: Decimal | None = Field(
+        default=None, gt=0, le=MAX_SECTION_MM2, max_digits=6, decimal_places=2, allow_inf_nan=False
+    )
+    material: str | None = Field(default=None, min_length=1, max_length=LINK_TEXT_MAX)
+    insulation: str | None = Field(default=None, min_length=1, max_length=LINK_TEXT_MAX)
+    length_m: Decimal | None = Field(
+        default=None, ge=0, le=10000, max_digits=8, decimal_places=3, allow_inf_nan=False
+    )
+    number: str | None = Field(default=None, min_length=1, max_length=LINK_TEXT_MAX)
+    colour: str | None = Field(default=None, min_length=1, max_length=LINK_TEXT_MAX)
+
+    _texts = field_validator("material", "insulation", "number", "colour")(_link_text)
+
+
+class FeederLinkInput(StrictModel):
+    """What the user entered for the link of one server-owned feeder (M7a).
+
+    Attributes:
+        fed_board: The board the feeder supplies (it has ``fed_from``).
+        from_end: The end on the supply board.
+        to_end: The end on the fed board.
+        attributes: The known cable/conductor properties.
+
+    Provenance (who entered it, when) is the server's, set on save; a client
+    cannot send it.
+    """
+
+    fed_board: str = Field(min_length=1, max_length=40)
+    from_end: FeederLinkEndInput | None = None
+    to_end: FeederLinkEndInput | None = None
+    attributes: FeederLinkAttributesInput | None = None
+
+
 class ProjectDesignRequest(StrictModel):
     """A project of one or more boards to design, under a company's profile.
 
@@ -865,6 +954,13 @@ class ProjectDesignRequest(StrictModel):
     info: ProjectInfo
     boards: list[DistributionBoardRequest] = Field(min_length=1, max_length=20)
     profile: dict[str, Any] | None = None
+    #: M7a: what the user entered for each feeder's link between two boards.
+    #: Only a ``pp-design/3`` deployment stores it (``feeder_links_require_v3``).
+    #: Left out of the stored request when not given, so a request without it
+    #: is stored byte for byte as before.
+    feeder_links: list[FeederLinkInput] | None = Field(
+        default=None, max_length=20, exclude_if=lambda value: value is None
+    )
 
 
 class BoardDesignResponse(BaseModel):
@@ -2467,6 +2563,83 @@ class RequirementsPreview(BaseModel):
     findings: list[DesignFinding] = Field(default_factory=list)
 
 
+class LinkAttributeView(BaseModel):
+    """A link attribute: the user's value, or ``null`` with source ``unset`` (never a designer value).
+
+    ``cores`` is an integer; ``cross_section_mm2`` and ``length_m`` are
+    decimal strings; the others are the user's text.
+    """
+
+    value: int | str | None
+    source: Literal["user", "unset"]
+
+
+class LinkAttributesView(BaseModel):
+    """Every attribute a feeder link records, each the user's or unset."""
+
+    cores: LinkAttributeView
+    cross_section_mm2: LinkAttributeView
+    material: LinkAttributeView
+    insulation: LinkAttributeView
+    length_m: LinkAttributeView
+    number: LinkAttributeView
+    colour: LinkAttributeView
+
+
+class LinkTerminalView(BaseModel):
+    """A modelled terminal: ``{component, terminal}`` or ``{point, side}``."""
+
+    component: str | None = None
+    terminal: str | None = None
+    point: str | None = None
+    side: Literal["inner", "outer"] | None = None
+
+
+class LinkEndView(BaseModel):
+    """One end of a feeder link: resolved exactly when a modelled terminal is set."""
+
+    role: Literal["from", "to"]
+    board: str
+    terminal: LinkTerminalView | None
+    label: str | None
+    resolution: Literal["resolved", "unresolved"]
+
+
+class LinkFeederView(BaseModel):
+    """The server-owned feeder a link records (from ``fed_from``); boards by id."""
+
+    supply_board: str
+    fed_board: str
+    circuit_id: str
+
+
+class LinkCarrierView(BaseModel):
+    """What carries a link: the feeder circuit's cable, or ``unknown``."""
+
+    kind: Literal["cable", "unknown"]
+    cable_id: str | None
+
+
+class LinkProvenanceView(BaseModel):
+    """Who entered a link's values and when, set by the server on save; ``null`` when nobody did."""
+
+    requirement_ref: str
+    entered_by_user_id: str | None
+    entered_at: str | None
+
+
+class InterBoardLinkView(BaseModel):
+    """A ``pp-design/3`` feeder link between two boards, as stored (M7a); review content only."""
+
+    id: str
+    origin: Literal["derived"]
+    feeder: LinkFeederView
+    ends: list[LinkEndView]
+    carrier: LinkCarrierView
+    attributes: LinkAttributesView
+    provenance: LinkProvenanceView
+
+
 class SavedProject(BaseModel):
     """A saved project, its revisions, and one revision's request.
 
@@ -2535,6 +2708,9 @@ class SavedProject(BaseModel):
     approving_as: str | None = None
     permissions: list[Permission] = Field(default_factory=list)
     model_v2: V2ModelSummary | None = None
+    #: M7a: a ``pp-design/3`` revision's feeder links, as stored (shown when
+    #: ``model_v2`` is); ``None`` for v1 and v2.
+    links: list[InterBoardLinkView] | None = None
     snapshot_schema: str | None = None
     requirements: RequirementsRecord | None = None
     author_unknown: bool = False
