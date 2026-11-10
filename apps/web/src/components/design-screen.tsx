@@ -274,9 +274,16 @@ function parseProfile(text: string): Record<string, unknown> | null | 'invalid' 
 export function designDiffers(snapshot: string, clean: string): boolean {
   const strip = (text: string): string => {
     try {
-      return JSON.stringify(JSON.parse(text) as unknown, (key, value: unknown) =>
-        key === 'link' ? undefined : value,
-      );
+      // Only each board's own `link`: a key of that name anywhere else is design.
+      const work = JSON.parse(text) as { boards?: unknown };
+      if (Array.isArray(work.boards)) {
+        work.boards = work.boards.map((board: unknown) => {
+          if (board === null || typeof board !== 'object') return board;
+          const { link: _link, ...rest } = board as Record<string, unknown>;
+          return rest;
+        });
+      }
+      return JSON.stringify(work);
     } catch {
       // Not a work snapshot (a placeholder): compared as it is.
       return text;
