@@ -7,11 +7,11 @@ import pytest
 from app.design.model import versions
 
 
-def test_registry_reads_v1_and_v2() -> None:
-    assert versions.ORDER == (versions.V1, versions.V2)
-    assert versions.LATEST == versions.V2
-    assert {versions.V2} == versions.ENVELOPED
-    assert set(versions.MIGRATIONS) == {(versions.V1, versions.V2)}
+def test_registry_reads_v1_v2_and_v3() -> None:
+    assert versions.ORDER == (versions.V1, versions.V2, versions.V3)
+    assert versions.LATEST == versions.V3
+    assert {versions.V2, versions.V3} == versions.ENVELOPED
+    assert set(versions.MIGRATIONS) == {(versions.V1, versions.V2), (versions.V2, versions.V3)}
 
 
 def test_writing_does_not_follow_the_read_order() -> None:
@@ -68,7 +68,7 @@ def test_an_unmarked_object_is_v1() -> None:
     assert versions.identify({"info": {}}) == versions.V1
 
 
-@pytest.mark.parametrize("marker", ["pp-design/3", "pp-design/1", "", 2, None])
+@pytest.mark.parametrize("marker", ["pp-design/4", "pp-design/1", "", 2, None])
 def test_an_unknown_marker_is_refused(marker: object) -> None:
     with pytest.raises(versions.SnapshotSchemaUnknownError) as refused:
         versions.identify({"schema": marker, "model": {}})

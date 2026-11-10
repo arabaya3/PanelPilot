@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from app.design.model import codec_v2, entities, versions
+from app.design.model import codec_v2, codec_v3, entities, versions
 from app.design.model.compose import compose
 from app.design.model.migrate_v2 import migrate_1_to_2
 
@@ -73,3 +73,39 @@ def snapshot_v2_from_v1(
     if configuration is None:
         return envelope(migrate_1_to_2(designed_v1))
     return envelope(compose(designed_v1, configuration))
+
+
+def envelope_v3(payload_v3: dict[str, Any]) -> dict[str, Any]:
+    """A v3 payload in its stored envelope, checked by the v3 reader first.
+
+    Args:
+        payload_v3: The ``model`` value: a v2 payload plus ``links``.
+
+    Returns:
+        ``{"schema": "pp-design/3", "model": payload_v3}``.
+
+    Raises:
+        SnapshotUnreadableError: If the payload is not a valid canonical v3 payload.
+    """
+    codec_v3.parse_model(payload_v3)
+    return {versions.SCHEMA_KEY: versions.V3, versions.MODEL_KEY: payload_v3}
+
+
+def snapshot_v3_from_v2(
+    stored_v2: dict[str, Any], links: list[entities.InterBoardLink]
+) -> dict[str, Any]:
+    """The v3 snapshot of a stored v2 envelope and its feeder links.
+
+    Args:
+        stored_v2: A v2 envelope, as :func:`snapshot_v2_from_v1` writes it.
+        links: One link per server-owned feeder of the design.
+
+    Returns:
+        The stored v3 envelope.
+
+    Raises:
+        SnapshotUnreadableError: If the result is not a valid v3 payload.
+    """
+    payload = dict(stored_v2[versions.MODEL_KEY])
+    payload["links"] = codec_v3.dump_links(links)
+    return envelope_v3(payload)
