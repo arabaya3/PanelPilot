@@ -772,11 +772,6 @@ def test_v1_and_v2_exports_are_byte_stable_before_v3(
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="review finding: the UI's material choice 'copper' is compared to the "
-    "designer's code 'Cu' and reported as a discrepancy (links.py _same)",
-)
 def test_choosing_the_ui_material_that_matches_the_calculation_is_not_a_discrepancy(
     client: TestClient, engine: Engine, switch: Switch, people: _People
 ) -> None:
@@ -788,3 +783,31 @@ def test_choosing_the_ui_material_that_matches_the_calculation_is_not_a_discrepa
     saved = _saved(client, _request([{"fed_board": "SB-1", "attributes": {"material": "copper"}}]))
     codes = [f["code"] for f in revision_row(engine, saved["id"], 1)["findings"]]
     assert "link_value_differs_from_calculation" not in codes
+    # A different metal is still a discrepancy.
+    other = _saved(
+        client, _request([{"fed_board": "SB-1", "attributes": {"material": "aluminium"}}])
+    )
+    codes = [f["code"] for f in revision_row(engine, other["id"], 1)["findings"]]
+    assert "link_value_differs_from_calculation" in codes
+
+
+def test_link_texts_are_stored_without_surrounding_spaces(
+    client: TestClient, engine: Engine, switch: Switch, people: _People
+) -> None:
+    """A label and the free-text attributes keep their text, not the spaces around it."""
+    switch(V3)
+    saved = _saved(
+        client,
+        _request(
+            [
+                {
+                    "fed_board": "SB-1",
+                    "from_end": {"label": "  SYN way Q2  "},
+                    "attributes": {"number": " SYN-W-01 "},
+                }
+            ]
+        ),
+    )
+    links = revision_row(engine, saved["id"], 1)["design_snapshot"]["model"]["links"]
+    assert next(e for e in links[0]["ends"] if e["role"] == "from")["label"] == "SYN way Q2"
+    assert links[0]["attributes"]["number"]["value"] == "SYN-W-01"

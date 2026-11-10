@@ -270,19 +270,19 @@ const LABELLED: StoredLink = {
 const FINDINGS = [
   {
     code: 'link_endpoint_unresolved',
-    board_id: 'DB1',
-    params: { link_id: 'l-3f2a', end: 'to' },
+    board_id: 'MDB',
+    values: { link_id: 'l-3f2a', end: 'to' },
   },
   {
     code: 'link_attribute_unset',
-    board_id: 'DB1',
+    board_id: 'MDB',
     // As the API sends it: finding values are strings.
-    params: { link_id: 'l-3f2a', attributes: 'material,insulation' },
+    values: { link_id: 'l-3f2a', attributes: 'material,insulation' },
   },
   {
     code: 'link_value_differs_from_calculation',
-    board_id: 'DB1',
-    params: {
+    board_id: 'MDB',
+    values: {
       link_id: 'l-3f2a',
       attribute: 'cross_section_mm2',
       user_value: '25',
@@ -304,7 +304,7 @@ describe('a saved revision’s links', () => {
     expect(first.getByTestId('stored-end-to').textContent).toBe('To DB1: terminal NOT SET');
     const second = within(screen.getByTestId('stored-link-DB2'));
     expect(second.getByTestId('stored-end-from').textContent).toBe(
-      'From MDB: “Q2 out” — label given by user, not a modelled terminal',
+      'From MDB: terminal NOT SET; “Q2 out” — label given by user, not a modelled terminal',
     );
   });
 

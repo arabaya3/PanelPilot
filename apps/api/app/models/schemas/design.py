@@ -857,9 +857,12 @@ LINK_TEXT_MAX = 200
 
 
 def _link_text(value: str | None) -> str | None:
-    if value is not None and not value.strip():
+    if value is None:
+        return None
+    if not value.strip():
         raise ValueError("a link text is not blank")
-    return value
+    # Stored and printed as typed, without the spaces around it.
+    return value.strip()
 
 
 class FeederLinkTerminal(StrictModel):

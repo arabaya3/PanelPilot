@@ -335,8 +335,23 @@ export function valuesDiffer(
     const y = Number(b);
     if (Number.isFinite(x) && Number.isFinite(y)) return x !== y;
   }
+  if (key === 'material') {
+    // The same metal under its name or its symbol: the form offers
+    // "copper"/"aluminium", the designer stores "Cu"/"Al".
+    const metal = (value: string) => METALS[value.toLowerCase()] ?? value.toLowerCase();
+    return metal(a) !== metal(b);
+  }
   return a.toLowerCase() !== b.toLowerCase();
 }
+
+/** A conductor metal's name and its chemical symbol, compared as one. */
+const METALS: Record<string, string> = {
+  copper: 'cu',
+  cu: 'cu',
+  aluminium: 'al',
+  aluminum: 'al',
+  al: 'al',
+};
 
 /* ---------------------------------------------------------------------- */
 /* A stored link, as a saved revision returns it (§3).                     */
@@ -401,6 +416,8 @@ export type LinkFinding = {
   message?: string;
   board_id?: string | null;
   params?: Record<string, unknown> | null;
+  /** As the API sends them (`DesignFinding.values`). */
+  values?: Record<string, unknown> | null;
 };
 
 /** A revision's link findings, from its findings list. */

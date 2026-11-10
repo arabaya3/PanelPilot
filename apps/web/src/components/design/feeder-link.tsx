@@ -284,12 +284,14 @@ export function StoredLinks({
 
   function endText(end: StoredLinkEnd): string {
     if (end.terminal) return t('endTerminal', { terminal: terminalText(end.terminal, model) });
-    if (end.label) return t('endLabelStored', { label: end.label });
+    // A label is the user's text: the end stays not set, and says so first.
+    if (end.label) return `${t('endNotSetStored')}; ${t('endLabelStored', { label: end.label })}`;
     return t('endNotSetStored');
   }
 
   function findingText(finding: LinkFinding): string {
-    const params = finding.params ?? {};
+    // The API sends a finding's values as `values` (strings); older shapes as `params`.
+    const params = finding.values ?? finding.params ?? {};
     if (finding.code === 'link_endpoint_unresolved') {
       const end = text(params.end ?? params.role);
       return end
@@ -325,7 +327,7 @@ export function StoredLinks({
   }
 
   const belongs = (finding: LinkFinding, link: StoredLink) => {
-    const params = finding.params ?? {};
+    const params = finding.values ?? finding.params ?? {};
     if (typeof params.link_id === 'string') return params.link_id === link.id;
     return finding.board_id === link.feeder.fed_board;
   };

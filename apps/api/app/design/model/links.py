@@ -283,7 +283,16 @@ def _same(name: str, user: Any, calculated: Any) -> bool:
         return Decimal(str(user)) == Decimal(str(calculated))
     if name == "cores":
         return int(user) == int(calculated)
-    return " ".join(str(user).split()).casefold() == " ".join(str(calculated).split()).casefold()
+    flat = (" ".join(str(user).split()).casefold(), " ".join(str(calculated).split()).casefold())
+    if name == "material":
+        # The same metal under its name or its symbol: the guided form offers
+        # "copper"/"aluminium", the designer stores "Cu"/"Al". Not a judgement.
+        return _METAL.get(flat[0], flat[0]) == _METAL.get(flat[1], flat[1])
+    return flat[0] == flat[1]
+
+
+#: A conductor metal's name and its chemical symbol, compared as one.
+_METAL = {"copper": "cu", "cu": "cu", "aluminium": "al", "aluminum": "al", "al": "al"}
 
 
 def calculation_values(

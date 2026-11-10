@@ -267,6 +267,9 @@ describe('values, comparisons and blanks', () => {
     expect(valuesDiffer('cross_section_mm2', '16.0', '16')).toBe(false);
     expect(valuesDiffer('cross_section_mm2', '25', '16')).toBe(true);
     expect(valuesDiffer('material', 'Copper', 'copper')).toBe(false);
+    // The designer stores the symbol; the form offers the name: the same metal.
+    expect(valuesDiffer('material', 'copper', 'Cu')).toBe(false);
+    expect(valuesDiffer('material', 'aluminium', 'Cu')).toBe(true);
     expect(valuesDiffer('insulation', 'PVC', 'XLPE')).toBe(true);
     expect(valuesDiffer('cores', '', '5')).toBe(false);
     expect(valuesDiffer('cores', '4', null)).toBe(false);
