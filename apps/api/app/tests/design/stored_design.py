@@ -16,8 +16,8 @@ from typing import Any
 
 
 def is_v2(stored: dict[str, Any]) -> bool:
-    """Whether a stored snapshot is a ``pp-design/2`` envelope."""
-    return stored.get("schema") == "pp-design/2"
+    """Whether a stored snapshot is an envelope holding a v2 payload (``pp-design/2`` or ``/3``)."""
+    return stored.get("schema") in ("pp-design/2", "pp-design/3")
 
 
 def design_of(stored: dict[str, Any]) -> dict[str, Any]:
