@@ -323,9 +323,20 @@ export function snapshotOf(
     ? { info, boards, profileText, language, market, control: needs }
     : { info, boards, profileText, language, market };
   if (aiDescription !== '') work.aiDescription = aiDescription;
-  return JSON.stringify(work, (key, value: unknown) =>
-    key === 'key' || key === 'aiItem' ? undefined : value,
-  );
+  // Keys in a stable order: a restored draft rebuilds the same objects with
+  // their keys in another order, which must still compare as the same work.
+  return canonicalJson(work);
+}
+
+/** JSON with every object's keys in a stable order, row keys and AI item ids left out. */
+function canonicalJson(work: unknown): string {
+  return JSON.stringify(work, (key, value: unknown) => {
+    if (key === 'key' || key === 'aiItem') return undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+    );
+  });
 }
 
 /**
@@ -342,7 +353,7 @@ function cleanWithMarket(clean: string, defaults: SupplyDefaults, code: string):
     return clean;
   }
   if (!Array.isArray(form.boards)) return clean;
-  return JSON.stringify({
+  return canonicalJson({
     ...form,
     boards: form.boards.map((board) => ({ ...board, ...defaults })),
     market: code,

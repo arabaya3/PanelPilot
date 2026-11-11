@@ -146,6 +146,24 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
+describe('undo without a reload', () => {
+  it('is clean after undoing an edit', async () => {
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    await waitFor(() => {
+      expect(screen.queryAllByText('Unsaved changes').length).toBeGreaterThan(0);
+    });
+    fireEvent.change(designation(), { target: { value: 'X1' } });
+    await waitFor(() => {
+      expect(screen.queryAllByText('Unsaved changes')).toHaveLength(0);
+    });
+  });
+});
+
 describe('unsaved configuration edits across a reload', () => {
   it('are kept in the draft, restored into the editor, still unsaved, and saved as edited', async () => {
     const first = renderScreen();
@@ -170,6 +188,13 @@ describe('unsaved configuration edits across a reload', () => {
     });
     // The stored configuration is still the baseline: the edit reads as unsaved.
     expect(screen.getAllByText('Unsaved changes').length).toBeGreaterThan(0);
+    // Undoing the edit makes the page clean again (the stored one is the
+    // baseline, and the restored form compares equal to the saved one).
+    fireEvent.change(designation(), { target: { value: 'X1' } });
+    await waitFor(() => {
+      expect(screen.queryAllByText('Unsaved changes')).toHaveLength(0);
+    });
+    fireEvent.change(designation(), { target: { value: 'X7' } });
     // Points and ids the edit did not touch are exactly as stored.
     fireEvent.click(
       within(screen.getByTestId('view-overview')).getByRole('button', {
