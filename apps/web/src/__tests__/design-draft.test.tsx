@@ -105,6 +105,7 @@ const SAVED_REQUEST = {
 
 function saved(revision = 1): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'Stored tower',
     revision,

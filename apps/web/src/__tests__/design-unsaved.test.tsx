@@ -82,6 +82,7 @@ const REQUEST = {
 
 function saved(name: string, revision = 1): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name,
     revision,

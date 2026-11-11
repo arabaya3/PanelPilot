@@ -330,6 +330,7 @@ describe('AI proposals on the design screen', () => {
 
 function savedProject(): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'AI tower',
     revision: 1,

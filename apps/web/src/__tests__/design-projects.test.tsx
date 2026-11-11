@@ -72,6 +72,7 @@ const SAVED_REQUEST = {
 
 function project(revision: number): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'Tower',
     revision,
