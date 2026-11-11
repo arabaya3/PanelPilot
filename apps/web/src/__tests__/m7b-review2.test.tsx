@@ -44,3 +44,27 @@ describe('M7b review 2: ids are never reused after a removal', () => {
     expect(stripsOf(config)[0]?.id).not.toBe(removed);
   });
 });
+
+describe('a conflict names its entry by designation', () => {
+  it('says the strip designation, not its internal id', async () => {
+    const { entryName } = await import('@/components/design/configuration-model');
+    const doc = {
+      strips: [
+        {
+          id: 'strip-2',
+          board: 'SB-1',
+          template: null,
+          designation: { function: null, location: null, product: 'X2' },
+        },
+      ],
+    };
+    expect(entryName(doc, 'strip', 'strip-2')).toBe('X2');
+    expect(
+      entryName(
+        { strips: [{ id: 'strip-3', board: 'SB-1', designation: null }] },
+        'strip',
+        'strip-3',
+      ),
+    ).toBe('strip-3');
+  });
+});

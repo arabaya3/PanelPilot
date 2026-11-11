@@ -178,14 +178,25 @@ export function isReviewed(status: string | null): boolean {
   return status === 'reviewed' || status === 'approved';
 }
 
+/**
+ * A new, never-reused id: a random token, so an entry added after another was
+ * removed never takes the removed one's id (a saved feeder link that named the
+ * removed entry's terminal must not silently land on the new one).
+ */
+function token(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function freshId(config: Configuration, prefix: string): string {
   const used = new Set<string>();
   for (const key of ['strips', 'components', 'bindings']) {
     for (const item of list(config, key)) if (typeof item.id === 'string') used.add(item.id);
   }
-  let n = 1;
-  while (used.has(`${prefix}-${String(n)}`)) n += 1;
-  return `${prefix}-${String(n)}`;
+  let id = `${prefix}-${token()}`;
+  while (used.has(id)) id = `${prefix}-${token()}`;
+  return id;
 }
 
 export function addComponent(
@@ -364,10 +375,10 @@ export function addStripPoint(
   if (strip === undefined) return config;
   const points = stripPoints(strip);
   const used = new Set(points.map((point) => point.id));
-  let n = points.length + 1;
-  while (used.has(`p${String(n)}`)) n += 1;
+  let id = `p-${token()}`;
+  while (used.has(id)) id = `p-${token()}`;
   const point: StripPoint = {
-    id: `p${String(n)}`,
+    id,
     marking: entry.marking,
     ...(entry.level !== null ? { level: entry.level } : {}),
   };
@@ -406,4 +417,17 @@ export function removeStripPoint(
   return updateEntry(config, 'strips', stripId, {
     points: stripPoints(strip).filter((point) => point.id !== pointId),
   });
+}
+
+/** How a conflict names its entry: the entry's typed designation, else its id. */
+export function entryName(
+  config: Configuration,
+  kind: ConflictTarget['kind'],
+  entry: string,
+): string {
+  const section = sectionOf(kind);
+  if (section === null) return entry;
+  const found = list(config, section).find((item) => item.id === entry);
+  const text = found ? designationText(found.designation) : '';
+  return text !== '' ? text : entry;
 }

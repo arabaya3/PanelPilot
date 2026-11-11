@@ -237,13 +237,13 @@ describe('the configuration model', () => {
     const components = doc.components as Record<string, unknown>[];
     const strips = doc.strips as Record<string, unknown>[];
     expect(components.at(-1)).toEqual({
-      id: 'component-1',
+      id: expect.stringMatching(/^component-[0-9a-f]{12}$/) as unknown,
       board: 'DB1',
       template: TEMPLATE.ref,
       designation: { function: null, location: null, product: 'K2' },
     });
     expect(strips.at(-1)).toEqual({
-      id: 'strip-1',
+      id: expect.stringMatching(/^strip-[0-9a-f]{12}$/) as unknown,
       board: 'DB1',
       template: null,
       designation: null,
@@ -477,20 +477,23 @@ describe('strip points', () => {
   });
 
   it('keeps point ids stable and leaves a blank level out', () => {
+    const pointsOf = (doc: Record<string, unknown>) =>
+      stripPoints(nth(doc.strips as { points?: unknown }[], 0));
     let doc = addStripPoint(STORED, 'X1', { marking: 'A', level: null });
     doc = addStripPoint(doc, 'X1', { marking: 'B', level: 1 });
-    doc = removeStripPoint(doc, 'X1', 'p1');
+    const [a, b] = pointsOf(doc);
+    doc = removeStripPoint(doc, 'X1', String(a?.id));
     doc = addStripPoint(doc, 'X1', { marking: 'C', level: null });
-    const strip = nth(doc.strips as { points?: unknown }[], 0);
-    expect(stripPoints(strip)).toEqual([
-      { id: 'p2', marking: 'B', level: 1 },
-      { id: 'p3', marking: 'C' },
+    const after = pointsOf(doc);
+    expect(after.map(({ marking, level }) => ({ marking, level }))).toEqual([
+      { marking: 'B', level: 1 },
+      { marking: 'C', level: undefined },
     ]);
-    doc = updateStripPoint(doc, 'X1', 'p2', { level: null, marking: 'B2' });
-    expect(stripPoints(nth(doc.strips as { points?: unknown }[], 0))[0]).toEqual({
-      id: 'p2',
-      marking: 'B2',
-    });
+    // B keeps its id; C never takes a removed point's id.
+    expect(after[0]?.id).toBe(b?.id);
+    expect([a?.id, b?.id]).not.toContain(after[1]?.id);
+    doc = updateStripPoint(doc, 'X1', String(b?.id), { level: null, marking: 'B2' });
+    expect(pointsOf(doc)[0]).toEqual({ id: b?.id, marking: 'B2' });
   });
 });
 

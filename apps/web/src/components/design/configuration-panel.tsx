@@ -9,6 +9,7 @@ import {
   isEmptyConfiguration,
   normalized,
   removeEntry,
+  entryName,
   sectionOf,
   type Configuration,
   type ConflictTarget,
@@ -161,7 +162,11 @@ export function ConfigurationPanel({
         message: t('refusal.configuration_conflict', {
           ref: params.ref ?? '',
           refKind: params.kind ?? '',
-          entry: conflict ? t(`editor.entryKind.${conflict.kind}`, { id: conflict.entry }) : '',
+          entry: conflict
+            ? t(`editor.entryKind.${conflict.kind}`, {
+                id: entryName(doc, conflict.kind, conflict.entry),
+              })
+            : '',
           reason: params.reason ?? '',
         }),
         disabled: null,
@@ -180,7 +185,9 @@ export function ConfigurationPanel({
       return {
         kind: 'error',
         message: t('refusal.configuration_refused_entry', {
-          entry: t(`editor.entryKind.${named.kind}`, { id: named.entry }),
+          entry: t(`editor.entryKind.${named.kind}`, {
+            id: entryName(doc, named.kind, named.entry),
+          }),
           board: typeof board === 'string' && board !== '' ? board : '—',
           ref: named.ref === '' ? '—' : named.ref,
           refusal: named.reason,
@@ -342,7 +349,9 @@ export function ConfigurationPanel({
                         data-testid="conflict-remove"
                       >
                         {t('conflict.remove', {
-                          entry: t(`editor.entryKind.${conflict.kind}`, { id: conflict.entry }),
+                          entry: t(`editor.entryKind.${conflict.kind}`, {
+                            id: entryName(doc, conflict.kind, conflict.entry),
+                          }),
                         })}
                       </button>
                     </>
