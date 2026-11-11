@@ -121,7 +121,13 @@ def _said(model: entities.DesignModelV2, end: entities.LinkEnd) -> tuple[Any, ..
     if ref.component is not None:
         for component in model.components:
             if component.id == ref.component:
-                return ("component", component.designation, ref.terminal, component.board_id)
+                return (
+                    "component",
+                    component.designation,
+                    component.template_ref,
+                    ref.terminal,
+                    component.board_id,
+                )
         return ("missing",)
     for strip in model.strips:
         for point in strip.points:
