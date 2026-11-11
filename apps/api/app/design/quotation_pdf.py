@@ -21,7 +21,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.design.marking import ExportMark, pdf_findings_section, pdf_page_stamp
+from app.design.marking import ExportMark, pdf_findings_section, pdf_mark_margins, pdf_page_stamp
 from app.design.pdf_fonts import font_for
 from app.models.schemas.design import DesignProject, Quotation
 
@@ -69,13 +69,18 @@ def render_quotation_pdf(
     small = styles["BodyText"].clone("small", fontSize=8, leading=10)
     tiny = styles["BodyText"].clone("tiny", fontSize=7, leading=9)
     buffer = BytesIO()
+    top, bottom = (
+        pdf_mark_margins(mark, A4, left=15 * mm, right=15 * mm, top=15 * mm, bottom=15 * mm)
+        if mark is not None
+        else (15 * mm, 15 * mm)
+    )
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=15 * mm,
         rightMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        topMargin=top,
+        bottomMargin=bottom,
         title=f"Provisional estimate - {project.info.name}",
         author=company,
         creator="PanelPilot",

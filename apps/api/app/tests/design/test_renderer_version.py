@@ -459,8 +459,18 @@ RECORDED_V3 = Path(__file__).with_name("renderer_fingerprints_v3.json")
 V3_CASES = ("unentered", "entered")
 
 
-def v3_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[str, bytes]:
-    """Every review export of a v3 design, as ``export_revision`` makes it."""
+def v3_exports(
+    case: str,
+    label: str = marking.REVIEW_APPROVED_LABEL,
+    *,
+    identity: str = IDENTITY,
+    project: str = "Renderer reference v3",
+) -> dict[str, bytes]:
+    """Every review export of a v3 design, as ``export_revision`` makes it.
+
+    ``identity`` and ``project`` replace the fixed mark and header names (the
+    footer layout check prints long ones).
+    """
     from app.design import connection_drawing_pdf, schedule_pdf, snapshot
     from app.design.model import (
         codec_v3,
@@ -518,7 +528,7 @@ def v3_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
     findings = design_projects._design_findings(read.project, conditions, v2, read.links)
     mark = marking.ExportMark(
         label=label,
-        identity=IDENTITY,
+        identity=identity,
         findings=tuple(design_projects._printed(findings, versions.V3)),
     )
     pricing = PricingSettings.model_validate({"currency": "JOD", "labour_per_circuit": "10"})
@@ -533,7 +543,7 @@ def v3_exports(case: str, label: str = marking.REVIEW_APPROVED_LABEL) -> dict[st
             links=codec_v3.dump_links(read.links),
         ).content
     header = schedule_pdf.ScheduleHeader(
-        project="Renderer reference v3",
+        project=project,
         revision="01",
         design_sha256=snapshot.sha256_of(stored),
         schema=versions.V3,
@@ -609,11 +619,11 @@ def test_the_recorded_v3_content_is_the_v3_renderer_versions() -> None:
 
 
 def test_v3_has_its_own_renderer_version_and_v1_v2_are_untouched() -> None:
-    """M7a adds a v3 entry; the v1 and v2 entries and fingerprints are what they were."""
+    """v3 has its own entry, distinct from v1 and v2 (pinned at their current versions)."""
     from app.design.model import versions
 
-    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.04.9"
-    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.04.v2-24"
+    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.11.1"
+    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.11.v2-25"
     assert design.renderer_version(versions.V3) not in (
         design.RENDERER_VERSIONS[versions.V1],
         design.RENDERER_VERSIONS[versions.V2],

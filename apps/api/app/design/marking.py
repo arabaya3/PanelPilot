@@ -190,22 +190,141 @@ def mark_sheets(sheets: list[Sheet], mark: ExportMark) -> list[Sheet]:
             sheet.add(Text(FRAME_LEFT + 5, FRAME_TOP + 22 + row * 4.8, line, size=2.4))
         sheets.append(sheet)
     for sheet in sheets:
-        sheet.add(
-            Text(FRAME_LEFT, FRAME_TOP - 3.0, mark.label, size=4.0, bold=True),
-            Text(FRAME_RIGHT, FRAME_TOP - 3.0, mark.identity, size=2.2, anchor=Anchor.END),
-            Text(FRAME_LEFT, SHEET_HEIGHT - 3.5, mark.banner, size=2.2, bold=True),
-        )
+        sheet.add(*_sheet_mark(mark))
     return sheets
+
+
+#: A drawing sheet's mark text sizes (character height, mm), largest first:
+#: the identity and banner are drawn at the largest that holds them whole.
+_SHEET_MARK_SIZES = (2.2, 1.8, 1.5, 1.2)
+#: The label's size, and the gap between it and the identity beside it (mm).
+_SHEET_LABEL_SIZE = 4.0
+_SHEET_GAP = 4.0
+
+
+def _sheet_width(text: str, size: float, bold: bool) -> float:
+    """A sheet text's printed width in mm, as ``render_pdf`` draws it."""
+    font, drawn = font_for(text, bold=bold, right_to_left=has_rtl(text))
+    width: float = stringWidth(drawn, font, size * mm / 0.72)
+    return float(width / mm)
+
+
+def _sheet_fit(
+    text: str, room: float, last: float, ceiling: float, *, bold: bool
+) -> tuple[float, float, list[str]]:
+    """``(size, pitch, lines)``: the largest size at which ``text`` fits a margin.
+
+    Wrapped to ``room`` mm, its last line's baseline at ``last`` and the lines
+    stacked upwards ``pitch`` apart, the first line's box (character height
+    over 0.72, the PDF's font size) must stay below ``ceiling``. Never
+    shortened: at the smallest size the text is wrapped whole regardless.
+    """
+    lines: list[str] = []
+    pitch = 0.0
+    for size in _SHEET_MARK_SIZES:
+        box = size / 0.72
+        pitch = box * 1.05
+
+        def fits(candidate: str, size: float = size) -> bool:
+            return _sheet_width(candidate, size, bold) <= room
+
+        lines = _wrap(text, fits)
+        if last - (len(lines) - 1) * pitch - box >= ceiling:
+            return size, pitch, lines
+    return _SHEET_MARK_SIZES[-1], pitch, lines
+
+
+def _sheet_mark(mark: ExportMark) -> list[Text]:
+    """A drawing sheet's mark: the label, the identity beside it, the banner below the frame.
+
+    The identity is wrapped to the room right of the label, and the banner to
+    the frame's width, each at the largest size its margin holds whole (a
+    long identity drawn on one line ran over the label and off the sheet). A
+    mark that fits one line is drawn where it always was.
+    """
+    label_end = FRAME_LEFT + _sheet_width(mark.label, _SHEET_LABEL_SIZE, True) + _SHEET_GAP
+    items = [Text(FRAME_LEFT, FRAME_TOP - 3.0, mark.label, size=_SHEET_LABEL_SIZE, bold=True)]
+    size, pitch, lines = _sheet_fit(
+        mark.identity, FRAME_RIGHT - label_end, FRAME_TOP - 3.0, 0.2, bold=False
+    )
+    for index, line in enumerate(reversed(lines)):
+        y = FRAME_TOP - 3.0 - index * pitch
+        items.append(Text(FRAME_RIGHT, y, line, size=size, anchor=Anchor.END))
+    size, pitch, lines = _sheet_fit(
+        mark.banner, FRAME_RIGHT - FRAME_LEFT, SHEET_HEIGHT - 3.5, FRAME_BOTTOM + 0.3, bold=True
+    )
+    for index, line in enumerate(reversed(lines)):
+        y = SHEET_HEIGHT - 3.5 - index * pitch
+        items.append(Text(FRAME_LEFT, y, line, size=size, bold=True))
+    return items
 
 
 PageStamp = Callable[[Canvas, BaseDocTemplate], None]
 
+#: The mark's line pitch at the top and foot of a ReportLab page (7 pt text).
+_PITCH = 3 * mm
 
-def pdf_page_stamp(mark: ExportMark) -> PageStamp:
+
+def _head_lines(mark: ExportMark, room: float) -> list[str]:
+    return _wrapped(mark.identity, room, bold=False)
+
+
+def _foot_lines(mark: ExportMark, room: float) -> list[str]:
+    return _wrapped(mark.banner, room, bold=True)
+
+
+def pdf_mark_margins(
+    mark: ExportMark,
+    pagesize: tuple[float, float],
+    *,
+    left: float,
+    right: float,
+    top: float,
+    bottom: float,
+    foot_reserve: float = 0.0,
+) -> tuple[float, float]:
+    """The top and bottom margins a page needs to hold its mark clear of the body.
+
+    The identity is wrapped downwards from 10.5 mm and the banner upwards
+    from 5 mm, never shortened, so a long one needs more margin; a mark that
+    fits the given margins leaves them as they are.
+
+    Args:
+        mark: The export's mark.
+        pagesize: The page's size.
+        left: The left margin.
+        right: The right margin.
+        top: The document's own top margin.
+        bottom: The document's own bottom margin.
+        foot_reserve: Width kept free at the foot's right for the document's
+            own label (``pdf_page_stamp``'s ``reserve``).
+
+    Returns:
+        ``(top, bottom)``: at least the given margins.
+    """
+    room = pagesize[0] - left - right
+    head = len(_head_lines(mark, room))
+    foot = len(_foot_lines(mark, room - foot_reserve))
+    need_top = 10.5 * mm + (head - 1) * _PITCH + 1.5 * mm
+    need_bottom = 5 * mm + (foot - 1) * _PITCH + 4 * mm
+    return max(top, need_top), max(bottom, need_bottom)
+
+
+def foot_reserve(text: str) -> float:
+    """The foot width ``text`` (7 pt, at the right) keeps free, with a 4 mm gap."""
+    font, drawn = font_for(text)
+    width: float = stringWidth(drawn, font, 7)
+    return float(width + 4 * mm)
+
+
+def pdf_page_stamp(mark: ExportMark, *, reserve: float = 0.0) -> PageStamp:
     """A ReportLab page callback drawing the mark at the top and foot of every page.
 
     Args:
         mark: The export's mark.
+        reserve: Width (pt) kept free at the right of the foot for the
+            document's own foot label (``foot_reserve``); the banner is
+            wrapped clear of it.
 
     Returns:
         A callback for ``onFirstPage`` and ``onLaterPages``.
@@ -220,34 +339,26 @@ def pdf_page_stamp(mark: ExportMark) -> PageStamp:
         canvas.setFillColor(colors.HexColor("#b00020"))
         canvas.drawString(document.leftMargin, height - 7 * mm, label)
         # On its own lines, wrapped to the page: a long identity drawn on one
-        # line ran off the page, and with it what the file is.
-        for index, line in enumerate(_wrapped(mark.identity, room, bold=False)):
+        # line ran off the page, and with it what the file is. Never cut:
+        # ``pdf_mark_margins`` gives the lines room.
+        for index, line in enumerate(_head_lines(mark, room)):
             font, drawn = font_for(line, right_to_left=has_rtl(line))
             canvas.setFont(font, 7)
-            canvas.drawString(document.leftMargin, height - (10.5 + 3 * index) * mm, drawn)
-        # The foot repeats the label and identity, wrapped upwards from 5 mm.
-        lines = _wrapped(mark.banner, room, bold=True)
+            canvas.drawString(document.leftMargin, height - 10.5 * mm - index * _PITCH, drawn)
+        # The foot repeats the label and identity, wrapped upwards from 5 mm,
+        # clear of the document's own foot label.
+        lines = _foot_lines(mark, room - reserve)
         for index, line in enumerate(reversed(lines)):
             font, drawn = font_for(line, bold=True, right_to_left=has_rtl(line))
             canvas.setFont(font, 7)
-            canvas.drawString(document.leftMargin, (5 + 3 * index) * mm, drawn)
+            canvas.drawString(document.leftMargin, 5 * mm + index * _PITCH, drawn)
         canvas.restoreState()
 
     return stamp
 
 
-def _wrapped(text: str, room: float, *, bold: bool) -> list[str]:
-    """``text`` split into lines of at most ``room`` points at 7 pt, by words.
-
-    At most three lines, which the page margins hold; a longer text keeps
-    its first three, so what must survive goes first. A word wider than the
-    room is broken across lines, never drawn off the page.
-    """
-
-    def fits(candidate: str) -> bool:
-        font, drawn = font_for(candidate, bold=bold, right_to_left=has_rtl(candidate))
-        return bool(stringWidth(drawn, font, 7) <= room)
-
+def _wrap(text: str, fits: Callable[[str], bool]) -> list[str]:
+    """``text`` split by words into lines that each ``fits``; a word too wide is broken."""
     lines: list[str] = []
     for whole in text.split(" "):
         word = whole
@@ -260,7 +371,21 @@ def _wrapped(text: str, room: float, *, bold: bool) -> list[str]:
             lines[-1] = candidate
         else:
             lines.append(word)
-    return lines[:3]
+    return lines
+
+
+def _wrapped(text: str, room: float, *, bold: bool) -> list[str]:
+    """``text`` split into lines of at most ``room`` points at 7 pt, by words.
+
+    Every line: a long text is never cut short (it used to keep only its
+    first three lines, silently dropping the rest of an approval).
+    """
+
+    def fits(candidate: str) -> bool:
+        font, drawn = font_for(candidate, bold=bold, right_to_left=has_rtl(candidate))
+        return bool(stringWidth(drawn, font, 7) <= room)
+
+    return _wrap(text, fits)
 
 
 def pdf_findings_section(
