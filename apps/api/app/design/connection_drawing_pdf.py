@@ -58,7 +58,8 @@ DISCLAIMER = (
 LINK_END_LEGEND = (
     "LINK END: a terminal with no board-local wire (in no net) that ends a board-to-board "
     "feeder link; the note names the far board and terminal. The link is not a wire or net "
-    "of either board's model."
+    "of either board's model. A component terminal's board-local requirement (required, or "
+    "requiredness unresolved) is not met by the link and is listed separately as UNCONNECTED."
 )
 
 #: The legend printed on the cover.

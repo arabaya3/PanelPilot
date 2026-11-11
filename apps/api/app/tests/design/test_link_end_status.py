@@ -133,3 +133,71 @@ def test_a_link_end_with_a_local_wire_keeps_its_net_note() -> None:
         text = " ".join(" ".join((p.extract_text() or "").split()) for p in pdf.pages)
     assert "strip_point_link_end" not in text
     assert text.count("unconnected_strip_point: ") == 2
+
+
+def _component_row_in_no_net() -> schedules.TerminalRow:
+    return next(
+        r
+        for r in schedules.terminal_schedule(_v3_model())
+        if r.owner_kind == "component" and r.net_id is None
+    )
+
+
+def test_a_component_terminal_ending_a_link_leads_with_the_link_and_keeps_its_requirement() -> None:
+    """The link note leads; an unmet board-local requirement stays its own open clause."""
+    import dataclasses
+
+    row = _component_row_in_no_net()
+    key = connection_drawing._row_key(row)
+    link = "feeder link to SB-1 X2:1 (link l-1)"
+    lead = ("terminal_link_end", f"LINK END: no board-local wire (in no net); {link}")
+
+    required = connection_drawing._notes(
+        dataclasses.replace(row, required=True), key, {}, False, link
+    )
+    assert required[0] == lead
+    assert required[1][0] == "unconnected_required"
+    assert required[1][1].startswith("UNCONNECTED: required (documented)")
+    assert "not met" in required[1][1]
+    assert link not in required[1][1]  # the requirement is not called satisfied by the link
+
+    unresolved = connection_drawing._notes(
+        dataclasses.replace(row, required=None), key, {}, False, link
+    )
+    assert unresolved[0] == lead
+    assert unresolved[1][0] == "unconnected_unresolved"
+    assert unresolved[1][1].startswith("UNCONNECTED: requiredness unresolved")
+
+    not_required = connection_drawing._notes(
+        dataclasses.replace(row, required=False), key, {}, False, link
+    )
+    assert not_required == [lead, ("", "board-local connection not required (documented)")]
+
+    # Without a link nothing changes.
+    plain = connection_drawing._notes(dataclasses.replace(row, required=True), key, {}, False)
+    assert plain == [("unconnected_required", "UNCONNECTED: required (documented)")]
+
+
+def test_the_v3_drawing_lists_a_linked_component_terminal_as_link_end_and_still_open() -> None:
+    model = _v3_model()
+    row = _component_row_in_no_net()
+    assert row.required is None
+    key = connection_drawing._row_key(row)
+    ends = {key: "feeder link to SB-1 X (link l-1)"}
+    plain = connection_drawing.drawing_set(model)
+    marked = connection_drawing.drawing_set(model, link_ends=ends)
+    before = Counter(item.kind for item in plain.open_items)
+    kinds = Counter(item.kind for item in marked.open_items)
+    expected = before.copy()
+    expected["terminal_link_end"] += 1  # the link end is listed; the requirement stays open
+    assert kinds == expected
+    subject = next(i.subject for i in marked.open_items if i.kind == "terminal_link_end")
+    mine = [i for i in marked.open_items if i.subject == subject and i.board_id == row.board_id]
+    assert [i.kind for i in mine] == ["unconnected_unresolved", "terminal_link_end"]
+    lead = next(i for i in mine if i.kind == "terminal_link_end")
+    assert "LINK END: no board-local wire" in lead.text
+    assert "SB-1" in lead.text
+    unresolved = next(i for i in mine if i.kind == "unconnected_unresolved")
+    assert "feeder link" not in unresolved.text.split(": ", 1)[1].split(";")[0]
+    drawn = next(r for r in marked.rows if r.terminal is not None and r.label == lead.subject)
+    assert drawn.notes[0].startswith("LINK END")

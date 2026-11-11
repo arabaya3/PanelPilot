@@ -422,6 +422,7 @@ OPEN_KINDS = (
     "unconnected_not_required",
     "unconnected_strip_point",
     "strip_point_link_end",
+    "terminal_link_end",
     "wire_record_missing",
     "wire_attribute_unset",
     "wire_attribute_assumed",
@@ -771,19 +772,52 @@ def _notes(
 
     ``link_end`` is what board-to-board links the terminal ends
     (``links.link_end_notes``): a point side in no net that ends one has no
-    board-local wire but is not unconnected, and says which link it ends; a
-    component terminal keeps its requiredness note and names the link too.
+    board-local wire but is not unconnected, and says which link it ends
+    (kind ``strip_point_link_end``). A component terminal in no net that ends
+    one leads with the same link note (kind ``terminal_link_end``) and keeps
+    any unmet board-local requirement as a separate note and open item
+    (``unconnected_required`` / ``unconnected_unresolved``): the link does
+    not satisfy it.
     """
     notes: list[tuple[str, str]] = []
     if row.net_id is None:
-        if row.owner_kind != "component" and link_end is not None:
+        if link_end is not None:
+            # The link participation leads; the link is no board-local wire.
             notes.append(
                 (
-                    "strip_point_link_end",
+                    (
+                        "strip_point_link_end"
+                        if row.owner_kind != "component"
+                        else "terminal_link_end"
+                    ),
                     f"{LINK_END_TAG}: no board-local wire (in no net); {link_end}",
                 )
             )
-        elif row.owner_kind != "component":
+            if row.owner_kind != "component":
+                return notes
+            # A component terminal's board-local requirement is its own
+            # clause: the feeder link does not meet it, so a required or
+            # unresolved terminal stays an open item of its own.
+            if row.required is True:
+                notes.append(
+                    (
+                        "unconnected_required",
+                        "UNCONNECTED: required (documented); the board-local requirement "
+                        "is not met: the feeder link is not a board-local wire",
+                    )
+                )
+            elif row.required is None:
+                notes.append(
+                    (
+                        "unconnected_unresolved",
+                        "UNCONNECTED: requiredness unresolved; whether a board-local wire "
+                        "is needed is not known: the feeder link is not a board-local wire",
+                    )
+                )
+            else:
+                notes.append(("", "board-local connection not required (documented)"))
+            return notes
+        if row.owner_kind != "component":
             notes.append(("unconnected_strip_point", "UNCONNECTED: this point side is in no net"))
         elif row.required is True:
             notes.append(("unconnected_required", "UNCONNECTED: required (documented)"))
@@ -791,9 +825,6 @@ def _notes(
             notes.append(("unconnected_unresolved", "UNCONNECTED: requiredness unresolved"))
         else:
             notes.append(("unconnected_not_required", "unconnected: not required (documented)"))
-        if row.owner_kind == "component" and link_end is not None:
-            kind, text = notes[-1]
-            notes[-1] = (kind, f"{text}; no board-local wire; {link_end}")
         return notes
     net_groups = groups.get(row.net_id, [])
     if len(net_groups) > 1:
