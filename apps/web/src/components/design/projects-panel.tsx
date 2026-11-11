@@ -552,7 +552,8 @@ export function ProjectsPanel({
           </div>
         ) : (
           <>
-            {!trial && (
+            {/* Said only to someone who may approve: it names who the approval records. */}
+            {!trial && !notPermitted && (
               <p className="text-sm text-text-muted" data-testid="approving-as">
                 {/* The display name, else the account's email (this page only), as elsewhere. */}
                 {opened.approvingAs || accountEmail

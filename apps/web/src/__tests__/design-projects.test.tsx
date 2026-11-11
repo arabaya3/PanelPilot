@@ -405,6 +405,8 @@ describe('the projects panel', () => {
     );
     fireEvent.click(button);
     expect(approve).not.toHaveBeenCalled();
+    // Nobody is told they are approving when they cannot.
+    expect(screen.queryByTestId('approving-as')).toBeNull();
   });
 });
 
