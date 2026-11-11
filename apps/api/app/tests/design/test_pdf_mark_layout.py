@@ -149,3 +149,96 @@ def test_a_worst_case_mark_is_printed_whole() -> None:
         text = page_text(exported[name.value])
         assert "renderer 2026.11.10.v3-1" in text, name
         assert marking.REVIEW_APPROVED_LABEL in text, name
+
+
+def pathological_identity() -> tuple[str, str]:
+    """An identity far longer than any margin holds: three max-length worst cases, en/ar/he."""
+    parts = [long_identity(language)[0] for language in ("en", "ar", "he")]
+    return "; ".join(parts * 2), _LONG["en"][0]
+
+
+#: How close (pt) to the frame's edge a mark glyph may come: the drawing PDF's
+#: frame (``app.design.sheet``) and the connection drawing's title block and frame.
+_MM = 72 / 25.4
+
+
+def _frame_problems(content: bytes, top_limit: float, bottom_limit: float) -> list[str]:
+    """Band glyphs below ``top_limit`` pt from the top, or above ``bottom_limit`` from the bottom.
+
+    The mark's margins lie above the frame and below it; a glyph of the mark
+    crossing into the frame (or off the page, which ``problems`` checks) is
+    a mark that no longer fits its margin.
+    """
+    found: list[str] = []
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        for number, page in enumerate(pdf.pages, start=1):
+            height = float(page.height)
+            for c in page.chars:
+                if not c["text"].strip():
+                    continue
+                if c["top"] < 0 or c["bottom"] > height:
+                    found.append(f"page {number}: {c['text']!r} off the page")
+                elif c["top"] < top_limit < c["bottom"]:
+                    found.append(f"page {number}: {c['text']!r} crosses the top frame edge")
+                elif c["top"] < height - bottom_limit < c["bottom"]:
+                    found.append(f"page {number}: {c['text']!r} crosses the bottom frame edge")
+    return found
+
+
+def test_a_pathological_mark_stays_in_its_margins_and_is_printed_whole_on_the_sheets() -> None:
+    """The drawing PDF and the connection drawing hold any identity inside the sheet.
+
+    Margins that cannot hold the mark keep what they can and say where it is
+    printed in full; that sheet prints every character inside the frame.
+    """
+    identity, project = pathological_identity()
+    exported = reference.v3_exports("entered", identity=identity, project=project)
+    drawing = exported[ExportFormat.PDF.value]
+    connection = exported[ExportFormat.CONNECTION_DRAWING_PDF.value]
+    failures = {
+        name.value: found[:5]
+        for name in (ExportFormat.PDF, ExportFormat.CONNECTION_DRAWING_PDF)
+        if (found := problems(exported[name.value]))
+    }
+    assert not failures, failures
+    # The drawing sheet's frame is 10 mm in from the top and bottom edges.
+    assert not _frame_problems(drawing, 10 * _MM, 10 * _MM)
+    # The connection drawing's frame starts 20 mm from the top; its title block 15 mm up.
+    assert not _frame_problems(connection, 20 * _MM, 15 * _MM)
+    for content in (drawing, connection):
+        text = page_text(content)
+        assert "continued in full on sheet" in text
+        assert marking.FULL_MARK_TITLE in text
+
+
+def test_the_full_mark_sheet_prints_every_character_inside_the_frame() -> None:
+    """Text order of mixed-direction lines cannot be read back from a PDF; the sheet can."""
+    from app.design import sheet as frame
+    from app.design.sheet import Text
+
+    identity, _project = pathological_identity()
+    mark = marking.ExportMark(label=marking.REVIEW_APPROVED_LABEL, identity=identity)
+    sheets = marking.mark_sheets([frame.Sheet(number=1, title="Drawing")], mark)
+    assert marking.findings_sheet_count(mark) == len(sheets) - 1
+    full = [s for s in sheets if s.title == marking.FULL_MARK_TITLE]
+    assert len(full) == 1
+    assert full[0].number == 2
+    # Only what is drawn inside the frame (the sheet's own margins carry the cut mark).
+    texts = [
+        i
+        for i in full[0].items
+        if isinstance(i, Text) and frame.FRAME_TOP < i.y < frame.FRAME_BOTTOM
+    ]
+    printed = "".join("".join(t.text.split()) for t in texts)
+    for whole in (mark.label, identity, mark.banner):
+        assert "".join(whole.split()) in printed
+    for t in texts:
+        width = marking._sheet_width(t.text, t.size, t.bold)
+        assert t.x >= frame.FRAME_LEFT
+        assert t.x + width <= frame.FRAME_RIGHT
+    # The margins of the drawing sheet keep three lines each and point to sheet 2.
+    marked = [i for i in sheets[0].items if isinstance(i, Text)]
+    pointers = [t for t in marked if t.text.endswith(f"sheet 2 ({marking.FULL_MARK_TITLE})")]
+    assert len(pointers) == 2  # the identity and the banner
+    for t in marked:
+        assert 0 < t.y < frame.SHEET_HEIGHT

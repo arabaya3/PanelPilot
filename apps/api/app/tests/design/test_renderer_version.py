@@ -624,8 +624,8 @@ def test_v3_has_its_own_renderer_version_and_v1_v2_are_untouched() -> None:
     """v3 has its own entry, distinct from v1 and v2 (pinned at their current versions)."""
     from app.design.model import versions
 
-    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.11.2"
-    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.11.v2-26"
+    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.11.3"
+    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.11.v2-27"
     assert design.renderer_version(versions.V3) not in (
         design.RENDERER_VERSIONS[versions.V1],
         design.RENDERER_VERSIONS[versions.V2],
