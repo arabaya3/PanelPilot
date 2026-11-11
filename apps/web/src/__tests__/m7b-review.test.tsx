@@ -3,12 +3,11 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
-import { ConfigurationPanel } from '@/components/design/configuration-panel';
+import { ConfigurationPanel, configurationPayload } from '@/components/design/configuration-panel';
 import type * as DesignModule from '@/lib/design';
 import type {
   listProjects,
   openProject,
-  ProjectDesignRequest,
   reviseProject,
   SavedProject,
   SavedRequest,
@@ -173,8 +172,6 @@ describe('saving from an older revision', () => {
   });
 });
 
-const REQUEST = { info: { name: 'Tower' }, boards: [] } as unknown as ProjectDesignRequest;
-
 function Harness() {
   const [value, setValue] = useState<Record<string, unknown>>({});
   const [drop, setDrop] = useState(false);
@@ -183,8 +180,6 @@ function Harness() {
       token="t"
       projectId="p1"
       latestRevision={3}
-      request={REQUEST}
-      note=""
       value={value}
       onChange={setValue}
       status="not_recoverable"
@@ -192,35 +187,24 @@ function Harness() {
       onDropUnrecoverable={setDrop}
       boards={['MDB']}
       model={null}
-      onSaved={vi.fn()}
       onUnauthorized={vi.fn()}
       validateImpl={api.validate}
-      reviseImpl={api.revise}
     />
   );
 }
 
 describe('a configuration that cannot be carried', () => {
-  it('can be removed explicitly instead of every save being refused', async () => {
-    // With status not_recoverable and nothing re-entered, the panel sends
-    // neither a configuration nor its removal, so the server must refuse
-    // (configuration_not_recoverable) — every save, both Save buttons, with
-    // no way to choose the explicit removal the refusal itself offers.
-    api.revise.mockResolvedValue({
-      kind: 'refused',
-      detail: 'x',
-      code: 'configuration_not_recoverable',
-      params: { revision: '3' },
-    });
+  it('can be removed explicitly instead of every save being refused', () => {
+    // The removal is an explicit choice the notice offers, never sent
+    // silently; the project's Save then sends it (configurationPayload).
     renderApp(<Harness />);
-    // Integration: the removal is an explicit choice the notice offers, never
-    // sent silently; without it the save is refused as before.
+    expect(configurationPayload({}, 'not_recoverable')).toEqual({});
     fireEvent.click(screen.getByTestId('configuration-drop-unrecoverable'));
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await waitFor(() => {
-      expect(api.revise).toHaveBeenCalled();
+    expect(screen.getByTestId<HTMLInputElement>('configuration-drop-unrecoverable').checked).toBe(
+      true,
+    );
+    expect(configurationPayload({}, 'not_recoverable', true)).toEqual({
+      configurationRemoved: true,
     });
-    const sent = api.revise.mock.calls[0]?.[0];
-    expect(sent?.configurationRemoved === true || sent?.configuration !== undefined).toBe(true);
   });
 });

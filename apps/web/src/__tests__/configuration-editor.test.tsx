@@ -10,15 +10,20 @@ import {
   bindingPoints,
   bindingsOf,
   conflictTarget,
+  addStripPoint,
+  removeStripPoint,
   setMarking,
+  stripPoints,
   templateChoices,
+  templateLabel,
+  updateStripPoint,
 } from '@/components/design/configuration-model';
 import { terminalOptions } from '@/components/design/feeder-link-model';
 import type * as DesignModule from '@/lib/design';
 import type {
   listProjects,
   openProject,
-  ProjectDesignRequest,
+  Refusal,
   reviseProject,
   SavedProject,
   SavedRequest,
@@ -153,31 +158,44 @@ const REGISTRY_MODEL = {
   findings: [],
 } as unknown as V2ModelSummary;
 
-const REQUEST = { info: { name: 'Tower' }, boards: [] } as unknown as ProjectDesignRequest;
-
 type PanelProps = Parameters<typeof ConfigurationPanel>[0];
 
-function Harness(props: Partial<PanelProps> & { initial?: Record<string, unknown> }) {
-  const { initial, ...rest } = props;
+/**
+ * The panel with the page's part played: it keeps the configuration, and the
+ * project's Save (here a stand-in button) answers with `refuseWith`.
+ */
+function Harness(
+  props: Partial<PanelProps> & { initial?: Record<string, unknown>; refuseWith?: Refusal },
+) {
+  const { initial, refuseWith, ...rest } = props;
   const [value, setValue] = useState<Record<string, unknown>>(initial ?? {});
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
   return (
-    <ConfigurationPanel
-      token="t"
-      projectId="p1"
-      latestRevision={1}
-      request={REQUEST}
-      note=""
-      value={value}
-      onChange={setValue}
-      status="none"
-      boards={['MDB', 'DB1']}
-      model={REGISTRY_MODEL}
-      onSaved={vi.fn()}
-      onUnauthorized={vi.fn()}
-      validateImpl={api.validate}
-      reviseImpl={api.revise}
-      {...rest}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="project-save-stand-in"
+        onClick={() => {
+          setRefusal(refuseWith ?? null);
+        }}
+      >
+        project save
+      </button>
+      <ConfigurationPanel
+        token="t"
+        projectId="p1"
+        latestRevision={1}
+        externalRefusal={refusal}
+        value={value}
+        onChange={setValue}
+        status="none"
+        boards={['MDB', 'DB1']}
+        model={REGISTRY_MODEL}
+        onUnauthorized={vi.fn()}
+        validateImpl={api.validate}
+        {...rest}
+      />
+    </>
   );
 }
 
@@ -325,67 +343,47 @@ describe('the guided editor', () => {
 
 /* -------------------------------------------------------------- one Save --- */
 
-const SAVED_PROJECT = {
-  id: 'p1',
-  revision: 2,
-  revisions: [],
-  request: {},
-} as unknown as SavedProject;
-
 describe('one Save', () => {
-  it('is the only save, and sends the form request plus the configuration as edited', async () => {
-    api.revise.mockResolvedValue({ kind: 'saved', project: SAVED_PROJECT });
-    renderApp(<Harness initial={STORED} status="stored" note="n" />);
-    expect(screen.getAllByRole('button', { name: c.save })).toHaveLength(1);
+  it('is the project’s: the panel has no Save of its own and points to it', () => {
+    renderApp(<Harness initial={STORED} saveAction={<a href="#save">go</a>} />);
+    expect(screen.queryByTestId('configuration-save')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull();
+    const where = screen.getByTestId('configuration-save-where');
+    expect(where.textContent).toContain(c.saveWhere);
+    expect(within(where).getByText('go')).toBeTruthy();
     // Checking without saving is only an advanced option.
     expect(
       screen
         .getByTestId('configuration-advanced')
         .contains(screen.getByTestId('configuration-validate')),
     ).toBe(true);
-    fireEvent.change(nth(screen.getAllByTestId('point-marking'), 1), {
-      target: { value: 'N1' },
-    });
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await screen.findByTestId('configuration-saved');
-    const sent = nth(api.revise.mock.calls, 0)[0];
-    expect(sent.request).toBe(REQUEST);
-    expect(sent.note).toBe('n');
-    expect(nth((sent.configuration as typeof STORED).bindings, 0).markings).toEqual({
-      l: 'L1',
-      n: 'N1',
-    });
-  });
-
-  it('asks to remove a stored configuration once the editor is emptied', async () => {
-    api.revise.mockResolvedValue({ kind: 'saved', project: SAVED_PROJECT });
-    renderApp(<Harness initial={{ components: STORED.components }} status="stored" model={null} />);
-    fireEvent.click(screen.getByTestId('component-remove'));
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await screen.findByTestId('configuration-saved');
-    expect(nth(api.revise.mock.calls, 0)[0]).toMatchObject({
-      configurationRemoved: true,
-    });
   });
 });
 
 /* ----------------------------------------------- refusals keep the inputs --- */
 
-describe('a refused or failed save', () => {
-  it('names the conflicting reference and removes the binding as recovery', async () => {
-    api.revise.mockResolvedValue({
-      kind: 'refused',
-      detail: 'English detail',
-      code: 'configuration_conflict',
-      params: { ref: 'c1', kind: 'circuit', binding: 'b1', reason: 'circuit_missing' },
-    });
-    renderApp(<Harness initial={STORED} status="stored" />);
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    const error = await screen.findByTestId('configuration-error');
+function refused(code: string, params: Record<string, string>): Refusal {
+  return { kind: 'refused', detail: 'English detail', code, params };
+}
+
+describe('a refused save', () => {
+  it('names the conflicting reference and removes the binding as recovery', () => {
+    renderApp(
+      <Harness
+        initial={STORED}
+        refuseWith={refused('configuration_conflict', {
+          ref: 'c1',
+          kind: 'circuit',
+          binding: 'b1',
+          reason: 'circuit_missing',
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('project-save-stand-in'));
+    const error = screen.getByTestId('configuration-error');
     expect(error.textContent).toContain('binding b1 refers to circuit c1');
     expect(error.textContent).toContain('circuit_missing');
     expect(error.textContent).not.toContain('English detail');
-    // Everything entered is still there, and the binding at fault is marked.
     expect(screen.getByTestId('binding-entry').getAttribute('data-conflict')).toBe('true');
     expect(nth(screen.getAllByTestId<HTMLInputElement>('point-marking'), 0).value).toBe('L1');
     fireEvent.click(screen.getByTestId('conflict-edit'));
@@ -395,40 +393,120 @@ describe('a refused or failed save', () => {
     expect(screen.getByTestId('component-entry')).toBeTruthy();
   });
 
-  it('points a link conflict to the board’s feeder link', async () => {
-    api.revise.mockResolvedValue({
-      kind: 'refused',
-      detail: 'x',
-      code: 'configuration_conflict',
-      params: { ref: 'pt-9', kind: 'terminal', link: 'DB1', reason: 'terminal_missing' },
-    });
-    renderApp(<Harness initial={STORED} />);
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    expect((await screen.findByTestId('conflict-link')).textContent).toBe(c.conflict.link);
+  it('says a refusal naming one entry like a conflict: its board, marked, with Edit and Remove', () => {
+    renderApp(
+      <Harness
+        initial={STORED}
+        refuseWith={refused('configuration_refused', {
+          ref: 'global/missing/v1',
+          kind: 'template',
+          strip: 'X1',
+          refusal: 'unknown_reference',
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('project-save-stand-in'));
+    const error = screen.getByTestId('configuration-error');
+    expect(error.textContent).toContain('terminal strip X1 on board MDB');
+    expect(error.textContent).toContain('unknown_reference');
+    expect(error.textContent).toContain('global/missing/v1');
+    expect(error.textContent).not.toContain('cannot be composed as sent');
+    expect(screen.getByTestId('strip-entry').getAttribute('data-conflict')).toBe('true');
+    fireEvent.click(screen.getByTestId('conflict-edit'));
+    expect(document.activeElement).toBe(screen.getByTestId('strip-entry'));
+    fireEvent.click(screen.getByTestId('conflict-remove'));
+    expect(screen.queryByTestId('strip-entry')).toBeNull();
+  });
+
+  it('points a link conflict to the board’s feeder link', () => {
+    renderApp(
+      <Harness
+        initial={STORED}
+        refuseWith={refused('configuration_conflict', {
+          ref: 'pt-9',
+          kind: 'terminal',
+          link: 'DB1',
+          reason: 'terminal_missing',
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('project-save-stand-in'));
+    expect(screen.getByTestId('conflict-link').textContent).toBe(c.conflict.link);
     expect(screen.queryByTestId('conflict-remove')).toBeNull();
   });
 
-  it('keeps every input after a save that did not complete, or a not-recoverable refusal', async () => {
-    api.revise.mockResolvedValueOnce({ kind: 'failed' });
-    api.revise.mockResolvedValueOnce({
-      kind: 'refused',
-      detail: 'x',
-      code: 'configuration_not_recoverable',
-      params: { revision: '3' },
-    });
-    const onSaved = vi.fn();
-    renderApp(<Harness initial={STORED} onSaved={onSaved} />);
+  it('keeps every input after a not-recoverable refusal', () => {
+    renderApp(
+      <Harness
+        initial={STORED}
+        refuseWith={refused('configuration_not_recoverable', { revision: '3' })}
+      />,
+    );
     fireEvent.change(screen.getByTestId('component-designation'), { target: { value: 'K7' } });
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    expect((await screen.findByTestId('configuration-error')).textContent).toBe(c.failed);
-    expect(screen.getByTestId<HTMLInputElement>('component-designation').value).toBe('K7');
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await waitFor(() => {
-      expect(screen.getByTestId('configuration-error').textContent).toContain('revision 3');
-    });
+    fireEvent.click(screen.getByTestId('project-save-stand-in'));
+    expect(screen.getByTestId('configuration-error').textContent).toContain('revision 3');
     expect(screen.getByTestId<HTMLInputElement>('component-designation').value).toBe('K7');
     expect(nth(screen.getAllByTestId<HTMLInputElement>('point-marking'), 0).value).toBe('L1');
-    expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------- strip points --- */
+
+describe('strip points', () => {
+  it('adds, edits and removes points with only the user’s markings and a stable id', () => {
+    renderApp(<Harness initial={STORED} />);
+    const strip = within(screen.getByTestId('strip-entry'));
+    const add = strip.getByTestId<HTMLButtonElement>('strip-point-add');
+    // No marking is invented: a point needs one typed.
+    expect(add.disabled).toBe(true);
+    fireEvent.change(strip.getByTestId('strip-point-new-marking'), { target: { value: 'L1' } });
+    fireEvent.change(strip.getByTestId('strip-point-new-level'), { target: { value: '2' } });
+    fireEvent.click(add);
+    fireEvent.change(strip.getByTestId('strip-point-new-marking'), { target: { value: 'N' } });
+    fireEvent.keyDown(strip.getByTestId('strip-point-new-marking'), { key: 'Enter' });
+    let markings = strip.getAllByTestId<HTMLInputElement>('strip-point-marking');
+    expect(markings.map((input) => input.value)).toEqual(['L1', 'N']);
+    expect(strip.getAllByTestId<HTMLInputElement>('strip-point-level').map((i) => i.value)).toEqual(
+      ['2', ''],
+    );
+    expect(strip.getByLabelText(c.editor.pointN.replace('{n}', '2'))).toBe(markings[1]);
+    fireEvent.change(nth(markings, 1), { target: { value: 'N1' } });
+    fireEvent.click(nth(strip.getAllByTestId('strip-point-remove'), 0));
+    markings = strip.getAllByTestId<HTMLInputElement>('strip-point-marking');
+    expect(markings.map((input) => input.value)).toEqual(['N1']);
+  });
+
+  it('keeps point ids stable and leaves a blank level out', () => {
+    let doc = addStripPoint(STORED, 'X1', { marking: 'A', level: null });
+    doc = addStripPoint(doc, 'X1', { marking: 'B', level: 1 });
+    doc = removeStripPoint(doc, 'X1', 'p1');
+    doc = addStripPoint(doc, 'X1', { marking: 'C', level: null });
+    const strip = nth(doc.strips as { points?: unknown }[], 0);
+    expect(stripPoints(strip)).toEqual([
+      { id: 'p2', marking: 'B', level: 1 },
+      { id: 'p3', marking: 'C' },
+    ]);
+    doc = updateStripPoint(doc, 'X1', 'p2', { level: null, marking: 'B2' });
+    expect(stripPoints(nth(doc.strips as { points?: unknown }[], 0))[0]).toEqual({
+      id: 'p2',
+      marking: 'B2',
+    });
+  });
+});
+
+/* ------------------------------------------------------- template names --- */
+
+describe('template names', () => {
+  it('show the definition’s function and id, with the raw ref as secondary text', () => {
+    expect(templateLabel('global/synth-mcb-1p/v1', 'circuit_breaker')).toBe(
+      'circuit breaker · synth-mcb-1p (v1)',
+    );
+    expect(templateLabel('global/synth-bar/v1', null)).toBe('synth-bar (v1)');
+    renderApp(<Harness initial={STORED} />);
+    const entry = within(screen.getByTestId('component-entry'));
+    expect(entry.getByTestId('entry-template-label').textContent).toBe(
+      'relay · synth-relay-with-a-rather-long-reference-name (v1)',
+    );
   });
 });
 

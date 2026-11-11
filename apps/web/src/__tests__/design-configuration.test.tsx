@@ -12,7 +12,6 @@ import type {
   exportRevision,
   listProjects,
   openProject,
-  ProjectDesignRequest,
   reviseProject,
   SavedProject,
   SavedRequest,
@@ -218,8 +217,6 @@ const REVIEW: ConfigurationReview = {
   model: MODEL,
 };
 
-const REQUEST = { info: { name: 'Tower' }, boards: [] } as unknown as ProjectDesignRequest;
-
 /** A configuration the editor holds after an import (synthetic). */
 const CONFIG = {
   templates: [],
@@ -240,17 +237,13 @@ function PanelHarness(props: Partial<PanelProps> & { initial?: Record<string, un
       token="t"
       projectId="p1"
       latestRevision={1}
-      request={REQUEST}
-      note=""
       value={value}
       onChange={setValue}
       status="none"
       boards={['DB1']}
       model={null}
-      onSaved={vi.fn()}
       onUnauthorized={vi.fn()}
       validateImpl={api.validate}
-      reviseImpl={api.revise}
       {...rest}
     />
   );
@@ -260,9 +253,7 @@ function renderPanel(
   props: Partial<PanelProps> & { initial?: Record<string, unknown> } = {},
   locale?: 'en' | 'ar' | 'he',
 ) {
-  const onSaved = vi.fn();
-  renderApp(<PanelHarness onSaved={onSaved} {...props} />, locale ? { locale } : {});
-  return { onSaved };
+  renderApp(<PanelHarness {...props} />, locale ? { locale } : {});
 }
 
 /** Import a configuration through the advanced JSON option. */
@@ -295,21 +286,6 @@ describe('keyboard focus after validating, saving and opening', () => {
         .getByTestId('configuration-result')
         .contains(screen.getByTestId('configuration-review')),
     ).toBe(true);
-  });
-
-  it('moves to the outcome once saved, or refused', async () => {
-    api.revise.mockResolvedValue({
-      kind: 'saved',
-      project: { id: 'p1', revision: 2, revisions: [], request: {} } as unknown as SavedProject,
-    });
-    renderPanel();
-    enter();
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await screen.findByTestId('configuration-saved');
-    await waitFor(() => {
-      expect(document.activeElement).toBe(screen.getByTestId('configuration-result'));
-    });
-    expect(document.activeElement?.textContent).toContain('2');
   });
 });
 
@@ -463,45 +439,6 @@ describe('validating a configuration', () => {
 });
 
 describe('saving a configured revision', () => {
-  it('sends the configuration with the request and note', async () => {
-    const project = {
-      id: 'p1',
-      revision: 2,
-      revisions: [],
-      request: {},
-    } as unknown as SavedProject;
-    api.revise.mockResolvedValue({ kind: 'saved', project });
-    const { onSaved } = renderPanel({ note: 'configured' });
-    enter();
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await screen.findByTestId('configuration-saved');
-    expect(api.revise).toHaveBeenCalledWith({
-      token: 't',
-      id: 'p1',
-      request: REQUEST,
-      note: 'configured',
-      configuration: CONFIG,
-    });
-    expect(onSaved).toHaveBeenCalledWith(project);
-  });
-
-  it('says configured revisions are disabled here, and keeps validation available', async () => {
-    api.revise.mockResolvedValue({
-      kind: 'refused',
-      detail: 'v1',
-      code: 'configuration_requires_v2',
-      params: { written_schema: 'pp-design/1' },
-    });
-    renderPanel();
-    enter();
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    const notice = await screen.findByTestId('configuration-disabled');
-    expect(notice.textContent).toContain('Configured revisions are disabled in this environment');
-    expect(notice.textContent).toContain('pp-design/1');
-    expect(screen.queryByTestId('configuration-error')).toBeNull();
-    expect(screen.getByTestId<HTMLButtonElement>('configuration-validate').disabled).toBe(false);
-  });
-
   it('is held once validation says configured revisions are disabled here', async () => {
     api.validate.mockResolvedValue({
       kind: 'reviewed',
@@ -509,32 +446,13 @@ describe('saving a configured revision', () => {
     });
     renderPanel();
     enter();
-    const save = screen.getByTestId<HTMLButtonElement>('configuration-save');
-    expect(save.disabled).toBe(false);
     fireEvent.click(screen.getByTestId('configuration-validate'));
     await screen.findByTestId('configuration-review');
     // The reason stays in view, and the save it explains cannot be sent.
     expect(screen.getByTestId('configuration-disabled').textContent).toContain(
       'Configured revisions are disabled in this environment',
     );
-    expect(save.disabled).toBe(true);
-    fireEvent.click(save);
-    expect(api.revise).not.toHaveBeenCalled();
     expect(screen.getByTestId<HTMLButtonElement>('configuration-validate').disabled).toBe(false);
-  });
-
-  it('is held after a save refused because configured revisions are disabled', async () => {
-    api.revise.mockResolvedValue({
-      kind: 'refused',
-      detail: 'v1',
-      code: 'configuration_requires_v2',
-      params: { written_schema: 'pp-design/1' },
-    });
-    renderPanel();
-    enter();
-    fireEvent.click(screen.getByTestId('configuration-save'));
-    await screen.findByTestId('configuration-disabled');
-    expect(screen.getByTestId<HTMLButtonElement>('configuration-save').disabled).toBe(true);
   });
 
   it.each([
