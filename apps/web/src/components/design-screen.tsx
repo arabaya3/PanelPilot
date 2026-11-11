@@ -24,7 +24,16 @@ import { TrialLimitModal } from '@/components/chat/trial-limit-modal';
 import { Field } from '@/components/cable-sizing-panel';
 import { EnglishExportsNote } from '@/components/design/english-exports-note';
 import { CompanySettingsPanel } from '@/components/design/company-settings';
-import { ConfigurationPanel } from '@/components/design/configuration-panel';
+import {
+  ConfigurationPanel,
+  configurationPayload,
+  isConfigurationRefusal,
+} from '@/components/design/configuration-panel';
+import {
+  emptyConfiguration,
+  normalized,
+  type Configuration,
+} from '@/components/design/configuration-model';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
@@ -165,6 +174,7 @@ import {
   type DesignOutcome,
   type ExportFormat,
   type ExportPurpose,
+  type ConfigurationStatus,
   type Refusal,
   type TooLong,
   type V2ModelSummary,
@@ -558,6 +568,12 @@ function DesignWorkspace({
   const [opened, setOpened] = useState<OpenedProject | null>(null);
   /** The opened revision's `pp-design/2` model, or null for a v1 revision. */
   const [openedModel, setOpenedModel] = useState<V2ModelSummary | null>(null);
+  // M7b: the opened revision's configuration as the guided editor edits it,
+  // what was stored (to tell an edit), and whether it can be carried.
+  const [configDoc, setConfigDoc] = useState<Configuration>(emptyConfiguration);
+  const [configBaseline, setConfigBaseline] = useState(() => JSON.stringify(emptyConfiguration()));
+  const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
+  const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
   /**
    * The schema the opened revision's stored design names (from its marker,
    * not a read of it): null when unknown, undefined from an older server.
@@ -614,7 +630,8 @@ function DesignWorkspace({
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
-  const dirty = snapshot !== clean;
+  const configEdited = opened !== null && JSON.stringify(configDoc) !== configBaseline;
+  const dirty = snapshot !== clean || configEdited;
   // A layout effect, so a market detected straight after a keystroke cannot
   // read the state from before it.
   useLayoutEffect(() => {
@@ -1070,6 +1087,13 @@ function DesignWorkspace({
     setSavedRequirements(requirements);
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
+    // Reopening a revision (or a save answering with the one stored) loads
+    // its own stored configuration into the editor.
+    const stored = normalized(project.configuration ?? emptyConfiguration());
+    setConfigDoc(stored);
+    setConfigBaseline(JSON.stringify(stored));
+    setConfigStatus(project.configuration_status ?? (project.configuration ? 'stored' : 'none'));
+    setConfigRefusal(null);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
     setOpenedLinks(storedLinksOf(project));
@@ -1819,6 +1843,11 @@ function DesignWorkspace({
                     ? {
                         name: info.name.trim(),
                         request: toRequest(info, boards, profile),
+                        // The project's Save stores the configuration as
+                        // edited too; unedited, the server carries the stored one.
+                        ...(configEdited
+                          ? { configuration: configurationPayload(configDoc, configStatus) }
+                          : {}),
                         requirementsInput: aiOpen
                           ? aiRequirementsInput(
                               requirementsInputOf(boards, controlNeeds),
@@ -1845,6 +1874,7 @@ function DesignWorkspace({
                 onNoteChange={setRevisionNote}
                 onRefused={forOwner((refusal: Refusal) => {
                   setTooLong(refusal.tooLong ?? []);
+                  setConfigRefusal(isConfigurationRefusal(refusal) ? refusal : null);
                   setLinkRefusal(
                     refusal.code?.startsWith('link_')
                       ? { board: refusal.params?.fed_board ?? null, text: say(refusal) }
@@ -2472,11 +2502,18 @@ function DesignWorkspace({
                     complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
                   }
                   note={revisionNote}
-                  dirty={designDiffers(snapshot, clean)}
+                  value={configDoc}
+                  onChange={setConfigDoc}
+                  status={configStatus}
+                  boards={boards.map((board) => board.name.trim()).filter((name) => name !== '')}
+                  model={openedModel}
+                  externalRefusal={configRefusal}
                   onSaved={forOwner((project: SavedProject) => {
-                    // A configured save stores the form as it stands (held
-                    // while the design differs; link edits go with it), so it rebaselines a design made from
-                    // it exactly as a plain save does.
+                    // One Save stores the form as it stands with the
+                    // configuration, so it rebaselines the form and a design
+                    // made from it exactly as the project's Save does.
+                    setClean(snapshot);
+                    setLastSave('saved');
                     rebaseOnSave.current = true;
                     onOpened(project, false);
                   })}

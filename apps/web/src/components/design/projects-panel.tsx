@@ -152,6 +152,14 @@ export function ProjectsPanel({
     request: ProjectDesignRequest;
     /** What the guided intake records with the revision (control needs, intake). */
     requirementsInput?: RequirementsInput | null;
+    /**
+     * M7b: the configuration as edited (or its removal) when it differs from
+     * the stored one; left out, the server carries the stored configuration.
+     */
+    configuration?: {
+      configuration?: Record<string, unknown>;
+      configurationRemoved?: true;
+    };
   } | null;
   opened: OpenedProject | null;
   /** `fill` is true when the project was opened, so the form takes it. */
@@ -299,6 +307,7 @@ export function ProjectsPanel({
           request: current.request,
           note,
           ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
+          ...(current.configuration ?? {}),
         })
       : await save({
           token,

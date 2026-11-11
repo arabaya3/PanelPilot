@@ -3,6 +3,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
+import { ConfigurationEditor, entryElementId } from '@/components/design/configuration-editor';
+import {
+  conflictTarget,
+  isEmptyConfiguration,
+  normalized,
+  removeEntry,
+  sectionOf,
+  type Configuration,
+  type ConflictTarget,
+} from '@/components/design/configuration-model';
 import {
   GroupedFindingsOfDesign,
   ModelReview,
@@ -15,9 +25,11 @@ import {
   reviseProject,
   validateConfiguration,
   type ConfigurationReview,
+  type ConfigurationStatus,
   type ProjectDesignRequest,
   type Refusal,
   type SavedProject,
+  type V2ModelSummary,
 } from '@/lib/design';
 
 /** The refusals a configuration is answered with that have their own sentence. */
@@ -27,14 +39,28 @@ const CONFIGURATION_REFUSALS = [
   'configuration_ref_reserved',
   'configuration_refused',
   'configuration_too_large',
+  'configuration_not_recoverable',
 ] as const;
+
+/** Whether a refusal is about the configuration (shown by this panel). */
+export function isConfigurationRefusal(refusal: Refusal): boolean {
+  const code = refusal.code ?? '';
+  return code === 'configuration_conflict' || code === 'configuration_not_recoverable';
+}
+
+type ErrorOutcome = {
+  kind: 'error';
+  message: string;
+  disabled: string | null;
+  conflict: ConflictTarget | null;
+};
 
 type Outcome =
   | { kind: 'idle' }
   | { kind: 'working' }
   | { kind: 'reviewed'; review: ConfigurationReview; text: string }
   | { kind: 'saved'; revision: number }
-  | { kind: 'error'; message: string; disabled: string | null };
+  | ErrorOutcome;
 
 /** The configuration a text holds: an object, or why it is not one. */
 export function parseConfiguration(text: string): Record<string, unknown> | 'empty' | 'invalid' {
@@ -50,9 +76,23 @@ export function parseConfiguration(text: string): Record<string, unknown> | 'emp
 }
 
 /**
- * Load a configuration, try it against the saved project's latest revision
- * (nothing is saved), review what it composes to, and save it as a configured
- * revision where this deployment can store one.
+ * What one Save sends with the form's request (M7b §3): the configuration as
+ * edited; its explicit removal when the editor was emptied of a stored one;
+ * or nothing, so the server carries none, when there never was one.
+ */
+export function configurationPayload(
+  value: Configuration,
+  status: ConfigurationStatus,
+): { configuration?: Configuration; configurationRemoved?: true } {
+  if (!isEmptyConfiguration(value)) return { configuration: value };
+  return status === 'stored' ? { configurationRemoved: true } : {};
+}
+
+/**
+ * The guided configuration of the opened project: edited in a form (JSON
+ * import is an advanced option) and stored with the form's request by one
+ * Save. A refused save keeps everything entered; a conflict names the
+ * reference and offers to edit or remove what holds it.
  */
 export function ConfigurationPanel({
   token,
@@ -60,7 +100,12 @@ export function ConfigurationPanel({
   latestRevision,
   request,
   note,
-  dirty,
+  value,
+  onChange,
+  status,
+  boards,
+  model,
+  externalRefusal = null,
   onSaved,
   onUnauthorized,
   validateImpl = validateConfiguration,
@@ -72,8 +117,16 @@ export function ConfigurationPanel({
   /** What a save sends as the request: the form as it stands, or null while incomplete. */
   request: ProjectDesignRequest | null;
   note: string;
-  /** The form differs from the saved revision the dry run designs. */
-  dirty: boolean;
+  /** The configuration as edited (the page keeps it, so it outlives this panel). */
+  value: Configuration;
+  onChange: (next: Configuration) => void;
+  /** The opened revision's `configuration_status`. */
+  status: ConfigurationStatus;
+  /** The form's board names. */
+  boards: string[];
+  model: V2ModelSummary | null;
+  /** A configuration refusal the project's own Save was answered with. */
+  externalRefusal?: Refusal | null;
   onSaved: (project: SavedProject) => void;
   onUnauthorized: () => void;
   validateImpl?: typeof validateConfiguration;
@@ -85,13 +138,10 @@ export function ConfigurationPanel({
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
   const [disabledHere, setDisabledHere] = useState<string | null>(null);
   const parsed = parseConfiguration(text);
-  // The latest answer said this deployment stores no configured revision
-  // (a review that is not saveable, or a save refused for it): saving again
-  // could only be refused the same way.
   const unsaveable = disabledHere !== null;
   const working = outcome.kind === 'working';
-  // Validate and Save are disabled while they work, which drops keyboard
-  // focus to the page: once answered, focus moves to the answer instead.
+  const doc = normalized(value);
+  const serialized = JSON.stringify(doc);
   const focusResult = useRef(false);
   useEffect(() => {
     if (!focusResult.current || outcome.kind === 'working' || outcome.kind === 'idle') return;
@@ -99,11 +149,26 @@ export function ConfigurationPanel({
     document.getElementById(`${id}-result`)?.focus();
   }, [outcome, id]);
 
-  function refusalText(refusal: Refusal): { message: string; disabled: string | null } {
+  function refusalText(refusal: Refusal): ErrorOutcome {
     const code = refusal.code ?? '';
-    if ((CONFIGURATION_REFUSALS as readonly string[]).includes(code)) {
-      const params = refusal.params ?? {};
+    const params = refusal.params ?? {};
+    if (code === 'configuration_conflict') {
+      const conflict = conflictTarget(params);
       return {
+        kind: 'error',
+        message: t('refusal.configuration_conflict', {
+          ref: params.ref ?? '',
+          refKind: params.kind ?? '',
+          entry: conflict ? t(`editor.entryKind.${conflict.kind}`, { id: conflict.entry }) : '',
+          reason: params.reason ?? '',
+        }),
+        disabled: null,
+        conflict,
+      };
+    }
+    if ((CONFIGURATION_REFUSALS as readonly string[]).includes(code)) {
+      return {
+        kind: 'error',
         message: t(`refusal.${code}`, {
           schema: params.written_schema ?? 'pp-design/1',
           ref: params.ref ?? '',
@@ -111,58 +176,76 @@ export function ConfigurationPanel({
           refusal: params.refusal ?? '',
           limitOf: params.limit_of ?? '',
           limit: params.limit ?? '',
+          revision: params.revision ?? String(latestRevision),
         }),
         disabled:
           code === 'configuration_requires_v2' ? (params.written_schema ?? 'pp-design/1') : null,
+        conflict: null,
       };
     }
     if (code === 'revision_not_validated') {
-      return { message: t('refusal.revision_not_validated'), disabled: null };
+      return {
+        kind: 'error',
+        message: t('refusal.revision_not_validated'),
+        disabled: null,
+        conflict: null,
+      };
     }
     return {
+      kind: 'error',
       message: refusal.detail ? t('refusal.other', { detail: refusal.detail }) : t('failed'),
       disabled: null,
+      conflict: null,
     };
+  }
+
+  // A configuration refusal of the project's own Save is shown here too.
+  const [seenExternal, setSeenExternal] = useState<Refusal | null>(null);
+  if (externalRefusal !== seenExternal) {
+    setSeenExternal(externalRefusal);
+    if (externalRefusal !== null) setOutcome(refusalText(externalRefusal));
   }
 
   function failed(result: { kind: 'unauthorized' } | { kind: 'failed' } | Refusal) {
     if (result.kind === 'unauthorized') {
       onUnauthorized();
-      setOutcome({ kind: 'error', message: t('unauthorized'), disabled: null });
+      setOutcome({ kind: 'error', message: t('unauthorized'), disabled: null, conflict: null });
       return;
     }
     if (result.kind === 'failed') {
-      setOutcome({ kind: 'error', message: t('failed'), disabled: null });
+      setOutcome({ kind: 'error', message: t('failed'), disabled: null, conflict: null });
       return;
     }
     const said = refusalText(result);
     if (said.disabled !== null) setDisabledHere(said.disabled);
-    setOutcome({ kind: 'error', ...said });
+    setOutcome(said);
   }
 
   async function validate() {
-    if (typeof parsed !== 'object' || working) return;
+    if (working || isEmptyConfiguration(doc)) return;
     focusResult.current = true;
     setOutcome({ kind: 'working' });
-    const result = await validateImpl({ token, id: projectId, configuration: parsed });
+    const result = await validateImpl({ token, id: projectId, configuration: doc });
     if (result.kind === 'reviewed') {
       setDisabledHere(result.review.saveable ? null : result.review.written_schema);
-      setOutcome({ kind: 'reviewed', review: result.review, text });
+      setOutcome({ kind: 'reviewed', review: result.review, text: serialized });
     } else {
       failed(result);
     }
   }
 
   async function save() {
-    if (typeof parsed !== 'object' || request === null || working || dirty || unsaveable) return;
+    if (request === null || working || unsaveable) return;
     focusResult.current = true;
     setOutcome({ kind: 'working' });
+    // Everything entered stays as it is whatever the answer: only a save
+    // that stored it replaces the page's project.
     const result = await reviseImpl({
       token,
       id: projectId,
       request,
       note,
-      configuration: parsed,
+      ...configurationPayload(doc, status),
     });
     if (result.kind === 'saved') {
       setOutcome({ kind: 'saved', revision: result.project.revision });
@@ -172,65 +255,40 @@ export function ConfigurationPanel({
     }
   }
 
+  function editConflict(conflict: ConflictTarget) {
+    const element = document.getElementById(entryElementId(id, conflict.kind, conflict.entry));
+    // Not every browser environment scrolls (a test's DOM has no scrollIntoView).
+    if (element !== null && 'scrollIntoView' in element)
+      element.scrollIntoView({ block: 'center' });
+    element?.focus();
+  }
+
   const reviewed = outcome.kind === 'reviewed' ? outcome : null;
-  const reviewCurrent = reviewed !== null && reviewed.text === text;
+  const reviewCurrent = reviewed !== null && reviewed.text === serialized;
+  const conflict = outcome.kind === 'error' ? outcome.conflict : null;
+  const conflictSection = conflict ? sectionOf(conflict.kind) : null;
 
   return (
     <div className="flex flex-col gap-4" data-testid="configuration-panel">
-      <ValidationScopeNote />
       <p className="text-sm text-text-muted">{t('intro', { revision: String(latestRevision) })}</p>
-      <FilePicker
-        id={`${id}-file`}
-        label={t('file')}
-        help={t('fileHelp')}
-        accept=".json,application/json"
-        disabled={working}
-        onFile={(file) => {
-          void file.text().then(setText);
-        }}
+      {status === 'not_recoverable' && (
+        <Notice tone="warning" live={false} testId="configuration-not-recoverable">
+          {t('notRecoverable', { revision: String(latestRevision) })}
+        </Notice>
+      )}
+      <ConfigurationEditor
+        value={doc}
+        onChange={onChange}
+        boards={boards}
+        model={model}
+        conflict={conflict}
+        idBase={id}
       />
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`${id}-json`} className="text-sm font-semibold">
-          {t('json')}
-        </label>
-        <textarea
-          id={`${id}-json`}
-          dir="ltr"
-          rows={10}
-          value={text}
-          spellCheck={false}
-          aria-invalid={parsed === 'invalid' || undefined}
-          aria-describedby={parsed === 'invalid' ? `${id}-invalid` : undefined}
-          onChange={(event) => {
-            setText(event.target.value);
-          }}
-          className="input w-full font-mono text-sm"
-          data-testid="configuration-json"
-        />
-        {parsed === 'invalid' && (
-          <p id={`${id}-invalid`} className="text-sm text-text-muted">
-            {t('invalid')}
-          </p>
-        )}
-      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           className="btn btn-sm btn-primary"
-          disabled={typeof parsed !== 'object' || working}
-          onClick={() => {
-            void validate();
-          }}
-          data-testid="configuration-validate"
-        >
-          {t('validate')}
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm btn-secondary"
-          disabled={
-            typeof parsed !== 'object' || working || request === null || dirty || unsaveable
-          }
+          disabled={working || request === null || unsaveable}
           onClick={() => {
             void save();
           }}
@@ -239,10 +297,10 @@ export function ConfigurationPanel({
           {t('save')}
         </button>
       </div>
-      <p className="text-sm text-text-muted">{t('validateHelp')}</p>
-      {dirty && (
-        <Notice tone="warning" live={false} testId="configuration-dirty">
-          {t('dirty', { revision: String(latestRevision) })}
+      <p className="text-sm text-text-muted">{t('saveHelp')}</p>
+      {request === null && (
+        <Notice tone="warning" live={false} testId="configuration-incomplete">
+          {t('incomplete')}
         </Notice>
       )}
       {disabledHere !== null && (
@@ -259,7 +317,42 @@ export function ConfigurationPanel({
       >
         {outcome.kind === 'error' && outcome.disabled === null && (
           <Notice tone="critical" testId="configuration-error">
-            {outcome.message}
+            <span className="flex flex-col gap-2">
+              <span className="break-words">{outcome.message}</span>
+              {conflict && (
+                <span className="flex flex-wrap gap-2" data-testid="configuration-conflict">
+                  {conflictSection !== null ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        onClick={() => {
+                          editConflict(conflict);
+                        }}
+                        data-testid="conflict-edit"
+                      >
+                        {t('conflict.edit')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() => {
+                          onChange(removeEntry(doc, conflictSection, conflict.entry));
+                          setOutcome({ kind: 'idle' });
+                        }}
+                        data-testid="conflict-remove"
+                      >
+                        {t('conflict.remove', {
+                          entry: t(`editor.entryKind.${conflict.kind}`, { id: conflict.entry }),
+                        })}
+                      </button>
+                    </>
+                  ) : (
+                    <span data-testid="conflict-link">{t('conflict.link')}</span>
+                  )}
+                </span>
+              )}
+            </span>
           </Notice>
         )}
         {outcome.kind === 'saved' && (
@@ -269,6 +362,7 @@ export function ConfigurationPanel({
         )}
         {reviewed && (
           <div className="flex flex-col gap-4" data-testid="configuration-review">
+            <ValidationScopeNote />
             {!reviewCurrent && (
               <Notice tone="warning" live={false}>
                 {t('reviewOutdated')}
@@ -284,6 +378,74 @@ export function ConfigurationPanel({
           </div>
         )}
       </div>
+
+      <details
+        className="rounded-md border border-border-subtle p-3"
+        data-testid="configuration-advanced"
+      >
+        <summary className="cursor-pointer text-sm font-semibold">{t('advanced')}</summary>
+        <div className="mt-3 flex flex-col gap-4">
+          <FilePicker
+            id={`${id}-file`}
+            label={t('file')}
+            help={t('fileHelp')}
+            accept=".json,application/json"
+            disabled={working}
+            onFile={(file) => {
+              void file.text().then(setText);
+            }}
+          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${id}-json`} className="text-sm font-semibold">
+              {t('json')}
+            </label>
+            <textarea
+              id={`${id}-json`}
+              dir="ltr"
+              rows={8}
+              value={text}
+              spellCheck={false}
+              aria-invalid={parsed === 'invalid' || undefined}
+              aria-describedby={parsed === 'invalid' ? `${id}-invalid` : undefined}
+              onChange={(event) => {
+                setText(event.target.value);
+              }}
+              className="input w-full font-mono text-sm"
+              data-testid="configuration-json"
+            />
+            {parsed === 'invalid' && (
+              <p id={`${id}-invalid`} className="text-sm text-text-muted">
+                {t('invalid')}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              disabled={typeof parsed !== 'object' || working}
+              onClick={() => {
+                if (typeof parsed === 'object') onChange(normalized(parsed));
+              }}
+              data-testid="configuration-import"
+            >
+              {t('import')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              disabled={working || isEmptyConfiguration(doc)}
+              onClick={() => {
+                void validate();
+              }}
+              data-testid="configuration-validate"
+            >
+              {t('validate')}
+            </button>
+          </div>
+          <p className="text-sm text-text-muted">{t('validateHelp')}</p>
+        </div>
+      </details>
     </div>
   );
 }

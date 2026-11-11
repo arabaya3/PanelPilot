@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DesignScreen } from '@/components/design-screen';
@@ -219,32 +220,57 @@ const REVIEW: ConfigurationReview = {
 
 const REQUEST = { info: { name: 'Tower' }, boards: [] } as unknown as ProjectDesignRequest;
 
-function renderPanel(
-  props: Partial<Parameters<typeof ConfigurationPanel>[0]> = {},
-  locale?: 'en' | 'ar' | 'he',
-) {
-  const onSaved = vi.fn();
-  renderApp(
+/** A configuration the editor holds after an import (synthetic). */
+const CONFIG = {
+  templates: [],
+  patterns: [],
+  strips: [],
+  components: [{ id: 'c1', board: 'DB1', template: 'tenant/synth-relay/v1', designation: null }],
+  bindings: [],
+};
+
+type PanelProps = Parameters<typeof ConfigurationPanel>[0];
+
+/** The panel with the page's part played: it keeps the configuration as edited. */
+function PanelHarness(props: Partial<PanelProps> & { initial?: Record<string, unknown> }) {
+  const { initial, ...rest } = props;
+  const [value, setValue] = useState<Record<string, unknown>>(initial ?? {});
+  return (
     <ConfigurationPanel
       token="t"
       projectId="p1"
       latestRevision={1}
       request={REQUEST}
       note=""
-      dirty={false}
-      onSaved={onSaved}
+      value={value}
+      onChange={setValue}
+      status="none"
+      boards={['DB1']}
+      model={null}
+      onSaved={vi.fn()}
       onUnauthorized={vi.fn()}
       validateImpl={api.validate}
       reviseImpl={api.revise}
-      {...props}
-    />,
-    locale ? { locale } : {},
+      {...rest}
+    />
   );
+}
+
+function renderPanel(
+  props: Partial<PanelProps> & { initial?: Record<string, unknown> } = {},
+  locale?: 'en' | 'ar' | 'he',
+) {
+  const onSaved = vi.fn();
+  renderApp(<PanelHarness onSaved={onSaved} {...props} />, locale ? { locale } : {});
   return { onSaved };
 }
 
-function enter(text = '{"templates": []}') {
-  fireEvent.change(screen.getByTestId('configuration-json'), { target: { value: text } });
+/** Import a configuration through the advanced JSON option. */
+function enter(text = JSON.stringify(CONFIG)) {
+  fireEvent.change(screen.getAllByTestId('configuration-json')[0] as HTMLElement, {
+    target: { value: text },
+  });
+  fireEvent.click(screen.getAllByTestId('configuration-import')[0] as HTMLElement);
 }
 
 beforeEach(() => {
@@ -293,18 +319,7 @@ describe('two reviews on one page', () => {
     renderApp(
       <>
         <ModelReview model={REVIEW.model} context="Saved revision 1" />
-        <ConfigurationPanel
-          token="t"
-          projectId="p1"
-          latestRevision={1}
-          request={REQUEST}
-          note=""
-          dirty={false}
-          onSaved={vi.fn()}
-          onUnauthorized={vi.fn()}
-          validateImpl={api.validate}
-          reviseImpl={api.revise}
-        />
+        <PanelHarness />
       </>,
     );
     enter();
@@ -335,16 +350,16 @@ describe('validating a configuration', () => {
   it('sends it for a dry run and shows every table with each value’s source', async () => {
     api.validate.mockResolvedValue({ kind: 'reviewed', review: REVIEW });
     renderPanel();
-    expect(screen.getByTestId('validation-scope').textContent).toContain(
-      'None of this establishes electrical correctness',
-    );
     enter();
     fireEvent.click(screen.getByTestId('configuration-validate'));
     await screen.findByTestId('configuration-review');
+    expect(screen.getByTestId('validation-scope').textContent).toContain(
+      'None of this establishes electrical correctness',
+    );
     expect(api.validate).toHaveBeenCalledWith({
       token: 't',
       id: 'p1',
-      configuration: { templates: [] },
+      configuration: CONFIG,
     });
     expect(api.revise).not.toHaveBeenCalled();
 
@@ -465,7 +480,7 @@ describe('saving a configured revision', () => {
       id: 'p1',
       request: REQUEST,
       note: 'configured',
-      configuration: { templates: [] },
+      configuration: CONFIG,
     });
     expect(onSaved).toHaveBeenCalledWith(project);
   });
@@ -520,13 +535,6 @@ describe('saving a configured revision', () => {
     fireEvent.click(screen.getByTestId('configuration-save'));
     await screen.findByTestId('configuration-disabled');
     expect(screen.getByTestId<HTMLButtonElement>('configuration-save').disabled).toBe(true);
-  });
-
-  it('is held while the form differs from the saved revision', () => {
-    renderPanel({ dirty: true });
-    enter();
-    expect(screen.getByTestId<HTMLButtonElement>('configuration-save').disabled).toBe(true);
-    expect(screen.getByTestId('configuration-dirty')).toBeTruthy();
   });
 
   it.each([

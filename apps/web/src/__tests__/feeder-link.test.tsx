@@ -81,12 +81,12 @@ describe('the board-to-board link form', () => {
     renderApp(<Harness />, { locale: 'en' });
     expect(optionTexts(end('from').getByTestId('link-from-terminal'))).toEqual([
       f.terminalNone,
-      'Q1:2',
-      'X0:1 (outer)',
+      'Q1:2 — MDB',
+      'X0:1 (outer) — MDB',
     ]);
     expect(optionTexts(end('to').getByTestId('link-to-terminal'))).toEqual([
       f.terminalNone,
-      'X1:L1 (inner)',
+      'X1:L1 (inner) — DB1',
     ]);
     expect(screen.getByTestId('feeder-link-form').textContent).not.toContain('K9');
   });

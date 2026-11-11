@@ -110,22 +110,28 @@ export type TerminalOption = { value: string; text: string };
 /**
  * The modelled terminals and strip points of one board, from the opened
  * revision's v2/v3 model: a link end may only name a terminal of its own board.
+ * Each is said by its owner's designation, its marking and the board's name,
+ * never by a raw id: an owner with no designation is said as `unnamed`.
  */
-export function terminalOptions(model: V2ModelSummary | null, board: string): TerminalOption[] {
+export function terminalOptions(
+  model: V2ModelSummary | null,
+  board: string,
+  unnamed = '?',
+): TerminalOption[] {
   if (model === null) return [];
   const options: TerminalOption[] = [];
   for (const row of model.terminals) {
     if (row.board_id !== board) continue;
-    const owner = row.designation ?? row.owner_id;
+    const owner = row.designation ?? unnamed;
     if (row.owner_kind === 'component') {
       options.push({
         value: encodeTerminal({ component: row.owner_id, terminal: row.terminal_id }),
-        text: `${owner}:${row.marking}`,
+        text: `${owner}:${row.marking} — ${board}`,
       });
     } else if (row.owner_kind === 'strip' && (row.side === 'inner' || row.side === 'outer')) {
       options.push({
         value: encodeTerminal({ point: row.terminal_id, side: row.side }),
-        text: `${owner}:${row.marking} (${row.side})`,
+        text: `${owner}:${row.marking} (${row.side}) — ${board}`,
       });
     }
   }
