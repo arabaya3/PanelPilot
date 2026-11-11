@@ -891,6 +891,10 @@ function DesignWorkspace({
       profileText,
       language: chosenLanguage,
       market,
+      // Unsaved configuration edits come back with the rest after a reload.
+      ...(opened !== null && (configEdited || dropUnrecoverable)
+        ? { configuration: { doc: configDoc, dropUnrecoverable } }
+        : {}),
     };
     const text = JSON.stringify(draft);
     if (text === lastWritten.current) return;
@@ -918,6 +922,12 @@ function DesignWorkspace({
       if (outcome.kind === 'saved') {
         onOpened(outcome.project, false);
         reopened = true;
+        // The unsaved edits replace the stored configuration in the editor;
+        // the stored one stays the baseline, so they still read as unsaved.
+        if (draft.configuration) {
+          setConfigDoc(draft.configuration.doc);
+          setDropUnrecoverable(draft.configuration.dropUnrecoverable);
+        }
       }
     }
     setDraftProjectGone(!reopened);
