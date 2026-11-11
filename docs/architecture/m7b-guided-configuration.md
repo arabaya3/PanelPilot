@@ -52,7 +52,9 @@ reason}`. Nothing is saved; nothing is dropped or regenerated.
   advanced option).
 - Add a component or terminal strip from template definitions already present
   in the project/registry; point rows (designation/marking only as typed by the
-  user; no invented marking, rating, symbol or value). Review status and
+  user; no invented marking, rating, symbol or value). Terminals without a
+  pattern are entered as strip points: `strips[].points: [{id, marking,
+level?, kind?}]` (round 2, §7). Review status and
   provenance of templates are shown as stored; unreviewed/unknown stays marked.
 - Feeder-link endpoints chosen from terminals on each end's own board, shown by
   designation and board name, never raw id.
@@ -76,3 +78,30 @@ blocked, restricted formats refused, no electrical values added.
 - `configuration_not_recoverable` can be left only by re-entering the
   configuration or by ticking an explicit "save without that configuration".
 - The first save of a project (`save_project`) still takes no configuration.
+- Round 2 (composer):
+  - Every `configuration.components` entry is composed into
+    `design_snapshot.model.components`, used by a binding or not (before, only
+    a component filling a binding slot was, so unbound components were
+    silently absent). An unknown board is `unknown_reference`, an unknown
+    template `unknown_template`; never dropped. A strip or component may name a
+    shipped `global/legacy-*` template. A designation that repeats another
+    part's on the board (e.g. a derived incomer `Q1`) is the existing
+    structural finding `designation_duplicate`, not a refusal. For that finding a designation with no function aspect is read as on its own board (`-Q1` on MB-1 = `=MB-1-Q1`).
+  - `strips[].points: [{id, marking, level?, kind?}]`: strip points the user
+    enters directly. `marking` is stored as typed; `level` defaults to 1;
+    `kind` defaults to `"unspecified"` (no kind guessed). They take positions
+    1, 2 … in the order given, ahead of binding points, and are stored with
+    `pattern_ref: null` (entered, not patterned; the v2 codec is unchanged, so
+    no `source` field is added). They appear in `model_v2.terminals` and are
+    selectable as feeder-link endpoints. A binding point with the marking and
+    level of a direct point is refused `strip_point_conflict`; two direct
+    points sharing one, `duplicate_marking`.
+  - `configuration_refused` params always also carry `ref`, `kind` and the
+    entry (`binding`|`strip`|`component`), computed as for
+    `configuration_conflict` (`kind` `template` for template refusals,
+    `definition` for a repeated template/pattern ref, `configuration` when no
+    reference is named); `refusal` and the composer's params are kept.
+  - JSON export is unchanged: it is renderer-versioned output (the `json`
+    entries of `renderer_fingerprints*.json`, approvals bind the renderer
+    version), so adding components/strips/configuration to it is not a
+    renderer-neutral change and would need a renderer-version bump.
