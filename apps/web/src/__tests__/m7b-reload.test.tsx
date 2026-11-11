@@ -146,7 +146,47 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
+// The stored configuration as the API returns it: keys in the database's
+// (JSONB) order, not the order an edit rebuilds them in.
+const STORED_DB_ORDER = {
+  strips: [
+    {
+      id: 'strip-a',
+      board: 'MDB',
+      points: [{ id: 'p-a', marking: '1' }],
+      template: null,
+      designation: { product: 'X1', function: null, location: null },
+    },
+  ],
+  bindings: [],
+  patterns: [],
+  templates: [],
+  components: [],
+};
+
 describe('undo without a reload', () => {
+  it('is clean after undoing an edit of a configuration stored in database key order', async () => {
+    api.open.mockResolvedValue({
+      kind: 'saved',
+      project: { ...project(), configuration: STORED_DB_ORDER },
+    });
+    renderScreen();
+    fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));
+    await waitFor(() => {
+      expect(designation().value).toBe('X1');
+    });
+    expect(screen.queryAllByText('Unsaved changes')).toHaveLength(0);
+    fireEvent.change(designation(), { target: { value: 'X7' } });
+    await waitFor(() => {
+      expect(screen.queryAllByText('Unsaved changes').length).toBeGreaterThan(0);
+    });
+    fireEvent.change(designation(), { target: { value: 'X1' } });
+    await waitFor(() => {
+      expect(screen.queryAllByText('Unsaved changes')).toHaveLength(0);
+    });
+    expect(window.sessionStorage.getItem(DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
   it('is clean after undoing an edit', async () => {
     renderScreen();
     fireEvent.click(within(await screen.findByTestId('project-p1')).getByText('Open'));

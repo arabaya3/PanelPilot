@@ -331,8 +331,17 @@ export function snapshotOf(
 
 /** JSON with every object's keys in a stable order, row keys and AI item ids left out. */
 function canonicalJson(work: unknown): string {
-  return JSON.stringify(work, (key, value: unknown) => {
-    if (key === 'key' || key === 'aiItem') return undefined;
+  return sortedJson(work, (key) => key === 'key' || key === 'aiItem');
+}
+
+/**
+ * JSON with every object's keys in a stable order (nothing left out). A stored
+ * configuration comes back with its keys in the database's order, and an edit
+ * rebuilds objects in another: undoing the edit must still compare equal.
+ */
+function sortedJson(value: unknown, omit: (key: string) => boolean = () => false): string {
+  return JSON.stringify(value, (key, value: unknown) => {
+    if (omit(key)) return undefined;
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
@@ -583,7 +592,7 @@ function DesignWorkspace({
   // M7b: the opened revision's configuration as the guided editor edits it,
   // what was stored (to tell an edit), and whether it can be carried.
   const [configDoc, setConfigDoc] = useState<Configuration>(emptyConfiguration);
-  const [configBaseline, setConfigBaseline] = useState(() => JSON.stringify(emptyConfiguration()));
+  const [configBaseline, setConfigBaseline] = useState(() => sortedJson(emptyConfiguration()));
   const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
   const [dropUnrecoverable, setDropUnrecoverable] = useState(false);
   const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
@@ -643,7 +652,7 @@ function DesignWorkspace({
   // Set once a draft is restored, so a market detected afterwards does not
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
-  const configEdited = opened !== null && JSON.stringify(configDoc) !== configBaseline;
+  const configEdited = opened !== null && sortedJson(configDoc) !== configBaseline;
   // The explicit choice to save without a configuration that cannot be
   // carried forward is unsaved work too: it is kept in the draft and offered
   // back after a reload, never acted on by itself.
@@ -1122,7 +1131,7 @@ function DesignWorkspace({
     // its own stored configuration into the editor.
     const stored = normalized(project.configuration ?? emptyConfiguration());
     setConfigDoc(stored);
-    setConfigBaseline(JSON.stringify(stored));
+    setConfigBaseline(sortedJson(stored));
     setConfigStatus(project.configuration_status);
     setDropUnrecoverable(false);
     setConfigRefusal(null);
