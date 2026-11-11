@@ -24,12 +24,14 @@ snapshot. A later plain save, an answer or a re-save drops it or is refused
 | Path | Configuration used |
 |---|---|
 | save with `configuration` | the one sent |
-| save without it (plain save, answer, re-save, feeder-link edit) | the latest revision's stored configuration, if any |
+| save without it (plain save, answer, feeder-link edit) | the latest revision's stored configuration, if any |
+| re-save of revision n | revision n's own stored configuration |
 | explicit removal | `configuration: null` sent with `configuration_removed: true` |
 
 - The carried configuration is re-validated and re-composed against the new
   request. A reference that no longer resolves (a bound device/circuit/board/
-  cable gone, a feeder-link terminal gone) refuses the save with 409
+  cable gone, a feeder-link terminal gone), or any other composer refusal of
+  the carried configuration, refuses the save with 409
   `configuration_conflict`, `params`: `{ref, kind, binding|strip|component|link,
   reason}`. Nothing is saved; nothing is dropped or regenerated.
 - A revision whose snapshot holds a configuration but whose record has none
@@ -63,3 +65,14 @@ snapshot. A later plain save, an answer or a re-save drops it or is refused
 
 Renderer versions, codecs, snapshot schemas, approval rules, execution export
 blocked, restricted formats refused, no electrical values added.
+
+## 7. As built
+
+- The web Save always sends the configuration shown in the editor, so a save
+  from an older revision stores that revision's own configuration.
+- A design refusal of the request itself while a configuration is carried is
+  the existing 422 `configuration_refused` (refusal `design_refused`), not a
+  conflict; nothing is saved, so the configuration is not dropped.
+- `configuration_not_recoverable` can be left only by re-entering the
+  configuration or by ticking an explicit "save without that configuration".
+- The first save of a project (`save_project`) still takes no configuration.
