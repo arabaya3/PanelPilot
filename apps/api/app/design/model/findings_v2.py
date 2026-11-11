@@ -389,29 +389,37 @@ def _designation_findings(model: entities.DesignModelV2) -> list[StructuralFindi
 
     A designation with no function aspect is read as on its own board (the
     board's id is its function aspect, as for the derived devices), so a
-    configured ``-Q1`` on board MB-1 repeats a derived ``=MB-1-Q1``. Reported
-    under the fuller form.
+    configured ``-Q1`` on board MB-1 repeats a derived ``=MB-1-Q1``. The
+    finding names each form as drawn (``=MB-1-Q1 / -Q1``).
     """
     holders: dict[tuple[str, str], list[str]] = defaultdict(list)
+    drawn: dict[tuple[str, str], set[str]] = defaultdict(set)
     parts: list[entities.Component | entities.TerminalStrip] = [*model.components, *model.strips]
     for part in parts:
         if part.designation is not None:
             designation = part.designation
-            if getattr(designation, "function", None) is None:
+            if designation.function is None:
                 designation = dataclasses.replace(designation, function=part.board_id)
-            holders[(part.board_id, printed_designation(designation))].append(part.id)
-    return [
-        _finding(
-            "designation_duplicate",
-            f"{_short(printed)} is printed on {len(ids)} parts of board {_short(board)}; "
-            "each part needs its own designation.",
-            board_id=board,
-            designation=printed,
-            parts=",".join(sorted(ids)),
+            key = (part.board_id, printed_designation(designation))
+            holders[key].append(part.id)
+            drawn[key].add(printed_designation(part.designation))
+    found = []
+    for key, ids in sorted(holders.items()):
+        if len(ids) < 2:
+            continue
+        board = key[0]
+        printed = " / ".join(sorted(drawn[key]))
+        found.append(
+            _finding(
+                "designation_duplicate",
+                f"{_short(printed)} is printed on {len(ids)} parts of board {_short(board)}; "
+                "each part needs its own designation.",
+                board_id=board,
+                designation=printed,
+                parts=",".join(sorted(ids)),
+            )
         )
-        for (board, printed), ids in sorted(holders.items())
-        if len(ids) > 1
-    ]
+    return found
 
 
 def structural_findings(

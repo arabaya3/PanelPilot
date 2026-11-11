@@ -93,12 +93,9 @@ def test_unbound_configuration_components_are_composed(
     assert {s["designation"]["product"] for s in model["strips"]} == {"X1", "X10"}
     findings = _opened(client, project_id, 2)["findings"]
     clashes = [f for f in findings if f["code"] == "designation_duplicate"]
-    # A clash with a derived device's designation is a finding, never a refusal.
-    if any(
-        c["designation"] and c["designation"]["product"] == "Q1" and c["legacy_device_id"]
-        for c in model["components"]
-    ):
-        assert any("Q1" in f["values"].get("designation", "") for f in clashes), findings
+    # The configured -Q1 repeats the derived incomer =MB-1-Q1: a finding, not a refusal.
+    (clash,) = [f for f in clashes if f["board_id"] == "MB-1"]
+    assert clash["values"]["designation"] == "-Q1 / =MB-1-Q1"
 
 
 def test_an_unbound_component_on_an_unknown_template_is_refused_naming_it(
