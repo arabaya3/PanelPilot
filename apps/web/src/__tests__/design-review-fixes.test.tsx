@@ -90,6 +90,7 @@ function stored(
   customer = '',
 ): SavedProject {
   return {
+    configuration_status: 'none',
     id,
     name,
     revision,

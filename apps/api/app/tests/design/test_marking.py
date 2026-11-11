@@ -133,3 +133,14 @@ def test_requirement_lines_follow_the_findings_and_reach_the_json() -> None:
     assert alone == ["No unresolved findings.", lines[0], *scope]
     assert json.loads(marking.mark_json("{}", mark))["requirements"] == list(lines)
     assert "requirements" not in json.loads(marking.mark_json("{}", MARK))
+
+
+def test_the_json_export_states_its_scope_and_claims_no_round_trip() -> None:
+    """M7b: it is a review copy of the calculated design, not a saved-revision backup."""
+    envelope = json.loads(marking.mark_json('{"info": {}}', MARK))
+    scope = envelope["export_scope"]
+    assert scope == marking.JSON_EXPORT_SCOPE
+    assert scope["restores_revision"] is False
+    assert any("model_v2" in item for item in scope["omits"])
+    assert "cannot be imported to restore" in scope["statement"]
+    assert list(envelope)[:2] == ["export_status", "export_scope"]

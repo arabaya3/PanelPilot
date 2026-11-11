@@ -82,6 +82,7 @@ const REQUEST = {
 
 function saved(name: string, revision = 1): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name,
     revision,
@@ -550,11 +551,28 @@ describe('approval', () => {
     fireEvent.click(viewTab('Configuration'));
     const panel = within(screen.getByTestId('configuration-panel'));
     fireEvent.change(panel.getByTestId('configuration-json'), {
-      target: { value: '{"templates": []}' },
+      target: {
+        value: JSON.stringify({
+          templates: [],
+          patterns: [],
+          strips: [{ id: 'X1', board: 'MDB', template: null, designation: null }],
+          components: [],
+          bindings: [],
+        }),
+      },
     });
-    fireEvent.click(panel.getByTestId('configuration-save'));
-    await panel.findByTestId('configuration-saved');
-    expect(api.revise).toHaveBeenCalledTimes(1);
+    fireEvent.click(panel.getByTestId('configuration-import'));
+    // The one Save is the project's: it stores the configuration with the form.
+    fireEvent.click(viewTab('Overview'));
+    fireEvent.click(
+      within(screen.getByTestId('view-overview')).getByRole('button', {
+        name: 'Save as new revision',
+      }),
+    );
+    await waitFor(() => {
+      expect(api.revise).toHaveBeenCalledTimes(1);
+    });
+    expect(api.revise.mock.calls[0]?.[0].configuration).toBeTruthy();
     expect(screen.queryByTestId('design-stale')).toBeNull();
     expect(screen.getByTestId('design-export-pdf')).toBeTruthy();
 

@@ -815,7 +815,7 @@
       "parts_csv": "Parts list (CSV)",
       "cables_csv": "Cable list (CSV)",
       "circuits_csv": "Circuit schedule (CSV)",
-      "json": "Project (JSON)",
+      "json": "Design data (JSON): calculated design and findings, not the saved configuration",
       "terminals_csv": "Terminal list (CSV)",
       "calculations_pdf": "Calculations report (PDF)",
       "eplan_devices_csv": "EPLAN device import (CSV)",
@@ -1109,7 +1109,9 @@
       "link_terminal_unknown": "A link end names a terminal the configuration does not hold. Pick one from the list, or type a label instead.",
       "link_duplicate": "A feeder has two links in the request. Each fed board takes one link.",
       "link_not_a_feeder": "A link names a board that is not fed from another board. Set its “Fed from”, or clear the link.",
-      "link_board_unknown": "A link names a board the project does not have."
+      "link_board_unknown": "A link names a board the project does not have.",
+      "configuration_conflict": "The configuration carried from the latest revision no longer fits this project: {kind} {ref} cannot be found. Nothing was saved. Edit or remove that reference in the configuration, then save again.",
+      "configuration_not_recoverable": "Revision {revision} was built from a configuration saved before configurations were kept with each revision, so it cannot be carried forward without loss. Nothing was saved. Enter the configuration again, or remove it, then save."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {
@@ -1844,7 +1846,7 @@
   },
   "configuration": {
     "notSaved": "Save the project first: a configuration is validated against a saved revision.",
-    "newTitle": "Try a configuration",
+    "newTitle": "Configuration",
     "openedTitle": "Configuration of revision {revision} (read-only)",
     "openedV1": "Revision {revision} is stored as {schema}: it holds no components, terminals, nets or wires to review.",
     "tableName": "{context}: {label}",
@@ -1852,16 +1854,15 @@
     "contextValidation": "Validation result",
     "openedUnread": "Revision {revision}'s stored design could not be read or failed its integrity check, so its configuration is not shown. Nothing in it can be approved or exported; save the design again as a new revision.",
     "openedStale": "Revision {revision} is stale: the rules or company profile changed since it was saved, so its configuration is not shown. Save it again as a new revision.",
-    "intro": "Paste or load a configuration (JSON). Validate composes it on the server with the project's latest saved revision ({revision}); nothing is saved.",
+    "intro": "Add components and terminal strips from the template definitions this project already has, and type designations and point markings. Save stores the configuration with the form as it stands as a new revision after {revision}.",
     "file": "Configuration file (.json)",
-    "fileHelp": "The file is read into the box below; nothing is sent until you validate or save.",
+    "fileHelp": "The file is read into the box below; nothing is sent until you import it into the editor and save.",
     "json": "Configuration (JSON)",
     "invalid": "This is not a JSON object.",
-    "validate": "Validate",
-    "validateHelp": "Validate shows what the configuration would compose to and saves nothing. Save as configured revision stores it as a new revision where this environment allows it.",
-    "save": "Save as configured revision",
+    "validate": "Check without saving",
+    "validateHelp": "Import replaces the configuration in the editor. Check composes the configuration in the editor with the latest saved revision on the server and saves nothing.",
+    "save": "Save",
     "working": "Working…",
-    "dirty": "The form has changes since revision {revision}. Validation uses the saved revision; save or discard the changes before saving a configured revision.",
     "saved": "Saved as revision {revision}, a configured revision.",
     "failed": "The request did not complete. Try again.",
     "unauthorized": "Your session ended. Sign in again and retry.",
@@ -1969,7 +1970,76 @@
       "configuration_refused": "The configuration cannot be composed as sent ({refusal}). Check the templates, patterns and bindings it names.",
       "configuration_too_large": "The configuration is too large: {limitOf} is over its limit of {limit}.",
       "revision_not_validated": "The latest revision no longer validates, so the configuration cannot be composed with it. Save a new revision first.",
-      "other": "Refused: {detail}"
+      "other": "Refused: {detail}",
+      "configuration_conflict": "Not saved: {entry} refers to {refKind} {ref}, which no longer resolves ({reason}). Nothing was saved or dropped.",
+      "configuration_not_recoverable": "Not saved: revision {revision} holds a configuration saved before it could be carried forward. Enter the configuration again and save.",
+      "configuration_refused_entry": "Not saved: {entry} on board {board} cannot be composed ({refusal}; reference {ref}). Edit or remove it, then save again."
+    },
+    "saveHelp": "Save sends the form and this configuration together as one new revision. Nothing is saved if the server refuses it, and everything entered here stays.",
+    "incomplete": "Complete the design form before saving: the configuration is saved with it.",
+    "notRecoverable": "Revision {revision} was saved with a configuration that cannot be carried forward. Enter it again here (or import it) before saving.",
+    "dropUnrecoverable": "Save without that configuration (it is removed from the new revision; earlier revisions keep theirs).",
+    "advanced": "Advanced: import JSON or check without saving",
+    "import": "Import into editor",
+    "notGivenPlaceholder": "Not given",
+    "conflict": {
+      "edit": "Edit it",
+      "remove": "Remove {entry}",
+      "link": "Edit or clear this feeder link on its board, then save again."
+    },
+    "editor": {
+      "intro": "Only templates already in this project or its registry are offered. Their review status and source are shown as stored; nothing here is reviewed or rated by this page, and no marking or value is filled in for you.",
+      "components": "Components",
+      "strips": "Terminal strips",
+      "bindings": "Bindings and point markings",
+      "addComponent": "Add a component",
+      "addStrip": "Add a terminal strip",
+      "addComponentAction": "Add component",
+      "addStripAction": "Add terminal strip",
+      "board": "Board",
+      "template": "Template",
+      "designation": "Designation (as printed)",
+      "noTemplate": "No template",
+      "noTemplates": "No template definitions are available in this project.",
+      "templateNotAvailable": "Template not among the definitions available: its review status is unknown.",
+      "provenance": "Source: {source}",
+      "fromRegistry": "Registry",
+      "fromConfiguration": "In this configuration",
+      "boardMissing": "This board is not in the form.",
+      "remove": "Remove",
+      "removeBinding": "Remove binding",
+      "noBindings": "No bindings. Import a configuration to add bindings to patterns.",
+      "pattern": "Pattern",
+      "bindingOn": "on board {board}, circuit {circuit}",
+      "noCircuit": "none",
+      "points": "Point markings",
+      "noPoints": "This binding allocates no strip points.",
+      "pointMarking": "Marking of point {point} (strip role {strip})",
+      "entryKind": {
+        "binding": "binding {id}",
+        "strip": "terminal strip {id}",
+        "component": "component {id}",
+        "link": "the feeder link of {id}"
+      },
+      "stripPoints": "Points of this strip",
+      "noStripPoints": "No points entered.",
+      "pointN": "Marking of point {n}",
+      "level": "Level",
+      "levelOptional": "Level (optional)",
+      "newPointMarking": "Marking of a new point (as printed)",
+      "addPoint": "Add point",
+      "removePoint": "Remove point {n}",
+      "removeNamed": "Remove {entry}"
+    },
+    "saveWhere": "This configuration is saved with the project: use “Save as new revision” in the overview. It sends the form and this configuration together as one new revision, and nothing entered here is lost if the save is refused.",
+    "saveGo": "Go to Save as new revision",
+    "duplicates": {
+      "title": "A designation is printed on more than one part (approval is refused while this stands)",
+      "asSaved": "As found in saved revision {revision}. Save again to check your changes.",
+      "item": "{designation} is printed on {count} parts of board {board}.",
+      "edit": "Edit {entry}",
+      "derived": "The other part comes from the board form (for example its incomer), not from this configuration: change this entry's designation.",
+      "none": "No entry in this configuration prints it; the parts come from the board form."
     }
   },
   "feederLink": {
@@ -2030,6 +2100,12 @@
       "link_value_differs_from_calculation": "{attribute}: user value {user} (given by user); feeder calculation value {calc} (used by the feeder calculation).",
       "link_value_differs_from_calculation_plain": "A user value differs from the value the feeder calculation used."
     },
-    "refusedHere": "The save was refused for this link: {reason}"
+    "refusedHere": "The save was refused for this link: {reason}",
+    "unnamed": "Unnamed",
+    "terminalChosen": "Chosen terminal: {terminal}",
+    "side": {
+      "inner": "inner",
+      "outer": "outer"
+    }
   }
 }

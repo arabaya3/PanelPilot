@@ -126,6 +126,7 @@ const WARNING = {
 
 function saved(fields: Record<string, unknown> = {}): SavedProject {
   return {
+    configuration_status: 'none',
     id: 'p1',
     name: 'Stored tower',
     revision: 1,
@@ -258,6 +259,7 @@ describe('reading what the server recorded', () => {
   it('takes a revision with no validation fields as not validated (saved before Phase 1)', () => {
     const { id, name, revision, revisions, request } = saved();
     const legacy: SavedProject = {
+      configuration_status: 'none',
       id,
       name,
       revision,

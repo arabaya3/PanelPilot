@@ -152,6 +152,14 @@ export function ProjectsPanel({
     request: ProjectDesignRequest;
     /** What the guided intake records with the revision (control needs, intake). */
     requirementsInput?: RequirementsInput | null;
+    /**
+     * M7b: the configuration shown in the editor (or its explicit removal),
+     * sent with every save of an opened project; left out, none is sent.
+     */
+    configuration?: {
+      configuration?: Record<string, unknown>;
+      configurationRemoved?: true;
+    };
   } | null;
   opened: OpenedProject | null;
   /** `fill` is true when the project was opened, so the form takes it. */
@@ -299,6 +307,7 @@ export function ProjectsPanel({
           request: current.request,
           note,
           ...(current.requirementsInput ? { requirementsInput: current.requirementsInput } : {}),
+          ...(current.configuration ?? {}),
         })
       : await save({
           token,
@@ -543,7 +552,8 @@ export function ProjectsPanel({
           </div>
         ) : (
           <>
-            {!trial && (
+            {/* Said only to someone who may approve: it names who the approval records. */}
+            {!trial && !notPermitted && (
               <p className="text-sm text-text-muted" data-testid="approving-as">
                 {/* The display name, else the account's email (this page only), as elsewhere. */}
                 {opened.approvingAs || accountEmail

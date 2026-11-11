@@ -214,11 +214,53 @@ def check_configuration(configuration: Any) -> None:
             _refuse_claims(kind, item)
 
 
+#: Composer params naming what a refusal is about, most specific first.
+_ENTRY_REFS = (
+    "device",
+    "cable",
+    "circuit",
+    "component",
+    "board",
+    "point",
+    "strip",
+    "slot",
+)
+#: Where in the configuration the entry sits: the first present is named.
+_ENTRY_PLACES = ("binding", "strip", "component")
+#: Refusals about a template ref.
+_TEMPLATE_REFUSALS = ("unknown_template", "restricted_scope", "template_conflict")
+
+
+def entry_params(refusal: str, params: Mapping[str, Any]) -> dict[str, str]:
+    """``ref``, ``kind`` and the entry (``binding``|``strip``|``component``) a refusal names.
+
+    The same shape for a sent configuration's ``configuration_refused`` and a
+    carried one's ``configuration_conflict`` (M7b), so a client can mark the
+    entry. ``kind`` is what ``ref`` is (``board``, ``circuit``, ``template`` ...);
+    ``configuration`` when the refusal names no reference.
+    """
+    if refusal in _TEMPLATE_REFUSALS and "ref" in params:
+        kind = "template"
+        ref = str(params["ref"])
+    else:
+        kind = next((name for name in _ENTRY_REFS if name in params), "configuration")
+        ref = str(params.get(kind, ""))
+        if kind == "configuration" and "ref" in params:
+            # A template or pattern definition named by its ref.
+            kind, ref = "definition", str(params["ref"])
+    out = {"ref": ref[:200], "kind": kind}
+    place = next((name for name in _ENTRY_PLACES if name in params), None)
+    if place is not None:
+        out[place] = str(params[place])[:200]
+    return out
+
+
 def _refused(refusal: str, message: str, **params: str) -> ValidationError:
+    given = {k: v[:200] for k, v in params.items()}
     return ValidationError(
         f"the configuration cannot be applied: {message}",
         code="configuration_refused",
-        params={"refusal": refusal, **{k: v[:200] for k, v in params.items()}},
+        params={**given, **entry_params(refusal, given), "refusal": refusal},
     )
 
 

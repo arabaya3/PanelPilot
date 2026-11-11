@@ -113,6 +113,36 @@ def check_request(request: ProjectDesignRequest) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _said(model: entities.DesignModelV2, end: entities.LinkEnd) -> tuple[Any, ...] | None:
+    """What an end's terminal reads in ``model``: owner, marking, side, board."""
+    ref = end.terminal
+    if ref is None:
+        return None
+    if ref.component is not None:
+        for component in model.components:
+            if component.id == ref.component:
+                return (
+                    "component",
+                    component.designation,
+                    component.template_ref,
+                    ref.terminal,
+                    component.board_id,
+                )
+        return ("missing",)
+    for strip in model.strips:
+        for point in strip.points:
+            if point.id == ref.point:
+                return (
+                    "point",
+                    strip.designation,
+                    point.marking,
+                    point.level,
+                    ref.side,
+                    strip.board_id,
+                )
+    return ("missing",)
+
+
 def _terminal(
     model: entities.DesignModelV2,
     given: FeederLinkTerminal | None,
@@ -183,6 +213,8 @@ def derive(
     *,
     entered_by_user_id: str | None,
     entered_at: str | None,
+    prior: Sequence[entities.InterBoardLink] = (),
+    prior_model: entities.DesignModelV2 | None = None,
 ) -> list[entities.InterBoardLink]:
     """The links of a design: one per server-owned feeder, with what the user entered.
 
@@ -192,6 +224,13 @@ def derive(
         board_refs: Each board's requirements-record ref, by board name.
         entered_by_user_id: The saving account (``None`` for a trial).
         entered_at: When it was saved (ISO 8601).
+        prior: The previous revision's links. A link whose user-entered
+            content (ends and attributes) is unchanged keeps that link's
+            provenance (who and when); only a change is stamped anew.
+        prior_model: The previous revision's model. Provenance is kept only
+            where each end's terminal also reads the same there (owner
+            designation, marking, side, board): a point whose marking changed
+            under the same id is a change.
 
     Returns:
         The links, sorted by id. A link holding a value entered by the user
@@ -203,6 +242,7 @@ def derive(
             another board than its end's.
     """
     names = {board.id: board.name for board in model.design.boards}
+    earlier_links = {link.id: link for link in prior}
     by_board = {entry.fed_board: (index, entry) for index, entry in enumerate(entered or [])}
     links: list[entities.InterBoardLink] = []
     for feeder in codec_v3.derived_feeders(model):
@@ -228,9 +268,23 @@ def derive(
             )
         cable = codec_v3.feeder_cable(model, feeder)
         user = _entered(entry)
+        link_id = codec_v3.link_id(feeder.supply_board, feeder.fed_board)
+        attributes = _attributes(entry)
+        who, when = (entered_by_user_id, entered_at) if user else (None, None)
+        earlier = earlier_links.get(link_id)
+        if (
+            user
+            and earlier is not None
+            and earlier.provenance.entered_at is not None
+            and earlier.ends == (ends[0], ends[1])
+            and earlier.attributes == attributes
+            and prior_model is not None
+            and all(_said(model, end) == _said(prior_model, end) for end in ends)
+        ):
+            who, when = earlier.provenance.entered_by_user_id, earlier.provenance.entered_at
         links.append(
             entities.InterBoardLink(
-                id=codec_v3.link_id(feeder.supply_board, feeder.fed_board),
+                id=link_id,
                 origin="derived",
                 feeder=feeder,
                 ends=(ends[0], ends[1]),
@@ -239,13 +293,13 @@ def derive(
                     if cable is not None
                     else entities.LinkCarrier(kind="unknown", cable_id=None)
                 ),
-                attributes=_attributes(entry),
+                attributes=attributes,
                 provenance=entities.LinkProvenance(
                     requirement_ref=codec_v3.requirement_ref(
                         board_refs.get(names[feeder.fed_board], names[feeder.fed_board])
                     ),
-                    entered_by_user_id=entered_by_user_id if user else None,
-                    entered_at=entered_at if user else None,
+                    entered_by_user_id=who,
+                    entered_at=when,
                 ),
             )
         )
@@ -425,6 +479,31 @@ class LinkRow:
     ends: tuple[EndRow, EndRow]
     attributes: tuple[tuple[str, str], ...]
     differences: tuple[tuple[str, str, str], ...]
+
+
+def link_end_notes(rows: Sequence[LinkRow]) -> dict[tuple[str, str, str], str]:
+    """For each modelled link end (by terminal key), the links it ends, as printed.
+
+    ``"feeder link to SB-1 X2:1 (inner) (link l-…)"``; an end of several links
+    names each, ``"; "``-separated. The far end is its terminal, the user's
+    label, or "terminal NOT SET", as the links section prints it.
+
+    Args:
+        rows: ``rows`` of a revision's links.
+
+    Returns:
+        The text for each end whose terminal is modelled.
+    """
+    found: dict[tuple[str, str, str], list[str]] = {}
+    for row in rows:
+        for end, far in ((row.ends[0], row.ends[1]), (row.ends[1], row.ends[0])):
+            if end.key is None:
+                continue
+            target = far.terminal if far.resolved or far.label is None else far.label
+            found.setdefault(end.key, []).append(
+                f"feeder link to {far.board} {target} (link {row.link_id})"
+            )
+    return {key: "; ".join(texts) for key, texts in found.items()}
 
 
 def terminal_text(model: entities.DesignModelV2, ref: entities.TerminalRef) -> str:

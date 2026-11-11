@@ -32,7 +32,14 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-from app.design.marking import ExportMark, finding_lines, pdf_page_stamp
+from app.design.marking import (
+    FULL_MARK_TITLE,
+    ExportMark,
+    finding_lines,
+    full_mark_items,
+    page_mark_overflows,
+    pdf_page_stamp,
+)
 from app.design.model import connection_drawing as layout
 from app.design.model import connection_routing as routing
 from app.design.model import links as link_rows
@@ -52,6 +59,14 @@ DISCLAIMER = (
     "standards requirement; values are printed only as the saved design holds them, and "
     "'not set' where it holds none. No template, pattern or symbol in it has been reviewed "
     "unless its review status says so."
+)
+
+#: Added to the legend of a drawing with board-to-board links (``pp-design/3``).
+LINK_END_LEGEND = (
+    "LINK END: a terminal with no board-local wire (in no net) that ends a board-to-board "
+    "feeder link; the note names the far board and terminal. The link is not a wire or net "
+    "of either board's model. A component terminal's board-local requirement (required, or "
+    "requiredness unresolved) is not met by the link and is listed separately as UNCONNECTED."
 )
 
 #: The legend printed on the cover.
@@ -139,8 +154,15 @@ _TEXT_LAST = _AREA_BOTTOM + _TEXT_MARGIN
 _TEXT_LINES = int((_TEXT_FIRST - _TEXT_LAST) // _TEXT_LINE) + 1
 _TEXT_ROOM = _AREA_RIGHT - _AREA_LEFT - 2 * _TEXT_MARGIN
 _INDENT = 4 * mm
+#: The identity lines (from 10.5 mm, 3 mm apart) the room above the frame
+#: (20 mm from the top) holds, and the banner lines (from 5 mm up) the room
+#: below the title block (15 mm) holds. A longer mark is cut on the last line
+#: with where it is printed in full (``marking.bounded``).
+MARK_HEAD_LINES = 3
+MARK_FOOT_LINES = 3
+
 #: Text-sheet entries printed bold.
-_LOUD = ("[BLOCKING]", "UNREALISED", "UNCONNECTED")
+_LOUD = ("[BLOCKING]", "UNREALISED", "UNCONNECTED", layout.LINK_END_TAG)
 
 
 @dataclass(frozen=True)
@@ -193,9 +215,10 @@ def _sheet_frame(
     board: str,
     *,
     grid: bool,
+    where: str = "",
 ) -> None:
     width, height = _PAGE
-    pdf_page_stamp(mark)(
+    pdf_page_stamp(mark, head=MARK_HEAD_LINES, foot=MARK_FOOT_LINES, where=where)(
         canvas,
         SimpleNamespace(pagesize=_PAGE, leftMargin=_MARGIN, rightMargin=_MARGIN),
     )
@@ -707,7 +730,17 @@ def render_connection_drawing(
             *_other_findings(mark),
         ]
     )
-    text_pages = _text_pages("Open items: shown on the sheets and listed here", open_items)
+    full_mark = page_mark_overflows(mark, _PAGE[0] - 2 * _MARGIN, MARK_HEAD_LINES, MARK_FOOT_LINES)
+    text_pages = (
+        _text_pages(
+            FULL_MARK_TITLE + ": the margins of every sheet print it cut",
+            [text for text, _bold in full_mark_items(mark)],
+        )
+        if full_mark
+        else []
+    )
+    where = f"sheet {last_drawing + 1} ({FULL_MARK_TITLE})" if full_mark else ""
+    text_pages += _text_pages("Open items: shown on the sheets and listed here", open_items)
     if full_texts:
         text_pages += _text_pages("Full texts of values cut on the drawing sheets", full_texts)
     text_pages += _text_pages("Sheet index", index_items) + _text_pages("Findings", finding_items)
@@ -717,7 +750,7 @@ def render_connection_drawing(
     canvas.setTitle(f"Connection drawing - {header.project}")
     canvas.setCreator("PanelPilot")
     # Cover.
-    _sheet_frame(canvas, header, mark, 1, total, "", grid=False)
+    _sheet_frame(canvas, header, mark, 1, total, "", grid=False, where=where)
     first_text = last_drawing + 1
     cover = [
         f"Project: {header.project}",
@@ -731,6 +764,7 @@ def render_connection_drawing(
         "",
         "Legend:",
         *(f"  {item}" for item in LEGEND),
+        *([f"  {LINK_END_LEGEND}"] if links else []),
         "",
         (
             f"Cross-reference sheets: {layout.FIRST_SHEET} to {last_m4}"
@@ -765,20 +799,31 @@ def render_connection_drawing(
     )
     canvas.showPage()
     for sheet in drawing.sheets:
-        _sheet_frame(canvas, header, mark, sheet.number, total, ", ".join(sheet.boards), grid=True)
+        _sheet_frame(
+            canvas,
+            header,
+            mark,
+            sheet.number,
+            total,
+            ", ".join(sheet.boards),
+            grid=True,
+            where=where,
+        )
         for part in sheet.parts:
             _part(canvas, part)
         canvas.showPage()
     for sheet in routed_sheets:
-        _sheet_frame(canvas, header, mark, sheet.number, total, sheet.board_id, grid=True)
+        _sheet_frame(
+            canvas, header, mark, sheet.number, total, sheet.board_id, grid=True, where=where
+        )
         _routed(canvas, sheet)
         canvas.showPage()
     for n, page in enumerate(link_pages):
-        _sheet_frame(canvas, header, mark, last_routed + 1 + n, total, "", grid=True)
+        _sheet_frame(canvas, header, mark, last_routed + 1 + n, total, "", grid=True, where=where)
         _link_sheet(canvas, page, drawing)
         canvas.showPage()
     for n, (title, lines) in enumerate(text_pages):
-        _sheet_frame(canvas, header, mark, first_text + n, total, "", grid=False)
+        _sheet_frame(canvas, header, mark, first_text + n, total, "", grid=False, where=where)
         _draw_text_page(canvas, title, lines)
         canvas.showPage()
     canvas.save()

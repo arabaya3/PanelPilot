@@ -275,7 +275,7 @@ def _internal_to_a_component(c: dict[str, Any]) -> None:
 
 
 REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
-    "unknown_template": (_unknown_template, "unknown_template", {"binding", "slot"}),
+    "unknown_template": (_unknown_template, "unknown_template", {"binding", "slot", "ref"}),
     "unknown_pattern": (_unknown_pattern, "unknown_pattern", {"binding"}),
     "no_device_kind": (_no_device_kind, "missing_binding", {"binding", "slot"}),
     "no_candidate": (_no_candidate, "missing_binding", {"binding", "slot"}),
@@ -289,9 +289,9 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     ),
     "restricted_scope": (_restricted_scope, "restricted_scope", {"ref", "scope"}),
     "contradictory_nets": (_contradictory_nets, "contradictory_nets", {"binding", "role"}),
-    "unknown_circuit": (_unknown_circuit, "unknown_reference", {"binding"}),
+    "unknown_circuit": (_unknown_circuit, "unknown_reference", {"binding", "circuit"}),
     "unknown_device": (_unknown_device, "unknown_reference", {"binding", "device"}),
-    "unknown_board": (_unknown_board, "unknown_reference", {"binding"}),
+    "unknown_board": (_unknown_board, "unknown_reference", {"binding", "board"}),
     "duplicate_marking": (_duplicate_marking, "duplicate_marking", {"strip"}),
     "core_out_of_range": (_core_out_of_range, "core_out_of_range", {"cable", "core"}),
     "core_reused": (_core_reused, "core_reused", {"cable"}),
@@ -300,7 +300,9 @@ REFUSALS: dict[str, tuple[Callable[[dict[str, Any]], None], str, set[str]]] = {
     "unknown_binding_key": (_unknown_binding_key, "configuration_invalid", {"where"}),
     "invalid_template": (_invalid_template, "template_invalid", set()),
     "legacy_redefined": (_legacy_redefined, "template_conflict", {"ref"}),
-    "board_mismatch": (_board_mismatch, "board_mismatch", {"component"}),
+    # A component on a board the design lacks is refused on its own (M7b: every
+    # configuration component is composed), before any binding uses it.
+    "component_board_unknown": (_board_mismatch, "unknown_reference", {"board", "component"}),
     "numeric_wire_number": (_numeric_wire_number, "configuration_invalid", {"field"}),
     "assumption_without_statement": (
         _assumption_without_statement,

@@ -199,9 +199,9 @@ describe('the unsaved-work draft keeps the link form', () => {
 describe('terminals an end can name', () => {
   it('lists only the board’s own modelled terminals and strip points', () => {
     const supply = terminalOptions(LINK_MODEL, 'MDB');
-    expect(supply.map((option) => option.text)).toEqual(['Q1:2', 'X0:1 (outer)']);
+    expect(supply.map((option) => option.text)).toEqual(['Q1:2 — MDB', 'X0:1 (outer) — MDB']);
     expect(terminalOptions(LINK_MODEL, 'DB1').map((option) => option.text)).toEqual([
-      'X1:L1 (inner)',
+      'X1:L1 (inner) — DB1',
     ]);
     expect(terminalOptions(null, 'MDB')).toEqual([]);
   });
@@ -349,5 +349,12 @@ describe('a stored terminal as the API sends it', () => {
     const component = { component: 'k-1', terminal: 't-2', point: null, side: null } as never;
     expect(isComponentTerminal(component)).toBe(true);
     expect(terminalText(component, null)).toBe('k-1:t-2');
+  });
+
+  it('says the strip side in the page language', async () => {
+    const { terminalText } = await import('@/components/design/feeder-link-model');
+    const fromApi = { point: 'p-1', side: 'outer' } as never;
+    const ar = { inner: 'داخلي', outer: 'خارجي' } as const;
+    expect(terminalText(fromApi, null, (side) => ar[side])).toBe('p-1 (خارجي)');
   });
 });
