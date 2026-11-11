@@ -19,10 +19,24 @@ A **configuration** is pure data (JSON-shaped):
     member indexes, ``via``, and for a cable core its ``core`` index).
 ``strips``
     The terminal strips to create: ``id``, ``board``, ``designation``,
-    ``template`` (a template ref or ``null``).
+    ``template`` (a template ref or ``null``), and optionally ``points``:
+    strip points the user enters directly, with no pattern (``id``,
+    ``marking`` as the user typed it, optional ``level`` ≥ 1, default 1, and
+    optional ``kind``, default ``"unspecified"``: no kind is guessed). They
+    take positions 1, 2 ... in the order given, ahead of the points bindings
+    allocate, and are stored with ``pattern_ref`` ``null`` (entered, not
+    patterned). A binding point with the marking and level of a direct point
+    is refused (``strip_point_conflict``); two direct points sharing one,
+    ``duplicate_marking``.
 ``components``
     Components that mirror no v1 device: ``id``, ``board``, ``template``,
-    ``designation``.
+    ``designation``. Every one is composed into the model, used by a binding
+    or not; an unknown board or template is refused, never dropped. A
+    designation that repeats another part's on the board is the structural
+    finding ``designation_duplicate``, not a refusal.
+
+A strip or component ``template`` may name a configuration template or one
+of the shipped ``global/legacy-*`` templates.
 ``bindings``
     Which v1 board/circuit/devices use which pattern: ``id``, ``pattern``,
     ``board``, ``circuit`` (or ``null``), ``slots`` (slot id to
@@ -83,6 +97,8 @@ _BINDING_KEYS = (
 )
 _WIRE_FIELDS = ("number", "cross_section_mm2", "colour")
 _GIVEN_SOURCES = ("user", "data", "assumption")
+#: The kind of a strip point entered without one: says it is not given, invents nothing.
+UNSPECIFIED_KIND = "unspecified"
 
 
 class CompositionRefusedError(ValueError):
@@ -216,6 +232,11 @@ class _Composer:
         config = _obj(configuration, _CONFIG_KEYS, "configuration", _OPTIONAL_CONFIG_KEYS)
 
         self.templates: dict[str, entities.ComponentTemplate] = {}
+        # The shipped legacy templates, which a strip or component may name by ref.
+        self.legacy_templates: dict[str, entities.ComponentTemplate] = {
+            t["ref"]: codec_v2.parse_template(copy.deepcopy(t), "legacy template")
+            for t in migrate_v2.LEGACY_TEMPLATES.values()
+        }
         for item in _list(config["templates"], "templates"):
             try:
                 template = codec_v2.parse_template(_ordered(item), "configuration.templates[]")
@@ -243,7 +264,7 @@ class _Composer:
             self.patterns[pattern.ref] = codec_v2.dump_pattern(pattern)
         self.strip_defs = _unique(
             [
-                _obj(s, ("id", "board", "designation", "template"), "strips[]")
+                _obj(s, ("id", "board", "designation", "template"), "strips[]", ("points",))
                 for s in _list(config["strips"], "strips")
             ],
             "id",
@@ -282,8 +303,15 @@ class _Composer:
 
     def template(self, ref: Any, **where: str) -> entities.ComponentTemplate:
         template = self.templates.get(ref) if isinstance(ref, str) else None
+        if template is None and isinstance(ref, str) and ref in self.legacy_templates:
+            template = self.legacy_templates[ref]
         if template is None:
-            _refuse("unknown_template", "names a template the configuration does not hold", **where)
+            _refuse(
+                "unknown_template",
+                "names a template the configuration does not hold",
+                ref=str(ref)[:200],
+                **where,
+            )
         if template.restricted_scope:
             _refuse(
                 "restricted_scope",
@@ -306,6 +334,9 @@ class _Composer:
     def run(self) -> dict[str, Any]:
         for strip_id in sorted(self.strip_defs):
             self.add_strip(strip_id)
+        # Every configuration component is composed, bound to a slot or not.
+        for name in sorted(self.component_defs):
+            self.config_component(name)
         for binding_id in sorted(self.bindings):
             self.apply(self.bindings[binding_id])
         skip = set(self.bound_devices)
@@ -328,6 +359,56 @@ class _Composer:
             "points": [],
         }
         self.next_position[strip_id] = 1
+        # Points the user entered on the strip directly (no pattern): placed in
+        # the order given, ahead of any a binding allocates.
+        given = raw.get("points", [])
+        _unique(_list(given, f"strips[{strip_id}].points"), "id", f"strips[{strip_id}].points")
+        for item in given:
+            point = _obj(item, ("id", "marking"), f"strips[{strip_id}].points[]", ("level", "kind"))
+            pid_given, marking = point["id"], point["marking"]
+            if not isinstance(marking, str) or not marking.strip():
+                _refuse(
+                    "configuration_invalid",
+                    "a strip point's marking is the text the user gave",
+                    strip=strip_id,
+                    point=str(pid_given),
+                )
+            level = point.get("level", 1)
+            if not isinstance(level, int) or isinstance(level, bool) or level < 1:
+                _refuse(
+                    "configuration_invalid",
+                    "a strip point's level is an integer >= 1",
+                    strip=strip_id,
+                    point=str(pid_given),
+                )
+            kind = point.get("kind", UNSPECIFIED_KIND)
+            if not isinstance(kind, str) or not kind:
+                _refuse(
+                    "configuration_invalid",
+                    "a strip point's kind is text",
+                    strip=strip_id,
+                    point=str(pid_given),
+                )
+            points = self.strips[strip_id]["points"]
+            if any((p["marking"], p["level"]) == (marking, level) for p in points):
+                _refuse(
+                    "duplicate_marking",
+                    "two points share a marking",
+                    strip=strip_id,
+                    point=str(pid_given),
+                )
+            position = self.next_position[strip_id]
+            points.append(
+                {
+                    "id": ids.derive("p", strip_id, "direct", str(pid_given)),
+                    "position": position,
+                    "level": level,
+                    "marking": marking,
+                    "kind": kind,
+                    "pattern_ref": None,
+                }
+            )
+            self.next_position[strip_id] = position + 1
 
     def slot_component(
         self, binding: Mapping[str, Any], slot: Mapping[str, Any], circuit: Any
@@ -407,7 +488,7 @@ class _Composer:
             }
             return cid, template
         name = given["component"]
-        raw = self.component_defs.get(name)
+        raw = self.component_defs.get(name) if isinstance(name, str) else None
         if raw is None:
             _refuse(
                 "unknown_reference",
@@ -416,8 +497,14 @@ class _Composer:
                 component=str(name),
             )
         if raw["board"] != board.id:
-            _refuse("board_mismatch", "the component is on another board", component=name)
-        template = self.template(raw["template"], component=name)
+            _refuse(
+                "board_mismatch",
+                "the component is on another board",
+                binding=bid,
+                component=name,
+                board=str(raw["board"]),
+            )
+        cid, template = self.config_component(name)
         if slot.get("template") is not None and slot["template"] != template.ref:
             _refuse(
                 "conflicting_binding",
@@ -425,10 +512,17 @@ class _Composer:
                 component=name,
                 slot=slot_id,
             )
+        return cid, template
+
+    def config_component(self, name: str) -> tuple[str, entities.ComponentTemplate]:
+        """A configuration component, composed whether or not a binding uses it."""
+        raw = self.component_defs[name]
+        self.board(raw["board"], component=name)
+        template = self.template(raw["template"], component=name)
         cid = ids.derive("k", name)
         self.components[cid] = {
             "id": cid,
-            "board_id": board.id,
+            "board_id": raw["board"],
             "template_ref": template.ref,
             "designation": copy.deepcopy(raw["designation"]),
             "parameters": [],
@@ -508,7 +602,17 @@ class _Composer:
             strip_id = binding["strips"][raw["strip"]]
             strip = self.strips[strip_id]
             position = bases[strip_id] + raw["offset"] - 1
-            if any((p["marking"], p["level"]) == (marking, raw["level"]) for p in strip["points"]):
+            for p in strip["points"]:
+                if (p["marking"], p["level"]) != (marking, raw["level"]):
+                    continue
+                if p["pattern_ref"] is None:
+                    _refuse(
+                        "strip_point_conflict",
+                        "a binding's point has the marking of a point entered on the strip",
+                        binding=bid,
+                        strip=strip_id,
+                        point=point_id,
+                    )
                 _refuse("duplicate_marking", "two points share a marking", strip=strip_id)
             pid = ids.derive("p", strip_id, bid, point_id)
             strip["points"].append(

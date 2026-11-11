@@ -73,6 +73,7 @@ Codes (inputs are model data only):
 
 from __future__ import annotations
 
+import dataclasses
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -384,12 +385,21 @@ def printed_designation(designation: object) -> str:
 
 
 def _designation_findings(model: entities.DesignModelV2) -> list[StructuralFinding]:
-    """``designation_duplicate``: one designation printed on two parts of a board."""
+    """``designation_duplicate``: one designation printed on two parts of a board.
+
+    A designation with no function aspect is read as on its own board (the
+    board's id is its function aspect, as for the derived devices), so a
+    configured ``-Q1`` on board MB-1 repeats a derived ``=MB-1-Q1``. Reported
+    under the fuller form.
+    """
     holders: dict[tuple[str, str], list[str]] = defaultdict(list)
     parts: list[entities.Component | entities.TerminalStrip] = [*model.components, *model.strips]
     for part in parts:
         if part.designation is not None:
-            holders[(part.board_id, printed_designation(part.designation))].append(part.id)
+            designation = part.designation
+            if getattr(designation, "function", None) is None:
+                designation = dataclasses.replace(designation, function=part.board_id)
+            holders[(part.board_id, printed_designation(designation))].append(part.id)
     return [
         _finding(
             "designation_duplicate",
