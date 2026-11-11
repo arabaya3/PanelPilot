@@ -1972,7 +1972,8 @@
       "revision_not_validated": "The latest revision no longer validates, so the configuration cannot be composed with it. Save a new revision first.",
       "other": "Refused: {detail}",
       "configuration_conflict": "Not saved: {entry} refers to {refKind} {ref}, which no longer resolves ({reason}). Nothing was saved or dropped.",
-      "configuration_not_recoverable": "Not saved: revision {revision} holds a configuration saved before it could be carried forward. Enter the configuration again and save."
+      "configuration_not_recoverable": "Not saved: revision {revision} holds a configuration saved before it could be carried forward. Enter the configuration again and save.",
+      "configuration_refused_entry": "Not saved: {entry} on board {board} cannot be composed ({refusal}; reference {ref}). Edit or remove it, then save again."
     },
     "saveHelp": "Save sends the form and this configuration together as one new revision. Nothing is saved if the server refuses it, and everything entered here stays.",
     "incomplete": "Complete the design form before saving: the configuration is saved with it.",
@@ -2019,8 +2020,19 @@
         "strip": "terminal strip {id}",
         "component": "component {id}",
         "link": "the feeder link of {id}"
-      }
-    }
+      },
+      "stripPoints": "Points of this strip",
+      "noStripPoints": "No points entered.",
+      "pointN": "Marking of point {n}",
+      "level": "Level",
+      "levelOptional": "Level (optional)",
+      "newPointMarking": "Marking of a new point (as printed)",
+      "addPoint": "Add point",
+      "removePoint": "Remove point {n}",
+      "removeNamed": "Remove {entry}"
+    },
+    "saveWhere": "This configuration is saved with the project: use “Save as new revision” in the overview. It sends the form and this configuration together as one new revision, and nothing entered here is lost if the save is refused.",
+    "saveGo": "Go to Save as new revision"
   },
   "feederLink": {
     "panelTitle": "Board-to-board links",

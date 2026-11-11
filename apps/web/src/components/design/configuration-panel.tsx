@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { ConfigurationEditor, entryElementId } from '@/components/design/configuration-editor';
@@ -22,13 +22,10 @@ import { FilePicker } from '@/components/file-picker';
 import { TechnicalToken } from '@/components/technical-token';
 import { LoadingState, Notice } from '@/components/ui';
 import {
-  reviseProject,
   validateConfiguration,
   type ConfigurationReview,
   type ConfigurationStatus,
-  type ProjectDesignRequest,
   type Refusal,
-  type SavedProject,
   type V2ModelSummary,
 } from '@/lib/design';
 
@@ -45,7 +42,10 @@ const CONFIGURATION_REFUSALS = [
 /** Whether a refusal is about the configuration (shown by this panel). */
 export function isConfigurationRefusal(refusal: Refusal): boolean {
   const code = refusal.code ?? '';
-  return code === 'configuration_conflict' || code === 'configuration_not_recoverable';
+  return (
+    code === 'configuration_conflict' ||
+    (CONFIGURATION_REFUSALS as readonly string[]).includes(code)
+  );
 }
 
 type ErrorOutcome = {
@@ -102,8 +102,6 @@ export function ConfigurationPanel({
   token,
   projectId,
   latestRevision,
-  request,
-  note,
   value,
   onChange,
   status,
@@ -112,17 +110,13 @@ export function ConfigurationPanel({
   boards,
   model,
   externalRefusal = null,
-  onSaved,
+  saveAction = null,
   onUnauthorized,
   validateImpl = validateConfiguration,
-  reviseImpl = reviseProject,
 }: {
   token: string;
   projectId: string;
   latestRevision: number;
-  /** What a save sends as the request: the form as it stands, or null while incomplete. */
-  request: ProjectDesignRequest | null;
-  note: string;
   /** The configuration as edited (the page keeps it, so it outlives this panel). */
   value: Configuration;
   onChange: (next: Configuration) => void;
@@ -136,10 +130,10 @@ export function ConfigurationPanel({
   model: V2ModelSummary | null;
   /** A configuration refusal the project's own Save was answered with. */
   externalRefusal?: Refusal | null;
-  onSaved: (project: SavedProject) => void;
+  /** The way to the project's Save, which stores the configuration with the form. */
+  saveAction?: ReactNode;
   onUnauthorized: () => void;
   validateImpl?: typeof validateConfiguration;
-  reviseImpl?: typeof reviseProject;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -147,7 +141,6 @@ export function ConfigurationPanel({
   const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
   const [disabledHere, setDisabledHere] = useState<string | null>(null);
   const parsed = parseConfiguration(text);
-  const unsaveable = disabledHere !== null;
   const working = outcome.kind === 'working';
   const doc = normalized(value);
   const serialized = JSON.stringify(doc);
@@ -173,6 +166,27 @@ export function ConfigurationPanel({
         }),
         disabled: null,
         conflict,
+      };
+    }
+    const named = code === 'configuration_refused' ? conflictTarget(params) : null;
+    if (named !== null) {
+      // Refused for one entry (M7b): said and marked like a conflict, with its board.
+      const board =
+        named.kind === 'strip' || named.kind === 'component' || named.kind === 'binding'
+          ? ((doc[sectionOf(named.kind) ?? 'strips'] as { id?: unknown; board?: unknown }[]).find(
+              (item) => item.id === named.entry,
+            )?.board ?? '')
+          : '';
+      return {
+        kind: 'error',
+        message: t('refusal.configuration_refused_entry', {
+          entry: t(`editor.entryKind.${named.kind}`, { id: named.entry }),
+          board: typeof board === 'string' && board !== '' ? board : '—',
+          ref: named.ref === '' ? '—' : named.ref,
+          refusal: named.reason,
+        }),
+        disabled: null,
+        conflict: named,
       };
     }
     if ((CONFIGURATION_REFUSALS as readonly string[]).includes(code)) {
@@ -243,27 +257,6 @@ export function ConfigurationPanel({
     }
   }
 
-  async function save() {
-    if (request === null || working || unsaveable) return;
-    focusResult.current = true;
-    setOutcome({ kind: 'working' });
-    // Everything entered stays as it is whatever the answer: only a save
-    // that stored it replaces the page's project.
-    const result = await reviseImpl({
-      token,
-      id: projectId,
-      request,
-      note,
-      ...configurationPayload(doc, status, dropUnrecoverable),
-    });
-    if (result.kind === 'saved') {
-      setOutcome({ kind: 'saved', revision: result.project.revision });
-      onSaved(result.project);
-    } else {
-      failed(result);
-    }
-  }
-
   function editConflict(conflict: ConflictTarget) {
     const element = document.getElementById(entryElementId(id, conflict.kind, conflict.entry));
     // Not every browser environment scrolls (a test's DOM has no scrollIntoView).
@@ -306,25 +299,9 @@ export function ConfigurationPanel({
         conflict={conflict}
         idBase={id}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className="btn btn-sm btn-primary"
-          disabled={working || request === null || unsaveable}
-          onClick={() => {
-            void save();
-          }}
-          data-testid="configuration-save"
-        >
-          {t('save')}
-        </button>
-      </div>
-      <p className="text-sm text-text-muted">{t('saveHelp')}</p>
-      {request === null && (
-        <Notice tone="warning" live={false} testId="configuration-incomplete">
-          {t('incomplete')}
-        </Notice>
-      )}
+      <Notice tone="info" live={false} action={saveAction} testId="configuration-save-where">
+        {t('saveWhere')}
+      </Notice>
       {disabledHere !== null && (
         <Notice tone="warning" live={false} testId="configuration-disabled">
           {t('refusal.configuration_requires_v2', { schema: disabledHere })}

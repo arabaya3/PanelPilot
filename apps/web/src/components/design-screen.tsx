@@ -2506,10 +2506,6 @@ function DesignWorkspace({
                   token={token}
                   projectId={opened.id}
                   latestRevision={Math.max(opened.revision, ...opened.revisions)}
-                  request={
-                    complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null
-                  }
-                  note={revisionNote}
                   value={configDoc}
                   onChange={setConfigDoc}
                   status={configStatus}
@@ -2518,15 +2514,7 @@ function DesignWorkspace({
                   boards={boards.map((board) => board.name.trim()).filter((name) => name !== '')}
                   model={openedModel}
                   externalRefusal={configRefusal}
-                  onSaved={forOwner((project: SavedProject) => {
-                    // One Save stores the form as it stands with the
-                    // configuration, so it rebaselines the form and a design
-                    // made from it exactly as the project's Save does.
-                    setClean(snapshot);
-                    setLastSave('saved');
-                    rebaseOnSave.current = true;
-                    onOpened(project, false);
-                  })}
+                  saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {
                     void reauthorize();
                   })}
