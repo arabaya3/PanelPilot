@@ -157,10 +157,9 @@ describe('saving from an older revision', () => {
       expect(config.getByTestId<HTMLInputElement>('strip-designation').value).toBe('X1');
     });
     // A form edit only (the project name): the configuration is not edited.
-    fireEvent.change(
-      within(screen.getByTestId('view-overview')).getByLabelText('Project name'),
-      { target: { value: 'Stored tower B' } },
-    );
+    fireEvent.change(within(screen.getByTestId('view-overview')).getByLabelText('Project name'), {
+      target: { value: 'Stored tower B' },
+    });
     fireEvent.click(
       within(screen.getByTestId('view-overview')).getByRole('button', {
         name: en.design.projects.saveRevision,
@@ -178,6 +177,7 @@ const REQUEST = { info: { name: 'Tower' }, boards: [] } as unknown as ProjectDes
 
 function Harness() {
   const [value, setValue] = useState<Record<string, unknown>>({});
+  const [drop, setDrop] = useState(false);
   return (
     <ConfigurationPanel
       token="t"
@@ -188,6 +188,8 @@ function Harness() {
       value={value}
       onChange={setValue}
       status="not_recoverable"
+      dropUnrecoverable={drop}
+      onDropUnrecoverable={setDrop}
       boards={['MDB']}
       model={null}
       onSaved={vi.fn()}
@@ -211,6 +213,9 @@ describe('a configuration that cannot be carried', () => {
       params: { revision: '3' },
     });
     renderApp(<Harness />);
+    // Integration: the removal is an explicit choice the notice offers, never
+    // sent silently; without it the save is refused as before.
+    fireEvent.click(screen.getByTestId('configuration-drop-unrecoverable'));
     fireEvent.click(screen.getByTestId('configuration-save'));
     await waitFor(() => {
       expect(api.revise).toHaveBeenCalled();

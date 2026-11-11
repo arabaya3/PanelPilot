@@ -1977,6 +1977,7 @@
     "saveHelp": "Save sends the form and this configuration together as one new revision. Nothing is saved if the server refuses it, and everything entered here stays.",
     "incomplete": "Complete the design form before saving: the configuration is saved with it.",
     "notRecoverable": "Revision {revision} was saved with a configuration that cannot be carried forward. Enter it again here (or import it) before saving.",
+    "dropUnrecoverable": "Save without that configuration (it is removed from the new revision; earlier revisions keep theirs).",
     "advanced": "Advanced: import JSON or check without saving",
     "import": "Import into editor",
     "notGivenPlaceholder": "Not given",

@@ -77,15 +77,19 @@ export function parseConfiguration(text: string): Record<string, unknown> | 'emp
 
 /**
  * What one Save sends with the form's request (M7b §3): the configuration as
- * edited; its explicit removal when the editor was emptied of a stored one;
- * or nothing, so the server carries none, when there never was one.
+ * shown (always sent, so a save from an older revision stores that revision's
+ * own, never the latest one); its explicit removal when the editor was
+ * emptied of a stored one, or the user chose to save without one that cannot
+ * be carried; otherwise nothing (there is none).
  */
 export function configurationPayload(
   value: Configuration,
   status: ConfigurationStatus,
+  dropUnrecoverable = false,
 ): { configuration?: Configuration; configurationRemoved?: true } {
   if (!isEmptyConfiguration(value)) return { configuration: value };
-  return status === 'stored' ? { configurationRemoved: true } : {};
+  if (status === 'stored') return { configurationRemoved: true };
+  return status === 'not_recoverable' && dropUnrecoverable ? { configurationRemoved: true } : {};
 }
 
 /**
@@ -103,6 +107,8 @@ export function ConfigurationPanel({
   value,
   onChange,
   status,
+  dropUnrecoverable = false,
+  onDropUnrecoverable,
   boards,
   model,
   externalRefusal = null,
@@ -122,6 +128,9 @@ export function ConfigurationPanel({
   onChange: (next: Configuration) => void;
   /** The opened revision's `configuration_status`. */
   status: ConfigurationStatus;
+  /** The user chose to save without a configuration that cannot be carried. */
+  dropUnrecoverable?: boolean;
+  onDropUnrecoverable?: (drop: boolean) => void;
   /** The form's board names. */
   boards: string[];
   model: V2ModelSummary | null;
@@ -245,7 +254,7 @@ export function ConfigurationPanel({
       id: projectId,
       request,
       note,
-      ...configurationPayload(doc, status),
+      ...configurationPayload(doc, status, dropUnrecoverable),
     });
     if (result.kind === 'saved') {
       setOutcome({ kind: 'saved', revision: result.project.revision });
@@ -274,6 +283,19 @@ export function ConfigurationPanel({
       {status === 'not_recoverable' && (
         <Notice tone="warning" live={false} testId="configuration-not-recoverable">
           {t('notRecoverable', { revision: String(latestRevision) })}
+          {onDropUnrecoverable && isEmptyConfiguration(doc) && (
+            <label className="mt-2 flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={dropUnrecoverable}
+                onChange={(event) => {
+                  onDropUnrecoverable(event.target.checked);
+                }}
+                data-testid="configuration-drop-unrecoverable"
+              />
+              <span>{t('dropUnrecoverable')}</span>
+            </label>
+          )}
         </Notice>
       )}
       <ConfigurationEditor

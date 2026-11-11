@@ -153,8 +153,8 @@ export function ProjectsPanel({
     /** What the guided intake records with the revision (control needs, intake). */
     requirementsInput?: RequirementsInput | null;
     /**
-     * M7b: the configuration as edited (or its removal) when it differs from
-     * the stored one; left out, the server carries the stored configuration.
+     * M7b: the configuration shown in the editor (or its explicit removal),
+     * sent with every save of an opened project; left out, none is sent.
      */
     configuration?: {
       configuration?: Record<string, unknown>;

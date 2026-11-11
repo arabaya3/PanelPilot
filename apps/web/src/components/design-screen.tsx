@@ -573,6 +573,7 @@ function DesignWorkspace({
   const [configDoc, setConfigDoc] = useState<Configuration>(emptyConfiguration);
   const [configBaseline, setConfigBaseline] = useState(() => JSON.stringify(emptyConfiguration()));
   const [configStatus, setConfigStatus] = useState<ConfigurationStatus>('none');
+  const [dropUnrecoverable, setDropUnrecoverable] = useState(false);
   const [configRefusal, setConfigRefusal] = useState<Refusal | null>(null);
   /**
    * The schema the opened revision's stored design names (from its marker,
@@ -1093,6 +1094,7 @@ function DesignWorkspace({
     setConfigDoc(stored);
     setConfigBaseline(JSON.stringify(stored));
     setConfigStatus(project.configuration_status);
+    setDropUnrecoverable(false);
     setConfigRefusal(null);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));
@@ -1843,10 +1845,16 @@ function DesignWorkspace({
                     ? {
                         name: info.name.trim(),
                         request: toRequest(info, boards, profile),
-                        // The project's Save stores the configuration as
-                        // edited too; unedited, the server carries the stored one.
-                        ...(configEdited
-                          ? { configuration: configurationPayload(configDoc, configStatus) }
+                        // The project's Save stores the configuration shown, so a
+                        // save from an older revision keeps that revision's own.
+                        ...(opened !== null
+                          ? {
+                              configuration: configurationPayload(
+                                configDoc,
+                                configStatus,
+                                dropUnrecoverable,
+                              ),
+                            }
                           : {}),
                         requirementsInput: aiOpen
                           ? aiRequirementsInput(
@@ -2505,6 +2513,8 @@ function DesignWorkspace({
                   value={configDoc}
                   onChange={setConfigDoc}
                   status={configStatus}
+                  dropUnrecoverable={dropUnrecoverable}
+                  onDropUnrecoverable={setDropUnrecoverable}
                   boards={boards.map((board) => board.name.trim()).filter((name) => name !== '')}
                   model={openedModel}
                   externalRefusal={configRefusal}
