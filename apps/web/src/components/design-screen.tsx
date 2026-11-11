@@ -31,6 +31,7 @@ import {
 } from '@/components/design/configuration-panel';
 import {
   emptyConfiguration,
+  isEmptyConfiguration,
   normalized,
   type Configuration,
 } from '@/components/design/configuration-model';
@@ -643,7 +644,15 @@ function DesignWorkspace({
   // overwrite the supply the draft brought back.
   const restoredDraft = useRef(false);
   const configEdited = opened !== null && JSON.stringify(configDoc) !== configBaseline;
-  const dirty = snapshot !== clean || configEdited;
+  // The explicit choice to save without a configuration that cannot be
+  // carried forward is unsaved work too: it is kept in the draft and offered
+  // back after a reload, never acted on by itself.
+  const dropChosen =
+    opened !== null &&
+    configStatus === 'not_recoverable' &&
+    dropUnrecoverable &&
+    isEmptyConfiguration(configDoc);
+  const dirty = snapshot !== clean || configEdited || dropChosen;
   // A layout effect, so a market detected straight after a keystroke cannot
   // read the state from before it.
   useLayoutEffect(() => {
@@ -903,7 +912,7 @@ function DesignWorkspace({
       language: chosenLanguage,
       market,
       // Unsaved configuration edits come back with the rest after a reload.
-      ...(opened !== null && (configEdited || dropUnrecoverable)
+      ...(opened !== null && (configEdited || dropChosen)
         ? { configuration: { doc: configDoc, dropUnrecoverable } }
         : {}),
     };
