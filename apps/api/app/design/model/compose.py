@@ -296,7 +296,9 @@ class _Composer:
     def board(self, board_id: Any, **where: str) -> Any:
         board = self.boards.get(board_id) if isinstance(board_id, str) else None
         if board is None:
-            _refuse("unknown_reference", "names no board of the design", **where)
+            _refuse(
+                "unknown_reference", "names no board of the design", board=str(board_id), **where
+            )
         return board
 
     # -- building ----------------------------------------------------------- #
@@ -407,7 +409,12 @@ class _Composer:
         name = given["component"]
         raw = self.component_defs.get(name)
         if raw is None:
-            _refuse("unknown_reference", "names no configuration component", component=str(name))
+            _refuse(
+                "unknown_reference",
+                "names no configuration component",
+                binding=bid,
+                component=str(name),
+            )
         if raw["board"] != board.id:
             _refuse("board_mismatch", "the component is on another board", component=name)
         template = self.template(raw["template"], component=name)
@@ -441,7 +448,12 @@ class _Composer:
         if binding["circuit"] is not None:
             circuit = next((c for c in board.circuits if c.id == binding["circuit"]), None)
             if circuit is None:
-                _refuse("unknown_reference", "names no circuit of the board", binding=bid)
+                _refuse(
+                    "unknown_reference",
+                    "names no circuit of the board",
+                    binding=bid,
+                    circuit=str(binding["circuit"]),
+                )
         for mapping in ("slots", "strips", "markings", "wires"):
             if not isinstance(binding[mapping], Mapping):
                 _refuse("configuration_invalid", f"bindings[].{mapping} is not an object")
@@ -462,7 +474,12 @@ class _Composer:
         for role in roles:
             strip_id = binding["strips"][role]
             if strip_id not in self.strips:
-                _refuse("unknown_reference", "names no configuration strip", strip=str(strip_id))
+                _refuse(
+                    "unknown_reference",
+                    "names no configuration strip",
+                    binding=bid,
+                    strip=str(strip_id),
+                )
             if self.strips[strip_id]["board_id"] != board.id:
                 _refuse("board_mismatch", "the strip is on another board", strip=strip_id)
         points: dict[str, str] = {}
@@ -611,7 +628,12 @@ class _Composer:
                 )
             cable = next((c for c in board.cables if c.id == cable_id), None)
             if cable is None:
-                _refuse("unknown_reference", "names no cable of the board", cable=str(cable_id))
+                _refuse(
+                    "unknown_reference",
+                    "names no cable of the board",
+                    binding=bid,
+                    cable=str(cable_id),
+                )
             index_ = raw.get("core")
             if not isinstance(index_, int) or isinstance(index_, bool) or index_ < 1:
                 _refuse("pattern_invalid", "a cable core connection names its core", role=role)
