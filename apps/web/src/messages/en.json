@@ -1109,7 +1109,9 @@
       "link_terminal_unknown": "A link end names a terminal the configuration does not hold. Pick one from the list, or type a label instead.",
       "link_duplicate": "A feeder has two links in the request. Each fed board takes one link.",
       "link_not_a_feeder": "A link names a board that is not fed from another board. Set its “Fed from”, or clear the link.",
-      "link_board_unknown": "A link names a board the project does not have."
+      "link_board_unknown": "A link names a board the project does not have.",
+      "configuration_conflict": "The configuration carried from the latest revision no longer fits this project: {kind} {ref} cannot be found. Nothing was saved. Edit or remove that reference in the configuration, then save again.",
+      "configuration_not_recoverable": "Revision {revision} was built from a configuration saved before configurations were kept with each revision, so it cannot be carried forward without loss. Nothing was saved. Enter the configuration again, or remove it, then save."
     },
     "drawingLanguage": "Drawing language",
     "drawingLanguages": {

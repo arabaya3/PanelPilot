@@ -1397,14 +1397,18 @@ def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictE
     )
 
 
-def _snapshot_configured(stored: Any) -> bool:
-    """Whether a stored design was composed from a configuration (strips, patterns ...)."""
+def _read_v2(stored: Any) -> entities.DesignModelV2 | None:
+    """A stored design's v2 model, or ``None`` (none, v1, or unreadable)."""
     if stored is None:
-        return False
+        return None
     try:
-        model = read_snapshot(stored).v2
+        return read_snapshot(stored).v2
     except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
-        return False
+        return None
+
+
+def _model_configured(model: entities.DesignModelV2 | None) -> bool:
+    """Whether a v2 model was composed from a configuration (strips, patterns ...)."""
     if model is None:
         return False
     return bool(
@@ -1418,7 +1422,9 @@ def _snapshot_configured(stored: Any) -> bool:
 
 
 def _configuration_of(
-    row: DesignRevisionRow, record: Mapping[str, Any] | None
+    row: DesignRevisionRow,
+    record: Mapping[str, Any] | None,
+    read: VersionedModel | bool | None = True,
 ) -> tuple[dict[str, Any] | None, ConfigurationStatus]:
     """A revision's stored configuration and its status (M7b).
 
@@ -1428,7 +1434,9 @@ def _configuration_of(
     """
     if record is not None and isinstance(record.get("configuration"), dict):
         return copy.deepcopy(record["configuration"]), "stored"
-    if _snapshot_configured(row.design_snapshot):
+    # ``read``: the design already read (``None``: none readable); ``True``: read it now.
+    model = _read_v2(row.design_snapshot) if read is True else getattr(read, "v2", None)
+    if _model_configured(model):
         return None, "not_recoverable"
     return None, "none"
 
@@ -1681,7 +1689,9 @@ def _opened(
     )
     opened.approval_scope_version = approval_scope.APPROVAL_SCOPE_VERSION
     opened.approved_scope_version = chosen.approved_scope_version
-    opened.configuration, opened.configuration_status = _configuration_of(chosen, stored_record)
+    opened.configuration, opened.configuration_status = _configuration_of(
+        chosen, stored_record, checked.read
+    )
     return opened if readable else opened.as_stored(stored)
 
 
