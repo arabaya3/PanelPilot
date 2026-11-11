@@ -1249,6 +1249,8 @@ class _LinkEntry:
     entered_at: str | None
     #: The previous revision's links: unchanged user content keeps their provenance.
     prior_links: Sequence[entities.InterBoardLink] = ()
+    #: The previous revision's v2 model: what its link ends resolved to.
+    prior_model: entities.DesignModelV2 | None = None
 
 
 def _validate(
@@ -1319,6 +1321,7 @@ def _validate(
             entered_by_user_id=entry.entered_by_user_id,
             entered_at=entry.entered_at,
             prior=entry.prior_links,
+            prior_model=entry.prior_model,
         )
         stored = snapshot_v3_from_v2(stored, links)
     # The findings of what every later read sees: its reviews anchored to the
@@ -1506,6 +1509,7 @@ def _add_revision(
                 entered_by_user_id=str(saving_account) if saving_account is not None else None,
                 entered_at=_now_iso(),
                 prior_links=_stored_links(previous),
+                prior_model=_read_v2(previous.design_snapshot) if previous is not None else None,
             ),
         )
     except ValidationError as exc:

@@ -113,6 +113,30 @@ def check_request(request: ProjectDesignRequest) -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _said(model: entities.DesignModelV2, end: entities.LinkEnd) -> tuple[Any, ...] | None:
+    """What an end's terminal reads in ``model``: owner, marking, side, board."""
+    ref = end.terminal
+    if ref is None:
+        return None
+    if ref.component is not None:
+        for component in model.components:
+            if component.id == ref.component:
+                return ("component", component.designation, ref.terminal, component.board_id)
+        return ("missing",)
+    for strip in model.strips:
+        for point in strip.points:
+            if point.id == ref.point:
+                return (
+                    "point",
+                    strip.designation,
+                    point.marking,
+                    point.level,
+                    ref.side,
+                    strip.board_id,
+                )
+    return ("missing",)
+
+
 def _terminal(
     model: entities.DesignModelV2,
     given: FeederLinkTerminal | None,
@@ -184,6 +208,7 @@ def derive(
     entered_by_user_id: str | None,
     entered_at: str | None,
     prior: Sequence[entities.InterBoardLink] = (),
+    prior_model: entities.DesignModelV2 | None = None,
 ) -> list[entities.InterBoardLink]:
     """The links of a design: one per server-owned feeder, with what the user entered.
 
@@ -196,6 +221,10 @@ def derive(
         prior: The previous revision's links. A link whose user-entered
             content (ends and attributes) is unchanged keeps that link's
             provenance (who and when); only a change is stamped anew.
+        prior_model: The previous revision's model. Provenance is kept only
+            where each end's terminal also reads the same there (owner
+            designation, marking, side, board): a point whose marking changed
+            under the same id is a change.
 
     Returns:
         The links, sorted by id. A link holding a value entered by the user
@@ -243,6 +272,8 @@ def derive(
             and earlier.provenance.entered_at is not None
             and earlier.ends == (ends[0], ends[1])
             and earlier.attributes == attributes
+            and prior_model is not None
+            and all(_said(model, end) == _said(prior_model, end) for end in ends)
         ):
             who, when = earlier.provenance.entered_by_user_id, earlier.provenance.entered_at
         links.append(

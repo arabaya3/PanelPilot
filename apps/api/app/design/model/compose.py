@@ -615,6 +615,16 @@ class _Composer:
                     )
                 _refuse("duplicate_marking", "two points share a marking", strip=strip_id)
             pid = ids.derive("p", strip_id, bid, point_id)
+            if any(p["id"] == pid for p in strip["points"]):
+                # A binding id equal to the direct-point tag ("direct") would
+                # derive the id of a point entered on the strip.
+                _refuse(
+                    "strip_point_conflict",
+                    "a binding's point has the id of a point entered on the strip",
+                    binding=bid,
+                    strip=strip_id,
+                    point=point_id,
+                )
             strip["points"].append(
                 {
                     "id": pid,
