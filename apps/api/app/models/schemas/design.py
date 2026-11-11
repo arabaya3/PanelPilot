@@ -1590,13 +1590,25 @@ class ReviseProjectRequest(StrictModel):
             ``pp-design/2`` deployment stores one (``configuration_requires_v2``
             otherwise). Bounded and checked by
             ``app.domain.design_configuration``: a client never claims a
-            review, and defines ``tenant`` refs only.
+            review, and defines ``tenant`` refs only. Stored verbatim in the
+            revision's requirements record (M7b). ``None`` carries the latest
+            revision's stored configuration, re-composed against ``request``.
+        configuration_removed: ``True`` (with ``configuration`` ``None``)
+            saves the revision with no configuration: the one explicit way to
+            stop carrying it (M7b).
     """
 
     request: ProjectDesignRequest
     note: str = Field(default="", max_length=500)
     requirements_input: RequirementsInput | None = None
     configuration: dict[str, Any] | None = None
+    configuration_removed: bool = False
+
+    @model_validator(mode="after")
+    def _removal_sends_none(self) -> ReviseProjectRequest:
+        if self.configuration_removed and self.configuration is not None:
+            raise ValueError("a configuration removed is sent as null")
+        return self
 
 
 class ConfigurationValidateRequest(StrictModel):
@@ -2732,6 +2744,13 @@ class SavedProject(BaseModel):
     #: revision's approval confirmed (``None``: none, or not approved).
     approval_scope_version: str | None = None
     approved_scope_version: str | None = None
+    #: M7b: the configuration this revision was composed from, verbatim as
+    #: stored in its requirements record; ``None`` when none is stored.
+    configuration: dict[str, Any] | None = None
+    #: M7b: ``stored`` (``configuration`` is set), ``not_recoverable`` (its
+    #: design holds a configuration saved before M7b, which was not stored
+    #: apart and cannot be carried: re-enter it), or ``none``.
+    configuration_status: Literal["none", "stored", "not_recoverable"] = "none"
 
     #: The revision's request as stored, when it no longer validates against
     #: today's bounds (an older revision's 600-character description): it is
