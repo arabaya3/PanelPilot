@@ -2524,6 +2524,8 @@ function DesignWorkspace({
                   boards={boards.map((board) => board.name.trim()).filter((name) => name !== '')}
                   model={openedModel}
                   externalRefusal={configRefusal}
+                  findings={validation?.findings ?? []}
+                  findingsRevision={opened.revision}
                   saveAction={goTo('overview', tc('saveGo'))}
                   onUnauthorized={forOwner(() => {
                     void reauthorize();

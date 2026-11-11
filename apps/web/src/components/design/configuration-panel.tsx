@@ -6,6 +6,7 @@ import { useIsolatingTranslations } from '@/components/design/bidi';
 import { ConfigurationEditor, entryElementId } from '@/components/design/configuration-editor';
 import {
   conflictTarget,
+  duplicateEntries,
   isEmptyConfiguration,
   normalized,
   removeEntry,
@@ -26,6 +27,7 @@ import {
   validateConfiguration,
   type ConfigurationReview,
   type ConfigurationStatus,
+  type DesignFinding,
   type Refusal,
   type V2ModelSummary,
 } from '@/lib/design';
@@ -114,6 +116,8 @@ export function ConfigurationPanel({
   saveAction = null,
   onUnauthorized,
   validateImpl = validateConfiguration,
+  findings,
+  findingsRevision,
 }: {
   token: string;
   projectId: string;
@@ -135,6 +139,10 @@ export function ConfigurationPanel({
   saveAction?: ReactNode;
   onUnauthorized: () => void;
   validateImpl?: typeof validateConfiguration;
+  /** The opened revision's design findings (only `designation_duplicate` is shown here). */
+  findings?: DesignFinding[];
+  /** The revision those findings were found in. */
+  findingsRevision?: number;
 }) {
   const t = useIsolatingTranslations('configuration');
   const id = useId();
@@ -276,6 +284,7 @@ export function ConfigurationPanel({
   const reviewCurrent = reviewed !== null && reviewed.text === serialized;
   const conflict = outcome.kind === 'error' ? outcome.conflict : null;
   const conflictSection = conflict ? sectionOf(conflict.kind) : null;
+  const duplicates = (findings ?? []).filter((finding) => finding.code === 'designation_duplicate');
 
   return (
     <div className="flex flex-col gap-4" data-testid="configuration-panel">
@@ -296,6 +305,72 @@ export function ConfigurationPanel({
               <span>{t('dropUnrecoverable')}</span>
             </label>
           )}
+        </Notice>
+      )}
+      {duplicates.length > 0 && (
+        <Notice tone="critical" live={false} testId="configuration-duplicates">
+          <span className="flex flex-col gap-2">
+            <span className="font-semibold">{t('duplicates.title')}</span>
+            {findingsRevision !== undefined && (
+              <span>{t('duplicates.asSaved', { revision: String(findingsRevision) })}</span>
+            )}
+            <ul className="flex list-none flex-col gap-2 p-0">
+              {duplicates.map((finding, index) => {
+                const values = finding.values ?? {};
+                const board = values.board_id ?? finding.board_id ?? '';
+                const forms = values.designation ?? '';
+                const parts = (values.parts ?? '').split(',').filter((part) => part !== '');
+                const entries = duplicateEntries(doc, board, forms);
+                return (
+                  <li
+                    key={`${board}|${forms}|${String(index)}`}
+                    className="flex flex-col gap-1 break-words"
+                    data-testid="configuration-duplicate"
+                  >
+                    <span>
+                      {t('duplicates.item', {
+                        designation: forms,
+                        board,
+                        count: String(parts.length),
+                      })}
+                    </span>
+                    {entries.length > 0 && (
+                      <span className="flex flex-wrap gap-2">
+                        {entries.map((entry) => (
+                          <button
+                            key={`${entry.kind}|${entry.id}`}
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => {
+                              editConflict({
+                                kind: entry.kind,
+                                entry: entry.id,
+                                ref: '',
+                                refKind: '',
+                                reason: '',
+                              });
+                            }}
+                            data-testid="duplicate-edit"
+                          >
+                            {t('duplicates.edit', {
+                              entry: t(`editor.entryKind.${entry.kind}`, {
+                                id: entryName(doc, entry.kind, entry.id),
+                              }),
+                            })}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                    {entries.length < parts.length && (
+                      <span className="text-sm">
+                        {entries.length === 0 ? t('duplicates.none') : t('duplicates.derived')}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </span>
         </Notice>
       )}
       <ConfigurationEditor

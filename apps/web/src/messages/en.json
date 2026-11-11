@@ -2032,7 +2032,15 @@
       "removeNamed": "Remove {entry}"
     },
     "saveWhere": "This configuration is saved with the project: use “Save as new revision” in the overview. It sends the form and this configuration together as one new revision, and nothing entered here is lost if the save is refused.",
-    "saveGo": "Go to Save as new revision"
+    "saveGo": "Go to Save as new revision",
+    "duplicates": {
+      "title": "A designation is printed on more than one part (approval is refused while this stands)",
+      "asSaved": "As found in saved revision {revision}. Save again to check your changes.",
+      "item": "{designation} is printed on {count} parts of board {board}.",
+      "edit": "Edit {entry}",
+      "derived": "The other part comes from the board form (for example its incomer), not from this configuration: change this entry's designation.",
+      "none": "No entry in this configuration prints it; the parts come from the board form."
+    }
   },
   "feederLink": {
     "panelTitle": "Board-to-board links",

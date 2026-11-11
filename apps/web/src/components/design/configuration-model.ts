@@ -431,3 +431,50 @@ export function entryName(
   const text = found ? designationText(found.designation) : '';
   return text !== '' ? text : entry;
 }
+
+/** A designation as the drawing prints it (`=function+location-product`), or null. */
+export function printedDesignation(designation: unknown): string | null {
+  const value = record(designation);
+  if (value === null || typeof value.product !== 'string' || value.product === '') return null;
+  const fn = typeof value.function === 'string' && value.function !== '' ? value.function : null;
+  const loc = typeof value.location === 'string' && value.location !== '' ? value.location : null;
+  return (fn ? `=${fn}` : '') + (loc ? `+${loc}` : '') + `-${value.product}`;
+}
+
+/** A printed form read on its own board: no function aspect means the board's (as the server reads it). */
+function onBoard(printed: string, board: string): string {
+  return printed.startsWith('=') ? printed : `=${board}${printed}`;
+}
+
+/**
+ * The configuration entries a `designation_duplicate` finding names: those on
+ * its board whose printed designation is one of the forms it lists
+ * (`-Q1 / =MB-1-Q1`). A derived part (an incomer) is not an entry, so a
+ * finding may match one entry or none.
+ */
+export function duplicateEntries(
+  config: Configuration,
+  board: string,
+  forms: string,
+): Array<{ kind: 'component' | 'strip'; id: string }> {
+  const wanted = new Set(
+    forms
+      .split(' / ')
+      .map((form) => form.trim())
+      .filter((form) => form !== '')
+      .map((form) => onBoard(form, board)),
+  );
+  const out: Array<{ kind: 'component' | 'strip'; id: string }> = [];
+  const check = (
+    kind: 'component' | 'strip',
+    entry: { id: string; board: string; designation: unknown },
+  ) => {
+    const printed = printedDesignation(entry.designation);
+    if (entry.board === board && printed !== null && wanted.has(onBoard(printed, board))) {
+      out.push({ kind, id: entry.id });
+    }
+  };
+  for (const entry of componentsOf(config)) check('component', entry);
+  for (const entry of stripsOf(config)) check('strip', entry);
+  return out;
+}
