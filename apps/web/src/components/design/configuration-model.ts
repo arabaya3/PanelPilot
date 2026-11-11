@@ -33,6 +33,8 @@ export type ConfigStrip = {
   board: string;
   template: string | null;
   designation: Designation;
+  /** User-entered points (M7b): `{id, marking, level?, kind?}`. */
+  points?: unknown;
 };
 
 export type ConfigBinding = {
@@ -308,7 +310,7 @@ export function conflictTarget(params: Record<string, string> | undefined): Conf
         entry,
         ref: params.ref ?? '',
         refKind: params.kind ?? '',
-        reason: params.reason ?? '',
+        reason: params.reason ?? params.refusal ?? '',
       };
     }
   }
@@ -324,4 +326,84 @@ export function sectionOf(kind: ConflictTarget['kind']): EntryKind | null {
       : kind === 'component'
         ? 'components'
         : null;
+}
+
+/**
+ * A template's name, read from its definition: its stated function and the
+ * id part of its ref, with the version (`circuit breaker · synth-mcb-1p (v1)`).
+ * Nothing is added that the definition does not hold.
+ */
+export function templateLabel(ref: string, fn: string | null): string {
+  const parts = ref.split('/');
+  const version = parts.length >= 3 ? parts[parts.length - 1] : null;
+  const id = parts.length >= 3 ? parts.slice(1, -1).join('/') : ref;
+  const name = version ? `${id} (${version})` : id;
+  return fn ? `${fn.replace(/_/g, ' ')} · ${name}` : name;
+}
+
+/** A user-entered strip point (`strips[].points[]`): the marking is the user's text. */
+export type StripPoint = { id: string; marking: string; level?: number; kind?: string };
+
+export function stripPoints(strip: { points?: unknown }): StripPoint[] {
+  if (!Array.isArray(strip.points)) return [];
+  return (strip.points as unknown[]).flatMap((item) => {
+    const point = record(item);
+    const id = point ? text(point.id) : null;
+    if (point === null || id === null) return [];
+    return [{ ...point, id, marking: text(point.marking) ?? '' }];
+  });
+}
+
+/** A strip with a point added: its id is new within the strip and stays as given. */
+export function addStripPoint(
+  config: Configuration,
+  stripId: string,
+  entry: { marking: string; level: number | null },
+): Configuration {
+  const strip = stripsOf(config).find((item) => item.id === stripId);
+  if (strip === undefined) return config;
+  const points = stripPoints(strip);
+  const used = new Set(points.map((point) => point.id));
+  let n = points.length + 1;
+  while (used.has(`p${String(n)}`)) n += 1;
+  const point: StripPoint = {
+    id: `p${String(n)}`,
+    marking: entry.marking,
+    ...(entry.level !== null ? { level: entry.level } : {}),
+  };
+  return updateEntry(config, 'strips', stripId, { points: [...points, point] });
+}
+
+/** A strip with one point's marking or level changed (a blank level is left out). */
+export function updateStripPoint(
+  config: Configuration,
+  stripId: string,
+  pointId: string,
+  patch: { marking?: string; level?: number | null },
+): Configuration {
+  const strip = stripsOf(config).find((item) => item.id === stripId);
+  if (strip === undefined) return config;
+  const points = stripPoints(strip).map((point) => {
+    if (point.id !== pointId) return point;
+    const next: StripPoint = {
+      ...point,
+      ...(patch.marking !== undefined ? { marking: patch.marking } : {}),
+    };
+    if (patch.level === null) delete next.level;
+    else if (patch.level !== undefined) next.level = patch.level;
+    return next;
+  });
+  return updateEntry(config, 'strips', stripId, { points });
+}
+
+export function removeStripPoint(
+  config: Configuration,
+  stripId: string,
+  pointId: string,
+): Configuration {
+  const strip = stripsOf(config).find((item) => item.id === stripId);
+  if (strip === undefined) return config;
+  return updateEntry(config, 'strips', stripId, {
+    points: stripPoints(strip).filter((point) => point.id !== pointId),
+  });
 }

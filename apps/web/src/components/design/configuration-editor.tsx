@@ -23,13 +23,19 @@ import {
   componentsOf,
   designationOf,
   designationText,
+  addStripPoint,
   removeEntry,
+  removeStripPoint,
   setMarking,
+  stripPoints,
+  templateLabel,
+  updateStripPoint,
   stripsOf,
   templateChoices,
   updateEntry,
   type Configuration,
   type ConflictTarget,
+  type StripPoint,
   type TemplateChoice,
 } from '@/components/design/configuration-model';
 import { ReviewStatus } from '@/components/design/configuration-review';
@@ -121,12 +127,12 @@ function TemplatePicker({
             data-testid="template-choice"
           />
           <span className="flex min-w-0 flex-col gap-1">
-            <span className="break-all font-mono" dir="ltr">
+            <span className="break-words font-semibold" data-testid="template-label">
+              {templateLabel(choice.ref, choice.function)}
+            </span>
+            <span className="break-all font-mono text-xs text-text-muted" dir="ltr">
               {choice.ref}
             </span>
-            {choice.function !== null && (
-              <span className="text-xs text-text-muted">{choice.function}</span>
-            )}
             <TemplateFacts choice={choice} />
           </span>
         </label>
@@ -224,6 +230,165 @@ function AddEntry({
   );
 }
 
+/** A level as typed: a whole number of at least 1, or blank (left out). */
+function levelOf(typed: string): number | null | 'invalid' {
+  if (typed.trim() === '') return null;
+  return /^\d+$/.test(typed.trim()) && Number(typed) >= 1 ? Number(typed) : 'invalid';
+}
+
+/**
+ * A strip's user-entered points: each marking is the user's own text (never
+ * prefilled), with an optional level. A point's id is made once and kept.
+ */
+function StripPointsEditor({
+  value,
+  onChange,
+  stripId,
+  points,
+  rowId,
+}: {
+  value: Configuration;
+  onChange: (next: Configuration) => void;
+  stripId: string;
+  points: StripPoint[];
+  rowId: string;
+}) {
+  const t = useIsolatingTranslations('configuration');
+  const [marking, setMarkingText] = useState('');
+  const [level, setLevel] = useState('');
+  const parsedLevel = levelOf(level);
+  const ready = marking.trim() !== '' && parsedLevel !== 'invalid';
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-2" data-testid="strip-points">
+      <legend className="text-sm font-semibold">{t('editor.stripPoints')}</legend>
+      {points.length === 0 && (
+        <p className="text-xs text-text-muted">{t('editor.noStripPoints')}</p>
+      )}
+      {points.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {points.map((point, index) => (
+            <li
+              key={point.id}
+              className="flex min-w-0 flex-wrap items-end gap-2"
+              data-testid="strip-point"
+            >
+              <div className="field min-w-0 flex-1">
+                <label htmlFor={`${rowId}-pt-${point.id}`} className="field-label">
+                  {t('editor.pointN', { n: String(index + 1) })}
+                </label>
+                <input
+                  id={`${rowId}-pt-${point.id}`}
+                  className="input w-full"
+                  dir="auto"
+                  maxLength={50}
+                  value={point.marking}
+                  aria-invalid={point.marking.trim() === '' || undefined}
+                  onChange={(event) => {
+                    onChange(
+                      updateStripPoint(value, stripId, point.id, { marking: event.target.value }),
+                    );
+                  }}
+                  data-testid="strip-point-marking"
+                />
+              </div>
+              <div className="field w-24">
+                <label htmlFor={`${rowId}-pt-${point.id}-level`} className="field-label">
+                  {t('editor.level')}
+                </label>
+                <input
+                  id={`${rowId}-pt-${point.id}-level`}
+                  className="input w-full"
+                  inputMode="numeric"
+                  dir="ltr"
+                  value={point.level === undefined ? '' : String(point.level)}
+                  onChange={(event) => {
+                    const next = levelOf(event.target.value);
+                    if (next === 'invalid') return;
+                    onChange(updateStripPoint(value, stripId, point.id, { level: next }));
+                  }}
+                  data-testid="strip-point-level"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                aria-label={t('editor.removePoint', { n: String(index + 1) })}
+                onClick={() => {
+                  onChange(removeStripPoint(value, stripId, point.id));
+                }}
+                data-testid="strip-point-remove"
+              >
+                {t('editor.remove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex min-w-0 flex-wrap items-end gap-2">
+        <div className="field min-w-0 flex-1">
+          <label htmlFor={`${rowId}-new-point`} className="field-label">
+            {t('editor.newPointMarking')}
+          </label>
+          <input
+            id={`${rowId}-new-point`}
+            className="input w-full"
+            dir="auto"
+            maxLength={50}
+            value={marking}
+            onChange={(event) => {
+              setMarkingText(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && ready) {
+                event.preventDefault();
+                onChange(
+                  addStripPoint(value, stripId, { marking: marking.trim(), level: parsedLevel }),
+                );
+                setMarkingText('');
+                setLevel('');
+              }
+            }}
+            data-testid="strip-point-new-marking"
+          />
+        </div>
+        <div className="field w-24">
+          <label htmlFor={`${rowId}-new-point-level`} className="field-label">
+            {t('editor.levelOptional')}
+          </label>
+          <input
+            id={`${rowId}-new-point-level`}
+            className="input w-full"
+            inputMode="numeric"
+            dir="ltr"
+            value={level}
+            aria-invalid={parsedLevel === 'invalid' || undefined}
+            onChange={(event) => {
+              setLevel(event.target.value);
+            }}
+            data-testid="strip-point-new-level"
+          />
+        </div>
+        <button
+          type="button"
+          className="btn btn-sm btn-secondary"
+          disabled={!ready}
+          onClick={() => {
+            if (parsedLevel === 'invalid') return;
+            onChange(
+              addStripPoint(value, stripId, { marking: marking.trim(), level: parsedLevel }),
+            );
+            setMarkingText('');
+            setLevel('');
+          }}
+          data-testid="strip-point-add"
+        >
+          {t('editor.addPoint')}
+        </button>
+      </div>
+    </fieldset>
+  );
+}
+
 export function ConfigurationEditor({
   value,
   onChange,
@@ -286,7 +451,10 @@ export function ConfigurationEditor({
             <span>{t('editor.noTemplate')}</span>
           ) : (
             <>
-              <TechnicalToken className="break-all">{entry.template}</TechnicalToken>
+              <span className="break-words font-semibold" data-testid="entry-template-label">
+                {templateLabel(entry.template, byRef.get(entry.template)?.function ?? null)}
+              </span>
+              <TechnicalToken className="break-all text-xs">{entry.template}</TechnicalToken>
               <TemplateFacts choice={byRef.get(entry.template)} />
             </>
           )}
@@ -311,6 +479,15 @@ export function ConfigurationEditor({
             data-testid={`${kind}-designation`}
           />
         </div>
+        {kind === 'strip' && (
+          <StripPointsEditor
+            value={value}
+            onChange={onChange}
+            stripId={entry.id}
+            points={stripPoints(entry as { points?: unknown })}
+            rowId={rowId}
+          />
+        )}
         <button
           type="button"
           className="btn btn-sm btn-danger self-start"
@@ -318,6 +495,11 @@ export function ConfigurationEditor({
             onChange(removeEntry(value, section, entry.id));
           }}
           data-testid={`${kind}-remove`}
+          aria-label={t('editor.removeNamed', {
+            entry: t(`editor.entryKind.${kind}`, {
+              id: designationText(entry.designation) || entry.id,
+            }),
+          })}
         >
           {t('editor.remove')}
         </button>
