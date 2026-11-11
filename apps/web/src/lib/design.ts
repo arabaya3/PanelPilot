@@ -49,7 +49,20 @@ export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
  */
 export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
-export type SavedProject = components['schemas']['SavedProject'];
+/**
+ * Whether the opened revision's configuration can be carried (M7b §4):
+ * `none` (it has none), `stored` (in `configuration`), or `not_recoverable`
+ * (saved before M7b; the user re-enters it).
+ */
+export type ConfigurationStatus = 'none' | 'stored' | 'not_recoverable';
+/**
+ * A saved project. M7b adds the revision's stored configuration and its
+ * status; declared here until the generated types carry them.
+ */
+export type SavedProject = components['schemas']['SavedProject'] & {
+  configuration?: Record<string, unknown> | null;
+  configuration_status?: ConfigurationStatus;
+};
 export type ProjectPage = components['schemas']['ProjectPage'];
 /** An action the server lets the caller take; it checks again on every request. */
 export type Permission = components['schemas']['Permission'];
@@ -569,17 +582,30 @@ export function reviseProject(
     request: ProjectDesignRequest;
     note?: string;
     configuration?: Record<string, unknown> | null;
+    /** M7b: remove the stored configuration (sends `configuration: null`, `configuration_removed: true`). */
+    configurationRemoved?: boolean;
     requirementsInput?: RequirementsInput | null;
   },
 ): Promise<ProjectOutcome> {
-  const { id, request, note = '', configuration, requirementsInput } = options;
+  const {
+    id,
+    request,
+    note = '',
+    configuration,
+    configurationRemoved,
+    requirementsInput,
+  } = options;
   return call(
     options,
     `${PROJECTS}/${encodeURIComponent(id)}/revisions`,
     {
       request,
       note,
-      ...(configuration ? { configuration } : {}),
+      ...(configurationRemoved
+        ? { configuration: null, configuration_removed: true }
+        : configuration
+          ? { configuration }
+          : {}),
       ...(requirementsInput ? { requirements_input: requirementsInput } : {}),
     },
     saved,
