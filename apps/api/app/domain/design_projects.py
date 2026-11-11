@@ -1247,6 +1247,8 @@ class _LinkEntry:
     board_refs: Mapping[str, str]
     entered_by_user_id: str | None
     entered_at: str | None
+    #: The previous revision's links: unchanged user content keeps their provenance.
+    prior_links: Sequence[entities.InterBoardLink] = ()
 
 
 def _validate(
@@ -1316,6 +1318,7 @@ def _validate(
             entry.board_refs,
             entered_by_user_id=entry.entered_by_user_id,
             entered_at=entry.entered_at,
+            prior=entry.prior_links,
         )
         stored = snapshot_v3_from_v2(stored, links)
     # The findings of what every later read sees: its reviews anchored to the
@@ -1359,12 +1362,6 @@ def _require_v2_writes() -> None:
 
 ConfigurationStatus = Literal["none", "stored", "not_recoverable"]
 
-#: Composer refusal params naming what a carried configuration refers to,
-#: most specific first (M7b ``configuration_conflict``).
-_CONFLICT_REFS = ("device", "cable", "circuit", "component", "board", "strip", "slot", "ref")
-#: Where in the configuration the reference sits: one of these is sent.
-_CONFLICT_PLACES = ("binding", "strip", "component")
-
 
 def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictError:
     """A carried configuration that no longer composes with the new request (M7b).
@@ -1386,11 +1383,10 @@ def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictE
         return exc
     elif exc.code == "configuration_refused":
         reason = str(params.pop("refusal", "configuration_refused"))
-        kind = next((name for name in _CONFLICT_REFS if name in params), "configuration")
-        out = {"ref": str(params.get(kind, "")), "kind": kind, "reason": reason}
-        place = next((name for name in _CONFLICT_PLACES if name in params), None)
-        if place is not None:
-            out[place] = str(params[place])
+        out = {
+            **design_configuration.entry_params(reason, params),
+            "reason": reason,
+        }
     else:
         return exc
     return ConflictError(
@@ -1399,6 +1395,16 @@ def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictE
         code="configuration_conflict",
         params=out,
     )
+
+
+def _stored_links(row: DesignRevisionRow | None) -> tuple[entities.InterBoardLink, ...]:
+    """A revision's stored feeder links (``()`` for none, v1/v2 or unreadable)."""
+    if row is None or row.design_snapshot is None:
+        return ()
+    try:
+        return tuple(read_snapshot(row.design_snapshot).links)
+    except (versions.SnapshotSchemaUnknownError, versions.SnapshotUnreadableError):
+        return ()
 
 
 def _read_v2(stored: Any) -> entities.DesignModelV2 | None:
@@ -1487,6 +1493,7 @@ def _add_revision(
             code="project_revisions_full",
             params={"limit": str(MAX_REVISIONS)},
         )
+    previous = _revisions(session, project)[-1] if project.revision_count else None
     project.revision_count += 1
     saving_account = _account_id(user) if user.email else None
     try:
@@ -1498,6 +1505,7 @@ def _add_revision(
                 board_refs=requirements.board_refs(request, prior),
                 entered_by_user_id=str(saving_account) if saving_account is not None else None,
                 entered_at=_now_iso(),
+                prior_links=_stored_links(previous),
             ),
         )
     except ValidationError as exc:

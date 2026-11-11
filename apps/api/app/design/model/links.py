@@ -183,6 +183,7 @@ def derive(
     *,
     entered_by_user_id: str | None,
     entered_at: str | None,
+    prior: Sequence[entities.InterBoardLink] = (),
 ) -> list[entities.InterBoardLink]:
     """The links of a design: one per server-owned feeder, with what the user entered.
 
@@ -192,6 +193,9 @@ def derive(
         board_refs: Each board's requirements-record ref, by board name.
         entered_by_user_id: The saving account (``None`` for a trial).
         entered_at: When it was saved (ISO 8601).
+        prior: The previous revision's links. A link whose user-entered
+            content (ends and attributes) is unchanged keeps that link's
+            provenance (who and when); only a change is stamped anew.
 
     Returns:
         The links, sorted by id. A link holding a value entered by the user
@@ -203,6 +207,7 @@ def derive(
             another board than its end's.
     """
     names = {board.id: board.name for board in model.design.boards}
+    earlier_links = {link.id: link for link in prior}
     by_board = {entry.fed_board: (index, entry) for index, entry in enumerate(entered or [])}
     links: list[entities.InterBoardLink] = []
     for feeder in codec_v3.derived_feeders(model):
@@ -228,9 +233,21 @@ def derive(
             )
         cable = codec_v3.feeder_cable(model, feeder)
         user = _entered(entry)
+        link_id = codec_v3.link_id(feeder.supply_board, feeder.fed_board)
+        attributes = _attributes(entry)
+        who, when = (entered_by_user_id, entered_at) if user else (None, None)
+        earlier = earlier_links.get(link_id)
+        if (
+            user
+            and earlier is not None
+            and earlier.provenance.entered_at is not None
+            and earlier.ends == (ends[0], ends[1])
+            and earlier.attributes == attributes
+        ):
+            who, when = earlier.provenance.entered_by_user_id, earlier.provenance.entered_at
         links.append(
             entities.InterBoardLink(
-                id=codec_v3.link_id(feeder.supply_board, feeder.fed_board),
+                id=link_id,
                 origin="derived",
                 feeder=feeder,
                 ends=(ends[0], ends[1]),
@@ -239,13 +256,13 @@ def derive(
                     if cable is not None
                     else entities.LinkCarrier(kind="unknown", cable_id=None)
                 ),
-                attributes=_attributes(entry),
+                attributes=attributes,
                 provenance=entities.LinkProvenance(
                     requirement_ref=codec_v3.requirement_ref(
                         board_refs.get(names[feeder.fed_board], names[feeder.fed_board])
                     ),
-                    entered_by_user_id=entered_by_user_id if user else None,
-                    entered_at=entered_at if user else None,
+                    entered_by_user_id=who,
+                    entered_at=when,
                 ),
             )
         )
