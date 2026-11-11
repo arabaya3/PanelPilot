@@ -624,8 +624,8 @@ def test_v3_has_its_own_renderer_version_and_v1_v2_are_untouched() -> None:
     """v3 has its own entry, distinct from v1 and v2 (pinned at their current versions)."""
     from app.design.model import versions
 
-    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.11.1"
-    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.11.v2-25"
+    assert design.RENDERER_VERSIONS[versions.V1] == "2026.11.11.2"
+    assert design.RENDERER_VERSIONS[versions.V2] == "2026.11.11.v2-26"
     assert design.renderer_version(versions.V3) not in (
         design.RENDERER_VERSIONS[versions.V1],
         design.RENDERER_VERSIONS[versions.V2],
@@ -652,3 +652,14 @@ def test_v3_exports_print_the_links_and_differ_with_the_entry() -> None:
         assert "link_value_differs_from_calculation" in text, doc
     body = json.loads(exported["json"])
     assert [link["feeder"]["fed_board"] for link in body["links"]] == ["SB-1"]
+
+
+def test_the_v3_json_export_says_it_omits_the_saved_configuration() -> None:
+    """M7b: the configured v3 revision's components and strips are not in its JSON."""
+    exported = json.loads(v3_exports("entered")[ExportFormat.JSON.value])
+    assert exported["export_scope"] == marking.JSON_EXPORT_SCOPE
+    assert exported["export_scope"]["restores_revision"] is False
+    assert "links" in exported
+    text = json.dumps(exported["project"])
+    for absent in ('"model_v2"', '"strips"', '"components"', '"connections"'):
+        assert absent not in text, absent

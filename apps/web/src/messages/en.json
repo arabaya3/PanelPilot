@@ -815,7 +815,7 @@
       "parts_csv": "Parts list (CSV)",
       "cables_csv": "Cable list (CSV)",
       "circuits_csv": "Circuit schedule (CSV)",
-      "json": "Project (JSON)",
+      "json": "Design data (JSON): calculated design and findings, not the saved configuration",
       "terminals_csv": "Terminal list (CSV)",
       "calculations_pdf": "Calculations report (PDF)",
       "eplan_devices_csv": "EPLAN device import (CSV)",

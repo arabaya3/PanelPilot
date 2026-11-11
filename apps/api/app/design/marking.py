@@ -461,6 +461,34 @@ def mark_plc_source(source: str, mark: ExportMark) -> str:
     return f"(* {comment} *)\n{source}"
 
 
+#: What the project JSON holds and does not, stated in every JSON export
+#: (``export_scope``). It is a review copy of the calculated design: the docs
+#: never promised a saved-revision backup, and nothing imports it back, so it
+#: says it cannot restore a revision rather than implying a round trip.
+JSON_EXPORT_SCOPE: dict[str, Any] = {
+    "kind": "calculated_design_review_copy",
+    "contains": [
+        "export_status: the export's label and identity",
+        "findings: the design's unresolved findings",
+        "requirements: the revision's open items and acknowledged assumptions, when any",
+        "approval: what a review approval covers and does not",
+        "project: the calculated design (boards, circuits, devices, cables and notes)",
+        "links: a pp-design/3 revision's board-to-board feeder links, as stored",
+    ],
+    "omits": [
+        "the saved configuration of a pp-design/2 or pp-design/3 revision (model_v2: "
+        "components, terminals, terminal strips, nets, connections, wires, templates "
+        "and patterns); the terminal schedule, wire schedule and connection drawing "
+        "PDFs print it for review",
+    ],
+    "restores_revision": False,
+    "statement": (
+        "A review copy of the calculated design and its findings, not a backup of the "
+        "saved revision: it cannot be imported to restore the revision or its configuration."
+    ),
+}
+
+
 def mark_json(
     project_json: str, mark: ExportMark, links: list[dict[str, Any]] | None = None
 ) -> bytes:
@@ -473,10 +501,12 @@ def mark_json(
             carried under ``links`` after ``project``; ``None`` adds no key.
 
     Returns:
-        ``{"export_status": {...}, "findings": [...], "project": {...}}``.
+        ``{"export_status": {...}, "export_scope": {...}, "findings": [...],
+        "project": {...}}`` (``export_scope`` is :data:`JSON_EXPORT_SCOPE`).
     """
     envelope = {
         "export_status": {"label": mark.label, "identity": mark.identity},
+        "export_scope": JSON_EXPORT_SCOPE,
         "findings": [found.model_dump(mode="json") for found in mark.findings],
         **({"requirements": list(mark.requirements)} if mark.requirements else {}),
         "approval": dict(

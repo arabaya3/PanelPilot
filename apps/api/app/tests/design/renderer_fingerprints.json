@@ -1,33 +1,33 @@
 {
-  "renderer_version": "2026.11.11.1",
+  "renderer_version": "2026.11.11.2",
   "variants": {
     "basic": {
       "pdf": "8cf0da029ac75ad5b0d26352349eb4f45a49e2aa179e8d23c0f6da1aae854f50",
       "calculations_pdf": "5fc2adb4d89927204b4996b223b9d7e8050945920f54686625fce793b6a85b1b",
       "quotation_pdf": "f269949017a197c7385101176114f50c6b7a0255b9a51eb30207de051079b310",
       "dxf": "242660adda0de0e5f4d75c78490566725b75e543c167c862953824347a653e45",
-      "json": "bed8d029e6ebddae146f2dcf85e474cef525b467b02bb06cfe2d0fc62a23fbc1"
+      "json": "258968585322eff5f4e0e090df463f298b5ea7edd910e176efad52d268c70cd6"
     },
     "motor": {
       "pdf": "2b1f52d8ceb17567aea68802bc901e525cc397716c87cb4d855af3cd53ba75c8",
       "calculations_pdf": "4a0cec28e0160bc222fd84fb6593fce97741ee80ecc62012880ee2b0824b1805",
       "quotation_pdf": "089d46436c9ae8dae30269895607eaa06b4102ea9d16739696d21798e96cca6b",
       "dxf": "254869be86f6ecf02d26cb93c7a1739d53b8bab7a790d8d9c1368c8d2d3049e8",
-      "json": "4755024d2cd7bafd594a72b83480856b25a34e03a3db17a1bf399ef9c289f405"
+      "json": "721c0480a953b57e609427b049204abc2c5fe2677b8029b4ccd57379e8f9470c"
     },
     "arabic": {
       "pdf": "18073c1075ca5997ddad5604e20c18e5db4e605b6f42bfa54aa1417cfb6f3313",
       "calculations_pdf": "5282f82ee47818731fbcff876cca975f8f2ede9e233f451d065ffc2c3da9d7b0",
       "quotation_pdf": "566748b3f3e96b1fbf557d9109fc91f67cd95da36f4514ec232c0b5863f53178",
       "dxf": "df446d25683b7be2f2b50bbf1cc29e2641531019087e142868cdf25ef28a54a9",
-      "json": "be1e103c460bb224203703a7ad8b5f39dad06cd6c26d535f6ee76e2ec91b5d6d"
+      "json": "b578349664bf2b01d1bbc501a5a9dccbe9a3e2301e2719e21916243c50202818"
     },
     "hebrew": {
       "pdf": "120b05701c2b0bc96559aea19b6b1cdb0d9573a4f32ddbec2668b3617e698c75",
       "calculations_pdf": "258a1b4b704bfdc7f5f9ef4d912692e76717a5fb2c4380b0c4a5937c332fed73",
       "quotation_pdf": "d59b7ffdd485af81debbf4dcd4277af811909cf855e34e9379e32c6e98ba9c6b",
       "dxf": "06126558cedd29920726885a64e2b5437a8001381366e626c10ded457c1888f2",
-      "json": "4a6b1a89ba537d4ce59cbc1a947b4edf8d6b3c03fa1196d9c5ac01581d8b69f8"
+      "json": "0dae2bd7f6d724b1bc44e36fa3edcf44739537a036ff05aee4813a167a39d324"
     }
   }
 }

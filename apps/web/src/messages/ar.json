@@ -815,7 +815,7 @@
       "parts_csv": "قائمة القطع (CSV)",
       "cables_csv": "قائمة الكوابل (CSV)",
       "circuits_csv": "جدول الدوائر (CSV)",
-      "json": "المشروع (JSON)",
+      "json": "بيانات التصميم (JSON): التصميم المحسوب والملاحظات، دون الإعداد المحفوظ",
       "terminals_csv": "جدول الأطراف (CSV)",
       "calculations_pdf": "تقرير الحسابات (PDF)",
       "eplan_devices_csv": "استيراد أجهزة EPLAN (CSV)",

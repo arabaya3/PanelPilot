@@ -815,7 +815,7 @@
       "parts_csv": "רשימת חלקים (CSV)",
       "cables_csv": "רשימת כבלים (CSV)",
       "circuits_csv": "טבלת מעגלים (CSV)",
-      "json": "פרויקט (JSON)",
+      "json": "נתוני התכנון (JSON): התכנון המחושב והממצאים, ללא התצורה השמורה",
       "terminals_csv": "רשימת מהדקים (CSV)",
       "calculations_pdf": "דוח חישובים (PDF)",
       "eplan_devices_csv": "ייבוא רכיבים ל-EPLAN (CSV)",

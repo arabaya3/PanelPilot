@@ -101,7 +101,7 @@ blocked, restricted formats refused, no electrical values added.
     `configuration_conflict` (`kind` `template` for template refusals,
     `definition` for a repeated template/pattern ref, `configuration` when no
     reference is named); `refusal` and the composer's params are kept.
-  - JSON export is unchanged: it is renderer-versioned output (the `json`
+  - JSON export does not carry the configuration, and now says so (`export_scope`, renderer v1 `2026.11.11.2` / v2 `2026.11.11.v2-26` / v3 `2026.11.11.v3-4`; see `docs/design-readiness/phase-1-export-integrity.md`). Adding the configuration itself was not done: it is renderer-versioned output (the `json`
     entries of `renderer_fingerprints*.json`, approvals bind the renderer
     version), so adding components/strips/configuration to it is not a
     renderer-neutral change and would need a renderer-version bump.
