@@ -71,7 +71,7 @@ export function FeederLinkForm({
   function end(role: 'from' | 'to') {
     const board = role === 'from' ? supplyBoard : fedBoard;
     const current: LinkEndForm = link[role];
-    const options = terminalOptions(model, board, t('unnamed'));
+    const options = terminalOptions(model, board, t('unnamed'), (side) => t(`side.${side}`));
     const chosen = options.find((option) => option.value === current.terminal);
     const set = (patch: Partial<LinkEndForm>) => {
       update({ ...link, [role]: { ...current, ...patch } });
@@ -293,7 +293,10 @@ export function StoredLinks({
     (LINK_ATTRIBUTES as readonly string[]).includes(key) ? t(`attr.${key as LinkAttribute}`) : key;
 
   function endText(end: StoredLinkEnd): string {
-    if (end.terminal) return t('endTerminal', { terminal: terminalText(end.terminal, model) });
+    if (end.terminal)
+      return t('endTerminal', {
+        terminal: terminalText(end.terminal, model, (side) => t(`side.${side}`)),
+      });
     // A label is the user's text: the end stays not set, and says so first.
     if (end.label) return `${t('endNotSetStored')}; ${t('endLabelStored', { label: end.label })}`;
     return t('endNotSetStored');

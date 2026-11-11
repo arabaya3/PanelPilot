@@ -117,6 +117,7 @@ export function terminalOptions(
   model: V2ModelSummary | null,
   board: string,
   unnamed = '?',
+  sideWord: (side: 'inner' | 'outer') => string = (side) => side,
 ): TerminalOption[] {
   if (model === null) return [];
   const options: TerminalOption[] = [];
@@ -131,7 +132,7 @@ export function terminalOptions(
     } else if (row.owner_kind === 'strip' && (row.side === 'inner' || row.side === 'outer')) {
       options.push({
         value: encodeTerminal({ point: row.terminal_id, side: row.side }),
-        text: `${owner}:${row.marking} (${row.side}) — ${board}`,
+        text: `${owner}:${row.marking} (${sideWord(row.side)}) — ${board}`,
       });
     }
   }
@@ -139,7 +140,11 @@ export function terminalOptions(
 }
 
 /** A terminal said as the model names it, or its raw ids where the model does not hold it. */
-export function terminalText(ref: TerminalRef, model: V2ModelSummary | null): string {
+export function terminalText(
+  ref: TerminalRef,
+  model: V2ModelSummary | null,
+  sideWord: (side: 'inner' | 'outer') => string = (side) => side,
+): string {
   if (model !== null) {
     for (const row of model.terminals) {
       const same = isComponentTerminal(ref)
@@ -151,13 +156,13 @@ export function terminalText(ref: TerminalRef, model: V2ModelSummary | null): st
         const owner = row.designation ?? row.owner_id;
         return isComponentTerminal(ref)
           ? `${owner}:${row.marking}`
-          : `${owner}:${row.marking} (${ref.side})`;
+          : `${owner}:${row.marking} (${sideWord(ref.side)})`;
       }
     }
   }
   return isComponentTerminal(ref)
     ? `${ref.component}:${ref.terminal}`
-    : `${ref.point} (${ref.side})`;
+    : `${ref.point} (${sideWord(ref.side)})`;
 }
 
 /** One entry of the request's `feeder_links`, exactly as the contract states it (§4). */

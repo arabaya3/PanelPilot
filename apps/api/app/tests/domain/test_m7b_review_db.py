@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
-from app.tests.domain.test_m7b_configuration_db import (  # noqa: F401  (fixtures)
+from app.tests.domain.test_m7b_configuration_db import (  # type: ignore[attr-defined]  # noqa: F401  (fixtures)
     V2,
     Switch,
     _app,

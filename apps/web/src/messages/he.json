@@ -2094,6 +2094,10 @@
     },
     "refusedHere": "השמירה נדחתה עבור חיבור זה: {reason}",
     "unnamed": "ללא ייעוד",
-    "terminalChosen": "המהדק שנבחר: {terminal}"
+    "terminalChosen": "המהדק שנבחר: {terminal}",
+    "side": {
+      "inner": "פנימי",
+      "outer": "חיצוני"
+    }
   }
 }

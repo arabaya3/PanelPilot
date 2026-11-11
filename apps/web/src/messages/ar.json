@@ -2094,6 +2094,10 @@
     },
     "refusedHere": "رُفض الحفظ لهذه الوصلة: {reason}",
     "unnamed": "بدون تسمية",
-    "terminalChosen": "الطرف المختار: {terminal}"
+    "terminalChosen": "الطرف المختار: {terminal}",
+    "side": {
+      "inner": "داخلي",
+      "outer": "خارجي"
+    }
   }
 }

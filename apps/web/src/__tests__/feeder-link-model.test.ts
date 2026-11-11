@@ -350,4 +350,11 @@ describe('a stored terminal as the API sends it', () => {
     expect(isComponentTerminal(component)).toBe(true);
     expect(terminalText(component, null)).toBe('k-1:t-2');
   });
+
+  it('says the strip side in the page language', async () => {
+    const { terminalText } = await import('@/components/design/feeder-link-model');
+    const fromApi = { point: 'p-1', side: 'outer' } as never;
+    const ar = { inner: 'داخلي', outer: 'خارجي' } as const;
+    expect(terminalText(fromApi, null, (side) => ar[side])).toBe('p-1 (خارجي)');
+  });
 });

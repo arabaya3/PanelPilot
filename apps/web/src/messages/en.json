@@ -2094,6 +2094,10 @@
     },
     "refusedHere": "The save was refused for this link: {reason}",
     "unnamed": "Unnamed",
-    "terminalChosen": "Chosen terminal: {terminal}"
+    "terminalChosen": "Chosen terminal: {terminal}",
+    "side": {
+      "inner": "inner",
+      "outer": "outer"
+    }
   }
 }

@@ -21,19 +21,19 @@ snapshot. A later plain save, an answer or a re-save drops it or is refused
 
 ## 3. Carry-forward (every save path)
 
-| Path | Configuration used |
-|---|---|
-| save with `configuration` | the one sent |
-| save without it (plain save, answer, feeder-link edit) | the latest revision's stored configuration, if any |
-| re-save of revision n | revision n's own stored configuration |
-| explicit removal | `configuration: null` sent with `configuration_removed: true` |
+| Path                                                   | Configuration used                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| save with `configuration`                              | the one sent                                                  |
+| save without it (plain save, answer, feeder-link edit) | the latest revision's stored configuration, if any            |
+| re-save of revision n                                  | revision n's own stored configuration                         |
+| explicit removal                                       | `configuration: null` sent with `configuration_removed: true` |
 
 - The carried configuration is re-validated and re-composed against the new
   request. A reference that no longer resolves (a bound device/circuit/board/
   cable gone, a feeder-link terminal gone), or any other composer refusal of
   the carried configuration, refuses the save with 409
   `configuration_conflict`, `params`: `{ref, kind, binding|strip|component|link,
-  reason}`. Nothing is saved; nothing is dropped or regenerated.
+reason}`. Nothing is saved; nothing is dropped or regenerated.
 - A revision whose snapshot holds a configuration but whose record has none
   (saved before M7b) cannot be carried losslessly: saves without a configuration
   are refused with 409 `configuration_not_recoverable` (`revision`); the user
