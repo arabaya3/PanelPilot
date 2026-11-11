@@ -481,6 +481,31 @@ class LinkRow:
     differences: tuple[tuple[str, str, str], ...]
 
 
+def link_end_notes(rows: Sequence[LinkRow]) -> dict[tuple[str, str, str], str]:
+    """For each modelled link end (by terminal key), the links it ends, as printed.
+
+    ``"feeder link to SB-1 X2:1 (inner) (link l-…)"``; an end of several links
+    names each, ``"; "``-separated. The far end is its terminal, the user's
+    label, or "terminal NOT SET", as the links section prints it.
+
+    Args:
+        rows: ``rows`` of a revision's links.
+
+    Returns:
+        The text for each end whose terminal is modelled.
+    """
+    found: dict[tuple[str, str, str], list[str]] = {}
+    for row in rows:
+        for end, far in ((row.ends[0], row.ends[1]), (row.ends[1], row.ends[0])):
+            if end.key is None:
+                continue
+            target = far.terminal if far.resolved or far.label is None else far.label
+            found.setdefault(end.key, []).append(
+                f"feeder link to {far.board} {target} (link {row.link_id})"
+            )
+    return {key: "; ".join(texts) for key, texts in found.items()}
+
+
 def terminal_text(model: entities.DesignModelV2, ref: entities.TerminalRef) -> str:
     """A modelled terminal as the schedules name it: ``<owner>:<marking>``."""
     if ref.component is not None:

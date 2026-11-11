@@ -2601,7 +2601,7 @@ def _schedule_export(
     link_rows = link_model.rows(model, read.links)
     if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
         content = connection_drawing_pdf.render_connection_drawing(
-            connection_drawing.drawing_set(model),
+            connection_drawing.drawing_set(model, link_ends=link_model.link_end_notes(link_rows)),
             connection_drawing_pdf.DrawingHeader(
                 project=header.project,
                 revision=header.revision,

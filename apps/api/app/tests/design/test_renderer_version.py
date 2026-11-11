@@ -465,11 +465,13 @@ def v3_exports(
     *,
     identity: str = IDENTITY,
     project: str = "Renderer reference v3",
+    from_side: str = "inner",
 ) -> dict[str, bytes]:
     """Every review export of a v3 design, as ``export_revision`` makes it.
 
     ``identity`` and ``project`` replace the fixed mark and header names (the
-    footer layout check prints long ones).
+    footer layout check prints long ones); ``from_side`` is the side of the
+    supply board's strip point the entered link starts at.
     """
     from app.design import connection_drawing_pdf, schedule_pdf, snapshot
     from app.design.model import (
@@ -500,7 +502,7 @@ def v3_exports(
                 [
                     {
                         "fed_board": "SB-1",
-                        "from_end": {"terminal": {"point": point, "side": "inner"}},
+                        "from_end": {"terminal": {"point": point, "side": from_side}},
                         "to_end": {"label": "Incomer top terminals"},
                         "attributes": {
                             "cores": 4,
@@ -568,7 +570,7 @@ def v3_exports(
     )
     found[ExportFormat.CONNECTION_DRAWING_PDF.value] = (
         connection_drawing_pdf.render_connection_drawing(
-            connection_drawing.drawing_set(v2),
+            connection_drawing.drawing_set(v2, link_ends=link_model.link_end_notes(rows)),
             connection_drawing_pdf.DrawingHeader(**dataclasses.asdict(header)),
             plain,
             structural,

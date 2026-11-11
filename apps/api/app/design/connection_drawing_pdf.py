@@ -54,6 +54,13 @@ DISCLAIMER = (
     "unless its review status says so."
 )
 
+#: Added to the legend of a drawing with board-to-board links (``pp-design/3``).
+LINK_END_LEGEND = (
+    "LINK END: a terminal with no board-local wire (in no net) that ends a board-to-board "
+    "feeder link; the note names the far board and terminal. The link is not a wire or net "
+    "of either board's model."
+)
+
 #: The legend printed on the cover.
 LEGEND = (
     "to X:1 (sheet n, zone 3B) via wire: the far end of a connection and where it is drawn.",
@@ -140,7 +147,7 @@ _TEXT_LINES = int((_TEXT_FIRST - _TEXT_LAST) // _TEXT_LINE) + 1
 _TEXT_ROOM = _AREA_RIGHT - _AREA_LEFT - 2 * _TEXT_MARGIN
 _INDENT = 4 * mm
 #: Text-sheet entries printed bold.
-_LOUD = ("[BLOCKING]", "UNREALISED", "UNCONNECTED")
+_LOUD = ("[BLOCKING]", "UNREALISED", "UNCONNECTED", layout.LINK_END_TAG)
 
 
 @dataclass(frozen=True)
@@ -731,6 +738,7 @@ def render_connection_drawing(
         "",
         "Legend:",
         *(f"  {item}" for item in LEGEND),
+        *([f"  {LINK_END_LEGEND}"] if links else []),
         "",
         (
             f"Cross-reference sheets: {layout.FIRST_SHEET} to {last_m4}"

@@ -1,5 +1,5 @@
 {
-  "renderer_version": "2026.11.11.v3-2",
+  "renderer_version": "2026.11.11.v3-3",
   "variants": {
     "unentered": {
       "pdf": "edbd43f147118b6fedc0173213608f2eddcdf17f81bdd4c2daa3efa6b1358d2a",
@@ -9,7 +9,7 @@
       "json": "a244f99357f55fd51c52cd4f8b4e16cd20557412fa087a5443e17603cd98c2a1",
       "terminal_schedule_pdf": "98b50a176c227233eb349d3dd1abd84560bd4bc302eebb926d603c503a67f9f3",
       "wire_schedule_pdf": "140950b2d8dcdd7f52308fec092010b1afbc11a006466557ae22661d04797d98",
-      "connection_drawing_pdf": "a23472c78594b11a35dae32b104d90c801fd41a922eda8aab415cc81b2f13101"
+      "connection_drawing_pdf": "5a67af193341705e6bd79ddf8b20e539943ef855e7c6dfebf8edea12427422df"
     },
     "entered": {
       "pdf": "31c53921e98609c94f6ff7b6594620b5be19e11309338f341aa48edf2aef6c57",
@@ -19,7 +19,7 @@
       "json": "3a6f311650c88b0d2e4612aa8773a17513f8f49a8fb7d9668885d5be5c182180",
       "terminal_schedule_pdf": "9e1b5e7a184033d35d4fc155a27e1e4780c9c7e460e081c7deaddf205e3ee35e",
       "wire_schedule_pdf": "071379bbdbd4004277f18ef7ae424785b1dee63f08db377b47c304e3aab21ecc",
-      "connection_drawing_pdf": "634c0c1b3d750fb9516bef1b3da89ac37ae4c7983bcf64a0e7ac2a606579735a"
+      "connection_drawing_pdf": "64b604e07338b018e172bee9bbd187a96b3e23d7a0ff7761eb494a60c369e4a5"
     }
   }
 }

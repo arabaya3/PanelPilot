@@ -37,7 +37,7 @@ RENDERER_VERSIONS: dict[str, str] = {
     # M7a: a v3 export is a v2 export plus the board-to-board links (the wire
     # schedule's section, the drawing's link sheets, the JSON's ``links``)
     # and their findings. Bump it for any change of what a v3 export says.
-    "pp-design/3": "2026.11.11.v3-2",
+    "pp-design/3": "2026.11.11.v3-3",
 }
 
 
