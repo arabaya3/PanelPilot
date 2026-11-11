@@ -8,22 +8,24 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 
-from app.tests.domain.test_m7b_configuration_db import (  # type: ignore[attr-defined]  # noqa: F401  (fixtures)
-    V2,
-    Switch,
+from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixtures)
     _app,
     _caller,
     _client,
+    _engine,
+    _tenants,
+    _user,
+    pytestmark,
+)
+from app.tests.domain.test_m7b_configuration_db import (  # noqa: F401  (fixtures)
+    V2,
+    Switch,
     _configured,
     _count,
-    _engine,
     _request,
     _revise,
     _saved_by_another_member,
     _switch,
-    _tenants,
-    _user,
-    pytestmark,
 )
 
 
