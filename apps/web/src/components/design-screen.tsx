@@ -1092,7 +1092,7 @@ function DesignWorkspace({
     const stored = normalized(project.configuration ?? emptyConfiguration());
     setConfigDoc(stored);
     setConfigBaseline(JSON.stringify(stored));
-    setConfigStatus(project.configuration_status ?? (project.configuration ? 'stored' : 'none'));
+    setConfigStatus(project.configuration_status);
     setConfigRefusal(null);
     setOpenedSchema(project.snapshot_schema);
     setLinksWritten(writesLinks(project));

@@ -49,20 +49,9 @@ export type PriceListEntry = components['schemas']['PriceListEntry-Output'];
  */
 export type Quotation = components['schemas']['QuotationEstimate'];
 export type DesignNote = components['schemas']['DesignNote'];
-/**
- * Whether the opened revision's configuration can be carried (M7b §4):
- * `none` (it has none), `stored` (in `configuration`), or `not_recoverable`
- * (saved before M7b; the user re-enters it).
- */
-export type ConfigurationStatus = 'none' | 'stored' | 'not_recoverable';
-/**
- * A saved project. M7b adds the revision's stored configuration and its
- * status; declared here until the generated types carry them.
- */
-export type SavedProject = components['schemas']['SavedProject'] & {
-  configuration?: Record<string, unknown> | null;
-  configuration_status?: ConfigurationStatus;
-};
+/** Whether the opened revision's configuration can be carried (M7b §4). */
+export type ConfigurationStatus = components['schemas']['SavedProject']['configuration_status'];
+export type SavedProject = components['schemas']['SavedProject'];
 export type ProjectPage = components['schemas']['ProjectPage'];
 /** An action the server lets the caller take; it checks again on every request. */
 export type Permission = components['schemas']['Permission'];
