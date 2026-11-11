@@ -1380,6 +1380,10 @@ def _configuration_conflict(exc: ValidationError) -> ValidationError | ConflictE
             "link": str(params.get("fed_board", "")),
             "reason": exc.code,
         }
+    elif exc.code == "configuration_refused" and params.get("refusal") == "design_refused":
+        # The request itself is refused, not a carried reference: answered as
+        # the existing configuration_refused, with the design's reason.
+        return exc
     elif exc.code == "configuration_refused":
         reason = str(params.pop("refusal", "configuration_refused"))
         kind = next((name for name in _CONFLICT_REFS if name in params), "configuration")
