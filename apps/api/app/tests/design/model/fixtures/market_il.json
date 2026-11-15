@@ -490,7 +490,7 @@
       }
     ],
     "profile_sha256": "353de93704daee3de0d7f1988427a9c2fc49a43c716ae6c3e4496f2cfaedda65",
-    "rules_version": "2026.10.23.1",
+    "rules_version": "2026.11.03.1",
     "snapshot_sha256": "0c77e61e7008fdccb523cff4ef9eef8b4c9b3d268b0a5ea9aa88ff0b84bbf76f"
   }
 }

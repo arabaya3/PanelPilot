@@ -19,6 +19,7 @@ from app.api.deps import (
 from app.domain import company_settings, design_projects, model_budget
 from app.domain import design as design_domain
 from app.models.schemas.design import (
+    AcknowledgedRequirements,
     ApproveRevisionRequest,
     BoardDesignRequest,
     BoardDesignResponse,
@@ -35,8 +36,11 @@ from app.models.schemas.design import (
     PriceListEntry,
     ProjectDesignRequest,
     ProjectPage,
+    QuestionAction,
     QuotationEstimate,
     QuotationRequest,
+    RequirementsPreview,
+    RequirementsPreviewRequest,
     ReviseProjectRequest,
     RevisionExportRequest,
     SaveCompanySettings,
@@ -184,6 +188,60 @@ def save_project(
     return design_projects.save_project(session=session, user=user, request=payload)
 
 
+@router.post(
+    "/projects/requirements/preview",
+    response_model=RequirementsPreview,
+    responses={422: {"description": "As a save refuses the request, or the design's refusal"}},
+)
+def preview_requirements(
+    payload: RequirementsPreviewRequest, user: CurrentUserDep
+) -> RequirementsPreview:
+    """The requirements record and design a guided input would be saved with; nothing is saved."""
+    return design_projects.preview_requirements(user=user, request=payload)
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/questions/{question_id}",
+    response_model=SavedProject | AcknowledgedRequirements,
+    status_code=201,
+    responses={
+        200: {
+            "description": "Acknowledged: the revision's updated record",
+            "model": AcknowledgedRequirements,
+        },
+        201: {"description": "Answered: the project at its new revision", "model": SavedProject},
+        404: {"description": "`revision_not_found` or `question_not_found`"},
+        409: {
+            "description": (
+                "`requirements_derived`, `revision_already_approved`, `revision_not_latest`, "
+                "`question_not_answerable`, `question_answered`, `snapshot_integrity_failed`"
+            )
+        },
+    },
+)
+def answer_question(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    question_id: Annotated[str, Path(max_length=40)],
+    payload: QuestionAction,
+    response: Response,
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> SavedProject | AcknowledgedRequirements:
+    """Answer a question (201, a new revision) or acknowledge it (200, this revision's record)."""
+    result = design_projects.answer_question(
+        session=session,
+        user=user,
+        project_id=project_id,
+        number=number,
+        question_id=question_id,
+        action=payload,
+    )
+    if isinstance(result, AcknowledgedRequirements):
+        response.status_code = 200
+    return result
+
+
 @router.get("/projects/{project_id}", response_model=SavedProject)
 def open_project(
     project_id: str,
@@ -230,6 +288,38 @@ def validate_configuration(
     """Compose a configuration with the latest revision, designed now; nothing is saved."""
     return design_projects.validate_configuration(
         session=session, user=user, project_id=project_id, request=payload
+    )
+
+
+@router.post(
+    "/projects/{project_id}/revisions/{number}/resave",
+    response_model=SavedProject,
+    status_code=201,
+    responses={
+        403: {"description": "`resave_requires_account`"},
+        404: {"description": "No such revision is the caller's (`revision_not_found`)"},
+        409: {
+            "description": (
+                "`revision_not_validated`, `snapshot_integrity_failed` or `revision_conflict`"
+            )
+        },
+        422: {
+            "description": (
+                "As a revision save refuses the stored request, unchanged "
+                "(e.g. `feeder_server_owned`, `sub_board_load_server_owned`)"
+            )
+        },
+    },
+)
+def resave_revision(
+    project_id: str,
+    number: Annotated[int, Path(ge=1, le=_MAX_REVISION)],
+    session: SessionDep,
+    user: CurrentUserDep,
+) -> SavedProject:
+    """Save a revision's stored request again as the caller's new revision, for independent review."""
+    return design_projects.resave_revision(
+        session=session, user=user, project_id=project_id, number=number
     )
 
 

@@ -42,6 +42,7 @@ from app.models.tables.tenant import TenantRow
 from app.tests import db_target
 from app.tests.design import stored_design
 from app.tests.design.model.compat_support import DESIGNED
+from app.tests.domain import review_support
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -429,3 +430,9 @@ def test_an_unknown_field_is_a_structured_refusal(
     assert opened.status_code == 200, opened.text[:500]
     assert opened.json()["export_status"] != "review_approved"
     assert _row(engine, project_id)["approved_at"] is None
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

@@ -49,6 +49,7 @@ from app.models.tables.tenant import TenantRow
 from app.models.tables.user import User
 from app.tests.accounts import account
 from app.tests.design import stored_design
+from app.tests.domain import review_support
 
 DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -136,8 +137,11 @@ def test_save_project_keeps_what_was_entered(tenants, as_tenant) -> None:  # typ
     )
     assert saved.name == "Tower"
     assert saved.revision == 1
-    # The account has no users row here, so no display name: never its email.
-    assert [(r.number, r.note, r.author) for r in saved.revisions] == [(1, "first issue", "")]
+    # The author has no users row here, so no display name: named by the email
+    # the server recorded (M6a), never by an invented name.
+    assert [(r.number, r.note, r.author) for r in saved.revisions] == [
+        (1, "first issue", review_support.OTHER_AUTHOR)
+    ]
     assert saved.request.boards == _request().boards
     # The title block's revision list is the saved revisions, none approved.
     (listed,) = saved.request.info.revisions
@@ -661,6 +665,7 @@ def test_a_second_approver_waits_for_the_lock_then_is_refused(tenants, as_tenant
         text(
             "UPDATE design_project_revisions SET approved_by = 'First Approver', "
             "approved_account = 'first@example.com', approved_at = now(), "
+            "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
             "approved_snapshot_sha256 = snapshot_sha256 WHERE number = 1"
         )
     )
@@ -994,6 +999,8 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
 ) -> None:
     a, _ = tenants
     user = _account(engine, a, "named-approver@example.com", "  Rana Haddad ")
+    # The revision's author is another member (``_saved_by_another_member``).
+    _account(engine, a, review_support.OTHER_AUTHOR, "Sami Author")
     saved = design_projects.save_project(
         session=as_tenant(), user=user, request=SaveProjectRequest(name="T", request=_request())
     )
@@ -1004,7 +1011,7 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
     assert revision.approver_account_recorded is True
     assert revision.approver_name == "Rana Haddad"
     assert revision.approval_note == "R. Haddad"
-    assert revision.author == "Rana Haddad"
+    assert revision.author == "Sami Author"
     (listed,) = approved.request.info.revisions
     assert (listed.approved_by, listed.approval_note) == ("Rana Haddad", "R. Haddad")
     assert _emails_in(approved.model_dump(mode="json")) == []
@@ -1022,6 +1029,8 @@ def test_an_approval_names_the_account_and_never_sends_its_email(  # type: ignor
             )
         ).one()
     assert tuple(stored) == ("named-approver@example.com", uuid.UUID(user.id), None, "R. Haddad")
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM users WHERE email = :e"), {"e": review_support.OTHER_AUTHOR})
 
 
 def test_every_export_names_the_account_and_labels_the_note(  # type: ignore[no-untyped-def]
@@ -1064,8 +1073,11 @@ def test_an_account_without_a_usable_name_is_a_team_member(  # type: ignore[no-u
     assert revision.approver_account_recorded is True
     assert revision.approver_name is None
     assert revision.approved_by == design_projects.APPROVER_FALLBACK
-    assert revision.author == ""
-    assert _emails_in(approved.model_dump(mode="json")) == []
+    # The author has no account row with a name: named by the email the
+    # server recorded (M6a), never by an invented name. The approver's email
+    # is still never sent.
+    assert revision.author == review_support.OTHER_AUTHOR
+    assert set(_emails_in(approved.model_dump(mode="json"))) <= {review_support.OTHER_AUTHOR}
     calc = _body(_export(as_tenant, a, saved, fmt="calculations_pdf"), "calculations_pdf")
     assert "Review approved by a team member" in calc
     assert "eng@example.com" not in calc
@@ -1091,6 +1103,7 @@ def test_a_legacy_typed_name_is_never_the_approver(  # type: ignore[no-untyped-d
             text(
                 "UPDATE design_project_revisions SET approved_by = 'TYPED LEGACY ZQX', "
                 "approved_account = :e, approved_at = now(), "
+                "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
                 "approved_snapshot_sha256 = snapshot_sha256, "
                 # Recorded, so the export shows the name it is about.
                 "approved_renderer_version = :r WHERE project_id = :p"
@@ -1296,6 +1309,7 @@ def test_a_legacy_approved_row_counts_only_with_a_recorded_renderer(  # type: ig
         conn.execute(
             text(
                 "UPDATE design_project_revisions SET approved_at = now(), "
+                "approved_requirements_sha256 = COALESCE(requirements_sha256, '74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b'), "
                 "approved_snapshot_sha256 = snapshot_sha256, approved_account = 'x@example.com'"
             )
         )
@@ -1619,3 +1633,9 @@ def test_an_earlier_approval_under_another_profile_is_not_current_in_the_list(  
                 text(f"UPDATE design_project_revisions SET {column} = :v WHERE number = 1"),
                 {"v": original},
             )
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

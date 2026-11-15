@@ -500,7 +500,7 @@
       }
     ],
     "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
-    "rules_version": "2026.10.23.1",
+    "rules_version": "2026.11.03.1",
     "snapshot_sha256": "173591eee8603c799851d16d5d51fc315a70ac31354d152fb62b969ba7f8a8c0"
   }
 }

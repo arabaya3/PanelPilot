@@ -212,3 +212,20 @@ def test_a_feeder_is_rated_after_demand_factors() -> None:
     full = project.feeder_load(board)
     diverse = project.feeder_load(board, profile=company)
     assert diverse.power_kw < full.power_kw
+
+
+def test_a_client_feeder_naming_a_project_board_is_not_a_second_feeder() -> None:
+    """M6a §1: the designer generates the feeder; a typed one is refused, never added."""
+    main = _board("MDB")
+    typed = LoadInput(
+        description="Feeder to DB-1",
+        load=LoadKind.SUB_BOARD,
+        power_kw=Decimal(5),
+        phases=3,
+        feeds="DB-1",
+    )
+    main = main.model_copy(update={"loads": [*main.loads, typed]})
+    with pytest.raises(ValidationError) as refused:
+        project.design_boards([main, _board("DB-1", fed_from="MDB")], profile.default_profile())
+    assert refused.value.code == "feeder_server_owned"
+    assert refused.value.params == {"board": "MDB", "load_index": "2"}

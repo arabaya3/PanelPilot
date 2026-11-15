@@ -1,0 +1,3545 @@
+{
+ "_comment": "design_project_revisions rows exactly as the pre-M6a code (a829707) wrote them, synthetic data; ids, tenant, project, author email and approver id are substituted at insert. Regenerate only from that code.",
+ "rows": {
+  "approved": {
+   "approval_note": "OK for tender",
+   "approved_account": "{approver}",
+   "approved_at": "2026-11-03 20:00:20.283077+00:00",
+   "approved_by": null,
+   "approved_catalogue_version": "none",
+   "approved_display_name": "Rana Haddad",
+   "approved_findings_policy": "c24b6147de6ab451f9405f10aa970e9f965f7d3b9475ed4b5e69f931f6b5b8c9",
+   "approved_profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+   "approved_renderer_version": "2026.10.31.4",
+   "approved_rules_version": "2026.10.23.1",
+   "approved_snapshot_sha256": "49c88318a0ff2de9bc10e1ab1201b956b161a2f9ef323c7d86df83fb0a10a99b",
+   "approved_user_id": "{approver_id}",
+   "author": "{author}",
+   "catalogue_version": "none",
+   "created_at": "2026-11-03 20:00:20.207761+00:00",
+   "design_snapshot": {
+    "boards": [
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "18",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       },
+       {
+        "cores": 4,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W2"
+        },
+        "id": "c2-cable",
+        "insulation": "PVC",
+        "length_m": "25",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Office lighting",
+        "design_current_a": "5.77",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "lighting",
+        "phase": "L1",
+        "power_kw": "1.2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "1.35"
+       },
+       {
+        "cable_id": "c2-cable",
+        "description": "Booster pump",
+        "design_current_a": "11.5",
+        "device_ids": [
+         "c2-breaker",
+         "c2-line",
+         "c2-overload"
+        ],
+        "earth_loop_ohm": "0.888",
+        "feeds": null,
+        "id": "c2",
+        "load": "motor",
+        "phase": "L1L2L3",
+        "power_kw": "5.5",
+        "starter": "dol",
+        "upstream_id": null,
+        "voltage_drop_percent": "1.80"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Main incomer",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "32",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "16",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Office lighting",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "10",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": "MF",
+        "description": "Booster pump motor protection",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q4"
+        },
+        "id": "c2-breaker",
+        "kind": "circuit_breaker",
+        "part_key": "ABB/T2S160 MF 12.5",
+        "poles": 3,
+        "rated_current_a": "12.5",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Booster pump line contactor",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q5"
+        },
+        "id": "c2-line",
+        "kind": "contactor",
+        "part_key": "ABB/A30",
+        "poles": 3,
+        "rated_current_a": null,
+        "residual_current_ma": null,
+        "upstream_id": "c2-breaker"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Booster pump overload, set to 11.5 A",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F2"
+        },
+        "id": "c2-overload",
+        "kind": "overload_relay",
+        "part_key": "ABB/TA25DU14",
+        "poles": 3,
+        "rated_current_a": "11.5",
+        "residual_current_ma": null,
+        "upstream_id": "c2-line"
+       }
+      ],
+      "fed_from": null,
+      "function": null,
+      "id": "MDB",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "MDB",
+      "notes": [
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "10",
+         "group": "1",
+         "rated": "16",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+       },
+       {
+        "code": "motor_current_table",
+        "params": {
+         "current": "11.5",
+         "load": "Booster pump",
+         "power": "5.5",
+         "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3"
+        },
+        "text": "Booster pump: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3; check it against the nameplate."
+       },
+       {
+        "code": "starter_table",
+        "params": {
+         "load": "Booster pump",
+         "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+         "starter": "dol"
+        },
+        "text": "Booster pump: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "33.4",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 33.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "discrimination_incomer_raised",
+        "params": {
+         "after": "16",
+         "rated": "32",
+         "ratio": "1.6"
+        },
+        "text": "Incomer raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "25",
+         "rating": "25"
+        },
+        "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "default_power_factor",
+        "params": {},
+        "text": "Loads without a power factor were taken at cos phi 0.9."
+       },
+       {
+        "code": "contactor_ac1",
+        "params": {},
+        "text": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "earth_fault_basis",
+        "params": {
+         "voltage": "231",
+         "ze": "0.2"
+        },
+        "text": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4)."
+       },
+       {
+        "code": "earth_fault_motor_basis",
+        "params": {},
+        "text": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 \u00a78.3.3.1.2)."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "25"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "3"
+        },
+        "text": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings)."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Amman clinic MDB",
+     "number": "HIST-001",
+     "revisions": []
+    },
+    "parts": [
+     {
+      "description": "Moulded-case circuit-breaker, motor protection",
+      "key": "ABB/T2S160 MF 12.5",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "T2S160 MF 12.5",
+      "width_mm": null
+     },
+     {
+      "description": "Contactor, AC-3",
+      "key": "ABB/A30",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "A30",
+      "width_mm": null
+     },
+     {
+      "description": "Thermal overload relay",
+      "key": "ABB/TA25DU14",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "TA25DU14",
+      "width_mm": null
+     }
+    ],
+    "profile": "iec-default"
+   },
+   "findings": [
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "10",
+      "group": "1",
+      "rated": "16",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": "c2",
+     "code": "motor_current_table",
+     "device_id": null,
+     "message": "Booster pump: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3; check it against the nameplate.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "current": "11.5",
+      "load": "Booster pump",
+      "power": "5.5",
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": "c2",
+     "code": "starter_table",
+     "device_id": null,
+     "message": "Booster pump: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "load": "Booster pump",
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+      "starter": "dol"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 33.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "33.4",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_incomer_raised",
+     "device_id": null,
+     "message": "Incomer raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "16",
+      "rated": "32",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "25",
+      "rating": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "default_power_factor",
+     "device_id": null,
+     "message": "Loads without a power factor were taken at cos phi 0.9.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "contactor_ac1",
+     "device_id": null,
+     "message": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_basis",
+     "device_id": null,
+     "message": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60364-4-41 \u00a7411.4.4/\u00a7411.4.5",
+     "values": {
+      "voltage": "231",
+      "ze": "0.2"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_motor_basis",
+     "device_id": null,
+     "message": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 \u00a78.3.3.1.2).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60947-2 \u00a78.3.3.1.2",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "3"
+     }
+    }
+   ],
+   "note": "Issued for review",
+   "number": 1,
+   "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+   "request": {
+    "boards": [
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": null,
+      "feeder_length_m": null,
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Office lighting",
+        "feeds": null,
+        "length_m": "18",
+        "load": "lighting",
+        "phases": 1,
+        "power_factor": null,
+        "power_kw": "1.2",
+        "starter": null
+       },
+       {
+        "controlled": true,
+        "description": "Booster pump",
+        "feeds": null,
+        "length_m": "25",
+        "load": "motor",
+        "phases": 3,
+        "power_factor": null,
+        "power_kw": "5.5",
+        "starter": "dol"
+       }
+      ],
+      "location": null,
+      "name": "MDB",
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Amman clinic MDB",
+     "number": "HIST-001",
+     "revisions": []
+    },
+    "profile": null
+   },
+   "rules_version": "2026.10.23.1",
+   "snapshot_sha256": "49c88318a0ff2de9bc10e1ab1201b956b161a2f9ef323c7d86df83fb0a10a99b",
+   "updated_at": "2026-11-03 20:00:20.273362+00:00"
+  },
+  "blank_author": {
+   "approval_note": null,
+   "approved_account": null,
+   "approved_at": null,
+   "approved_by": null,
+   "approved_catalogue_version": null,
+   "approved_display_name": null,
+   "approved_findings_policy": null,
+   "approved_profile_sha256": null,
+   "approved_renderer_version": null,
+   "approved_rules_version": null,
+   "approved_snapshot_sha256": null,
+   "approved_user_id": null,
+   "author": "",
+   "catalogue_version": "none",
+   "created_at": "2026-11-03 20:00:20.418295+00:00",
+   "design_snapshot": {
+    "boards": [
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "18",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       },
+       {
+        "cores": 4,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W2"
+        },
+        "id": "c2-cable",
+        "insulation": "PVC",
+        "length_m": "25",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Office lighting",
+        "design_current_a": "5.77",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "lighting",
+        "phase": "L1",
+        "power_kw": "1.2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "1.35"
+       },
+       {
+        "cable_id": "c2-cable",
+        "description": "Booster pump",
+        "design_current_a": "11.5",
+        "device_ids": [
+         "c2-breaker",
+         "c2-line",
+         "c2-overload"
+        ],
+        "earth_loop_ohm": "0.888",
+        "feeds": null,
+        "id": "c2",
+        "load": "motor",
+        "phase": "L1L2L3",
+        "power_kw": "5.5",
+        "starter": "dol",
+        "upstream_id": null,
+        "voltage_drop_percent": "1.80"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Main incomer",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "32",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "16",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Office lighting",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "10",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": "MF",
+        "description": "Booster pump motor protection",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q4"
+        },
+        "id": "c2-breaker",
+        "kind": "circuit_breaker",
+        "part_key": "ABB/T2S160 MF 12.5",
+        "poles": 3,
+        "rated_current_a": "12.5",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Booster pump line contactor",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q5"
+        },
+        "id": "c2-line",
+        "kind": "contactor",
+        "part_key": "ABB/A30",
+        "poles": 3,
+        "rated_current_a": null,
+        "residual_current_ma": null,
+        "upstream_id": "c2-breaker"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Booster pump overload, set to 11.5 A",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F2"
+        },
+        "id": "c2-overload",
+        "kind": "overload_relay",
+        "part_key": "ABB/TA25DU14",
+        "poles": 3,
+        "rated_current_a": "11.5",
+        "residual_current_ma": null,
+        "upstream_id": "c2-line"
+       }
+      ],
+      "fed_from": null,
+      "function": null,
+      "id": "MDB",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "MDB",
+      "notes": [
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "10",
+         "group": "1",
+         "rated": "16",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+       },
+       {
+        "code": "motor_current_table",
+        "params": {
+         "current": "11.5",
+         "load": "Booster pump",
+         "power": "5.5",
+         "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3"
+        },
+        "text": "Booster pump: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3; check it against the nameplate."
+       },
+       {
+        "code": "starter_table",
+        "params": {
+         "load": "Booster pump",
+         "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+         "starter": "dol"
+        },
+        "text": "Booster pump: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "33.4",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 33.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "discrimination_incomer_raised",
+        "params": {
+         "after": "16",
+         "rated": "32",
+         "ratio": "1.6"
+        },
+        "text": "Incomer raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "25",
+         "rating": "25"
+        },
+        "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "default_power_factor",
+        "params": {},
+        "text": "Loads without a power factor were taken at cos phi 0.9."
+       },
+       {
+        "code": "contactor_ac1",
+        "params": {},
+        "text": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "earth_fault_basis",
+        "params": {
+         "voltage": "231",
+         "ze": "0.2"
+        },
+        "text": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4)."
+       },
+       {
+        "code": "earth_fault_motor_basis",
+        "params": {},
+        "text": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 \u00a78.3.3.1.2)."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "25"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "3"
+        },
+        "text": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings)."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Amman clinic MDB",
+     "number": "HIST-001",
+     "revisions": []
+    },
+    "parts": [
+     {
+      "description": "Moulded-case circuit-breaker, motor protection",
+      "key": "ABB/T2S160 MF 12.5",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "T2S160 MF 12.5",
+      "width_mm": null
+     },
+     {
+      "description": "Contactor, AC-3",
+      "key": "ABB/A30",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "A30",
+      "width_mm": null
+     },
+     {
+      "description": "Thermal overload relay",
+      "key": "ABB/TA25DU14",
+      "manufacturer": "ABB",
+      "order_number": null,
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3",
+      "type_number": "TA25DU14",
+      "width_mm": null
+     }
+    ],
+    "profile": "iec-default"
+   },
+   "findings": [
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "10",
+      "group": "1",
+      "rated": "16",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": "c2",
+     "code": "motor_current_table",
+     "device_id": null,
+     "message": "Booster pump: Ir 11.5 A, the typical Ir of a 5.5 kW motor in ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3; check it against the nameplate.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "current": "11.5",
+      "load": "Booster pump",
+      "power": "5.5",
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": "c2",
+     "code": "starter_table",
+     "device_id": null,
+     "message": "Booster pump: dol starter, Type 2 coordination, ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "load": "Booster pump",
+      "source": "ABB Electrical installation handbook Vol. 2 (1SDC010001D0204), \u00a73.3 Table 3: 400 V 50 kA DOL Normal Type 2",
+      "starter": "dol"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 33.4 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "33.4",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_incomer_raised",
+     "device_id": null,
+     "message": "Incomer raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "16",
+      "rated": "32",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "25",
+      "rating": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "default_power_factor",
+     "device_id": null,
+     "message": "Loads without a power factor were taken at cos phi 0.9.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "contactor_ac1",
+     "device_id": null,
+     "message": "Contactors are rated at least their breaker's current (AC-1); confirm the utilisation category against the catalogue for motor or lamp loads.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_basis",
+     "device_id": null,
+     "message": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60364-4-41 \u00a7411.4.4/\u00a7411.4.5",
+     "values": {
+      "voltage": "231",
+      "ze": "0.2"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_motor_basis",
+     "device_id": null,
+     "message": "Motor starter breakers trip on short circuit only: their Ia is the I3 their coordination table prints, raised by 20 % for the tolerance of an instantaneous release (IEC 60947-2 \u00a78.3.3.1.2).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60947-2 \u00a78.3.3.1.2",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 3 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "3"
+     }
+    }
+   ],
+   "note": "trial",
+   "number": 1,
+   "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+   "request": {
+    "boards": [
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": null,
+      "feeder_length_m": null,
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Office lighting",
+        "feeds": null,
+        "length_m": "18",
+        "load": "lighting",
+        "phases": 1,
+        "power_factor": null,
+        "power_kw": "1.2",
+        "starter": null
+       },
+       {
+        "controlled": true,
+        "description": "Booster pump",
+        "feeds": null,
+        "length_m": "25",
+        "load": "motor",
+        "phases": 3,
+        "power_factor": null,
+        "power_kw": "5.5",
+        "starter": "dol"
+       }
+      ],
+      "location": null,
+      "name": "MDB",
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Amman clinic MDB",
+     "number": "HIST-001",
+     "revisions": []
+    },
+    "profile": null
+   },
+   "rules_version": "2026.10.23.1",
+   "snapshot_sha256": "49c88318a0ff2de9bc10e1ab1201b956b161a2f9ef323c7d86df83fb0a10a99b",
+   "updated_at": "2026-11-03 20:00:20.418295+00:00"
+  },
+  "feeds": {
+   "approval_note": null,
+   "approved_account": null,
+   "approved_at": null,
+   "approved_by": null,
+   "approved_catalogue_version": null,
+   "approved_display_name": null,
+   "approved_findings_policy": null,
+   "approved_profile_sha256": null,
+   "approved_renderer_version": null,
+   "approved_rules_version": null,
+   "approved_snapshot_sha256": null,
+   "approved_user_id": null,
+   "author": "{author}",
+   "catalogue_version": "none",
+   "created_at": "2026-11-03 20:00:20.318585+00:00",
+   "design_snapshot": {
+    "boards": [
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "18",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       },
+       {
+        "cores": 5,
+        "cross_section_mm2": "16",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W2"
+        },
+        "id": "c2-cable",
+        "insulation": "PVC",
+        "length_m": "30",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "3.386"
+       },
+       {
+        "cores": 5,
+        "cross_section_mm2": "16",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W3"
+        },
+        "id": "c3-cable",
+        "insulation": "PVC",
+        "length_m": "30",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "3.386"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Office lighting",
+        "design_current_a": "5.77",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "lighting",
+        "phase": "L1",
+        "power_kw": "1.2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "1.35"
+       },
+       {
+        "cable_id": "c2-cable",
+        "description": "Feeder to DB2 (typed)",
+        "design_current_a": "16.04",
+        "device_ids": [
+         "c2-breaker"
+        ],
+        "earth_loop_ohm": "0.278",
+        "feeds": "DB2",
+        "id": "c2",
+        "load": "sub_board",
+        "phase": "L1L2L3",
+        "power_kw": "10",
+        "starter": null,
+        "upstream_id": null,
+        "voltage_drop_percent": "0.29"
+       },
+       {
+        "cable_id": "c3-cable",
+        "description": "Feeder to DB2",
+        "design_current_a": "9.12",
+        "device_ids": [
+         "c3-breaker"
+        ],
+        "earth_loop_ohm": "0.278",
+        "feeds": "DB2",
+        "id": "c3",
+        "load": "sub_board",
+        "phase": "L1L2L3",
+        "power_kw": "6.32",
+        "starter": null,
+        "upstream_id": null,
+        "voltage_drop_percent": "0.16"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Main incomer",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "125",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "16",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Office lighting",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "10",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Feeder to DB2 (typed)",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q4"
+        },
+        "id": "c2-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "63",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Feeder to DB2",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q5"
+        },
+        "id": "c3-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "63",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       }
+      ],
+      "fed_from": null,
+      "function": null,
+      "id": "MDB",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "MDB",
+      "notes": [
+       {
+        "code": "discrimination_feeder_raised",
+        "params": {
+         "after": "32",
+         "board": "DB2",
+         "rated": "63",
+         "ratio": "1.6"
+        },
+        "text": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A."
+       },
+       {
+        "code": "discrimination_feeder_raised",
+        "params": {
+         "after": "32",
+         "board": "DB2",
+         "rated": "63",
+         "ratio": "1.6"
+        },
+        "text": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A."
+       },
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "10",
+         "group": "1",
+         "rated": "16",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "18.7",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 18.7 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "discrimination_incomer_raised",
+        "params": {
+         "after": "63",
+         "rated": "125",
+         "ratio": "1.6"
+        },
+        "text": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "25",
+         "rating": "25"
+        },
+        "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "default_power_factor",
+        "params": {},
+        "text": "Loads without a power factor were taken at cos phi 0.9."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "earth_fault_basis",
+        "params": {
+         "voltage": "231",
+         "ze": "0.2"
+        },
+        "text": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4)."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "25"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "1"
+        },
+        "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     },
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "2.5",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "12",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.083"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Sockets",
+        "design_current_a": "9.11",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "socket",
+        "phase": "L1",
+        "power_kw": "2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "0.85"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Main switch",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "switch_disconnector",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "63",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "10",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "32",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "40",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "10",
+        "curve": "C",
+        "description": "Sockets",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       }
+      ],
+      "fed_from": "MDB",
+      "function": null,
+      "id": "DB2",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "DB2",
+      "notes": [
+       {
+        "code": "voltage_drop_upstream",
+        "params": {
+         "percent": "0.16"
+        },
+        "text": "0.16 % is dropped on the feeders before this board, and taken from every circuit's limit."
+       },
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "16",
+         "group": "1",
+         "rated": "32",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "100",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "incomer_isolator",
+        "params": {
+         "board": "MDB"
+        },
+        "text": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "7.2",
+         "rating": "10"
+        },
+        "text": "Breakers are rated for at least 10 kA breaking capacity against 7.2 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "7.2"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 7.2 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "1"
+        },
+        "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+       },
+       {
+        "code": "fed_from",
+        "params": {
+         "board": "MDB"
+        },
+        "text": "Fed from MDB."
+       },
+       {
+        "code": "fault_level_calculated",
+        "params": {
+         "board": "MDB",
+         "fault": "7.2",
+         "length": "30",
+         "material": "Cu",
+         "section": "16",
+         "upstream": "25"
+        },
+        "text": "Fault level 7.2 kA, calculated from MDB's 25 kA through 30 m of 16 mm\u00b2 Cu feeder (IEC 60909, conductors at 20 \u00b0C)."
+       },
+       {
+        "code": "earth_loop_calculated",
+        "params": {
+         "board": "MDB",
+         "length": "30",
+         "material": "Cu",
+         "section": "16",
+         "upstream": "0.2",
+         "ze": "0.278"
+        },
+        "text": "Ze 0.278 \u03a9, from MDB's 0.2 \u03a9 plus the loop of 30 m of 16 mm\u00b2 Cu feeder at its maximum operating temperature."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.278",
+       "earthing": "TN-S",
+       "fault_level_ka": "7.2",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Workshop",
+     "number": "HIST-003",
+     "revisions": []
+    },
+    "parts": [],
+    "profile": "iec-default"
+   },
+   "findings": [
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_feeder_raised",
+     "device_id": null,
+     "message": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "32",
+      "board": "DB2",
+      "rated": "63",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_feeder_raised",
+     "device_id": null,
+     "message": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "32",
+      "board": "DB2",
+      "rated": "63",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "10",
+      "group": "1",
+      "rated": "16",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 18.7 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "18.7",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_incomer_raised",
+     "device_id": null,
+     "message": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "63",
+      "rated": "125",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "25",
+      "rating": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "default_power_factor",
+     "device_id": null,
+     "message": "Loads without a power factor were taken at cos phi 0.9.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_basis",
+     "device_id": null,
+     "message": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60364-4-41 \u00a7411.4.4/\u00a7411.4.5",
+     "values": {
+      "voltage": "231",
+      "ze": "0.2"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "voltage_drop_upstream",
+     "device_id": null,
+     "message": "0.16 % is dropped on the feeders before this board, and taken from every circuit's limit.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "percent": "0.16"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "16",
+      "group": "1",
+      "rated": "32",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "100",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "incomer_isolator",
+     "device_id": null,
+     "message": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 10 kA breaking capacity against 7.2 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "7.2",
+      "rating": "10"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 7.2 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "7.2"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "fed_from",
+     "device_id": null,
+     "message": "Fed from MDB.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "fault_level_calculated",
+     "device_id": null,
+     "message": "Fault level 7.2 kA, calculated from MDB's 25 kA through 30 m of 16 mm\u00b2 Cu feeder (IEC 60909, conductors at 20 \u00b0C).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60909",
+     "values": {
+      "board": "MDB",
+      "fault": "7.2",
+      "length": "30",
+      "material": "Cu",
+      "section": "16",
+      "upstream": "25"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "earth_loop_calculated",
+     "device_id": null,
+     "message": "Ze 0.278 \u03a9, from MDB's 0.2 \u03a9 plus the loop of 30 m of 16 mm\u00b2 Cu feeder at its maximum operating temperature.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB",
+      "length": "30",
+      "material": "Cu",
+      "section": "16",
+      "upstream": "0.2",
+      "ze": "0.278"
+     }
+    }
+   ],
+   "note": "Issued for review",
+   "number": 1,
+   "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+   "request": {
+    "boards": [
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": null,
+      "feeder_length_m": null,
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Office lighting",
+        "feeds": null,
+        "length_m": "18",
+        "load": "lighting",
+        "phases": 1,
+        "power_factor": null,
+        "power_kw": "1.2",
+        "starter": null
+       },
+       {
+        "controlled": false,
+        "description": "Feeder to DB2 (typed)",
+        "feeds": "DB2",
+        "length_m": "30",
+        "load": "sub_board",
+        "phases": 3,
+        "power_factor": null,
+        "power_kw": "10",
+        "starter": null
+       }
+      ],
+      "location": null,
+      "name": "MDB",
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     },
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": "MDB",
+      "feeder_length_m": "30",
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Sockets",
+        "feeds": null,
+        "length_m": "12",
+        "load": "socket",
+        "phases": 1,
+        "power_factor": "0.95",
+        "power_kw": "2",
+        "starter": null
+       }
+      ],
+      "location": null,
+      "name": "DB2",
+      "supply": {
+       "earth_loop_ohm": null,
+       "earthing": "TN-S",
+       "fault_level_ka": null,
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Workshop",
+     "number": "HIST-003",
+     "revisions": []
+    },
+    "profile": null
+   },
+   "rules_version": "2026.10.23.1",
+   "snapshot_sha256": "00c1c3af4499f1a6d76ae217d523d9fb5a294ccacaff9f0b4edb339e7b9f81c0",
+   "updated_at": "2026-11-03 20:00:20.318585+00:00"
+  },
+  "sub_board": {
+   "approval_note": null,
+   "approved_account": null,
+   "approved_at": null,
+   "approved_by": null,
+   "approved_catalogue_version": null,
+   "approved_display_name": null,
+   "approved_findings_policy": null,
+   "approved_profile_sha256": null,
+   "approved_renderer_version": null,
+   "approved_rules_version": null,
+   "approved_snapshot_sha256": null,
+   "approved_user_id": null,
+   "author": "{author}",
+   "catalogue_version": "none",
+   "created_at": "2026-11-03 20:00:20.346035+00:00",
+   "design_snapshot": {
+    "boards": [
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "1.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "18",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.030"
+       },
+       {
+        "cores": 5,
+        "cross_section_mm2": "2.5",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W2"
+        },
+        "id": "c2-cable",
+        "insulation": "PVC",
+        "length_m": "30",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.083"
+       },
+       {
+        "cores": 5,
+        "cross_section_mm2": "16",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "W3"
+        },
+        "id": "c3-cable",
+        "insulation": "PVC",
+        "length_m": "30",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "3.386"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Office lighting",
+        "design_current_a": "5.77",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "lighting",
+        "phase": "L1",
+        "power_kw": "1.2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "1.35"
+       },
+       {
+        "cable_id": "c2-cable",
+        "description": "DB2 supply (typed)",
+        "design_current_a": "16.04",
+        "device_ids": [
+         "c2-breaker"
+        ],
+        "earth_loop_ohm": "0.695",
+        "feeds": null,
+        "id": "c2",
+        "load": "sub_board",
+        "phase": "L1L2L3",
+        "power_kw": "10",
+        "starter": null,
+        "upstream_id": null,
+        "voltage_drop_percent": "1.80"
+       },
+       {
+        "cable_id": "c3-cable",
+        "description": "Feeder to DB2",
+        "design_current_a": "9.12",
+        "device_ids": [
+         "c3-breaker"
+        ],
+        "earth_loop_ohm": "0.278",
+        "feeds": "DB2",
+        "id": "c3",
+        "load": "sub_board",
+        "phase": "L1L2L3",
+        "power_kw": "6.32",
+        "starter": null,
+        "upstream_id": null,
+        "voltage_drop_percent": "0.16"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Main incomer",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "125",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "16",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Office lighting",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "10",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "DB2 supply (typed)",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q4"
+        },
+        "id": "c2-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "20",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": "25",
+        "curve": "C",
+        "description": "Feeder to DB2",
+        "designation": {
+         "function": "MDB",
+         "location": null,
+         "product": "Q5"
+        },
+        "id": "c3-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "63",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       }
+      ],
+      "fed_from": null,
+      "function": null,
+      "id": "MDB",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "MDB",
+      "notes": [
+       {
+        "code": "discrimination_feeder_raised",
+        "params": {
+         "after": "32",
+         "board": "DB2",
+         "rated": "63",
+         "ratio": "1.6"
+        },
+        "text": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A."
+       },
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "10",
+         "group": "1",
+         "rated": "16",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "18.7",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 18.7 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "discrimination_incomer_raised",
+        "params": {
+         "after": "63",
+         "rated": "125",
+         "ratio": "1.6"
+        },
+        "text": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "25",
+         "rating": "25"
+        },
+        "text": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "default_power_factor",
+        "params": {},
+        "text": "Loads without a power factor were taken at cos phi 0.9."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "earth_fault_basis",
+        "params": {
+         "voltage": "231",
+         "ze": "0.2"
+        },
+        "text": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4)."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "25"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "1"
+        },
+        "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     },
+     {
+      "cables": [
+       {
+        "cores": 3,
+        "cross_section_mm2": "2.5",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "W1"
+        },
+        "id": "c1-cable",
+        "insulation": "PVC",
+        "length_m": "12",
+        "material": "Cu",
+        "parallel": 1,
+        "part_key": null,
+        "withstand_ka2s": "0.083"
+       }
+      ],
+      "circuits": [
+       {
+        "cable_id": "c1-cable",
+        "description": "Sockets",
+        "design_current_a": "9.11",
+        "device_ids": [
+         "c1-breaker"
+        ],
+        "earth_loop_ohm": null,
+        "feeds": null,
+        "id": "c1",
+        "load": "socket",
+        "phase": "L1",
+        "power_kw": "2",
+        "starter": null,
+        "upstream_id": "g1-rcd",
+        "voltage_drop_percent": "0.85"
+       }
+      ],
+      "devices": [
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Main switch",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q1"
+        },
+        "id": "incomer",
+        "kind": "switch_disconnector",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "63",
+        "residual_current_ma": null,
+        "upstream_id": null
+       },
+       {
+        "breaking_capacity_ka": "10",
+        "curve": "C",
+        "description": "Group 1 supply",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q2"
+        },
+        "id": "g1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 3,
+        "rated_current_a": "32",
+        "residual_current_ma": null,
+        "upstream_id": "incomer"
+       },
+       {
+        "breaking_capacity_ka": null,
+        "curve": null,
+        "description": "Group 1 residual current",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "F1"
+        },
+        "id": "g1-rcd",
+        "kind": "residual_current_device",
+        "part_key": null,
+        "poles": 4,
+        "rated_current_a": "40",
+        "residual_current_ma": "30",
+        "upstream_id": "g1-breaker"
+       },
+       {
+        "breaking_capacity_ka": "10",
+        "curve": "C",
+        "description": "Sockets",
+        "designation": {
+         "function": "DB2",
+         "location": null,
+         "product": "Q3"
+        },
+        "id": "c1-breaker",
+        "kind": "circuit_breaker",
+        "part_key": null,
+        "poles": 1,
+        "rated_current_a": "16",
+        "residual_current_ma": null,
+        "upstream_id": "g1-rcd"
+       }
+      ],
+      "fed_from": "MDB",
+      "function": null,
+      "id": "DB2",
+      "incomer_ids": [
+       "incomer"
+      ],
+      "location": null,
+      "name": "DB2",
+      "notes": [
+       {
+        "code": "voltage_drop_upstream",
+        "params": {
+         "percent": "0.16"
+        },
+        "text": "0.16 % is dropped on the feeders before this board, and taken from every circuit's limit."
+       },
+       {
+        "code": "discrimination_group_raised",
+        "params": {
+         "after": "16",
+         "group": "1",
+         "rated": "32",
+         "ratio": "1.6"
+        },
+        "text": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination."
+       },
+       {
+        "code": "phase_imbalance",
+        "params": {
+         "imbalance": "100",
+         "limit": "10"
+        },
+        "text": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given."
+       },
+       {
+        "code": "incomer_isolator",
+        "params": {
+         "board": "MDB"
+        },
+        "text": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers."
+       },
+       {
+        "code": "breaking_capacity",
+        "params": {
+         "fault": "7.2",
+         "rating": "10"
+        },
+        "text": "Breakers are rated for at least 10 kA breaking capacity against 7.2 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too."
+       },
+       {
+        "code": "spare_ways",
+        "params": {
+         "count": "1",
+         "percent": "20"
+        },
+        "text": "Leave 1 spare outgoing ways (20 %)."
+       },
+       {
+        "code": "discrimination",
+        "params": {
+         "ratio": "1.6"
+        },
+        "text": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables."
+       },
+       {
+        "code": "short_circuit_withstand",
+        "params": {
+         "fault": "7.2"
+        },
+        "text": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 7.2 kA from its maker's curve (ABB handbook \u00a72.4)."
+       },
+       {
+        "code": "cable_conditions",
+        "params": {
+         "ambient": "30",
+         "grouped": "1",
+         "insulation": "70",
+         "method": "B1"
+        },
+        "text": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation."
+       },
+       {
+        "code": "rules_unconfirmed",
+        "params": {},
+        "text": "Circuit rules are this software's defaults, not confirmed by the company's engineers."
+       },
+       {
+        "code": "enclosure_unknown_widths",
+        "params": {
+         "count": "1"
+        },
+        "text": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings)."
+       },
+       {
+        "code": "fed_from",
+        "params": {
+         "board": "MDB"
+        },
+        "text": "Fed from MDB."
+       },
+       {
+        "code": "fault_level_calculated",
+        "params": {
+         "board": "MDB",
+         "fault": "7.2",
+         "length": "30",
+         "material": "Cu",
+         "section": "16",
+         "upstream": "25"
+        },
+        "text": "Fault level 7.2 kA, calculated from MDB's 25 kA through 30 m of 16 mm\u00b2 Cu feeder (IEC 60909, conductors at 20 \u00b0C)."
+       },
+       {
+        "code": "earth_loop_calculated",
+        "params": {
+         "board": "MDB",
+         "length": "30",
+         "material": "Cu",
+         "section": "16",
+         "upstream": "0.2",
+         "ze": "0.278"
+        },
+        "text": "Ze 0.278 \u03a9, from MDB's 0.2 \u03a9 plus the loop of 30 m of 16 mm\u00b2 Cu feeder at its maximum operating temperature."
+       }
+      ],
+      "supply": {
+       "earth_loop_ohm": "0.278",
+       "earthing": "TN-S",
+       "fault_level_ka": "7.2",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Workshop",
+     "number": "HIST-004",
+     "revisions": []
+    },
+    "parts": [],
+    "profile": "iec-default"
+   },
+   "findings": [
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_feeder_raised",
+     "device_id": null,
+     "message": "Feeder to DB2 raised to 63 A, 1.6 x the 32 A breaker after it on DB2, for discrimination; its cable is sized for 63 A.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "32",
+      "board": "DB2",
+      "rated": "63",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 16 A, 1.6 x the 10 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "10",
+      "group": "1",
+      "rated": "16",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 18.7 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "18.7",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination_incomer_raised",
+     "device_id": null,
+     "message": "Incomer raised to 125 A, 1.6 x the 63 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "63",
+      "rated": "125",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 25 kA breaking capacity against 25 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "25",
+      "rating": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "default_power_factor",
+     "device_id": null,
+     "message": "Loads without a power factor were taken at cos phi 0.9.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "earth_fault_basis",
+     "device_id": null,
+     "message": "Earth fault disconnection checked from Ze 0.2 \u03a9 at U0 231 V: Zs x Ia <= 0.95 U0, Ia the top of the breaker's instantaneous band (5, 10, 20 In for curves B, C, D), conductors at their maximum operating temperature, protective conductor the size of the line conductors (IEC 60364-4-41 \u00a7411.4.4).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60364-4-41 \u00a7411.4.4/\u00a7411.4.5",
+     "values": {
+      "voltage": "231",
+      "ze": "0.2"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 25 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "25"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "MDB",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "voltage_drop_upstream",
+     "device_id": null,
+     "message": "0.16 % is dropped on the feeders before this board, and taken from every circuit's limit.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "percent": "0.16"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "discrimination_group_raised",
+     "device_id": null,
+     "message": "Group 1 breaker raised to 32 A, 1.6 x the 16 A breaker after it, for discrimination.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "after": "16",
+      "group": "1",
+      "rated": "32",
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "phase_imbalance",
+     "device_id": null,
+     "message": "Phase imbalance 100 % exceeds the company's 10 %: the loads cannot be spread more evenly as given.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "company max_phase_imbalance_percent",
+     "values": {
+      "imbalance": "100",
+      "limit": "10"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "incomer_isolator",
+     "device_id": null,
+     "message": "The incomer is a switch-disconnector: MDB's feeder breaker protects this board, so the switch is rated no lower than that breaker and does not trip; the feeder discriminates with this board's breakers.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "breaking_capacity",
+     "device_id": null,
+     "message": "Breakers are rated for at least 10 kA breaking capacity against 7.2 kA prospective at the board; each RCCB's conditional short-circuit current with the breaker ahead of it must reach it too.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "fault": "7.2",
+      "rating": "10"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "spare_ways",
+     "device_id": null,
+     "message": "Leave 1 spare outgoing ways (20 %).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "count": "1",
+      "percent": "20"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "discrimination",
+     "device_id": null,
+     "message": "Each breaker is rated at least 1.6 x the largest breaker after it, so they discriminate on overload. On short circuit, miniature breakers discriminate only up to the upstream breaker's instantaneous trip (about 5 x In for curve C); where total selectivity is required, confirm it from the manufacturer's selectivity tables.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ratio": "1.6"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "short_circuit_withstand",
+     "device_id": null,
+     "message": "Each cable's withstand k\u00b2S\u00b2 is in the cable list; compare it with the selected breaker's let-through I\u00b2t at 7.2 kA from its maker's curve (ABB handbook \u00a72.4).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "fault": "7.2"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "cable_conditions",
+     "device_id": null,
+     "message": "Cables sized for method B1, 30 \u00b0C, 1 grouped circuit(s), 70 \u00b0C insulation.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "ambient": "30",
+      "grouped": "1",
+      "insulation": "70",
+      "method": "B1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "rules_unconfirmed",
+     "device_id": null,
+     "message": "Circuit rules are this software's defaults, not confirmed by the company's engineers.",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {}
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "enclosure_unknown_widths",
+     "device_id": null,
+     "message": "Enclosure: none named, since 1 devices have no width (rail_widths_mm in the company settings).",
+     "requires_engineering_confirmation": true,
+     "severity": "warning",
+     "source": "policy",
+     "values": {
+      "count": "1"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "fed_from",
+     "device_id": null,
+     "message": "Fed from MDB.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "fault_level_calculated",
+     "device_id": null,
+     "message": "Fault level 7.2 kA, calculated from MDB's 25 kA through 30 m of 16 mm\u00b2 Cu feeder (IEC 60909, conductors at 20 \u00b0C).",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "IEC 60909",
+     "values": {
+      "board": "MDB",
+      "fault": "7.2",
+      "length": "30",
+      "material": "Cu",
+      "section": "16",
+      "upstream": "25"
+     }
+    },
+    {
+     "board_id": "DB2",
+     "circuit_id": null,
+     "code": "earth_loop_calculated",
+     "device_id": null,
+     "message": "Ze 0.278 \u03a9, from MDB's 0.2 \u03a9 plus the loop of 30 m of 16 mm\u00b2 Cu feeder at its maximum operating temperature.",
+     "requires_engineering_confirmation": false,
+     "severity": "info",
+     "source": "policy",
+     "values": {
+      "board": "MDB",
+      "length": "30",
+      "material": "Cu",
+      "section": "16",
+      "upstream": "0.2",
+      "ze": "0.278"
+     }
+    }
+   ],
+   "note": "Issued for review",
+   "number": 1,
+   "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
+   "request": {
+    "boards": [
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": null,
+      "feeder_length_m": null,
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Office lighting",
+        "feeds": null,
+        "length_m": "18",
+        "load": "lighting",
+        "phases": 1,
+        "power_factor": null,
+        "power_kw": "1.2",
+        "starter": null
+       },
+       {
+        "controlled": false,
+        "description": "DB2 supply (typed)",
+        "feeds": null,
+        "length_m": "30",
+        "load": "sub_board",
+        "phases": 3,
+        "power_factor": null,
+        "power_kw": "10",
+        "starter": null
+       }
+      ],
+      "location": null,
+      "name": "MDB",
+      "supply": {
+       "earth_loop_ohm": "0.2",
+       "earthing": "TN-S",
+       "fault_level_ka": "25",
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     },
+     {
+      "conditions": {
+       "ambient_temp_c": "30",
+       "conductor_material": "copper",
+       "grouped_circuits": 1,
+       "installation_method": "B1",
+       "insulation_rating_c": 70
+      },
+      "fed_from": "MDB",
+      "feeder_length_m": "30",
+      "loads": [
+       {
+        "controlled": false,
+        "description": "Sockets",
+        "feeds": null,
+        "length_m": "12",
+        "load": "socket",
+        "phases": 1,
+        "power_factor": "0.95",
+        "power_kw": "2",
+        "starter": null
+       }
+      ],
+      "location": null,
+      "name": "DB2",
+      "supply": {
+       "earth_loop_ohm": null,
+       "earthing": "TN-S",
+       "fault_level_ka": null,
+       "frequency_hz": "50",
+       "phases": 3,
+       "voltage_v": "400"
+      }
+     }
+    ],
+    "info": {
+     "consultant": "",
+     "contractor": "",
+     "customer": "",
+     "name": "Workshop",
+     "number": "HIST-004",
+     "revisions": []
+    },
+    "profile": null
+   },
+   "rules_version": "2026.10.23.1",
+   "snapshot_sha256": "4d04ecb2896856b10a4f1d4e6825d60b0910106700e9c2d05a5256296d7dabc8",
+   "updated_at": "2026-11-03 20:00:20.346035+00:00"
+  }
+ }
+}

@@ -13,6 +13,7 @@ import {
 
 import {
   AccountSessionProvider,
+  tokenEmail,
   tokenIdentity,
   useAccountSession,
   type AccountSession,
@@ -27,6 +28,11 @@ import { ConfigurationPanel } from '@/components/design/configuration-panel';
 import { ModelReview, ValidationScopeNote } from '@/components/design/configuration-review';
 import { DrawingSheets, ExportPanel } from '@/components/design/design-result';
 import { LoadRows } from '@/components/design/load-rows';
+import {
+  controlNeedsFrom,
+  RequirementsView,
+  requirementsInputOf,
+} from '@/components/design/requirements-view';
 import { useIsolatingTranslations } from '@/components/design/bidi';
 import { useOutcomeText } from '@/components/design/note-text';
 import {
@@ -52,6 +58,8 @@ import {
 import { MarkupsPanel } from '@/components/design/markups-panel';
 import {
   approvalOf,
+  authorEstablishedOf,
+  isAuthorOf,
   ProjectsPanel,
   type OpenedProject,
   type TitleRevision,
@@ -75,6 +83,8 @@ import { ScheduleSources } from '@/components/design/schedule-sources';
 import {
   clearDraft,
   draftBoards,
+  draftControl,
+  formControl,
   formBoards,
   readDraft,
   writeDraft,
@@ -115,7 +125,12 @@ import {
   listProjects,
   openProject,
   permits,
+  requirementsOf,
   suggestSchedule,
+  type answerQuestion,
+  type ControlNeed,
+  type previewRequirements,
+  type RequirementsRecord,
   type BoardDesignResponse,
   type SavedProject,
   type DesignOutcome,
@@ -225,9 +240,19 @@ export function snapshotOf(
   profileText: string,
   language: DrawingLanguage | null,
   market: string,
+  control: Readonly<Record<number, readonly ControlNeed[]>> = {},
 ): string {
-  return JSON.stringify({ info, boards, profileText, language, market }, (key, value: unknown) =>
-    key === 'key' ? undefined : value,
+  // Control needs are requirements the save records: a change to them is
+  // unsaved work like any field. Said per row, in row order (keys left out);
+  // left out entirely while none is ticked, so a form without any compares
+  // as it always did.
+  const needs = boards.map((board) => board.loads.map((load) => [...(control[load.key] ?? [])]));
+  const anyNeed = needs.some((rows) => rows.some((row) => row.length > 0));
+  return JSON.stringify(
+    anyNeed
+      ? { info, boards, profileText, language, market, control: needs }
+      : { info, boards, profileText, language, market },
+    (key, value: unknown) => (key === 'key' ? undefined : value),
   );
 }
 
@@ -302,6 +327,10 @@ type DesignScreenProps = {
   signupImpl?: typeof signupClaimingTrial;
   /** Follows a link the engineer chose to leave for with changes discarded. */
   leaveImpl?: (href: string) => void;
+  /** Checks the guided requirements' open items (M6a). */
+  previewRequirementsImpl?: typeof previewRequirements;
+  /** Answers or acknowledges one of a saved revision's questions. */
+  answerQuestionImpl?: typeof answerQuestion;
 };
 
 /**
@@ -389,6 +418,8 @@ function DesignWorkspace({
   listProjectsImpl = listProjects,
   leaveImpl,
   accountSwitched,
+  previewRequirementsImpl,
+  answerQuestionImpl,
 }: DesignScreenProps & {
   account: AccountSession;
   startSignedOut: boolean;
@@ -433,6 +464,10 @@ function DesignWorkspace({
   const [info, setInfo] = useState<ProjectInfo>(INITIAL_INFO);
   const [boards, setBoards] = useState<BoardForm[]>([blankBoard(0, 1, 'DB1')]);
   const [activeKey, setActiveKey] = useState(0);
+  // Each load's control needs, by row key: requirements only, never designed from.
+  const [controlNeeds, setControlNeeds] = useState<Record<number, ControlNeed[]>>({});
+  // The requirements record the server stored with the revision open.
+  const [savedRequirements, setSavedRequirements] = useState<RequirementsRecord | null>(null);
   // Board keys and row keys both come from this counter, so none collide.
   const nextKey = useRef(2);
   const [profileText, setProfileText] = useState('');
@@ -474,7 +509,7 @@ function DesignWorkspace({
   // entered text stays, so it can be shortened.
   const [tooLong, setTooLong] = useState<TooLong[]>([]);
 
-  const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market);
+  const snapshot = snapshotOf(info, boards, profileText, chosenLanguage, market, controlNeeds);
   // What the work looked like when last saved or opened (or when the page
   // started); anything else is unsaved.
   const [clean, setClean] = useState(snapshot);
@@ -732,6 +767,7 @@ function DesignWorkspace({
       clean,
       info,
       boards: draftBoards(boards),
+      control: draftControl(boards, controlNeeds),
       profileText,
       language: chosenLanguage,
       market,
@@ -771,6 +807,7 @@ function DesignWorkspace({
     nextKey.current += Math.max(1, keyed.used);
     setInfo(draft.info);
     setBoards(keyed.boards);
+    setControlNeeds(formControl(keyed.boards, draft.control));
     if (keyed.boards[0]) setActiveKey(keyed.boards[0].key);
     setProfileText(draft.profileText);
     setDrawingLanguage(draft.language);
@@ -872,7 +909,12 @@ function DesignWorkspace({
       approval: approvalOf(project),
       approvingAs: project.approving_as ?? null,
       canApprove: permits(project, 'approve_revision'),
+      isAuthor: isAuthorOf(project),
+      authorUnknown: (project as { author_unknown?: unknown }).author_unknown === true,
+      authorEstablished: authorEstablishedOf(project),
     });
+    const requirements = requirementsOf(project);
+    setSavedRequirements(requirements);
     setHistory(project.revisions);
     setOpenedModel(project.model_v2 ?? null);
     setOpenedSchema(project.snapshot_schema);
@@ -916,6 +958,8 @@ function DesignWorkspace({
     nextKey.current += Math.max(1, loaded.used);
     setInfo(loaded.info);
     setBoards(loaded.boards);
+    const restoredNeeds = controlNeedsFrom(requirements, loaded.boards);
+    setControlNeeds(restoredNeeds);
     if (loaded.boards[0]) setActiveKey(loaded.boards[0].key);
     const settings = profileFrom(project.request.profile);
     setProfileText(settings.text);
@@ -929,6 +973,7 @@ function DesignWorkspace({
         settings.text,
         settings.language,
         latestMarket.current,
+        restoredNeeds,
       ),
     );
     // The opened revision replaces the form: untouched, until an edit renders,
@@ -1610,10 +1655,15 @@ function DesignWorkspace({
                 token={token}
                 current={
                   complete && parsed !== 'invalid'
-                    ? { name: info.name.trim(), request: toRequest(info, boards, profile) }
+                    ? {
+                        name: info.name.trim(),
+                        request: toRequest(info, boards, profile),
+                        requirementsInput: requirementsInputOf(boards, controlNeeds),
+                      }
                     : null
                 }
                 opened={opened}
+                accountEmail={identity === 'account' ? tokenEmail(token) : null}
                 onOpened={forOwner(onOpened)}
                 beforeOpen={unsaved.guard}
                 dirty={dirty}
@@ -1644,6 +1694,51 @@ function DesignWorkspace({
               session.kind === 'starting' && <LoadingState>{tw('connecting')}</LoadingState>
             )}
           </>,
+        )}
+
+        {viewPanel(
+          'requirements',
+          // Mounted only while shown: its rows repeat the schedule's fields.
+          view === 'requirements' && (
+            <RequirementsView
+              token={token}
+              boards={boards}
+              onBoardChange={updateBoard}
+              onAddBoard={addBoard}
+              onLoadChange={(boardKey, loadKey, patch) => {
+                updateLoads(boardKey, (loads) =>
+                  loads.map((load) => (load.key === loadKey ? { ...load, ...patch } : load)),
+                );
+              }}
+              onLoadRemove={(boardKey, loadKey) => {
+                updateLoads(boardKey, (loads) => loads.filter((load) => load.key !== loadKey));
+              }}
+              onLoadAdd={(boardKey) => {
+                const key = takeKeys(1);
+                updateLoads(boardKey, (loads) => [...loads, blankLoad(key)]);
+              }}
+              control={controlNeeds}
+              onControlChange={(loadKey, needs) => {
+                setControlNeeds((current) => ({ ...current, [loadKey]: needs }));
+              }}
+              request={complete && parsed !== 'invalid' ? toRequest(info, boards, profile) : null}
+              opened={opened ? { id: opened.id, revision: opened.revision } : null}
+              savedRecord={savedRequirements}
+              findings={validation?.findings ?? []}
+              onProject={forOwner((project: SavedProject, action: 'answer' | 'acknowledge') => {
+                // An answer is a new revision with the value typed in: the form takes it.
+                onOpened(project, action === 'answer');
+              })}
+              dirty={dirty}
+              onUnauthorized={forOwner(() => {
+                void reauthorize();
+              })}
+              impls={{
+                ...(previewRequirementsImpl ? { preview: previewRequirementsImpl } : {}),
+                ...(answerQuestionImpl ? { answer: answerQuestionImpl } : {}),
+              }}
+            />
+          ),
         )}
 
         <div

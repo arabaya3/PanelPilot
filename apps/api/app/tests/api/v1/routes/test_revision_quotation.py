@@ -29,6 +29,7 @@ from app.tests.api.v1.routes.test_export_integrity import (
     revision_export,
     save,
 )
+from app.tests.domain import review_support
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
@@ -284,3 +285,9 @@ def test_the_member_in_the_estimate_test_cannot_approve(
     response = approve(client, saved["id"], 1)
     assert response.status_code == 403
     assert error(response)["code"] == "approval_not_permitted"
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

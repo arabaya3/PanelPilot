@@ -9,6 +9,7 @@ a real person, and no qualification statement is a real one.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -58,3 +59,35 @@ def new_account(
             session.commit()
     held = frozenset({Role.ENGINEER} | ({role} if role else set()))
     return CurrentUser(id=str(account), email=email, tenant_id=tenant, roles=held)
+
+
+#: Who saves every revision in a test module that approves as its own caller:
+#: another member of the tenant, so the approval is not by the revision's
+#: author (M6a: ``approval_by_author``). The rule itself is not touched.
+OTHER_AUTHOR = "m6a-author@synthetic.example"
+#: That member's account id, recorded as each such revision's ``author_user_id``.
+OTHER_AUTHOR_ID = "6a6a6a6a-0000-4000-8000-00000000a011"
+
+
+def author_revisions_as_another_member(monkeypatch: Any, email: str = OTHER_AUTHOR) -> None:
+    """Record ``email`` as the author of every revision saved while patched.
+
+    For the tests written before self-approval was refused: their caller saves
+    and approves, as a one-person tenant did. Each revision is recorded as saved
+    by another member instead, so the approval stays the caller's and is valid.
+    """
+    from app.domain import design_projects
+
+    original = design_projects._add_revision
+
+    def add(session: Any, project: Any, tenant: Any, user: CurrentUser, *args: Any, **kw: Any):  # type: ignore[no-untyped-def]
+        return original(
+            session,
+            project,
+            tenant,
+            user.model_copy(update={"email": email, "id": OTHER_AUTHOR_ID}),
+            *args,
+            **kw,
+        )
+
+    monkeypatch.setattr(design_projects, "_add_revision", add)

@@ -62,6 +62,9 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     author: Mapped[str] = mapped_column(String(320), nullable=False, default="")
+    # The saving account's id (since M6a); NULL on older rows, which fall
+    # back to ``author`` (the email) for the self-approval check.
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     # Set once, when the engineer approves this revision; never cleared. The
     # approver is the signed-in account: its email and (since f8c4a2e6d9b3)
@@ -89,6 +92,10 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     catalogue_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # The findings (``DesignFinding``) recorded when it was saved.
     findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    # The requirements record (``pp-req/1``, M6a) and its SHA-256, checked on
+    # every read; NULL on a revision saved before it, which gets a derived one.
+    requirements: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Set with the approval, in the same locked transaction: the snapshot
     # hash approved. An approval counts only while it equals snapshot_sha256.
     approved_snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -108,6 +115,10 @@ class DesignRevisionRow(TenantScopedMixin, UUIDPrimaryKey, TimestampMixin, Base)
     # SHA-256 of the canonical findings classification (code, severity,
     # engineering confirmation) of the approved design under the policy then.
     approved_findings_policy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Set with the approval: the requirements record's hash then (the hash of
+    # JSON null for a revision with no stored record). NULL on an approval
+    # recorded before this column: not bound, so not current.
+    approved_requirements_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # The approver's display name, frozen: "" when the account had none (an
     # export says "a team member"). Exports never re-read it from the account.
     approved_display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

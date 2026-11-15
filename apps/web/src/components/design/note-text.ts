@@ -234,10 +234,23 @@ export function useOutcomeText(): (outcome: { kind: string }) => string {
           ? `${sentence} ${t('errors.request_invalid_fields', { fields: fields.join(listSeparator) })}`
           : sentence;
       }
+      // A configured revision a re-save cannot carry: its own explanation, not
+      // the generic "save again to validate", which would not help.
+      if (
+        refusal.code === 'revision_not_validated' &&
+        refusal.params?.reason === 'configuration_not_carried'
+      ) {
+        return t('errors.configuration_not_carried', { revision: refusal.params.revision ?? '' });
+      }
       const key = `errors.${refusal.code ?? ''}`;
       if (refusal.code && t.has(key)) {
         const { subject, ...values } = refusal.params ?? {};
-        const sentence = t(key, values);
+        // A load row the server names by its index is said as the form numbers it.
+        const row = Number(values.load_index);
+        const sentence = t(
+          key,
+          Number.isInteger(row) && row >= 0 ? { ...values, row: row + 1 } : values,
+        );
         return subject ? `${isolate(subject)}: ${sentence}` : sentence;
       }
       return refusal.detail || t('error');

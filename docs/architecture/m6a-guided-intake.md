@@ -1,0 +1,380 @@
+# M6a — guided intake, server-owned feeders and a versioned requirements record
+
+Status: contract for the first implementation slice. Review-only scope; no AI, no new
+electrical rules, no execution output.
+
+## 1. Server-owned feeders
+
+A sub-board's feeder is generated exactly once, by the project designer, from the
+sub-board's `fed_from`. The client cannot express it any other way.
+
+- A load with `feeds` set is refused: HTTP 422, code `feeder_server_owned`,
+  params `{board, load_index}`.
+- A load of kind `sub_board` is refused for new designs: HTTP 422, code
+  `sub_board_load_server_owned`, params `{board, load_index}`. The message tells
+  the user to add the sub-board and set "Fed from" instead.
+- `fed_from` naming an unknown board, the board itself, or forming a cycle keeps
+  its existing refusals (verify them; add codes if missing).
+- Historical revisions are never rewritten. A stored revision whose request holds
+  such a row still opens from its stored snapshot. Re-designing it (a new
+  revision) is refused with the codes above until the user removes the row.
+
+## 2. Requirements record `pp-req/1`
+
+Stored with each revision as `requirements` (JSON, hashed into the revision's
+integrity like `request`). Absent on older revisions; the API then returns a
+_derived_ record marked `"derived": true`, which never counts as acknowledged.
+
+```json
+{
+  "schema": "pp-req/1",
+  "intake": "guided",              // "guided" | "table" | "import" (later: "ai")
+  "boards": [{"ref": "b1", "name": "MDB", "fed_from_ref": null}],
+  "loads": [{"ref": "b1.l1", "board_ref": "b1", "description": "...",
+             "source": "typed"}],
+  "control": [{"ref": "b2.c1", "board_ref": "b2", "load_ref": "b2.l3",
+               "needs": ["start_stop", "running_indicator"],
+               "status": "not_designed"}],
+  "questions": [{"id": "q-<stable>", "kind": "missing_value|assumption",
+                 "subject": {"board_ref": "b1", "load_ref": "b1.l2"},
+                 "field": "power_factor", "finding_code": "default_power_factor",
+                 "state": "open|answered|acknowledged",
+                 "answer": null,
+                 "by_user_id": null, "at": null}],
+  "open_items": [{"code": "control_not_designed|inter_board_wiring_not_modelled",
+                  "subject": {...}}],
+  "trace": [{"requirement_ref": "b1.l1", "design_ref": "MDB/c1"}]
+}
+```
+
+- `ref`s are assigned by the server, stable across edits of the same project.
+- Questions are **derived by the server** from (a) required inputs the user left
+  empty (fault level, Ze, feeder length, motor nameplate current) and (b) findings
+  the designer already raises for assumptions (e.g. `default_power_factor`). The
+  designer's behaviour is unchanged: the 0.9 default still applies; the question
+  makes it visible.
+- **Answer** = the user supplies the value; it flows into the request as typed
+  input. **Acknowledge** = the user accepts the stated assumption. Both are
+  recorded server-side with `by_user_id` and `at` (server clock); the client
+  never supplies who or when.
+- Acknowledged ≠ validated. Exports print acknowledged assumptions as
+  "Assumption acknowledged by <user> on <date> — not engineer-validated".
+- Control needs are recorded as requirements only. The existing `controlled`
+  flag remains the only control model in the designer. Each control need yields
+  an open item `control_not_designed`.
+- Each sub-board feeder yields an open item `inter_board_wiring_not_modelled`.
+- `trace` links every load and generated feeder to the design element.
+- Extension point: `intake: "ai"` reserved; AI would propose loads/questions into
+  this structure with `source: "ai_proposed"` and require user confirmation. Not
+  implemented.
+
+## 3. API
+
+- `POST /design/projects/requirements/preview` — body: guided input
+  (boards, loads, control needs, answers). Returns the requirements record with
+  derived questions and open items, plus the design preview. Saves nothing.
+- `POST /design/projects` and `POST /design/projects/{id}/revisions` accept an
+  optional `requirements_input`; the server builds and stores the record.
+- `POST /design/projects/{id}/revisions/{n}/questions/{qid}` — body
+  `{"action": "answer", "value": ...}` or `{"action": "acknowledge"}`. Answering
+  creates a new revision (inputs changed); acknowledging is recorded against the
+  revision's record without changing its design (append-only acknowledgements).
+- Permission: the existing edit permission for answers; acknowledgement requires
+  the same; tenant-scoped.
+
+## 4. Integrity and security
+
+- Self-approval: a revision cannot be approved by its author (`author` email or
+  user id). Refused with 403 `approval_by_author`. Older revisions without a
+  recorded author: approval allowed only with an explicit server-side finding
+  `author_unknown` shown on the approval, never inventing an author.
+- Duplicate printed designations within a board (v1 and v2) raise a blocking
+  finding `designation_duplicate`; approval is refused while it stands; review
+  exports carry it.
+- Renderer/approval policy: any change to exported document content bumps the
+  affected renderer version; report which approvals become stale.
+
+## 5. As built (backend, M6a) — decisions and contract changes
+
+Integration-owner decisions (2026-11-03) and what the backend implements.
+Where this section and §1–4 differ, this section holds.
+
+### 5.1 Feeders
+
+- Enforced in the design and save paths, **not** in the pydantic model, so a
+  stored request holding such a row still parses: the revision stays
+  `validated`, its approval keeps counting, and it opens from its stored
+  snapshot unchanged. Refused with 422 on `POST /design/project`,
+  `POST /design/distribution-board`, `POST /design/projects`,
+  `POST /design/projects/{id}/revisions`, the requirements preview, an answer
+  (a new revision), and `POST …/configuration/validate` (latest request).
+  Nothing is saved when refused.
+- `feeds` is refused on a load of any kind (`feeder_server_owned`), checked
+  before `sub_board_load_server_owned`. The designer itself also refuses a
+  row whose `feeds` names a board of the project, so no path designs two
+  feeders to one board.
+- `params.load_index` is the 0-based index in that board's `loads`. Like every
+  error `params` value in this API (`app.core.errors`), it is sent as a
+  **string** (`"1"`), not a number.
+- Feeding-graph refusals were verified unchanged: `board_name_twice`,
+  `board_feeds_itself`, `board_supply_unknown`, `boards_loop` (each names
+  `params.board`).
+- Effect on re-design: a revision whose request holds a typed feeder row is
+  re-saved only after the user removes the row and sets "Fed from"; the
+  stored revision is never rewritten. A sub-board of a single-board design
+  that used to be a `sub_board` load is now added as a board with "Fed from".
+
+### 5.2 Requirements record
+
+- Stored column `requirements` (JSONB) plus `requirements_sha256`
+  (migration `a6c2e9f4b8d3`, single head). The hash is checked wherever the
+  snapshot hash is: a mismatch is `snapshot_integrity_failed`,
+  `reason: requirements_mismatch` (opened as not validated; approval and
+  export refused). A NULL record reads as a derived one.
+- Every new revision stores a record. Without `requirements_input` the record
+  has `intake` from the previous revision's record, else `"table"`.
+- `requirements_input = {"intake": "guided"|"table"|"import", "control":
+[{"board_index", "load_index", "needs": [...]}]}` (strict; `"ai"` is
+  refused). `needs` ⊆ `start_stop, running_indicator, fault_indicator,
+hand_off_auto, remote_control, interlock, timed`, each once. Refusals (422):
+  `control_load_unknown`, `control_need_requires_controlled` (the load's
+  existing `controlled` flag must be set; it is the only control model),
+  `control_given_twice`.
+- Every `controlled` load is a `control` entry (`needs` empty unless given)
+  and a `control_not_designed` open item. Needs carry to the next revision
+  when not re-sent.
+- Record additions to §2: `derived` (bool), `feeders` (generated feeders,
+  `ref` `<board_ref>.feeder`, `source: "generated"`), `acknowledgements`
+  (append-only `{question_id, by_user_id, by, at}`), and on each question
+  `answerable` and `by_name` (the account's display name, never its email; empty
+  when it has none). `subject` may carry `control_ref`/`supply_board_ref`.
+  `resaved_from` (int) on a revision saved by `…/resave` (M6b): the revision
+  whose stored request it re-designed; absent otherwise.
+- `trace`: each load `b<n>.l<m>` → `<board name>/c<index+1>`; each feeder →
+  the supply board's circuit feeding it; `design_ref: null` where the design
+  was refused.
+- Questions (ids `q-<16 hex>`, a digest of kind, field, finding code, board
+  name and load ref, so stable across revisions):
+  - `missing_value`, answerable: `fault_level_ka` and `ze_ohm` on a board
+    with no "Fed from" (`finding_code` `no_fault_level` / `earth_fault_no_ze`
+    when raised), `feeder_length_m` on a sub-board. `ze_ohm` is written into
+    `supply.earth_loop_ohm`.
+  - `assumption`, answerable: `power_factor` per non-motor load without one,
+    when the board raises `default_power_factor`; the answer sets that load's
+    `power_factor`.
+  - `assumption`, acknowledge only: `motor_current_a` per motor
+    whose current came from `motor_current_table` or `motor_current_formula`
+    (no input holds a nameplate current); and per board `fault_level_inherited`,
+    `demand_factors`, `rules_unconfirmed`, `contactor_ac1` (`field: null`).
+- `GET /design/projects/{id}` includes `requirements` (stored, or derived
+  with `derived: true` for a revision saved before M6a; `null` if its request
+  no longer validates or the stored record fails its hash).
+
+### 5.3 Endpoints as built
+
+- `POST /design/projects/requirements/preview` — body `{request,
+requirements_input}`; 200 `{requirements, design: {project, profile},
+findings}`. Saves nothing, reads no project.
+- `POST /design/projects/{id}/revisions/{n}/questions/{qid}` — strict body
+  `{"action": "answer", "value": <number>}` or `{"action": "acknowledge"}`;
+  any other field (`by_user_id`, `at`) is 422.
+  - answer → **201** with the project at its new revision (note
+    `Answered: <field>`). Only on the latest revision (409
+    `revision_not_latest`); 409 `question_not_answerable`,
+    `question_answered`; 422 `answer_not_valid` (e.g. power factor > 1).
+    Acknowledgements whose question still stands over the same inputs carry
+    to the new revision (each records a `basis`, a digest of the inputs its
+    assumption rests on; a changed basis, or none recorded, opens the question
+    again). An answer carries only while the request still holds the value
+    answered; typed over in the table, the table's value stands, attributed to
+    no one. Earlier revisions' records are never rewritten.
+  - acknowledge → **200** with the updated record; the design, snapshot hash
+    and revision count are unchanged. 409 `requirements_derived` on a derived
+    record (save a new revision first); 409 `revision_already_approved` on an
+    approved revision (what was approved does not change); 409
+    `revision_not_latest` on a revision a later one replaced (an
+    acknowledgement there would be missing from the latest revision); 403
+    `acknowledgement_requires_account` for a trial. Acknowledging twice is a
+    no-op.
+  - 404 `revision_not_found` (also another tenant's project) and
+    `question_not_found`.
+- Permission: any member who may save a revision (no new permission);
+  tenant-scoped as every project route.
+
+### 5.4 Approval
+
+- An approval binds the requirements record: `approved_requirements_sha256`
+  is set with it, under the revision lock, after the record's hash is checked
+  (the hash of JSON `null` for a revision without a stored record). Opened
+  later, a different or failing record, or a NULL binding (an approval
+  recorded before the column existed: not bound), makes the approval not
+  current (`approval_changed` names `requirements`); the revision then exports
+  as a draft, never as approved.
+
+- Self-approval is strict: `approval_by_author` (403) when the revision's
+  saving account (`author_user_id`) is the approver, owners included.
+  **Product consequence:** a single-person tenant cannot approve; it needs a
+  second member with approve permission (owner, admin or reviewer).
+- **Author established (M6b, owner decision).** A revision's author is
+  established only when the row records `author_user_id`. A row with only an
+  email (saved before migration `b7d3f1a9c2e4`) or nothing is "author not
+  established": its approval is refused 409 `approval_author_not_established`
+  (`params.revision` as a string), checked after the revision's own refusals
+  (`revision_already_approved`, `revision_stale`, …) and before
+  `approval_by_author`. The email is never compared and `author_user_id` is
+  never backfilled or guessed from it. `SavedProject.author_established` and
+  each `RevisionSummary.author_established` carry the flag;
+  `author_unknown` stays true only when nothing is recorded. A trial's save
+  records no `author_user_id` (its subject is an anonymous session; the
+  account that later claims the tenant has another id).
+- **Recovery:** `POST /design/projects/{id}/revisions/{n}/resave` (201, any
+  member who may save a revision; a trial is 403 `resave_requires_account`;
+  another tenant's project 404 `revision_not_found`). It designs revision
+  `n`'s stored request under today's rules and saves it as the caller's new
+  latest revision, note `Re-saved from revision <n> for independent review`,
+  record `resaved_from: <n>`. Control needs carry; acknowledgements whose
+  question still stands carry with their original `by_user_id`/`at` (as on an
+  answer). A stored request today's rules refuse is returned refused
+  unchanged (422 `feeder_server_owned`, `sub_board_load_server_owned`, …)
+  and nothing is saved; the user fixes it in the editor and saves normally.
+  A revision whose design holds a configuration is refused 409
+  `revision_not_validated` (`reason: configuration_not_carried`), since the
+  configuration lives only in the snapshot and a re-save of the request would
+  drop it. Revision `n` (snapshot, hashes, record, approval) is never changed.
+  A different eligible member then approves the new revision.
+
+### 5.5 Exports
+
+- Each acknowledged question of a stored record prints on every review
+  export's findings sheet as an info line: "Assumption acknowledged by <name>
+  on <date> — not engineer-validated: <finding or field> — <board> › <load>"
+  (code `assumption_acknowledged`, source `requirements`).
+- `designation_duplicate` (blocking) prints like every finding; a v1
+  revision prints its own (only the v2 structural one is v2-only).
+
+### 5.6 Versions and approvals
+
+**Final versions on this branch:** v1 renderer `2026.11.03.3`, v2 renderer
+`2026.11.03.v2-15`, `RULES_VERSION` `2026.11.03.1`. The intermediate v1
+`2026.11.03.1`/`.2` and v2 `v2-12` to `v2-14` existed only on this unmerged
+branch and were never released.
+
+- **Rules.** `RULES_VERSION` `2026.10.23.1` → `2026.11.03.1` (owner decision,
+  2026-11-03): `designation_duplicate` changes what the findings checks can
+  produce, and under the M2 cause rule an unchanged version would make an
+  affected stored v2 row read as `snapshot_integrity_failed`
+  (`findings_mismatch`), an integrity failure that looks like tampering,
+  instead of stale. The findings fingerprints were re-recorded (no case's
+  digest changed, only the version key) and the compat fixtures regenerated
+  with `python -m app.tests.design.model.fixtures.generate` (only their
+  `rules_version` changed).
+- **Renderers** (v1 `2026.10.31.4` → `2026.11.03.3`, v2 `2026.11.02.v2-11` →
+  `2026.11.03.v2-15`). What the review exports now print:
+  - **open items** after the findings on the drawing set, the calculations
+    report and the v2 connection drawing and schedules, for stored and
+    derived records alike, so a review document never reads as complete:
+    `[OPEN] Control circuit not designed: <board> › <load>` and
+    `[OPEN] Board-to-board wiring not modelled: <supply> to <board>` (plain
+    "to", not an arrow glyph). The JSON export carries them under
+    `requirements`;
+  - acknowledged assumptions: `[ACKNOWLEDGED] Assumption acknowledged by
+<name> on <date> — not engineer-validated: <code> — <board> › <load>`;
+  - a v1 revision's own `designation_duplicate`; a duplicated v2 designation
+    as drawn (`=function+location-product`, e.g. `-K1`);
+  - 6 mm of space after the calculations report's findings section.
+    The v1 bump is required by the guard although the v1 reference exports
+    are byte-identical apart from that spacing: the renderer has output paths
+    the reference exports do not exercise (the lines above), so a file it
+    prints can say what the previous one could not. The v2 connection drawing
+    and schedules also print the rules version in their headers.
+- **Approval impact.** Every revision saved before this change reads `stale`
+  (`changed: rules_version`): its exports are refused `revision_stale` and
+  its approval, if any, stops counting (`rules_version` and
+  `renderer_version`). On this unmerged stack that is every approval; each
+  revision is saved again and approved by a member other than its author.
+  **No stored row is rewritten**: snapshots, hashes, findings and approvals
+  stay exactly as recorded.
+- **No email in an exported document (decision, 2026-11-03).** PDFs, DXF and
+  JSON exports never print an email address: an acknowledgement line names
+  the account by its display name, else "a team member" (resolved from
+  `by_user_id` when the file is made); the approver likewise. The title
+  block prints no revision author. In the app, tenant members may still see
+  the email (below).
+
+### 5.7 Coordinator shape decisions (second round)
+
+- Questions carry `by_name`, set by the server when answered or
+  acknowledged and **never empty**: the account's display name, else its
+  email (visible to tenant members on the Team page), else `unknown
+account`. No name is invented. `RevisionSummary.author` follows the same
+  rule (`unknown account` for a revision with no recorded author).
+- Motor current question: `field: "motor_current_a"`, `kind: "assumption"`,
+  subject the load, acknowledge only (`motor_current_table` or
+  `motor_current_formula`).
+- Acknowledge returns `{"requirements": <record>}` (200); answer returns the
+  `SavedProject` (201).
+- Preview returns `{requirements, design}` plus `findings` (the design's
+  findings, as a revision would store them).
+- `SavedProject.is_author` and the self-approval check compare the saving
+  account's id (`design_project_revisions.author_user_id`, migration
+  `b7d3f1a9c2e4`, single head), so an email changed after saving is still
+  the author and another account later given that email is not. A row saved
+  before the column (`author_user_id` NULL) is "author not established" and
+  cannot be approved (§5.4, superseding the earlier email fallback).
+  `SavedProject.author_unknown` and each
+  `RevisionSummary.author_unknown` are true only when a row records neither.
+- `params` values are strings (`"load_index": "1"`), as for every coded error.
+
+### 5.8 Integration review (M6b, 2026-11-03)
+
+- **Opened request title block.** `GET /design/projects/{id}` lists an earlier
+  or the opened revision's approver in `request.info.revisions` only while that
+  approval still counts (the same `bound_to` rule as an export's title block).
+  Before, a stale or unbound approval's approver was listed there, and a save
+  from the editor could carry the name into a new request.
+- **Malformed stored record.** A stored requirements record that matches its
+  hash but is not a valid `pp-req/1` record is treated as altered:
+  `snapshot_integrity_failed`, `reason: requirements_mismatch`, on open,
+  approval, export and acknowledgement, instead of a 500.
+- **Acknowledgements without a `basis`.** An acknowledgement recorded before
+  `basis` existed (only on this unmerged branch) does not carry to a later
+  revision: what it was given against cannot be shown to be unchanged. Its
+  question reopens there; the earlier revision keeps it as recorded. A resave
+  carries only acknowledgements whose basis still stands.
+- **An approval that no longer counts** (stale, not bound to the requirements
+  record, or failing integrity) is shown as not current, with "Save as a new
+  revision for review" on the approval panel, as for a revision whose author
+  is not established. Its wording covers an approval that was never bound.
+- **Historical documents.** A stale revision's stored documents cannot be
+  viewed or exported as historical artefacts: every revision export of a stale
+  revision is refused (`revision_stale`), and no route serves the stored
+  snapshot as a document. Opening one shows its stored request, findings and
+  an approval marked not current. Not added in this slice.
+
+### 5.9 Before AI intake (2026-11-04)
+
+- **Opened revision after a findings-policy change.** The opened request's
+  title block now reads the opened revision's stored design and classifies
+  it, as the revision list does (`_read_applicable`), so after a
+  findings-policy change it names no approver whose approval no longer
+  counts. List, opened detail, `approval_current` and exports agree
+  (regression test in `test_design_projects_integrity_status_db.py`, both
+  snapshot schemas).
+- **Stale configured v2 revision.** Not carried by a resave. The connection
+  configuration exists only composed into that revision's v2 snapshot; there
+  is no inverse of `compose`, so carrying it would need an extraction proven
+  lossless under current rules, which this slice does not attempt. The
+  refusal stays (`revision_not_validated`, `reason:
+configuration_not_carried`); its message now says the configuration is kept
+  unchanged with the old revision, is never dropped, and has to be entered
+  again in a new revision. The web app shows that message instead of the
+  generic "save again to validate". Gap: a stale revision's composed model
+  (`model_v2`) is withheld, so the app cannot show the old configuration to
+  copy from; it is still in the database unchanged.
+- **What a resave proves.** A resave records the account that resaved as the
+  new revision's author. It does not identify who first entered the design,
+  and it is not proof of historical independence: a colleague of the
+  original author could resave, and the original author could then approve
+  the new revision. Four-eyes holds between the resaver and the approver
+  only. The approval panel and this document say so; no historical approval
+  is represented as independent.

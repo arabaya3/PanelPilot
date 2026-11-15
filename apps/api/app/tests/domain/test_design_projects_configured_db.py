@@ -59,6 +59,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
 )
 from app.tests.design.model.compat_support import DESIGNED
 from app.tests.design.model.v2_support import CONFIGS, config_case
+from app.tests.domain import review_support
 
 Switch = Callable[[str], None]
 
@@ -692,3 +693,9 @@ def test_a_forged_review_status_is_refused_even_when_lock_hash_and_findings_matc
         response = revision_export(client, project_id, 2, fmt)
         assert response.status_code == 409, fmt
         assert error(response)["code"] == "snapshot_integrity_failed", fmt
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

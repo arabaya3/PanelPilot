@@ -115,3 +115,16 @@ def test_the_findings_sheet_count_matches_the_sheets_added() -> None:
         mark = marking.ExportMark("x", "y", (_FINDING,) * count)
         added = len(marking.mark_sheets([Sheet(number=1, title="A")], mark)) - 1
         assert marking.findings_sheet_count(mark) == added
+
+
+def test_requirement_lines_follow_the_findings_and_reach_the_json() -> None:
+    import json
+
+    lines = ("[OPEN] Control circuit not designed: MDB › Pump",)  # noqa: RUF001
+    mark = marking.ExportMark(marking.DRAFT_LABEL, "r", (_FINDING,), requirements=lines)
+    printed = marking.finding_lines(mark)
+    assert printed[-1] == lines[0]
+    alone = marking.finding_lines(marking.ExportMark("x", "y", requirements=lines))
+    assert alone == ["No unresolved findings.", lines[0]]
+    assert json.loads(marking.mark_json("{}", mark))["requirements"] == list(lines)
+    assert "requirements" not in json.loads(marking.mark_json("{}", MARK))

@@ -43,7 +43,7 @@ def test_every_integrity_code_is_classified_and_none_is_left_over() -> None:
     from app.design import integrity
 
     source = Path(integrity.__file__).read_text(encoding="utf-8")
-    made = set(re.findall(r'"((?:integrity|draft)_[a-z_]+)"', source))
+    made = set(re.findall(r'"((?:integrity|draft|designation)_[a-z_]+)"', source))
     assert made == set(findings_policy.INTEGRITY)
     # Integrity codes are not note codes: the two tables never share a code.
     assert not set(findings_policy.INTEGRITY) & set(findings_policy.POLICY)

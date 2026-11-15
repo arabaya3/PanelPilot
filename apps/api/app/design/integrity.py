@@ -11,6 +11,9 @@ silent pass:
 * every circuit with a cable has a rated device protecting it against
   overload (a breaker or fuse, or a coordinated starter's overload relay),
   and no breaker or fuse is unrated;
+* no two devices or cables of one board print the same designation
+  (``designation_duplicate``): two parts drawn with one name cannot be told
+  apart on the drawing, the schedules or the panel;
 * the device protecting each circuit's cable against overload is not rated
   above the cable's current-carrying capacity, ``In <= Iz`` (ABB handbook
   Vol. 2 §2.3; Iz from §2.2.1 Tables 4, 5 and 8). For a coordinated motor
@@ -253,8 +256,28 @@ def integrity_findings(
     return found
 
 
+def _duplicate_designations(board: Board) -> list[DesignFinding]:
+    """One blocking finding per designation printed on more than one part of a board."""
+    holders: dict[str, list[str]] = {}
+    items: list[Device | Cable] = [*board.devices, *board.cables]
+    for item in items:
+        if item.designation is not None:
+            holders.setdefault(str(item.designation), []).append(item.id)
+    return [
+        _finding(
+            "designation_duplicate",
+            f"Board {board.name}: {printed} is printed on {len(ids)} parts ({', '.join(ids)}); "
+            "each part needs its own designation.",
+            board=board,
+            values={"designation": printed, "parts": ",".join(ids)},
+        )
+        for printed, ids in holders.items()
+        if len(ids) > 1
+    ]
+
+
 def _board_findings(board: Board, conditions: InstallationConditions | None) -> list[DesignFinding]:
-    found: list[DesignFinding] = []
+    found: list[DesignFinding] = _duplicate_designations(board)
     devices = {device.id: device for device in board.devices}
     cables = {cable.id: cable for cable in board.cables}
     for circuit in board.circuits:

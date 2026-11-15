@@ -12,7 +12,13 @@ from datetime import UTC, datetime
 import pytest
 
 from app.core.errors import ConflictError
-from app.design import CATALOGUE_VERSION, RENDERER_BASELINE, RENDERER_VERSION, RULES_VERSION
+from app.design import (
+    CATALOGUE_VERSION,
+    RENDERER_BASELINE,
+    RENDERER_VERSION,
+    RULES_VERSION,
+    snapshot,
+)
 from app.domain import design_projects
 from app.domain.design_projects import _Applicable, _approval_changed, _findings_fingerprint
 from app.models.tables.design_projects import DesignRevisionRow
@@ -34,6 +40,8 @@ def _row(**values: object) -> DesignRevisionRow:
         ],
         approved_at=datetime(2026, 10, 1, tzinfo=UTC),
         approved_snapshot_sha256=SNAPSHOT,
+        # No stored record: the approval binds JSON null's hash.
+        approved_requirements_sha256=snapshot.sha256_of(None),
     )
     for name, value in values.items():
         setattr(row, name, value)

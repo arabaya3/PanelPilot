@@ -805,7 +805,7 @@
       }
     ],
     "profile_sha256": "261229d08d96a8aeee32f8669e2542e001472fcee93f73d0e935321f86172247",
-    "rules_version": "2026.10.23.1",
+    "rules_version": "2026.11.03.1",
     "snapshot_sha256": "eb5fcd9e6b3c415414867d448e8dc3d0beb40ab498727563fec77e5d37333e17"
   }
 }

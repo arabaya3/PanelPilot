@@ -20,6 +20,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
@@ -41,6 +42,7 @@ from app.tests.api.v1.routes.test_export_integrity import (  # noqa: F401  (fixt
     revision_row,
     save,
 )
+from app.tests.domain import review_support
 
 THREADS = 8
 
@@ -187,3 +189,9 @@ def test_approve_while_two_revisions_are_written(
         if r.status_code == 201:
             other = revision_row(engine, pid, r.json()["revision"])
             assert other["approved_snapshot_sha256"] is None
+
+
+@pytest.fixture(autouse=True)
+def _saved_by_another_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisions here are saved by another member, so the caller may approve them (M6a)."""
+    review_support.author_revisions_as_another_member(monkeypatch)

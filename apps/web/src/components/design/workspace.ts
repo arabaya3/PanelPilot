@@ -7,6 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
  */
 export const VIEWS = [
   'overview',
+  'requirements',
   'schedule',
   'drawings',
   'layout',
