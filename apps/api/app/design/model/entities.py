@@ -122,6 +122,46 @@ class Review:
     scope_note: str | None
 
 
+#: The shape kinds a symbol is drawn from, and how many integers each takes:
+#: ``line`` x1 y1 x2 y2; ``rect`` x y width height; ``circle`` cx cy radius;
+#: ``text`` x y (its words are the shape's ``text``).
+SYMBOL_SHAPES: dict[str, int] = {"line": 4, "rect": 4, "circle": 3, "text": 2}
+
+
+@dataclass(frozen=True)
+class SymbolShape:
+    """One drawn element of a symbol, in the symbol's grid (integers, y downwards)."""
+
+    kind: str
+    points: tuple[int, ...]
+    text: str | None
+
+
+@dataclass(frozen=True)
+class SymbolAnchor:
+    """Where a template terminal joins the symbol, in the symbol's grid."""
+
+    terminal: str
+    x: int
+    y: int
+
+
+@dataclass(frozen=True)
+class SymbolDef:
+    """A template's drawing symbol, as data: shapes and terminal anchors (M4).
+
+    Pure geometry in a ``width`` by ``height`` grid of whole units, with no
+    meaning beyond what it draws: it states no rating and follows no named
+    symbol standard. Absent (``ComponentTemplate.symbol is None``), a drawing
+    shows a labelled placeholder instead.
+    """
+
+    width: int
+    height: int
+    shapes: tuple[SymbolShape, ...]
+    anchors: tuple[SymbolAnchor, ...]
+
+
 @dataclass(frozen=True)
 class ComponentTemplate:
     """What a kind of component is, as data: its terminals and parameters.
@@ -135,6 +175,7 @@ class ComponentTemplate:
         provenance: Its source.
         review: Its review record.
         restricted_scope: Uses it may not be executed for (e.g. ``"life_safety"``).
+        symbol: Its drawing symbol, or ``None`` when the data defines none.
     """
 
     ref: str
@@ -145,6 +186,7 @@ class ComponentTemplate:
     provenance: Provenance
     review: Review
     restricted_scope: tuple[str, ...]
+    symbol: SymbolDef | None = None
 
     def terminal(self, terminal_id: str) -> TerminalDef | None:
         """The terminal with this id, or ``None``.

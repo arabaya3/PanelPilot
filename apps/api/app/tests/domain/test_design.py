@@ -98,7 +98,7 @@ def test_a_format_whose_mark_an_import_strips_is_refused(fmt: ExportFormat) -> N
     assert raised.value.params == {
         "format": fmt.value,
         "reason": "draft_mark_not_persistent",
-        "allowed": "pdf,dxf,quotation_pdf,calculations_pdf,json,terminal_schedule_pdf,wire_schedule_pdf",
+        "allowed": "pdf,dxf,quotation_pdf,calculations_pdf,json,terminal_schedule_pdf,wire_schedule_pdf,connection_drawing_pdf",
     }
 
 

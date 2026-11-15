@@ -103,14 +103,22 @@ _MEDIA_TYPES: dict[ExportFormat, tuple[str, str]] = {
     ExportFormat.JSON: ("application/json", "json"),
     ExportFormat.TERMINAL_SCHEDULE_PDF: ("application/pdf", "terminal-schedule.pdf"),
     ExportFormat.WIRE_SCHEDULE_PDF: ("application/pdf", "wire-schedule.pdf"),
+    ExportFormat.CONNECTION_DRAWING_PDF: ("application/pdf", "connection-drawing.pdf"),
 }
 
-#: The review-only schedules of a saved ``pp-design/2`` revision's terminals
-#: and wires. PDF only, every page marked and "NOT FOR EXECUTION". They are
+#: The review-only documents of a saved ``pp-design/2`` revision's terminals,
+#: nets and wires: the terminal and wire schedules and the connection drawing
+#: (M4). PDF only, every page marked and "NOT FOR EXECUTION". They are
 #: rendered from a saved v2 model alone (``design_projects``), so a draft,
 #: which has none, and a v1 revision are refused (``schedule_requires_v2``).
 #: Not plan-gated, as the drawing and calculations PDFs are not.
-SCHEDULE_FORMATS = frozenset({ExportFormat.TERMINAL_SCHEDULE_PDF, ExportFormat.WIRE_SCHEDULE_PDF})
+SCHEDULE_FORMATS = frozenset(
+    {
+        ExportFormat.TERMINAL_SCHEDULE_PDF,
+        ExportFormat.WIRE_SCHEDULE_PDF,
+        ExportFormat.CONNECTION_DRAWING_PDF,
+    }
+)
 
 #: The formats another drawing program opens: on plans with ``ECAD_EXPORT``.
 ECAD_FORMATS = frozenset(

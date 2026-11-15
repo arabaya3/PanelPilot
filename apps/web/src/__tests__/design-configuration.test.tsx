@@ -671,7 +671,7 @@ describe('the configuration view and review schedules of a revision', () => {
     );
   });
 
-  it('offers both schedules of a v2 revision as review documents, not for execution', async () => {
+  it('offers the schedules and connection drawing of a v2 revision as review documents, not for execution', async () => {
     api.open.mockResolvedValue({ kind: 'saved', project: saved(MODEL) });
     const exportRevisionImpl = renderScreen(
       vi
@@ -691,6 +691,14 @@ describe('the configuration view and review schedules of a revision', () => {
       );
     });
     expect(schedules.getByTestId('revision-export-wire_schedule_pdf')).toBeTruthy();
+    const drawing = schedules.getByTestId('revision-export-connection_drawing_pdf');
+    expect(drawing.textContent).toContain(en.design.format.connection_drawing_pdf);
+    fireEvent.click(drawing);
+    await waitFor(() => {
+      expect(exportRevisionImpl).toHaveBeenCalledWith(
+        expect.objectContaining({ format: 'connection_drawing_pdf', purpose: 'review' }),
+      );
+    });
     // The execution export is still offered only as the blocked request it was.
     expect(review().getByTestId('execution-export')).toBeTruthy();
 
@@ -725,6 +733,7 @@ describe('the configuration view and review schedules of a revision', () => {
     expect(document.activeElement).toBe(screen.getByTestId('project-opened-name'));
     expect(review().queryByTestId('revision-export-terminal_schedule_pdf')).toBeNull();
     expect(review().queryByTestId('revision-export-wire_schedule_pdf')).toBeNull();
+    expect(review().queryByTestId('revision-export-connection_drawing_pdf')).toBeNull();
     expect(review().getByTestId('revision-schedules-v1').textContent).toBe(
       en.design.errors.schedule_requires_v2,
     );

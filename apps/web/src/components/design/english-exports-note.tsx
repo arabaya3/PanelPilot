@@ -10,7 +10,8 @@ const NOT_ENGLISH = new Set(['ar', 'he']);
  * set and calculations follow the company profile's drawing language (a
  * draft takes it from the page language, a revision from its saved profile),
  * but their status marks and findings are English; the quotation, the
- * terminal and wire schedules and the DXF are always English; the JSON holds
+ * terminal and wire schedules, the connection drawing and the DXF are always
+ * English; the JSON holds
  * the data as entered. Shown in Arabic and Hebrew only: an English user
  * needs no note.
  */

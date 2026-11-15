@@ -55,6 +55,7 @@ from app.design import (
     CATALOGUE_VERSION,
     RENDERER_BASELINE,
     RULES_VERSION,
+    connection_drawing_pdf,
     drawing_text,
     integrity,
     marking,
@@ -62,7 +63,14 @@ from app.design import (
     schedule_pdf,
     snapshot,
 )
-from app.design.model import anchoring, entities, findings_v2, schedules, versions
+from app.design.model import (
+    anchoring,
+    connection_drawing,
+    entities,
+    findings_v2,
+    schedules,
+    versions,
+)
 from app.design.model.read import VersionedModel, read_snapshot
 from app.design.model.write import snapshot_v2_from_v1
 from app.domain import billing, design_configuration, engineering_reviews, permissions
@@ -1869,7 +1877,13 @@ def _schedule_export(
     mark: marking.ExportMark,
     applicable: _Applicable,
 ) -> design_domain.ExportedFile:
-    """A review-only terminal or wire schedule, from the saved v2 model alone.
+    """A review-only schedule or connection drawing, from the saved v2 model alone.
+
+    All three documents of a revision are made here, from ``read``: the one
+    snapshot read (``_check_snapshot``, its hash checked and its reviews
+    anchored) that the gates above passed. The drawing's terminals and wires
+    are the schedules' own rows (``connection_drawing.drawing_set``), and it
+    prints the revision's snapshot hash on every sheet.
 
     Raises:
         ConflictError: ``schedule_requires_v2`` for a v1 revision: it holds
@@ -1897,7 +1911,22 @@ def _schedule_export(
     ]
     other = [found for found in mark.findings if found.code not in findings_v2.CODES]
     plain = marking.ExportMark(label=mark.label, identity=mark.identity, findings=tuple(other))
-    if export_format is ExportFormat.TERMINAL_SCHEDULE_PDF:
+    if export_format is ExportFormat.CONNECTION_DRAWING_PDF:
+        content = connection_drawing_pdf.render_connection_drawing(
+            connection_drawing.drawing_set(model),
+            connection_drawing_pdf.DrawingHeader(
+                project=header.project,
+                revision=header.revision,
+                design_sha256=header.design_sha256,
+                schema=header.schema,
+                rules_version=header.rules_version,
+                renderer_version=header.renderer_version,
+            ),
+            plain,
+            structural,
+        )
+        suffix = "connection-drawing.pdf"
+    elif export_format is ExportFormat.TERMINAL_SCHEDULE_PDF:
         content = schedule_pdf.render_terminal_schedule(
             schedules.terminal_schedule(model), header, plain, structural
         )

@@ -129,7 +129,13 @@ def _size(value: Any) -> int:
 def _definition_items(kind: str, item: Mapping[str, Any]) -> int:
     if kind == "templates":
         names = ("terminals", "contact_groups", "parameters")
-        return sum(_size(item.get(name)) for name in names)
+        symbol = item.get("symbol")
+        drawn = (
+            _size(symbol.get("shapes")) + _size(symbol.get("anchors"))
+            if isinstance(symbol, Mapping)
+            else 0
+        )
+        return sum(_size(item.get(name)) for name in names) + drawn
     nets = item.get("nets")
     total = _size(item.get("slots")) + _size(item.get("points"))
     for net in nets if isinstance(nets, list) else ():

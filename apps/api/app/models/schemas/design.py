@@ -903,6 +903,8 @@ class ExportFormat(StrEnum):
     TERMINAL_SCHEDULE_PDF = "terminal_schedule_pdf"
     #: Review-only wire schedule of a saved ``pp-design/2`` revision.
     WIRE_SCHEDULE_PDF = "wire_schedule_pdf"
+    #: Review-only connection drawing of a saved ``pp-design/2`` revision (M4).
+    CONNECTION_DRAWING_PDF = "connection_drawing_pdf"
 
 
 class DesignExportRequest(StrictModel):

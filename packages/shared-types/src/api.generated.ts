@@ -2943,7 +2943,8 @@ export interface components {
       | 'plc_io_csv'
       | 'json'
       | 'terminal_schedule_pdf'
-      | 'wire_schedule_pdf';
+      | 'wire_schedule_pdf'
+      | 'connection_drawing_pdf';
     /**
      * ExportPurpose
      * @description What a saved revision is exported for.
