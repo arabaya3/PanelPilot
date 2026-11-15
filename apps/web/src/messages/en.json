@@ -1854,7 +1854,7 @@
     "contextValidation": "Validation result",
     "openedUnread": "Revision {revision}'s stored design could not be read or failed its integrity check, so its configuration is not shown. Nothing in it can be approved or exported; save the design again as a new revision.",
     "openedStale": "Revision {revision} is stale: the rules or company profile changed since it was saved, so its configuration is not shown. Save it again as a new revision.",
-    "intro": "Add components and terminal strips from the template definitions this project already has, and type designations and point markings. Save stores the configuration with the form as it stands as a new revision after {revision}.",
+    "intro": "Add components and terminal strips, define a component's terminals yourself, and type designations and point markings. Save stores the configuration with the form as it stands as a new revision after {revision}.",
     "file": "Configuration file (.json)",
     "fileHelp": "The file is read into the box below; nothing is sent until you import it into the editor and save.",
     "json": "Configuration (JSON)",
@@ -1989,7 +1989,7 @@
       "editDefinition": "Edit the definition"
     },
     "editor": {
-      "intro": "Only templates already in this project or its registry are offered. Their review status and source are shown as stored; nothing here is reviewed or rated by this page, and no marking or value is filled in for you.",
+      "intro": "Components and strips use a definition already in this project or its registry, or one you define below. Review status and source are shown as stored; nothing here is reviewed or rated by this page, and no marking or value is filled in for you.",
       "components": "Components",
       "strips": "Terminal strips",
       "bindings": "Bindings and point markings",
@@ -2057,7 +2057,7 @@
         "taken": "Another definition of this project already has this id."
       },
       "rename": "Rename",
-      "renameWithUsers": "Rename and update {count} entries",
+      "renameWithUsers": "Rename, and update the entries that use it ({count})",
       "renameUsers": "Renaming also points these entries at the new id: {entries}.",
       "function": "Function",
       "unspecified": "unspecified",
@@ -2090,7 +2090,7 @@
         "to": "the fed end of the feeder link to {board}"
       },
       "remove": "Remove definition",
-      "usedBy": "Used by {count} entries; change or remove them first:",
+      "usedBy": "Used by entries ({count}); change or remove them first:",
       "componentTerminals": "Terminals: {markings}",
       "componentNoTerminals": "This definition has no terminals yet.",
       "terminalsElsewhere": "Terminals come from a definition that is not edited here."
